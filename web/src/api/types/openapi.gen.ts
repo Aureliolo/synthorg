@@ -3059,6 +3059,92 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/requests": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListRequests */
+        readonly get: operations["ApiV1RequestsListRequests"];
+        readonly put?: never;
+        /** SubmitRequest */
+        readonly post: operations["ApiV1RequestsSubmitRequest"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/requests/{request_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetRequest */
+        readonly get: operations["ApiV1RequestsRequestIdGetRequest"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/requests/{request_id}/approve": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ApproveRequest */
+        readonly post: operations["ApiV1RequestsRequestIdApproveApproveRequest"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/requests/{request_id}/reject": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** RejectRequest */
+        readonly post: operations["ApiV1RequestsRequestIdRejectRejectRequest"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/requests/{request_id}/scope": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ScopeRequest */
+        readonly post: operations["ApiV1RequestsRequestIdScopeScopeRequest"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/reviews/{task_id}/pipeline": {
         readonly parameters: {
             readonly query?: never;
@@ -3615,6 +3701,75 @@ export type paths = {
         };
         /** GetTemplates */
         readonly get: operations["ApiV1SetupTemplatesGetTemplates"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/simulations": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListSimulations */
+        readonly get: operations["ApiV1SimulationsListSimulations"];
+        readonly put?: never;
+        /** StartSimulation */
+        readonly post: operations["ApiV1SimulationsStartSimulation"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/simulations/{simulation_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetSimulation */
+        readonly get: operations["ApiV1SimulationsSimulationIdGetSimulation"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/simulations/{simulation_id}/cancel": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** CancelSimulation */
+        readonly post: operations["ApiV1SimulationsSimulationIdCancelCancelSimulation"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/simulations/{simulation_id}/report": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetReport */
+        readonly get: operations["ApiV1SimulationsSimulationIdReportGetReport"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -4754,6 +4909,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[ClientRequest] */
+        readonly ApiResponse_ClientRequest_: {
+            readonly data: components["schemas"]["ClientRequest"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[CollaborationScoreResult] */
         readonly ApiResponse_CollaborationScoreResult_: {
             readonly data: components["schemas"]["CollaborationScoreResult"] | null;
@@ -5193,6 +5356,14 @@ export type components = {
         /** ApiResponse[SetupStatusResponse] */
         readonly ApiResponse_SetupStatusResponse_: {
             readonly data: components["schemas"]["SetupStatusResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[SimulationStatusResponse] */
+        readonly ApiResponse_SimulationStatusResponse_: {
+            readonly data: components["schemas"]["SimulationStatusResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -6162,6 +6333,24 @@ export type components = {
              */
             readonly strictness_level: number;
         };
+        /** ClientRequest */
+        readonly ClientRequest: {
+            /** @description ID of the submitting client */
+            readonly client_id: string;
+            /**
+             * Format: date-time
+             * @description Timestamp of request creation
+             */
+            readonly created_at: string;
+            /** @description Additional request metadata */
+            readonly metadata: {
+                readonly [key: string]: unknown;
+            };
+            /** @description Unique request identifier */
+            readonly request_id: string;
+            readonly requirement: components["schemas"]["TaskRequirement"];
+            readonly status: components["schemas"]["RequestStatus"];
+        };
         /** CloudPreset */
         readonly CloudPreset: {
             readonly auth_type: components["schemas"]["AuthType"];
@@ -6829,6 +7018,12 @@ export type components = {
             readonly subscription_token?: string | null;
             /** @default false */
             readonly tos_accepted: boolean;
+        };
+        /** CreateRequestPayload */
+        readonly CreateRequestPayload: {
+            /** @description Requesting client id */
+            readonly client_id: string;
+            readonly requirement: components["schemas"]["TaskRequirement"];
         };
         /** CreateSubworkflowRequest */
         readonly CreateSubworkflowRequest: {
@@ -8674,6 +8869,21 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** PaginatedResponse[ClientRequest] */
+        readonly PaginatedResponse_ClientRequest_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["ClientRequest"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[Connection] */
         readonly PaginatedResponse_Connection_: {
             /** @default [] */
@@ -9072,6 +9282,21 @@ export type components = {
         readonly PaginatedResponse_SetupAgentSummary_: {
             /** @default [] */
             readonly data: readonly components["schemas"]["SetupAgentSummary"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** PaginatedResponse[SimulationStatusResponse] */
+        readonly PaginatedResponse_SimulationStatusResponse_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["SimulationStatusResponse"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -9955,6 +10180,11 @@ export type components = {
              */
             readonly type: "reject";
         };
+        /** RejectionPayload */
+        readonly RejectionPayload: {
+            /** @description Reason for rejection */
+            readonly reason: string;
+        };
         /** RejectRequest */
         readonly RejectRequest: {
             readonly reason: string;
@@ -10039,6 +10269,21 @@ export type components = {
              */
             readonly start: string;
         };
+        /**
+         * RequestStatus
+         * @description Lifecycle status of a client request through the intake pipeline.
+         *
+         *     Independent from ``TaskStatus`` -- tracks the intake process
+         *     before a task is created in the task engine.
+         *
+         *     Transitions::
+         *
+         *         SUBMITTED -> TRIAGING -> SCOPING -> APPROVED -> TASK_CREATED
+         *         Any non-terminal state -> CANCELLED
+         * @default submitted
+         * @enum {string}
+         */
+        readonly RequestStatus: "submitted" | "triaging" | "scoping" | "approved" | "task_created" | "cancelled";
         /** ResilienceConfig */
         readonly ResilienceConfig: {
             /** @default true */
@@ -10368,6 +10613,14 @@ export type components = {
             /** @description Priority rank */
             readonly priority: number;
         };
+        /** ScopingPayload */
+        readonly ScopingPayload: {
+            /** @description Scoping notes from the reviewer */
+            readonly notes: string;
+            readonly refined_acceptance_criteria?: readonly string[] | null;
+            readonly refined_description?: string | null;
+            readonly refined_title?: string | null;
+        };
         /** SecretRef */
         readonly SecretRef: {
             readonly backend: string;
@@ -10660,6 +10913,73 @@ export type components = {
             readonly needs_admin: boolean;
             readonly needs_setup: boolean;
         };
+        /** SimulationConfig */
+        readonly SimulationConfig: {
+            /**
+             * @description Clients participating per round
+             * @default 5
+             */
+            readonly clients_per_round: number;
+            /** @description Project to simulate against */
+            readonly project_id: string;
+            /**
+             * @description Requirements each client generates per round
+             * @default 1
+             */
+            readonly requirements_per_client: number;
+            /**
+             * @description Number of simulation rounds
+             * @default 1
+             */
+            readonly rounds: number;
+            /** @description Unique simulation identifier */
+            readonly simulation_id: string;
+        };
+        /** SimulationMetrics */
+        readonly SimulationMetrics: {
+            /** @description Proportion of accepted tasks (0.0-1.0) */
+            readonly acceptance_rate: number;
+            /** @default 0 */
+            readonly avg_review_rounds: number;
+            /** @description Proportion of reworked tasks (0.0-1.0) */
+            readonly rework_rate: number;
+            /**
+             * @description Per-round metric snapshots
+             * @default []
+             */
+            readonly round_metrics: readonly {
+                readonly [key: string]: unknown;
+            }[];
+            /** @default 0 */
+            readonly tasks_accepted: number;
+            /** @default 0 */
+            readonly tasks_rejected: number;
+            /** @default 0 */
+            readonly tasks_reworked: number;
+            /** @default 0 */
+            readonly total_requirements: number;
+            /** @default 0 */
+            readonly total_tasks_created: number;
+        };
+        /** SimulationStatusResponse */
+        readonly SimulationStatusResponse: {
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly completed_at: string | null;
+            readonly config: components["schemas"]["SimulationConfig"];
+            readonly error: string | null;
+            readonly metrics: components["schemas"]["SimulationMetrics"];
+            readonly progress: number;
+            readonly simulation_id: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly started_at: string | null;
+            readonly status: string;
+        };
         /** SinkInfoResponse */
         readonly SinkInfoResponse: {
             readonly enabled: boolean;
@@ -10763,6 +11083,10 @@ export type components = {
             readonly stage_name: string;
             readonly stage_result: components["schemas"]["ReviewStageResult"];
             readonly task_id: string;
+        };
+        /** StartSimulationPayload */
+        readonly StartSimulationPayload: {
+            readonly config: components["schemas"]["SimulationConfig"];
         };
         /** StragglerGap */
         readonly StragglerGap: {
@@ -10915,6 +11239,24 @@ export type components = {
             readonly type: components["schemas"]["TaskType"];
         };
         /**
+         * TaskRequirement
+         * @description The task requirement being requested
+         */
+        readonly TaskRequirement: {
+            /**
+             * @description Criteria for task acceptance
+             * @default []
+             */
+            readonly acceptance_criteria: readonly string[];
+            /** @description Detailed requirement description */
+            readonly description: string;
+            readonly estimated_complexity: components["schemas"]["Complexity"];
+            readonly priority: components["schemas"]["Priority"];
+            readonly task_type: components["schemas"]["TaskType"];
+            /** @description Short requirement title */
+            readonly title: string;
+        };
+        /**
          * TaskSource
          * @description Origin of a task within the system.
          *
@@ -10961,6 +11303,7 @@ export type components = {
         /**
          * TaskType
          * @description Classification of the kind of work a task represents.
+         * @default development
          * @enum {string}
          */
         readonly TaskType: "development" | "design" | "research" | "review" | "meeting" | "admin";
@@ -19194,6 +19537,195 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1RequestsListRequests: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+                /** @description Filter to requests in this status. */
+                readonly status?: "submitted" | "triaging" | "scoping" | "approved" | "task_created" | "cancelled" | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_ClientRequest_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1RequestsSubmitRequest: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CreateRequestPayload"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequest_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1RequestsRequestIdGetRequest: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly request_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequest_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1RequestsRequestIdApproveApproveRequest: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly request_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequest_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1RequestsRequestIdRejectRejectRequest: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly request_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RejectionPayload"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequest_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1RequestsRequestIdScopeScopeRequest: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly request_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ScopingPayload"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ClientRequest_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1ReviewsTaskIdPipelineGetPipeline: {
         readonly parameters: {
             readonly query?: never;
@@ -20274,6 +20806,155 @@ export interface operations {
                 };
             };
             readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1SimulationsListSimulations: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_SimulationStatusResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1SimulationsStartSimulation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["StartSimulationPayload"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SimulationStatusResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1SimulationsSimulationIdGetSimulation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly simulation_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SimulationStatusResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1SimulationsSimulationIdCancelCancelSimulation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly simulation_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SimulationStatusResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1SimulationsSimulationIdReportGetReport: {
+        readonly parameters: {
+            readonly query?: {
+                readonly fmt?: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly simulation_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

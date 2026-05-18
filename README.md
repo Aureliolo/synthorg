@@ -30,7 +30,8 @@ A tested platform you can run, inspect, and build on:
 - **Dual-backend persistence**: SQLite (single-node default) and PostgreSQL (multi-instance), conformance-tested for parity, with in-process yoyo schema migrations and ISO 4217 currency stamping on every cost-bearing row.
 - **Provider layer**: any LLM via LiteLLM with built-in retry and rate-limit handling; local model management for Ollama and LM Studio.
 - **Configuration and templates**: define a company in YAML; importable/shareable agent, department, and company templates with personality presets.
-- **Subsystem libraries, tested as components**: the engine, memory, budget, security, coordination, and intake modules exist as importable, unit-tested code. Note honestly: these are exercised by their test suites, not yet by a running agent (see below).
+- **Subsystem libraries, tested as components**: the engine, memory, budget, security, and coordination modules exist as importable, unit-tested code. Note honestly: these are exercised by their test suites, not yet by a running agent (see below).
+- **Client-simulation intake runtime**: the intake engine is wired into boot via the client-simulation runtime and driven end-to-end by a deterministic simulation harness (synthetic clients, scripted provider, zero LLM spend), which is also the acceptance substrate for the runtime work in flight.
 - **Operations**: structured logging with redaction and correlation, Prometheus metrics and OTLP, HttpOnly-cookie multi-user sessions with CSRF protection, Chainguard distroless images with Trivy + Grype scanning, cosign signatures, and SLSA L3 provenance.
 - **Distributed dispatch plumbing**: NATS JetStream queue and a worker pool. The dispatch path exists; the task-execute endpoint currently advances task state and does not yet invoke an agent.
 
@@ -44,7 +45,7 @@ These are the capabilities that make SynthOrg an autonomous studio. They are des
 - **Best-in-class operate tier**: a golden-company benchmark, mission control with run replay, a cost forecast/kill-switch dial, a measurable learning curve, deterministic replay, run narratives, and an adversarial red-team.
 - **Agent capability layer**: a knowledge and provenance retrieval substrate, research mode, continual improvement, governed external API access, headless-browser and virtual-desktop testing, and more.
 
-Until the runtime lands, multi-agent coordination, coordination metrics, the intake engine, autonomy/trust enforcement on a live run, and the self-improvement loop are designed and unit-tested but not exercised end to end. The design for each lives in the [Design Specification](https://synthorg.io/docs/design/).
+Until the agent runtime lands, multi-agent coordination, coordination metrics, autonomy/trust enforcement on a live run, and the self-improvement loop are designed and unit-tested but not exercised end to end. The design for each lives in the [Design Specification](https://synthorg.io/docs/design/).
 
 ## Quick Start
 

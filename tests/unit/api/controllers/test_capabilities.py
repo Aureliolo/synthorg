@@ -40,9 +40,12 @@ class TestCapabilitiesController:
         assert set(data.keys()) == expected_flags
         for key in expected_flags:
             assert isinstance(data[key], bool), key
-        # Each flag matches the fixture: ontology + tunnel are auto-wired on startup.
-        assert data["simulations"] is False
-        assert data["requests"] is False
+        # The shared test app is built with a TaskEngine, so the
+        # client-simulation runtime is boot-wired (DirectIntake +
+        # InternalReviewStage); simulations + requests are therefore
+        # on. ontology + tunnel are auto-wired on startup.
+        assert data["simulations"] is True
+        assert data["requests"] is True
         assert data["ontology"] is True
         assert data["tunnel"] is True
         assert data["webhooks"] is False
@@ -50,43 +53,45 @@ class TestCapabilitiesController:
         assert data["telemetry"] is False
         assert data["integrations"] is False
 
-    def test_capabilities_reflects_unconfigured_simulations(
+    def test_capabilities_reflects_wired_simulation_runtime(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Test conftest does not wire client_simulation_state."""
+        """A TaskEngine-backed boot wires the simulation runtime.
+
+        ``create_app`` builds the runtime via
+        ``build_client_simulation_runtime`` whenever a TaskEngine is
+        present (the shared fixture supplies one), so both the
+        simulations and requests capability flags are True and the
+        dashboard knows to poll those endpoints.
+        """
         resp = test_client.get(
             "/api/v1/capabilities/",
             headers=_HEADERS,
         )
         assert resp.status_code == 200
         data = resp.json()["data"]
-        # client_simulation_state is not wired in the test fixture so
-        # both the simulations and requests flags must be False -- the
-        # dashboard then knows to skip polling those endpoints.
-        assert data["simulations"] is False
-        assert data["requests"] is False
+        assert data["simulations"] is True
+        assert data["requests"] is True
 
-    def test_simulations_route_returns_404_when_unconfigured(
+    def test_simulations_route_registered_when_runtime_wired(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Unconfigured simulations route does not exist.
+        """The simulations route is registered once the runtime is wired.
 
-        Without ``client_simulation_state`` wired the simulation
-        controller is not registered at all, so the dashboard's
-        polling against ``/api/v1/simulations`` lands at 404 (route
-        not found) instead of 503 (service unavailable). Combined
-        with the frontend reading ``/capabilities`` to gate polling
-        in the first place, the 503-spam from the audit log is gone.
+        With the boot-wired ``client_simulation_state`` the simulation
+        controller is registered, so ``GET /api/v1/simulations``
+        resolves (200 with an empty paginated list) instead of the
+        404 returned when no TaskEngine gates the runtime off.
         """
         resp = test_client.get(
             "/api/v1/simulations",
             headers=_HEADERS,
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 200, resp.text
 
-    def test_requests_route_returns_404_when_unconfigured(
+    def test_requests_route_registered_when_runtime_wired(
         self,
         test_client: TestClient[Any],
     ) -> None:
@@ -94,4 +99,4 @@ class TestCapabilitiesController:
             "/api/v1/requests",
             headers=_HEADERS,
         )
-        assert resp.status_code == 404
+        assert resp.status_code == 200, resp.text

@@ -7,7 +7,7 @@ import {
   getSimulationReport,
   listSimulations,
   type SimulationReport,
-  type SimulationStatus,
+  type SimulationStatusResponse,
 } from '@/api/endpoints/clients'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -34,7 +34,7 @@ export default function SimulationDashboardPage() {
     loading: capLoading,
     error: capError,
   } = useCapabilities()
-  const [runs, setRuns] = useState<readonly SimulationStatus[]>([])
+  const [runs, setRuns] = useState<readonly SimulationStatusResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<SimulationReport | null>(null)

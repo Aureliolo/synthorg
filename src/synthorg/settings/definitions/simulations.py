@@ -31,6 +31,46 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.SIMULATIONS,
+        key="intake_strategy",
+        type=SettingType.ENUM,
+        default="direct",
+        enum_values=("direct", "agent"),
+        description=(
+            "Intake strategy wired into the client-simulation runtime at"
+            " boot. 'direct' creates a task per accepted request with no"
+            " LLM call; 'agent' routes each request through an LLM triage"
+            " step using the registered completion provider. Baked in at"
+            " process startup."
+        ),
+        group="Intake",
+        level=SettingLevel.ADVANCED,
+        read_only_post_init=True,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SIMULATIONS,
+        key="intake_model",
+        type=SettingType.STRING,
+        default=None,
+        description=(
+            "Model identifier passed to the agent intake strategy. Only"
+            " consulted when simulations.intake_strategy is 'agent';"
+            " ignored by the 'direct' strategy. Baked in at process"
+            " startup."
+        ),
+        group="Intake",
+        level=SettingLevel.ADVANCED,
+        read_only_post_init=True,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SIMULATIONS,
         key="review_timeout_seconds",
         type=SettingType.FLOAT,
         default="30.0",

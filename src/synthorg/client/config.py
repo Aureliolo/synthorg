@@ -5,11 +5,17 @@ project conventions. Used to configure simulation runs, client
 pools, requirement generators, and feedback strategies.
 """
 
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+# Acceptance band for the AI/human/hybrid pool-ratio sum: floating
+# point makes an exact == 1.0 check brittle, so a +/-1% tolerance is
+# allowed around the unit sum.
+_RATIO_SUM_TOLERANCE_LOW: Final[float] = 0.99
+_RATIO_SUM_TOLERANCE_HIGH: Final[float] = 1.01
 
 
 class RequirementGeneratorConfig(BaseModel):
@@ -123,9 +129,7 @@ class ClientPoolConfig(BaseModel):
     def _validate_ratio_sum(self) -> Self:
         """Ensure ratios sum to approximately 1.0."""
         total = self.ai_ratio + self.human_ratio + self.hybrid_ratio
-        _tolerance_low = 0.99
-        _tolerance_high = 1.01
-        if not (_tolerance_low <= total <= _tolerance_high):
+        if not (_RATIO_SUM_TOLERANCE_LOW <= total <= _RATIO_SUM_TOLERANCE_HIGH):
             msg = (
                 f"Ratios must sum to approximately 1.0, got "
                 f"{self.ai_ratio} + {self.human_ratio} + "
@@ -207,6 +211,31 @@ class ReportConfig(BaseModel):
     )
 
 
+class IntakeConfig(BaseModel):
+    """Configuration for the intake strategy.
+
+    Attributes:
+        strategy: Strategy identifier dispatched by
+            ``build_intake_strategy``: ``direct`` (no LLM, creates a
+            task per accepted request) or ``agent`` (LLM-driven triage
+            via a completion provider).
+        model: Model identifier passed to the agent intake strategy.
+            Only consulted when ``strategy == "agent"``; ignored by
+            the ``direct`` strategy.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    strategy: NotBlankStr = Field(
+        default="direct",
+        description="Intake strategy identifier (direct or agent)",
+    )
+    model: NotBlankStr | None = Field(
+        default=None,
+        description="Model id for the agent intake strategy",
+    )
+
+
 class ClientSimulationConfig(BaseModel):
     """Top-level client simulation configuration.
 
@@ -219,6 +248,7 @@ class ClientSimulationConfig(BaseModel):
         report: Report format configuration.
         runner: Simulation runner configuration.
         continuous: Continuous mode configuration.
+        intake: Intake strategy configuration.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -246,4 +276,8 @@ class ClientSimulationConfig(BaseModel):
     continuous: ContinuousModeConfig = Field(
         default_factory=ContinuousModeConfig,
         description="Continuous mode configuration",
+    )
+    intake: IntakeConfig = Field(
+        default_factory=IntakeConfig,
+        description="Intake strategy configuration",
     )

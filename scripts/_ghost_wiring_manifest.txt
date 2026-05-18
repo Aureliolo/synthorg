@@ -27,4 +27,4 @@ ENFORCED AgentEngine #1956 -- runtime root; construct at boot behind the provide
 PENDING build_coordinator #1958 -- call at boot to populate app_state.coordinator
 PENDING BaselineStore #1959 -- construct at boot (window from budget.baseline_window_size)
 PENDING CoordinationMetricsCollector #1959 -- construct at boot, thread into execution
-PENDING IntakeEngine #1961 -- wire via the client-simulation runtime
+ENFORCED IntakeEngine #1961 -- wired at boot via client/runtime_builder.build_client_simulation_runtime

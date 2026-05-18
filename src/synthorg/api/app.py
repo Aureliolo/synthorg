@@ -886,17 +886,32 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 service="a2a_gateway",
             )
 
-    # Default to a fresh ``ClientSimulationState()`` so the
-    # always-registered ``ClientController`` can serve an empty
-    # ``/clients`` list instead of 503ing on every dashboard poll.
-    # Callers wanting the full intake / review pipeline pass a
-    # configured state via the kwarg.
+    # Client-simulation runtime. An explicit kwarg always wins (test
+    # doubles / bespoke wiring). Otherwise, when a TaskEngine is
+    # present, build the live runtime (real IntakeEngine + review
+    # pipeline) so ``has_simulation_runtime`` is true and the
+    # ``/simulations`` + ``/requests`` controllers register; the
+    # default ``direct`` intake strategy makes no LLM calls and works
+    # for an empty company. With no TaskEngine the intake engine has
+    # nothing to create tasks against, so fall back to a fresh empty
+    # ``ClientSimulationState()`` -- the always-registered
+    # ``ClientController`` still serves an empty ``/clients`` list
+    # instead of 503ing on every dashboard poll. This mirrors the
+    # ``review_gate_service`` "build it whenever task_engine exists"
+    # gate above.
     if client_simulation_state is None:
-        from synthorg.client.simulation_state import (  # noqa: PLC0415
-            ClientSimulationState as _ClientSimulationState,
-        )
+        if task_engine is not None:
+            from synthorg.client.runtime_builder import (  # noqa: PLC0415
+                build_client_simulation_runtime,
+            )
 
-        client_simulation_state = _ClientSimulationState()
+            client_simulation_state = build_client_simulation_runtime(app_state)
+        else:
+            from synthorg.client.simulation_state import (  # noqa: PLC0415
+                ClientSimulationState as _ClientSimulationState,
+            )
+
+            client_simulation_state = _ClientSimulationState()
     app_state.set_client_simulation_state(client_simulation_state)
 
     # Optional controllers gated on their primary collaborator service.

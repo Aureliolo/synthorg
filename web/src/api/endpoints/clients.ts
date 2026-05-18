@@ -2,106 +2,63 @@ import axios from 'axios'
 
 import { apiClient, unwrap, unwrapPaginated, type PaginatedResult } from '../client'
 import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
+import type {
+  ClientProfile,
+  ClientRequest,
+  CreateClientRequest,
+  CreateRequestPayload,
+  PipelineResult,
+  RequestStatus,
+  ReviewStageResult,
+  SatisfactionHistory,
+  ScopingPayload,
+  SimulationConfig,
+  SimulationStatusResponse,
+  StageDecisionPayload,
+  StageDecisionResult,
+  UpdateClientRequest,
+} from '@/api/types'
 
-// ── Types ───────────────────────────────────────────────────────
+// DTO shapes are owned by the generated barrel (`@/api/types`,
+// regenerated from the backend OpenAPI schema). Re-export the ones
+// callers consume so the import site stays `@/api/endpoints/clients`
+// without hand-maintaining the shapes here.
+export type {
+  ClientProfile,
+  ClientRequest,
+  CreateClientRequest,
+  CreateRequestPayload,
+  PipelineResult,
+  RequestStatus,
+  ReviewStageResult,
+  SatisfactionHistory,
+  SatisfactionPoint,
+  ScopingPayload,
+  SimulationConfig,
+  SimulationMetrics,
+  SimulationStatusResponse,
+  StageDecisionPayload,
+  StageDecisionResult,
+  TaskRequirement,
+  UpdateClientRequest,
+} from '@/api/types'
 
-export interface ClientProfile {
-  client_id: string
-  name: string
-  persona: string
-  expertise_domains: readonly string[]
-  strictness_level: number
-}
+// Derived from the generated stage result; not a hand-maintained
+// duplicate (the verdict literal union has no standalone DTO).
+export type StageVerdict = ReviewStageResult['verdict']
 
-export interface TaskRequirement {
-  title: string
-  description: string
-  task_type: string
-  priority: string
-  estimated_complexity: string
-  acceptance_criteria?: readonly string[]
-}
-
-export type RequestStatus =
-  | 'submitted'
-  | 'triaging'
-  | 'scoping'
-  | 'approved'
-  | 'task_created'
-  | 'cancelled'
-
-export interface ClientRequest {
-  request_id: string
-  client_id: string
-  requirement: TaskRequirement
-  status: RequestStatus
-  created_at: string
-  metadata: Record<string, unknown>
-}
-
-export interface SimulationConfig {
-  simulation_id: string
-  project_id: string
-  rounds: number
-  clients_per_round: number
-  requirements_per_client: number
-}
-
-export interface SimulationMetrics {
-  total_requirements: number
-  total_tasks_created: number
-  tasks_accepted: number
-  tasks_rejected: number
-  tasks_reworked: number
-  avg_review_rounds: number
-  round_metrics: readonly Record<string, unknown>[]
-  acceptance_rate: number
-  rework_rate: number
-}
-
-export interface SimulationStatus {
+// The report endpoint returns a transport-shaped dict (no Pydantic
+// DTO), so this view shape is intentionally local, not generated.
+export interface SimulationReport {
+  format: string
   simulation_id: string
   status: string
-  config: SimulationConfig
-  metrics: SimulationMetrics
-  progress: number
-  started_at: string | null
-  completed_at: string | null
-  error: string | null
-}
-
-export interface ReviewStageResult {
-  stage_name: string
-  verdict: 'pass' | 'fail' | 'skip'
-  reason: string | null
-  duration_ms: number
-  metadata: Record<string, unknown>
-}
-
-export interface PipelineResult {
-  task_id: string
-  final_verdict: 'pass' | 'fail' | 'skip'
-  stage_results: readonly ReviewStageResult[]
-  total_duration_ms: number
-  reviewed_at: string
+  totals: Record<string, number>
+  rates: Record<string, number>
+  [key: string]: unknown
 }
 
 // ── Clients ─────────────────────────────────────────────────────
-
-export interface CreateClientRequestBody {
-  client_id: string
-  name: string
-  persona: string
-  expertise_domains?: readonly string[]
-  strictness_level?: number
-}
-
-export interface UpdateClientRequestBody {
-  name?: string
-  persona?: string
-  expertise_domains?: readonly string[]
-  strictness_level?: number
-}
 
 export async function listClients(
   params?: PaginationParams,
@@ -121,7 +78,7 @@ export async function getClient(clientId: string): Promise<ClientProfile> {
 }
 
 export async function createClient(
-  data: CreateClientRequestBody,
+  data: CreateClientRequest,
 ): Promise<ClientProfile> {
   const response = await apiClient.post<ApiResponse<ClientProfile>>(
     '/clients/',
@@ -132,7 +89,7 @@ export async function createClient(
 
 export async function updateClient(
   clientId: string,
-  data: UpdateClientRequestBody,
+  data: UpdateClientRequest,
 ): Promise<ClientProfile> {
   const response = await apiClient.patch<ApiResponse<ClientProfile>>(
     `/clients/${encodeURIComponent(clientId)}`,
@@ -145,22 +102,6 @@ export async function deleteClient(clientId: string): Promise<void> {
   await apiClient.delete(`/clients/${encodeURIComponent(clientId)}`)
 }
 
-export interface SatisfactionPoint {
-  feedback_id: string
-  task_id: string
-  accepted: boolean
-  score: number
-  created_at: string
-}
-
-export interface SatisfactionHistory {
-  client_id: string
-  total_reviews: number
-  acceptance_rate: number
-  average_score: number
-  history: readonly SatisfactionPoint[]
-}
-
 export async function getClientSatisfaction(
   clientId: string,
 ): Promise<SatisfactionHistory> {
@@ -171,11 +112,6 @@ export async function getClientSatisfaction(
 }
 
 // ── Requests ────────────────────────────────────────────────────
-
-export interface SubmitRequestBody {
-  client_id: string
-  requirement: TaskRequirement
-}
 
 export async function listRequests(
   params?: PaginationParams & { status?: RequestStatus },
@@ -195,7 +131,7 @@ export async function getRequest(requestId: string): Promise<ClientRequest> {
 }
 
 export async function submitRequest(
-  data: SubmitRequestBody,
+  data: CreateRequestPayload,
 ): Promise<ClientRequest> {
   const response = await apiClient.post<ApiResponse<ClientRequest>>(
     '/requests/',
@@ -222,16 +158,9 @@ export async function rejectRequest(
   return unwrap(response)
 }
 
-export interface ScopeRequestBody {
-  notes: string
-  refined_title?: string
-  refined_description?: string
-  refined_acceptance_criteria?: readonly string[]
-}
-
 export async function scopeRequest(
   requestId: string,
-  data: ScopeRequestBody,
+  data: ScopingPayload,
 ): Promise<ClientRequest> {
   const response = await apiClient.post<ApiResponse<ClientRequest>>(
     `/requests/${encodeURIComponent(requestId)}/scope`,
@@ -244,18 +173,17 @@ export async function scopeRequest(
 
 export async function listSimulations(
   params?: PaginationParams,
-): Promise<PaginatedResult<SimulationStatus>> {
-  const response = await apiClient.get<PaginatedResponse<SimulationStatus>>(
-    '/simulations',
-    { params },
-  )
-  return unwrapPaginated<SimulationStatus>(response)
+): Promise<PaginatedResult<SimulationStatusResponse>> {
+  const response = await apiClient.get<
+    PaginatedResponse<SimulationStatusResponse>
+  >('/simulations', { params })
+  return unwrapPaginated<SimulationStatusResponse>(response)
 }
 
 export async function getSimulation(
   simulationId: string,
-): Promise<SimulationStatus> {
-  const response = await apiClient.get<ApiResponse<SimulationStatus>>(
+): Promise<SimulationStatusResponse> {
+  const response = await apiClient.get<ApiResponse<SimulationStatusResponse>>(
     `/simulations/${encodeURIComponent(simulationId)}`,
   )
   return unwrap(response)
@@ -276,12 +204,11 @@ function configsEqual(a: SimulationConfig, b: SimulationConfig): boolean {
 
 export async function startSimulation(
   config: SimulationConfig,
-): Promise<SimulationStatus> {
+): Promise<SimulationStatusResponse> {
   try {
-    const response = await apiClient.post<ApiResponse<SimulationStatus>>(
-      '/simulations/',
-      { config },
-    )
+    const response = await apiClient.post<
+      ApiResponse<SimulationStatusResponse>
+    >('/simulations/', { config })
     return unwrap(response)
   } catch (err) {
     // The backend returns HTTP 409 when a simulation with
@@ -304,20 +231,11 @@ export async function startSimulation(
 
 export async function cancelSimulation(
   simulationId: string,
-): Promise<SimulationStatus> {
-  const response = await apiClient.post<ApiResponse<SimulationStatus>>(
+): Promise<SimulationStatusResponse> {
+  const response = await apiClient.post<ApiResponse<SimulationStatusResponse>>(
     `/simulations/${encodeURIComponent(simulationId)}/cancel`,
   )
   return unwrap(response)
-}
-
-export interface SimulationReport {
-  format: string
-  simulation_id: string
-  status: string
-  totals: Record<string, number>
-  rates: Record<string, number>
-  [key: string]: unknown
 }
 
 export async function getSimulationReport(
@@ -342,31 +260,17 @@ export async function getReviewPipeline(
   return unwrap(response)
 }
 
-export type StageVerdict = 'pass' | 'fail' | 'skip'
-
-export interface StageDecisionBody {
-  verdict: StageVerdict
-  reason?: string
-}
-
-export interface StageDecisionResult {
-  task_id: string
-  stage_name: string
-  stage_result: ReviewStageResult
-  pipeline_result: PipelineResult
-}
-
 export async function decideReviewStage(
   taskId: string,
   stageName: string,
-  data: StageDecisionBody,
+  data: StageDecisionPayload,
 ): Promise<StageDecisionResult> {
   // The backend treats `reason` as NotBlankStr | None: an empty or
   // whitespace-only string fails Pydantic validation. Trim and
   // coerce to undefined so callers can pass raw form state without
   // tripping a 422 at the API boundary.
   const trimmedReason = data.reason?.trim()
-  const payload: StageDecisionBody = {
+  const payload: StageDecisionPayload = {
     verdict: data.verdict,
     ...(trimmedReason ? { reason: trimmedReason } : {}),
   }
