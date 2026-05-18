@@ -282,6 +282,11 @@ class TestCoordinationWiring:
             registry=get_registry(),
         )
 
+        # A scripted provider so the company is not empty-company:
+        # task creation is rejected (409) without an active provider.
+        from synthorg.config.provider_schema import ProviderConfig
+        from synthorg.providers.registry import ProviderRegistry
+
         app = create_app(
             config=config,
             persistence=backend,
@@ -292,6 +297,9 @@ class TestCoordinationWiring:
             coordinator=coordinator,
             agent_registry=registry,
             settings_service=settings_service,
+            provider_registry=ProviderRegistry.from_config(
+                {"test-provider": ProviderConfig(driver="scripted")},
+            ),
         )
 
         # 6. Use TestClient

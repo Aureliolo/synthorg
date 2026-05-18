@@ -134,6 +134,7 @@ class AppStateServicesMixin(
     _workers_bridge_config_lock: threading.Lock
     _memory_bridge_config: MemoryBridgeConfig
     _memory_bridge_config_lock: threading.Lock
+    _provider_registry_lock: threading.Lock
     config: Any
 
     def _require_service[T](  # pragma: no cover
@@ -448,6 +449,17 @@ class AppStateServicesMixin(
         return self._provider_registry is not None
 
     @property
+    def has_active_provider(self) -> bool:
+        """Check whether at least one LLM provider is registered.
+
+        The single source of truth for the provider-present switch:
+        the task-submission guard and the worker-execution-service
+        builder both consult this so "empty company" means exactly the
+        same thing in both places.
+        """
+        return self._provider_registry is not None and len(self._provider_registry) > 0
+
+    @property
     def provider_registry(self) -> ProviderRegistry:
         """Return provider registry or raise 503."""
         return self._require_service(
@@ -456,17 +468,26 @@ class AppStateServicesMixin(
         )
 
     def swap_provider_registry(self, registry: ProviderRegistry) -> None:
-        """Replace the provider registry (hot-reload)."""
-        old_count = (
-            len(self._provider_registry) if self._provider_registry is not None else 0
-        )
-        self._provider_registry = registry
-        logger.info(
-            SETTINGS_SERVICE_SWAPPED,
-            service="provider_registry",
-            old_provider_count=old_count,
-            new_provider_count=len(registry),
-        )
+        """Replace the provider registry (hot-reload).
+
+        Serialised under ``_provider_registry_lock`` so the
+        read-count-then-replace sequence cannot interleave with a
+        concurrent reinit-wake swap (the registry reference itself is
+        immutable, so readers always observe a whole old-or-new value).
+        """
+        with self._provider_registry_lock:
+            old_count = (
+                len(self._provider_registry)
+                if self._provider_registry is not None
+                else 0
+            )
+            self._provider_registry = registry
+            logger.info(
+                SETTINGS_SERVICE_SWAPPED,
+                service="provider_registry",
+                old_provider_count=old_count,
+                new_provider_count=len(registry),
+            )
 
     @property
     def has_notification_dispatcher(self) -> bool:
@@ -503,6 +524,11 @@ class AppStateServicesMixin(
     def mark_bridge_config_applied(self) -> None:
         """Flip :attr:`bridge_config_applied` to ``True`` (one-way)."""
         self._bridge_config_applied = True
+        logger.info(
+            API_APP_STARTUP,
+            service="bridge_config",
+            transition="applied",
+        )
 
     @property
     def ontology_service(self) -> OntologyService:

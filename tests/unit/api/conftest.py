@@ -27,6 +27,7 @@ from synthorg.communication.delegation.record_store import (
 )
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
+from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.auth.config import AuthConfig
@@ -42,6 +43,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.health import ProviderHealthTracker
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.security.audit import AuditLog
 from synthorg.security.trust.config import TrustConfig
 from synthorg.security.trust.service import TrustService
@@ -352,6 +354,22 @@ def agent_registry(fake_persistence: FakePersistenceBackend) -> AgentRegistrySer
 
 
 @pytest.fixture(scope="session")
+def provider_registry() -> ProviderRegistry:
+    """A deterministic scripted provider so the shared app is not empty-company.
+
+    The shared controller tests predate the empty-company guard
+    (`AgentRuntimeNotConfiguredError`); they expect task creation /
+    coordination to succeed. Registering one scripted provider keeps
+    `has_active_provider` True without any LLM spend. Tests that need
+    the no-provider path build their own app (see
+    tests/integration/api/test_task_create_empty_company.py).
+    """
+    return ProviderRegistry.from_config(
+        {"test-provider": ProviderConfig(driver="scripted")},
+    )
+
+
+@pytest.fixture(scope="session")
 def provider_health_tracker() -> ProviderHealthTracker:
     return ProviderHealthTracker()
 
@@ -405,6 +423,7 @@ def _shared_app(  # noqa: PLR0913
     auth_service: AuthService,
     performance_tracker: PerformanceTracker,
     agent_registry: AgentRegistryService,
+    provider_registry: ProviderRegistry,
     provider_health_tracker: ProviderHealthTracker,
     tool_invocation_tracker: ToolInvocationTracker,
     delegation_record_store: DelegationRecordStore,
@@ -437,6 +456,7 @@ def _shared_app(  # noqa: PLR0913
         performance_tracker=performance_tracker,
         agent_registry=agent_registry,
         settings_service=settings_service,
+        provider_registry=provider_registry,
         provider_health_tracker=provider_health_tracker,
         tool_invocation_tracker=tool_invocation_tracker,
         delegation_record_store=delegation_record_store,

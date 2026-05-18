@@ -30,6 +30,7 @@ from synthorg.api.app_helpers import (
     _make_expire_callback,
     _make_meeting_publisher,
     _resolve_artifact_dir_env,
+    resolve_agent_workspace_root_env,
 )
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.controller_helpers import require_password_changed
@@ -975,6 +976,56 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         should_auto_wire_settings=_should_auto_wire,
         effective_config=effective_config,
     )
+
+    _worker_service_installed = False
+
+    async def _install_worker_execution_service() -> None:
+        # Installs the worker execution service behind the
+        # provider-present switch. Appended first (runs immediately
+        # after the core startup hooks that connect persistence and
+        # wire SettingsService / ConfigResolver), and before any other
+        # appended hook, so the once-only ``set_worker_execution_service``
+        # cannot lose a race with the property's lazy lifecycle-only
+        # default. With no provider this installs the empty-company
+        # backstop; a provider added later swaps in the live service via
+        # ``post_setup_reinit`` (no restart). The closure flag keeps the
+        # one-shot ``set_`` idempotent across a lifespan re-entry
+        # (shared-app test fixtures), mirroring ``_wire_chief_of_staff_chat``.
+        nonlocal _worker_service_installed
+        if _worker_service_installed:
+            return
+        from synthorg.workers.runtime_builder import (  # noqa: PLC0415
+            build_worker_execution_service,
+        )
+
+        # Pin the sandbox workspace onto the mounted data volume in an
+        # env-driven deployment so agent file/sandbox tools persist with
+        # the runtime data, not a process temp dir. Injected/dev apps
+        # return None and keep the documented temp fallback.
+        env_workspace_root = resolve_agent_workspace_root_env()
+        if env_workspace_root is not None:
+            app_state.set_agent_workspace_root(env_workspace_root)
+
+        try:
+            service = await build_worker_execution_service(
+                app_state,
+                workspace_root=app_state.agent_workspace_root,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.error(
+                API_APP_STARTUP,
+                service="worker_execution_service",
+                note="failed to build the worker execution service at boot",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        app_state.set_worker_execution_service(service)
+        _worker_service_installed = True
+
+    startup = [*startup, _install_worker_execution_service]
 
     # Project telemetry: build collector (reads SYNTHORG_TELEMETRY_ENABLED env for
     # opt-in, defaults to disabled). Attach to app_state so the health

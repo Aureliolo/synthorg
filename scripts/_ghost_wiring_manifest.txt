@@ -23,7 +23,7 @@
 # Symbol = the class or factory-function name (the thing that is
 # instantiated/called). Bare name match on ast.Call(func=Name|Attribute).
 
-PENDING AgentEngine #1956 -- runtime root; construct at boot behind the provider switch
+ENFORCED AgentEngine #1956 -- runtime root; construct at boot behind the provider switch
 PENDING build_coordinator #1958 -- call at boot to populate app_state.coordinator
 PENDING BaselineStore #1959 -- construct at boot (window from budget.baseline_window_size)
 PENDING CoordinationMetricsCollector #1959 -- construct at boot, thread into execution

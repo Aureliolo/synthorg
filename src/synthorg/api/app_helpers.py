@@ -10,7 +10,7 @@ import os
 from collections.abc import Callable  # noqa: TC003
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 # ``ChannelsPlugin`` appears in the public signatures of the helpers
 # below. Under PEP 649 lazy annotations, ``typing.get_type_hints()``
@@ -44,6 +44,9 @@ from synthorg.observability.events.prompt import (
 )
 
 logger = get_logger(__name__)
+
+_AGENT_WORKSPACES_SUBDIR: Final[str] = "agent-workspaces"
+_POSTGRES_VOLUME_DATA_DIR: Final[str] = "/data"
 
 
 def _make_expire_callback(
@@ -104,7 +107,7 @@ def _resolve_artifact_dir_env() -> str:
     """
     artifact_dir_str = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
     if not artifact_dir_str:
-        return "/data"
+        return _POSTGRES_VOLUME_DATA_DIR
     artifact_path = Path(artifact_dir_str)
     if not artifact_path.is_absolute():
         msg = (
@@ -121,6 +124,41 @@ def _resolve_artifact_dir_env() -> str:
         logger.warning(API_APP_STARTUP, error=msg, reason="artifact_dir_traversal")
         raise ValueError(msg)
     return artifact_dir_str
+
+
+def resolve_agent_workspace_root_env() -> Path | None:
+    """Resolve the agent sandbox workspace root from the environment.
+
+    Returns ``<runtime data dir>/agent-workspaces`` when an env-driven
+    deployment is in effect, so the agent's file-system / sandbox tools
+    write onto the mounted data volume rather than a process temp dir.
+    Returns ``None`` for injected / dev apps (no deployment env vars),
+    where :attr:`AppState.agent_workspace_root` keeps its documented
+    process-stable temp fallback.
+
+    Precedence mirrors the persistence env resolution:
+    ``SYNTHORG_ARTIFACT_DIR`` (explicit), then ``SYNTHORG_DB_PATH``
+    parent (sqlite volume), then ``/data`` when only
+    ``SYNTHORG_DATABASE_URL`` is set (postgres compose volume).
+    """
+    artifact_dir = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
+    if artifact_dir:
+        return Path(_resolve_artifact_dir_env()) / _AGENT_WORKSPACES_SUBDIR
+    db_path = os.environ.get("SYNTHORG_DB_PATH", "").strip()
+    if db_path:
+        db_path_obj = Path(db_path)
+        if not db_path_obj.is_absolute():
+            msg = (
+                f"SYNTHORG_DB_PATH={db_path!r} must be an absolute path when "
+                f"deriving the agent workspace root so sandbox writes land on "
+                f"the mounted data volume, not the process working directory"
+            )
+            logger.warning(API_APP_STARTUP, error=msg, reason="non_absolute_db_path")
+            raise ValueError(msg)
+        return db_path_obj.parent / _AGENT_WORKSPACES_SUBDIR
+    if os.environ.get("SYNTHORG_DATABASE_URL", "").strip():
+        return Path(_POSTGRES_VOLUME_DATA_DIR) / _AGENT_WORKSPACES_SUBDIR
+    return None
 
 
 def _make_meeting_publisher(

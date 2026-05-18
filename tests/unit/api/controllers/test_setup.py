@@ -369,16 +369,20 @@ class TestSetupComplete:
         test_client: TestClient[Any],
     ) -> None:
         """Completion rejects when company and agents exist but no providers."""
-        repo = test_client.app.state.app_state.persistence._settings_repo
+        app_state = test_client.app.state.app_state
+        repo = app_state.persistence._settings_repo
         now = datetime.now(UTC).isoformat()
         repo._store[("company", "company_name")] = ("Test Corp", now)
         agents = json.dumps([{"name": "agent-001", "role": "CEO"}])
         repo._store[("company", "agents")] = (agents, now)
+        original_registry = app_state._provider_registry
+        app_state._provider_registry = ProviderRegistry({})
         try:
             resp = test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 422
             assert "provider" in resp.json()["error"].lower()
         finally:
+            app_state._provider_registry = original_registry
             repo._store.pop(("company", "company_name"), None)
             repo._store.pop(("company", "agents"), None)
 

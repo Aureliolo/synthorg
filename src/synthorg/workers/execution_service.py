@@ -2,56 +2,79 @@
 
 When the worker pool fetches a JetStream claim, it posts to
 ``POST /api/v1/tasks/{task_id}/execute``. The controller delegates to
-:class:`WorkerExecutionService.execute_once` so the agent-runtime
-invocation is configurable per deployment: a baseline implementation
-walks the task through its lifecycle via the existing :class:`TaskEngine`,
-while production deployments override the service to invoke the full
-:class:`~synthorg.engine.agent_engine.AgentEngine`.
+:class:`WorkerExecutionService.execute_once`, a thin protocol-driven
+seam: the controller does not care which implementation is wired, only
+that ``execute_once`` returns the post-execution :class:`Task`.
 
-The service is intentionally a thin protocol-driven seam: the
-controller does not care which implementation is wired, only that
-``execute_once`` returns the post-execution :class:`Task`. This keeps
-the API contract stable while the agent-runtime invocation evolves
-across deployments.
+:mod:`synthorg.workers.runtime_builder` selects the implementation
+behind the provider-present switch (``AgentEngineExecutionService``
+when a provider is configured, ``NoProviderExecutionService``
+otherwise) and installs it through the
+``AppState.worker_execution_service`` seam.
+
+Three implementations live here:
+
+* :class:`AgentEngineExecutionService` -- the real agent runtime.
+  Installed at boot behind the provider-present switch (and re-installed
+  on setup-reinit); it resolves the assigned agent identity and runs a
+  fully-wired :class:`~synthorg.engine.agent_engine.AgentEngine`
+  (LLM + tools + per-call sandbox + memory, governed by the SecOps
+  safety spine).
+* :class:`NoProviderExecutionService` -- empty-company backstop. With no
+  provider configured the execute seam fails loudly instead of silently
+  walking status labels (task creation is also rejected upstream).
+* :class:`LifecycleAdvancingExecutionService` -- the lifecycle-only
+  baseline: it advances the task status without invoking an LLM. Used by
+  the dispatcher / queue / worker integration tests that pin the claim
+  round-trip, and the implementation the
+  ``AppState.worker_execution_service`` property lazily self-constructs
+  when no explicit service has been installed.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.domain_errors import (
+    AgentRuntimeNotConfiguredError,
+    ConflictError,
+    NotFoundError,
+)
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task import (
     Task,  # noqa: TC001 -- runtime Protocol/return-type annotation
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workers import (
+    WORKERS_EXECUTION_SERVICE_AGENT_RUN,
     WORKERS_EXECUTION_SERVICE_ATTEMPTED,
+    WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED,
     WORKERS_EXECUTION_SERVICE_COMPLETED,
+    WORKERS_EXECUTION_SERVICE_FAILED,
     WORKERS_EXECUTION_SERVICE_NO_OP,
+    WORKERS_EXECUTION_SERVICE_NO_PROVIDER,
+    WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
 )
 
 if TYPE_CHECKING:
+    from synthorg.core.agent import AgentIdentity
+    from synthorg.engine.agent_engine import AgentEngine
     from synthorg.engine.task_engine import TaskEngine
+    from synthorg.hr.registry import AgentRegistryService
+    from synthorg.security.autonomy.models import EffectiveAutonomy
+    from synthorg.security.autonomy.resolver import AutonomyResolver
 
 logger = get_logger(__name__)
-
-_EXECUTABLE_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
-    {
-        TaskStatus.ASSIGNED,
-        TaskStatus.IN_PROGRESS,
-    }
-)
 
 
 class WorkerExecutionService(Protocol):
     """Contract for the worker-callable execution surface.
 
-    Deployments override this protocol to plug a specific
-    agent-runtime invocation. The default implementation
-    (:class:`LifecycleAdvancingExecutionService`) walks the task
-    forward through the lifecycle without invoking an LLM, which is
-    sufficient for smoke tests and for the dispatcher / queue /
-    worker / API integration tests that pin the full claim
-    round-trip.
+    The wired implementation is selected by the runtime builder behind
+    the provider-present switch (see :mod:`synthorg.workers.runtime_builder`):
+    :class:`AgentEngineExecutionService` when a provider is configured,
+    :class:`NoProviderExecutionService` otherwise.
+    :class:`LifecycleAdvancingExecutionService` is the lifecycle-only
+    baseline the dispatcher / queue / worker integration tests pin and
+    the property's lazy fallback when no explicit service is installed.
     """
 
     async def execute_once(
@@ -73,21 +96,20 @@ class WorkerExecutionService(Protocol):
 
 
 class LifecycleAdvancingExecutionService:
-    """Default :class:`WorkerExecutionService` implementation.
+    """Lifecycle-only :class:`WorkerExecutionService` baseline.
 
     Advances the task one transition forward when it is in an
     executable state (``ASSIGNED`` or ``IN_PROGRESS``); returns the
-    current state unchanged otherwise. This is the baseline contract
-    the dispatcher + queue + worker tests pin: a claim arrives,
-    the service rolls the lifecycle forward, the worker sees a
+    current state unchanged otherwise. No LLM, no tools: a claim
+    arrives, the service rolls the lifecycle forward, the worker sees a
     terminal-or-not response and acks accordingly.
 
-    Production deployments replace this implementation with one that
-    invokes the :class:`~synthorg.engine.agent_engine.AgentEngine`
-    against the task body. The agent-engine implementation lives
-    outside this baseline because it carries the full agent-runtime
-    dependency chain (LLM provider, tool registry, memory backend),
-    none of which belong in the dispatch path itself.
+    This is what the dispatcher + queue + worker integration tests pin,
+    and the fallback the ``AppState.worker_execution_service`` property
+    lazily self-constructs when no explicit service is installed. The
+    real agent runtime is a sibling class in this module,
+    :class:`AgentEngineExecutionService`, selected by the runtime
+    builder behind the provider-present switch.
     """
 
     __slots__ = ("_task_engine",)
@@ -114,7 +136,7 @@ class LifecycleAdvancingExecutionService:
         task = await self._task_engine.get_task(task_id)
         if task is None:
             logger.warning(
-                WORKERS_EXECUTION_SERVICE_NO_OP,
+                WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
                 task_id=task_id,
                 reason="task_not_found",
                 previous_status=previous_status,
@@ -169,7 +191,219 @@ class LifecycleAdvancingExecutionService:
             return TaskStatus.IN_REVIEW
         if current == TaskStatus.IN_REVIEW:
             return TaskStatus.COMPLETED
-        if current in _EXECUTABLE_STATUSES:
-            # Defensive: unreachable today but documented contract.
-            return None
         return None
+
+
+class AgentEngineExecutionService:
+    """Real agent-runtime :class:`WorkerExecutionService` implementation.
+
+    Resolves the task's assigned agent identity from the registry,
+    delegates execution to a fully-wired :class:`AgentEngine` (LLM +
+    tools + per-call sandbox + memory, governed by the SecOps safety
+    spine), and returns the post-execution task. The engine performs
+    its own ``ASSIGNED`` -> ``IN_PROGRESS`` transition and syncs its
+    post-execution transitions to the ``TaskEngine``, so this service
+    must NOT pre-walk the lifecycle: it hands the task to the engine
+    as-is and re-reads the authoritative post-run state.
+    """
+
+    __slots__ = ("_agent_registry", "_autonomy_resolver", "_engine", "_task_engine")
+
+    def __init__(
+        self,
+        *,
+        engine: AgentEngine,
+        task_engine: TaskEngine,
+        agent_registry: AgentRegistryService,
+        autonomy_resolver: AutonomyResolver | None = None,
+    ) -> None:
+        self._engine = engine
+        self._task_engine = task_engine
+        self._agent_registry = agent_registry
+        self._autonomy_resolver = autonomy_resolver
+
+    async def execute_once(
+        self,
+        *,
+        task_id: str,
+        previous_status: str | None,
+        new_status: str,
+        idempotency_key: str,
+        requested_by: str,
+    ) -> Task:
+        """Run the assigned agent against the task and return its state."""
+        task = await self._task_engine.get_task(task_id)
+        if task is None:
+            logger.warning(
+                WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
+                task_id=task_id,
+                reason="task_not_found",
+                previous_status=previous_status,
+                new_status=new_status,
+                idempotency_key=idempotency_key,
+            )
+            msg = f"Task {task_id!r} not found"
+            raise NotFoundError(msg)
+
+        identity = await self._resolve_identity(task.assigned_to, task_id=task_id)
+        effective_autonomy = self._resolve_autonomy(identity, task_id=task_id)
+
+        logger.info(
+            WORKERS_EXECUTION_SERVICE_ATTEMPTED,
+            task_id=task_id,
+            current_status=task.status.value,
+            agent_id=str(identity.id),
+            previous_status=previous_status,
+            new_status=new_status,
+            idempotency_key=idempotency_key,
+            requested_by=requested_by,
+        )
+
+        try:
+            run_result = await self._engine.run(
+                identity=identity,
+                task=task,
+                effective_autonomy=effective_autonomy,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.error(
+                WORKERS_EXECUTION_SERVICE_FAILED,
+                task_id=task_id,
+                agent_id=str(identity.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        logger.info(
+            WORKERS_EXECUTION_SERVICE_AGENT_RUN,
+            task_id=task_id,
+            agent_id=str(identity.id),
+            termination_reason=run_result.termination_reason.value,
+            total_turns=run_result.total_turns,
+        )
+
+        # The engine syncs transitions to the TaskEngine itself; re-read
+        # the authoritative post-run state for the controller envelope.
+        post = await self._task_engine.get_task(task_id)
+        if post is None:
+            logger.warning(
+                WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
+                task_id=task_id,
+                reason="task_missing_post_run",
+            )
+            msg = f"Task {task_id!r} not found after execution"
+            raise NotFoundError(msg)
+        logger.info(
+            WORKERS_EXECUTION_SERVICE_COMPLETED,
+            task_id=task_id,
+            from_status=task.status.value,
+            to_status=post.status.value,
+        )
+        return post
+
+    async def _resolve_identity(
+        self,
+        assigned_to: str | None,
+        *,
+        task_id: str,
+    ) -> AgentIdentity:
+        """Resolve the task's assigned agent identity, or raise."""
+        if not assigned_to:
+            logger.warning(
+                WORKERS_EXECUTION_SERVICE_NO_OP,
+                task_id=task_id,
+                reason="task_unassigned",
+            )
+            msg = f"Task {task_id!r} is not assigned to any agent."
+            raise ConflictError(msg)
+
+        identity = await self._agent_registry.get(assigned_to)
+        if identity is None:
+            identity = await self._agent_registry.get_by_name(assigned_to)
+        if identity is not None:
+            return identity
+
+        logger.warning(
+            WORKERS_EXECUTION_SERVICE_NO_OP,
+            task_id=task_id,
+            reason="agent_not_registered",
+            assigned_to=assigned_to,
+        )
+        msg = (
+            f"Task {task_id!r} is assigned to an agent that is not "
+            f"registered in the runtime. Complete setup so agents are "
+            f"bootstrapped before submitting work."
+        )
+        raise AgentRuntimeNotConfiguredError(msg)
+
+    def _resolve_autonomy(
+        self,
+        identity: AgentIdentity,
+        *,
+        task_id: str,
+    ) -> EffectiveAutonomy | None:
+        """Resolve effective autonomy; degrade to ``None`` on misconfig.
+
+        ``None`` still leaves the SecOps rule engine governing every
+        tool action (credential / destructive / path-traversal
+        detectors plus the approval queue); only the autonomy-tier
+        routing layer is skipped.
+        """
+        if self._autonomy_resolver is None:
+            return None
+        try:
+            return self._autonomy_resolver.resolve(
+                agent_level=identity.autonomy_level,
+                seniority=identity.level,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except ValueError as exc:
+            logger.warning(
+                WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED,
+                task_id=task_id,
+                agent_id=str(identity.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+
+
+class NoProviderExecutionService:
+    """Empty-company :class:`WorkerExecutionService`.
+
+    Installed when no LLM provider is configured. Task creation is
+    already rejected at the submission boundary; this is the
+    defence-in-depth backstop so a task that reaches the execute seam
+    by any other path fails loudly instead of running ungoverned or
+    silently walking status labels.
+    """
+
+    __slots__ = ()
+
+    async def execute_once(
+        self,
+        *,
+        task_id: str,
+        previous_status: str | None,
+        new_status: str,
+        idempotency_key: str,
+        requested_by: str,
+    ) -> Task:
+        """Reject execution: the company has no provider configured."""
+        logger.warning(
+            WORKERS_EXECUTION_SERVICE_NO_PROVIDER,
+            task_id=task_id,
+            previous_status=previous_status,
+            new_status=new_status,
+            idempotency_key=idempotency_key,
+            requested_by=requested_by,
+        )
+        msg = (
+            "No LLM provider is configured; the company is running in "
+            "empty mode and cannot execute tasks. Add a provider in "
+            "setup, then resubmit."
+        )
+        raise AgentRuntimeNotConfiguredError(msg)

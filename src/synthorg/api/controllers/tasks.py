@@ -22,6 +22,7 @@ from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.domain_errors import AgentRuntimeNotConfiguredError
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.task import Task  # noqa: TC001
@@ -33,6 +34,7 @@ from synthorg.observability.events.api import (
     API_TASK_CANCELLED,
     API_TASK_CREATED_BY_MISMATCH,
     API_TASK_DELETED,
+    API_TASK_REJECTED_NO_PROVIDER,
     API_TASK_UPDATED,
 )
 from synthorg.observability.events.task import (
@@ -177,6 +179,13 @@ class TaskController(Controller):
         """
         app_state: AppState = state.app_state
         requester = _extract_requester(state)
+        if not app_state.has_active_provider:
+            logger.warning(
+                API_TASK_REJECTED_NO_PROVIDER,
+                title=data.title,
+                requester=requester,
+            )
+            raise AgentRuntimeNotConfiguredError
         task_data = CreateTaskData(
             title=data.title,
             description=data.description,
