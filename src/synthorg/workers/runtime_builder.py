@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.factory import build_coordinator
+from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.routing.scorer import RoutingScorerConfig
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
 from synthorg.engine.workspace.git_worktree import PlannerWorktreeStrategy
@@ -163,6 +164,14 @@ def _construct_agent_engine(
         cost_tracker=(app_state.cost_tracker if app_state.has_cost_tracker else None),
         task_engine=app_state.task_engine,
         approval_store=app_state.approval_store,
+        approval_gate=app_state.approval_gate,
+        trust_service=(
+            app_state.trust_service if app_state.has_trust_service else None
+        ),
+        mcp_self_consumer=build_mcp_self_consumer(
+            app_state.config.security.mcp_self_consumer,
+            app_state,
+        ),
         security_config=app_state.config.security,
         audit_log=app_state.audit_log if app_state.has_audit_log else None,
         memory_backend=(

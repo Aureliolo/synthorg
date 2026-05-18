@@ -129,18 +129,20 @@ class TestSignalResumeIntent:
             decided_by="admin",
         )
 
-    async def test_flow1_parked_context_found_returns_early(self) -> None:
-        """When resume_context returns a context, Flow 2 is skipped."""
-        mock_context = MagicMock()
+    async def test_flow1_parked_context_dispatches_and_skips_review(
+        self,
+    ) -> None:
+        """A parked context dispatches a resume; Flow 2 is skipped."""
         mock_gate = MagicMock()
-        mock_gate.resume_context = AsyncMock(
-            return_value=(mock_context, "parked-1"),
-        )
+        mock_gate.has_parked_context = AsyncMock(return_value=True)
+        mock_worker = MagicMock()
+        mock_worker.dispatch_resume = AsyncMock()
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock()
 
         app_state = MagicMock(spec=AppState)
         app_state.approval_gate = mock_gate
+        app_state.worker_execution_service = mock_worker
         app_state.review_gate_service = mock_review
 
         await _signal_resume_intent(
@@ -151,19 +153,28 @@ class TestSignalResumeIntent:
             task_id="task-1",
         )
 
-        mock_gate.resume_context.assert_awaited_once_with("approval-1")
-        # Flow 2 should NOT be called
+        mock_gate.has_parked_context.assert_awaited_once_with("approval-1")
+        mock_worker.dispatch_resume.assert_awaited_once_with(
+            approval_id="approval-1",
+            approved=True,
+            decided_by="admin",
+            decision_reason=None,
+        )
+        # Flow 2 must NOT run -- the mid-execution flow owns this id.
         mock_review.complete_review.assert_not_awaited()
 
     async def test_flow1_no_parked_context_falls_through(self) -> None:
-        """When resume_context returns None, Flow 2 runs."""
+        """No parked context -> Flow 2 (review gate) runs."""
         mock_gate = MagicMock()
-        mock_gate.resume_context = AsyncMock(return_value=None)
+        mock_gate.has_parked_context = AsyncMock(return_value=False)
+        mock_worker = MagicMock()
+        mock_worker.dispatch_resume = AsyncMock()
         mock_review = MagicMock()
         mock_review.complete_review = AsyncMock()
 
         app_state = MagicMock(spec=AppState)
         app_state.approval_gate = mock_gate
+        app_state.worker_execution_service = mock_worker
         app_state.review_gate_service = mock_review
 
         await _signal_resume_intent(
@@ -174,6 +185,7 @@ class TestSignalResumeIntent:
             task_id="task-1",
         )
 
+        mock_worker.dispatch_resume.assert_not_awaited()
         mock_review.complete_review.assert_awaited_once_with(
             task_id="task-1",
             requested_by="admin",
@@ -183,10 +195,14 @@ class TestSignalResumeIntent:
             approval_id="approval-1",
         )
 
-    async def test_flow1_exception_returns_early(self) -> None:
-        """When resume_context raises, function returns early (no fall-through)."""
+    async def test_flow1_existence_check_error_returns_early(self) -> None:
+        """An indeterminate existence check does NOT fall through.
+
+        A parked context may still exist, so running the review-gate
+        transition would double-handle the decision.
+        """
         mock_gate = MagicMock()
-        mock_gate.resume_context = AsyncMock(
+        mock_gate.has_parked_context = AsyncMock(
             side_effect=RuntimeError("db error"),
         )
         mock_review = MagicMock()
@@ -204,8 +220,37 @@ class TestSignalResumeIntent:
             task_id="task-1",
         )
 
-        # Flow 2 should NOT run -- resume error means parked context
-        # may still exist, so review gate transition is unsafe.
+        mock_review.complete_review.assert_not_awaited()
+
+    async def test_flow1_dispatch_failure_is_swallowed_not_5xx(self) -> None:
+        """A dispatch failure is logged, not raised (decision persisted).
+
+        The decision is already saved before resume is signalled; a
+        worker dispatch failure must not 5xx the approve/reject
+        response, and must still suppress the review-gate fall-through.
+        """
+        mock_gate = MagicMock()
+        mock_gate.has_parked_context = AsyncMock(return_value=True)
+        mock_worker = MagicMock()
+        mock_worker.dispatch_resume = AsyncMock(
+            side_effect=RuntimeError("runtime not configured"),
+        )
+        mock_review = MagicMock()
+        mock_review.complete_review = AsyncMock()
+
+        app_state = MagicMock(spec=AppState)
+        app_state.approval_gate = mock_gate
+        app_state.worker_execution_service = mock_worker
+        app_state.review_gate_service = mock_review
+
+        await _signal_resume_intent(
+            app_state,
+            "approval-1",
+            approved=True,
+            decided_by="admin",
+            task_id="task-1",
+        )
+
         mock_review.complete_review.assert_not_awaited()
 
     async def test_flow2_review_gate_called_with_task_id(self) -> None:
@@ -293,9 +338,9 @@ class TestSignalResumeIntent:
     async def test_flow1_memory_error_propagates(
         self, error_cls: type[BaseException]
     ) -> None:
-        """MemoryError/RecursionError from resume_context propagates."""
+        """MemoryError/RecursionError from the existence check propagates."""
         mock_gate = MagicMock()
-        mock_gate.resume_context = AsyncMock(
+        mock_gate.has_parked_context = AsyncMock(
             side_effect=error_cls("fatal"),
         )
 

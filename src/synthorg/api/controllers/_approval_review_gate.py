@@ -28,7 +28,6 @@ from synthorg.engine.errors import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
-    APPROVAL_GATE_RESUME_CONTEXT_LOADED,
     APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_GATE_RESUME_TRIGGERED,
     APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
@@ -40,52 +39,80 @@ from synthorg.observability.events.security import (
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
-    from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.review_gate import ReviewGateService
 
 logger = get_logger(__name__)
 
 
 async def try_mid_execution_resume(
-    approval_gate: ApprovalGate,
+    app_state: AppState,
     approval_id: str,
     *,
     approved: bool,
+    decided_by: str,
+    decision_reason: str | None,
 ) -> bool:
-    """Attempt to resume a mid-execution parked context.
+    """Dispatch a parked-context resume if one exists for this approval.
 
-    Returns ``True`` if the flow was handled (context found or
-    error -- caller should not fall through to the review gate).
-    Returns ``False`` if no parked context exists.
+    Cheap non-destructive existence peek
+    (:meth:`ApprovalGate.has_parked_context`) decides the flow without
+    consuming the parked record or emitting the resume-started audit
+    event. When a parked context exists the actual restore + agent
+    re-run is delegated to the worker execution service, which spawns
+    it as a tracked background task so the approve/reject HTTP response
+    is not blocked by a full agent re-run (the decision is already
+    persisted by the caller before this runs).
+
+    Returns ``True`` when the mid-execution flow is responsible for
+    this approval (a parked context exists, or the existence check
+    failed and one may still exist) so the caller does not also run
+    the review-gate transition. Returns ``False`` only when there is
+    definitively no parked context (e.g. a hiring/promotion approval),
+    so the caller falls through to the review gate.
     """
+    gate = app_state.approval_gate
+    if gate is None:
+        return False
     try:
-        resumed = await approval_gate.resume_context(approval_id)
+        has_parked = await gate.has_parked_context(approval_id)
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         logger.warning(
             APPROVAL_GATE_RESUME_FAILED,
             approval_id=approval_id,
-            error="Failed to resume parked context",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="parked-context existence check failed",
         )
-        # Resume lookup failed -- do NOT fall through to review
-        # gate, because the parked context may still exist.
+        # Indeterminate: a parked context may still exist, so do NOT
+        # fall through to the review gate (that would double-handle
+        # the decision).
         return True
-
-    if resumed is not None:
-        _context, parked_id = resumed
-        logger.info(
-            APPROVAL_GATE_RESUME_CONTEXT_LOADED,
+    if not has_parked:
+        return False
+    try:
+        await app_state.worker_execution_service.dispatch_resume(
             approval_id=approval_id,
-            parked_id=parked_id,
             approved=approved,
-            note=(
-                "Parked context loaded -- agent re-execution "
-                "requires external orchestration"
-            ),
+            decided_by=decided_by,
+            decision_reason=decision_reason,
         )
-        return True
-    return False
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        # The decision is already persisted; a dispatch failure must
+        # not 5xx the approve/reject response. Log loudly so the
+        # operator can re-trigger -- the parked record is still intact
+        # (resume_context has not run yet on this path).
+        logger.error(
+            APPROVAL_GATE_RESUME_FAILED,
+            approval_id=approval_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="resume dispatch failed",
+        )
+    return True
 
 
 async def preflight_review_gate(
@@ -264,13 +291,15 @@ async def signal_resume_intent(  # noqa: PLR0913
     )
 
     # Flow 1: mid-execution parking.
-    approval_gate = app_state.approval_gate
-    if approval_gate is not None:
-        handled = await try_mid_execution_resume(
-            approval_gate, approval_id, approved=approved
-        )
-        if handled:
-            return
+    handled = await try_mid_execution_resume(
+        app_state,
+        approval_id,
+        approved=approved,
+        decided_by=decided_by,
+        decision_reason=decision_reason,
+    )
+    if handled:
+        return
 
     # Flow 2: review gate -- transition task status.
     review_gate = app_state.review_gate_service

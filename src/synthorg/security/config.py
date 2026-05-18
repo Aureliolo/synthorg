@@ -299,6 +299,48 @@ class UncertaintyCheckConfig(BaseModel):
     timeout_seconds: float = Field(default=15.0, gt=0.0)
 
 
+class McpSelfConsumerMode(StrEnum):
+    """Dispatch token for the agent -> SynthOrg-MCP self-consumer.
+
+    ``DISABLED`` (default, safe) wires no bridge: a running agent
+    cannot call SynthOrg's own MCP tools. ``TRUST_SCOPED`` exposes
+    the MCP surface to the agent's tool invoker, scoped by the
+    agent's earned trust level (ELEVATED gets the full capability
+    set; everything below is restricted to the explicit
+    ``read_tool_allowlist``).
+    """
+
+    DISABLED = "disabled"
+    TRUST_SCOPED = "trust_scoped"
+
+
+class McpSelfConsumerConfig(BaseModel):
+    """Agent -> SynthOrg-MCP self-consumer bridge configuration.
+
+    Attributes:
+        mode: Bridge dispatch mode (default ``DISABLED``: no bridge).
+        elevated_capabilities: Capability patterns granted to an agent
+            whose earned trust level is ``ELEVATED`` (default ``("*",)``
+            -- the full MCP surface, still gated behind ELEVATED trust
+            and the per-handler admin guardrails).
+        read_tool_allowlist: Explicit MCP tool names a sub-ELEVATED
+            agent may call. Empty (default) means a low-trust agent
+            gets no MCP access -- the safest posture; operators opt in
+            by naming tools. An explicit allowlist sidesteps the
+            ``*:read`` heuristic, whose pattern would miss
+            ``list``/``get``/``status`` actions.
+        denied_tools: MCP tool names always excluded regardless of
+            trust level or allowlist (highest-priority denylist).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    mode: McpSelfConsumerMode = McpSelfConsumerMode.DISABLED
+    elevated_capabilities: tuple[NotBlankStr, ...] = ("*",)
+    read_tool_allowlist: tuple[NotBlankStr, ...] = ()
+    denied_tools: tuple[NotBlankStr, ...] = ()
+
+
 class SecurityConfig(BaseModel):
     """Top-level security configuration.
 
@@ -398,6 +440,10 @@ class SecurityConfig(BaseModel):
     policy_engine: SecurityPolicyConfig = Field(
         default_factory=SecurityPolicyConfig,
         description="Runtime policy engine configuration",
+    )
+    mcp_self_consumer: McpSelfConsumerConfig = Field(
+        default_factory=McpSelfConsumerConfig,
+        description="Agent -> SynthOrg-MCP self-consumer bridge config",
     )
     audit_retention_days: int = Field(
         default=730,

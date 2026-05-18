@@ -42,6 +42,8 @@ if TYPE_CHECKING:
     from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
     from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
     from synthorg.providers.registry import ProviderRegistry
+    from synthorg.security.autonomy.models import AutonomyConfig
+    from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
     from synthorg.security.trust.config import TrustConfig
     from synthorg.security.trust.service import TrustService
 
@@ -202,6 +204,34 @@ def _build_configured_trust_service(
     if strategy is None:
         return None
     return TrustService(strategy=strategy, config=trust_config)
+
+
+def _build_configured_autonomy_change_strategy(
+    autonomy_config: AutonomyConfig,
+) -> AutonomyChangeStrategy:
+    """Construct the configured autonomy-change strategy.
+
+    Always returns a strategy (default ``kind=HUMAN_ONLY``): every
+    promotion request then routes through human approval. The
+    ``HUMAN_ONLY`` default needs no signal providers; the
+    performance / risk-budget signals required by the
+    ``PERFORMANCE_GATED`` / ``BUDGET_AWARE`` opt-in strategies are
+    deliberately not wired here (per the Security design spec the
+    selectable surface is the deliverable and the factory fails fast
+    at construction if a non-default kind is configured without its
+    required signal provider).
+    """
+    from synthorg.security.autonomy.change_strategy_config import (  # noqa: PLC0415
+        AutonomyStrategyDeps,
+    )
+    from synthorg.security.autonomy.change_strategy_factory import (  # noqa: PLC0415
+        build_autonomy_change_strategy,
+    )
+
+    return build_autonomy_change_strategy(
+        autonomy_config.change_strategy,
+        AutonomyStrategyDeps(),
+    )
 
 
 def _allowed_memory_dir_roots() -> tuple[str, ...]:

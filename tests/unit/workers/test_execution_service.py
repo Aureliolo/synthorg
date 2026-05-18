@@ -24,6 +24,7 @@ from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.autonomy.resolver import AutonomyResolver
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
+    LifecycleAdvancingExecutionService,
     NoProviderExecutionService,
 )
 from tests._shared import mock_of
@@ -292,4 +293,112 @@ class TestAgentEngineExecutionService:
                 new_status="in_progress",
                 idempotency_key="k",
                 requested_by="user",
+            )
+
+
+class _StubGate:
+    """Minimal ApprovalGate surface for dispatch_resume tests."""
+
+    def __init__(self, resumed: object) -> None:
+        from unittest.mock import MagicMock
+
+        self.resume_context = AsyncMock(return_value=resumed)
+        self.build_resume_message = MagicMock(
+            return_value="[SYSTEM: APPROVED]",
+        )
+
+
+class _StubEngine:
+    """Minimal AgentEngine surface for dispatch_resume tests."""
+
+    def __init__(self, gate: object) -> None:
+        self._approval_gate = gate
+        self.resume_parked_run = AsyncMock(return_value=_run_result())
+
+
+class TestDispatchResume:
+    """dispatch_resume restores via the shared gate and re-runs."""
+
+    def _service(self, engine: object) -> AgentEngineExecutionService:
+        return AgentEngineExecutionService(
+            engine=engine,  # type: ignore[arg-type]
+            task_engine=mock_of[TaskEngine](),
+            agent_registry=AgentRegistryService(),
+            autonomy_resolver=AutonomyResolver(
+                registry=ActionTypeRegistry(),
+                config=AutonomyConfig(),
+            ),
+        )
+
+    async def test_dispatch_resumes_via_shared_gate(self) -> None:
+        from synthorg.engine.context import AgentContext
+
+        identity = make_e2e_identity()
+        task = make_e2e_task(identity=identity)
+        ctx = AgentContext.from_identity(identity, task=task)
+        gate = _StubGate(resumed=(ctx, "parked-1"))
+        engine = _StubEngine(gate)
+        service = self._service(engine)
+
+        await service.dispatch_resume(
+            approval_id="approval-1",
+            approved=True,
+            decided_by="admin",
+            decision_reason="ship it",
+        )
+        await service.drain_resume_tasks()
+
+        gate.resume_context.assert_awaited_once_with("approval-1")
+        gate.build_resume_message.assert_called_once_with(
+            "approval-1",
+            approved=True,
+            decided_by="admin",
+            decision_reason="ship it",
+        )
+        engine.resume_parked_run.assert_awaited_once()
+        call = engine.resume_parked_run.await_args
+        assert call is not None
+        kwargs = call.kwargs
+        assert kwargs["parked_context"] is ctx
+        assert kwargs["approval_id"] == "approval-1"
+        assert kwargs["decision_message"] == "[SYSTEM: APPROVED]"
+
+    async def test_dispatch_no_parked_context_is_noop(self) -> None:
+        gate = _StubGate(resumed=None)
+        engine = _StubEngine(gate)
+        service = self._service(engine)
+
+        await service.dispatch_resume(
+            approval_id="approval-1",
+            approved=False,
+            decided_by="admin",
+            decision_reason=None,
+        )
+        await service.drain_resume_tasks()
+
+        engine.resume_parked_run.assert_not_awaited()
+
+    async def test_no_provider_dispatch_resume_rejects(self) -> None:
+        service = NoProviderExecutionService()
+        with pytest.raises(AgentRuntimeNotConfiguredError, match="no"):
+            await service.dispatch_resume(
+                approval_id="approval-1",
+                approved=True,
+                decided_by="admin",
+                decision_reason=None,
+            )
+
+    async def test_lifecycle_baseline_dispatch_resume_rejects(self) -> None:
+        service = LifecycleAdvancingExecutionService(
+            task_engine=mock_of[TaskEngine](),
+        )
+        with pytest.raises(
+            AgentRuntimeNotConfiguredError,
+            match="not installed",
+        ):
+            await service.dispatch_resume(
+                approval_id="approval-1",
+                approved=True,
+                decided_by="admin",
+                decision_reason=None,
             )

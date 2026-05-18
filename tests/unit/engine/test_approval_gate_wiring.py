@@ -57,3 +57,43 @@ class TestApprovalGateTimeoutWiring:
             approval_interrupt_timeout_seconds=42.0,
         )
         assert engine._approval_gate is None
+
+    def test_injected_gate_takes_precedence_over_factory(self) -> None:
+        """An ``approval_gate=`` injection wins over the built-in factory.
+
+        The boot path constructs one ``ApprovalGate`` (backed by the
+        persistence ``ParkedContextRepository``) and injects the same
+        instance so park (engine side) and resume (/approvals side)
+        operate on one gate. The injected instance must be used verbatim,
+        not a second factory-built gate.
+        """
+        from synthorg.engine.approval_gate import ApprovalGate
+        from synthorg.security.timeout.park_service import ParkService
+
+        provider = MockCompletionProvider([])
+        approval_store = AsyncMock(spec=ApprovalStore)
+        injected = ApprovalGate(park_service=ParkService())
+        engine = AgentEngine(
+            provider=provider,
+            approval_store=approval_store,
+            approval_gate=injected,
+        )
+        assert engine._approval_gate is injected
+
+    def test_injected_gate_used_even_without_approval_store(self) -> None:
+        """Injection bypasses the no-approval-store short-circuit.
+
+        The shared boot gate is wired before (and independently of)
+        the engine's own approval-store wiring, so the injection must
+        not be dropped by the ``approval_store is None`` early return.
+        """
+        from synthorg.engine.approval_gate import ApprovalGate
+        from synthorg.security.timeout.park_service import ParkService
+
+        provider = MockCompletionProvider([])
+        injected = ApprovalGate(park_service=ParkService())
+        engine = AgentEngine(
+            provider=provider,
+            approval_gate=injected,
+        )
+        assert engine._approval_gate is injected

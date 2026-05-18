@@ -16,11 +16,18 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_AUTO_SELECTED,
     EXECUTION_LOOP_BUDGET_UNAVAILABLE,
 )
+from synthorg.observability.events.trust import (
+    TRUST_AGENT_AUTO_INITIALIZED,
+    TRUST_TOOLS_NARROWED,
+)
+from synthorg.security.trust.enforcement import (
+    resolve_effective_tool_permissions,
+)
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.permissions import ToolPermissionChecker
 
 if TYPE_CHECKING:
-    from synthorg.core.agent import AgentIdentity
+    from synthorg.core.agent import AgentIdentity, ToolPermissions
     from synthorg.core.task import Task
     from synthorg.engine.loop_protocol import ExecutionLoop
     from synthorg.security.autonomy.models import EffectiveAutonomy
@@ -36,7 +43,10 @@ class AgentEngineFactoriesMixin:
     _parked_context_repo: Any
     _event_stream_hub: Any
     _interrupt_store: Any
+    _injected_approval_gate: Any
     _approval_gate: Any
+    _trust_service: Any
+    _mcp_self_consumer: Any
     _approval_interrupt_timeout_seconds: float | None
     _stagnation_detector: Any
     _compaction_callback: Any
@@ -65,7 +75,17 @@ class AgentEngineFactoriesMixin:
         (projected onto ``self._approval_interrupt_timeout_seconds``).
         When the engine is built without that kwarg, the gate uses its
         own built-in default interrupt timeout.
+
+        A boot-injected gate (``approval_gate=`` on the engine) wins
+        unconditionally: the single-gate invariant (engine parks,
+        ``/approvals`` resumes, one ``ParkedContextRepository``) must
+        not be defeated by the engine's own ``approval_store is None``
+        short-circuit, since the boot gate is wired independently of
+        and before the engine's approval-store wiring.
         """
+        if self._injected_approval_gate is not None:
+            return self._injected_approval_gate  # type: ignore[no-any-return]
+
         if self._approval_store is None:
             return None
 
@@ -168,6 +188,42 @@ class AgentEngineFactoriesMixin:
             cost_tracker=self._cost_tracker,
         )
 
+    def _trust_narrowed_tools(self, identity: AgentIdentity) -> ToolPermissions:
+        """Return the agent's tool permissions narrowed by earned trust.
+
+        No-op when no ``TrustService`` is wired (trust strategy
+        ``DISABLED``). Otherwise the agent's trust state is read
+        (auto-initialised at the configured initial level on first
+        sight so trust enforces from the first run rather than only
+        after an out-of-band seed), and the effective permissions are
+        the more restrictive of the identity level and the earned
+        trust level. A trust-strategy switch therefore changes which
+        tools the permission checker admits for the same agent.
+        """
+        if self._trust_service is None:
+            return identity.tools
+        agent_key = str(identity.id)
+        state = self._trust_service.get_trust_state(agent_key)
+        if state is None:
+            state = self._trust_service.initialize_agent(agent_key)
+            logger.info(
+                TRUST_AGENT_AUTO_INITIALIZED,
+                agent_id=agent_key,
+                trust_level=state.global_level.value,
+            )
+        effective, narrowed = resolve_effective_tool_permissions(
+            identity.tools,
+            state.global_level,
+        )
+        if narrowed:
+            logger.info(
+                TRUST_TOOLS_NARROWED,
+                agent_id=agent_key,
+                identity_level=identity.tools.access_level.value,
+                trust_level=state.global_level.value,
+            )
+        return effective
+
     def _make_tool_invoker(
         self,
         identity: AgentIdentity,
@@ -231,7 +287,18 @@ class AgentEngineFactoriesMixin:
         existing = list(registry.all_tools())
         registry = _ToolRegistry2([*existing, *discovery])
 
-        checker = ToolPermissionChecker.from_permissions(identity.tools)
+        narrowed = self._trust_narrowed_tools(identity)
+        if self._mcp_self_consumer is not None:
+            mcp_tools = self._mcp_self_consumer(
+                identity,
+                narrowed.access_level,
+            )
+            if mcp_tools:
+                registry = _ToolRegistry2(
+                    [*registry.all_tools(), *mcp_tools],
+                )
+
+        checker = ToolPermissionChecker.from_permissions(narrowed)
         interceptor = self._make_security_interceptor(effective_autonomy)
         invoker = ToolInvoker(
             registry,

@@ -1,0 +1,230 @@
+"""Approval-resume mixin for :class:`AgentEngine`.
+
+Continues a parked :class:`AgentContext` after a human approval
+decision. The parked context is restored by ``ApprovalGate`` on the
+decision side; this mixin re-enters the execution loop with the
+decision injected, so the agent picks the original work back up
+exactly where it left off (design D21 / Park-Resume).
+"""
+
+from typing import TYPE_CHECKING, Any, cast
+
+from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.engine.errors import ExecutionStateError
+from synthorg.engine.prompt import build_system_prompt
+from synthorg.observability import get_logger
+from synthorg.observability.correlation import correlation_scope
+from synthorg.observability.events.approval_gate import (
+    APPROVAL_GATE_RESUME_COMPLETED,
+    APPROVAL_GATE_RESUME_STARTED,
+)
+from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import ChatMessage
+
+if TYPE_CHECKING:
+    from synthorg.engine.context import AgentContext
+    from synthorg.engine.run_result import AgentRunResult
+    from synthorg.security.autonomy.models import EffectiveAutonomy
+
+logger = get_logger(__name__)
+
+
+class AgentEngineResumeMixin:
+    """Resume a parked context after an approval decision.
+
+    Design D21 prescribes returning the approval decision as a
+    ``ToolResult``. The implemented park point appends the escalated
+    call's tool result *before* the park check (see
+    :func:`synthorg.engine.loop_tool_execution.execute_tool_calls`),
+    so the parked conversation already answers that ``tool_call_id``;
+    injecting a second ``ToolResult`` for the same id would duplicate
+    it and malform the provider message stream. The decision is
+    therefore injected as a follow-up ``SYSTEM`` message
+    (``ApprovalGate.build_resume_message``, passed in as
+    ``decision_message``), semantically a continuation of the parked
+    tool result rather than a competing return value. The conversation
+    shape this relies on is locked by
+    ``tests/unit/engine/test_loop_helpers_approval.py``.
+    """
+
+    _clock: Any
+    _provider: Any
+    _budget_enforcer: Any
+    _make_tool_invoker: Any
+    _execute: Any
+    _handle_fatal_error: Any
+    _handle_budget_error: Any
+
+    async def resume_parked_run(
+        self,
+        *,
+        parked_context: AgentContext,
+        approval_id: str,
+        decision_message: str,
+        effective_autonomy: EffectiveAutonomy | None = None,
+        timeout_seconds: float | None = None,
+    ) -> AgentRunResult:
+        """Continue a restored parked context with the decision injected.
+
+        Args:
+            parked_context: The deserialized ``AgentContext`` restored
+                by ``ApprovalGate.resume_context``.
+            approval_id: The approval item identifier (audit context).
+            decision_message: The decision text built by
+                ``ApprovalGate.build_resume_message`` (already encodes
+                APPROVED/REJECTED, decider, and any reason).
+            effective_autonomy: Autonomy level governing the resumed
+                tool invoker, or ``None`` to leave the rule engine
+                governing without the autonomy-tier layer.
+            timeout_seconds: Optional wall-clock bound on the resumed
+                run.
+
+        Returns:
+            The terminal ``AgentRunResult`` of the resumed execution.
+
+        Raises:
+            ExecutionStateError: If the parked context carries no
+                ``task_execution`` (a parked agent must be task-bound).
+        """
+        ctx = parked_context
+        identity = ctx.identity
+        if ctx.task_execution is None:
+            msg = (
+                f"Parked context for approval {approval_id!r} has no "
+                f"task_execution; a parked agent must be task-bound"
+            )
+            logger.error(
+                APPROVAL_GATE_RESUME_STARTED,
+                approval_id=approval_id,
+                note=msg,
+            )
+            raise ExecutionStateError(msg)
+        task = ctx.task_execution.task
+        agent_id = str(identity.id)
+        task_id = task.id
+
+        with correlation_scope(agent_id=agent_id, task_id=task_id):
+            start = self._clock.monotonic()
+            logger.info(
+                APPROVAL_GATE_RESUME_STARTED,
+                approval_id=approval_id,
+                agent_id=agent_id,
+                task_id=task_id,
+                note="resuming parked context",
+            )
+            ctx = ctx.with_message(
+                ChatMessage(
+                    role=MessageRole.SYSTEM,
+                    content=decision_message,
+                ),
+            )
+            tool_invoker = self._make_tool_invoker(
+                identity,
+                task_id=task_id,
+                effective_autonomy=effective_autonomy,
+            )
+            currency = (
+                self._budget_enforcer.currency
+                if self._budget_enforcer is not None
+                else DEFAULT_CURRENCY
+            )
+            system_prompt = build_system_prompt(
+                agent=identity,
+                task=task,
+                l1_summaries=(tool_invoker.get_l1_summaries() if tool_invoker else ()),
+                effective_autonomy=effective_autonomy,
+                currency=currency,
+                model_tier=identity.model.model_tier,
+            )
+            return await self._resume_execute(
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                approval_id=approval_id,
+                ctx=ctx,
+                system_prompt=system_prompt,
+                tool_invoker=tool_invoker,
+                effective_autonomy=effective_autonomy,
+                start=start,
+                timeout_seconds=timeout_seconds,
+            )
+
+    async def _resume_execute(  # noqa: PLR0913
+        self,
+        *,
+        identity: Any,
+        task: Any,
+        agent_id: str,
+        task_id: str,
+        approval_id: str,
+        ctx: Any,
+        system_prompt: Any,
+        tool_invoker: Any,
+        effective_autonomy: EffectiveAutonomy | None,
+        start: float,
+        timeout_seconds: float | None,
+    ) -> AgentRunResult:
+        """Run the resumed loop, mirroring ``run()``'s error handling.
+
+        Budget / fatal errors are funnelled through the same handlers
+        ``run()`` uses so a failed resume still syncs an authoritative
+        terminal task state to the ``TaskEngine`` instead of leaving
+        the task stuck mid-flight.
+        """
+        try:
+            result = await self._execute(
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                completion_config=None,
+                ctx=ctx,
+                system_prompt=system_prompt,
+                start=start,
+                timeout_seconds=timeout_seconds,
+                tool_invoker=tool_invoker,
+                effective_autonomy=effective_autonomy,
+                provider=self._provider,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except BudgetExhaustedError as exc:
+            return cast(
+                "AgentRunResult",
+                self._handle_budget_error(
+                    exc=exc,
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    duration_seconds=self._clock.monotonic() - start,
+                    ctx=ctx,
+                    system_prompt=system_prompt,
+                ),
+            )
+        except Exception as exc:
+            return cast(
+                "AgentRunResult",
+                await self._handle_fatal_error(
+                    exc=exc,
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    duration_seconds=self._clock.monotonic() - start,
+                    ctx=ctx,
+                    system_prompt=system_prompt,
+                    effective_autonomy=effective_autonomy,
+                    provider=self._provider,
+                ),
+            )
+        logger.info(
+            APPROVAL_GATE_RESUME_COMPLETED,
+            approval_id=approval_id,
+            agent_id=agent_id,
+            task_id=task_id,
+            termination_reason=result.termination_reason.value,
+        )
+        return cast("AgentRunResult", result)

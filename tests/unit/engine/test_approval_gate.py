@@ -178,6 +178,43 @@ class TestParkContext:
             )
 
 
+class TestHasParkedContext:
+    """has_parked_context() is a non-destructive existence peek.
+
+    Used by the /approvals controller to decide whether a decision
+    dispatches a mid-execution resume or falls through to the review
+    gate, without consuming the parked record or emitting the
+    resume-started audit event.
+    """
+
+    async def test_true_when_row_exists(
+        self,
+        park_service: MagicMock,
+        parked_mock: MagicMock,
+        repo: AsyncMock,
+    ) -> None:
+        repo.get_by_approval.return_value = parked_mock
+        gate = ApprovalGate(park_service=park_service, parked_context_repo=repo)
+
+        assert await gate.has_parked_context("approval-1") is True
+        repo.delete.assert_not_called()
+
+    async def test_false_when_no_row(
+        self,
+        park_service: MagicMock,
+        repo: AsyncMock,
+    ) -> None:
+        repo.get_by_approval.return_value = None
+        gate = ApprovalGate(park_service=park_service, parked_context_repo=repo)
+
+        assert await gate.has_parked_context("nope") is False
+
+    async def test_false_without_repo(self, park_service: MagicMock) -> None:
+        gate = ApprovalGate(park_service=park_service)
+
+        assert await gate.has_parked_context("approval-1") is False
+
+
 class TestResumeContext:
     """resume_context() loads, deserializes, and deletes."""
 

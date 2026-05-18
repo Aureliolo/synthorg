@@ -31,7 +31,7 @@ Three implementations live here:
   when no explicit service has been installed.
 """
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Final, Protocol
 
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
@@ -43,6 +43,12 @@ from synthorg.core.task import (
     Task,  # noqa: TC001 -- runtime Protocol/return-type annotation
 )
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.background_tasks import BackgroundTaskRegistry
+from synthorg.observability.events.approval_gate import (
+    APPROVAL_GATE_NO_PARKED_CONTEXT,
+    APPROVAL_GATE_RESUME_DISPATCHED,
+    APPROVAL_GATE_RESUME_FAILED,
+)
 from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_AGENT_RUN,
     WORKERS_EXECUTION_SERVICE_ATTEMPTED,
@@ -63,6 +69,11 @@ if TYPE_CHECKING:
     from synthorg.security.autonomy.resolver import AutonomyResolver
 
 logger = get_logger(__name__)
+
+# Bounded wait for in-flight parked-context resumes during shutdown
+# before they are cancelled, so a slow resume cannot stall process
+# teardown indefinitely.
+_RESUME_DRAIN_TIMEOUT_SECONDS: Final[float] = 5.0
 
 
 class WorkerExecutionService(Protocol):
@@ -91,6 +102,28 @@ class WorkerExecutionService(Protocol):
         Implementations MUST persist the resulting status through the
         ``TaskEngine`` so the single-writer invariant holds, and
         return the typed ``Task`` for the controller to envelope.
+        """
+        ...
+
+    async def dispatch_resume(
+        self,
+        *,
+        approval_id: str,
+        approved: bool,
+        decided_by: str,
+        decision_reason: str | None,
+    ) -> None:
+        """Schedule a parked-context resume off the request path.
+
+        Called by the ``/approvals`` controller once a decision is
+        persisted and a parked context is known to exist. The agent
+        runtime implementation restores the parked ``AgentContext`` via
+        the shared ``ApprovalGate``, injects the decision, and
+        continues the original run as a tracked background task,
+        returning immediately so the approve/reject HTTP response is
+        not blocked by a full agent re-run. Non-runtime implementations
+        reject loudly: a parked context with no agent engine to resume
+        it is a misconfiguration, not a no-op.
         """
         ...
 
@@ -193,6 +226,35 @@ class LifecycleAdvancingExecutionService:
             return TaskStatus.COMPLETED
         return None
 
+    async def dispatch_resume(
+        self,
+        *,
+        approval_id: str,
+        approved: bool,
+        decided_by: str,
+        decision_reason: str | None,
+    ) -> None:
+        """Reject: the lifecycle baseline has no agent engine to resume.
+
+        A parked context only exists when a real ``AgentEngine`` ran
+        and parked, so reaching this baseline with one is a
+        misconfiguration (the runtime service was never installed).
+        Fail loudly rather than silently dropping the resume.
+        """
+        logger.error(
+            APPROVAL_GATE_RESUME_FAILED,
+            approval_id=approval_id,
+            approved=approved,
+            decided_by=decided_by,
+            has_reason=decision_reason is not None,
+            reason="lifecycle_baseline_cannot_resume_agent",
+        )
+        msg = (
+            f"Approval {approval_id!r} has a parked agent context but the "
+            f"agent runtime is not installed; cannot resume execution."
+        )
+        raise AgentRuntimeNotConfiguredError(msg)
+
 
 class AgentEngineExecutionService:
     """Real agent-runtime :class:`WorkerExecutionService` implementation.
@@ -207,7 +269,13 @@ class AgentEngineExecutionService:
     as-is and re-reads the authoritative post-run state.
     """
 
-    __slots__ = ("_agent_registry", "_autonomy_resolver", "_engine", "_task_engine")
+    __slots__ = (
+        "_agent_registry",
+        "_autonomy_resolver",
+        "_engine",
+        "_resume_tasks",
+        "_task_engine",
+    )
 
     def __init__(
         self,
@@ -221,6 +289,11 @@ class AgentEngineExecutionService:
         self._task_engine = task_engine
         self._agent_registry = agent_registry
         self._autonomy_resolver = autonomy_resolver
+        # Parked-context resumes run off the approve/reject request
+        # path so the HTTP response is not blocked by a full agent
+        # re-run. Tracked so a crashed resume surfaces in logs and is
+        # drained on shutdown instead of vanishing as a GC warning.
+        self._resume_tasks = BackgroundTaskRegistry(owner="approval.resume")
 
     async def execute_once(
         self,
@@ -370,6 +443,103 @@ class AgentEngineExecutionService:
             )
             return None
 
+    async def dispatch_resume(
+        self,
+        *,
+        approval_id: str,
+        approved: bool,
+        decided_by: str,
+        decision_reason: str | None,
+    ) -> None:
+        """Spawn the parked-context resume as a tracked background task.
+
+        Returns immediately; the resume restores the parked context
+        via the engine's shared ``ApprovalGate``, injects the decision,
+        and continues the original run. Failures surface through the
+        registry's done-callback (and the resumed run's own task-status
+        sync), never as a blocked approve/reject response.
+        """
+        logger.info(
+            APPROVAL_GATE_RESUME_DISPATCHED,
+            approval_id=approval_id,
+            approved=approved,
+            decided_by=decided_by,
+            has_reason=decision_reason is not None,
+        )
+        self._resume_tasks.spawn(
+            self._resume_parked(
+                approval_id=approval_id,
+                approved=approved,
+                decided_by=decided_by,
+                decision_reason=decision_reason,
+            ),
+            event=APPROVAL_GATE_RESUME_FAILED,
+            approval_id=approval_id,
+            approved=approved,
+            decided_by=decided_by,
+        )
+
+    async def _resume_parked(
+        self,
+        *,
+        approval_id: str,
+        approved: bool,
+        decided_by: str,
+        decision_reason: str | None,
+    ) -> None:
+        """Restore the parked context and continue the original run.
+
+        Uses the engine's injected (boot-shared) ``ApprovalGate`` so
+        the load+delete here and the park on the engine side operate on
+        one gate over one ``ParkedContextRepository``. ``resume_context``
+        consumes the parked record; if the subsequent run fails it is
+        funnelled through the engine's fatal/budget handlers which sync
+        an authoritative terminal task state, leaving the task
+        re-runnable by a normal dispatch rather than wedged.
+        """
+        gate = self._engine._approval_gate  # noqa: SLF001
+        if gate is None:
+            logger.error(
+                APPROVAL_GATE_RESUME_FAILED,
+                approval_id=approval_id,
+                reason="engine_has_no_approval_gate",
+            )
+            return
+        resumed = await gate.resume_context(approval_id)
+        if resumed is None:
+            logger.info(
+                APPROVAL_GATE_NO_PARKED_CONTEXT,
+                approval_id=approval_id,
+                note="resume dispatched but no parked context found",
+            )
+            return
+        ctx, _ = resumed
+        decision_message = gate.build_resume_message(
+            approval_id,
+            approved=approved,
+            decided_by=decided_by,
+            decision_reason=decision_reason,
+        )
+        task_id = ctx.task_execution.task.id if ctx.task_execution else ""
+        effective_autonomy = self._resolve_autonomy(
+            ctx.identity,
+            task_id=task_id,
+        )
+        await self._engine.resume_parked_run(
+            parked_context=ctx,
+            approval_id=approval_id,
+            decision_message=decision_message,
+            effective_autonomy=effective_autonomy,
+        )
+
+    async def drain_resume_tasks(
+        self,
+        *,
+        timeout_sec: float = _RESUME_DRAIN_TIMEOUT_SECONDS,
+    ) -> None:
+        """Wait for in-flight parked-context resumes (shutdown hook)."""
+        await self._resume_tasks.drain(timeout_sec=timeout_sec)
+
 
 class NoProviderExecutionService:
     """Empty-company :class:`WorkerExecutionService`.
@@ -405,5 +575,35 @@ class NoProviderExecutionService:
             "No LLM provider is configured; the company is running in "
             "empty mode and cannot execute tasks. Add a provider in "
             "setup, then resubmit."
+        )
+        raise AgentRuntimeNotConfiguredError(msg)
+
+    async def dispatch_resume(
+        self,
+        *,
+        approval_id: str,
+        approved: bool,
+        decided_by: str,
+        decision_reason: str | None,
+    ) -> None:
+        """Reject: no provider means no agent engine to resume into.
+
+        A parked context implies an ``AgentEngine`` ran before the
+        provider was removed; surfacing this loudly tells the operator
+        the deployment is misconfigured rather than silently dropping
+        an approved resume.
+        """
+        logger.error(
+            APPROVAL_GATE_RESUME_FAILED,
+            approval_id=approval_id,
+            approved=approved,
+            decided_by=decided_by,
+            has_reason=decision_reason is not None,
+            reason="no_provider_cannot_resume_agent",
+        )
+        msg = (
+            f"Approval {approval_id!r} has a parked agent context but no "
+            f"LLM provider is configured; cannot resume execution. "
+            f"Restore the provider, then retry the decision."
         )
         raise AgentRuntimeNotConfiguredError(msg)

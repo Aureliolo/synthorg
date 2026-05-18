@@ -21,6 +21,7 @@ from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.agent_engine_factories import AgentEngineFactoriesMixin
 from synthorg.engine.agent_engine_post_exec import AgentEnginePostExecMixin
 from synthorg.engine.agent_engine_recovery import AgentEngineRecoveryMixin
+from synthorg.engine.agent_engine_resume import AgentEngineResumeMixin
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from synthorg.engine.errors import (
@@ -64,6 +65,7 @@ if TYPE_CHECKING:
     from synthorg.config.schema import ProviderConfig
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
+    from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.compaction import CompactionCallback
     from synthorg.engine.coordination.attribution import (
         CoordinationResultWithAttribution,
@@ -76,6 +78,7 @@ if TYPE_CHECKING:
         ExecutionLoop,
         ShutdownChecker,
     )
+    from synthorg.engine.mcp_self_consumer import MCPSelfConsumerProvider
     from synthorg.engine.middleware.protocol import AgentMiddlewareChain
     from synthorg.engine.plan_models import PlanExecuteConfig
     from synthorg.engine.prompt import SystemPrompt
@@ -102,6 +105,7 @@ if TYPE_CHECKING:
     from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.autonomy.models import EffectiveAutonomy
     from synthorg.security.config import SecurityConfig
+    from synthorg.security.trust.service import TrustService
     from synthorg.settings.resolver import ConfigResolver
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
     from synthorg.tools.protocol import ToolInvokerProtocol
@@ -140,6 +144,7 @@ class AgentEngine(
     AgentEngineFactoriesMixin,
     AgentEnginePostExecMixin,
     AgentEngineRecoveryMixin,
+    AgentEngineResumeMixin,
 ):
     """Top-level orchestrator for agent execution."""
 
@@ -157,6 +162,9 @@ class AgentEngine(
         security_config: SecurityConfig | None = None,
         approval_store: ApprovalStoreProtocol | None = None,
         parked_context_repo: ParkedContextRepository | None = None,
+        approval_gate: ApprovalGate | None = None,
+        trust_service: TrustService | None = None,
+        mcp_self_consumer: MCPSelfConsumerProvider | None = None,
         task_engine: TaskEngine | None = None,
         checkpoint_repo: CheckpointRepository | None = None,
         heartbeat_repo: HeartbeatRepository | None = None,
@@ -206,6 +214,21 @@ class AgentEngine(
         self._model_resolver = model_resolver
         self._approval_store = approval_store
         self._parked_context_repo = parked_context_repo
+        # The boot path constructs one ApprovalGate (backed by the
+        # persistence ParkedContextRepository) and injects it so the
+        # engine parks and the /approvals controller resumes on the
+        # same gate. When absent (standalone / legacy callers) the
+        # factory builds a gate from the engine's own collaborators.
+        self._injected_approval_gate = approval_gate
+        # Progressive trust: when wired, the tool-invoker factory
+        # narrows an agent's effective tool access to the more
+        # restrictive of its identity level and its earned trust
+        # level. ``None`` (trust strategy DISABLED) is a no-op.
+        self._trust_service = trust_service
+        # Agent -> SynthOrg-MCP self-consumer: when wired, the
+        # tool-invoker factory adds trust-scoped SynthOrg MCP tools to
+        # the agent's registry. ``None`` (mode DISABLED) is a no-op.
+        self._mcp_self_consumer = mcp_self_consumer
         self._approval_interrupt_timeout_seconds = approval_interrupt_timeout_seconds
         self._stagnation_detector = stagnation_detector
         self._auto_loop_config = auto_loop_config

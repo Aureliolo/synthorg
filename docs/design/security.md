@@ -5,9 +5,9 @@ description: Approval workflow, autonomy levels, security operations agent, outp
 
 # Security & Approval System
 
-!!! warning "Designed behaviour; runtime in active development"
+!!! info "Runtime enforcement"
 
-    This page is the source of truth for the **designed** behaviour of this subsystem. The approval producer and runtime enforcement run with the agent runtime, which is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet enforced on a live run.
+    This page is the source of truth for the behaviour of this subsystem. Governance runs on the live agent runtime behind the provider-present switch: the approval producer parks blocked actions, the boot `ApprovalGate` resumes them on a decision, the progressive-trust strategy narrows tool access at the invoker, an agent can call SynthOrg's own MCP tools under its trust level with the admin guardrails fail-closed, and the autonomy controller routes changes through the configured `AutonomyChangeStrategy`.
 
 SynthOrg enforces a fail-closed security model: every agent action is evaluated by a rule engine (with an optional LLM fallback) before execution, every output is scanned for leaked secrets, and every credential flows through an isolated **hands** plane that never enters the model context. Four configurable autonomy levels (`full`, `semi`, `supervised`, `locked`) control which actions require human approval, and a pluggable trust system lets agents earn higher tool access over time.
 
@@ -95,10 +95,16 @@ signal providers that cannot live in frozen config).
 `change_strategy_factory.build_autonomy_change_strategy(config, deps)`
 dispatches via the `StrEnum`-keyed `StrategyRegistry`; a wrapping
 strategy missing its required signal provider raises
-`AutonomyStrategyConfigError` at construction. No production seam wires
-a non-default strategy yet (the autonomy controller path constructs no
-strategy); operators opt in by configuring it -- the surface is the
-deliverable, end-to-end production wiring is the natural follow-up.
+`AutonomyStrategyConfigError` at construction. The strategy is built
+at boot from `config.autonomy.change_strategy` and attached to
+application state; the autonomy controller consults it on every
+change request (the D6 seniority rule is enforced first, then the
+request is enqueued as an approval, the queue being the apply
+driver). With the `HUMAN_ONLY` default every promotion pends for
+human review. The performance / risk-budget signal providers the
+`PERFORMANCE_GATED` and `BUDGET_AWARE` strategies require are not
+wired by the boot seam: selecting one of those kinds without
+supplying its provider fails fast at construction.
 
 ## Security Operations Agent
 

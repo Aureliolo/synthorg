@@ -14,7 +14,10 @@ import structlog
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.integrations_wiring import auto_wire_integrations
 from synthorg.api.lifecycle import _wire_ontology_service
-from synthorg.api.lifecycle_builder import _wire_workflow_observer
+from synthorg.api.lifecycle_builder import (
+    _wire_approval_gate,
+    _wire_workflow_observer,
+)
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.observability.events.api import (
@@ -194,6 +197,70 @@ class TestSetOntologyServiceOnceOnly:
         state.set_ontology_service(_FakeOntologyService("first"))  # type: ignore[arg-type]
         with pytest.raises(RuntimeError):
             state.set_ontology_service(_FakeOntologyService("second"))  # type: ignore[arg-type]
+
+
+@dataclass
+class _FakeParkedContextRepo:
+    """Stand-in for the persistence ParkedContextRepository."""
+
+    saved: list[object] = field(default_factory=list)
+
+
+@dataclass
+class _FakeParkedPersistence:
+    """Minimal connected PersistenceBackend exposing parked_contexts."""
+
+    parked_contexts: _FakeParkedContextRepo
+    is_connected: bool = True
+
+
+@pytest.mark.unit
+class TestWireApprovalGate:
+    """The single boot ApprovalGate is wired once persistence connects."""
+
+    async def test_wires_gate_with_persistence_parked_repo(self) -> None:
+        state = _make_state()
+        repo = _FakeParkedContextRepo()
+        persistence = _FakeParkedPersistence(parked_contexts=repo)
+
+        with structlog.testing.capture_logs() as captured:
+            await _wire_approval_gate(persistence, state)  # type: ignore[arg-type]
+
+        gate = state.approval_gate
+        assert gate is not None
+        # ``id`` rather than ``is``: the fake is not typed as the
+        # protocol, so a direct identity check trips mypy's
+        # non-overlapping-identity guard while asserting the same fact.
+        assert id(gate._parked_context_repo) == id(repo)
+        wired = [
+            e
+            for e in captured
+            if e["event"] == API_SERVICE_AUTO_WIRED
+            and e.get("service") == "approval_gate"
+        ]
+        assert len(wired) == 1
+
+    async def test_idempotent_when_gate_already_wired(self) -> None:
+        from synthorg.engine.approval_gate import ApprovalGate
+        from synthorg.security.timeout.park_service import ParkService
+
+        existing = ApprovalGate(park_service=ParkService())
+        state = _make_state()
+        state.set_approval_gate(existing)
+        persistence = _FakeParkedPersistence(parked_contexts=_FakeParkedContextRepo())
+
+        await _wire_approval_gate(persistence, state)  # type: ignore[arg-type]
+
+        assert state.approval_gate is existing
+
+    async def test_gate_built_without_repo_when_persistence_absent(self) -> None:
+        state = _make_state()
+
+        await _wire_approval_gate(None, state)
+
+        gate = state.approval_gate
+        assert gate is not None
+        assert gate._parked_context_repo is None
 
 
 @pytest.mark.unit

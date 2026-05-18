@@ -160,26 +160,32 @@ class TestRequireRoles:
         assert response.status_code == 403
 
     @pytest.mark.parametrize(
-        ("role", "expected_status"),
+        ("role", "allowed"),
         [
-            ("ceo", 200),
-            ("manager", 200),
-            ("pair_programmer", 403),
-            ("board_member", 403),
-            ("observer", 403),
+            ("ceo", True),
+            ("manager", True),
+            ("pair_programmer", False),
+            ("board_member", False),
+            ("observer", False),
         ],
     )
     def test_ceo_or_manager_guard(
         self,
         test_client: TestClient[Any],
         role: str,
-        expected_status: int,
+        allowed: bool,
     ) -> None:
-        # Autonomy update uses require_ceo_or_manager after
-        # reclassification. Use POST with a valid agent to test.
+        # The autonomy update endpoint is guarded by
+        # require_ceo_or_manager. This exercises the guard, not the
+        # handler: a permitted role passes the guard (the handler then
+        # 404s on the unknown ``test-agent`` -- still proof the guard
+        # did not block); a denied role is rejected with 403.
         response = test_client.post(
             "/api/v1/agents/test-agent/autonomy",
-            json={"level": "semi"},
+            json={"level": "semi", "reason": "guard exercise"},
             headers=make_auth_headers(role),
         )
-        assert response.status_code == expected_status
+        if allowed:
+            assert response.status_code not in (401, 403)
+        else:
+            assert response.status_code == 403

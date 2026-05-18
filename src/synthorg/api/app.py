@@ -21,6 +21,7 @@ from pydantic import ValidationError
 from synthorg import __version__
 from synthorg.api.app_builders import (
     _bootstrap_app_logging,
+    _build_configured_autonomy_change_strategy,
     _build_configured_trust_service,
     _build_performance_tracker,
     _build_telemetry_collector,
@@ -528,6 +529,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         )
     if trust_service is None:
         trust_service = _build_configured_trust_service(effective_config.trust)
+    autonomy_change_strategy = _build_configured_autonomy_change_strategy(
+        effective_config.config.autonomy,
+    )
 
     # One boot clock shared between the uptime baseline and AppState so
     # ``app_state.clock`` and ``startup_time`` cannot diverge, and a
@@ -557,6 +561,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         notification_dispatcher=notification_dispatcher,
         audit_log=audit_log,
         trust_service=trust_service,
+        autonomy_change_strategy=autonomy_change_strategy,
         coordination_metrics_store=coordination_metrics_store,
         event_stream_hub=event_stream_hub or EventStreamHub(),
         interrupt_store=interrupt_store or InterruptStore(),

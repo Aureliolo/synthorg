@@ -349,6 +349,28 @@ class ApprovalGate:
             )
             raise
 
+    async def has_parked_context(self, approval_id: str) -> bool:
+        """Return whether a parked context exists for *approval_id*.
+
+        Non-destructive existence peek for the decision side: the
+        ``/approvals`` controller uses this to decide between
+        dispatching a mid-execution resume and falling through to the
+        review gate, without consuming the parked record or emitting
+        :data:`APPROVAL_GATE_RESUME_STARTED` (which would pollute the
+        audit stream with a resume that may never run on this path).
+
+        Args:
+            approval_id: The approval item identifier.
+
+        Returns:
+            ``True`` if a parked record is persisted for this approval,
+            ``False`` when no repository is configured or no row exists.
+        """
+        if self._parked_context_repo is None:
+            return False
+        parked = await self._parked_context_repo.get_by_approval(approval_id)
+        return parked is not None
+
     async def resume_context(
         self,
         approval_id: str,

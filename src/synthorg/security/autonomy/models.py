@@ -7,6 +7,9 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.core.enums import AutonomyLevel, DowngradeReason, compare_autonomy
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.security.autonomy.change_strategy_config import (
+    AutonomyStrategyConfig,
+)
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors
 
@@ -158,6 +161,14 @@ class AutonomyConfig(BaseModel):
     presets: dict[str, AutonomyPreset] = Field(
         default_factory=lambda: dict(BUILTIN_PRESETS),
         description="Available autonomy presets",
+    )
+    change_strategy: AutonomyStrategyConfig = Field(
+        default_factory=AutonomyStrategyConfig,
+        description=(
+            "Runtime autonomy-change strategy selection (promotion /"
+            " downgrade / recovery). Default kind=HUMAN_ONLY: every"
+            " promotion request routes through human approval."
+        ),
     )
 
     @model_validator(mode="before")
