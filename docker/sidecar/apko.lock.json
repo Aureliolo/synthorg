@@ -66,22 +66,22 @@
       },
       {
         "name": "libgcc",
-        "url": "https://packages.wolfi.dev/os/x86_64/libgcc-15.2.0-r11.apk",
-        "version": "15.2.0-r11",
+        "url": "https://packages.wolfi.dev/os/x86_64/libgcc-16.1.0-r0.apk",
+        "version": "16.1.0-r0",
         "architecture": "x86_64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-9632",
-          "checksum": "sha1-T6kwlc00NKL6wZ3BtzCzZ4jM6cI="
+          "range": "bytes=0-9703",
+          "checksum": "sha1-vSTkxal3ZhwiF8BJZKRJ9fj5Yqc="
         },
         "data": {
-          "range": "bytes=9633-104161",
-          "checksum": "sha256-l0K8ROpFCv0CtJvhSagFOs6uLiUBuaneWk8zbOdoM1E="
+          "range": "bytes=9704-104984",
+          "checksum": "sha256-IyiSebpnkYGtcE6AzSRkkdHAZpRFzXzl9lmZFQd2Ocw="
         },
-        "checksum": "Q1T6kwlc00NKL6wZ3BtzCzZ4jM6cI="
+        "checksum": "Q1vSTkxal3ZhwiF8BJZKRJ9fj5Yqc="
       },
       {
         "name": "glibc-locale-posix",
@@ -180,22 +180,22 @@
       },
       {
         "name": "busybox",
-        "url": "https://packages.wolfi.dev/os/x86_64/busybox-1.37.0-r57.apk",
-        "version": "1.37.0-r57",
+        "url": "https://packages.wolfi.dev/os/x86_64/busybox-1.37.0-r58.apk",
+        "version": "1.37.0-r58",
         "architecture": "x86_64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-9862",
-          "checksum": "sha1-ywt2TuTX+LpbVBy314I1/zoJ9uU="
+          "range": "bytes=0-10216",
+          "checksum": "sha1-dt/plv10gdj0gPMSwDrLkKM2RN4="
         },
         "data": {
-          "range": "bytes=9863-426716",
-          "checksum": "sha256-MUanmitra6ajemxgDOYphnF44zJwnA5A6Cofks5i60M="
+          "range": "bytes=10217-429848",
+          "checksum": "sha256-jNA+NksLjbvAXGxhbi+YbJqlEyB4HADivcFRr+hgeg4="
         },
-        "checksum": "Q1ywt2TuTX+LpbVBy314I1/zoJ9uU="
+        "checksum": "Q1dt/plv10gdj0gPMSwDrLkKM2RN4="
       },
       {
         "name": "libmnl",
@@ -294,22 +294,22 @@
       },
       {
         "name": "libgcc",
-        "url": "https://packages.wolfi.dev/os/aarch64/libgcc-15.2.0-r11.apk",
-        "version": "15.2.0-r11",
+        "url": "https://packages.wolfi.dev/os/aarch64/libgcc-16.1.0-r0.apk",
+        "version": "16.1.0-r0",
         "architecture": "aarch64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-9655",
-          "checksum": "sha1-gU1yUma66A4kytoo0uQH27HFzfU="
+          "range": "bytes=0-9715",
+          "checksum": "sha1-zok5IVKam6GJzK9w2z4Nj86azwA="
         },
         "data": {
-          "range": "bytes=9656-86358",
-          "checksum": "sha256-gLqW1VCGN+EtMm5XAvINocZBFHCmEFrQOzYvzBFa56o="
+          "range": "bytes=9716-85905",
+          "checksum": "sha256-S7taWQtCMS9GrvRx7qgHA82xcNg6T/iVpNo5fNGiDBY="
         },
-        "checksum": "Q1gU1yUma66A4kytoo0uQH27HFzfU="
+        "checksum": "Q1zok5IVKam6GJzK9w2z4Nj86azwA="
       },
       {
         "name": "glibc-locale-posix",
@@ -408,22 +408,22 @@
       },
       {
         "name": "busybox",
-        "url": "https://packages.wolfi.dev/os/aarch64/busybox-1.37.0-r57.apk",
-        "version": "1.37.0-r57",
+        "url": "https://packages.wolfi.dev/os/aarch64/busybox-1.37.0-r58.apk",
+        "version": "1.37.0-r58",
         "architecture": "aarch64",
         "signature": {
           "range": "",
           "checksum": ""
         },
         "control": {
-          "range": "bytes=0-9892",
-          "checksum": "sha1-DjMvNxfUl/BA4Yy2a77yG41tvqc="
+          "range": "bytes=0-10245",
+          "checksum": "sha1-o344x24XJFl7M2AdUKVAGcnb95I="
         },
         "data": {
-          "range": "bytes=9893-429940",
-          "checksum": "sha256-SCW+6rxRMC0zUgUJBQAEU787FIqhQMILy+5ZG7fmfSs="
+          "range": "bytes=10246-429368",
+          "checksum": "sha256-y9G2G3udpPosxxc8ZTuuaJ8UvZX4XZV7ZiiF7dN2zPI="
         },
-        "checksum": "Q1DjMvNxfUl/BA4Yy2a77yG41tvqc="
+        "checksum": "Q1o344x24XJFl7M2AdUKVAGcnb95I="
       },
       {
         "name": "libmnl",
