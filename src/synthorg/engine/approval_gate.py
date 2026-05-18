@@ -548,10 +548,10 @@ class ApprovalGate:
 
         The decision signal (APPROVED/REJECTED) is structurally separate
         from user-supplied content.  The user-supplied reason is fenced
-        via the canonical SEC-1 ``wrap_untrusted`` helper (the resume
-        path's system prompt carries the matching untrusted-content
-        directive) so a crafted reason cannot break out and steer the
-        resumed turn.
+        via the canonical ``wrap_untrusted`` helper (the resume path's
+        system prompt carries the matching untrusted-content directive)
+        so a crafted reason cannot break out and steer the resumed
+        turn.
 
         Args:
             approval_id: The approval item identifier.

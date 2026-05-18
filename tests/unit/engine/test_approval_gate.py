@@ -411,8 +411,8 @@ class TestBuildResumeMessage:
             decided_by="admin",
             decision_reason=reason,
         )
-        # Canonical SEC-1 fence (not repr); decision signal stays
-        # structural and outside the fence.
+        # Canonical untrusted-content fence (not repr); decision
+        # signal stays structural and outside the fence.
         assert "USER-SUPPLIED REASON" in msg
         assert "<task-data>" in msg
         assert "</task-data>" in msg
