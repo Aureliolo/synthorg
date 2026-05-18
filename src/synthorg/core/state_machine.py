@@ -219,6 +219,20 @@ class StateMachine[S: _HasValue]:
             individually valid per the table) when a path exists; or
             ``None`` when ``current`` is unknown to the table or no path
             exists (e.g. ``current`` is terminal and not ``target``).
+
+        Callers must distinguish all three cases explicitly; ``()`` is
+        falsy but is *not* the same as ``None`` (already-there vs
+        unreachable). The correct shape is::
+
+            path = machine.path_to(current, target)
+            if path is None:
+                ...  # unreachable: surface an error
+            else:
+                for hop in path:  # empty tuple -> no-op loop
+                    ...
+
+        A plain ``if path:`` is a bug -- it collapses "already there"
+        and "unreachable" into one branch.
         """
         if current == target:
             return ()

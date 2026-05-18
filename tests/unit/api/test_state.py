@@ -189,6 +189,26 @@ class TestAppStateCoordinator:
         with pytest.raises(RuntimeError, match="already configured"):
             state.set_coordinator(second)
 
+    def test_set_coordinator_if_absent_installs_when_none(self) -> None:
+        from unittest.mock import MagicMock
+
+        coordinator = MagicMock(spec=MultiAgentCoordinator)
+        state = _make_state(coordinator=None)
+        installed = state.set_coordinator_if_absent(coordinator)
+        assert installed is True
+        assert state.coordinator is coordinator
+
+    def test_set_coordinator_if_absent_keeps_injected(self) -> None:
+        from unittest.mock import MagicMock
+
+        injected = MagicMock(spec=MultiAgentCoordinator)
+        autowired = MagicMock(spec=MultiAgentCoordinator)
+        state = _make_state(coordinator=injected)
+        installed = state.set_coordinator_if_absent(autowired)
+        # Injection-over-autowire: the injected one wins, no raise.
+        assert installed is False
+        assert state.coordinator is injected
+
     def test_swap_coordinator_attaches_when_none(self) -> None:
         from unittest.mock import MagicMock
 

@@ -14,6 +14,7 @@ from synthorg.core.enums import (
     TaskStatus,
     TaskStructure,
 )
+from synthorg.core.task_transitions import transition_path
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.models import (
     CoordinationContext,
@@ -377,8 +378,14 @@ class TestMultiAgentCoordinator:
         attributed = await coordinator.coordinate(ctx)
 
         assert attributed.is_success
-        # One submit per valid lifecycle hop to COMPLETED.
-        assert task_engine.submit.await_count == 4
+        # One submit per valid lifecycle hop to COMPLETED, in order.
+        expected = transition_path(TaskStatus.CREATED, TaskStatus.COMPLETED)
+        assert expected is not None
+        assert task_engine.submit.await_count == len(expected)
+        submitted = [
+            call.args[0].target_status for call in task_engine.submit.await_args_list
+        ]
+        assert submitted == list(expected)
 
     @pytest.mark.unit
     async def test_no_task_engine_skips_update(self) -> None:

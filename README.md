@@ -45,7 +45,7 @@ These are the capabilities that make SynthOrg an autonomous studio. They are des
 - **Best-in-class operate tier**: a golden-company benchmark, mission control with run replay, a cost forecast/kill-switch dial, a measurable learning curve, deterministic replay, run narratives, and an adversarial red-team.
 - **Agent capability layer**: a knowledge and provenance retrieval substrate, research mode, continual improvement, governed external API access, headless-browser and virtual-desktop testing, and more.
 
-Until the agent runtime lands, multi-agent coordination, coordination metrics, autonomy/trust enforcement on a live run, and the self-improvement loop are designed and unit-tested but not exercised end to end. The design for each lives in the [Design Specification](https://synthorg.io/docs/design/).
+The multi-agent coordinator runs end to end behind the provider-present switch (decompose, route, parallel execution, rollup; `/coordinate` returns a real result when a provider is configured). Coordination metrics, autonomy/trust enforcement on a live run, and the self-improvement loop are designed and unit-tested but not yet exercised end to end. The design for each lives in the [Design Specification](https://synthorg.io/docs/design/).
 
 ## Quick Start
 

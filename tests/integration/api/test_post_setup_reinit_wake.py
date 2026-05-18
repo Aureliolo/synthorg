@@ -17,6 +17,7 @@ from litestar.testing import AsyncTestClient
 from synthorg.api.controllers.setup.agent_helpers import post_setup_reinit
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.errors import RuntimeServicesBuildError
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
@@ -72,3 +73,39 @@ async def test_reinit_wakes_worker_and_coordinator_on_provider_config(
         worker = app_state.worker_execution_service
         assert isinstance(coordinator, MultiAgentCoordinator)
         assert isinstance(worker, AgentEngineExecutionService)
+
+
+async def test_reinit_raises_when_coordinator_swap_fails(
+    fake_persistence: FakePersistenceBackend,
+    fake_message_bus: FakeMessageBus,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed coordinator swap must abort reinit (typed, re-raised).
+
+    If the worker swap succeeds but the coordinator swap raises, the
+    whole rebuild must raise (a typed ``RuntimeServicesBuildError``) so
+    ``post_setup_reinit``'s caller keeps ``setup_complete=false`` rather
+    than presenting a half-configured runtime as complete.
+    """
+    app = build_runtime_app(
+        fake_persistence,
+        fake_message_bus,
+        with_provider=False,
+        company_name=_COMPANY_NAME,
+    )
+    async with AsyncTestClient(app=app) as client:
+        app_state = client.app.state["app_state"]
+        app_state.swap_provider_registry(
+            ProviderRegistry.from_config(
+                {"test-provider": ProviderConfig(driver="scripted")},
+            ),
+        )
+
+        def _boom(_coordinator: object) -> None:
+            msg = "coordinator swap failed"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(app_state, "swap_coordinator", _boom)
+
+        with pytest.raises(RuntimeServicesBuildError):
+            await post_setup_reinit(app_state)

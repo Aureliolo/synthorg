@@ -139,6 +139,12 @@ def build_execution_waves(
             # ``assigned_to`` matches the running agent, and without this
             # every dispatched sub-agent would be rejected at the engine
             # seam (the orchestration would run but no agent work would).
+            # The CREATED -> ASSIGNED transition is deliberately not
+            # validated here: this is an in-memory ``model_copy`` for
+            # dispatch, and the task-engine submit seam enforces the
+            # state machine when the subtask actually runs. Validating
+            # eagerly here would reject legitimately re-dispatched
+            # subtasks that are not in CREATED.
             assigned_task = task.model_copy(
                 update={
                     "status": TaskStatus.ASSIGNED,

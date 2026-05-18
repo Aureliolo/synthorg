@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.core.enums import CoordinationTopology, TaskStructure
+from synthorg.core.enums import CoordinationTopology, TaskStatus, TaskStructure
 from synthorg.engine.coordination.config import CoordinationConfig
 from synthorg.engine.coordination.group_builder import build_execution_waves
 from synthorg.engine.routing.models import (
@@ -58,6 +58,34 @@ class TestBuildExecutionWaves:
         assert waves[0].group_id == "wave-0"
         assert len(waves[0].assignments) == 1
         assert waves[0].assignments[0].task.id == "sub-a"
+
+    @pytest.mark.unit
+    def test_subtask_promoted_to_assigned_for_routed_agent(self) -> None:
+        """Subtasks are promoted CREATED -> ASSIGNED bound to the agent.
+
+        The execution engine only runs ASSIGNED/IN_PROGRESS tasks whose
+        ``assigned_to`` matches the running agent; without this
+        promotion every dispatched sub-agent would be rejected at the
+        engine seam.
+        """
+        sub_a = make_subtask("sub-a")
+        decomp = make_decomposition((sub_a,))
+        decision = _make_routing_decision("sub-a", "alice")
+        routing = RoutingResult(
+            parent_task_id="parent-1",
+            decisions=(decision,),
+        )
+
+        waves = build_execution_waves(
+            decomposition_result=decomp,
+            routing_result=routing,
+            config=CoordinationConfig(),
+        )
+
+        assignment = waves[0].assignments[0]
+        agent_id = str(decision.selected_candidate.agent_identity.id)
+        assert assignment.task.status is TaskStatus.ASSIGNED
+        assert assignment.task.assigned_to == agent_id
 
     @pytest.mark.unit
     def test_two_independent_subtasks_one_wave(self) -> None:

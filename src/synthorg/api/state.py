@@ -1149,19 +1149,64 @@ class AppState(AppStateServicesMixin):
 
     @property
     def has_coordinator(self) -> bool:
-        """Check whether the coordinator is configured."""
+        """Check whether the coordinator is configured.
+
+        Unsynchronised by design: a single reference read is atomic
+        under CPython and ``swap_coordinator`` only ever reassigns one
+        already-set coordinator for another, so a concurrent reader sees
+        a consistent old-or-new instance (both non-None). The only
+        ``None -> set`` flip happens once at boot before HTTP traffic.
+        Locking this hot read (the ``/coordinate`` gate calls it per
+        request) would add cost for a benign snapshot.
+        """
         return self._coordinator is not None
 
     def set_coordinator(self, coordinator: MultiAgentCoordinator) -> None:
-        """Attach the multi-agent coordinator (once-only).
+        """Attach the multi-agent coordinator (once-only, boot only).
 
-        Installed by the boot runtime-services hook behind the
-        provider-present switch, before any HTTP traffic arrives, so
-        ``/coordinate`` stops returning 503 once a provider is
-        configured. Once-only: a second set raises, matching the
-        ``worker_execution_service`` seam.
+        Once-only: a second set raises, matching the
+        ``worker_execution_service`` seam. The boot runtime-services
+        hook uses :meth:`set_coordinator_if_absent` instead so an
+        explicitly injected coordinator wins; this strict variant is
+        retained for callers that require the once-only guarantee.
+        Hot-reload after setup uses :meth:`swap_coordinator`.
         """
         self._set_once("_coordinator", coordinator, "Coordinator")
+
+    def set_coordinator_if_absent(
+        self,
+        coordinator: MultiAgentCoordinator,
+    ) -> bool:
+        """Attach the coordinator only if none is configured (atomic).
+
+        The boot runtime-services hook calls this unconditionally behind
+        the provider-present switch, so ``/coordinate`` stops returning
+        503 once a provider is configured. An explicitly injected
+        coordinator (constructor ``coordinator=``) is already set and
+        wins: this is a logged no-op then. The check-and-set is atomic
+        under ``_lazy_service_lock`` so the boot install cannot race a
+        concurrent ``swap_coordinator`` or property read (eliminating the
+        former check-then-act at the call site).
+
+        Returns:
+            ``True`` if this call installed the coordinator, ``False``
+            if one was already configured (injected) and kept.
+        """
+        with self._lazy_service_lock:
+            if self._coordinator is not None:
+                logger.info(
+                    API_APP_STARTUP,
+                    service="coordinator",
+                    transition="skipped_injected",
+                )
+                return False
+            self._coordinator = coordinator
+            logger.info(
+                API_APP_STARTUP,
+                service="coordinator",
+                transition="attached",
+            )
+            return True
 
     def swap_coordinator(self, coordinator: MultiAgentCoordinator) -> None:
         """Replace the coordinator (hot-reload).

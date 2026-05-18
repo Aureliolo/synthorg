@@ -166,3 +166,33 @@ class TestStateMachinePathTo:
         for hop in path:
             machine.validate(cursor, hop)  # raises if any hop is illegal
             cursor = hop
+
+    def test_cyclic_graph_terminates_with_shortest_path(self) -> None:
+        """A cyclic transition table must not loop forever in BFS.
+
+        ``seen`` guards revisits, so an explicit A<->B cycle still
+        terminates and yields the minimal-length path. A regression
+        here would hang the suite, not just fail an assertion.
+        """
+
+        class _Node(StrEnum):
+            A = "a"
+            B = "b"
+            C = "c"
+
+        cyclic = StateMachine(
+            {
+                _Node.A: frozenset({_Node.B}),
+                _Node.B: frozenset({_Node.A, _Node.C}),
+                _Node.C: frozenset(),
+            },
+            name="node",
+            invalid_event="test.node.invalid",
+            config_event="test.node.config_error",
+            all_states=_Node,
+        )
+
+        assert cyclic.path_to(_Node.A, _Node.C) == (_Node.B, _Node.C)
+        assert cyclic.path_to(_Node.B, _Node.A) == (_Node.A,)
+        assert cyclic.path_to(_Node.A, _Node.A) == ()
+        assert cyclic.path_to(_Node.C, _Node.A) is None

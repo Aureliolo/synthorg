@@ -64,10 +64,16 @@ _DECOMPOSITION_KEY: str = "decomposition_model"
 class RuntimeServices(NamedTuple):
     """The pair of runtime services built behind the provider switch.
 
-    Both are produced from a single shared :class:`AgentEngine` when a
-    provider is configured. ``coordinator`` is ``None`` in the
-    empty-company (no-provider) case, where ``worker_execution_service``
-    is a :class:`NoProviderExecutionService`.
+    INVARIANT (enforced by construction in :func:`build_runtime_services`,
+    not by the type): when ``coordinator`` is not ``None`` it and
+    ``worker_execution_service`` share the *same* boot
+    :class:`AgentEngine` instance, so worker tasks and coordinator
+    sub-agents observe one interrupt store, event-stream hub, and clock
+    seam. A divergent engine would split agent state silently;
+    ``tests/unit/workers/test_runtime_builder.py`` asserts the identity.
+    ``coordinator`` is ``None`` only in the empty-company (no-provider)
+    case, where ``worker_execution_service`` is a
+    :class:`NoProviderExecutionService`.
     """
 
     worker_execution_service: WorkerExecutionService
@@ -178,10 +184,11 @@ async def _build_workspace_strategy(
     same directory the worker runtime's sandbox tools use). Git
     subprocess invocations are bounded by the operator-tuned
     ``tools.git_command_timeout_seconds`` so a hung worktree command
-    cannot stall a coordination wave. Construction never touches git;
-    the strategy only requires a real repository at ``setup_group``
-    time, which is gated by ``enable_workspace_isolation`` and
-    multi-subtask waves.
+    cannot stall a coordination wave. Construction (here, at boot) never
+    touches git; a real repository is only required later, when a
+    coordination wave first invokes ``workspace_service.setup_group()``
+    during dispatch, and only when ``enable_workspace_isolation`` is set
+    and the wave has multiple subtasks.
     """
     ws_config = WorkspaceIsolationConfig()
     git_timeout = await app_state.config_resolver.get_float(
@@ -207,10 +214,25 @@ async def _resolve_routing_scorer_config(
     coordinator buildable by returning ``None`` so the factory falls
     back to ``task_assignment_config.min_score``. Mirrors the fail-open
     pattern used by ``auto_create_template_agents._resolve_matcher_config``
-    and ``post_setup_reinit``.
+    and ``post_setup_reinit``. The resolve and projection stages are
+    caught separately so the log says which one failed (a persistent
+    config bug vs a transient resolver flake are diagnosed differently).
     """
     try:
         bridge = await app_state.config_resolver.get_engine_bridge_config()
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            service="coordinator",
+            context="routing_scorer_config_resolve",
+            note="engine bridge config unavailable; using scorer defaults",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+    try:
         return RoutingScorerConfig.from_bridge_config(bridge)
     except MemoryError, RecursionError:
         raise
@@ -218,8 +240,8 @@ async def _resolve_routing_scorer_config(
         logger.warning(
             API_APP_STARTUP,
             service="coordinator",
-            context="routing_scorer_config",
-            note="bridge config unavailable; using scorer defaults",
+            context="routing_scorer_config_projection",
+            note="scorer config projection failed; using scorer defaults",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
@@ -235,16 +257,23 @@ async def _build_runtime_coordinator(
 
     Resolves the operator-tuned decomposition model and routing-scorer
     weights, wires real git-worktree workspace isolation, then delegates
-    to the unit-tested :func:`build_coordinator` factory.
+    to the unit-tested :func:`build_coordinator` factory. The three
+    resolution steps are independent, so they run concurrently under a
+    ``TaskGroup`` to keep boot latency down (structured concurrency: any
+    failure cancels the siblings and propagates).
     """
-    decomposition_model = await app_state.config_resolver.get_str(
-        _DECOMPOSITION_NS,
-        _DECOMPOSITION_KEY,
-    )
-    routing_scorer_config = await _resolve_routing_scorer_config(app_state)
-    workspace_strategy, workspace_config = await _build_workspace_strategy(
-        app_state,
-    )
+    async with asyncio.TaskGroup() as tg:
+        model_task = tg.create_task(
+            app_state.config_resolver.get_str(
+                _DECOMPOSITION_NS,
+                _DECOMPOSITION_KEY,
+            )
+        )
+        scorer_task = tg.create_task(_resolve_routing_scorer_config(app_state))
+        workspace_task = tg.create_task(_build_workspace_strategy(app_state))
+    decomposition_model = model_task.result()
+    routing_scorer_config = scorer_task.result()
+    workspace_strategy, workspace_config = workspace_task.result()
     performance_tracker = (
         app_state.performance_tracker if app_state.has_performance_tracker else None
     )

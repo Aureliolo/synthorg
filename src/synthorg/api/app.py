@@ -1012,6 +1012,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         nonlocal _runtime_services_installed
         if _runtime_services_installed:
             return
+        from synthorg.engine.errors import (  # noqa: PLC0415
+            RuntimeServicesBuildError,
+        )
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
             build_runtime_services,
         )
@@ -1036,20 +1039,23 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 API_APP_STARTUP,
                 service="runtime_services",
                 note="failed to build the runtime services at boot",
+                provider_present=app_state.has_active_provider,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise
+            msg = "Runtime services failed to build at boot"
+            raise RuntimeServicesBuildError(msg) from exc
         app_state.set_worker_execution_service(
             services.worker_execution_service,
         )
         # An explicitly injected coordinator (``create_app(coordinator=)``
         # in tests / custom DI) wins over the autowired one, matching the
         # injection-over-autowire convention used across ``create_app``.
-        # ``set_coordinator`` is once-only, so only wire the built one
-        # when none was injected.
-        if services.coordinator is not None and not app_state.has_coordinator:
-            app_state.set_coordinator(services.coordinator)
+        # ``set_coordinator_if_absent`` makes the check-and-set atomic in
+        # the seam (no boot-time check-then-act), so an injected
+        # coordinator is kept and the built one is a logged no-op then.
+        if services.coordinator is not None:
+            app_state.set_coordinator_if_absent(services.coordinator)
         _runtime_services_installed = True
 
     startup = [*startup, _install_runtime_services]

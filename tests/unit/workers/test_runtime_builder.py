@@ -28,8 +28,21 @@ from tests._shared import FakeClock, mock_of
 pytestmark = pytest.mark.unit
 
 
-def _provider_app_state(registry: ProviderRegistry, workspace: Path) -> AppState:
-    """Build a mocked AppState for the provider-present path."""
+def _provider_app_state(
+    registry: ProviderRegistry,
+    workspace: Path,
+    *,
+    bridge_config_error: Exception | None = None,
+) -> AppState:
+    """Build a mocked AppState for the provider-present path.
+
+    ``bridge_config_error`` makes ``get_engine_bridge_config`` raise, to
+    exercise the fail-open routing-scorer-config resolve branch.
+    """
+    if bridge_config_error is None:
+        bridge_mock = AsyncMock(return_value=EngineBridgeConfig())
+    else:
+        bridge_mock = AsyncMock(side_effect=bridge_config_error)
     # ``mock_of[T](...)`` is ``Any`` by design; cast back to the spec so
     # the helper keeps a precise signature for its callers.
     return cast(
@@ -41,9 +54,7 @@ def _provider_app_state(registry: ProviderRegistry, workspace: Path) -> AppState
             config_resolver=mock_of[ConfigResolver](
                 get_float=AsyncMock(return_value=30.0),
                 get_str=AsyncMock(return_value="example-medium-001"),
-                get_engine_bridge_config=AsyncMock(
-                    return_value=EngineBridgeConfig(),
-                ),
+                get_engine_bridge_config=bridge_mock,
             ),
             task_engine=mock_of[TaskEngine](),
             agent_registry=AgentRegistryService(),
@@ -136,6 +147,36 @@ class TestProviderPresentSwitch:
         # The coordinator's parallel executor must run sub-agents on the
         # exact same boot AgentEngine as the worker execute seam.
         assert coordinator._parallel_executor._engine is worker._engine
+
+    async def test_scorer_config_resolve_failure_is_fail_open(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """A bridge-config resolve failure must not break the build.
+
+        ``_resolve_routing_scorer_config`` fails open (returns ``None``)
+        so the coordinator is still built; the factory falls back to
+        ``task_assignment_config.min_score``.
+        """
+        registry = ProviderRegistry.from_config(
+            {"test-provider": ProviderConfig(driver="scripted")}
+        )
+        app_state = _provider_app_state(
+            registry,
+            tmp_path,
+            bridge_config_error=RuntimeError("settings backend down"),
+        )
+
+        result = await build_runtime_services(
+            app_state,
+            workspace_root=tmp_path,
+        )
+
+        assert isinstance(
+            result.worker_execution_service,
+            AgentEngineExecutionService,
+        )
+        assert isinstance(result.coordinator, MultiAgentCoordinator)
 
     async def test_multiple_providers_warns_and_selects_first(
         self,
