@@ -370,20 +370,9 @@ class TestCoordinationControllerNoCoordinator:
         self,
         test_client: TestClient[Any],
         fake_persistence: FakePersistenceBackend,
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """503 when coordinator is not configured (uses shared client).
-
-        The shared session app's startup hook wires a coordinator
-        whenever a provider is present, and the per-test reset does not
-        clear that seam, so the no-coordinator precondition must be
-        forced here rather than assumed. ``monkeypatch`` restores the
-        seam after the test so the shared app is unaffected.
-        """
+        """503 when coordinator is not configured (uses shared client)."""
         from tests.unit.api.conftest import make_task
-
-        app_state = test_client.app.state.app_state
-        monkeypatch.setattr(app_state, "_coordinator", None)
 
         task = make_task()
         fake_persistence.tasks._tasks[task.id] = task
