@@ -1,7 +1,7 @@
 """Client request lifecycle endpoints at /requests."""
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, get, post
@@ -119,10 +119,21 @@ def _spawn_intake_pipeline(
 ) -> None:
     """Spawn + track the background intake-pipeline reconciliation.
 
-    Mirrors the simulations runner's callback ordering: the exception
-    logger is attached before the set-discard so a fast-completing
-    failure still surfaces, and a strong reference is held in
-    ``sim_state.background_tasks`` so the task is not GC'd mid-flight.
+    A detached task (not a ``TaskGroup``) is correct here: the approve
+    handler returns ``202`` immediately and the pipeline run outlives
+    that scope by design, so there is no parent scope to await it.
+    Lifecycle is tracked the same way the simulations runner tracks
+    its detached runners: a strong reference in
+    ``sim_state.background_tasks`` keeps the task from being GC'd
+    mid-flight, the exception logger is attached before the
+    set-discard so a fast-completing failure still surfaces, and the
+    reference is added synchronously here (no ``await`` between
+    ``create_task`` and ``add``, so a done-callback cannot run before
+    the reference exists). The request lock is intentionally not held
+    across the (minutes-long) pipeline run; the ``_current_if_approved``
+    guard plus the reconcile error handling make a concurrent reject
+    racing a late pipeline result a benign no-op rather than a lost
+    transition.
     """
     task = asyncio.create_task(
         process_intake_pipeline(
@@ -182,14 +193,20 @@ async def process_intake_pipeline(
             return
     try:
         result = await app_state.intake_entry_adapter.submit(approved)
+    except asyncio.CancelledError:
+        # Task cancelled (e.g. app shutdown): let it propagate; do not
+        # convert a cancellation into a CANCELLED request.
+        raise
     except MemoryError, RecursionError:
         raise
     except WorkIntakeRejectedError as exc:
         # Intake declining the work is a normal outcome, not a defect.
-        await _reconcile_cancel(
+        await _safe_finalize(
+            _reconcile_cancel,
             sim_state,
             app_state,
             request_id,
+            operation="reconcile_cancel",
             reason=safe_error_description(exc),
             publish=publish,
         )
@@ -201,21 +218,72 @@ async def process_intake_pipeline(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        await _reconcile_cancel(
+        await _safe_finalize(
+            _reconcile_cancel,
             sim_state,
             app_state,
             request_id,
+            operation="reconcile_cancel",
             reason=safe_error_description(exc),
             publish=publish,
         )
         return
-    await _reconcile_success(
+    await _safe_finalize(
+        _reconcile_success,
         sim_state,
         app_state,
         request_id,
+        operation="reconcile_success",
         task_id=result.task_id,
         publish=publish,
     )
+
+
+async def _safe_finalize(  # noqa: PLR0913 -- keyword-only DI + passthrough
+    finalizer: Callable[..., Awaitable[None]],
+    sim_state: ClientSimulationState,
+    app_state: AppState,
+    request_id: str,
+    *,
+    operation: str,
+    publish: _Publisher | None,
+    **kwargs: Any,
+) -> None:
+    """Run a terminal reconciliation, never leaving the request stuck.
+
+    A reconciliation that raises (store / lock / publish failure) must
+    not leave the request silently in ``APPROVED`` with only a
+    done-callback WARNING. On a ``reconcile_success`` failure we log
+    ERROR and fall back to cancelling the request so it still reaches a
+    terminal state; on a ``reconcile_cancel`` failure we log ERROR (no
+    further fallback is possible) so the operator has an actionable
+    signal keyed by ``request_id``. ``CancelledError`` /
+    ``MemoryError`` / ``RecursionError`` propagate unchanged.
+    """
+    try:
+        await finalizer(sim_state, app_state, request_id, publish=publish, **kwargs)
+    except asyncio.CancelledError:
+        raise
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.error(
+            CLIENT_REQUEST_INTAKE_PIPELINE_FAILED,
+            request_id=request_id,
+            operation=operation,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        if operation == "reconcile_success":
+            await _safe_finalize(
+                _reconcile_cancel,
+                sim_state,
+                app_state,
+                request_id,
+                operation="reconcile_cancel",
+                reason=f"reconciliation failed: {safe_error_description(exc)}",
+                publish=publish,
+            )
 
 
 async def _reconcile_success(
@@ -226,28 +294,35 @@ async def _reconcile_success(
     task_id: str,
     publish: _Publisher | None,
 ) -> None:
-    """Walk the request to ``TASK_CREATED`` unless already terminal."""
-    async with app_state.acquire_request_lock(request_id):
-        current = await _current_if_approved(sim_state, request_id)
-        if current is None:
-            return
-        metadata = dict(current.metadata)
-        metadata["task_id"] = task_id
-        created = current.with_status(
-            RequestStatus.TASK_CREATED,
-            metadata=metadata,
-        )
-        await sim_state.request_store.save(created)
-        logger.info(
-            CLIENT_REQUEST_STATUS_TRANSITIONED,
-            request_id=created.request_id,
-            client_id=created.client_id,
-            from_status=RequestStatus.APPROVED.value,
-            to_status=created.status.value,
-        )
-        if publish is not None:
-            publish(WsEventType.REQUEST_APPROVED, created)
-    app_state.release_request_lock_if_idle(request_id)
+    """Walk the request to ``TASK_CREATED`` unless already terminal.
+
+    ``release_request_lock_if_idle`` runs in ``finally`` so a failure
+    inside the locked section evicts the lock entry rather than leaking
+    it; the failure itself propagates to :func:`_safe_finalize`.
+    """
+    try:
+        async with app_state.acquire_request_lock(request_id):
+            current = await _current_if_approved(sim_state, request_id)
+            if current is None:
+                return
+            metadata = dict(current.metadata)
+            metadata["task_id"] = task_id
+            created = current.with_status(
+                RequestStatus.TASK_CREATED,
+                metadata=metadata,
+            )
+            await sim_state.request_store.save(created)
+            logger.info(
+                CLIENT_REQUEST_STATUS_TRANSITIONED,
+                request_id=created.request_id,
+                client_id=created.client_id,
+                from_status=RequestStatus.APPROVED.value,
+                to_status=created.status.value,
+            )
+            if publish is not None:
+                publish(WsEventType.REQUEST_TASK_CREATED, created)
+    finally:
+        app_state.release_request_lock_if_idle(request_id)
 
 
 async def _reconcile_cancel(
@@ -258,29 +333,35 @@ async def _reconcile_cancel(
     reason: str,
     publish: _Publisher | None,
 ) -> None:
-    """Cancel the request with ``reason`` unless already terminal."""
-    async with app_state.acquire_request_lock(request_id):
-        current = await _current_if_approved(sim_state, request_id)
-        if current is None:
-            return
-        metadata = dict(current.metadata)
-        metadata["rejection_reason"] = reason
-        cancelled = current.with_status(
-            RequestStatus.CANCELLED,
-            metadata=metadata,
-        )
-        await sim_state.request_store.save(cancelled)
-        logger.info(
-            CLIENT_REQUEST_STATUS_TRANSITIONED,
-            request_id=cancelled.request_id,
-            client_id=cancelled.client_id,
-            from_status=RequestStatus.APPROVED.value,
-            to_status=cancelled.status.value,
-            reason=reason,
-        )
-        if publish is not None:
-            publish(WsEventType.REQUEST_REJECTED, cancelled)
-    app_state.release_request_lock_if_idle(request_id)
+    """Cancel the request with ``reason`` unless already terminal.
+
+    ``release_request_lock_if_idle`` runs in ``finally`` (see
+    :func:`_reconcile_success`).
+    """
+    try:
+        async with app_state.acquire_request_lock(request_id):
+            current = await _current_if_approved(sim_state, request_id)
+            if current is None:
+                return
+            metadata = dict(current.metadata)
+            metadata["rejection_reason"] = reason
+            cancelled = current.with_status(
+                RequestStatus.CANCELLED,
+                metadata=metadata,
+            )
+            await sim_state.request_store.save(cancelled)
+            logger.info(
+                CLIENT_REQUEST_STATUS_TRANSITIONED,
+                request_id=cancelled.request_id,
+                client_id=cancelled.client_id,
+                from_status=RequestStatus.APPROVED.value,
+                to_status=cancelled.status.value,
+                reason=reason,
+            )
+            if publish is not None:
+                publish(WsEventType.REQUEST_REJECTED, cancelled)
+    finally:
+        app_state.release_request_lock_if_idle(request_id)
 
 
 async def _current_if_approved(
@@ -296,7 +377,10 @@ async def _current_if_approved(
     try:
         current = await sim_state.request_store.get(request_id)
     except KeyError:
-        logger.warning(
+        # The request disappearing mid-reconciliation is an invariant
+        # break (no normal path deletes an APPROVED request), not a
+        # routine warning: surface it at ERROR keyed by request_id.
+        logger.error(
             CLIENT_REQUEST_INTAKE_PIPELINE_FAILED,
             request_id=request_id,
             note="request vanished before reconciliation",

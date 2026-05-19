@@ -12,14 +12,16 @@ empty company (no pipeline / no simulation runtime).
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import ProjectStatus
+from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
 from synthorg.engine.pipeline.entry.factory import build_work_entry_adapter
 from synthorg.engine.pipeline.models import WorkSource
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 
@@ -66,19 +68,47 @@ async def wire_real_intake_entry(
         app_state.set_intake_entry_adapter_if_absent(adapter)
 
 
-async def _ensure_project(app_state: AppState, project_id: str) -> None:
-    """Create the intake project if it does not already exist."""
+async def _ensure_project(
+    app_state: AppState,
+    project_id: NotBlankStr,
+) -> None:
+    """Create the intake project if it does not already exist.
+
+    The ``get`` fast-path skips a redundant create on the common
+    already-exists case, but ``create`` is still guarded: a concurrent
+    winner (boot racing a provider-reinit ``wire_real_intake_entry``)
+    surfaces as ``DuplicateRecordError``, which is benign here (the
+    project exists, which is the post-condition we want). Any other
+    failure is logged at ERROR with the project id before propagating
+    so a boot abort is actionable rather than an opaque traceback.
+    """
     projects = app_state.persistence.projects
     if await projects.get(project_id) is not None:
         return
-    await projects.create(
-        Project(
-            id=project_id,
-            name=project_id,
-            description="Default project for real client-request intake.",
-            status=ProjectStatus.ACTIVE,
+    try:
+        await projects.create(
+            Project(
+                id=project_id,
+                name=project_id,
+                description="Default project for real client-request intake.",
+                status=ProjectStatus.ACTIVE,
+            )
         )
-    )
+    except DuplicateRecordError:
+        # Lost a benign create race; the project now exists either way.
+        return
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.error(
+            CLIENT_SIMULATION_RUNTIME_WIRED,
+            service="intake_entry_adapter",
+            note="failed to create intake project",
+            project=project_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        raise
     logger.info(
         CLIENT_SIMULATION_RUNTIME_WIRED,
         service="intake_entry_adapter",

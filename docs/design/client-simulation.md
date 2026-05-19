@@ -200,9 +200,12 @@ of `InternalReviewStage`) during app construction whenever a
 `ClientSimulationState` so `has_simulation_runtime` is true and the
 `/simulations` + `/requests` controllers register. The strategy is
 selected from the `simulations` settings namespace
-(`intake_strategy` ∈ {`direct`, `agent`}, `intake_model`) via the
-bootstrap resolver (env > registered default); the choice is baked
-in at startup (`read_only_post_init`). The default `direct` strategy
+(`intake_strategy` ∈ {`direct`, `agent`}, `intake_model`,
+`intake_default_project`) via the bootstrap resolver (env >
+registered default); the choices are baked in at startup
+(`read_only_post_init`). `intake_default_project` is the project the
+intake strategy files tasks into and the real work-entry adapter
+stamps on the work item (see [Real work-entry path](#real-work-entry-path)). The default `direct` strategy
 makes no LLM calls, so the runtime comes online for an empty company.
 A selected `agent` strategy that cannot be satisfied (no provider or
 no model) degrades to `direct` with a warning rather than failing
@@ -311,7 +314,8 @@ discriminator rather than silently falling back to a default.
 | `ReportConfig.strategy` | `build_report_strategy()` | `summary` → `SummaryReport`, `detailed` → `DetailedReport`, `json_export` → `JsonExportReport`, `metrics_only` → `MetricsOnlyReport` |
 | `ClientPoolConfig.selection_strategy` | `build_client_pool_strategy()` | `round_robin` → `RoundRobinStrategy`, `weighted_random` → `WeightedRandomStrategy`, `domain_matched` → `DomainMatchedStrategy` |
 | `adapter` arg (intake entry point) | `build_entry_point_strategy(adapter, *, project_id=None)` | `direct` → `DirectAdapter`, `project` → `ProjectAdapter`, `intake` → `IntakeAdapter` |
-| `IntakeConfig.strategy` | `build_intake_strategy(config, *, task_engine, provider=None, cost_tracker=None)` | `direct` → `DirectIntake`, `agent` → `AgentIntake` |
+| `IntakeConfig.strategy` | `build_intake_strategy(config, *, task_engine, default_project, provider=None, cost_tracker=None)` | `direct` → `DirectIntake`, `agent` → `AgentIntake` |
+| `WorkSource` (work-entry adapter) | `build_work_entry_adapter(source, *, work_pipeline, default_project)` | `intake` → `IntakeEntryAdapter` |
 
 The factories follow the project-wide pluggable-subsystems pattern
 (protocol + strategy + factory + config discriminator). No silent
