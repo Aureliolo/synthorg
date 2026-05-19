@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from synthorg.engine.shutdown import ShutdownManager
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.workspace.config import WorkspaceIsolationConfig
+    from synthorg.engine.workspace.git_backend import GitBackend
     from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
     from synthorg.engine.workspace.service import WorkspaceIsolationService
     from synthorg.hr.performance.tracker import PerformanceTracker
@@ -118,6 +119,7 @@ def _build_decomposition_strategy(
 def _build_workspace_service(
     workspace_strategy: WorkspaceIsolationStrategy | None,
     workspace_config: WorkspaceIsolationConfig | None,
+    git_backend: GitBackend | None = None,
 ) -> WorkspaceIsolationService | None:
     """Build workspace isolation service if both deps are provided.
 
@@ -133,6 +135,7 @@ def _build_workspace_service(
         return WorkspaceIsolationService(
             strategy=workspace_strategy,
             config=workspace_config,
+            git_backend=git_backend,
         )
     if (workspace_strategy is None) != (workspace_config is None):
         given = (
@@ -169,6 +172,7 @@ def build_coordinator(  # noqa: PLR0913
     task_engine: TaskEngine | None = None,
     workspace_strategy: WorkspaceIsolationStrategy | None = None,
     workspace_config: WorkspaceIsolationConfig | None = None,
+    git_backend: GitBackend | None = None,
     shutdown_manager: ShutdownManager | None = None,
     performance_tracker: PerformanceTracker | None = None,
     routing_scorer_config: RoutingScorerConfig | None = None,
@@ -203,6 +207,10 @@ def build_coordinator(  # noqa: PLR0913
         task_engine: Optional task engine for parent status updates.
         workspace_strategy: Optional workspace isolation strategy.
         workspace_config: Optional workspace isolation config.
+        git_backend: Optional pluggable git backend; when provided, the
+            workspace service routes per-project merge+push through the
+            serial :class:`PushQueueCoordinator` for forge-collision
+            safety. ``None`` keeps the legacy in-process merge path.
         shutdown_manager: Optional shutdown manager for the executor.
         performance_tracker: Optional tracker for recording
             per-agent coordination contributions.
@@ -255,7 +263,7 @@ def build_coordinator(  # noqa: PLR0913
         routing_service=routing_service,
         parallel_executor=parallel_executor,
         workspace_service=_build_workspace_service(
-            workspace_strategy, workspace_config
+            workspace_strategy, workspace_config, git_backend
         ),
         task_engine=task_engine,
         performance_tracker=performance_tracker,

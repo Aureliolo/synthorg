@@ -39,6 +39,7 @@ from tests.unit.api.fakes import (
     FakeParkedContextRepository,
     FakePersonalityPresetRepository,
     FakeProjectRepository,
+    FakeProjectWorkspaceRepository,
     FakeSettingsRepository,
     FakeTaskMetricRepository,
     FakeTaskRepository,
@@ -594,6 +595,7 @@ class FakePersistenceBackend:
     def __init__(self) -> None:  # noqa: PLR0915 -- one assignment per repo; splitting blurs the inventory
         self._artifacts = FakeArtifactRepository()
         self._projects = FakeProjectRepository()
+        self._project_workspaces = FakeProjectWorkspaceRepository()
         self._custom_presets = FakePersonalityPresetRepository()
         self._workflow_definitions = FakeWorkflowDefinitionRepository()
         self._workflow_executions = FakeWorkflowExecutionRepository()
@@ -707,6 +709,10 @@ class FakePersistenceBackend:
     @property
     def projects(self) -> FakeProjectRepository:
         return self._projects
+
+    @property
+    def project_workspaces(self) -> FakeProjectWorkspaceRepository:
+        return self._project_workspaces
 
     @property
     def tasks(self) -> FakeTaskRepository:

@@ -117,6 +117,9 @@ from synthorg.persistence.sqlite.project_cost_aggregate_repo import (
 from synthorg.persistence.sqlite.project_repo import (
     SQLiteProjectRepository,
 )
+from synthorg.persistence.sqlite.project_workspace_repo import (
+    SQLiteProjectWorkspaceRepository,
+)
 from synthorg.persistence.sqlite.provider_audit_repo import (
     SQLiteProviderAuditRepo,
 )
@@ -202,6 +205,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._db: aiosqlite.Connection | None = None
         self._artifacts: SQLiteArtifactRepository | None = None
         self._projects: SQLiteProjectRepository | None = None
+        self._project_workspaces: SQLiteProjectWorkspaceRepository | None = None
         self._tasks: SQLiteTaskRepository | None = None
         self._cost_records: SQLiteCostRecordRepository | None = None
         self._messages: SQLiteMessageRepository | None = None
@@ -422,6 +426,10 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._projects = SQLiteProjectRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._project_workspaces = SQLiteProjectWorkspaceRepository(
             self._db,
             write_context=self.write_context,
         )

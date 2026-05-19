@@ -6250,7 +6250,7 @@ export type components = {
             readonly name: string;
             readonly npm_package: string | null;
             /** @enum {string|null} */
-            readonly required_connection_type: "github" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | null;
+            readonly required_connection_type: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer" | null;
             /** @default [] */
             readonly tags: readonly string[];
             /**
@@ -6655,7 +6655,7 @@ export type components = {
          * @description Supported external service connection types.
          * @enum {string}
          */
-        readonly ConnectionType: "github" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer";
+        readonly ConnectionType: "github" | "gitlab" | "gitea" | "forgejo" | "slack" | "smtp" | "database" | "generic_http" | "oauth_app" | "a2a_peer";
         /**
          * ContentType
          * @description Content types available for training extraction.
@@ -7541,7 +7541,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;

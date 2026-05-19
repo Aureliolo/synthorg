@@ -71,6 +71,9 @@ if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.engine.agent_engine import AgentEngine
     from synthorg.engine.task_engine import TaskEngine
+    from synthorg.engine.workspace.project_workspace_service import (
+        ProjectWorkspaceService,
+    )
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.security.autonomy.models import EffectiveAutonomy
     from synthorg.security.autonomy.resolver import AutonomyResolver
@@ -285,6 +288,7 @@ class AgentEngineExecutionService:
         "_autonomy_resolver",
         "_engine",
         "_lifecycle_strategy_kind",
+        "_project_workspace_service",
         "_resume_tasks",
         "_sandbox_backend",
         "_task_engine",
@@ -299,6 +303,7 @@ class AgentEngineExecutionService:
         autonomy_resolver: AutonomyResolver | None = None,
         sandbox_backend: SandboxBackend | None = None,
         lifecycle_strategy_kind: str = STRATEGY_PER_CALL,
+        project_workspace_service: ProjectWorkspaceService | None = None,
     ) -> None:
         self._engine = engine
         self._task_engine = task_engine
@@ -314,6 +319,10 @@ class AgentEngineExecutionService:
         # all-subprocess config); release is then skipped entirely.
         self._sandbox_backend = sandbox_backend
         self._lifecycle_strategy_kind = lifecycle_strategy_kind
+        # Per-project persistent workspace provisioner. ``None`` for
+        # deployments without persistence; ``execute_once`` then skips
+        # the lazy provision.
+        self._project_workspace_service = project_workspace_service
 
     async def execute_once(
         self,
@@ -340,6 +349,28 @@ class AgentEngineExecutionService:
 
         identity = await self._resolve_identity(task.assigned_to, task_id=task_id)
         effective_autonomy = self._resolve_autonomy(identity, task_id=task_id)
+
+        # Lazy per-project workspace provisioning: ensure the project has
+        # its persistent git-backed working tree before the agent runs.
+        # Skipped when no service is wired (test fixtures, persistence-less
+        # dev apps) or the task has no project association.
+        if self._project_workspace_service is not None and task.project is not None:
+            try:
+                await self._project_workspace_service.get_or_provision(task.project)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                # Best-effort: workspace provisioning failure should not
+                # block agent execution (the workspace may not be needed
+                # by every tool). Log and continue.
+                logger.warning(
+                    WORKERS_EXECUTION_SERVICE_FAILED,
+                    task_id=task_id,
+                    project_id=task.project,
+                    reason="project_workspace_provision_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
         logger.info(
             WORKERS_EXECUTION_SERVICE_ATTEMPTED,

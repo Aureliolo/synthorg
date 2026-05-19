@@ -580,6 +580,28 @@ class _FakeArtifactRepository:
         return False
 
 
+class _FakeProjectWorkspaceRepository:
+    async def save(self, entity: object) -> None:
+        del entity
+
+    async def get(self, entity_id: NotBlankStr) -> object | None:
+        del entity_id
+        return None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[object, ...]:
+        del limit, offset
+        return ()
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
+        return False
+
+
 class _FakeProjectRepository:
     async def create(self, project: Project) -> None:
         pass
@@ -995,6 +1017,10 @@ class _FakeBackend:
     @property
     def projects(self) -> _FakeProjectRepository:
         return _FakeProjectRepository()
+
+    @property
+    def project_workspaces(self) -> _FakeProjectWorkspaceRepository:
+        return _FakeProjectWorkspaceRepository()
 
     @property
     def custom_presets(self) -> _FakePersonalityPresetRepository:

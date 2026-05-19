@@ -166,6 +166,81 @@ class WorkspaceLimitError(WorkspaceError):
     """Raised when maximum concurrent workspaces reached."""
 
 
+class WorkspacePushError(WorkspaceError):
+    """Raised when the coordinator-owned push to the git backend fails.
+
+    Distinct from :class:`WorkspaceMergeError` (local git merge state)
+    so callers can tell a forge/remote push rejection apart from a
+    local textual merge conflict.
+    """
+
+    retryable: ClassVar[bool] = True
+    default_message: ClassVar[str] = "Failed to push workspace to git backend"
+
+
+class ProjectWorkspaceError(EngineError):
+    """Base exception for persistent project-workspace failures."""
+
+
+class ProjectWorkspaceNotProvisionedError(ProjectWorkspaceError):
+    """Raised when a project workspace is required but not yet provisioned.
+
+    The message is deliberately generic to avoid leaking internal
+    identifiers.  The ``project_id`` attribute is available for
+    structured logs but must NOT be included in user-facing responses.
+
+    Attributes:
+        project_id: The project that has no provisioned workspace.
+    """
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.PROJECT_WORKSPACE_NOT_PROVISIONED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "Project workspace not provisioned"
+
+    def __init__(self, *, project_id: NotBlankStr) -> None:
+        super().__init__("Project workspace not provisioned")
+        self.project_id: NotBlankStr = project_id
+
+
+class GitBackendError(EngineError):
+    """Base exception for pluggable git-backend failures."""
+
+
+class GitBackendConfigError(GitBackendError):
+    """Raised when git-backend configuration is invalid for the strategy.
+
+    Fail-fast at factory construction (e.g. ``LOCAL_PATH`` selected but
+    no ``local_repo_path``, or ``EXTERNAL_REMOTE`` without its connection
+    catalog / secret-backend dependency).
+    """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Git backend configuration invalid"
+
+
+class GitBackendProvisionError(GitBackendError):
+    """Raised when the git backend fails to provision a repository."""
+
+    default_message: ClassVar[str] = "Repository provisioning failed"
+
+
+class GitBackendPushError(GitBackendError):
+    """Raised when the git backend fails to push a branch."""
+
+    retryable: ClassVar[bool] = True
+    default_message: ClassVar[str] = "Git push failed"
+
+
+class GitBackendFetchError(GitBackendError):
+    """Raised when the git backend fails to fetch from the remote."""
+
+    retryable: ClassVar[bool] = True
+    default_message: ClassVar[str] = "Git fetch failed"
+
+
 class TaskEngineError(EngineError):
     """Base exception for all task engine errors."""
 

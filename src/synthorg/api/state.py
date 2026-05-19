@@ -145,6 +145,9 @@ if TYPE_CHECKING:
         WorkflowRollbackService,
     )
     from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
+    from synthorg.engine.workspace.project_workspace_service import (
+        ProjectWorkspaceService,
+    )
     from synthorg.integrations.connections.catalog import ConnectionCatalog
     from synthorg.integrations.health.prober import HealthProberService
     from synthorg.integrations.mcp_catalog.installations import (
@@ -263,6 +266,7 @@ class AppState(AppStateServicesMixin):
         "_personality_service",
         "_preset_override_service",
         "_project_facade_service",
+        "_project_workspace_service",
         "_prometheus_collector",
         "_provider_audit_service",
         "_provider_health_tracker",
@@ -450,6 +454,10 @@ class AppState(AppStateServicesMixin):
         # process-stable temp directory so dev / empty-company runs
         # still have a valid absolute workspace.
         self._agent_workspace_root: Path | None = None
+        # Per-project persistent workspace provisioning service. Wired
+        # at boot behind the provider switch; ``None`` for empty-company
+        # / dev apps with no runtime services installed.
+        self._project_workspace_service: ProjectWorkspaceService | None = None
         # Guards the double-checked locking on first-access lazy wiring
         # of worker_execution_service / experiment_service. Both
         # properties may be invoked from concurrent request handlers
@@ -963,6 +971,26 @@ class AppState(AppStateServicesMixin):
             "_agent_workspace_root",
             path,
             "Agent workspace root",
+        )
+
+    @property
+    def project_workspace_service(self) -> ProjectWorkspaceService | None:
+        """Per-project persistent workspace provisioner, or ``None``.
+
+        Wired at boot behind the provider-present switch; ``None`` for
+        empty-company / dev apps where no runtime services are installed.
+        """
+        return self._project_workspace_service
+
+    def set_project_workspace_service(
+        self,
+        service: ProjectWorkspaceService,
+    ) -> None:
+        """Attach the project workspace service (once-only, startup)."""
+        self._set_once(
+            "_project_workspace_service",
+            service,
+            "Project workspace service",
         )
 
     @property

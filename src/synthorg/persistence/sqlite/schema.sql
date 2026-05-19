@@ -436,6 +436,22 @@ CREATE TABLE projects (
 CREATE INDEX idx_projects_status ON projects(status);
 CREATE INDEX idx_projects_lead ON projects(lead);
 
+-- ── Persistent per-project workspace (1:1 with projects) ─────
+CREATE TABLE project_workspaces (
+    project_id TEXT NOT NULL PRIMARY KEY,
+    workspace_path TEXT NOT NULL,
+    git_backend_kind TEXT NOT NULL
+        CHECK (git_backend_kind IN ('embedded', 'external_remote', 'local_path')),
+    remote_ref TEXT,
+    default_branch TEXT NOT NULL DEFAULT 'main',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_project_workspaces_created_at
+    ON project_workspaces(created_at);
+
 -- ── Project-lifetime cost aggregates ─────────────────────────
 CREATE TABLE project_cost_aggregates (
     project_id TEXT NOT NULL PRIMARY KEY CHECK(length(project_id) > 0),

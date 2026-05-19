@@ -19,7 +19,12 @@ from synthorg.integrations.connections.types.database import (
 from synthorg.integrations.connections.types.generic_http import (
     GenericHttpAuthenticator,
 )
+from synthorg.integrations.connections.types.gitea import (
+    ForgejoAuthenticator,
+    GiteaAuthenticator,
+)
 from synthorg.integrations.connections.types.github import GitHubAuthenticator
+from synthorg.integrations.connections.types.gitlab import GitLabAuthenticator
 from synthorg.integrations.connections.types.oauth_app import (
     OAuthAppAuthenticator,
 )
@@ -36,6 +41,9 @@ CONNECTION_TYPE_REGISTRY: MappingProxyType[ConnectionType, ConnectionAuthenticat
     MappingProxyType(
         {
             ConnectionType.GITHUB: GitHubAuthenticator(),
+            ConnectionType.GITLAB: GitLabAuthenticator(),
+            ConnectionType.GITEA: GiteaAuthenticator(),
+            ConnectionType.FORGEJO: ForgejoAuthenticator(),
             ConnectionType.SLACK: SlackAuthenticator(),
             ConnectionType.SMTP: SmtpAuthenticator(),
             ConnectionType.DATABASE: DatabaseAuthenticator(),

@@ -38,3 +38,23 @@ WORKSPACE_DISK_TRAVERSAL_ERROR: Final[str] = "workspace.disk.traversal.error"
 WORKSPACE_DISK_CHECK_ERROR: Final[str] = "workspace.disk.check.error"
 
 WORKSPACE_CONFIG_INVALID: Final[str] = "workspace.config.invalid"
+
+# ── Git backend events ───────────────────────────────────────────
+GIT_BACKEND_PROVISION_START: Final[str] = "git_backend.provision.start"
+GIT_BACKEND_PROVISION_COMPLETE: Final[str] = "git_backend.provision.complete"
+GIT_BACKEND_PROVISION_FAILED: Final[str] = "git_backend.provision.failed"
+GIT_BACKEND_PUSH_COMPLETE: Final[str] = "git_backend.push.complete"
+GIT_BACKEND_PUSH_FAILED: Final[str] = "git_backend.push.failed"
+GIT_BACKEND_FETCH_COMPLETE: Final[str] = "git_backend.fetch.complete"
+GIT_BACKEND_FETCH_FAILED: Final[str] = "git_backend.fetch.failed"
+
+# ── Project workspace provisioning events ────────────────────────
+PROJECT_WORKSPACE_PROVISIONED: Final[str] = "project_workspace.provisioned"
+PROJECT_WORKSPACE_REUSED: Final[str] = "project_workspace.reused"
+WORKSPACE_BACKEND_KIND_CHANGED: Final[str] = "workspace.backend_kind.changed"
+
+# ── Coordinator push-queue events ────────────────────────────────
+WORKSPACE_PUSH_QUEUE_ENQUEUED: Final[str] = "workspace.push_queue.enqueued"
+WORKSPACE_PUSH_QUEUE_MERGED: Final[str] = "workspace.push_queue.merged"
+WORKSPACE_PUSH_QUEUE_FAILED: Final[str] = "workspace.push_queue.failed"
+WORKSPACE_PUSH_QUEUE_WORKER_FAILED: Final[str] = "workspace.push_queue.worker_failed"

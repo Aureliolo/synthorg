@@ -398,6 +398,21 @@ class ProjectStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class GitBackendType(StrEnum):
+    """Discriminator selecting how a project's git repository is stored.
+
+    ``EMBEDDED`` is the safe default: the product self-hosts a bare repo
+    on the persistent volume, with no external dependency.  ``LOCAL_PATH``
+    targets a caller-supplied repository on disk.  ``EXTERNAL_REMOTE``
+    delegates to a GitHub/GitLab/Gitea/Forgejo remote resolved via the
+    connection catalog.
+    """
+
+    EMBEDDED = "embedded"
+    EXTERNAL_REMOTE = "external_remote"
+    LOCAL_PATH = "local_path"
+
+
 class ToolAccessLevel(StrEnum):
     """Access level for tool permissions.
 

@@ -31,6 +31,58 @@ class TestGitHubAuthenticator:
 
 
 @pytest.mark.unit
+class TestGitLabAuthenticator:
+    """Tests for GitLab connection validation."""
+
+    def test_valid_credentials_accepted(self) -> None:
+        auth = get_authenticator(ConnectionType.GITLAB)
+        auth.validate_credentials({"token": "glpat-abc123"})
+
+    def test_missing_token_rejected(self) -> None:
+        auth = get_authenticator(ConnectionType.GITLAB)
+        with pytest.raises(InvalidConnectionAuthError, match="token"):
+            auth.validate_credentials({})
+
+    def test_empty_token_rejected(self) -> None:
+        auth = get_authenticator(ConnectionType.GITLAB)
+        with pytest.raises(InvalidConnectionAuthError, match="token"):
+            auth.validate_credentials({"token": "  "})
+
+    def test_required_fields(self) -> None:
+        auth = get_authenticator(ConnectionType.GITLAB)
+        assert auth.required_fields() == ("token",)
+
+
+@pytest.mark.unit
+class TestGiteaForgejoAuthenticators:
+    """Gitea/Forgejo share base code but report distinct identities."""
+
+    @pytest.mark.parametrize(
+        "ct",
+        [ConnectionType.GITEA, ConnectionType.FORGEJO],
+    )
+    def test_valid_credentials_accepted(self, ct: ConnectionType) -> None:
+        auth = get_authenticator(ct)
+        auth.validate_credentials({"token": "tok-123"})
+
+    @pytest.mark.parametrize(
+        "ct",
+        [ConnectionType.GITEA, ConnectionType.FORGEJO],
+    )
+    def test_missing_token_rejected(self, ct: ConnectionType) -> None:
+        auth = get_authenticator(ct)
+        with pytest.raises(InvalidConnectionAuthError, match="token"):
+            auth.validate_credentials({})
+
+    def test_distinct_connection_type_identity(self) -> None:
+        gitea = get_authenticator(ConnectionType.GITEA)
+        forgejo = get_authenticator(ConnectionType.FORGEJO)
+        assert gitea.connection_type is ConnectionType.GITEA
+        assert forgejo.connection_type is ConnectionType.FORGEJO
+        assert type(gitea).__mro__[1] is type(forgejo).__mro__[1]
+
+
+@pytest.mark.unit
 class TestSlackAuthenticator:
     """Tests for Slack connection validation."""
 

@@ -42,3 +42,9 @@ ENFORCED DeadLetterConsumer #1966 -- constructed by workers.backend_services.bui
 ENFORCED SeenClaimsPruner #1966 -- constructed by workers.backend_services.build_distributed_backend_services; bounds the seen_claims dedup table
 ENFORCED WorkerHeartbeatSubscriber #1966 -- constructed by workers.backend_services.build_distributed_backend_services; surfaces worker liveness in the log pipeline
 ENFORCED build_work_pipeline #1960 -- called by workers.runtime_builder._build_runtime_work_pipeline behind the provider-present switch; composes the work spine (intake -> projects -> solo/team -> coordination metrics)
+ENFORCED ProjectWorkspaceService #1974 -- constructed in api/app.py _install_runtime_services; per-project persistent git-backed workspace provisioning
+ENFORCED build_git_backend #1974 -- called in api/app.py _install_runtime_services; builds the configured GitBackend strategy (embedded default)
+ENFORCED EmbeddedGitBackend #1974 -- default GitBackend strategy built by engine/workspace/git_backend/factory.py::_build_embedded
+ENFORCED LocalPathGitBackend #1974 -- GitBackend strategy built by engine/workspace/git_backend/factory.py::_build_local_path for the LOCAL_PATH discriminator
+ENFORCED ExternalRemoteGitBackend #1974 -- GitBackend strategy built by engine/workspace/git_backend/factory.py::_build_external_remote for the EXTERNAL_REMOTE discriminator
+ENFORCED PushQueueCoordinator #1974 -- constructed per-project by engine/workspace/service.py::WorkspaceIsolationService._get_or_create_queue; serialises merge+push to the backend
