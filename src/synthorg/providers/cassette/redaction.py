@@ -59,13 +59,24 @@ _SUBSTITUTIONS: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
         REDACTION_PLACEHOLDER,
     ),
     (
+        # Value group stops at a quote / comma / brace / backslash but
+        # NOT at whitespace, so a multi-word secret (``"password":
+        # "my secret"``) is fully scrubbed rather than leaking its tail.
         re.compile(
             r"(?i)\b(api[_-]?key|secret|password|token|authorization)\b"
             r"(['\"]?\s*[:=]\s*['\"]?)"
-            r"((?:\\.|[^'\"\s,}\\])+)",
+            r"((?:\\.|[^'\",}\\])+)",
         ),
         rf"\g<1>\g<2>{REDACTION_PLACEHOLDER}",
     ),
+)
+
+# A dict key whose name itself denotes a secret: the value is replaced
+# wholesale (structured JSON puts the secret in the value, which the
+# string patterns above never see because only the value string is
+# inspected, not its key).
+_SECRET_FIELD_NAME: Final[re.Pattern[str]] = re.compile(
+    r"(?i)^(api[_-]?key|secret|password|token|authorization)$",
 )
 
 
@@ -81,7 +92,13 @@ def _redact_value(value: object) -> object:
     if isinstance(value, str):
         return _redact_str(value)
     if isinstance(value, dict):
-        return {key: _redact_value(item) for key, item in value.items()}
+        redacted: dict[object, object] = {}
+        for key, item in value.items():
+            if isinstance(key, str) and _SECRET_FIELD_NAME.fullmatch(key):
+                redacted[key] = REDACTION_PLACEHOLDER
+            else:
+                redacted[key] = _redact_value(item)
+        return redacted
     if isinstance(value, (list, tuple)):
         return [_redact_value(item) for item in value]
     return value
@@ -91,10 +108,12 @@ class PatternRedactor:
     """Default redactor: scrubs common secret shapes from the stored copy.
 
     Covers PEM private-key blocks, ``Bearer`` tokens,
-    ``sk-``-prefixed opaque API keys, AWS access-key ids, and labelled
+    ``sk-``-prefixed opaque API keys, AWS access-key ids, labelled
     ``api_key`` / ``secret`` / ``password`` / ``token`` /
-    ``authorization`` assignments. Non-secret prose and non-string
-    scalars pass through unchanged.
+    ``authorization`` assignments in strings, and dict fields whose
+    *key* is one of those secret names (structured JSON, where the
+    secret is the value of a secret-named key). Non-secret prose and
+    non-string scalars pass through unchanged.
     """
 
     def redact(self, payload: object) -> object:

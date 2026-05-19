@@ -1,6 +1,6 @@
 """E2E acceptance: a recorded agent run replays byte-identically.
 
-This is the #1984 acceptance proof under the live engine harness: a
+This is the cassette acceptance proof under the live engine harness: a
 multi-turn single-agent task is run once through a real driver in
 **record** mode (tool-use turn + completion turn), then the identical
 task is re-run in **replay** mode with a raising spy as the inner
@@ -138,7 +138,7 @@ async def _run_task(
 
 
 class TestRecordThenReplayByteIdentical:
-    """The headline #1984 acceptance test."""
+    """The headline cassette acceptance test."""
 
     async def test_recorded_run_replays_byte_identically(self, tmp_path: Path) -> None:
         cassette = tmp_path / "agent_run.json"
@@ -245,5 +245,13 @@ class TestRecordThenReplayByteIdentical:
                 ),
                 ws,
             )
+            # Each replay must independently succeed: two runs that
+            # both fail in the same way would also satisfy
+            # ``summaries[0] == summaries[1]`` (e.g. both ``None``),
+            # so assert real success before comparing.
+            assert result.is_success is True
+            assert result.termination_reason == TerminationReason.COMPLETED
+            assert (ws / "output.txt").read_text(encoding="utf-8") == ("Hello cassette")
+            assert result.completion_summary is not None
             summaries.append(result.completion_summary)
         assert summaries[0] == summaries[1]

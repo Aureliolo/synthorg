@@ -2,7 +2,7 @@
 
 A cassette is a single canonical JSON document: diffable, reviewable,
 byte-stable, written atomically (temp file + ``os.replace``). It is
-filesystem-only on purpose; #1984 is test infrastructure, so a DB
+filesystem-only on purpose: this is test infrastructure, so a DB
 table would drag in the persistence boundary, dual-backend
 conformance, and a yoyo revision for no benefit.
 
@@ -78,6 +78,10 @@ class CassetteRecordedError(BaseModel):
 
     error_class: NotBlankStr = Field(description="Recorded type(exc).__name__")
     message: str = Field(description="Scrubbed error description")
+    context: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Redacted ProviderError.context for faithful replay",
+    )
 
 
 class CassetteOutcome(BaseModel):
@@ -98,8 +102,14 @@ class CassetteOutcome(BaseModel):
     capabilities: ModelCapabilities | None = Field(default=None)
 
     @model_validator(mode="after")
-    def _exactly_one_payload(self) -> Self:
-        """Ensure precisely the payload for ``kind`` is set."""
+    def _payload_matches_kind(self) -> Self:
+        """Ensure the payload for ``kind`` is set and others are not.
+
+        A ``STREAM`` outcome may additionally carry an ``error``: a
+        terminal :class:`ProviderError` raised *after* some chunks were
+        already emitted, so replay can re-emit those chunks faithfully
+        and only then re-raise.
+        """
         by_kind: dict[CassetteOutcomeKind, object] = {
             CassetteOutcomeKind.RESPONSE: self.response,
             CassetteOutcomeKind.ERROR: self.error,
@@ -112,6 +122,12 @@ class CassetteOutcome(BaseModel):
                 msg = f"{self.kind.value} outcome must set its payload"
                 raise ValueError(msg)
             if kind is not self.kind and populated:
+                if (
+                    self.kind is CassetteOutcomeKind.STREAM
+                    and kind is CassetteOutcomeKind.ERROR
+                ):
+                    # Terminal stream error after partial output.
+                    continue
                 msg = f"{self.kind.value} outcome must not set {kind.value}"
                 raise ValueError(msg)
         return self
@@ -122,20 +138,46 @@ class CassetteOutcome(BaseModel):
         return cls(kind=CassetteOutcomeKind.RESPONSE, response=response)
 
     @classmethod
-    def from_error(cls, *, error_class: str, message: str) -> Self:
-        """Build an error outcome from a scrubbed description."""
+    def from_error(
+        cls,
+        *,
+        error_class: str,
+        message: str,
+        context: dict[str, Any] | None = None,
+    ) -> Self:
+        """Build an error outcome from a scrubbed description.
+
+        ``context`` is the (already scrubbed) ``ProviderError.context``;
+        it is persisted so a replayed exception carries the original
+        payload that callers may branch on.
+        """
         return cls(
             kind=CassetteOutcomeKind.ERROR,
             error=CassetteRecordedError(
                 error_class=error_class,
                 message=message,
+                context=context or {},
             ),
         )
 
     @classmethod
-    def from_stream(cls, chunks: tuple[StreamChunk, ...]) -> Self:
-        """Build a stream outcome from the recorded chunk sequence."""
-        return cls(kind=CassetteOutcomeKind.STREAM, stream_chunks=chunks)
+    def from_stream(
+        cls,
+        chunks: tuple[StreamChunk, ...],
+        *,
+        error: CassetteRecordedError | None = None,
+    ) -> Self:
+        """Build a stream outcome from the recorded chunk sequence.
+
+        ``error`` records a terminal :class:`ProviderError` raised after
+        the recorded chunks were emitted, so replay re-emits the chunks
+        and only then re-raises.
+        """
+        return cls(
+            kind=CassetteOutcomeKind.STREAM,
+            stream_chunks=chunks,
+            error=error,
+        )
 
     @classmethod
     def from_capabilities(cls, capabilities: ModelCapabilities) -> Self:
@@ -205,6 +247,9 @@ class CassetteSession:
         )
         self._next_lane = 0
         self._recorded: list[CassetteInteraction] = []
+        # Monotonic per-(hash, lane) record cursor so the FIFO seq is
+        # O(1) per interaction instead of an O(N) rescan of the log.
+        self._seq_counter: dict[tuple[str, int], int] = {}
         self._replay: dict[tuple[str, int], list[CassetteInteraction]] = {}
         self._cursor: dict[tuple[str, int], int] = {}
         # Serialises the offloaded per-interaction writes. Created
@@ -254,18 +299,22 @@ class CassetteSession:
         """Append one recorded interaction (record mode).
 
         The request copy is redacted here; the outcome is stored
-        verbatim because it is the byte-identical replay artefact.
+        verbatim because it is the byte-identical replay artefact --
+        except a recorded ``ProviderError.context``, which is the only
+        outcome field that can carry a secret and is scrubbed with the
+        same redactor as the request copy.
         """
         lane = self.lane_for_current_task()
-        seq = sum(
-            1
-            for i in self._recorded
-            if i.request_hash == request_hash and i.lane == lane
-        )
+        seq_key = (request_hash, lane)
+        # Synchronous get-then-set (no await between) -> race-free even
+        # under TaskGroup fan-out, same guarantee as lane assignment.
+        seq = self._seq_counter.get(seq_key, 0)
+        self._seq_counter[seq_key] = seq + 1
         redacted = self._redactor.redact(request_repr)
         repr_dict: dict[str, Any] = (
             redacted if isinstance(redacted, dict) else {"value": redacted}
         )
+        outcome = self._redact_outcome_error(outcome)
         self._recorded.append(
             CassetteInteraction(
                 method=method,
@@ -283,17 +332,20 @@ class CassetteSession:
         # os.replace (Windows raises WinError 5 on a concurrent
         # rename onto the same target); every write is a full-document
         # snapshot of the monotonically growing log, so the last
-        # writer's file is complete. The blocking write is offloaded
-        # so it never stalls the event loop. The lazy check-then-set
-        # is synchronous (no await between) and therefore race-free.
+        # writer's file is complete. The lazy check-then-set is
+        # synchronous (no await between) and therefore race-free.
         lock = self._persist_lock
         if lock is None:
             lock = asyncio.Lock()
             self._persist_lock = lock
         async with lock:
-            payload = self._serialise()
-            if payload is not None:
-                await asyncio.to_thread(self._atomic_write, payload)
+            # Snapshot the (cheap) growing log on the loop while it
+            # cannot race a concurrent append, then offload the
+            # expensive serialise (model_dump + json.dumps) AND the
+            # blocking write to a worker thread so neither stalls the
+            # event loop as the cassette grows.
+            snapshot = tuple(self._recorded)
+            await asyncio.to_thread(self._persist_snapshot, snapshot)
 
     def take(self, *, request_hash: str) -> CassetteOutcome:
         """Return the next recorded outcome for this request (replay).
@@ -340,18 +392,40 @@ class CassetteSession:
         self._cursor[key] = idx + 1
         return bucket[idx].outcome
 
-    def _serialise(self) -> str | None:
-        """Snapshot the cassette as canonical JSON (record mode only).
+    def _redact_outcome_error(self, outcome: CassetteOutcome) -> CassetteOutcome:
+        """Scrub a recorded error's context with the request redactor.
 
-        Synchronous and cheap; called on the event loop so the
-        ``self._recorded`` snapshot cannot race a concurrent append
-        from another task. Returns ``None`` when not recording.
+        The outcome is otherwise the byte-identical replay artefact and
+        is stored verbatim; ``ProviderError.context`` is the single
+        outcome field that can carry a secret (e.g. a debug header
+        bag), so it is redacted exactly like the request copy.
+        """
+        error = outcome.error
+        if error is None or not error.context:
+            return outcome
+        redacted = self._redactor.redact(dict(error.context))
+        ctx: dict[str, Any] = (
+            redacted if isinstance(redacted, dict) else {"value": redacted}
+        )
+        return outcome.model_copy(
+            update={"error": error.model_copy(update={"context": ctx})},
+        )
+
+    def _serialise(
+        self,
+        interactions: tuple[CassetteInteraction, ...],
+    ) -> str | None:
+        """Serialise an interaction snapshot as canonical JSON.
+
+        Returns ``None`` when not recording. Offloaded to a worker
+        thread by :meth:`record_interaction`; the *snapshot* is taken
+        on the loop so it cannot race a concurrent append.
         """
         if self._mode is not CassetteMode.RECORD:
             return None
         document = CassetteDocument(
             cassette_format_version=CASSETTE_FORMAT_VERSION,
-            interactions=tuple(self._recorded),
+            interactions=interactions,
         )
         return json.dumps(
             document.model_dump(mode="json"),
@@ -359,11 +433,22 @@ class CassetteSession:
             indent=2,
         )
 
-    def _persist(self) -> None:
-        """Atomically write the current cassette (record mode only)."""
-        payload = self._serialise()
+    def _persist_snapshot(
+        self,
+        interactions: tuple[CassetteInteraction, ...],
+    ) -> None:
+        """Serialise + atomically write one snapshot (record mode only).
+
+        Runs in a worker thread so the serialise cost never stalls the
+        event loop.
+        """
+        payload = self._serialise(interactions)
         if payload is not None:
             self._atomic_write(payload)
+
+    def _persist(self) -> None:
+        """Atomically write the current cassette (record mode only)."""
+        self._persist_snapshot(tuple(self._recorded))
 
     def flush(self) -> None:
         """Force-persist and log (record mode only); no-op in replay.

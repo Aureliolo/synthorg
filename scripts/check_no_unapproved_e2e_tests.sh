@@ -61,14 +61,26 @@ FLAT=$(printf '%s' "$COMMAND" | tr '\n\r' '  ')
 # wrapper. The first matching segment is the run we analyse.
 SEGMENTS=$(printf '%s' "$FLAT" | sed -E 's/&&|\|\||;|\|/\n/g')
 PSEG=""
+PSEG_ALLOW=0
 while IFS= read -r seg; do
     seg="${seg#"${seg%%[![:space:]]*}"}"
+    # The approval token must be a leading env assignment on THIS
+    # segment, not anywhere in the whole command: a token in an
+    # unrelated segment must never unblock a blocked pytest run.
+    env_prefix=$(printf '%s' "$seg" \
+        | sed -E 's/^(([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*)?.*/\1/')
+    seg_allow=0
+    if printf '%s' "$env_prefix" \
+        | grep -qE '(^|[[:space:]])ALLOW_E2E_TESTS=1([[:space:]]|$)'; then
+        seg_allow=1
+    fi
     norm=$(printf '%s' "$seg" \
         | sed -E 's/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)+//')
     if printf '%s' "$norm" | grep -qE \
         '^(time[[:space:]]+)?((uv[[:space:]]+run|uvx|poetry[[:space:]]+run)[[:space:]]+)?(python[0-9.]*[[:space:]]+-m[[:space:]]+pytest|pytest)([[:space:]]|$)'
     then
         PSEG="$norm"
+        PSEG_ALLOW=$seg_allow
         break
     fi
 done <<EOF
@@ -83,8 +95,9 @@ fi
 # Explicit, per-invocation user approval. This is the ONLY sanctioned
 # way to run the e2e/integration/whole-tree suite. The model must not
 # add this token on its own initiative -- it represents the user
-# having said "yes, run it".
-if echo "$FLAT" | grep -qE '(^|[[:space:]])ALLOW_E2E_TESTS=1([[:space:]]|$)'; then
+# having said "yes, run it". Bound to the detected pytest segment so a
+# token in an unrelated segment cannot unblock this run.
+if [[ "$PSEG_ALLOW" -eq 1 ]]; then
     exit 0
 fi
 

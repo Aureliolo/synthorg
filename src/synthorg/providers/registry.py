@@ -163,6 +163,25 @@ class ProviderRegistry:
             DriverFactoryNotFoundError: If a provider's ``driver``
                 does not match any known factory.
         """
+        overrides = factory_overrides or {}
+
+        if cassette is not None and cassette.is_active:
+            from .cassette import CassetteMode  # noqa: PLC0415
+
+            if cassette.mode is CassetteMode.REPLAY:
+                # Pure replay builds no inner driver, so no concrete
+                # driver factory is ever called. Skip importing the
+                # driver SDKs entirely: ``litellm`` is an optional
+                # dependency a replay-only environment need not have,
+                # and importing it here would break the pure-replay
+                # contract for no benefit.
+                return cls._build_cassette_registry(
+                    providers,
+                    {},
+                    overrides,
+                    cassette,
+                )
+
         from .drivers.litellm_driver import (  # noqa: PLC0415
             LiteLLMDriver,
         )
@@ -172,7 +191,6 @@ class ProviderRegistry:
             "litellm": LiteLLMDriver,
             "scripted": ScriptedDriver,
         }
-        overrides = factory_overrides or {}
 
         if cassette is not None and cassette.is_active:
             return cls._build_cassette_registry(
@@ -264,12 +282,16 @@ def _build_driver(
 
     try:
         driver = factory(name, config)  # type: ignore[operator]
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         msg = f"Failed to instantiate driver {driver_type!r} for provider {name!r}"
-        logger.exception(
+        logger.error(
             PROVIDER_DRIVER_FACTORY_MISSING,
             provider=name,
             driver=driver_type,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise DriverFactoryNotFoundError(
             msg,

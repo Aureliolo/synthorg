@@ -93,19 +93,30 @@ _PROVIDER_ERROR_BY_NAME: dict[str, type[ProviderError]] = {
 }
 
 
-def provider_error_for(error_class: str, message: str) -> ProviderError:
+def provider_error_for(
+    error_class: str,
+    message: str,
+    *,
+    context: dict[str, object] | None = None,
+) -> ProviderError:
     """Reconstruct a provider error to re-raise on replay.
 
     Args:
         error_class: Recorded ``type(exc).__name__``.
         message: Recorded, already-scrubbed error description.
+        context: Recorded (already-scrubbed) ``ProviderError.context``,
+            rehydrated so callers that branch on it replay identically.
 
     Returns:
         An instance of the matching :class:`ProviderError` subclass, or
         a generic :class:`ProviderError` when the class is unknown.
     """
     cls = _PROVIDER_ERROR_BY_NAME.get(error_class, ProviderError)
-    return cls(message, context={"cassette_replayed_error_class": error_class})
+    merged: dict[str, object] = {
+        **(context or {}),
+        "cassette_replayed_error_class": error_class,
+    }
+    return cls(message, context=merged)
 
 
 __all__ = [

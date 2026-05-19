@@ -19,6 +19,8 @@ calls in replay" structurally true rather than best-effort.
 
 from collections.abc import (  # noqa: TC003 -- runtime override signatures
     AsyncIterator,
+    Awaitable,
+    Callable,
     Mapping,
 )
 from typing import Any
@@ -44,7 +46,12 @@ from synthorg.providers.models import (  # noqa: TC001 -- override signatures
 from .errors import CassetteFormatError, CassetteInternalError, provider_error_for
 from .keying import CassetteMethod, request_hash
 from .mode import CassetteMode
-from .store import CassetteOutcome, CassetteOutcomeKind, CassetteSession
+from .store import (
+    CassetteOutcome,
+    CassetteOutcomeKind,
+    CassetteRecordedError,
+    CassetteSession,
+)
 
 logger = get_logger(__name__)
 
@@ -173,6 +180,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
                 outcome=CassetteOutcome.from_error(
                     error_class=type(exc).__name__,
                     message=safe_error_description(exc),
+                    context=dict(exc.context),
                 ),
             )
             raise
@@ -196,6 +204,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             raise provider_error_for(
                 outcome.error.error_class,
                 outcome.error.message,
+                context=dict(outcome.error.context),
             )
         if outcome.kind is CassetteOutcomeKind.RESPONSE and (
             outcome.response is not None
@@ -216,11 +225,14 @@ class CassetteCompletionProvider(BaseCompletionProvider):
     ) -> AsyncIterator[StreamChunk]:
         """Record or replay a streaming completion.
 
-        Recording fully consumes the inner stream to capture every
-        chunk, then re-emits the recorded chunks so the caller still
-        receives a stream. Replay re-emits the recorded chunks with
-        identical content and order (inter-chunk timing is not
-        preserved and is irrelevant to replay determinism).
+        Recording forwards each chunk to the caller **as it arrives**
+        while accumulating it, so streaming stays incremental rather
+        than fully buffered. A terminal :class:`ProviderError` raised
+        mid-stream is recorded *with the chunks already emitted* so
+        replay re-emits those chunks and only then re-raises. Replay
+        re-emits the recorded chunks with identical content and order
+        (inter-chunk timing is not preserved and is irrelevant to
+        replay determinism), then re-raises any recorded terminal error.
         """
         self._validate_messages(messages)
         self._validate_model(model)
@@ -236,14 +248,14 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         )
         if self._session.mode is CassetteMode.REPLAY:
             outcome = self._session.take(request_hash=digest)
-            chunks = self._replay_stream_chunks(outcome)
+            chunks, terminal_error = self._replay_stream_outcome(outcome)
             logger.debug(
                 PROVIDER_CASSETTE_REPLAYED,
                 provider=self._provider_name,
                 model=model,
                 method=CassetteMethod.STREAM.value,
             )
-            return _aiter(chunks)
+            return _replay_aiter(chunks, terminal_error)
 
         request_repr = self._request_repr(
             method=CassetteMethod.STREAM,
@@ -252,14 +264,46 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             tools=tls,
             config=config,
         )
-        try:
-            inner_stream = await self._require_inner().stream(
+
+        async def _open_inner_stream() -> AsyncIterator[StreamChunk]:
+            return await self._require_inner().stream(
                 messages,
                 model,
                 tools=tools,
                 config=config,
             )
-            recorded: list[StreamChunk] = [c async for c in inner_stream]
+
+        return self._record_stream(
+            open_stream=_open_inner_stream,
+            model=model,
+            digest=digest,
+            request_repr=request_repr,
+        )
+
+    async def _record_stream(
+        self,
+        *,
+        open_stream: Callable[[], Awaitable[AsyncIterator[StreamChunk]]],
+        model: str,
+        digest: str,
+        request_repr: dict[str, Any],
+    ) -> AsyncIterator[StreamChunk]:
+        """Forward inner chunks incrementally while recording them.
+
+        ``open_stream`` lazily opens the inner stream so a
+        :class:`ProviderError` raised *at open time* (before any chunk)
+        is recorded too. Each chunk is yielded to the caller the moment
+        it arrives and appended to the recording. On normal completion
+        the chunk sequence is persisted; on a terminal
+        :class:`ProviderError` the chunks emitted so far are persisted
+        *with* the error so replay is faithful, then it is re-raised.
+        """
+        recorded: list[StreamChunk] = []
+        try:
+            inner_stream = await open_stream()
+            async for chunk in inner_stream:
+                recorded.append(chunk)
+                yield chunk
         except MemoryError, RecursionError:
             raise
         except ProviderError as exc:
@@ -267,9 +311,13 @@ class CassetteCompletionProvider(BaseCompletionProvider):
                 method=CassetteMethod.STREAM,
                 request_hash=digest,
                 request_repr=request_repr,
-                outcome=CassetteOutcome.from_error(
-                    error_class=type(exc).__name__,
-                    message=safe_error_description(exc),
+                outcome=CassetteOutcome.from_stream(
+                    tuple(recorded),
+                    error=CassetteRecordedError(
+                        error_class=type(exc).__name__,
+                        message=safe_error_description(exc),
+                        context=dict(exc.context),
+                    ),
                 ),
             )
             raise
@@ -285,22 +333,34 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             model=model,
             method=CassetteMethod.STREAM.value,
         )
-        return _aiter(recorded)
 
-    def _replay_stream_chunks(
+    def _replay_stream_outcome(
         self,
         outcome: CassetteOutcome,
-    ) -> list[StreamChunk]:
-        """Return recorded chunks or re-raise the recorded error."""
+    ) -> tuple[list[StreamChunk], ProviderError | None]:
+        """Return recorded chunks plus any recorded terminal error.
+
+        The error (when present) is reconstructed but not raised here:
+        the replay iterator re-emits every recorded chunk first, then
+        raises it, mirroring the original partial-then-failed stream.
+        """
+        if outcome.kind is CassetteOutcomeKind.STREAM and (
+            outcome.stream_chunks is not None
+        ):
+            terminal_error: ProviderError | None = None
+            if outcome.error is not None:
+                terminal_error = provider_error_for(
+                    outcome.error.error_class,
+                    outcome.error.message,
+                    context=dict(outcome.error.context),
+                )
+            return list(outcome.stream_chunks), terminal_error
         if outcome.kind is CassetteOutcomeKind.ERROR and outcome.error is not None:
             raise provider_error_for(
                 outcome.error.error_class,
                 outcome.error.message,
+                context=dict(outcome.error.context),
             )
-        if outcome.kind is CassetteOutcomeKind.STREAM and (
-            outcome.stream_chunks is not None
-        ):
-            return list(outcome.stream_chunks)
         msg = f"cassette outcome kind {outcome.kind.value!r} is not a stream"
         raise CassetteFormatError(msg, context={"kind": outcome.kind.value})
 
@@ -322,6 +382,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
                 raise provider_error_for(
                     outcome.error.error_class,
                     outcome.error.message,
+                    context=dict(outcome.error.context),
                 )
             if outcome.kind is CassetteOutcomeKind.CAPABILITIES and (
                 outcome.capabilities is not None
@@ -348,6 +409,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
                 outcome=CassetteOutcome.from_error(
                     error_class=type(exc).__name__,
                     message=safe_error_description(exc),
+                    context=dict(exc.context),
                 ),
             )
             raise
@@ -407,10 +469,20 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         raise CassetteInternalError(CassetteInternalError.default_message)
 
 
-async def _aiter(chunks: list[StreamChunk]) -> AsyncIterator[StreamChunk]:
-    """Re-emit a recorded chunk list as an async iterator."""
+async def _replay_aiter(
+    chunks: list[StreamChunk],
+    terminal_error: ProviderError | None,
+) -> AsyncIterator[StreamChunk]:
+    """Re-emit recorded chunks, then re-raise any terminal error.
+
+    Mirrors the original stream: every recorded chunk is delivered
+    first; only after the last one does a recorded mid-stream
+    :class:`ProviderError` re-raise.
+    """
     for chunk in chunks:
         yield chunk
+    if terminal_error is not None:
+        raise terminal_error
 
 
 __all__ = ["CassetteCompletionProvider"]
