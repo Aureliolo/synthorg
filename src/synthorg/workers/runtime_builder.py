@@ -31,7 +31,8 @@ from synthorg.budget.coordination_collector import CoordinationMetricsCollector
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.factory import build_coordinator
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
-from synthorg.engine.routing.scorer import RoutingScorerConfig
+from synthorg.engine.pipeline.factory import build_work_pipeline
+from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
 from synthorg.engine.workspace.git_worktree import PlannerWorktreeStrategy
 from synthorg.observability import get_logger, safe_error_description
@@ -56,6 +57,7 @@ if TYPE_CHECKING:
 
     from synthorg.api.state import AppState
     from synthorg.engine.coordination.service import MultiAgentCoordinator
+    from synthorg.engine.pipeline.protocol import WorkPipeline
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -68,6 +70,8 @@ _GIT_TIMEOUT_NS: str = "tools"
 _GIT_TIMEOUT_KEY: str = "git_command_timeout_seconds"
 _DECOMPOSITION_NS: str = "coordination"
 _DECOMPOSITION_KEY: str = "decomposition_model"
+_ROUTING_POLICY_KEY: str = "routing_policy"
+_LEAF_THRESHOLD_KEY: str = "leaf_subtask_threshold"
 _BASELINE_WINDOW_KEY: str = "baseline_window_size"
 
 
@@ -114,22 +118,27 @@ def _construct_coordination_collector(
 
 
 class RuntimeServices(NamedTuple):
-    """The pair of runtime services built behind the provider switch.
+    """The runtime services built behind the provider switch.
 
     INVARIANT (enforced by construction in :func:`build_runtime_services`,
     not by the type): when ``coordinator`` is not ``None`` it and
     ``worker_execution_service`` share the *same* boot
     :class:`AgentEngine` instance, so worker tasks and coordinator
     sub-agents observe one interrupt store, event-stream hub, and clock
-    seam. A divergent engine would split agent state silently;
+    seam. The ``work_pipeline`` (when not ``None``) holds those very
+    ``worker_execution_service`` and ``coordinator`` instances plus a
+    single shared :class:`AgentTaskScorer`, so solo and team routing
+    never diverge. A divergent engine would split agent state silently;
     ``tests/unit/workers/test_runtime_builder.py`` asserts the identity.
-    ``coordinator`` is ``None`` only in the empty-company (no-provider)
-    case, where ``worker_execution_service`` is a
-    :class:`NoProviderExecutionService`.
+    ``coordinator`` and ``work_pipeline`` are ``None`` only in the
+    empty-company (no-provider) case, where ``worker_execution_service``
+    is a :class:`NoProviderExecutionService`; ``work_pipeline`` is also
+    ``None`` when no intake runtime is wired (no work entry path).
     """
 
     worker_execution_service: WorkerExecutionService
     coordinator: MultiAgentCoordinator | None
+    work_pipeline: WorkPipeline | None
 
 
 def _select_active_provider(
@@ -336,15 +345,19 @@ async def _build_runtime_coordinator(
     engine: AgentEngine,
     provider: CompletionProvider,
     coordination_metrics_collector: CoordinationMetricsCollector | None,
-) -> MultiAgentCoordinator:
-    """Build the multi-agent coordinator sharing the boot engine.
+) -> tuple[MultiAgentCoordinator, AgentTaskScorer, str]:
+    """Build the coordinator and the shared scorer + decomposition model.
 
     Resolves the operator-tuned decomposition model and routing-scorer
     weights, wires real git-worktree workspace isolation, then delegates
     to the unit-tested :func:`build_coordinator` factory. The three
     resolution steps are independent, so they run concurrently under a
     ``TaskGroup`` to keep boot latency down (structured concurrency: any
-    failure cancels the siblings and propagates).
+    failure cancels the siblings and propagates). The ``AgentTaskScorer``
+    is constructed here and injected into the coordinator so the work
+    pipeline's solo-path selection can share the very same instance
+    (one routing surface, no divergence). The resolved decomposition
+    model is returned so the ``llm-judged`` routing policy reuses it.
     """
     async with asyncio.TaskGroup() as tg:
         model_task = tg.create_task(
@@ -361,6 +374,10 @@ async def _build_runtime_coordinator(
     performance_tracker = (
         app_state.performance_tracker if app_state.has_performance_tracker else None
     )
+    if routing_scorer_config is None:
+        scorer = AgentTaskScorer(min_score=app_state.config.task_assignment.min_score)
+    else:
+        scorer = AgentTaskScorer(config=routing_scorer_config)
     coordinator = build_coordinator(
         config=app_state.config.coordination,
         engine=engine,
@@ -373,6 +390,7 @@ async def _build_runtime_coordinator(
         performance_tracker=performance_tracker,
         routing_scorer_config=routing_scorer_config,
         coordination_metrics_collector=coordination_metrics_collector,
+        scorer=scorer,
     )
     logger.info(
         API_APP_STARTUP,
@@ -381,7 +399,69 @@ async def _build_runtime_coordinator(
         decomposition_model=decomposition_model,
         topology=app_state.config.coordination.topology.value,
     )
-    return coordinator
+    return coordinator, scorer, decomposition_model
+
+
+async def _build_runtime_work_pipeline(  # noqa: PLR0913 -- keyword-only DI
+    app_state: AppState,
+    *,
+    scorer: AgentTaskScorer,
+    coordinator: MultiAgentCoordinator,
+    worker_execution_service: WorkerExecutionService,
+    provider: CompletionProvider,
+    decomposition_model: str,
+) -> WorkPipeline | None:
+    """Build the work pipeline spine, or ``None`` when no intake is wired.
+
+    The spine consumes the boot ``IntakeEngine`` wired by the
+    client-simulation runtime (the only work-entry path online today);
+    without it there is no intake stage, so the pipeline stays
+    unconfigured and ``/`` work routing honestly reports unavailability
+    rather than silently dropping work. The solo-vs-team routing policy
+    discriminator and leaf threshold are resolved at boot so the
+    setting-to-startup trace holds.
+    """
+    if not app_state.has_simulation_runtime:
+        logger.info(
+            API_APP_STARTUP,
+            service="work_pipeline",
+            mode="disabled",
+            note="no intake runtime wired; work spine unavailable",
+        )
+        return None
+    intake_engine = app_state.client_simulation_state.intake_engine
+    if intake_engine is None:
+        logger.info(
+            API_APP_STARTUP,
+            service="work_pipeline",
+            mode="disabled",
+            note="simulation runtime present but intake engine unset",
+        )
+        return None
+    routing_policy = await app_state.config_resolver.get_str(
+        _DECOMPOSITION_NS,
+        _ROUTING_POLICY_KEY,
+    )
+    leaf_threshold = await app_state.config_resolver.get_int(
+        _DECOMPOSITION_NS,
+        _LEAF_THRESHOLD_KEY,
+    )
+    cost_tracker = app_state.cost_tracker if app_state.has_cost_tracker else None
+    return build_work_pipeline(
+        intake_engine=intake_engine,
+        task_engine=app_state.task_engine,
+        project_repository=app_state.persistence.projects,
+        scorer=scorer,
+        worker_execution_service=worker_execution_service,
+        coordinator=coordinator,
+        agent_registry=app_state.agent_registry,
+        routing_discriminator=routing_policy,
+        leaf_threshold=leaf_threshold,
+        provider=provider,
+        decomposition_model=decomposition_model,
+        cost_tracker=cost_tracker,
+        clock=app_state.clock,
+    )
 
 
 async def build_runtime_services(
@@ -400,16 +480,19 @@ async def build_runtime_services(
             re-init path rebuilds against the same directory.
 
     Returns:
-        ``RuntimeServices`` with an ``AgentEngineExecutionService`` and a
-        live ``MultiAgentCoordinator`` (both sharing one
-        ``AgentEngine``) when a provider is registered; otherwise a
-        ``NoProviderExecutionService`` and a ``None`` coordinator.
+        ``RuntimeServices`` with an ``AgentEngineExecutionService``, a
+        live ``MultiAgentCoordinator``, and the ``WorkPipeline`` spine
+        (all sharing one ``AgentEngine`` and one ``AgentTaskScorer``)
+        when a provider is registered and an intake runtime is wired;
+        otherwise a ``NoProviderExecutionService`` and ``None`` for the
+        coordinator and the work pipeline.
     """
     selected = _select_active_provider(app_state)
     if selected is None:
         return RuntimeServices(
             worker_execution_service=NoProviderExecutionService(),
             coordinator=None,
+            work_pipeline=None,
         )
     registry, names = selected
     provider = registry.get(names[0])
@@ -430,7 +513,7 @@ async def build_runtime_services(
         registry=ActionTypeRegistry(),
         config=app_state.config.config.autonomy,
     )
-    coordinator = await _build_runtime_coordinator(
+    coordinator, scorer, decomposition_model = await _build_runtime_coordinator(
         app_state,
         engine,
         provider,
@@ -451,7 +534,16 @@ async def build_runtime_services(
         sandbox_backend=sandbox_backends.get("docker"),
         lifecycle_strategy_kind=(app_state.config.sandboxing.docker.lifecycle.strategy),
     )
+    work_pipeline = await _build_runtime_work_pipeline(
+        app_state,
+        scorer=scorer,
+        coordinator=coordinator,
+        worker_execution_service=worker_execution_service,
+        provider=provider,
+        decomposition_model=decomposition_model,
+    )
     return RuntimeServices(
         worker_execution_service=worker_execution_service,
         coordinator=coordinator,
+        work_pipeline=work_pipeline,
     )

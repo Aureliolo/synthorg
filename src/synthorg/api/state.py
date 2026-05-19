@@ -63,6 +63,7 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
+from synthorg.engine.pipeline.protocol import WorkPipeline  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService  # noqa: TC001
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noqa: TC001
@@ -305,6 +306,7 @@ class AppState(AppStateServicesMixin):
         "_webhook_event_bridge",
         "_webhook_replay_protector",
         "_webhook_service",
+        "_work_pipeline",
         "_worker_execution_service",
         "_workers_bridge_config",
         "_workers_bridge_config_lock",
@@ -332,6 +334,7 @@ class AppState(AppStateServicesMixin):
         task_engine: TaskEngine | None = None,
         approval_gate: ApprovalGate | None = None,
         coordinator: MultiAgentCoordinator | None = None,
+        work_pipeline: WorkPipeline | None = None,
         agent_registry: AgentRegistryService | None = None,
         performance_tracker: PerformanceTracker | None = None,
         meeting_orchestrator: MeetingOrchestrator | None = None,
@@ -388,6 +391,7 @@ class AppState(AppStateServicesMixin):
         self._distributed_task_queue: JetStreamTaskQueue | None = None
         self._distributed_backend_services: DistributedBackendServices | None = None
         self._coordinator = coordinator
+        self._work_pipeline = work_pipeline
         self._agent_registry = agent_registry
         self._performance_tracker = performance_tracker
         self._trust_service = trust_service
@@ -1288,6 +1292,94 @@ class AppState(AppStateServicesMixin):
             logger.info(
                 API_APP_STARTUP,
                 service="coordinator",
+                transition=transition,
+            )
+
+    @property
+    def work_pipeline(self) -> WorkPipeline:
+        """Return the work pipeline spine or raise 503."""
+        return self._require_service(self._work_pipeline, "work_pipeline")
+
+    @property
+    def has_work_pipeline(self) -> bool:
+        """Check whether the work pipeline spine is configured.
+
+        Unsynchronised by design, identical to :meth:`has_coordinator`:
+        a single reference read is atomic under CPython and
+        ``swap_work_pipeline`` only reassigns one already-set pipeline
+        for another, so a concurrent reader sees a consistent
+        old-or-new instance. The only ``None -> set`` flip happens once
+        at boot before HTTP traffic.
+        """
+        return self._work_pipeline is not None
+
+    def set_work_pipeline(self, work_pipeline: WorkPipeline) -> None:
+        """Attach the work pipeline spine (once-only, boot only).
+
+        Once-only: a second set raises, matching the ``coordinator``
+        seam. The boot runtime-services hook uses
+        :meth:`set_work_pipeline_if_absent` so an explicitly injected
+        pipeline wins; hot-reload after setup uses
+        :meth:`swap_work_pipeline`.
+        """
+        self._set_once("_work_pipeline", work_pipeline, "Work pipeline")
+
+    def set_work_pipeline_if_absent(
+        self,
+        work_pipeline: WorkPipeline,
+    ) -> bool:
+        """Attach the work pipeline only if none is configured (atomic).
+
+        The boot runtime-services hook calls this unconditionally
+        behind the provider-present switch so work routing comes online
+        once a provider and intake are configured. An explicitly
+        injected pipeline (constructor ``work_pipeline=``) is already
+        set and wins: this is a logged no-op then. The check-and-set is
+        atomic under ``_lazy_service_lock`` so the boot install cannot
+        race a concurrent ``swap_work_pipeline`` or property read.
+
+        Returns:
+            ``True`` if this call installed the pipeline, ``False`` if
+            one was already configured (injected) and kept.
+        """
+        with self._lazy_service_lock:
+            if self._work_pipeline is not None:
+                logger.info(
+                    API_APP_STARTUP,
+                    service="work_pipeline",
+                    transition="skipped_injected",
+                )
+                return False
+            self._work_pipeline = work_pipeline
+            logger.info(
+                API_APP_STARTUP,
+                service="work_pipeline",
+                transition="attached",
+            )
+            return True
+
+    def swap_work_pipeline(self, work_pipeline: WorkPipeline) -> None:
+        """Replace the work pipeline spine (hot-reload).
+
+        Distinct from :meth:`set_work_pipeline`, which is once-only:
+        this replaces an already-wired pipeline so a provider
+        configured against an empty-company start brings the work spine
+        online without a restart (``post_setup_reinit``). Holds
+        ``_lazy_service_lock`` so the write is synchronised against
+        concurrent property reads, mirroring :meth:`swap_coordinator`.
+        """
+        with self._lazy_service_lock:
+            previous = self._work_pipeline
+            if previous is work_pipeline:
+                transition = "noop"
+            elif previous is None:
+                transition = "attached"
+            else:
+                transition = "replaced"
+            self._work_pipeline = work_pipeline
+            logger.info(
+                API_APP_STARTUP,
+                service="work_pipeline",
                 transition=transition,
             )
 

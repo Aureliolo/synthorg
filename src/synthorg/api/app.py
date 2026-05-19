@@ -91,6 +91,7 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.clock import SystemClock
 from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
+from synthorg.engine.pipeline.protocol import WorkPipeline  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
@@ -253,6 +254,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     auth_service: AuthService | None = None,
     task_engine: TaskEngine | None = None,
     coordinator: MultiAgentCoordinator | None = None,
+    work_pipeline: WorkPipeline | None = None,
     agent_registry: AgentRegistryService | None = None,
     meeting_orchestrator: MeetingOrchestrator | None = None,
     meeting_scheduler: MeetingScheduler | None = None,
@@ -287,6 +289,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         auth_service: Pre-built auth service (for testing).
         task_engine: Centralized task state engine.
         coordinator: Multi-agent coordinator.
+        work_pipeline: Work pipeline spine (injected double wins over
+            the boot-autowired one).
         agent_registry: Agent registry service.
         meeting_orchestrator: Meeting orchestrator.
         meeting_scheduler: Meeting scheduler.
@@ -546,6 +550,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         auth_service=auth_service,
         task_engine=task_engine,
         coordinator=coordinator,
+        work_pipeline=work_pipeline,
         agent_registry=agent_registry,
         meeting_orchestrator=meeting_orchestrator,
         meeting_scheduler=meeting_scheduler,
@@ -1062,6 +1067,11 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # coordinator is kept and the built one is a logged no-op then.
         if services.coordinator is not None:
             app_state.set_coordinator_if_absent(services.coordinator)
+        # Same injection-over-autowire rule for the work pipeline spine:
+        # an injected ``create_app(work_pipeline=)`` is kept, the built
+        # one is a logged no-op then.
+        if services.work_pipeline is not None:
+            app_state.set_work_pipeline_if_absent(services.work_pipeline)
         _runtime_services_installed = True
 
     startup = [*startup, _install_runtime_services]

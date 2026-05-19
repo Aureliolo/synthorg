@@ -37,3 +37,4 @@ ENFORCED build_distributed_backend_services #1966 -- called in api/auto_wire._re
 ENFORCED DeadLetterConsumer #1966 -- constructed by workers.backend_services.build_distributed_backend_services; drains the dead subject and fails exhausted tasks (no-loss closure)
 ENFORCED SeenClaimsPruner #1966 -- constructed by workers.backend_services.build_distributed_backend_services; bounds the seen_claims dedup table
 ENFORCED WorkerHeartbeatSubscriber #1966 -- constructed by workers.backend_services.build_distributed_backend_services; surfaces worker liveness in the log pipeline
+ENFORCED build_work_pipeline #1960 -- called by workers.runtime_builder._build_runtime_work_pipeline behind the provider-present switch; composes the work spine (intake -> projects -> solo/team -> coordination metrics)

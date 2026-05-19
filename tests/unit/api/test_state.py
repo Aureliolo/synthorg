@@ -9,6 +9,7 @@ from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.training.service import TrainingService
@@ -208,6 +209,60 @@ class TestAppStateCoordinator:
         state = _make_state(coordinator=coordinator)
         state.swap_coordinator(coordinator)
         assert state.coordinator is coordinator
+
+
+@pytest.mark.unit
+class TestAppStateWorkPipeline:
+    """Tests for the work_pipeline seam (mirrors the coordinator seam)."""
+
+    def test_work_pipeline_raises_when_none(self) -> None:
+        state = _make_state(work_pipeline=None)
+        with pytest.raises(ServiceUnavailableError):
+            _ = state.work_pipeline
+
+    def test_work_pipeline_returns_when_set(self) -> None:
+        pipeline = mock_of[WorkPipeline]()
+        state = _make_state(work_pipeline=pipeline)
+        assert state.work_pipeline is pipeline
+
+    def test_has_work_pipeline_false_when_none(self) -> None:
+        state = _make_state(work_pipeline=None)
+        assert state.has_work_pipeline is False
+
+    def test_has_work_pipeline_true_when_set(self) -> None:
+        pipeline = mock_of[WorkPipeline]()
+        state = _make_state(work_pipeline=pipeline)
+        assert state.has_work_pipeline is True
+
+    def test_set_work_pipeline_is_once_only(self) -> None:
+        first = mock_of[WorkPipeline]()
+        second = mock_of[WorkPipeline]()
+        state = _make_state(work_pipeline=first)
+        with pytest.raises(RuntimeError, match="already configured"):
+            state.set_work_pipeline(second)
+
+    def test_set_work_pipeline_if_absent_installs_when_none(self) -> None:
+        pipeline = mock_of[WorkPipeline]()
+        state = _make_state(work_pipeline=None)
+        installed = state.set_work_pipeline_if_absent(pipeline)
+        assert installed is True
+        assert state.work_pipeline is pipeline
+
+    def test_set_work_pipeline_if_absent_keeps_injected(self) -> None:
+        injected = mock_of[WorkPipeline]()
+        autowired = mock_of[WorkPipeline]()
+        state = _make_state(work_pipeline=injected)
+        installed = state.set_work_pipeline_if_absent(autowired)
+        # Injection-over-autowire: the injected one wins, no raise.
+        assert installed is False
+        assert state.work_pipeline is injected
+
+    def test_swap_work_pipeline_replaces_existing(self) -> None:
+        first = mock_of[WorkPipeline]()
+        second = mock_of[WorkPipeline]()
+        state = _make_state(work_pipeline=first)
+        state.swap_work_pipeline(second)
+        assert state.work_pipeline is second
 
 
 @pytest.mark.unit
