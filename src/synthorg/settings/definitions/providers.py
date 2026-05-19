@@ -78,3 +78,42 @@ _r.register(
         max_value=65535,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="cassette_mode",
+        type=SettingType.ENUM,
+        default="off",
+        enum_values=("off", "record", "replay"),
+        description=(
+            "Deterministic recorded-LLM cassette mode. 'off' is inert;"
+            " 'record' wraps every provider, delegates to the real driver"
+            " and persists each response keyed by request; 'replay' serves"
+            " recorded responses with zero real LLM calls and never"
+            " constructs a real driver. Baked in at process startup."
+        ),
+        group="Cassette",
+        level=SettingLevel.ADVANCED,
+        read_only_post_init=True,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="cassette_path",
+        type=SettingType.STRING,
+        default=None,
+        description=(
+            "Filesystem path to the cassette document. Required whenever"
+            " providers.cassette_mode is not 'off'. Baked in at process"
+            " startup."
+        ),
+        group="Cassette",
+        level=SettingLevel.ADVANCED,
+        read_only_post_init=True,
+        restart_required=True,
+    )
+)

@@ -6,6 +6,20 @@ driver implementations, and the provider registry.
 
 from .base import BaseCompletionProvider
 from .capabilities import ModelCapabilities
+from .cassette import (
+    CASSETTE_FORMAT_VERSION,
+    CassetteCompletionProvider,
+    CassetteConfig,
+    CassetteError,
+    CassetteFormatError,
+    CassetteMode,
+    CassetteRedactor,
+    CassetteReplayExhaustedError,
+    CassetteReplayMissError,
+    CassetteSession,
+    NullRedactor,
+    PatternRedactor,
+)
 from .cost_recording import (
     CostRecordingContext,
     cost_recording_scope,
@@ -73,6 +87,7 @@ from .routing import (
 )
 
 __all__ = [
+    "CASSETTE_FORMAT_VERSION",
     "STRATEGY_MAP",
     "STRATEGY_NAME_CHEAPEST",
     "STRATEGY_NAME_COST_AWARE",
@@ -83,6 +98,15 @@ __all__ = [
     "ZERO_TOKEN_USAGE",
     "AuthenticationError",
     "BaseCompletionProvider",
+    "CassetteCompletionProvider",
+    "CassetteConfig",
+    "CassetteError",
+    "CassetteFormatError",
+    "CassetteMode",
+    "CassetteRedactor",
+    "CassetteReplayExhaustedError",
+    "CassetteReplayMissError",
+    "CassetteSession",
     "ChatMessage",
     "CompletionConfig",
     "CompletionProvider",
@@ -105,6 +129,8 @@ __all__ = [
     "ModelResolver",
     "ModelRouter",
     "NoAvailableModelError",
+    "NullRedactor",
+    "PatternRedactor",
     "ProviderConnectionError",
     "ProviderError",
     "ProviderInternalError",

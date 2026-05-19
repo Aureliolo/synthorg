@@ -8,8 +8,9 @@ provider's ``driver`` field to select the appropriate factory.
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
+    PROVIDER_CASSETTE_DRIVER_WRAPPED,
     PROVIDER_DRIVER_FACTORY_MISSING,
     PROVIDER_DRIVER_INSTANTIATED,
     PROVIDER_DRIVER_NOT_REGISTERED,
@@ -28,6 +29,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.config.schema import ProviderConfig
+
+    from .cassette import CassetteConfig, CassetteSession
 
 
 class ProviderRegistry:
@@ -54,16 +57,29 @@ class ProviderRegistry:
     def __init__(
         self,
         drivers: dict[str, BaseCompletionProvider],
+        *,
+        cassette_session: CassetteSession | None = None,
     ) -> None:
         """Initialize with a name -> driver mapping.
 
         Args:
             drivers: Mutable dict of provider name to driver instance.
                 The registry takes ownership and freezes a copy.
+            cassette_session: The shared cassette session when the
+                cassette seam is active, else ``None``. Exposed so an
+                app shutdown hook can emit the session-flushed event;
+                data durability does not depend on it (the session
+                persists after every recorded interaction).
         """
         self._drivers: MappingProxyType[str, BaseCompletionProvider] = MappingProxyType(
             dict(drivers)
         )
+        self._cassette_session = cassette_session
+
+    @property
+    def cassette_session(self) -> CassetteSession | None:
+        """The active cassette session, or ``None`` when inert."""
+        return self._cassette_session
 
     def get(self, name: str) -> BaseCompletionProvider:
         """Look up a driver by provider name.
@@ -116,6 +132,7 @@ class ProviderRegistry:
         providers: Mapping[str, ProviderConfig],
         *,
         factory_overrides: dict[str, object] | None = None,
+        cassette: CassetteConfig | None = None,
     ) -> Self:
         """Build a registry from a provider config dict.
 
@@ -123,10 +140,21 @@ class ProviderRegistry:
         factory.  The factory is called with
         ``(provider_name, config)`` to produce a driver instance.
 
+        When ``cassette`` is active every driver is wrapped in a
+        :class:`CassetteCompletionProvider` sharing one session -- the
+        single provider-layer chokepoint, so no consumer (engine,
+        coordinator, judge, runtime builder) can bypass record/replay.
+        In replay mode the inner driver is **not built at all**: no
+        factory is called, so a pure replay run constructs no real
+        provider.
+
         Args:
             providers: Provider config dict (key = provider name).
             factory_overrides: Optional driver-type -> factory
                 mapping for testing or native SDK swaps.
+            cassette: Cassette configuration; ``None`` or ``off``
+                leaves the registry holding the concrete drivers
+                unchanged.
 
         Returns:
             A new ``ProviderRegistry`` with all providers registered.
@@ -135,6 +163,25 @@ class ProviderRegistry:
             DriverFactoryNotFoundError: If a provider's ``driver``
                 does not match any known factory.
         """
+        overrides = factory_overrides or {}
+
+        if cassette is not None and cassette.is_active:
+            from .cassette import CassetteMode  # noqa: PLC0415
+
+            if cassette.mode is CassetteMode.REPLAY:
+                # Pure replay builds no inner driver, so no concrete
+                # driver factory is ever called. Skip importing the
+                # driver SDKs entirely: ``litellm`` is an optional
+                # dependency a replay-only environment need not have,
+                # and importing it here would break the pure-replay
+                # contract for no benefit.
+                return cls._build_cassette_registry(
+                    providers,
+                    {},
+                    overrides,
+                    cassette,
+                )
+
         from .drivers.litellm_driver import (  # noqa: PLC0415
             LiteLLMDriver,
         )
@@ -144,17 +191,18 @@ class ProviderRegistry:
             "litellm": LiteLLMDriver,
             "scripted": ScriptedDriver,
         }
-        overrides = factory_overrides or {}
-        drivers: dict[str, BaseCompletionProvider] = {}
 
-        for name, config in providers.items():
-            driver = _build_driver(
-                name,
-                config,
+        if cassette is not None and cassette.is_active:
+            return cls._build_cassette_registry(
+                providers,
                 defaults,
                 overrides,
+                cassette,
             )
-            drivers[name] = driver
+
+        drivers: dict[str, BaseCompletionProvider] = {}
+        for name, config in providers.items():
+            drivers[name] = _build_driver(name, config, defaults, overrides)
 
         logger.info(
             PROVIDER_REGISTRY_BUILT,
@@ -162,6 +210,59 @@ class ProviderRegistry:
             providers=sorted(drivers),
         )
         return cls(drivers)
+
+    @classmethod
+    def _build_cassette_registry(
+        cls,
+        providers: Mapping[str, ProviderConfig],
+        defaults: dict[str, type[BaseCompletionProvider]],
+        overrides: dict[str, object],
+        cassette: CassetteConfig,
+    ) -> Self:
+        """Wrap every driver in one shared cassette session.
+
+        Replay never builds an inner driver (``inner=None``); record
+        builds the real driver and delegates to it.
+        """
+        from .cassette import (  # noqa: PLC0415
+            CassetteCompletionProvider,
+            CassetteMode,
+            CassetteSession,
+            PatternRedactor,
+        )
+
+        if cassette.path is None:  # pragma: no cover - CassetteConfig validates
+            msg = "active cassette config must carry a path"
+            raise DriverFactoryNotFoundError(msg, context={"cassette": "path"})
+
+        session = CassetteSession(
+            mode=cassette.mode,
+            path=cassette.path,
+            redactor=PatternRedactor(),
+        )
+        is_replay = cassette.mode is CassetteMode.REPLAY
+        drivers: dict[str, BaseCompletionProvider] = {}
+        for name, config in providers.items():
+            inner = (
+                None if is_replay else _build_driver(name, config, defaults, overrides)
+            )
+            drivers[name] = CassetteCompletionProvider(
+                inner=inner,
+                session=session,
+                provider_name=name,
+            )
+            logger.info(
+                PROVIDER_CASSETTE_DRIVER_WRAPPED,
+                provider=name,
+                mode=cassette.mode.value,
+            )
+
+        logger.info(
+            PROVIDER_REGISTRY_BUILT,
+            provider_count=len(drivers),
+            providers=sorted(drivers),
+        )
+        return cls(drivers, cassette_session=session)
 
 
 def _build_driver(
@@ -181,16 +282,24 @@ def _build_driver(
 
     try:
         driver = factory(name, config)  # type: ignore[operator]
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         msg = f"Failed to instantiate driver {driver_type!r} for provider {name!r}"
-        logger.exception(
+        logger.error(
             PROVIDER_DRIVER_FACTORY_MISSING,
             provider=name,
             driver=driver_type,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         raise DriverFactoryNotFoundError(
             msg,
-            context={"provider": name, "driver": driver_type, "detail": str(exc)},
+            context={
+                "provider": name,
+                "driver": driver_type,
+                "detail": safe_error_description(exc),
+            },
         ) from exc
     if not isinstance(driver, BaseCompletionProvider):
         msg = (

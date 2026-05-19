@@ -171,11 +171,22 @@ Run these sequentially, fixing as we go:
    uv run mypy --num-workers=4 src/ tests/
    ```
 
-5. **Test:**
+5. **Test (unit suite ONLY):**
 
    ```bash
-   uv run python -m pytest tests/ -n 8
+   uv run python -m pytest tests/ -m unit
    ```
+
+   Run the **unit** suite only. NEVER run the whole tree (`pytest tests/`
+   with no marker), `-m e2e`, or `-m integration` here: that collects and
+   runs integration + e2e + benchmarks (Docker / real services, far
+   slower than the unit baseline) and is never part of the automated
+   pre-PR gate. If a change genuinely needs e2e/integration validation,
+   ask the user first, then run the approved command prefixed with
+   `ALLOW_E2E_TESTS=1` for that single invocation. Do not pass an
+   explicit `-n` (pyproject `addopts` already pins `-n=8 --dist=loadfile`).
+   Both rules are hook-enforced (`scripts/check_no_unapproved_e2e_tests.sh`,
+   `scripts/check_enforce_parallel_tests.sh`).
 
 **Web dashboard checks (steps 6-9):** Run only if `web_src` or `web_test` files changed.
 
