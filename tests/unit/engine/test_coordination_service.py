@@ -1,5 +1,6 @@
 """Tests for MultiAgentCoordinator service."""
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
@@ -1120,3 +1121,37 @@ class TestCoordinationMetricsCollection:
         assert inputs.agent_durations is not None
         assert len(inputs.agent_durations) == 1
         assert inputs.agent_durations[0][0] == agent_id_b
+
+    @pytest.mark.unit
+    async def test_collector_timeout_is_never_fatal(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A collector exceeding the bounded wait must not fail the run."""
+        monkeypatch.setattr(
+            "synthorg.engine.coordination.service._METRICS_COLLECT_TIMEOUT_SECONDS",
+            0.01,
+        )
+        decomp, routing, exec_results, ctx = self._two_agent_setup()
+
+        async def _hang(_inputs: object) -> CoordinationMetrics:
+            # Never completes; the bounded asyncio.wait_for must cancel
+            # it and surface TimeoutError into the non-fatal guard.
+            await asyncio.Event().wait()
+            return CoordinationMetrics()
+
+        collector = mock_of[CoordinationMetricsCollector](
+            collect=AsyncMock(side_effect=_hang),
+        )
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=exec_results,
+            collector=collector,
+        )
+
+        attributed = await coordinator.coordinate(ctx)
+
+        # The coordination run itself succeeded; the collector timeout
+        # is swallowed by the bounded-cleanup guard.
+        assert attributed.is_success
+        collector.collect.assert_awaited_once()
