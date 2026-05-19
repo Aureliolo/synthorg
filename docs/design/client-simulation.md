@@ -200,13 +200,42 @@ of `InternalReviewStage`) during app construction whenever a
 `ClientSimulationState` so `has_simulation_runtime` is true and the
 `/simulations` + `/requests` controllers register. The strategy is
 selected from the `simulations` settings namespace
-(`intake_strategy` ∈ {`direct`, `agent`}, `intake_model`) via the
-bootstrap resolver (env > registered default); the choice is baked
-in at startup (`read_only_post_init`). The default `direct` strategy
+(`intake_strategy` ∈ {`direct`, `agent`}, `intake_model`,
+`intake_default_project`) via the bootstrap resolver (env >
+registered default); the choices are baked in at startup
+(`read_only_post_init`). `intake_default_project` is the project the
+intake strategy files tasks into and the real work-entry adapter
+stamps on the work item (see [Real work-entry path](#real-work-entry-path)). The default `direct` strategy
 makes no LLM calls, so the runtime comes online for an empty company.
 A selected `agent` strategy that cannot be satisfied (no provider or
 no model) degrades to `direct` with a warning rather than failing
 boot.
+
+### Real work-entry path
+
+`POST /requests/{id}/approve` is the real (non-simulated) work-entry
+path. On approval the request is walked to `APPROVED` and a
+background task runs the `IntakeEntryAdapter`
+(`WorkSource.INTAKE`), which maps the `ClientRequest` onto a
+`WorkItem` and drives the work pipeline spine (intake -> projects ->
+decompose -> solo or team execution). The endpoint returns `202
+Accepted` with the `APPROVED` request; the terminal `TASK_CREATED`
+or `CANCELLED` state lands asynchronously and is observable via `GET
+/requests/{id}` and the request WebSocket channel. Reviewer
+`scoping_notes` from a prior `/scope` call are folded into the work
+item's intent body so the manual scope flow is preserved.
+
+The adapter is built once the work pipeline is online
+(`engine.pipeline.entry.boot.wire_real_intake_entry`, called from
+the boot runtime-services hook and the post-setup provider reinit)
+and attached to the `AppState.intake_entry_adapter` seam. When no
+work pipeline is wired (empty company / no provider) approve returns
+`AgentRuntimeNotConfiguredError` rather than minting a task no agent
+will run. The `simulations.intake_default_project` setting (env >
+registered default, baked in at startup) names the project the
+intake strategy files tasks into and the adapter stamps on the work
+item; that project is created at startup if absent so the pipeline's
+project-existence check and the created task agree.
 
 ---
 
@@ -285,7 +314,8 @@ discriminator rather than silently falling back to a default.
 | `ReportConfig.strategy` | `build_report_strategy()` | `summary` → `SummaryReport`, `detailed` → `DetailedReport`, `json_export` → `JsonExportReport`, `metrics_only` → `MetricsOnlyReport` |
 | `ClientPoolConfig.selection_strategy` | `build_client_pool_strategy()` | `round_robin` → `RoundRobinStrategy`, `weighted_random` → `WeightedRandomStrategy`, `domain_matched` → `DomainMatchedStrategy` |
 | `adapter` arg (intake entry point) | `build_entry_point_strategy(adapter, *, project_id=None)` | `direct` → `DirectAdapter`, `project` → `ProjectAdapter`, `intake` → `IntakeAdapter` |
-| `IntakeConfig.strategy` | `build_intake_strategy(config, *, task_engine, provider=None, cost_tracker=None)` | `direct` → `DirectIntake`, `agent` → `AgentIntake` |
+| `IntakeConfig.strategy` | `build_intake_strategy(config, *, task_engine, default_project, provider=None, cost_tracker=None)` | `direct` → `DirectIntake`, `agent` → `AgentIntake` |
+| `WorkSource` (work-entry adapter) | `build_work_entry_adapter(source, *, work_pipeline, default_project)` | `intake` → `IntakeEntryAdapter` |
 
 The factories follow the project-wide pluggable-subsystems pattern
 (protocol + strategy + factory + config discriminator). No silent

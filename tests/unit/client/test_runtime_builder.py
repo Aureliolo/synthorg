@@ -10,7 +10,10 @@ import structlog
 
 from synthorg.client.config import IntakeConfig
 from synthorg.client.factory import UnknownStrategyError, build_intake_strategy
+from synthorg.client.models import ClientRequest, TaskRequirement
 from synthorg.client.simulation_state import ClientSimulationState
+from synthorg.core.enums import Priority, TaskType
+from synthorg.core.task import Task
 from synthorg.engine.intake.strategies import AgentIntake, DirectIntake
 from synthorg.engine.review.stages.internal import InternalReviewStage
 from synthorg.engine.task_engine import TaskEngine
@@ -21,6 +24,8 @@ from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
+_TEST_PROJECT = "client-intake"
+
 
 class TestBuildIntakeStrategy:
     """Dispatch behaviour of ``build_intake_strategy``."""
@@ -30,8 +35,46 @@ class TestBuildIntakeStrategy:
         strategy = build_intake_strategy(
             IntakeConfig(strategy="direct"),
             task_engine=task_engine,
+            default_project=_TEST_PROJECT,
         )
         assert isinstance(strategy, DirectIntake)
+
+    async def test_direct_strategy_files_into_default_project(self) -> None:
+        task_engine = mock_of[TaskEngine]()
+        task_engine.create_task.return_value = Task(
+            id="t-1",
+            title="t",
+            description="d",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.MEDIUM,
+            project="ops-intake",
+            created_by="acme",
+        )
+        strategy = build_intake_strategy(
+            IntakeConfig(strategy="direct"),
+            task_engine=task_engine,
+            default_project="ops-intake",
+        )
+        await strategy.process(
+            ClientRequest(
+                client_id="acme",
+                requirement=TaskRequirement(title="t", description="d"),
+            )
+        )
+        created = task_engine.create_task.call_args.args[0]
+        assert created.project == "ops-intake"
+
+    async def test_agent_strategy_files_into_default_project(self) -> None:
+        task_engine = mock_of[TaskEngine]()
+        provider = ScriptedDriver("test-provider")
+        strategy = build_intake_strategy(
+            IntakeConfig(strategy="agent", model="test-model-001"),
+            task_engine=task_engine,
+            provider=provider,
+            default_project="ops-intake",
+        )
+        assert isinstance(strategy, AgentIntake)
+        assert strategy._project == "ops-intake"
 
     def test_agent_strategy(self) -> None:
         task_engine = mock_of[TaskEngine]()
@@ -40,6 +83,7 @@ class TestBuildIntakeStrategy:
             IntakeConfig(strategy="agent", model="test-model-001"),
             task_engine=task_engine,
             provider=provider,
+            default_project=_TEST_PROJECT,
         )
         assert isinstance(strategy, AgentIntake)
 
@@ -49,6 +93,7 @@ class TestBuildIntakeStrategy:
             build_intake_strategy(
                 IntakeConfig(strategy="nonsense"),
                 task_engine=task_engine,
+                default_project=_TEST_PROJECT,
             )
 
     def test_agent_without_provider_raises(self) -> None:
@@ -57,6 +102,7 @@ class TestBuildIntakeStrategy:
             build_intake_strategy(
                 IntakeConfig(strategy="agent", model="test-model-001"),
                 task_engine=task_engine,
+                default_project=_TEST_PROJECT,
             )
 
     def test_agent_without_model_raises(self) -> None:
@@ -67,6 +113,7 @@ class TestBuildIntakeStrategy:
                 IntakeConfig(strategy="agent"),
                 task_engine=task_engine,
                 provider=provider,
+                default_project=_TEST_PROJECT,
             )
 
 
@@ -90,6 +137,25 @@ class TestBuildClientSimulationRuntime:
         assert state.intake_engine is not None
         assert state.review_pipeline is not None
         assert state.review_pipeline.stage_names == ("internal",)
+        assert state.intake_default_project == "client-intake"
+
+    def test_intake_default_project_env_override(self) -> None:
+        from synthorg.api.state import AppState
+        from synthorg.client.runtime_builder import (
+            build_client_simulation_runtime,
+        )
+
+        task_engine = mock_of[TaskEngine]()
+        app_state = mock_of[AppState](
+            task_engine=task_engine,
+            has_task_engine=True,
+            has_active_provider=False,
+        )
+        state = build_client_simulation_runtime(
+            app_state,
+            env={"SYNTHORG_SIMULATIONS_INTAKE_DEFAULT_PROJECT": "ops-intake"},
+        )
+        assert state.intake_default_project == "ops-intake"
 
     def test_agent_selected_without_provider_falls_back_to_direct(self) -> None:
         from synthorg.api.state import AppState

@@ -121,6 +121,7 @@ class WsEventType(StrEnum):
     REQUEST_SUBMITTED = "request.submitted"
     REQUEST_SCOPED = "request.scoped"
     REQUEST_APPROVED = "request.approved"
+    REQUEST_TASK_CREATED = "request.task_created"
     REQUEST_REJECTED = "request.rejected"
     REQUEST_STATUS_CHANGED = "request.status_changed"
 

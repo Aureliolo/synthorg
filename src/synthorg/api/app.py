@@ -91,6 +91,7 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.clock import SystemClock
 from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
+from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter  # noqa: TC001
 from synthorg.engine.pipeline.protocol import WorkPipeline  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
@@ -255,6 +256,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     task_engine: TaskEngine | None = None,
     coordinator: MultiAgentCoordinator | None = None,
     work_pipeline: WorkPipeline | None = None,
+    intake_entry_adapter: WorkEntryAdapter | None = None,
     agent_registry: AgentRegistryService | None = None,
     meeting_orchestrator: MeetingOrchestrator | None = None,
     meeting_scheduler: MeetingScheduler | None = None,
@@ -291,6 +293,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         coordinator: Multi-agent coordinator.
         work_pipeline: Work pipeline spine (injected double wins over
             the boot-autowired one).
+        intake_entry_adapter: Real work-entry adapter (injected double
+            wins over the boot-autowired one).
         agent_registry: Agent registry service.
         meeting_orchestrator: Meeting orchestrator.
         meeting_scheduler: Meeting scheduler.
@@ -551,6 +555,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         task_engine=task_engine,
         coordinator=coordinator,
         work_pipeline=work_pipeline,
+        intake_entry_adapter=intake_entry_adapter,
         agent_registry=agent_registry,
         meeting_orchestrator=meeting_orchestrator,
         meeting_scheduler=meeting_scheduler,
@@ -1072,6 +1077,14 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # one is a logged no-op then.
         if services.work_pipeline is not None:
             app_state.set_work_pipeline_if_absent(services.work_pipeline)
+        # Bring the real client-request work-entry path online: ensure
+        # the configured intake project exists and attach the intake
+        # entry adapter. No-op for an empty company (no pipeline).
+        from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
+            wire_real_intake_entry,
+        )
+
+        await wire_real_intake_entry(app_state)
         _runtime_services_installed = True
 
     startup = [*startup, _install_runtime_services]

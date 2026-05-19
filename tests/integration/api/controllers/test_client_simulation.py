@@ -16,8 +16,17 @@ from synthorg.client.adapters import DirectAdapter
 from synthorg.client.pool import RoundRobinStrategy
 from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.config.schema import RootConfig
+from synthorg.core.enums import TaskStatus
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.intake.models import IntakeResult
+from synthorg.engine.pipeline.models import (
+    ExecutionPath,
+    RoutingVerdict,
+    WorkItem,
+    WorkPhaseResult,
+    WorkPipelineResult,
+    WorkSource,
+)
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review.stages.internal import InternalReviewStage
 from tests.unit.api.conftest import (
@@ -72,7 +81,58 @@ def _build_sim_state() -> ClientSimulationState:
     return ClientSimulationState(
         intake_engine=IntakeEngine(strategy=_AcceptingStrategy()),
         review_pipeline=ReviewPipeline(stages=(InternalReviewStage(),)),
+        intake_default_project="client-intake",
     )
+
+
+class _StubEntryAdapter:
+    """Work-entry adapter double that returns a fixed pipeline result."""
+
+    @property
+    def source(self) -> WorkSource:
+        return WorkSource.INTAKE
+
+    async def submit(self, request: Any) -> WorkPipelineResult:
+        item = WorkItem(
+            origin_adapter_id="intake-entry-adapter",
+            source=WorkSource.INTAKE,
+            title=request.requirement.title,
+            raw_intent=request.requirement.description,
+            project="client-intake",
+            requested_by=request.client_id,
+            correlation_id=request.request_id,
+        )
+        return WorkPipelineResult(
+            work_item=item,
+            verdict=RoutingVerdict.LEAF,
+            execution_path=ExecutionPath.SOLO,
+            task_id=f"task-{request.request_id[:6]}",
+            final_task_status=TaskStatus.IN_REVIEW,
+            phases=(
+                WorkPhaseResult(phase="intake", success=True, duration_seconds=0.0),
+            ),
+            total_duration_seconds=0.0,
+        )
+
+
+def _build_client_with_adapter(
+    fake_persistence: FakePersistenceBackend,
+    fake_message_bus: FakeMessageBus,
+) -> tuple[TestClient[Any], ClientSimulationState]:
+    config = RootConfig(company_name="test")
+    auth_service = _make_test_auth_service()
+    _seed_test_users(fake_persistence, auth_service)
+    sim_state = _build_sim_state()
+    app = create_app(
+        config=config,
+        persistence=fake_persistence,
+        message_bus=fake_message_bus,
+        cost_tracker=CostTracker(),
+        auth_service=auth_service,
+        client_simulation_state=sim_state,
+        intake_entry_adapter=_StubEntryAdapter(),
+    )
+    return TestClient(app), sim_state
 
 
 def _build_client(
@@ -216,6 +276,60 @@ class TestRequestController:
             listing = client.get("/api/v1/requests")
             assert listing.status_code == 200
             assert len(listing.json()["data"]) == 1
+
+    async def test_approve_without_adapter_returns_409(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """No work-entry adapter wired -> honest runtime-not-configured."""
+        with _build_client(fake_persistence, fake_message_bus) as client:
+            client.headers.update(make_auth_headers("ceo"))
+            client.post(
+                "/api/v1/clients/",
+                json={"client_id": "na", "name": "NA", "persona": "P"},
+            )
+            submit = client.post(
+                "/api/v1/requests/",
+                json={
+                    "client_id": "na",
+                    "requirement": {"title": "T", "description": "D"},
+                },
+            )
+            rid = submit.json()["data"]["request_id"]
+            approve = client.post(f"/api/v1/requests/{rid}/approve")
+            assert approve.status_code == 409
+
+    async def test_approve_accepts_and_spawns_pipeline(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        """Approve returns 202 APPROVED and spawns the pipeline task."""
+        client, sim_state = _build_client_with_adapter(
+            fake_persistence,
+            fake_message_bus,
+        )
+        with client:
+            client.headers.update(make_auth_headers("ceo"))
+            client.post(
+                "/api/v1/clients/",
+                json={"client_id": "ok", "name": "OK", "persona": "P"},
+            )
+            submit = client.post(
+                "/api/v1/requests/",
+                json={
+                    "client_id": "ok",
+                    "requirement": {"title": "T", "description": "D"},
+                },
+            )
+            rid = submit.json()["data"]["request_id"]
+            approve = client.post(f"/api/v1/requests/{rid}/approve")
+            assert approve.status_code == 202
+            assert approve.json()["data"]["status"] == "approved"
+            # The reconciliation task was registered synchronously
+            # before the response returned (strong ref held).
+            assert len(sim_state.background_tasks) >= 1
 
     async def test_reject_sets_cancelled(
         self,

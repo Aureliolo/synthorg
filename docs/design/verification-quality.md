@@ -7,7 +7,7 @@ description: Verification stage, harness middleware layer, review pipeline, and 
 
 !!! warning "Designed behaviour; runtime in active development"
 
-    This page is the source of truth for the **designed** behaviour of this subsystem. The verification pipeline and intake engine run with the agent runtime, which is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
+    This page is the source of truth for the **designed** behaviour of this subsystem. The intake engine is online: the real work-entry path (`POST /requests/{id}/approve`) drives an approved request through the pipeline spine so an agent executes it. The verification stage runs with the agent runtime, which is in active development (see the [Roadmap](../roadmap/index.md)); that code is built and unit-tested as components but not yet exercised by a live verification agent.
 
 This page covers the quality-assurance pipeline attached to agent output: the verification stage that runs after an agent completes a task, the harness middleware that wraps every agent invocation, the review pipeline that validates produced artifacts, and the intake engine that ingests new work.
 
@@ -132,9 +132,12 @@ Key design decisions:
 ## Intake Engine
 
 The intake engine processes `ClientRequest` submissions through an independent
-state machine (`RequestStatus`) before creating tasks in the task engine. See
-[Client Simulation](client-simulation.md) for the full request lifecycle and
-intake strategy contracts.
+state machine (`RequestStatus`) before creating tasks in the task engine. The
+real work-entry path (`POST /requests/{id}/approve`) approves a request and
+runs it through the `IntakeEntryAdapter` into the work pipeline spine so an
+agent executes it; the terminal state lands asynchronously. See
+[Client Simulation](client-simulation.md) for the full request lifecycle,
+intake strategy contracts, and the real work-entry path.
 
 ---
 

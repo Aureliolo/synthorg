@@ -42,7 +42,7 @@ export const WS_EVENT_TYPE_VALUES = [
   'project.created', 'project.deleted', 'project.status_changed',
   'memory.fine_tune.progress', 'memory.fine_tune.stage_changed', 'memory.fine_tune.completed', 'memory.fine_tune.failed',
   'client.created', 'client.updated', 'client.deactivated', 'client.deleted',
-  'request.submitted', 'request.scoped', 'request.approved', 'request.rejected', 'request.status_changed',
+  'request.submitted', 'request.scoped', 'request.approved', 'request.task_created', 'request.rejected', 'request.status_changed',
   'simulation.started', 'simulation.running', 'simulation.paused', 'simulation.cancelled', 'simulation.completed', 'simulation.failed',
   'review.stage_completed', 'review.stage_decided', 'review.pipeline_completed',
   'interrupt.created', 'interrupt.resumed',
@@ -356,6 +356,18 @@ export interface WsRequestEventPayload {
   status: string
 }
 
+/**
+ * Payload for ``request.task_created``. Mirrors
+ * ``WsRequestTaskCreatedPayload`` in
+ * ``src/synthorg/api/ws_payloads/_domain.py``: the backend stamps
+ * ``task_id`` on every emission of this event so the dashboard can
+ * navigate straight to the spawned task without a second
+ * ``GET /requests/{id}`` round-trip.
+ */
+export interface WsRequestTaskCreatedPayload extends WsRequestEventPayload {
+  task_id: string
+}
+
 export interface WsRequestStatusChangedPayload extends WsRequestEventPayload {
   previous_status?: string | null
 }
@@ -468,6 +480,7 @@ export interface WsEventPayloadMap {
   'request.submitted': WsRequestEventPayload
   'request.scoped': WsRequestEventPayload
   'request.approved': WsRequestEventPayload
+  'request.task_created': WsRequestTaskCreatedPayload
   'request.rejected': WsRequestEventPayload
   'request.status_changed': WsRequestStatusChangedPayload
   'simulation.started': WsSimulationEventPayload

@@ -28,6 +28,12 @@ class ClientSimulationState:
         feedback_store: Per-client review history for satisfaction.
         intake_engine: Intake engine used by ``/requests/{id}/approve``.
         review_pipeline: Review pipeline surfaced to ``/reviews/...``.
+        intake_default_project: Project the intake strategy files
+            tasks into and the real work-entry adapter stamps on the
+            work item. Resolved once at boot (env > registered
+            default) so the strategy ``project=`` and the adapter's
+            ``WorkItem.project`` cannot drift; the project is ensured
+            to exist at on-startup.
         background_tasks: Strong references keeping background tasks alive.
     """
 
@@ -37,6 +43,7 @@ class ClientSimulationState:
     feedback_store: FeedbackStore = field(default_factory=FeedbackStore)
     intake_engine: IntakeEngine | None = None
     review_pipeline: ReviewPipeline | None = None
+    intake_default_project: str | None = None
     background_tasks: set[asyncio.Task[None]] = field(
         default_factory=set,
         hash=False,
