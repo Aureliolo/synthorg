@@ -431,6 +431,12 @@ async def _build_runtime_work_pipeline(  # noqa: PLR0913 -- keyword-only DI
         return None
     intake_engine = app_state.client_simulation_state.intake_engine
     if intake_engine is None:
+        logger.info(
+            API_APP_STARTUP,
+            service="work_pipeline",
+            mode="disabled",
+            note="simulation runtime present but intake engine unset",
+        )
         return None
     routing_policy = await app_state.config_resolver.get_str(
         _DECOMPOSITION_NS,

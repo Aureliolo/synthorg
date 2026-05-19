@@ -294,6 +294,7 @@ class TestEventConstants:
             "shipping",
             "skill_evolver",
             "procedural_memory",
+            "pipeline",
             "reporting",
             "review_pipeline",
             "risk_budget",
