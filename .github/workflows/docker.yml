@@ -46,7 +46,7 @@ env:
   # renovate: datasource=github-releases depName=aquasecurity/trivy
   TRIVY_VERSION: "0.70.0"
   # renovate: datasource=github-releases depName=chainguard-dev/apko
-  APKO_VERSION: "v1.2.12"
+  APKO_VERSION: "v1.2.13"
 
 jobs:
   # Detect which domains changed so docs-only PRs skip backend/sandbox builds
@@ -690,7 +690,7 @@ jobs:
         uses: chainguard-dev/actions/setup-melange@c69a264ec2a5934c3186c618f368fc1c86f16cff # v1.6.19
         with:
           # renovate: datasource=github-releases depName=chainguard-dev/melange
-          version: v0.50.6
+          version: v0.50.7
 
       - name: Generate melange signing key
         run: melange keygen
