@@ -1,4 +1,4 @@
-"""Acceptance tests for #1974 (persistent project workspace).
+"""Acceptance tests for the persistent project workspace substrate.
 
 Validates the four locked acceptance criteria end to end:
 

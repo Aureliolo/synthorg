@@ -27,9 +27,11 @@ from synthorg.engine.workspace.git_backend.protocol import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     GIT_BACKEND_FETCH_COMPLETE,
+    GIT_BACKEND_FETCH_FAILED,
     GIT_BACKEND_PROVISION_COMPLETE,
     GIT_BACKEND_PROVISION_START,
     GIT_BACKEND_PUSH_COMPLETE,
+    GIT_BACKEND_PUSH_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -238,6 +240,7 @@ class EmbeddedGitBackend:
             cmd_timeout=self._cmd_timeout,
             fail_exc=GitBackendPushError,
             project_id=pid,
+            event=GIT_BACKEND_PUSH_FAILED,
         )
         head = await git(
             repo_root,
@@ -246,6 +249,7 @@ class EmbeddedGitBackend:
             cmd_timeout=self._cmd_timeout,
             fail_exc=GitBackendPushError,
             project_id=pid,
+            event=GIT_BACKEND_PUSH_FAILED,
         )
         logger.info(GIT_BACKEND_PUSH_COMPLETE, project_id=pid, branch=str(branch))
         return PushResult(branch=branch, head_sha=NotBlankStr(head))
@@ -268,6 +272,7 @@ class EmbeddedGitBackend:
             cmd_timeout=self._cmd_timeout,
             fail_exc=GitBackendFetchError,
             project_id=pid,
+            event=GIT_BACKEND_FETCH_FAILED,
         )
         logger.info(GIT_BACKEND_FETCH_COMPLETE, project_id=pid)
         refs: tuple[NotBlankStr, ...] = (

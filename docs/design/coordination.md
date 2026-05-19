@@ -394,6 +394,40 @@ worktrees directly; signals the `WorkspaceManager` to act.
 
 **Module**: `src/synthorg/engine/workspace/disk_quota.py`
 
+### Persistent Per-Project Workspace and Push Queue Serialisation
+
+Each project gets a 1:1 persistent git-backed working tree on the
+runtime volume. `ProjectWorkspaceService.get_or_provision(project_id)`
+materialises the working tree under
+`<base_root>/projects/<project_id>/` on first touch via the configured
+`GitBackend` (`embedded` default; `local_path` / `external_remote` are
+opt-in via config). The tree survives across agents, tasks, and
+sessions. `GitBackendConfig.kind` is authoritative: a persisted row
+whose kind differs from the live config triggers a re-provision under
+the new backend and a `WORKSPACE_BACKEND_KIND_CHANGED` log event.
+
+When N agents finish concurrently on one project, their
+merge-to-default-branch + push-to-backend operations route through a
+per-project FIFO serial queue (`PushQueueCoordinator`) so concurrent
+pushes never collide at the git backend. The queue sits in front of
+the `WorkspaceIsolationStrategy` seam, so a future virtual-branch
+strategy supplies its own `merge_workspace` without changing the
+queue. A conflicted merge resolves the caller future without pushing
+(the queue refuses to push a broken default branch). `stop()` drains
+in flight then exits cleanly; `WorkspacePushError` distinguishes a
+forge-rejection push failure from a local `WorkspaceMergeError`.
+
+Events emitted: `PROJECT_WORKSPACE_PROVISIONED`,
+`PROJECT_WORKSPACE_REUSED`, `WORKSPACE_BACKEND_KIND_CHANGED`,
+`WORKSPACE_PUSH_QUEUE_ENQUEUED`, `WORKSPACE_PUSH_QUEUE_MERGED`,
+`WORKSPACE_PUSH_QUEUE_FAILED`, `WORKSPACE_PUSH_QUEUE_WORKER_FAILED`.
+
+**Modules**:
+- `src/synthorg/engine/workspace/project_workspace_service.py`
+- `src/synthorg/engine/workspace/git_backend/` (protocol + 3 strategies + factory)
+- `src/synthorg/engine/workspace/push_queue.py`
+- `src/synthorg/engine/workspace/service.py` (per-project queue cache + `merge_workspace_with_push`)
+
 ## Task Decomposability & Coordination Topology
 
 Empirical research on agent scaling

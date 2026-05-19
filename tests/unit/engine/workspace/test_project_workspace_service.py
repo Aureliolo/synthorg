@@ -48,7 +48,12 @@ def _git_backend(kind: GitBackendType = GitBackendType.EMBEDDED) -> GitBackend:
     backend = mock_of[GitBackend]()
     backend.get_backend_type.return_value = kind
 
-    async def _provision(*, project_id, workspace_path, default_branch):
+    async def _provision(
+        *,
+        project_id: NotBlankStr,
+        workspace_path: Path,
+        default_branch: NotBlankStr,
+    ) -> ProvisionResult:
         return ProvisionResult(
             repo_root=NotBlankStr(str(workspace_path)),
             default_branch=default_branch,

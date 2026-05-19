@@ -15,6 +15,7 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import GitBackendConfigError
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     PROJECT_WORKSPACE_PROVISIONED,
@@ -82,13 +83,21 @@ class ProjectWorkspaceService:
         return self._git_backend
 
     def _workspace_path(self, project_id: str) -> Path:
+        # Defense-in-depth: ``project_id`` is system-generated and reaches
+        # this seam only via persisted Project rows, but rejecting path
+        # separators here closes the door if a future caller ever passes
+        # an attacker-controlled value (no traversal out of the projects
+        # subdir, no absolute-path takeover of the base root).
+        if "/" in project_id or "\\" in project_id or ".." in project_id:
+            msg = (
+                f"refusing path-separator-bearing project_id "
+                f"{project_id!r}: workspace path traversal blocked"
+            )
+            raise GitBackendConfigError(msg)
         return self._base_root / _PROJECTS_SUBDIR / project_id
 
     async def _lock_for(self, project_id: str) -> asyncio.Lock:
         """Return the per-project provisioning lock (created once)."""
-        existing = self._locks.get(project_id)
-        if existing is not None:
-            return existing
         async with self._locks_guard:
             return self._locks.setdefault(project_id, asyncio.Lock())
 

@@ -217,9 +217,6 @@ class WorkspaceIsolationService:
         finishing concurrently on a fresh project create exactly one
         coordinator.
         """
-        existing = self._push_queues.get(project_id)
-        if existing is not None:
-            return existing
         async with self._push_queues_lock:
             existing = self._push_queues.get(project_id)
             if existing is not None:

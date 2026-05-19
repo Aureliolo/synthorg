@@ -27,6 +27,8 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     GIT_BACKEND_PROVISION_COMPLETE,
     GIT_BACKEND_PROVISION_START,
+    GIT_BACKEND_PUSH_COMPLETE,
+    GIT_BACKEND_PUSH_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -158,14 +160,17 @@ class LocalPathGitBackend:
         # Local-path: the on-disk repo IS the durable store; "push" is
         # the no-op durability point. Resolve the branch head so callers
         # still get a verifiable commit SHA.
+        pid = str(project_id)
         head = await git(
             repo_root,
             "rev-parse",
             str(branch),
             cmd_timeout=self._cmd_timeout,
             fail_exc=GitBackendPushError,
-            project_id=str(project_id),
+            project_id=pid,
+            event=GIT_BACKEND_PUSH_FAILED,
         )
+        logger.info(GIT_BACKEND_PUSH_COMPLETE, project_id=pid, branch=str(branch))
         return PushResult(branch=branch, head_sha=NotBlankStr(head))
 
     async def fetch(

@@ -10,7 +10,10 @@ import asyncio
 from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649 introspection)
 from typing import TYPE_CHECKING
 
-from synthorg.engine.workspace._git_subprocess import run_git_subprocess
+from synthorg.engine.workspace._git_subprocess import (
+    _redact_args,
+    run_git_subprocess,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     GIT_BACKEND_PROVISION_FAILED,
@@ -28,6 +31,7 @@ async def git(
     cmd_timeout: float,
     fail_exc: type[GitBackendError],
     project_id: str,
+    event: str = GIT_BACKEND_PROVISION_FAILED,
 ) -> str:
     """Run ``git *args`` in *repo_root*; raise *fail_exc* on failure.
 
@@ -37,6 +41,10 @@ async def git(
         cmd_timeout: Maximum seconds the subprocess may run.
         fail_exc: Exception type raised on non-zero exit / spawn failure.
         project_id: Project identifier for structured logging.
+        event: Structured-log event constant for failures; defaults to
+            ``GIT_BACKEND_PROVISION_FAILED`` so existing call sites stay
+            quiet, but push/fetch sites should pass their own event so
+            the log discriminates between operations.
 
     Returns:
         Decoded stdout (stripped) on success.
@@ -49,13 +57,13 @@ async def git(
         repo_root,
         *args,
         cmd_timeout=cmd_timeout,
-        log_event=GIT_BACKEND_PROVISION_FAILED,
+        log_event=event,
     )
     if rc != 0:
         logger.warning(
-            GIT_BACKEND_PROVISION_FAILED,
+            event,
             project_id=project_id,
-            git_args=args[:2],
+            git_args=_redact_args(args[:2]),
             return_code=rc,
         )
         msg = f"git {args[0] if args else ''} failed (rc={rc})"
