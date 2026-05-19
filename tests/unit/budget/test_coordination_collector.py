@@ -6,6 +6,7 @@ import pytest
 
 from synthorg.budget.baseline_store import BaselineRecord, BaselineStore
 from synthorg.budget.coordination_collector import (
+    CollectionInputs,
     CoordinationMetricsCollector,
     SimilarityComputer,
 )
@@ -17,6 +18,7 @@ from synthorg.budget.coordination_config import (
 from synthorg.budget.coordination_metrics import CoordinationMetrics
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.communication.bus_protocol import MessageBus
+from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.providers.enums import FinishReason
 from tests._shared import FakeClock
 
@@ -60,6 +62,31 @@ def _execution_result(*turns: MagicMock) -> MagicMock:
     result = MagicMock()
     result.turns = turns
     return result
+
+
+async def _collect(  # noqa: PLR0913
+    collector: CoordinationMetricsCollector,
+    *,
+    execution_result: ExecutionResult,
+    agent_id: str,
+    task_id: str,
+    team_size: int = 1,
+    agent_durations: tuple[tuple[str, float], ...] | None = None,
+    agent_outputs: tuple[str, ...] | None = None,
+    is_multi_agent: bool = False,
+) -> CoordinationMetrics:
+    """Invoke ``collect`` with the kwargs bundled into ``CollectionInputs``."""
+    return await collector.collect(
+        CollectionInputs(
+            execution_result=execution_result,
+            agent_id=agent_id,
+            task_id=task_id,
+            team_size=team_size,
+            agent_durations=agent_durations,
+            agent_outputs=agent_outputs,
+            is_multi_agent=is_multi_agent,
+        ),
+    )
 
 
 def _cost_tracker() -> MagicMock:
@@ -135,7 +162,8 @@ class TestDisabledCollection:
             config=_config(enabled=False),
             cost_tracker=_cost_tracker(),
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="agent-1",
             task_id="task-1",
@@ -155,7 +183,8 @@ class TestDisabledCollection:
             cost_tracker=_cost_tracker(),
             baseline_store=store,
         )
-        await collector.collect(
+        await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="agent-1",
             task_id="task-1",
@@ -180,7 +209,8 @@ class TestSingleAgentRun:
             cost_tracker=_cost_tracker(),
             baseline_store=store,
         )
-        await collector.collect(
+        await _collect(
+            collector,
             execution_result=_execution_result(_turn(), _turn()),
             agent_id="agent-1",
             task_id="task-1",
@@ -196,7 +226,8 @@ class TestSingleAgentRun:
             cost_tracker=_cost_tracker(),
             baseline_store=store,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="agent-1",
             task_id="task-1",
@@ -213,7 +244,8 @@ class TestSingleAgentRun:
             cost_tracker=_cost_tracker(),
             baseline_store=None,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="agent-1",
             task_id="task-1",
@@ -234,7 +266,8 @@ class TestSingleAgentRun:
             _turn(FinishReason.ERROR),
             _turn(FinishReason.CONTENT_FILTER),
         )
-        await collector.collect(
+        await _collect(
+            collector,
             execution_result=_execution_result(*turns),
             agent_id="agent-1",
             task_id="task-1",
@@ -259,7 +292,8 @@ class TestMissingDependencies:
             cost_tracker=_cost_tracker(),
             baseline_store=None,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -273,7 +307,8 @@ class TestMissingDependencies:
             cost_tracker=_cost_tracker(),
             baseline_store=None,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -288,7 +323,8 @@ class TestMissingDependencies:
             cost_tracker=_cost_tracker(),
             baseline_store=store,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -302,7 +338,8 @@ class TestMissingDependencies:
             cost_tracker=_cost_tracker(),
             message_bus=None,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -316,7 +353,8 @@ class TestMissingDependencies:
             cost_tracker=_cost_tracker(),
             similarity_computer=None,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -332,7 +370,8 @@ class TestMissingDependencies:
             cost_tracker=_cost_tracker(),
             similarity_computer=_mock_similarity_computer(),
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -346,7 +385,8 @@ class TestMissingDependencies:
             config=_config(),
             cost_tracker=_cost_tracker(),
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -360,7 +400,8 @@ class TestMissingDependencies:
             config=_config(),
             cost_tracker=_cost_tracker(),
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -376,7 +417,8 @@ class TestMissingDependencies:
             cost_tracker=_cost_tracker(),
             message_bus=None,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -401,7 +443,8 @@ class TestSelectiveCollection:
             cost_tracker=_cost_tracker(),
             baseline_store=store,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn(), _turn(), _turn()),
             agent_id="a",
             task_id="t",
@@ -433,7 +476,8 @@ class TestMetricComputation:
             baseline_store=store,
         )
         t1, t2, t3, t4, t5 = (_turn() for _ in range(5))
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(t1, t2, t3, t4, t5),
             agent_id="a",
             task_id="t",
@@ -451,7 +495,8 @@ class TestMetricComputation:
             baseline_store=store,
         )
         turns = tuple(_turn() for _ in range(8))
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(*turns),
             agent_id="a",
             task_id="t",
@@ -468,7 +513,8 @@ class TestMetricComputation:
             baseline_store=store,
         )
         # 1 error turn out of 2 -> error_rate_mas = 0.5
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(
                 _turn(FinishReason.STOP), _turn(FinishReason.ERROR)
             ),
@@ -486,7 +532,8 @@ class TestMetricComputation:
             cost_tracker=_cost_tracker(),
             baseline_store=store,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn(FinishReason.ERROR)),
             agent_id="a",
             task_id="t",
@@ -504,7 +551,8 @@ class TestMetricComputation:
         )
         # 5 turns, 10 messages -> c = 10/5 = 2.0
         turns = tuple(_turn() for _ in range(5))
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(*turns),
             agent_id="a",
             task_id="t",
@@ -520,7 +568,8 @@ class TestMetricComputation:
             cost_tracker=_cost_tracker(),
             similarity_computer=computer,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -536,7 +585,8 @@ class TestMetricComputation:
             config=_config(),
             cost_tracker=_cost_tracker(),
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -553,7 +603,8 @@ class TestMetricComputation:
             cost_tracker=_cost_tracker(),
         )
         durations = (("agent-1", 10.0), ("agent-2", 20.0))
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -576,7 +627,8 @@ class TestMetricComputation:
             cost_tracker=_cost_tracker(),
             message_bus=bus,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -613,7 +665,8 @@ class TestAlertDispatching:
             notification_dispatcher=dispatcher,
         )
         turns = tuple(_turn() for _ in range(12))
-        await collector.collect(
+        await _collect(
+            collector,
             execution_result=_execution_result(*turns),
             agent_id="a",
             task_id="t",
@@ -632,7 +685,8 @@ class TestAlertDispatching:
             notification_dispatcher=dispatcher,
         )
         turns = tuple(_turn() for _ in range(10))
-        await collector.collect(
+        await _collect(
+            collector,
             execution_result=_execution_result(*turns),
             agent_id="a",
             task_id="t",
@@ -651,7 +705,8 @@ class TestAlertDispatching:
         )
         turns = tuple(_turn() for _ in range(12))
         # Should not raise
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(*turns),
             agent_id="a",
             task_id="t",
@@ -675,7 +730,8 @@ class TestAlertDispatching:
             notification_dispatcher=dispatcher,
         )
         turns = tuple(_turn() for _ in range(12))  # 12 turns, SAS=2 -> O%=500%
-        await collector.collect(
+        await _collect(
+            collector,
             execution_result=_execution_result(*turns),
             agent_id="a",
             task_id="t",
@@ -714,7 +770,8 @@ class TestMetricIsolation:
             similarity_computer=computer,
         )
         turns = tuple(_turn() for _ in range(6))
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(*turns),
             agent_id="a",
             task_id="t",
@@ -743,7 +800,8 @@ class TestMetricIsolation:
             baseline_store=store,
             message_bus=bus,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn(), _turn(), _turn()),
             agent_id="a",
             task_id="t",
@@ -765,7 +823,8 @@ class TestMetricIsolation:
             cost_tracker=_cost_tracker(),
             baseline_store=store,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="a",
             task_id="t",
@@ -794,7 +853,8 @@ class TestStoreWrite:
             metrics_store=metrics_store,
             clock=clock,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn(), _turn(), _turn()),
             agent_id="lead-agent",
             task_id="task-42",
@@ -821,7 +881,8 @@ class TestStoreWrite:
             metrics_store=metrics_store,
             clock=FakeClock(),
         )
-        await collector.collect(
+        await _collect(
+            collector,
             execution_result=_execution_result(_turn(), _turn()),
             agent_id="agent-1",
             task_id="task-1",
@@ -836,7 +897,8 @@ class TestStoreWrite:
             baseline_store=_baseline_store(),
             metrics_store=None,
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn(), _turn()),
             agent_id="lead-agent",
             task_id="task-1",
@@ -854,7 +916,8 @@ class TestStoreWrite:
             metrics_store=metrics_store,
             clock=FakeClock(),
         )
-        await collector.collect(
+        await _collect(
+            collector,
             execution_result=_execution_result(_turn(), _turn()),
             agent_id="lead-agent",
             task_id="task-1",
@@ -873,7 +936,8 @@ class TestStoreWrite:
             metrics_store=metrics_store,
             clock=FakeClock(),
         )
-        await collector.collect(
+        await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="lead-agent",
             task_id="task-1",

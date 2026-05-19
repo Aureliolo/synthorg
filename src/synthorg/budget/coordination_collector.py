@@ -9,7 +9,7 @@ Individual metric failures are logged and skipped without blocking
 remaining metric collection.
 """
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 from synthorg.budget.coordination_config import (
     CoordinationMetricName,
@@ -64,6 +64,31 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _MIN_TEAM_SIZE: int = 2
+
+
+class CollectionInputs(NamedTuple):
+    """Inputs for a single :meth:`CoordinationMetricsCollector.collect`.
+
+    Bundles the post-execution context so the entry point takes one
+    typed argument instead of eight keyword parameters.
+
+    Attributes:
+        execution_result: Completed execution result.
+        agent_id: Executing agent identifier.
+        task_id: Task identifier.
+        team_size: Number of agents (1 for single-agent runs).
+        agent_durations: Per-agent ``(agent_id, seconds)`` pairs.
+        agent_outputs: Agent outputs for redundancy (multi-agent).
+        is_multi_agent: Whether this is a multi-agent execution.
+    """
+
+    execution_result: ExecutionResult
+    agent_id: str
+    task_id: str
+    team_size: int = 1
+    agent_durations: tuple[tuple[str, float], ...] | None = None
+    agent_outputs: tuple[str, ...] | None = None
+    is_multi_agent: bool = False
 
 
 def _extract_run_stats(
@@ -169,33 +194,17 @@ class CoordinationMetricsCollector:
         """Return True if the metric is in config.collect."""
         return metric in self._config.collect
 
-    async def collect(  # noqa: PLR0913
-        self,
-        *,
-        execution_result: ExecutionResult,
-        agent_id: str,
-        task_id: str,
-        team_size: int = 1,
-        agent_durations: tuple[tuple[str, float], ...] | None = None,
-        agent_outputs: tuple[str, ...] | None = None,
-        is_multi_agent: bool = False,
-    ) -> CoordinationMetrics:
+    async def collect(self, inputs: CollectionInputs) -> CoordinationMetrics:
         """Collect all enabled coordination metrics post-execution.
 
-        Single-agent runs (``is_multi_agent=False``) only record baseline
-        data and return an empty ``CoordinationMetrics``; multi-agent runs
-        compute all enabled metrics against the accumulated baseline.
-        Individual metric failures are logged and skipped without
-        blocking the rest.
+        Single-agent runs (``inputs.is_multi_agent=False``) only record
+        baseline data and return an empty ``CoordinationMetrics``;
+        multi-agent runs compute all enabled metrics against the
+        accumulated baseline. Individual metric failures are logged and
+        skipped without blocking the rest.
 
         Args:
-            execution_result: Completed execution result.
-            agent_id: Executing agent identifier.
-            task_id: Task identifier.
-            team_size: Number of agents (1 for single-agent runs).
-            agent_durations: Per-agent ``(agent_id, seconds)`` pairs.
-            agent_outputs: Agent outputs for redundancy (multi-agent).
-            is_multi_agent: Whether this is a multi-agent execution.
+            inputs: Post-execution collection context.
 
         Returns:
             Container of all collected metrics (None for skipped ones).
@@ -205,25 +214,25 @@ class CoordinationMetricsCollector:
 
         logger.debug(
             COORD_METRICS_COLLECTION_STARTED,
-            agent_id=agent_id,
-            task_id=task_id,
-            is_multi_agent=is_multi_agent,
-            team_size=team_size,
+            agent_id=inputs.agent_id,
+            task_id=inputs.task_id,
+            is_multi_agent=inputs.is_multi_agent,
+            team_size=inputs.team_size,
         )
 
         turns, error_rate, total_tokens = _extract_run_stats(
-            execution_result,
+            inputs.execution_result,
         )
 
         # Single-agent runs: record baseline (if store available), return early.
-        if not is_multi_agent:
+        if not inputs.is_multi_agent:
             self._record_baseline(
-                agent_id,
-                task_id,
+                inputs.agent_id,
+                inputs.task_id,
                 turns,
                 error_rate,
                 total_tokens,
-                execution_result,
+                inputs.execution_result,
             )
             return CoordinationMetrics()
 
@@ -232,11 +241,11 @@ class CoordinationMetricsCollector:
             turns=turns,
             error_rate=error_rate,
             total_tokens=total_tokens,
-            agent_id=agent_id,
-            task_id=task_id,
-            team_size=team_size,
-            agent_durations=agent_durations,
-            agent_outputs=agent_outputs,
+            agent_id=inputs.agent_id,
+            task_id=inputs.task_id,
+            team_size=inputs.team_size,
+            agent_durations=inputs.agent_durations,
+            agent_outputs=inputs.agent_outputs,
         )
 
     @staticmethod

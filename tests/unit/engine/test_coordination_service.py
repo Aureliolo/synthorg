@@ -9,7 +9,10 @@ import pytest
 if TYPE_CHECKING:
     from synthorg.engine.decomposition.models import DecompositionResult
 
-from synthorg.budget.coordination_collector import CoordinationMetricsCollector
+from synthorg.budget.coordination_collector import (
+    CollectionInputs,
+    CoordinationMetricsCollector,
+)
 from synthorg.budget.coordination_metrics import CoordinationMetrics
 from synthorg.core.enums import (
     CoordinationTopology,
@@ -985,17 +988,17 @@ class TestCoordinationMetricsCollection:
 
         assert attributed.is_success
         collector.collect.assert_awaited_once()
-        kwargs = collector.collect.await_args.kwargs
-        assert kwargs["is_multi_agent"] is True
-        assert kwargs["task_id"] == "parent-1"
-        assert kwargs["team_size"] == 2
-        assert len(kwargs["agent_durations"]) == 2
-        assert all(
-            isinstance(d, tuple) and len(d) == 2 for d in kwargs["agent_durations"]
-        )
-        assert isinstance(kwargs["agent_outputs"], tuple)
+        inputs = collector.collect.await_args.args[0]
+        assert isinstance(inputs, CollectionInputs)
+        assert inputs.is_multi_agent is True
+        assert inputs.task_id == "parent-1"
+        assert inputs.team_size == 2
+        assert inputs.agent_durations is not None
+        assert len(inputs.agent_durations) == 2
+        assert all(isinstance(d, tuple) and len(d) == 2 for d in inputs.agent_durations)
+        assert isinstance(inputs.agent_outputs, tuple)
         # The aggregate carries the team-wide turn records.
-        assert hasattr(kwargs["execution_result"], "turns")
+        assert hasattr(inputs.execution_result, "turns")
 
     @pytest.mark.unit
     async def test_collector_failure_is_never_fatal(self) -> None:

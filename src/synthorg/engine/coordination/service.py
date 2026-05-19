@@ -11,6 +11,7 @@ from collections.abc import (
 )
 from typing import TYPE_CHECKING, Final
 
+from synthorg.budget.coordination_collector import CollectionInputs
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import CoordinationTopology
@@ -51,7 +52,6 @@ if TYPE_CHECKING:
         DecompositionResult,
     )
     from synthorg.engine.decomposition.service import DecompositionService
-    from synthorg.engine.loop_protocol import ExecutionResult
     from synthorg.engine.middleware.coordination_protocol import (
         CoordinationMiddlewareChain,
     )
@@ -61,13 +61,6 @@ if TYPE_CHECKING:
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.workspace.service import WorkspaceIsolationService
     from synthorg.hr.performance.tracker import PerformanceTracker
-
-    _MetricsCollectCall = tuple[
-        ExecutionResult,
-        tuple[tuple[str, float], ...],
-        tuple[str, ...],
-        int,
-    ]
 
 logger = get_logger(__name__)
 
@@ -509,21 +502,12 @@ class MultiAgentCoordinator:
         collector = self._coordination_metrics_collector
         if collector is None:
             return
-        call = self._build_metrics_collect_call(dispatch_result)
-        if call is None:
+        inputs = self._build_collection_inputs(task_id, dispatch_result)
+        if inputs is None:
             return
-        aggregate, agent_durations, agent_outputs, team_size = call
         try:
             await asyncio.wait_for(
-                collector.collect(
-                    execution_result=aggregate,
-                    agent_id=_COORDINATOR_ACTOR,
-                    task_id=task_id,
-                    team_size=team_size,
-                    agent_durations=agent_durations,
-                    agent_outputs=agent_outputs,
-                    is_multi_agent=True,
-                ),
+                collector.collect(inputs),
                 timeout=_METRICS_COLLECT_TIMEOUT_SECONDS,
             )
         except MemoryError, RecursionError:
@@ -537,17 +521,20 @@ class MultiAgentCoordinator:
                 context="post_completion_coordination_metrics",
             )
 
-    def _build_metrics_collect_call(
+    def _build_collection_inputs(
         self,
+        task_id: str,
         dispatch_result: DispatchResult,
-    ) -> _MetricsCollectCall | None:
-        """Aggregate sub-agent results into the collector's arguments.
+    ) -> CollectionInputs | None:
+        """Aggregate sub-agent results into the collector inputs.
 
         Returns ``None`` when no sub-agent produced a result. The
         aggregate ``ExecutionResult`` carries the team-wide turn records
         (``model_copy`` off a real sub-agent result, swapping only
         ``turns`` -- the collector reads nothing else off it) so
         ``turns_mas`` is the total reasoning turns across the system.
+        Multi-agent coordination has no single lead, so ``agent_id`` is
+        the system-level ``_COORDINATOR_ACTOR`` label.
         """
         results = [
             outcome.result
@@ -564,12 +551,17 @@ class MultiAgentCoordinator:
         aggregate = results[0].execution_result.model_copy(
             update={"turns": aggregate_turns},
         )
-        agent_durations = tuple((r.agent_id, r.duration_seconds) for r in results)
-        agent_outputs = tuple(
-            r.completion_summary for r in results if r.completion_summary
+        return CollectionInputs(
+            execution_result=aggregate,
+            agent_id=_COORDINATOR_ACTOR,
+            task_id=task_id,
+            team_size=len({r.agent_id for r in results}),
+            agent_durations=tuple((r.agent_id, r.duration_seconds) for r in results),
+            agent_outputs=tuple(
+                r.completion_summary for r in results if r.completion_summary
+            ),
+            is_multi_agent=True,
         )
-        team_size = len({r.agent_id for r in results})
-        return aggregate, agent_durations, agent_outputs, team_size
 
     async def _phase_decompose(
         self,
