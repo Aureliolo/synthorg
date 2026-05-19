@@ -1,6 +1,8 @@
 """Tests for CoordinationMetricsCollector runtime collection pipeline."""
 
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
@@ -18,7 +20,13 @@ from synthorg.budget.coordination_config import (
 from synthorg.budget.coordination_metrics import CoordinationMetrics
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.engine.loop_protocol import ExecutionResult, TurnRecord
+from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_protocol import (
+    ExecutionResult,
+    TerminationReason,
+    TurnRecord,
+)
 from synthorg.providers.enums import FinishReason
 from tests._shared import FakeClock
 
@@ -63,12 +71,24 @@ def _turn(
 def _execution_result(*turns: TurnRecord) -> ExecutionResult:
     """Build a real ExecutionResult carrying the given turns.
 
-    ``model_construct`` skips validation so the heavyweight
-    ``context`` / ``termination_reason`` fields the collector never
-    reads are not required, while still yielding a genuine typed
-    ``ExecutionResult`` rather than a bare mock at the boundary.
+    A genuine ``ExecutionResult`` (real ``AgentContext`` + real
+    ``TurnRecord``s) at the ``_collect`` boundary instead of a bare
+    mock; the collector reads only ``turns`` but the full typed
+    instance keeps the contract honest.
     """
-    return ExecutionResult.model_construct(turns=tuple(turns))
+    identity = AgentIdentity(
+        id=uuid4(),
+        name="Test Agent",
+        role="Developer",
+        department="Engineering",
+        model=ModelConfig(provider="test-provider", model_id="test-large-001"),
+        hiring_date=date(2026, 1, 1),
+    )
+    return ExecutionResult(
+        context=AgentContext.from_identity(identity),
+        termination_reason=TerminationReason.COMPLETED,
+        turns=tuple(turns),
+    )
 
 
 async def _collect(  # noqa: PLR0913
