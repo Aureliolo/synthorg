@@ -182,23 +182,19 @@ class CoordinationMetricsCollector:
     ) -> CoordinationMetrics:
         """Collect all enabled coordination metrics post-execution.
 
-        For single-agent runs (``is_multi_agent=False``), records
-        baseline data and returns an empty ``CoordinationMetrics``.
-        For multi-agent runs, computes all enabled metrics using the
-        accumulated baseline data.
-
-        All individual metric failures are logged and skipped without
-        blocking the remaining metrics.
+        Single-agent runs (``is_multi_agent=False``) only record baseline
+        data and return an empty ``CoordinationMetrics``; multi-agent runs
+        compute all enabled metrics against the accumulated baseline.
+        Individual metric failures are logged and skipped without
+        blocking the rest.
 
         Args:
             execution_result: Completed execution result.
             agent_id: Executing agent identifier.
             task_id: Task identifier.
             team_size: Number of agents (1 for single-agent runs).
-            agent_durations: Per-agent completion times as
-                ``(agent_id, seconds)`` pairs.
-            agent_outputs: Agent output strings for redundancy
-                computation (multi-agent only).
+            agent_durations: Per-agent ``(agent_id, seconds)`` pairs.
+            agent_outputs: Agent outputs for redundancy (multi-agent).
             is_multi_agent: Whether this is a multi-agent execution.
 
         Returns:
@@ -243,6 +239,21 @@ class CoordinationMetricsCollector:
             agent_outputs=agent_outputs,
         )
 
+    @staticmethod
+    def _log_single_agent_completed(agent_id: str, task_id: str) -> None:
+        """Emit the single-agent collection-completed debug event.
+
+        Single-agent runs never compute metrics (they only feed the
+        baseline), so ``metrics_computed`` is always 0.
+        """
+        logger.debug(
+            COORD_METRICS_COLLECTION_COMPLETED,
+            agent_id=agent_id,
+            task_id=task_id,
+            is_multi_agent=False,
+            metrics_computed=0,
+        )
+
     def _record_baseline(  # noqa: PLR0913
         self,
         agent_id: str,
@@ -253,24 +264,8 @@ class CoordinationMetricsCollector:
         execution_result: ExecutionResult,
     ) -> None:
         """Record single-agent baseline data when store is available."""
-        if self._baseline_store is None:
-            logger.debug(
-                COORD_METRICS_COLLECTION_COMPLETED,
-                agent_id=agent_id,
-                task_id=task_id,
-                is_multi_agent=False,
-                metrics_computed=0,
-            )
-            return
-
-        if turns == 0:
-            logger.debug(
-                COORD_METRICS_COLLECTION_COMPLETED,
-                agent_id=agent_id,
-                task_id=task_id,
-                is_multi_agent=False,
-                metrics_computed=0,
-            )
+        if self._baseline_store is None or turns == 0:
+            self._log_single_agent_completed(agent_id, task_id)
             return
 
         from synthorg.budget.baseline_store import BaselineRecord  # noqa: PLC0415
@@ -279,13 +274,7 @@ class CoordinationMetricsCollector:
             sum(t.latency_ms or 0.0 for t in execution_result.turns) / 1000.0
         )
         if duration_seconds <= 0:
-            logger.debug(
-                COORD_METRICS_COLLECTION_COMPLETED,
-                agent_id=agent_id,
-                task_id=task_id,
-                is_multi_agent=False,
-                metrics_computed=0,
-            )
+            self._log_single_agent_completed(agent_id, task_id)
             return
 
         baseline = BaselineRecord(
@@ -297,13 +286,7 @@ class CoordinationMetricsCollector:
             duration_seconds=duration_seconds,
         )
         self._baseline_store.record(baseline)
-        logger.debug(
-            COORD_METRICS_COLLECTION_COMPLETED,
-            agent_id=agent_id,
-            task_id=task_id,
-            is_multi_agent=False,
-            metrics_computed=0,
-        )
+        self._log_single_agent_completed(agent_id, task_id)
 
     async def _collect_multi_agent(  # noqa: PLR0913
         self,
@@ -318,6 +301,41 @@ class CoordinationMetricsCollector:
         agent_outputs: tuple[str, ...] | None,
     ) -> CoordinationMetrics:
         """Compute all enabled metrics for a multi-agent execution."""
+        metrics = await self._compute_all_metrics(
+            turns=turns,
+            error_rate=error_rate,
+            total_tokens=total_tokens,
+            team_size=team_size,
+            agent_durations=agent_durations,
+            agent_outputs=agent_outputs,
+        )
+        logger.info(
+            COORD_METRICS_COLLECTION_COMPLETED,
+            agent_id=agent_id,
+            task_id=task_id,
+            is_multi_agent=True,
+            metrics_computed=self._count_computed(metrics),
+        )
+        await self._fire_alerts(metrics, agent_id=agent_id, task_id=task_id)
+        self._record_metrics(task_id, team_size, metrics)
+        return metrics
+
+    async def _compute_all_metrics(  # noqa: PLR0913
+        self,
+        *,
+        turns: int,
+        error_rate: float,
+        total_tokens: int,
+        team_size: int,
+        agent_durations: tuple[tuple[str, float], ...] | None,
+        agent_outputs: tuple[str, ...] | None,
+    ) -> CoordinationMetrics:
+        """Run every enabled metric collector in order, assemble the result.
+
+        The collectors are awaited in a fixed sequence (``message_overhead``
+        consumes the already-computed ``message_density``); the order is
+        load-bearing and must not be reshuffled.
+        """
         efficiency = await self._try_collect_efficiency(turns, error_rate)
         overhead = await self._try_collect_overhead(turns)
         error_amplification = await self._try_collect_error_amplification(
@@ -335,8 +353,7 @@ class CoordinationMetricsCollector:
             team_size,
             message_density,
         )
-
-        metrics = CoordinationMetrics(
+        return CoordinationMetrics(
             efficiency=efficiency,
             overhead=overhead,
             error_amplification=error_amplification,
@@ -348,32 +365,24 @@ class CoordinationMetricsCollector:
             message_overhead=message_overhead,
         )
 
-        computed_count = sum(
+    @staticmethod
+    def _count_computed(metrics: CoordinationMetrics) -> int:
+        """Number of metrics that were actually computed (non-``None``)."""
+        return sum(
             1
             for m in (
-                efficiency,
-                overhead,
-                error_amplification,
-                message_density,
-                redundancy_rate,
-                amdahl_ceiling,
-                straggler_gap,
-                token_speedup,
-                message_overhead,
+                metrics.efficiency,
+                metrics.overhead,
+                metrics.error_amplification,
+                metrics.message_density,
+                metrics.redundancy_rate,
+                metrics.amdahl_ceiling,
+                metrics.straggler_gap,
+                metrics.token_speedup_ratio,
+                metrics.message_overhead,
             )
             if m is not None
         )
-        logger.info(
-            COORD_METRICS_COLLECTION_COMPLETED,
-            agent_id=agent_id,
-            task_id=task_id,
-            is_multi_agent=True,
-            metrics_computed=computed_count,
-        )
-
-        await self._fire_alerts(metrics, agent_id=agent_id, task_id=task_id)
-        self._record_metrics(task_id, team_size, metrics)
-        return metrics
 
     def _record_metrics(
         self,
@@ -712,26 +721,51 @@ class CoordinationMetricsCollector:
 
         When ``notification_dispatcher`` is ``None``, no alerts are fired.
         """
-        if self._notification_dispatcher is None:
+        dispatcher = self._notification_dispatcher
+        if dispatcher is None:
             return
-
         overhead = metrics.overhead
         if overhead is None:
             return
-
-        thresholds: OrchestrationAlertThresholds = self._config.orchestration_alerts
         # O% is in percent; thresholds are fractions -> convert O% to fraction
-        overhead_fraction = overhead.value_percent / 100.0
-
-        if overhead_fraction >= thresholds.critical:
-            severity = "critical"
-        elif overhead_fraction >= thresholds.warn:
-            severity = "warning"
-        elif overhead_fraction >= thresholds.info:
-            severity = "info"
-        else:
+        severity = self._classify_overhead_severity(
+            overhead.value_percent / 100.0,
+        )
+        if severity is None:
             return
+        await self._dispatch_overhead_alert(
+            dispatcher,
+            severity=severity,
+            overhead=overhead,
+            agent_id=agent_id,
+            task_id=task_id,
+        )
 
+    def _classify_overhead_severity(self, overhead_fraction: float) -> str | None:
+        """Map an overhead fraction to an alert severity.
+
+        Returns ``None`` when the overhead is below the info threshold
+        (no alert is fired in that case).
+        """
+        thresholds: OrchestrationAlertThresholds = self._config.orchestration_alerts
+        if overhead_fraction >= thresholds.critical:
+            return "critical"
+        if overhead_fraction >= thresholds.warn:
+            return "warning"
+        if overhead_fraction >= thresholds.info:
+            return "info"
+        return None
+
+    async def _dispatch_overhead_alert(
+        self,
+        dispatcher: NotificationDispatcher,
+        *,
+        severity: str,
+        overhead: CoordinationOverhead,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Build and dispatch the overhead notification; never fatal."""
         from synthorg.notifications.models import (  # noqa: PLC0415
             Notification,
             NotificationCategory,
@@ -745,7 +779,7 @@ class CoordinationMetricsCollector:
             f"agent={agent_id}, task={task_id}"
         )
         try:
-            await self._notification_dispatcher.dispatch(
+            await dispatcher.dispatch(
                 Notification(
                     category=NotificationCategory.BUDGET,
                     severity=NotificationSeverity(severity),

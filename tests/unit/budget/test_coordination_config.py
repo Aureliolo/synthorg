@@ -1,5 +1,7 @@
 """Tests for coordination metrics configuration models."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 from pydantic import ValidationError
 
@@ -13,6 +15,12 @@ from synthorg.budget.coordination_config import (
     ErrorTaxonomyConfig,
     OrchestrationAlertThresholds,
 )
+from synthorg.persistence.settings_protocol import SettingsRepository
+from synthorg.settings import definitions as _settings_definitions  # noqa: F401
+from synthorg.settings.enums import SettingType
+from synthorg.settings.errors import SettingReadOnlyError
+from synthorg.settings.registry import get_registry
+from synthorg.settings.service import SettingsService
 
 
 @pytest.mark.unit
@@ -314,3 +322,39 @@ class TestCoordinationMetricsConfig:
         config = CoordinationMetricsConfig()
         with pytest.raises(ValidationError):
             config.enabled = True  # type: ignore[misc]
+
+
+@pytest.mark.unit
+class TestBaselineWindowSizeSetting:
+    """The ``> 0`` baseline-window invariant is enforced at the
+    settings layer.
+
+    The single-agent baseline window is no longer a Pydantic
+    ``CoordinationMetricsConfig`` field with ``gt=0``; it is the
+    registered ``budget.baseline_window_size`` setting. These tests
+    guard that the positive-window invariant survived the move: the
+    registered definition still carries the ``[1, 1_000_000]`` bound
+    and, being read-only post-init, the value cannot be mutated to an
+    out-of-range one at runtime.
+    """
+
+    def test_registered_definition_bounds(self) -> None:
+        defn = get_registry().get("budget", "baseline_window_size")
+        assert defn is not None
+        assert defn.type is SettingType.INTEGER
+        assert defn.default == "50"
+        # The bound that the deleted ``gt=0`` field validator enforced.
+        assert defn.min_value == 1
+        assert defn.max_value == 1_000_000
+        assert defn.read_only_post_init is True
+        assert defn.restart_required is True
+        assert defn.env_var_override == "SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE"
+
+    async def test_read_only_post_init_rejects_runtime_mutation(self) -> None:
+        repo = AsyncMock(spec=SettingsRepository)
+        repo.get.return_value = None
+        repo.get_namespace.return_value = ()
+        repo.list_items.return_value = ()
+        service = SettingsService(repository=repo, registry=get_registry())
+        with pytest.raises(SettingReadOnlyError):
+            await service.set("budget", "baseline_window_size", "0")

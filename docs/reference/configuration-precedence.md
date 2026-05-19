@@ -128,6 +128,8 @@ domain-specific startup event (e.g. `API_APP_STARTUP`,
 | `communication.nats_url` | `SYNTHORG_NATS_URL` | Read once by the bus driver at startup. |
 | `workers.count` | `SYNTHORG_WORKERS` | Read at worker-process boot AND by the worker pool builder. |
 | `observability.log_directory` | `SYNTHORG_LOG_DIR` | Path-traversal validated at the boot site. |
+| `budget.coordination_metrics_max_entries` | `SYNTHORG_BUDGET_COORDINATION_METRICS_MAX_ENTRIES` | Sizes the coordination-metrics ring buffer at boot. |
+| `budget.baseline_window_size` | `SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE` | Sizes the single-agent baseline window at `BaselineStore` construction. |
 
 ### Category 3 examples (env only; no registry entry)
 

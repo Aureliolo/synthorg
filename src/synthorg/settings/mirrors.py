@@ -55,6 +55,22 @@ def parse_int(raw: str) -> int | None:
         return None
 
 
+def resolve_init_int(namespace: SettingNamespace, key: str) -> int:
+    """Resolve an integer-typed setting at app construction time.
+
+    Cat-2 boot knob: the consumer is built before the
+    ``SettingsService`` connects, so the value is sourced env >
+    registered default via the bootstrap resolver (a runtime change
+    requires a restart). ``parse_int`` makes a non-integer env value
+    fall through to the registered default rather than raising at
+    construction time. This is the single sanctioned int-resolver so
+    boot sites do not each re-implement ``resolve_init_value`` +
+    ``parse_int`` + ``int(...)``.
+    """
+    resolved = resolve_init_value(namespace, key, parse=parse_int)
+    return int(resolved.value)
+
+
 def parse_float(raw: str) -> float | None:
     """Parse a float env token."""
     try:

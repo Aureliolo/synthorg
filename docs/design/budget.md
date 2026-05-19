@@ -330,6 +330,13 @@ etc.).
           - coordination_failure
     ```
 
+    The `Ae` baseline is a sliding window of recent single-agent (SAS)
+    runs. Its size is the `budget.baseline_window_size` setting
+    (default 50), sourced from the `SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE`
+    environment variable at API start. It is read-only post-init: the
+    window is sized once when the baseline store is constructed, so a
+    change requires a restart.
+
 ???+ note "Full Analytics Layer Configuration"
 
     Expanded per-call metadata for comprehensive financial and operational reporting:

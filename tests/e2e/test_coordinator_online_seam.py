@@ -299,13 +299,14 @@ async def test_coordinator_records_coordination_metrics_end_to_end(
 ) -> None:
     """A real multi-agent run lands a record the read API would return.
 
-    Closes the #1951/#1954 ghost: with the collector wired at boot
-    (cost_tracker present) and ``coordination_metrics.enabled``, the
-    coordinator's post-completion hook writes a
-    ``CoordinationMetricsRecord`` into the boot-wired
-    ``CoordinationMetricsStore``. ``store.query(...)`` is exactly what
-    the ``GET /coordination/metrics`` controller returns, so a non-empty
-    query proves the endpoint now serves real data.
+    With ``cost_tracker`` present and ``coordination_metrics.enabled``,
+    ``build_runtime_services`` constructs the collector and the
+    coordinator's post-completion hook persists a
+    ``CoordinationMetricsRecord`` into the ``CoordinationMetricsStore``.
+    ``store.query(...)`` is exactly the call the
+    ``GET /coordination/metrics`` controller makes, so a non-empty query
+    proves the endpoint serves real, persisted coordination metrics
+    rather than an empty list.
     """
     provider = ScriptedDriver(
         "test-provider",

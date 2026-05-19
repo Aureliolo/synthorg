@@ -38,9 +38,8 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.resolver import AutonomyResolver
-from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
-from synthorg.settings.mirrors import parse_int
+from synthorg.settings.mirrors import resolve_init_int
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox.factory import build_sandbox_backends
@@ -78,15 +77,9 @@ def _resolve_baseline_window_size() -> int:
     Cat-2 boot knob (``read_only_post_init``): the ``BaselineStore``
     sliding window is sized once at construction, so the value is
     sourced env > registered default via the bootstrap resolver (a
-    runtime change requires a restart). Mirrors ``app._resolve_budget_int``
-    for ``coordination_metrics_max_entries``.
+    runtime change requires a restart).
     """
-    resolved = resolve_init_value(
-        SettingNamespace.BUDGET,
-        _BASELINE_WINDOW_KEY,
-        parse=parse_int,
-    )
-    return int(resolved.value)
+    return resolve_init_int(SettingNamespace.BUDGET, _BASELINE_WINDOW_KEY)
 
 
 def _construct_coordination_collector(

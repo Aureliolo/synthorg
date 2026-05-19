@@ -5,10 +5,11 @@ update parent. Rollup + parent lifecycle walk live in
 :mod:`synthorg.engine.coordination.parent_rollup`.
 """
 
+import asyncio
 from collections.abc import (
     Callable,  # noqa: TC003 -- runtime-read by typing.get_type_hints()
 )
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.clock import Clock, SystemClock
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
         DecompositionResult,
     )
     from synthorg.engine.decomposition.service import DecompositionService
+    from synthorg.engine.loop_protocol import ExecutionResult
     from synthorg.engine.middleware.coordination_protocol import (
         CoordinationMiddlewareChain,
     )
@@ -60,6 +62,13 @@ if TYPE_CHECKING:
     from synthorg.engine.workspace.service import WorkspaceIsolationService
     from synthorg.hr.performance.tracker import PerformanceTracker
 
+    _MetricsCollectCall = tuple[
+        ExecutionResult,
+        tuple[tuple[str, float], ...],
+        tuple[str, ...],
+        int,
+    ]
+
 logger = get_logger(__name__)
 
 # Logging actor for the multi-agent (system-level) metrics collection.
@@ -67,6 +76,14 @@ logger = get_logger(__name__)
 # (no single lead in a coordinated run); this label only tags the
 # collector's observability events / overhead alerts.
 _COORDINATOR_ACTOR: str = "coordinator"
+
+# Upper bound on the post-completion metrics-collection hook. The
+# collector awaits the message bus and similarity computer; a degraded
+# dependency must not wedge an already-completed coordination run.
+# Like ``budget/enforcer._DEFAULT_TIMEOUT_SEC`` this bounds a
+# never-fatal drain, not operator-tunable policy, so it stays a typed
+# constant rather than a registered setting.
+_METRICS_COLLECT_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 class MultiAgentCoordinator:
@@ -442,6 +459,7 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_CLEANUP_FAILED,
                 parent_task_id=task.id,
+                error_type=type(attr_exc).__name__,
                 error=safe_error_description(attr_exc),
                 context="post_completion_attribution_build",
             )
@@ -457,6 +475,7 @@ class MultiAgentCoordinator:
                 logger.warning(
                     COORDINATION_CLEANUP_FAILED,
                     parent_task_id=task.id,
+                    error_type=type(tracker_exc).__name__,
                     error=safe_error_description(tracker_exc),
                     context="post_completion_tracker_write",
                 )
@@ -482,15 +501,54 @@ class MultiAgentCoordinator:
         Never fatal: a collector failure must not fail an already
         completed coordination run (mirrors the ``_performance_tracker``
         guard above). Skipped when no collector is wired or no sub-agent
-        produced a result. The aggregate ``ExecutionResult`` carries the
-        team-wide turn records (``model_copy`` off a real sub-agent
-        result, swapping only ``turns`` -- the collector reads nothing
-        else off it) so ``turns_mas`` is the total reasoning turns
-        across the system.
+        produced a result. ``asyncio.wait_for`` bounds the hook so a
+        degraded message bus or similarity computer cannot wedge a
+        completed run; a timeout surfaces as ``TimeoutError`` in the
+        guard below (logged via ``error_type``).
         """
         collector = self._coordination_metrics_collector
         if collector is None:
             return
+        call = self._build_metrics_collect_call(dispatch_result)
+        if call is None:
+            return
+        aggregate, agent_durations, agent_outputs, team_size = call
+        try:
+            await asyncio.wait_for(
+                collector.collect(
+                    execution_result=aggregate,
+                    agent_id=_COORDINATOR_ACTOR,
+                    task_id=task_id,
+                    team_size=team_size,
+                    agent_durations=agent_durations,
+                    agent_outputs=agent_outputs,
+                    is_multi_agent=True,
+                ),
+                timeout=_METRICS_COLLECT_TIMEOUT_SECONDS,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORDINATION_CLEANUP_FAILED,
+                parent_task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                context="post_completion_coordination_metrics",
+            )
+
+    def _build_metrics_collect_call(
+        self,
+        dispatch_result: DispatchResult,
+    ) -> _MetricsCollectCall | None:
+        """Aggregate sub-agent results into the collector's arguments.
+
+        Returns ``None`` when no sub-agent produced a result. The
+        aggregate ``ExecutionResult`` carries the team-wide turn records
+        (``model_copy`` off a real sub-agent result, swapping only
+        ``turns`` -- the collector reads nothing else off it) so
+        ``turns_mas`` is the total reasoning turns across the system.
+        """
         results = [
             outcome.result
             for wave in dispatch_result.waves
@@ -499,7 +557,7 @@ class MultiAgentCoordinator:
             if outcome.result is not None
         ]
         if not results:
-            return
+            return None
         aggregate_turns = tuple(
             turn for r in results for turn in r.execution_result.turns
         )
@@ -511,25 +569,7 @@ class MultiAgentCoordinator:
             r.completion_summary for r in results if r.completion_summary
         )
         team_size = len({r.agent_id for r in results})
-        try:
-            await collector.collect(
-                execution_result=aggregate,
-                agent_id=_COORDINATOR_ACTOR,
-                task_id=task_id,
-                team_size=team_size,
-                agent_durations=agent_durations,
-                agent_outputs=agent_outputs,
-                is_multi_agent=True,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                COORDINATION_CLEANUP_FAILED,
-                parent_task_id=task_id,
-                error=safe_error_description(exc),
-                context="post_completion_coordination_metrics",
-            )
+        return aggregate, agent_durations, agent_outputs, team_size
 
     async def _phase_decompose(
         self,
