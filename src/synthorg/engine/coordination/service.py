@@ -536,15 +536,19 @@ class MultiAgentCoordinator:
         Multi-agent coordination has no single lead, so ``agent_id`` is
         the system-level ``_COORDINATOR_ACTOR`` label.
         """
-        results = [
-            outcome.result
+        outcomes = [
+            outcome
             for wave in dispatch_result.waves
             if wave.execution_result is not None
             for outcome in wave.execution_result.outcomes
-            if outcome.result is not None
         ]
+        results = [outcome.result for outcome in outcomes if outcome.result is not None]
         if not results:
             return None
+        # Count every dispatched participant, including ones whose
+        # subtask failed (no result), so team-level metrics are not
+        # skewed low by partial failures.
+        participating_agents = {outcome.agent_id for outcome in outcomes}
         aggregate_turns = tuple(
             turn for r in results for turn in r.execution_result.turns
         )
@@ -562,7 +566,7 @@ class MultiAgentCoordinator:
             execution_result=aggregate,
             agent_id=_COORDINATOR_ACTOR,
             task_id=task_id,
-            team_size=len(durations_by_agent),
+            team_size=len(participating_agents),
             agent_durations=tuple(durations_by_agent.items()),
             agent_outputs=tuple(
                 r.completion_summary for r in results if r.completion_summary

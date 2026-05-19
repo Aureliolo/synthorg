@@ -1073,3 +1073,50 @@ class TestCoordinationMetricsCollection:
         # build_run_result sets duration_seconds=0.5 per subtask; the two
         # subtasks for the same agent must sum rather than appear twice.
         assert entry_duration == pytest.approx(1.0)
+
+    @pytest.mark.unit
+    async def test_team_size_counts_failed_participants(self) -> None:
+        """A participant whose subtask failed still counts in team_size."""
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
+            (sub_a, sub_b),
+            structure=TaskStructure.SEQUENTIAL,
+        )
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+        agent_id_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
+        agent_id_b = str(routing.decisions[1].selected_candidate.agent_identity.id)
+        exec_results = [
+            make_exec_result("wave-0", [("sub-a", agent_id_a)], all_succeed=False),
+            make_exec_result("wave-1", [("sub-b", agent_id_b)], all_succeed=True),
+        ]
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(
+                make_assignment_agent("alice"),
+                make_assignment_agent("bob"),
+            ),
+            config=CoordinationConfig(fail_fast=False),
+        )
+        collector = mock_of[CoordinationMetricsCollector](
+            collect=AsyncMock(return_value=CoordinationMetrics()),
+        )
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=exec_results,
+            collector=collector,
+        )
+
+        await coordinator.coordinate(ctx)
+
+        collector.collect.assert_awaited_once()
+        inputs = collector.collect.await_args.args[0]
+        assert isinstance(inputs, CollectionInputs)
+        # Both agents were dispatched; alice's subtask failed (no result)
+        # but still counts toward team_size.
+        assert inputs.team_size == 2
+        # agent_durations only carries agents that produced a result.
+        assert inputs.agent_durations is not None
+        assert len(inputs.agent_durations) == 1
+        assert inputs.agent_durations[0][0] == agent_id_b
