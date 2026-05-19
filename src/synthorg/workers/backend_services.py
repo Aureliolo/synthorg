@@ -18,7 +18,6 @@ connected). Stop order is reversed and best-effort so one slow
 component cannot strand the others.
 """
 
-import contextlib
 from typing import TYPE_CHECKING, Protocol
 
 from synthorg.observability import get_logger, safe_error_description
@@ -101,8 +100,17 @@ class DistributedBackendServices:
                 started.append((name, component))
         except Exception:
             for _name, component in reversed(started):
-                with contextlib.suppress(Exception):
+                try:
                     await component.stop()
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        WORKERS_BACKEND_BUNDLE_STOP_FAILED,
+                        component=_name,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
             raise
         logger.info(WORKERS_BACKEND_BUNDLE_STARTED)
 

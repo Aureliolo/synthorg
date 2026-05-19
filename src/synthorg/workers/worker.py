@@ -258,11 +258,13 @@ class Worker:
             await self._task_queue.publish_dead(claim)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 WORKERS_DEAD_LETTER_PUBLISH_FAILED,
                 worker_id=self._worker_id,
                 task_id=claim.task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         await self._finalize_claim(raw, TaskClaimStatus.SUCCESS)
@@ -369,11 +371,15 @@ class Worker:
         """Run the injected executor, translating exceptions into RETRY."""
         try:
             return await self._executor(claim)
-        except Exception:
-            logger.exception(
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.error(
                 WORKERS_EXECUTOR_FAILED,
                 worker_id=self._worker_id,
                 task_id=claim.task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return TaskClaimStatus.RETRY
 
