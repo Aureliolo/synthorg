@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.8.6](https://github.com/Aureliolo/synthorg/compare/v0.8.5...v0.8.6) (2026-05-19)
+
+
+### Features
+
+* agent runtime online + minimal safety spine (runtime root) ([#2003](https://github.com/Aureliolo/synthorg/issues/2003)) ([e5eef1a](https://github.com/Aureliolo/synthorg/commit/e5eef1ad58852385039493dbd78bbc500f807149)), closes [#1956](https://github.com/Aureliolo/synthorg/issues/1956)
+* deterministic recorded-LLM cassette replay at the provider chokepoint ([#2010](https://github.com/Aureliolo/synthorg/issues/2010)) ([cabf55d](https://github.com/Aureliolo/synthorg/commit/cabf55db340146b4e1d93fc805f1c150b8476237))
+* distributed path validation + hardening ([#2011](https://github.com/Aureliolo/synthorg/issues/2011)) ([a382e4a](https://github.com/Aureliolo/synthorg/commit/a382e4a4d519d14f9feb8ef032b7bed4e659fbff)), closes [#1966](https://github.com/Aureliolo/synthorg/issues/1966)
+* wire IntakeEngine via boot client-simulation runtime (e2e test harness) ([#2006](https://github.com/Aureliolo/synthorg/issues/2006)) ([6a9c0aa](https://github.com/Aureliolo/synthorg/commit/6a9c0aa5030cd717d772bccda8202f44d8ce4da7)), closes [#1961](https://github.com/Aureliolo/synthorg/issues/1961)
+* work pipeline spine ([#1960](https://github.com/Aureliolo/synthorg/issues/1960)) ([#2013](https://github.com/Aureliolo/synthorg/issues/2013)) ([29b64e3](https://github.com/Aureliolo/synthorg/commit/29b64e319109d38284a1d7cf5b1bae47c0eafbc0))
+
+
+### Bug Fixes
+
+* bring the multi-agent coordinator online at boot ([#2007](https://github.com/Aureliolo/synthorg/issues/2007)) ([180b38a](https://github.com/Aureliolo/synthorg/commit/180b38a50b2c24b306d5ea839b983205cdf06913)), closes [#1958](https://github.com/Aureliolo/synthorg/issues/1958)
+* full governance enforcement online ([#1957](https://github.com/Aureliolo/synthorg/issues/1957)) ([#2005](https://github.com/Aureliolo/synthorg/issues/2005)) ([4140fc5](https://github.com/Aureliolo/synthorg/commit/4140fc544d389843bec85e81590ca5e2226926ff))
+* harden anti-ghost-wiring gate and fix silently-dropped review agents ([#2000](https://github.com/Aureliolo/synthorg/issues/2000)) ([89b57ce](https://github.com/Aureliolo/synthorg/commit/89b57ce0187fec6054fffbfcfad15558f0fd93fc))
+* make coordination metrics live ([#1959](https://github.com/Aureliolo/synthorg/issues/1959)) ([#2012](https://github.com/Aureliolo/synthorg/issues/2012)) ([c4775e2](https://github.com/Aureliolo/synthorg/commit/c4775e27229e81e8c5f73dfba5db78ef8a8e471f))
+* sandbox lifecycle dispatch (per-agent / per-task container reuse) ([#2008](https://github.com/Aureliolo/synthorg/issues/2008)) ([03d2587](https://github.com/Aureliolo/synthorg/commit/03d25874c17b76d7325102d3406bff9b650ae3ca)), closes [#1965](https://github.com/Aureliolo/synthorg/issues/1965)
+
+
+### Documentation
+
+* add GitButler concept-only concurrency research ([#1978](https://github.com/Aureliolo/synthorg/issues/1978)) ([#2009](https://github.com/Aureliolo/synthorg/issues/2009)) ([9e4f5c1](https://github.com/Aureliolo/synthorg/commit/9e4f5c1bad94338708dc1f78d070c5d300c9a3fb))
+* honest-hybrid refresh of README, site, and design specs ([#2001](https://github.com/Aureliolo/synthorg/issues/2001)) ([f485bea](https://github.com/Aureliolo/synthorg/commit/f485bea9ac02777018acae3f6977502bcfcfe439))
+
+
+### CI/CD
+
+* update apko lockfiles ([#2004](https://github.com/Aureliolo/synthorg/issues/2004)) ([e2b9eee](https://github.com/Aureliolo/synthorg/commit/e2b9eee04a70c09ee4c9f50057d0a1dbc74536c5))
+
+
+### Maintenance
+
+* Update Infrastructure dependencies ([#2014](https://github.com/Aureliolo/synthorg/issues/2014)) ([0b16bdf](https://github.com/Aureliolo/synthorg/commit/0b16bdf156fdad6fd0590504e81e22239fd742e3))
+* Update Python dependencies ([#2015](https://github.com/Aureliolo/synthorg/issues/2015)) ([a7224bb](https://github.com/Aureliolo/synthorg/commit/a7224bb90ffa7d58fe0c6aca4d042a4aa7ac9366))
+* Update Web dependencies ([#2016](https://github.com/Aureliolo/synthorg/issues/2016)) ([7a7fe76](https://github.com/Aureliolo/synthorg/commit/7a7fe765f0e7da54787537dc659f3a6b61112bb2))
+
 ## [0.8.5](https://github.com/Aureliolo/synthorg/compare/v0.8.4...v0.8.5) (2026-05-17)
 
 
