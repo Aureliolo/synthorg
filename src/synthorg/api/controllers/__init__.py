@@ -59,6 +59,7 @@ from synthorg.api.controllers.meta import MetaController
 from synthorg.api.controllers.meta_analytics import MetaAnalyticsController
 from synthorg.api.controllers.metrics import MetricsController
 from synthorg.api.controllers.oauth import OAuthController
+from synthorg.api.controllers.objectives import ObjectiveController
 from synthorg.api.controllers.ontology import OntologyController
 from synthorg.api.controllers.personalities import (
     PersonalityPresetController,
@@ -172,6 +173,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
 OPTIONAL_CONTROLLERS: tuple[tuple[type[Controller], str], ...] = (
     (SimulationController, "has_simulation_runtime"),
     (RequestController, "has_simulation_runtime"),
+    (ObjectiveController, "has_objective_entry_adapter"),
 )
 
 # Integration subsystem controllers. Registered only when

@@ -26,6 +26,7 @@ class SettingNamespace(StrEnum):
     INTEGRATIONS = "integrations"
     META = "meta"
     NOTIFICATIONS = "notifications"
+    OBJECTIVES = "objectives"
     SIMULATIONS = "simulations"
     TOOLS = "tools"
     SETTINGS = "settings"

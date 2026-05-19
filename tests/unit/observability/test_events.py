@@ -288,6 +288,7 @@ class TestEventConstants:
             "checkpoint",
             "context_budget",
             "notification",
+            "objectives",
             "ontology",
             "settings",
             "setup",
