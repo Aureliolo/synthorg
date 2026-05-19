@@ -403,10 +403,21 @@ class CassetteSession:
         error = outcome.error
         if error is None or not error.context:
             return outcome
+        # The recorded context must keep ``ProviderError.context``'s
+        # keys so a replayed exception is faithful for callers that
+        # branch on e.g. ``exc.context["model"]``. A pluggable redactor
+        # is free to collapse a whole-mapping redact to a scalar; if it
+        # does, fall back to per-entry redaction so the key shape is
+        # preserved (never the opaque ``{"value": ...}`` wrapper used
+        # for the shape-agnostic request copy).
         redacted = self._redactor.redact(dict(error.context))
-        ctx: dict[str, Any] = (
-            redacted if isinstance(redacted, dict) else {"value": redacted}
-        )
+        if isinstance(redacted, dict):
+            ctx: dict[str, Any] = redacted
+        else:
+            ctx = {
+                key: self._redactor.redact(value)
+                for key, value in error.context.items()
+            }
         return outcome.model_copy(
             update={"error": error.model_copy(update={"context": ctx})},
         )
