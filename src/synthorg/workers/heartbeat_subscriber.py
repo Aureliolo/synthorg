@@ -95,6 +95,10 @@ class WorkerHeartbeatSubscriber:
         """
         async with self._lifecycle_lock:
             if self._running:
+                logger.warning(
+                    WORKERS_HEARTBEAT_SUBSCRIBER_FAILED,
+                    reason="already_running",
+                )
                 msg = "WorkerHeartbeatSubscriber is already running"
                 raise RuntimeError(msg)
             self._subscription = await self._task_queue.core_subscribe(
