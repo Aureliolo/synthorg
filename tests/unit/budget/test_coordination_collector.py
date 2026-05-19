@@ -1,6 +1,5 @@
 """Tests for CoordinationMetricsCollector runtime collection pipeline."""
 
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -19,9 +18,9 @@ from synthorg.budget.coordination_config import (
 from synthorg.budget.coordination_metrics import CoordinationMetrics
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.engine.loop_protocol import ExecutionResult
+from synthorg.engine.loop_protocol import ExecutionResult, TurnRecord
 from synthorg.providers.enums import FinishReason
-from tests._shared import FakeClock, mock_of
+from tests._shared import FakeClock
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -49,18 +48,27 @@ def _turn(
     input_tokens: int = 100,
     output_tokens: int = 50,
     latency_ms: float | None = 50.0,
-) -> SimpleNamespace:
-    """Build a minimal TurnRecord attribute-bag."""
-    return SimpleNamespace(
+) -> TurnRecord:
+    """Build a minimal real TurnRecord."""
+    return TurnRecord(
+        turn_number=1,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost=0.0,
         finish_reason=finish_reason,
-        total_tokens=input_tokens + output_tokens,
         latency_ms=latency_ms,
     )
 
 
-def _execution_result(*turns: SimpleNamespace) -> ExecutionResult:
-    """Build a minimal typed ExecutionResult double."""
-    return mock_of[ExecutionResult](turns=turns)
+def _execution_result(*turns: TurnRecord) -> ExecutionResult:
+    """Build a real ExecutionResult carrying the given turns.
+
+    ``model_construct`` skips validation so the heavyweight
+    ``context`` / ``termination_reason`` fields the collector never
+    reads are not required, while still yielding a genuine typed
+    ``ExecutionResult`` rather than a bare mock at the boundary.
+    """
+    return ExecutionResult.model_construct(turns=tuple(turns))
 
 
 async def _collect(  # noqa: PLR0913
