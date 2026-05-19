@@ -6,6 +6,7 @@ injected deterministic policy when the model response cannot be
 parsed, so the spine never stalls on an ambiguous answer.
 """
 
+import re
 from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.call_category import LLMCallCategory
@@ -33,6 +34,10 @@ logger = get_logger(__name__)
 
 _LLM_TEMPERATURE: Final[float] = 0.0
 _LLM_MAX_OUTPUT_TOKENS: Final[int] = 16
+
+_SPLITTABLE_RE: Final = re.compile(r"\bsplittable\b")
+_LEAF_RE: Final = re.compile(r"\bleaf\b")
+_NEGATION_RE: Final = re.compile(r"\b(?:not|no|never)\b|n't")
 
 _SYSTEM_PROMPT: Final[str] = (
     "You are a work-routing classifier for a virtual software "
@@ -133,18 +138,20 @@ class LlmJudgedRoutingPolicy:
     def _parse_verdict(content: str | None) -> RoutingVerdict | None:
         """Extract a verdict from model text, or ``None`` if ambiguous.
 
-        ``SPLITTABLE`` is checked first because the substring ``leaf``
-        does not appear in it, while a careless ``in`` order could
-        otherwise misread ``splittable`` text that also mentions a
-        leaf.
+        Whole-word matching with negation detection. ``SPLITTABLE`` is
+        checked first because the word ``leaf`` does not appear in it.
+        A negated or qualified response (e.g. ``"not splittable"``) is
+        treated as ambiguous so the caller falls back to the
+        deterministic policy instead of acting on a misread verdict.
         """
         if content is None:
             return None
         text = content.strip().lower()
         if not text:
             return None
-        if "splittable" in text:
-            return RoutingVerdict.SPLITTABLE
-        if "leaf" in text:
-            return RoutingVerdict.LEAF
+        negated = _NEGATION_RE.search(text) is not None
+        if _SPLITTABLE_RE.search(text):
+            return None if negated else RoutingVerdict.SPLITTABLE
+        if _LEAF_RE.search(text):
+            return None if negated else RoutingVerdict.LEAF
         return None

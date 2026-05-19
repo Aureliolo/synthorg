@@ -129,7 +129,6 @@ class TestWorkPipelineResult:
             "phases": (
                 WorkPhaseResult(phase="intake", success=True, duration_seconds=0.1),
             ),
-            "is_success": True,
             "total_duration_seconds": 0.2,
         }
         base.update(overrides)
@@ -145,10 +144,32 @@ class TestWorkPipelineResult:
         with pytest.raises(ValidationError):
             self._result(phases=())
 
+    def test_is_success_true_when_all_phases_succeed(self) -> None:
+        result = self._result()
+        assert result.is_success is True
+
+    def test_is_success_false_when_any_phase_failed(self) -> None:
+        result = self._result(
+            phases=(
+                WorkPhaseResult(phase="intake", success=True, duration_seconds=0.1),
+                WorkPhaseResult(
+                    phase="decompose",
+                    success=False,
+                    duration_seconds=0.2,
+                    error="boom",
+                ),
+            ),
+        )
+        assert result.is_success is False
+
+    def test_is_success_is_not_a_constructor_arg(self) -> None:
+        with pytest.raises(ValidationError):
+            self._result(is_success=False)
+
     def test_frozen(self) -> None:
         result = self._result()
         with pytest.raises(ValidationError):
-            result.is_success = False  # type: ignore[misc]
+            result.task_id = "other"  # type: ignore[misc]
 
     def test_extra_forbidden(self) -> None:
         with pytest.raises(ValidationError):

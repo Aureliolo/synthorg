@@ -39,6 +39,9 @@ class LeafThresholdRoutingPolicy:
         threshold: int,
         classifier: TaskStructureClassifier | None = None,
     ) -> None:
+        if threshold <= 0:
+            msg = f"threshold must be positive, got {threshold}"
+            raise ValueError(msg)
         self._threshold = threshold
         self._classifier = (
             classifier if classifier is not None else TaskStructureClassifier()

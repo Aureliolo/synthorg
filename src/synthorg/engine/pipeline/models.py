@@ -13,7 +13,7 @@ from enum import StrEnum
 from typing import Self
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.enums import (
     Complexity,
@@ -186,10 +186,13 @@ class WorkPipelineResult(BaseModel):
         min_length=1,
         description="Per-phase results in execution order",
     )
-    is_success: bool = Field(
-        description="Whether every recorded phase succeeded",
-    )
     total_duration_seconds: float = Field(
         ge=0.0,
         description="Total wall-clock duration in seconds",
     )
+
+    @computed_field(description="Whether every recorded phase succeeded")
+    @property
+    def is_success(self) -> bool:
+        """Derived: ``True`` only if every recorded phase succeeded."""
+        return all(phase.success for phase in self.phases)

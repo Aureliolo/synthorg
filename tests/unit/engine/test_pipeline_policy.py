@@ -56,6 +56,11 @@ class TestLeafThresholdRoutingPolicy:
         verdict = await policy.decide(task=_TEAM_TASK, available_agents=())
         assert verdict is RoutingVerdict.SPLITTABLE
 
+    @pytest.mark.parametrize("bad_threshold", [0, -1])
+    def test_non_positive_threshold_rejected(self, bad_threshold: int) -> None:
+        with pytest.raises(ValueError, match="threshold must be positive"):
+            LeafThresholdRoutingPolicy(threshold=bad_threshold)
+
 
 class TestAlwaysTeamRoutingPolicy:
     async def test_always_splittable(self) -> None:
@@ -95,6 +100,20 @@ class TestLlmJudgedRoutingPolicy:
             fallback=LeafThresholdRoutingPolicy(threshold=_THRESHOLD),
         )
         # Fallback classifies the leaf task as LEAF deterministically.
+        verdict = await policy.decide(task=_LEAF_TASK, available_agents=())
+        assert verdict is RoutingVerdict.LEAF
+
+    async def test_negated_verdict_falls_back_to_deterministic(self) -> None:
+        provider = ScriptedProvider(
+            response=make_text_response("This task is not splittable.")
+        )
+        policy = LlmJudgedRoutingPolicy(
+            provider=provider,
+            model="test-model-001",
+            fallback=LeafThresholdRoutingPolicy(threshold=_THRESHOLD),
+        )
+        # "not splittable" must not be read as SPLITTABLE; the leaf
+        # task falls back to the deterministic LEAF verdict.
         verdict = await policy.decide(task=_LEAF_TASK, available_agents=())
         assert verdict is RoutingVerdict.LEAF
 

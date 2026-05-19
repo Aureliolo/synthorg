@@ -131,9 +131,8 @@ class DefaultWorkPipeline:
         try:
             task = await self._phase(phases, _PHASE_INTAKE, self._intake(work_item))
             await self._phase(phases, _PHASE_PROJECTS, self._resolve_project(work_item))
-            agents = await self._agent_registry.list_active()
-            verdict = await self._phase(
-                phases, _PHASE_DECOMPOSE, self._decide(task, agents)
+            verdict, agents = await self._phase(
+                phases, _PHASE_DECOMPOSE, self._decompose(task)
             )
             if verdict is RoutingVerdict.LEAF:
                 path = ExecutionPath.SOLO
@@ -164,7 +163,6 @@ class DefaultWorkPipeline:
             task_id=task.id,
             final_task_status=final_status,
             phases=tuple(phases),
-            is_success=all(p.success for p in phases),
             total_duration_seconds=total,
         )
         logger.info(
@@ -253,13 +251,19 @@ class DefaultWorkPipeline:
             msg = f"project {work_item.project!r} not found"
             raise WorkProjectNotFoundError(msg)
 
-    async def _decide(
+    async def _decompose(
         self,
         task: Task,
-        agents: tuple[AgentIdentity, ...],
-    ) -> RoutingVerdict:
-        """Delegate the solo-vs-team decision to the routing policy."""
-        return await self._routing_policy.decide(task=task, available_agents=agents)
+    ) -> tuple[RoutingVerdict, tuple[AgentIdentity, ...]]:
+        """Fetch the active-agent pool and decide solo-vs-team.
+
+        Both the agent-registry lookup and the routing decision run
+        inside the decompose phase so registry errors and lookup
+        latency are captured by the phase telemetry.
+        """
+        agents = await self._agent_registry.list_active()
+        verdict = await self._routing_policy.decide(task=task, available_agents=agents)
+        return verdict, agents
 
     async def _run_solo(
         self,
