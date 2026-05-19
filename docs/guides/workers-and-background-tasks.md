@@ -105,8 +105,8 @@ There is no Prometheus worker series. Worker liveness and the distributed-path l
 
 - `workers.worker.claim_received` (info): claim pulled from JetStream.
 - `workers.worker.duplicate_claim_suppressed` (info): redelivery deduped by idempotency key.
-- `workers.worker.executor_failed` (warning): executor raised.
-- `workers.worker.finalize_failed` (warning): ack/nack failed.
+- `workers.worker.executor_failed` (error): executor raised.
+- `workers.worker.finalize_failed` (error): ack/nack failed.
 - `workers.worker.ack_extend_failed` (warning): a working-ack send failed (non-fatal).
 - `workers.worker.claim_dead_lettered` (warning): claim exhausted `max_deliver`, republished to the dead subject.
 - `workers.dead_letter.transitioned` (warning): a dead-lettered task was driven to `FAILED`.
@@ -114,7 +114,7 @@ There is no Prometheus worker series. Worker liveness and the distributed-path l
 - `workers.dead_letter.failed` (error): a dead claim could not be failed (paired with a raised `WorkerDeadLetterError`).
 - `workers.heartbeat_subscriber.observed` (info) / `workers.heartbeat_subscriber.worker_stale` (warning): worker liveness.
 - `workers.seen_claims_pruner.pruned` (info): expired dedup rows reclaimed.
-- `workers.task_queue.connect_failed` (error): NATS unreachable at start.
+- `workers.task_queue.connect_failed` (warning): NATS unreachable at start (raises `BusConnectionError`).
 - `workers.task_queue.claim_parse_failed` (warning): malformed claim (terminal ack, never redelivered).
 
 Tail worker liveness directly with `nats sub 'synthorg.workers.heartbeat.>'` (core NATS, not JetStream).

@@ -115,8 +115,19 @@ class WorkerHeartbeatSubscriber:
             subscription = self._subscription
             sweep = self._sweep_task
         if subscription is not None:
-            with contextlib.suppress(Exception):
+            try:
                 await subscription.unsubscribe()
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                # A failed unsubscribe can leave a duplicate callback on
+                # restart; surface it instead of swallowing silently.
+                logger.warning(
+                    WORKERS_HEARTBEAT_SUBSCRIBER_FAILED,
+                    reason="unsubscribe_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
         if sweep is not None:
             sweep.cancel()
             with contextlib.suppress(asyncio.CancelledError):
