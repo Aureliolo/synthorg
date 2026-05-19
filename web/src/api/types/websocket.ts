@@ -356,6 +356,18 @@ export interface WsRequestEventPayload {
   status: string
 }
 
+/**
+ * Payload for ``request.task_created``. Mirrors
+ * ``WsRequestTaskCreatedPayload`` in
+ * ``src/synthorg/api/ws_payloads/_domain.py``: the backend stamps
+ * ``task_id`` on every emission of this event so the dashboard can
+ * navigate straight to the spawned task without a second
+ * ``GET /requests/{id}`` round-trip.
+ */
+export interface WsRequestTaskCreatedPayload extends WsRequestEventPayload {
+  task_id: string
+}
+
 export interface WsRequestStatusChangedPayload extends WsRequestEventPayload {
   previous_status?: string | null
 }
@@ -468,7 +480,7 @@ export interface WsEventPayloadMap {
   'request.submitted': WsRequestEventPayload
   'request.scoped': WsRequestEventPayload
   'request.approved': WsRequestEventPayload
-  'request.task_created': WsRequestEventPayload
+  'request.task_created': WsRequestTaskCreatedPayload
   'request.rejected': WsRequestEventPayload
   'request.status_changed': WsRequestStatusChangedPayload
   'simulation.started': WsSimulationEventPayload

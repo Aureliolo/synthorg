@@ -81,17 +81,25 @@ def _publish(
     event_type: WsEventType,
     client_request: ClientRequest,
 ) -> None:
-    """Best-effort publish a request lifecycle event."""
-    publish_ws_event(
-        request,
-        event_type,
-        CHANNEL_REQUESTS,
-        {
-            "request_id": client_request.request_id,
-            "client_id": client_request.client_id,
-            "status": client_request.status.value,
-        },
-    )
+    """Best-effort publish a request lifecycle event.
+
+    ``REQUEST_TASK_CREATED`` additionally carries ``task_id`` so the
+    frontend can navigate straight to the spawned task without a
+    second ``GET /requests/{id}``. ``_reconcile_success`` always stamps
+    ``metadata["task_id"]`` before publishing this event, so the field
+    is contract-required for that event type and contract-absent for
+    every other request lifecycle event.
+    """
+    payload: dict[str, object] = {
+        "request_id": client_request.request_id,
+        "client_id": client_request.client_id,
+        "status": client_request.status.value,
+    }
+    if event_type is WsEventType.REQUEST_TASK_CREATED:
+        task_id = client_request.metadata.get("task_id")
+        if isinstance(task_id, str) and task_id:
+            payload["task_id"] = task_id
+    publish_ws_event(request, event_type, CHANNEL_REQUESTS, payload)
 
 
 def _walk_to_approved(stored: ClientRequest) -> ClientRequest:
@@ -154,6 +162,50 @@ def _spawn_intake_pipeline(
     sim_state.background_tasks.add(task)
 
 
+async def _approved_or_none(
+    app_state: AppState,
+    sim_state: ClientSimulationState,
+    request_id: str,
+) -> ClientRequest | None:
+    """Return the request iff still ``APPROVED``, else ``None``.
+
+    Brief read+gate under the per-request lock. The lock-registry
+    entry is always evicted on early-return paths (vanished request,
+    or status already past ``APPROVED``) so the dict cannot leak an
+    entry per orphaned id; on the success path the entry is kept
+    because the downstream reconcile helpers re-acquire the lock and
+    evict it themselves. ``release_request_lock_if_idle`` sits in
+    ``finally`` so it observes the Lock already released by
+    ``__aexit__`` and an idle refcount (its documented contract).
+    """
+    handed_off = False
+    try:
+        async with app_state.acquire_request_lock(request_id):
+            try:
+                stored = await sim_state.request_store.get(request_id)
+            except KeyError:
+                logger.warning(
+                    CLIENT_REQUEST_INTAKE_PIPELINE_FAILED,
+                    request_id=request_id,
+                    note="request vanished before pipeline start",
+                )
+                return None
+            if stored.status is not RequestStatus.APPROVED:
+                logger.info(
+                    CLIENT_REQUEST_STATUS_TRANSITIONED,
+                    request_id=request_id,
+                    from_status=stored.status.value,
+                    to_status=stored.status.value,
+                    note="pipeline skipped: request no longer APPROVED",
+                )
+                return None
+            handed_off = True
+            return stored
+    finally:
+        if not handed_off:
+            app_state.release_request_lock_if_idle(request_id)
+
+
 async def process_intake_pipeline(
     *,
     app_state: AppState,
@@ -170,27 +222,13 @@ async def process_intake_pipeline(
     status reached meanwhile (a user reject wins over a late pipeline
     success). Adapter / pipeline failures are logged and the request
     is cancelled with the reason; ``MemoryError`` / ``RecursionError``
-    propagate.
+    propagate. The lock-registry entry is evicted on every early
+    return so the dict cannot grow unbounded across vanished or
+    already-terminal requests.
     """
-    async with app_state.acquire_request_lock(request_id):
-        try:
-            approved = await sim_state.request_store.get(request_id)
-        except KeyError:
-            logger.warning(
-                CLIENT_REQUEST_INTAKE_PIPELINE_FAILED,
-                request_id=request_id,
-                note="request vanished before pipeline start",
-            )
-            return
-        if approved.status is not RequestStatus.APPROVED:
-            logger.info(
-                CLIENT_REQUEST_STATUS_TRANSITIONED,
-                request_id=request_id,
-                from_status=approved.status.value,
-                to_status=approved.status.value,
-                note="pipeline skipped: request no longer APPROVED",
-            )
-            return
+    approved = await _approved_or_none(app_state, sim_state, request_id)
+    if approved is None:
+        return
     try:
         result = await app_state.intake_entry_adapter.submit(approved)
     except asyncio.CancelledError:
@@ -199,25 +237,16 @@ async def process_intake_pipeline(
         raise
     except MemoryError, RecursionError:
         raise
-    except WorkIntakeRejectedError as exc:
-        # Intake declining the work is a normal outcome, not a defect.
-        await _safe_finalize(
-            _reconcile_cancel,
-            sim_state,
-            app_state,
-            request_id,
-            operation="reconcile_cancel",
-            reason=safe_error_description(exc),
-            publish=publish,
-        )
-        return
     except Exception as exc:
-        logger.error(
-            CLIENT_REQUEST_INTAKE_PIPELINE_FAILED,
-            request_id=request_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
+        if not isinstance(exc, WorkIntakeRejectedError):
+            # Intake declining the work is a normal outcome, not a
+            # defect; only non-rejection paths warrant ERROR.
+            logger.error(
+                CLIENT_REQUEST_INTAKE_PIPELINE_FAILED,
+                request_id=request_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
         await _safe_finalize(
             _reconcile_cancel,
             sim_state,

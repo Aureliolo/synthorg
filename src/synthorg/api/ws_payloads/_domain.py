@@ -254,12 +254,15 @@ class WsRequestTaskCreatedPayload(_RequestEventBase):
     drives an approved request to ``TASK_CREATED`` (the task is in
     the task engine and an agent has been dispatched). Status
     discriminates the terminal hop inside the same channel that
-    carries the intermediate ``request.approved`` event.
+    carries the intermediate ``request.approved`` event. ``task_id``
+    carries the spawned task's id so the frontend can link directly
+    to it without a second ``GET /requests/{id}`` round-trip.
     """
 
     event_type: Literal[WsEventType.REQUEST_TASK_CREATED] = (
         WsEventType.REQUEST_TASK_CREATED
     )
+    task_id: NotBlankStr
 
 
 class WsRequestRejectedPayload(_RequestEventBase):

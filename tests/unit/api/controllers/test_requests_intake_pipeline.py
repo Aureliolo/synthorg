@@ -182,3 +182,40 @@ async def test_memory_error_is_reraised() -> None:
             sim_state=sim_state,
             request_id=_REQUEST_ID,
         )
+
+
+async def test_vanished_request_evicts_lock_registry_entry() -> None:
+    # The early-return paths must drop the per-request lock entry
+    # from ``_request_locks`` so the dict cannot leak an entry per
+    # orphaned id. Without the eviction, a vanished request acquired
+    # under ``acquire_request_lock`` would leave the Lock object
+    # behind even though the refcount drops to zero.
+    adapter = _StubAdapter(result=_result("task-9"))
+    app_state, sim_state = await _state(adapter, seeded=_request())
+    await sim_state.request_store.delete(_REQUEST_ID)
+
+    await process_intake_pipeline(
+        app_state=app_state,
+        sim_state=sim_state,
+        request_id=_REQUEST_ID,
+    )
+
+    assert _REQUEST_ID not in app_state._request_locks
+    assert adapter.calls == 0
+
+
+async def test_non_approved_request_evicts_lock_registry_entry() -> None:
+    adapter = _StubAdapter(result=_result("task-9"))
+    app_state, sim_state = await _state(
+        adapter,
+        seeded=_request(status=RequestStatus.CANCELLED),
+    )
+
+    await process_intake_pipeline(
+        app_state=app_state,
+        sim_state=sim_state,
+        request_id=_REQUEST_ID,
+    )
+
+    assert _REQUEST_ID not in app_state._request_locks
+    assert adapter.calls == 0
