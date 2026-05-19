@@ -47,6 +47,7 @@ from synthorg.meta.errors import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
+    COS_CONVERSATION_STATUS_TRANSITIONED,
     COS_PROPOSE_CAP_REACHED,
     COS_PROPOSE_CLARIFICATION,
     COS_PROPOSE_FAILED,
@@ -156,6 +157,16 @@ class ChiefOfStaffProposer:
             ConversationClosedError: The conversation is terminal.
             ConversationalProposeResponseInvalidError: The model output
                 did not satisfy the structured contract.
+
+        Note:
+            The user turn is appended before the LLM call, the
+            assistant turn after. A request cancelled between the two
+            therefore leaves the conversation with an unanswered user
+            turn (no data corruption; the next turn picks up where
+            the cancelled one left off). Atomic two-turn append would
+            require a bespoke ``append_pair`` on the turn repo (ADR-0001
+            D7) and is deferred to a follow-up when cancellation rate
+            warrants it.
         """
         now = self._clock.now()
         conversation = await self._resolve_conversation(args, now)
@@ -349,12 +360,31 @@ class ChiefOfStaffProposer:
                 created_at=now,
             )
         )
-        await self._conversation_repo.transition_if(
+        transitioned = await self._conversation_repo.transition_if(
             conversation.id,
             from_state=ConversationStatus.ACTIVE,
             to_state=ConversationStatus.PROPOSED,
             updated_at=now.isoformat(),
         )
+        if transitioned:
+            logger.info(
+                COS_CONVERSATION_STATUS_TRANSITIONED,
+                conversation_id=conversation.id,
+                from_state=ConversationStatus.ACTIVE.value,
+                to_state=ConversationStatus.PROPOSED.value,
+            )
+        else:
+            # A concurrent propose-turn on this same conversation already
+            # flipped the status; the proposals from THIS call still
+            # landed (parked in the approval queue), so the conversation
+            # is consistent. Surface the no-op so an operator can spot
+            # cross-talk if it happens.
+            logger.warning(
+                COS_PROPOSE_FAILED,
+                detail="conversation_status_already_transitioned",
+                conversation_id=conversation.id,
+                from_state=ConversationStatus.ACTIVE.value,
+            )
         logger.info(
             COS_PROPOSE_PROPOSED,
             conversation_id=conversation.id,
@@ -366,18 +396,16 @@ class ChiefOfStaffProposer:
             proposals=tuple(summaries),
         )
 
-    async def _park_proposal(
+    def _build_work_item(
         self,
         conversation: Conversation,
         args: ProposeArgs,
         proposed: ProposedWork,
         project: NotBlankStr,
         now: datetime,
-    ) -> ProposedApprovalSummary:
-        """Build the WorkItem, the approval item, and the proposal row."""
-        approval_id = _new_id()
-        proposal_id = _new_id()
-        work_item = WorkItem(
+    ) -> WorkItem:
+        """Compose the pipeline-spine envelope for one proposal."""
+        return WorkItem(
             origin_adapter_id=_ORIGIN_ADAPTER_ID,
             source=WorkSource.CONVERSATIONAL,
             title=proposed.title,
@@ -391,7 +419,19 @@ class ChiefOfStaffProposer:
             correlation_id=conversation.id,
             created_at=now,
         )
-        approval = ApprovalItem(
+
+    def _build_approval_item(  # noqa: PLR0913 -- ApprovalItem field set is broad by design
+        self,
+        *,
+        approval_id: NotBlankStr,
+        proposal_id: NotBlankStr,
+        conversation: Conversation,
+        args: ProposeArgs,
+        proposed: ProposedWork,
+        now: datetime,
+    ) -> ApprovalItem:
+        """Compose the parked approval-queue item for one proposal."""
+        return ApprovalItem(
             id=approval_id,
             action_type=_ACTION_TYPE,
             title=proposed.title,
@@ -406,7 +446,26 @@ class ChiefOfStaffProposer:
                 "proposal_id": proposal_id,
             },
         )
-        await self._approval_store.add(approval)
+
+    async def _park_proposal(
+        self,
+        conversation: Conversation,
+        args: ProposeArgs,
+        proposed: ProposedWork,
+        project: NotBlankStr,
+        now: datetime,
+    ) -> ProposedApprovalSummary:
+        """Persist the proposal, then publish the gating approval.
+
+        Order matters: the proposal row is written FIRST so an
+        ``approval_store.add`` failure leaves at most an invisible
+        orphan proposal (the dispatcher gracefully skips a missing
+        approval). The reverse order would surface as a visible
+        dangling queue item with no backing WorkItem.
+        """
+        approval_id = _new_id()
+        proposal_id = _new_id()
+        work_item = self._build_work_item(conversation, args, proposed, project, now)
         await self._proposal_repo.save(
             ConversationalProposal(
                 id=proposal_id,
@@ -415,6 +474,16 @@ class ChiefOfStaffProposer:
                 work_item_json=NotBlankStr(work_item.model_dump_json()),
                 status=ConversationalProposalStatus.PENDING,
                 created_at=now,
+            )
+        )
+        await self._approval_store.add(
+            self._build_approval_item(
+                approval_id=approval_id,
+                proposal_id=proposal_id,
+                conversation=conversation,
+                args=args,
+                proposed=proposed,
+                now=now,
             )
         )
         return ProposedApprovalSummary(
@@ -442,12 +511,19 @@ class ChiefOfStaffProposer:
                 created_at=now,
             )
         )
-        await self._conversation_repo.transition_if(
+        transitioned = await self._conversation_repo.transition_if(
             conversation.id,
             from_state=conversation.status,
             to_state=ConversationStatus.CLOSED,
             updated_at=now.isoformat(),
         )
+        if transitioned:
+            logger.info(
+                COS_CONVERSATION_STATUS_TRANSITIONED,
+                conversation_id=conversation.id,
+                from_state=conversation.status.value,
+                to_state=ConversationStatus.CLOSED.value,
+            )
         logger.warning(COS_PROPOSE_CAP_REACHED, conversation_id=conversation.id)
         return ProposeResult(
             conversation_id=conversation.id,

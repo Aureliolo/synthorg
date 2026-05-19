@@ -5,6 +5,7 @@ import type {
   listABTests,
   listProposals,
   postChat,
+  postChatPropose,
 } from '@/api/endpoints/meta'
 import { apiError, successFor } from './helpers'
 
@@ -32,6 +33,43 @@ export const metaHandlers = [
   http.get('/api/v1/meta/ab-tests', () =>
     HttpResponse.json(successFor<typeof listABTests>([])),
   ),
+  http.post('/api/v1/meta/chat/propose', async ({ request }) => {
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch {
+      return HttpResponse.json(apiError('Message must not be blank'), {
+        status: 400,
+      })
+    }
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      typeof (body as { message?: unknown }).message !== 'string' ||
+      !(body as { message: string }).message.trim()
+    ) {
+      return HttpResponse.json(apiError('Message must not be blank'), {
+        status: 400,
+      })
+    }
+    return HttpResponse.json(
+      successFor<typeof postChatPropose>({
+        conversation_id: 'conv-mock-001',
+        status: 'proposed',
+        clarifying_question: null,
+        conversation_closed: false,
+        proposals: [
+          {
+            approval_id: 'appr-mock-001',
+            proposal_id: 'prop-mock-001',
+            title: 'Mock proposed work',
+            task_type: 'development',
+            priority: 'medium',
+          },
+        ],
+      }),
+    )
+  }),
   http.post('/api/v1/meta/chat', async ({ request }) => {
     let body: unknown
     try {

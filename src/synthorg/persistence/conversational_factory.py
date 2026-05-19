@@ -11,6 +11,10 @@ no ``api`` / ``meta`` module imports ``aiosqlite`` / ``psycopg``.
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.persistence import (
+    PERSISTENCE_CONVERSATIONAL_HANDLE_UNAVAILABLE,
+    PERSISTENCE_CONVERSATIONAL_UNKNOWN_BACKEND,
+)
 
 if TYPE_CHECKING:
     from synthorg.persistence.conversation_protocol import (
@@ -59,7 +63,7 @@ def build_conversational_repositories(
     name = backend.backend_name
     if name not in (_SQLITE, _POSTGRES):
         logger.warning(
-            "persistence.conversational.unknown_backend",
+            PERSISTENCE_CONVERSATIONAL_UNKNOWN_BACKEND,
             backend_name=name,
         )
         return None
@@ -75,7 +79,7 @@ def build_conversational_repositories(
         raise
     except Exception as exc:
         logger.warning(
-            "persistence.conversational.handle_unavailable",
+            PERSISTENCE_CONVERSATIONAL_HANDLE_UNAVAILABLE,
             backend_name=name,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),

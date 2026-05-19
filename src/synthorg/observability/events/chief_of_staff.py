@@ -51,3 +51,6 @@ COS_PROPOSE_PROPOSED: Final[str] = "chief_of_staff.propose.proposed"
 COS_PROPOSE_CAP_REACHED: Final[str] = "chief_of_staff.propose.cap_reached"
 COS_PROPOSE_RESPONSE_INVALID: Final[str] = "chief_of_staff.propose.response_invalid"
 COS_PROPOSE_FAILED: Final[str] = "chief_of_staff.propose.failed"
+COS_CONVERSATION_STATUS_TRANSITIONED: Final[str] = (
+    "chief_of_staff.conversation.status_transitioned"
+)

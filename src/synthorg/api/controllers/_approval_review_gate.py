@@ -180,7 +180,7 @@ async def try_mid_execution_resume(
     return True
 
 
-async def try_conversational_intake_resume(
+async def try_conversational_intake_resume(  # noqa: C901 -- one function per source-discriminator branch + transition CAS checks
     app_state: AppState,
     approval_id: str,
     *,
@@ -240,16 +240,27 @@ async def try_conversational_intake_resume(
     proposal = proposals[0]
 
     if not approved:
-        await repo.transition_if(
+        transitioned = await repo.transition_if(
             proposal.id,
             ConversationalProposalStatus.PENDING,
             ConversationalProposalStatus.REJECTED,
         )
-        logger.info(
-            APPROVAL_GATE_CONVERSATIONAL_REJECTED,
-            approval_id=approval_id,
-            proposal_id=proposal.id,
-        )
+        if transitioned:
+            logger.info(
+                APPROVAL_GATE_CONVERSATIONAL_REJECTED,
+                approval_id=approval_id,
+                proposal_id=proposal.id,
+            )
+        else:
+            # Concurrent decision already transitioned this proposal
+            # (e.g. duplicate approval-decision request). Don't claim
+            # success; surface the no-op so it's visible.
+            logger.warning(
+                APPROVAL_GATE_CONVERSATIONAL_FAILED,
+                approval_id=approval_id,
+                proposal_id=proposal.id,
+                note="proposal already transitioned (reject path)",
+            )
         return True
 
     if not app_state.has_work_pipeline:
@@ -286,16 +297,30 @@ async def try_conversational_intake_resume(
         )
         return True
 
-    await repo.transition_if(
+    transitioned = await repo.transition_if(
         proposal.id,
         ConversationalProposalStatus.PENDING,
         ConversationalProposalStatus.EXECUTED,
     )
-    logger.info(
-        APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
-        approval_id=approval_id,
-        proposal_id=proposal.id,
-    )
+    if transitioned:
+        logger.info(
+            APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
+            approval_id=approval_id,
+            proposal_id=proposal.id,
+        )
+    else:
+        # The pipeline ran successfully but a concurrent path already
+        # transitioned the proposal status. Surface the no-op so the
+        # log doesn't claim a CAS success we didn't make.
+        logger.warning(
+            APPROVAL_GATE_CONVERSATIONAL_FAILED,
+            approval_id=approval_id,
+            proposal_id=proposal.id,
+            note=(
+                "proposal already transitioned (execute path); "
+                "pipeline run still succeeded"
+            ),
+        )
     return True
 
 

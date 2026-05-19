@@ -636,3 +636,9 @@ PERSISTENCE_CONVERSATIONAL_PROPOSAL_LISTED: Final[str] = (
 PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED: Final[str] = (
     "persistence.conversational_proposal.failed"
 )
+PERSISTENCE_CONVERSATIONAL_UNKNOWN_BACKEND: Final[str] = (
+    "persistence.conversational.unknown_backend"
+)
+PERSISTENCE_CONVERSATIONAL_HANDLE_UNAVAILABLE: Final[str] = (
+    "persistence.conversational.handle_unavailable"
+)
