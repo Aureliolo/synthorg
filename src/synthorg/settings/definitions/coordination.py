@@ -72,6 +72,44 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="routing_policy",
+        type=SettingType.ENUM,
+        default="leaf-threshold",
+        enum_values=("leaf-threshold", "always-team", "llm-judged"),
+        description=(
+            "Work pipeline solo-vs-team routing policy. 'leaf-threshold'"
+            " (default) classifies small sequential work as single-agent;"
+            " 'always-team' forces the coordinator; 'llm-judged' asks the"
+            " decomposition model. Resolved at boot; a runtime change"
+            " applies on the next pipeline rebuild (provider re-init)."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
+        key="leaf_subtask_threshold",
+        type=SettingType.INTEGER,
+        default="1",
+        description=(
+            "Maximum expected-artifact count for a sequential task to"
+            " still route to a single agent (leaf) under the"
+            " 'leaf-threshold' routing policy; larger work is split"
+            " across a team."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=20,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="department_policy_cas_retry_attempts",
         type=SettingType.INTEGER,
         default="3",

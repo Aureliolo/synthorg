@@ -145,12 +145,13 @@ async def post_setup_reinit(app_state: AppState) -> None:
 
 
 async def _rebuild_runtime_services(app_state: AppState) -> None:
-    """Rebuild and hot-swap both runtime services (worker execution + coordinator).
+    """Rebuild and hot-swap the runtime services.
 
     Invoked after provider configuration to bring the full agent runtime
-    online without a process restart. Swaps the worker execution service
-    and the multi-agent coordinator so ``/coordinate`` stops returning
-    503 and the worker-callable execute endpoint uses the new provider.
+    online without a process restart. Swaps the worker execution
+    service, the multi-agent coordinator, and the work pipeline spine so
+    ``/coordinate`` stops returning 503, the worker-callable execute
+    endpoint uses the new provider, and work routing comes online.
 
     Raises on failure (either a typed ``RuntimeServicesBuildError`` or a
     wrapped exception) so :func:`post_setup_reinit` can keep the setup flag
@@ -175,6 +176,8 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
         )
         if services.coordinator is not None:
             app_state.swap_coordinator(services.coordinator)
+        if services.work_pipeline is not None:
+            app_state.swap_work_pipeline(services.work_pipeline)
     except MemoryError, RecursionError:
         raise
     except RuntimeServicesBuildError:

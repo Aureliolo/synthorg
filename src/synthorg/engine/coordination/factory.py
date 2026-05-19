@@ -173,6 +173,7 @@ def build_coordinator(  # noqa: PLR0913
     performance_tracker: PerformanceTracker | None = None,
     routing_scorer_config: RoutingScorerConfig | None = None,
     coordination_metrics_collector: CoordinationMetricsCollector | None = None,
+    scorer: AgentTaskScorer | None = None,
 ) -> MultiAgentCoordinator:
     """Build a fully wired :class:`MultiAgentCoordinator`.
 
@@ -216,6 +217,11 @@ def build_coordinator(  # noqa: PLR0913
             invokes post-completion to compute and record the
             multi-agent metrics. ``None`` disables collection (the
             ``/coordination/metrics`` API stays empty).
+        scorer: Pre-built agent-task scorer to share with the work
+            pipeline's solo-path selection so both routing surfaces
+            use one instance. ``None`` builds one from
+            *routing_scorer_config* / *task_assignment_config* as
+            before.
 
     Returns:
         A fully constructed ``MultiAgentCoordinator``.
@@ -224,10 +230,11 @@ def build_coordinator(  # noqa: PLR0913
     strategy = _build_decomposition_strategy(provider, decomposition_model)
     decomposition_service = DecompositionService(strategy, classifier)
 
-    if routing_scorer_config is None:
-        scorer = AgentTaskScorer(min_score=task_assignment_config.min_score)
-    else:
-        scorer = AgentTaskScorer(config=routing_scorer_config)
+    if scorer is None:
+        if routing_scorer_config is None:
+            scorer = AgentTaskScorer(min_score=task_assignment_config.min_score)
+        else:
+            scorer = AgentTaskScorer(config=routing_scorer_config)
     topology_selector = TopologySelector(config.auto_topology_rules)
     routing_service = TaskRoutingService(scorer, topology_selector)
 
