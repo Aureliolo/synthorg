@@ -160,7 +160,7 @@ class TestRecordThenReplayByteIdentical:
             provider_name=_PROVIDER,
         )
         recorded = await _run_task(rec_provider, rec_ws)
-        rec_session.flush()
+        await rec_session.flush()
 
         assert recorded.is_success is True
         assert recorded.termination_reason == TerminationReason.COMPLETED
@@ -227,7 +227,7 @@ class TestRecordThenReplayByteIdentical:
             ),
             rec_ws,
         )
-        rec_session.flush()
+        await rec_session.flush()
 
         summaries: list[str | None] = []
         for i in range(2):

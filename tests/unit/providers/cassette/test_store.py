@@ -101,7 +101,7 @@ class TestRecordReplayRoundTrip:
             request_repr={"prompt": "q"},
             outcome=CassetteOutcome.from_response(_response("second")),
         )
-        rec.flush()
+        await rec.flush()
 
         rep = CassetteSession(
             mode=CassetteMode.REPLAY,
@@ -117,7 +117,7 @@ class TestRecordReplayRoundTrip:
 
     async def test_replay_miss_raises(self, tmp_path: Path) -> None:
         path = tmp_path / "c.json"
-        CassetteSession(
+        await CassetteSession(
             mode=CassetteMode.RECORD,
             path=path,
             redactor=NullRedactor(),
@@ -144,7 +144,7 @@ class TestRecordReplayRoundTrip:
             request_repr={},
             outcome=CassetteOutcome.from_response(_response("only")),
         )
-        rec.flush()
+        await rec.flush()
         rep = CassetteSession(
             mode=CassetteMode.REPLAY,
             path=path,
@@ -172,7 +172,7 @@ class TestRedactionBoundary:
             request_repr={"prompt": f"key {secret}"},
             outcome=CassetteOutcome.from_response(_response(f"echo {secret}")),
         )
-        rec.flush()
+        await rec.flush()
         on_disk = path.read_text(encoding="utf-8")
         doc = json.loads(on_disk)
         interaction = doc["interactions"][0]
@@ -232,17 +232,20 @@ class TestAtomicFlush:
             path=path,
             redactor=NullRedactor(),
         )
-        # Sync test: drive the async record path via asyncio.run so the
-        # post-flush directory listing stays out of an async function.
-        asyncio.run(
-            rec.record_interaction(
+
+        # Sync test: drive the async record + flush via asyncio.run so
+        # the post-flush directory listing stays out of an async
+        # function (ruff ASYNC240: no pathlib in async context).
+        async def _record_and_flush() -> None:
+            await rec.record_interaction(
                 method=CassetteMethod.COMPLETE,
                 request_hash=_hash("q"),
                 request_repr={},
                 outcome=CassetteOutcome.from_response(_response("x")),
             )
-        )
-        rec.flush()
+            await rec.flush()
+
+        asyncio.run(_record_and_flush())
         children = list(tmp_path.iterdir())
         assert children == [path]
 
@@ -329,7 +332,7 @@ class TestConcurrentFanoutDeterminism:
             redactor=NullRedactor(),
         )
         recorded = await self._run(rec, n=n, record=True)
-        rec.flush()
+        await rec.flush()
 
         rep = CassetteSession(
             mode=CassetteMode.REPLAY,

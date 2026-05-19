@@ -78,7 +78,7 @@ class TestDecorationChokepoint:
 class TestReplayBuildsNoRealDriver:
     """Replay mode must not call any driver factory."""
 
-    def test_replay_skips_factory(self, tmp_path: Path) -> None:
+    async def test_replay_skips_factory(self, tmp_path: Path) -> None:
         path = tmp_path / "c.json"
         # A valid empty cassette so the replay session loads.
         rec = ProviderRegistry.from_config(
@@ -86,7 +86,7 @@ class TestReplayBuildsNoRealDriver:
             cassette=CassetteConfig(mode=CassetteMode.RECORD, path=path),
         )
         assert rec.cassette_session is not None
-        rec.cassette_session.flush()
+        await rec.cassette_session.flush()
 
         calls: list[str] = []
 

@@ -446,24 +446,31 @@ class CassetteSession:
         if payload is not None:
             self._atomic_write(payload)
 
-    def _persist(self) -> None:
-        """Atomically write the current cassette (record mode only)."""
-        self._persist_snapshot(tuple(self._recorded))
-
-    def flush(self) -> None:
+    async def flush(self) -> None:
         """Force-persist and log (record mode only); no-op in replay.
 
         Persistence already happens after every recorded interaction;
         ``flush`` is the explicit end-of-run trigger that also emits
-        the session-flushed event for observability.
+        the session-flushed event for observability. It routes through
+        the *same* serialised, offloaded write path as
+        :meth:`record_interaction` so an end-of-run flush racing an
+        in-flight record cannot reach ``os.replace`` concurrently
+        (Windows raises WinError 5 on a concurrent rename onto the same
+        target) and never blocks the event loop on serialise + I/O.
         """
         if self._mode is not CassetteMode.RECORD:
             return
-        self._persist()
+        lock = self._persist_lock
+        if lock is None:
+            lock = asyncio.Lock()
+            self._persist_lock = lock
+        async with lock:
+            snapshot = tuple(self._recorded)
+            await asyncio.to_thread(self._persist_snapshot, snapshot)
         logger.info(
             PROVIDER_CASSETTE_SESSION_FLUSHED,
             path=str(self._path),
-            interactions=len(self._recorded),
+            interactions=len(snapshot),
         )
 
     def _atomic_write(self, payload: str) -> None:

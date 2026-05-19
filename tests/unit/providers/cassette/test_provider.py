@@ -135,7 +135,7 @@ class TestCompleteRoundTrip:
             provider_name=_PROVIDER,
         )
         recorded = await rec.complete(_msgs(), "m")
-        rec._session.flush()
+        await rec._session.flush()
 
         # Pure replay: NO inner driver constructed at all.
         rep = CassetteCompletionProvider(
@@ -161,7 +161,7 @@ class TestCompleteRoundTrip:
             provider_name=_PROVIDER,
         )
         recorded = await rec.complete(_msgs(), "m")
-        rec._session.flush()
+        await rec._session.flush()
         # The inner ran through BaseCompletionProvider, so latency
         # metadata was injected; it must survive replay verbatim.
         assert "_synthorg_latency_ms" in recorded.provider_metadata
@@ -176,7 +176,7 @@ class TestCompleteRoundTrip:
 
     async def test_replay_miss_never_touches_inner(self, tmp_path: Path) -> None:
         path = tmp_path / "c.json"
-        _record_session(path).flush()
+        await _record_session(path).flush()
         spy = _RaisingInner()
         rep = CassetteCompletionProvider(
             inner=spy,
@@ -206,7 +206,7 @@ class TestErrorReplay:
         )
         with pytest.raises(RateLimitError):
             await rec.complete(_msgs(), "m")
-        rec._session.flush()
+        await rec._session.flush()
 
         spy = _RaisingInner()
         rep = CassetteCompletionProvider(
@@ -235,7 +235,7 @@ class TestStreamRoundTrip:
         )
         recorded_stream = await rec.stream(_msgs(), "m")
         recorded = [c async for c in recorded_stream]
-        rec._session.flush()
+        await rec._session.flush()
 
         rep = CassetteCompletionProvider(
             inner=None,
@@ -263,7 +263,7 @@ class TestCapabilitiesRoundTrip:
         )
         single = await rec.get_model_capabilities("m1")
         batch = await rec.batch_get_capabilities(("m1", "m2"))
-        rec._session.flush()
+        await rec._session.flush()
 
         spy = _RaisingInner()
         rep = CassetteCompletionProvider(
@@ -290,7 +290,7 @@ class TestCapabilitiesRoundTrip:
             provider_name=_PROVIDER,
         )
         await rec.get_model_capabilities("only")
-        rec._session.flush()
+        await rec._session.flush()
 
         rep = CassetteCompletionProvider(
             inner=None,
@@ -341,7 +341,7 @@ class TestSequencedReplayOrder:
         )
         await rec.complete(_msgs("same"), "m")
         await rec.complete(_msgs("same"), "m")
-        rec._session.flush()
+        await rec._session.flush()
 
         rep = CassetteCompletionProvider(
             inner=None,
