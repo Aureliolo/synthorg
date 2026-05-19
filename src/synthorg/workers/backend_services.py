@@ -119,6 +119,8 @@ class DistributedBackendServices:
         for name, component in reversed(self._start_order):
             try:
                 await component.stop()
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 logger.warning(
                     WORKERS_BACKEND_BUNDLE_STOP_FAILED,

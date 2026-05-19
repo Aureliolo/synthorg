@@ -75,6 +75,19 @@ the claim ack/nack based on the returned status.
 """
 
 
+_ACK_EXTEND_SAFETY_FRACTION: Final[float] = 0.5
+"""Fraction of ``ack_wait`` that caps the working-ack cadence.
+
+``heartbeat_interval_seconds`` is only validated to be strictly below
+``ack_wait_seconds``. If an operator tunes it just under ``ack_wait``,
+the sleep-first first extension could land after the deadline under
+scheduler or broker jitter, allowing a duplicate redelivery. Capping
+the ack-extension interval at half of ``ack_wait`` guarantees the
+first extension fires with a full deadline of headroom regardless of
+how the heartbeat interval is configured. The heartbeat *publish*
+cadence is unaffected; only the ack-extension loop uses this cap."""
+
+
 _DEDUP_TTL_SAFETY_MULTIPLIER: Final[float] = 2.0
 """Multiplier applied to ``ack_wait * max_deliver`` for the dedup TTL.
 
@@ -125,6 +138,10 @@ class Worker:
         )
         self._heartbeat_interval: float = float(
             queue_config.heartbeat_interval_seconds,
+        )
+        self._ack_extend_interval: float = min(
+            self._heartbeat_interval,
+            float(queue_config.ack_wait_seconds) * _ACK_EXTEND_SAFETY_FRACTION,
         )
         self._claims_done = 0
         self._running = False
@@ -384,11 +401,13 @@ class Worker:
             return TaskClaimStatus.RETRY
 
     async def _extend_ack_loop(self, raw: Any) -> None:
-        """Working-ack *raw* every heartbeat interval until cancelled.
+        """Working-ack *raw* every ack-extend interval until cancelled.
 
-        Sleep-first: the first extension lands one interval in, well
-        before ``ack_wait`` (validated ``heartbeat_interval_seconds <
-        ack_wait_seconds``). An ``in_progress`` failure is non-fatal:
+        Sleep-first: the first extension lands one interval in. The
+        interval is ``min(heartbeat_interval, ack_wait * 0.5)``, so it
+        always fires with at least a full deadline of headroom even if
+        the operator tunes ``heartbeat_interval_seconds`` just below
+        ``ack_wait_seconds``. An ``in_progress`` failure is non-fatal:
         the executor outcome still drives finalize, and a single missed
         extension is recovered by the next one or by JetStream
         redelivery if the worker dies.
@@ -396,7 +415,7 @@ class Worker:
         # lint-allow: long-running-loop-kill-switch -- cancelled by
         # _execute_claim's finally the moment the executor returns.
         while True:
-            await self._clock.sleep(self._heartbeat_interval)
+            await self._clock.sleep(self._ack_extend_interval)
             try:
                 await JetStreamTaskQueue.in_progress(raw)
             except MemoryError, RecursionError:

@@ -383,13 +383,17 @@ def _register_distributed_dispatcher(
             nats_config=nats_config,
         )
         dispatcher = DistributedDispatcher(task_queue=task_queue)
-        engine.register_observer(dispatcher.on_task_state_changed)
         backend_services = build_distributed_backend_services(
             task_queue=task_queue,
             engine=engine,
             queue_config=queue_config,
             seen_claims=persistence.seen_claims,
         )
+        # Register only after the bundle is fully built: if the build
+        # raises, the except returns (None, None, None) and the engine
+        # must not retain an observer that would publish to an
+        # unstarted queue on the in-process fallback path.
+        engine.register_observer(dispatcher.on_task_state_changed)
     except MemoryError, RecursionError:
         raise
     except Exception as exc:

@@ -198,7 +198,22 @@ class DeadLetterConsumer:
             if pair is None:
                 continue
             claim, raw = pair
-            await self._handle(claim, raw)
+            try:
+                await self._handle(claim, raw)
+            except MemoryError, RecursionError:
+                raise
+            except WorkerDeadLetterError as exc:
+                # One unresolved poison claim must not kill the loop and
+                # disable every later dead claim until restart. The
+                # message stays un-acked, so JetStream redelivers it.
+                logger.error(
+                    WORKERS_DEAD_LETTER_FAILED,
+                    task_id=claim.task_id,
+                    reason="dead_claim_unresolved",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                continue
 
     async def _handle(self, claim: TaskClaim, raw: Any) -> None:
         """Drive one dead claim to FAILED, idempotently."""

@@ -160,8 +160,16 @@ class WorkerHeartbeatSubscriber:
             self._sweep_once()
 
     def _sweep_once(self) -> None:
-        """One staleness pass over all observed workers."""
+        """One staleness pass over all observed workers.
+
+        A worker that crosses the staleness threshold is logged once
+        and then evicted from both bookkeeping maps: retaining it
+        forever would let memory grow without bound under worker-id
+        churn. If an evicted worker beats again it is simply re-observed
+        as a fresh entry.
+        """
         now = self._now_seconds()
+        evict: list[str] = []
         for worker_id, last in self._last_seen.items():
             if worker_id in self._flagged_stale:
                 continue
@@ -174,6 +182,10 @@ class WorkerHeartbeatSubscriber:
                     age_seconds=round(age, 3),
                     stale_after_seconds=self._stale_after,
                 )
+                evict.append(worker_id)
+        for worker_id in evict:
+            self._last_seen.pop(worker_id, None)
+            self._flagged_stale.discard(worker_id)
 
     def _now_seconds(self) -> float:
         """Wall-clock seconds from the injected clock (test-seam-safe)."""

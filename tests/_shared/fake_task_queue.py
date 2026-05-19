@@ -88,13 +88,15 @@ class _FakeNatsMsg:
 
 
 class FakeSubscription:
-    """Core-NATS subscription handle; records unsubscribe."""
+    """Core-NATS subscription handle; records and applies unsubscribe."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, on_unsubscribe: Callable[[], None]) -> None:
         self.unsubscribed = False
+        self._on_unsubscribe = on_unsubscribe
 
     async def unsubscribe(self) -> None:
         self.unsubscribed = True
+        self._on_unsubscribe()
 
 
 class FakeJetStreamTaskQueue:
@@ -156,7 +158,9 @@ class FakeJetStreamTaskQueue:
         """Register a core-NATS subscription; returns an unsub handle."""
         self.subscribed_subject = subject
         self._core_cb = cb
-        return FakeSubscription()
+        return FakeSubscription(
+            on_unsubscribe=lambda: setattr(self, "_core_cb", None),
+        )
 
     async def deliver_heartbeat(self, payload: bytes) -> None:
         """Invoke the registered core-subscribe callback with *payload*."""

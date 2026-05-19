@@ -29,10 +29,12 @@ from synthorg.workers.worker import run_worker_pool
 
 pytestmark = pytest.mark.integration
 
-_HARD_CAP_SECONDS: Final[float] = 30.0
+_HARD_CAP_SECONDS: Final[float] = 25.0
 """Wall-clock ceiling per bounded wait. A no-loss regression manifests
 as a claim that never reaches a terminal state; the cap turns that
-hang into a fast, legible failure rather than a suite timeout."""
+hang into a fast, legible failure rather than a suite timeout. Held
+below the global 30s test timeout so a tripped cap fails with a clear
+assertion instead of racing the suite-level timeout."""
 
 _POLL_SECONDS: Final[float] = 0.05
 _ACK_WAIT_SECONDS: Final[int] = 2
@@ -78,10 +80,22 @@ def _queue_config(**overrides: object) -> QueueConfig:
 
 @pytest.fixture
 async def task_queue(nats_url: str) -> AsyncIterator[JetStreamTaskQueue]:
-    """A started queue on a per-test unique stream (parallel-safe)."""
+    """A started queue on per-test unique stream + subjects.
+
+    JetStream rejects a second stream whose subjects overlap an
+    existing one (err 10065). A unique ``stream_name`` alone is not
+    enough because the subject prefixes default to a shared constant
+    and persist server-side after the fixture only drains the client.
+    Deriving the subject prefixes from the same suffix keeps each
+    test's stream fully isolated and the module parallel-safe.
+    """
     suffix = uuid.uuid4().hex[:8].upper()
     queue = JetStreamTaskQueue(
-        queue_config=_queue_config(stream_name=f"SYNTHORG_TASKS_{suffix}"),
+        queue_config=_queue_config(
+            stream_name=f"SYNTHORG_TASKS_{suffix}",
+            ready_subject_prefix=f"synthorg.tasks.{suffix}.ready",
+            dead_subject_prefix=f"synthorg.tasks.{suffix}.dead",
+        ),
         nats_config=NatsConfig(url=nats_url, connect_timeout_seconds=10.0),
         durable_name=f"workers_{suffix}",
     )
@@ -150,9 +164,13 @@ async def test_long_execution_extends_ack_no_duplicate(
     ack-extension holds against a real broker.
     """
     runs: list[str] = []
+    duplicate_run = asyncio.Event()
 
     async def slow_executor(claim: TaskClaim) -> TaskClaimStatus:
-        runs.append(str(claim.task_id))
+        task_id = str(claim.task_id)
+        runs.append(task_id)
+        if runs.count(task_id) > 1:
+            duplicate_run.set()
         # ~2x ack_wait: redelivery would fire here without extension.
         await asyncio.sleep(_ACK_WAIT_SECONDS * 2 + 1)
         return TaskClaimStatus.SUCCESS
@@ -172,8 +190,12 @@ async def test_long_execution_extends_ack_no_duplicate(
         )
         try:
             await _wait_until(lambda: runs.count("slow-task") >= 1)
-            # Hold past two ack windows; a redelivery would append again.
-            await asyncio.sleep(_ACK_WAIT_SECONDS * 3)
+            # A redelivery would set duplicate_run; its absence within
+            # multiple ack windows proves the working-ack held without
+            # a fixed long sleep.
+            with pytest.raises(TimeoutError):
+                async with asyncio.timeout(_ACK_WAIT_SECONDS * 3):
+                    await duplicate_run.wait()
         finally:
             pool.cancel()
             with pytest.raises(asyncio.CancelledError):

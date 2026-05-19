@@ -60,7 +60,7 @@ async def test_malformed_payload_is_dropped_not_fatal() -> None:
     assert sub._last_seen == {}
 
 
-async def test_worker_flagged_stale_once_then_cleared_on_return() -> None:
+async def test_worker_flagged_stale_then_evicted_and_reregistered() -> None:
     queue = FakeJetStreamTaskQueue()
     clock = FakeClock()
     sub = _subscriber(queue, clock)
@@ -69,10 +69,19 @@ async def test_worker_flagged_stale_once_then_cleared_on_return() -> None:
     # stale_after = interval(1) * 3 = 3s; advance well past it.
     clock.advance(10.0)
     sub._sweep_once()
-    assert "w-stale" in sub._flagged_stale
+    # Flagged stale once, then evicted from both maps so bookkeeping
+    # stays bounded under worker-id churn.
+    assert "w-stale" not in sub._flagged_stale
+    assert "w-stale" not in sub._last_seen
 
-    # A returning beat clears the flag (alive again).
+    # A second sweep is a no-op: the worker is gone, so the WARNING
+    # cannot fire again (the "once" guarantee, enforced by eviction).
+    sub._sweep_once()
+    assert "w-stale" not in sub._last_seen
+
+    # A returning beat re-registers the worker as fresh.
     await sub._on_message(_FakeMsg(_beat("w-stale", clock)))
+    assert "w-stale" in sub._last_seen
     assert "w-stale" not in sub._flagged_stale
 
 
