@@ -156,6 +156,7 @@ if TYPE_CHECKING:
     # Imported under TYPE_CHECKING so the optional ``synthorg[distributed]``
     # extra is not required at runtime for deployments that do not use the
     # distributed task queue.
+    from synthorg.workers.backend_services import DistributedBackendServices
     from synthorg.workers.claim import JetStreamTaskQueue
 
 logger = get_logger(__name__)
@@ -211,6 +212,7 @@ class AppState(AppStateServicesMixin):
         "_cursor_secret",
         "_delegation_record_store",
         "_department_service",
+        "_distributed_backend_services",
         "_distributed_task_queue",
         "_drift_detection_service",
         "_drift_report_store",
@@ -384,6 +386,7 @@ class AppState(AppStateServicesMixin):
         self._auth_service = auth_service
         self._task_engine = task_engine
         self._distributed_task_queue: JetStreamTaskQueue | None = None
+        self._distributed_backend_services: DistributedBackendServices | None = None
         self._coordinator = coordinator
         self._agent_registry = agent_registry
         self._performance_tracker = performance_tracker
@@ -1024,6 +1027,42 @@ class AppState(AppStateServicesMixin):
         logger.info(
             API_APP_STARTUP,
             service="distributed_task_queue",
+            transition=transition,
+        )
+
+    @property
+    def distributed_backend_services(
+        self,
+    ) -> DistributedBackendServices | None:
+        """Return the backend distributed-path bundle, or ``None``."""
+        return self._distributed_backend_services
+
+    def set_distributed_backend_services(
+        self,
+        services: DistributedBackendServices | None,
+    ) -> None:
+        """Attach the backend distributed-path service bundle.
+
+        Set only when ``queue.enabled`` is true and the distributed
+        extra is installed. The lifecycle starts it immediately after
+        the distributed task queue connects (it consumes the dead
+        subject and worker heartbeats over that connection) and stops
+        it just before the queue, mirroring the ``distributed_task_queue``
+        seam so there is exactly one extra handle to manage.
+        """
+        previous = self._distributed_backend_services
+        if previous is services:
+            transition = "noop"
+        elif previous is None:
+            transition = "attached"
+        elif services is None:
+            transition = "detached"
+        else:
+            transition = "replaced"
+        self._distributed_backend_services = services
+        logger.info(
+            API_APP_STARTUP,
+            service="distributed_backend_services",
             transition=transition,
         )
 

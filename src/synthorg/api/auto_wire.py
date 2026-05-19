@@ -57,6 +57,7 @@ if TYPE_CHECKING:
     from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
     from synthorg.settings.service import SettingsService
+    from synthorg.workers.backend_services import DistributedBackendServices
     from synthorg.workers.claim import JetStreamTaskQueue
     from synthorg.workers.config import QueueConfig
     from synthorg.workers.dispatcher import DistributedDispatcher
@@ -87,6 +88,7 @@ class Phase1Result(NamedTuple):
     provider_health_tracker: ProviderHealthTracker | None
     distributed_task_queue: JetStreamTaskQueue | None
     distributed_dispatcher: DistributedDispatcher | None
+    distributed_backend_services: DistributedBackendServices | None
 
 
 class MeetingWireResult(NamedTuple):
@@ -139,6 +141,7 @@ def auto_wire_phase1(  # noqa: PLR0913
     """
     distributed_task_queue: JetStreamTaskQueue | None = None
     distributed_dispatcher: DistributedDispatcher | None = None
+    distributed_backend_services: DistributedBackendServices | None = None
 
     if message_bus is None:
         message_bus = _auto_wire_message_bus(effective_config)
@@ -150,7 +153,12 @@ def auto_wire_phase1(  # noqa: PLR0913
         provider_registry = _wire_provider_registry(effective_config)
 
     if task_engine is None and persistence is not None:
-        task_engine, distributed_task_queue, distributed_dispatcher = _wire_task_engine(
+        (
+            task_engine,
+            distributed_task_queue,
+            distributed_dispatcher,
+            distributed_backend_services,
+        ) = _wire_task_engine(
             persistence,
             message_bus,
             queue_config=effective_config.queue,
@@ -180,6 +188,7 @@ def auto_wire_phase1(  # noqa: PLR0913
         provider_health_tracker=provider_health_tracker,
         distributed_task_queue=distributed_task_queue,
         distributed_dispatcher=distributed_dispatcher,
+        distributed_backend_services=distributed_backend_services,
     )
 
 
@@ -256,7 +265,12 @@ def _wire_task_engine(
     message_bus: MessageBus | None,
     queue_config: QueueConfig | None = None,
     nats_config: NatsConfig | None = None,
-) -> tuple[TaskEngine, JetStreamTaskQueue | None, DistributedDispatcher | None]:
+) -> tuple[
+    TaskEngine,
+    JetStreamTaskQueue | None,
+    DistributedDispatcher | None,
+    DistributedBackendServices | None,
+]:
     """Create a TaskEngine from persistence and optional bus.
 
     When ``queue_config.enabled`` is true, also create a
@@ -269,13 +283,15 @@ def _wire_task_engine(
     itself is synchronous.
 
     Returns:
-        A ``(task_engine, task_queue, dispatcher)`` tuple.
-        ``task_queue`` and ``dispatcher`` are non-``None`` only when
+        A ``(task_engine, task_queue, dispatcher, backend_services)``
+        tuple. The last three are non-``None`` only when
         ``queue_config.enabled`` is true, the ``nats_config`` is
         present, and ``synthorg[distributed]`` is installed; otherwise
-        both are ``None`` and the in-process path is used. The
+        all three are ``None`` and the in-process path is used. The
         dispatcher is returned so the API startup hook can late-bind its
-        live ``WorkersBridgeConfig`` provider once ``AppState`` exists.
+        live ``WorkersBridgeConfig`` provider once ``AppState`` exists;
+        ``backend_services`` (dead-letter consumer + dedup pruner +
+        heartbeat subscriber) is lifecycle-managed alongside the queue.
     """
     try:
         engine = TaskEngine(
@@ -293,6 +309,7 @@ def _wire_task_engine(
 
     task_queue: JetStreamTaskQueue | None = None
     dispatcher: DistributedDispatcher | None = None
+    backend_services: DistributedBackendServices | None = None
     if queue_config is not None and queue_config.enabled:
         if nats_config is None:
             logger.warning(
@@ -303,35 +320,47 @@ def _wire_task_engine(
                 ),
             )
         else:
-            task_queue, dispatcher = _register_distributed_dispatcher(
+            task_queue, dispatcher, backend_services = _register_distributed_dispatcher(
                 engine,
                 queue_config,
                 nats_config,
+                persistence,
             )
 
     logger.info(API_SERVICE_AUTO_WIRED, service="task_engine")
-    return engine, task_queue, dispatcher
+    return engine, task_queue, dispatcher, backend_services
 
 
 def _register_distributed_dispatcher(
     engine: TaskEngine,
     queue_config: QueueConfig,
     nats_config: NatsConfig,
-) -> tuple[JetStreamTaskQueue | None, DistributedDispatcher | None]:
+    persistence: PersistenceBackend,
+) -> tuple[
+    JetStreamTaskQueue | None,
+    DistributedDispatcher | None,
+    DistributedBackendServices | None,
+]:
     """Register the distributed dispatcher observer on the task engine.
 
-    Creates a :class:`JetStreamTaskQueue` (not started) and a
-    :class:`DistributedDispatcher` observer. Registration is
-    idempotent and best-effort: any failure here is logged but does
-    not abort startup, because the in-process path remains viable.
+    Creates a :class:`JetStreamTaskQueue` (not started), a
+    :class:`DistributedDispatcher` observer, and the backend
+    distributed-path service bundle (dead-letter consumer + dedup
+    pruner + heartbeat subscriber). Registration is best-effort: any
+    failure here is logged but does not abort startup, because the
+    in-process path remains viable.
 
-    Returns the constructed ``(queue, dispatcher)`` so the caller can
-    drive the queue's async ``start()``/``stop()`` lifecycle and
-    late-bind the dispatcher's live ``WorkersBridgeConfig`` provider;
-    returns ``(None, None)`` when the optional ``synthorg[distributed]``
-    dependency is missing or construction itself fails.
+    Returns the constructed ``(queue, dispatcher, backend_services)``
+    so the caller can drive the queue's async lifecycle, late-bind the
+    dispatcher's live ``WorkersBridgeConfig`` provider, and lifecycle-
+    manage the bundle; returns ``(None, None, None)`` when the optional
+    ``synthorg[distributed]`` dependency is missing or construction
+    itself fails.
     """
     try:
+        from synthorg.workers.backend_services import (  # noqa: PLC0415
+            build_distributed_backend_services,
+        )
         from synthorg.workers.claim import (  # noqa: PLC0415
             JetStreamTaskQueue,
         )
@@ -346,7 +375,7 @@ def _register_distributed_dispatcher(
                 "installed; distributed dispatcher will not be registered"
             ),
         )
-        return None, None
+        return None, None, None
 
     try:
         task_queue = JetStreamTaskQueue(
@@ -354,6 +383,16 @@ def _register_distributed_dispatcher(
             nats_config=nats_config,
         )
         dispatcher = DistributedDispatcher(task_queue=task_queue)
+        backend_services = build_distributed_backend_services(
+            task_queue=task_queue,
+            engine=engine,
+            queue_config=queue_config,
+            seen_claims=persistence.seen_claims,
+        )
+        # Register only after the bundle is fully built: if the build
+        # raises, the except returns (None, None, None) and the engine
+        # must not retain an observer that would publish to an
+        # unstarted queue on the in-process fallback path.
         engine.register_observer(dispatcher.on_task_state_changed)
     except MemoryError, RecursionError:
         raise
@@ -364,13 +403,13 @@ def _register_distributed_dispatcher(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return None, None
+        return None, None, None
 
     logger.info(
         API_SERVICE_AUTO_WIRED,
         service="distributed_dispatcher",
     )
-    return task_queue, dispatcher
+    return task_queue, dispatcher, backend_services
 
 
 def _auto_wire_message_bus(

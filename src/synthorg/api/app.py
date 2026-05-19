@@ -455,6 +455,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     provider_health_tracker = phase1.provider_health_tracker
     distributed_task_queue = phase1.distributed_task_queue
     distributed_dispatcher = phase1.distributed_dispatcher
+    distributed_backend_services = phase1.distributed_backend_services
 
     # Pre-meetings; versioning wires on startup once persistence.connect() runs.
     if agent_registry is None:
@@ -586,6 +587,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         distributed_dispatcher.set_workers_bridge_provider(
             lambda: app_state.workers_bridge_config,
         )
+    if distributed_backend_services is not None:
+        app_state.set_distributed_backend_services(distributed_backend_services)
 
     # Opaque pagination cursor HMAC secret.  Loaded from the
     # ``SYNTHORG_PAGINATION_CURSOR_SECRET`` env var; rolling with a

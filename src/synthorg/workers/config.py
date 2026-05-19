@@ -79,7 +79,24 @@ class QueueConfig(BaseModel):
         max_deliver: Maximum redelivery attempts before a claim is
             routed to the dead-letter subject.
         heartbeat_interval_seconds: Seconds between worker heartbeat
-            publications. Used for liveness detection in monitoring.
+            publications. Also reused as the working-ack cadence: the
+            worker calls ``in_progress`` on this interval while the
+            executor runs so a long task cannot exceed ``ack_wait`` and
+            trigger a duplicate redelivery. Must stay well below
+            ``ack_wait_seconds``.
+        max_ack_pending: Upper bound on unacknowledged claims in flight
+            across the shared durable consumer. The real backpressure
+            lever: JetStream stops delivering once this many claims are
+            outstanding, so a slow worker pool throttles intake instead
+            of letting unbounded work pile into memory.
+        stream_max_msgs: Hard cap on messages retained in the
+            ``WorkQueuePolicy`` stream. Bounds disk growth if dispatch
+            outpaces drain; the oldest is discarded past the cap.
+        stream_max_bytes: Hard cap on stream size in bytes. Companion
+            to ``stream_max_msgs`` for byte-bounded backpressure.
+        prune_interval_seconds: Interval at which the backend prunes
+            expired ``seen_claims`` dedup rows so the table cannot grow
+            without bound.
         api_url: Backend HTTP API URL that workers call to transition
             tasks. ``None`` means "derive from env at runtime".
     """
@@ -120,7 +137,27 @@ class QueueConfig(BaseModel):
     heartbeat_interval_seconds: int = Field(
         default=30,
         gt=0,
-        description="Seconds between worker heartbeats",
+        description="Seconds between worker heartbeats / ack-extension cadence",
+    )
+    max_ack_pending: int = Field(
+        default=16,
+        gt=0,
+        description="Max unacked claims in flight across the shared consumer",
+    )
+    stream_max_msgs: int = Field(
+        default=100_000,
+        gt=0,
+        description="Max messages retained in the work-queue stream",
+    )
+    stream_max_bytes: int = Field(
+        default=1_073_741_824,
+        gt=0,
+        description="Max work-queue stream size in bytes (1 GiB default)",
+    )
+    prune_interval_seconds: int = Field(
+        default=3600,
+        gt=0,
+        description="Interval between seen_claims dedup-row prunes",
     )
     api_url: str | None = Field(
         default=None,
@@ -162,5 +199,22 @@ class QueueConfig(BaseModel):
         """Ensure ready and dead subjects do not overlap."""
         if self.ready_subject_prefix == self.dead_subject_prefix:
             msg = "ready_subject_prefix and dead_subject_prefix must differ"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_ack_extension_headroom(self) -> Self:
+        """The working-ack cadence must stay below the ack deadline.
+
+        ``heartbeat_interval_seconds`` doubles as the interval at which
+        the worker calls ``in_progress`` while executing. If it were
+        >= ``ack_wait_seconds`` the deadline could lapse before the
+        first extension fires, defeating the no-duplication guarantee.
+        """
+        if self.heartbeat_interval_seconds >= self.ack_wait_seconds:
+            msg = (
+                "heartbeat_interval_seconds must be < ack_wait_seconds so "
+                "the working-ack extension fires before the ack deadline"
+            )
             raise ValueError(msg)
         return self

@@ -665,6 +665,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     persistence,
                     performance_tracker=app_state._performance_tracker,  # noqa: SLF001
                     distributed_task_queue=app_state.distributed_task_queue,
+                    distributed_backend_services=app_state.distributed_backend_services,
                 )
                 raise
         # AFTER SettingsService auto-wire; resolver drives max_subworkflow_depth.
@@ -694,6 +695,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     persistence,
                     performance_tracker=app_state._performance_tracker,  # noqa: SLF001
                     distributed_task_queue=app_state.distributed_task_queue,
+                    distributed_backend_services=app_state.distributed_backend_services,
                 )
                 raise
 
@@ -1142,6 +1144,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
             persistence,
             performance_tracker=app_state._performance_tracker,  # noqa: SLF001
             distributed_task_queue=app_state.distributed_task_queue,
+            distributed_backend_services=app_state.distributed_backend_services,
         )
         if app_state.has_notification_dispatcher:
             await _try_stop(

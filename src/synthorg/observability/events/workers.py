@@ -22,6 +22,53 @@ WORKERS_DUPLICATE_CLAIM_SUPPRESSED: Final[str] = (
 )
 WORKERS_DEDUP_LOOKUP_FAILED: Final[str] = "workers.worker.dedup_lookup_failed"
 WORKERS_DEDUP_MARK_FAILED: Final[str] = "workers.worker.dedup_mark_failed"
+WORKERS_ACK_EXTEND_FAILED: Final[str] = "workers.worker.ack_extend_failed"
+WORKERS_CLAIM_DEAD_LETTERED: Final[str] = "workers.worker.claim_dead_lettered"
+WORKERS_DEAD_LETTER_PUBLISH_FAILED: Final[str] = (
+    "workers.worker.dead_letter_publish_failed"
+)
+
+# Worker heartbeat (core-NATS liveness)
+WORKERS_HEARTBEAT_SENT: Final[str] = "workers.worker.heartbeat_sent"
+WORKERS_HEARTBEAT_FAILED: Final[str] = "workers.worker.heartbeat_failed"
+
+# Dead-letter consumer (backend-side)
+WORKERS_DEAD_LETTER_CONSUMER_STARTED: Final[str] = (
+    "workers.dead_letter.consumer_started"
+)
+WORKERS_DEAD_LETTER_CONSUMER_STOPPED: Final[str] = (
+    "workers.dead_letter.consumer_stopped"
+)
+WORKERS_DEAD_LETTER_TRANSITIONED: Final[str] = "workers.dead_letter.transitioned"
+WORKERS_DEAD_LETTER_ALREADY_TERMINAL: Final[str] = (
+    "workers.dead_letter.already_terminal"
+)
+WORKERS_DEAD_LETTER_DUPLICATE_SUPPRESSED: Final[str] = (
+    "workers.dead_letter.duplicate_suppressed"
+)
+WORKERS_DEAD_LETTER_FAILED: Final[str] = "workers.dead_letter.failed"
+WORKERS_DEAD_LETTER_PARSE_FAILED: Final[str] = "workers.dead_letter.parse_failed"
+
+# seen_claims pruner (backend-side)
+WORKERS_SEEN_CLAIMS_PRUNER_STARTED: Final[str] = "workers.seen_claims_pruner.started"
+WORKERS_SEEN_CLAIMS_PRUNER_STOPPED: Final[str] = "workers.seen_claims_pruner.stopped"
+WORKERS_SEEN_CLAIMS_PRUNED: Final[str] = "workers.seen_claims_pruner.pruned"
+WORKERS_SEEN_CLAIMS_PRUNE_FAILED: Final[str] = "workers.seen_claims_pruner.prune_failed"
+
+# Backend distributed-path service bundle
+WORKERS_BACKEND_BUNDLE_STARTED: Final[str] = "workers.backend_bundle.started"
+WORKERS_BACKEND_BUNDLE_STOP_FAILED: Final[str] = "workers.backend_bundle.stop_failed"
+
+# Heartbeat liveness subscriber (backend-side)
+WORKERS_HEARTBEAT_SUBSCRIBER_STARTED: Final[str] = (
+    "workers.heartbeat_subscriber.started"
+)
+WORKERS_HEARTBEAT_SUBSCRIBER_STOPPED: Final[str] = (
+    "workers.heartbeat_subscriber.stopped"
+)
+WORKERS_HEARTBEAT_OBSERVED: Final[str] = "workers.heartbeat_subscriber.observed"
+WORKERS_HEARTBEAT_STALE: Final[str] = "workers.heartbeat_subscriber.worker_stale"
+WORKERS_HEARTBEAT_SUBSCRIBER_FAILED: Final[str] = "workers.heartbeat_subscriber.failed"
 
 # Dispatcher
 WORKERS_DISPATCHER_QUEUE_NOT_RUNNING: Final[str] = (
