@@ -2117,6 +2117,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/meta/chat/propose": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ChatPropose */
+        readonly post: operations["ApiV1MetaChatProposeChatPropose"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/meta/config": {
         readonly parameters: {
             readonly query?: never;
@@ -5789,10 +5806,15 @@ export type components = {
          *         REVIEW_GATE: Any other approval (autonomy, hiring, promotion,
          *             pruning, scaling, training, signals, ...); the decision
          *             drives the review-gate transition. Default.
+         *         CONVERSATIONAL_INTAKE: A work item proposed through the
+         *             conversational interface (Chief of Staff clarify + propose);
+         *             approval reconstructs the ``WorkItem`` and runs it through
+         *             the work pipeline. Rejection records the proposal as
+         *             declined and never touches the pipeline.
          * @default review_gate
          * @enum {string}
          */
-        readonly ApprovalSource: "parked_context" | "review_gate";
+        readonly ApprovalSource: "parked_context" | "review_gate" | "conversational_intake";
         /**
          * ApprovalStatus
          * @description Status of a human approval item.
@@ -6662,6 +6684,12 @@ export type components = {
          * @enum {string}
          */
         readonly ContentType: "procedural" | "semantic" | "tool_patterns";
+        /** ConversationalProposeRequest */
+        readonly ConversationalProposeRequest: {
+            readonly conversation_id?: string | null;
+            readonly message: string;
+            readonly project?: string | null;
+        };
         /** CookieSessionResponse */
         readonly CookieSessionResponse: {
             readonly expires_in: number;
@@ -7541,7 +7569,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -17408,6 +17436,37 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChatProposeChatPropose: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ConversationalProposeRequest"];
             };
         };
         readonly responses: {

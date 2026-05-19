@@ -29,6 +29,10 @@ from synthorg.engine.errors import (
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
+    APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
+    APPROVAL_GATE_CONVERSATIONAL_FAILED,
+    APPROVAL_GATE_CONVERSATIONAL_NO_PROPOSAL,
+    APPROVAL_GATE_CONVERSATIONAL_REJECTED,
     APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_GATE_RESUME_TRIGGERED,
     APPROVAL_GATE_REVIEW_TRANSITION_FAILED,
@@ -173,6 +177,125 @@ async def try_mid_execution_resume(
             error=safe_error_description(exc),
             note="resume dispatch failed",
         )
+    return True
+
+
+async def try_conversational_intake_resume(
+    app_state: AppState,
+    approval_id: str,
+    *,
+    approved: bool,
+) -> bool:
+    """Run a decided conversational-intake proposal, if this is one.
+
+    Deterministic routing off the persisted
+    :attr:`ApprovalItem.source` discriminator: only
+    ``CONVERSATIONAL_INTAKE`` approvals are owned here; everything else
+    returns ``False`` so the caller falls through to the parked-context
+    / review-gate flows. Once owned, the decision is fully resolved on
+    this path and ``True`` is returned even on failure so the approval
+    is never double-handled.
+
+    On approval the parked ``WorkItem`` is rebuilt from the proposal
+    and driven through the work pipeline (still gated -- it only runs
+    because a human approved); the proposal is then marked EXECUTED. On
+    rejection the proposal is marked REJECTED and the pipeline is never
+    touched.
+
+    Raises:
+        ServiceUnavailableError: When approved but the work pipeline is
+            not wired at all (a hard misconfiguration the operator must
+            fix, not a transient failure to swallow).
+    """
+    from synthorg.core.enums import (  # noqa: PLC0415
+        ApprovalSource,
+        ConversationalProposalStatus,
+    )
+    from synthorg.engine.pipeline.models import WorkItem  # noqa: PLC0415
+    from synthorg.persistence.conversational_proposal_protocol import (  # noqa: PLC0415
+        ConversationalProposalFilterSpec,
+    )
+
+    item = await _reread_approval_item(app_state, approval_id)
+    if item is None or item.source is not ApprovalSource.CONVERSATIONAL_INTAKE:
+        return False
+    # This flow now owns the decision regardless of outcome.
+    if not app_state.has_conversational_proposal_repo:
+        logger.error(
+            APPROVAL_GATE_CONVERSATIONAL_FAILED,
+            approval_id=approval_id,
+            note="conversational proposal repo not wired",
+        )
+        return True
+    repo = app_state.conversational_proposal_repo
+    proposals = await repo.query(
+        ConversationalProposalFilterSpec(approval_id=approval_id),
+    )
+    if not proposals:
+        logger.error(
+            APPROVAL_GATE_CONVERSATIONAL_NO_PROPOSAL,
+            approval_id=approval_id,
+        )
+        return True
+    proposal = proposals[0]
+
+    if not approved:
+        await repo.transition_if(
+            proposal.id,
+            ConversationalProposalStatus.PENDING,
+            ConversationalProposalStatus.REJECTED,
+        )
+        logger.info(
+            APPROVAL_GATE_CONVERSATIONAL_REJECTED,
+            approval_id=approval_id,
+            proposal_id=proposal.id,
+        )
+        return True
+
+    if not app_state.has_work_pipeline:
+        # Hard misconfiguration: approved work can never run without a
+        # pipeline. Surface it rather than marking the approval handled
+        # while the work is silently stranded.
+        logger.error(
+            APPROVAL_GATE_CONVERSATIONAL_FAILED,
+            approval_id=approval_id,
+            proposal_id=proposal.id,
+            note="work pipeline not configured",
+        )
+        msg = "Work pipeline unavailable"
+        raise ServiceUnavailableError(msg)
+
+    try:
+        work_item = WorkItem.model_validate_json(proposal.work_item_json)
+        await app_state.work_pipeline.run(work_item)
+    except MemoryError, RecursionError:
+        raise
+    except ServiceUnavailableError:
+        raise
+    except Exception as exc:
+        # The approve decision is already persisted; a pipeline failure
+        # must not 5xx the response. Leave the proposal PENDING (not
+        # EXECUTED) so the failure is visible and not silently dropped.
+        logger.error(
+            APPROVAL_GATE_CONVERSATIONAL_FAILED,
+            approval_id=approval_id,
+            proposal_id=proposal.id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="pipeline run failed; proposal left pending",
+        )
+        return True
+
+    await repo.transition_if(
+        proposal.id,
+        ConversationalProposalStatus.PENDING,
+        ConversationalProposalStatus.EXECUTED,
+    )
+    logger.info(
+        APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
+        approval_id=approval_id,
+        proposal_id=proposal.id,
+    )
     return True
 
 
@@ -350,6 +473,16 @@ async def signal_resume_intent(  # noqa: PLR0913
         decided_by=decided_by,
         has_reason=decision_reason is not None,
     )
+
+    # Flow 0: conversational-intake proposal. Inert (returns False)
+    # for every non-conversational approval, so it cannot disturb the
+    # parked-context / review-gate flows.
+    if await try_conversational_intake_resume(
+        app_state,
+        approval_id,
+        approved=approved,
+    ):
+        return
 
     # Flow 1: mid-execution parking.
     handled = await try_mid_execution_resume(

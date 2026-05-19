@@ -26,6 +26,7 @@ from synthorg.api.app_builders import (
     _build_performance_tracker,
     _build_telemetry_collector,
     build_chief_of_staff_chat,
+    build_chief_of_staff_proposer,
 )
 from synthorg.api.app_helpers import (
     _make_expire_callback,
@@ -1163,6 +1164,40 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             app_state.set_chief_of_staff_chat(chat_backend)
 
     startup = [*startup, _wire_chief_of_staff_chat]
+
+    async def _wire_chief_of_staff_proposer() -> None:
+        # Wired only when ``chief_of_staff.propose_enabled`` is set AND
+        # a provider is registered AND persistence is connected (the
+        # conversation/turn/proposal stores are durable). Otherwise
+        # ``POST /meta/chat/propose`` honestly surfaces 503.
+        # Idempotent for re-entered lifespans (shared-app test fixtures).
+        if app_state.has_chief_of_staff_proposer:
+            return
+        if provider_registry is None:
+            return
+        from synthorg.meta.config import (  # noqa: PLC0415
+            load_self_improvement_config,
+        )
+        from synthorg.persistence.conversational_factory import (  # noqa: PLC0415
+            build_conversational_repositories,
+        )
+
+        meta_self_improvement = await load_self_improvement_config(
+            app_state.settings_service if app_state.has_settings_service else None,
+        )
+        repositories = build_conversational_repositories(persistence)
+        proposer = build_chief_of_staff_proposer(
+            meta_self_improvement.chief_of_staff,
+            provider_registry=provider_registry,
+            approval_store=effective_approval_store,
+            repositories=repositories,
+            cost_tracker=cost_tracker,
+        )
+        if proposer is not None and repositories is not None:
+            app_state.set_chief_of_staff_proposer(proposer)
+            app_state.set_conversational_proposal_repo(repositories.proposal_repo)
+
+    startup = [*startup, _wire_chief_of_staff_proposer]
 
     # Bring up the notification dispatcher's HTTP-bearing sinks
     # (slack/ntfy ``httpx.AsyncClient``) lazily under their lifecycle

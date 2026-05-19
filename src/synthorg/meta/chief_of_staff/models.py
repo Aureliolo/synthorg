@@ -18,6 +18,14 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.core.enums import (
+    Complexity,
+    ConversationalProposalStatus,
+    ConversationRole,
+    ConversationStatus,
+    Priority,
+    TaskType,
+)
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.meta.models import ProposalAltitude, RuleSeverity  # noqa: TC001
 
@@ -220,3 +228,224 @@ class ChatResponse(BaseModel):
     answer: NotBlankStr
     sources: tuple[NotBlankStr, ...] = ()
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+# ── Conversational clarify + propose ──────────────────────────────
+
+
+class Conversation(BaseModel):
+    """A persisted 1:1 conversation with the Chief of Staff.
+
+    Holds only conversation-level state; the ordered turns live in
+    ``ConversationTurn`` rows keyed by ``id``.
+
+    Attributes:
+        id: Unique conversation identifier.
+        created_by: User id that opened the conversation.
+        created_at: When the conversation was opened.
+        updated_at: When the most recent turn was appended.
+        status: Lifecycle state (active, proposed, closed).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr
+    created_by: NotBlankStr
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+    status: ConversationStatus = ConversationStatus.ACTIVE
+
+
+class ConversationTurn(BaseModel):
+    """A single ordered turn within a conversation.
+
+    Append-only: turns are never mutated once written. ``sequence``
+    is a zero-based monotonic index within the conversation.
+
+    Attributes:
+        id: Unique turn identifier.
+        conversation_id: Owning conversation id.
+        sequence: Zero-based position within the conversation.
+        role: Who authored the turn (user or assistant).
+        content: The turn text.
+        created_at: When the turn was appended.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr
+    conversation_id: NotBlankStr
+    sequence: int = Field(ge=0)
+    role: ConversationRole
+    content: NotBlankStr
+    created_at: AwareDatetime
+
+
+class ProposedWork(BaseModel):
+    """A single human-shaped work spec emitted by the clarify step.
+
+    Maps one-to-one onto the buildable fields of the work pipeline's
+    ``WorkItem`` entry contract; provenance and ids are added when the
+    proposal is accepted, not here.
+
+    Attributes:
+        title: Short human-readable work title.
+        raw_intent: Detailed request / description body.
+        project: Project the work belongs to (optional; resolved at
+            acceptance when absent).
+        priority: Work priority.
+        task_type: Classification of the work type.
+        estimated_complexity: Complexity estimate (drives routing).
+        acceptance_criteria: Optional acceptance criteria strings.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    title: NotBlankStr
+    raw_intent: NotBlankStr
+    project: NotBlankStr | None = None
+    priority: Priority = Priority.MEDIUM
+    task_type: TaskType = TaskType.DEVELOPMENT
+    estimated_complexity: Complexity = Complexity.MEDIUM
+    acceptance_criteria: tuple[NotBlankStr, ...] = ()
+
+
+class ProposeDecision(BaseModel):
+    """Structured output of one clarify-or-propose model turn.
+
+    Exactly one branch is taken: either the model asks a single
+    clarifying question, or it emits one or more concrete work
+    proposals. The two are mutually exclusive and exhaustive.
+
+    Attributes:
+        needs_clarification: ``True`` when the request is still
+            underspecified and a question is being asked.
+        clarifying_question: The question to put back to the human;
+            required iff ``needs_clarification``.
+        proposals: The proposed work items; non-empty iff not
+            ``needs_clarification``.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    needs_clarification: bool
+    clarifying_question: NotBlankStr | None = None
+    proposals: tuple[ProposedWork, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_exclusive_branch(self) -> Self:
+        """Enforce the clarify-XOR-propose invariant."""
+        if self.needs_clarification:
+            if self.clarifying_question is None:
+                msg = "clarifying_question is required when needs_clarification is True"
+                raise ValueError(msg)
+            if self.proposals:
+                msg = "proposals must be empty when needs_clarification is True"
+                raise ValueError(msg)
+        else:
+            if not self.proposals:
+                msg = "proposals must be non-empty when needs_clarification is False"
+                raise ValueError(msg)
+            if self.clarifying_question is not None:
+                msg = (
+                    "clarifying_question must be None when needs_clarification is False"
+                )
+                raise ValueError(msg)
+        return self
+
+
+class ConversationalProposal(BaseModel):
+    """A proposed work item parked behind a human approval decision.
+
+    Links one ``ApprovalItem`` (by ``approval_id``) to the serialised
+    ``WorkItem`` to run if and only if the human approves. The work
+    item is stored as JSON so the approval-decision seam can rebuild
+    it without re-running the model.
+
+    Attributes:
+        id: Unique proposal identifier.
+        conversation_id: Originating conversation id.
+        approval_id: The gating approval-queue item id.
+        work_item_json: ``WorkItem.model_dump_json()`` payload.
+        status: Lifecycle state (pending, executed, rejected).
+        created_at: When the proposal was parked.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    id: NotBlankStr
+    conversation_id: NotBlankStr
+    approval_id: NotBlankStr
+    work_item_json: NotBlankStr
+    status: ConversationalProposalStatus = ConversationalProposalStatus.PENDING
+    created_at: AwareDatetime
+
+
+# ── Proposer service boundary ─────────────────────────────────────
+
+
+class ProposeArgs(BaseModel):
+    """Args model for one ``ChiefOfStaffProposer.converse`` turn.
+
+    Attributes:
+        message: The human's natural-language message this turn.
+        created_by: User id that owns the conversation.
+        conversation_id: Existing conversation to continue, or
+            ``None`` to open a new one.
+        project: Optional project the work belongs to; used only when
+            a proposal omits its own project.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    message: NotBlankStr
+    created_by: NotBlankStr
+    conversation_id: NotBlankStr | None = None
+    project: NotBlankStr | None = None
+
+
+class ProposedApprovalSummary(BaseModel):
+    """One parked proposal, summarised for the API response.
+
+    Attributes:
+        approval_id: The gating approval-queue item id.
+        proposal_id: The conversational proposal id.
+        title: Proposed work title.
+        task_type: Classification of the proposed work.
+        priority: Proposed work priority.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    approval_id: NotBlankStr
+    proposal_id: NotBlankStr
+    title: NotBlankStr
+    task_type: TaskType
+    priority: Priority
+
+
+class ProposeResult(BaseModel):
+    """Outcome of one ``converse`` turn.
+
+    Exactly one branch: a clarifying question (conversation stays
+    open) or one-or-more parked proposals (conversation moves to
+    PROPOSED).
+
+    Attributes:
+        conversation_id: The conversation this turn belongs to.
+        status: ``"needs_clarification"`` or ``"proposed"``.
+        clarifying_question: The question to put to the human; set iff
+            ``status == "needs_clarification"``.
+        proposals: Parked proposal summaries; non-empty iff
+            ``status == "proposed"``.
+        conversation_closed: ``True`` when the clarification cap was
+            reached and the conversation was force-closed.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    conversation_id: NotBlankStr
+    status: Literal["needs_clarification", "proposed"]
+    clarifying_question: NotBlankStr | None = None
+    proposals: tuple[ProposedApprovalSummary, ...] = ()
+    conversation_closed: bool = False

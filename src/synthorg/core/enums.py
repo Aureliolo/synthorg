@@ -594,10 +594,58 @@ class ApprovalSource(StrEnum):
         REVIEW_GATE: Any other approval (autonomy, hiring, promotion,
             pruning, scaling, training, signals, ...); the decision
             drives the review-gate transition. Default.
+        CONVERSATIONAL_INTAKE: A work item proposed through the
+            conversational interface (Chief of Staff clarify + propose);
+            approval reconstructs the ``WorkItem`` and runs it through
+            the work pipeline. Rejection records the proposal as
+            declined and never touches the pipeline.
     """
 
     PARKED_CONTEXT = "parked_context"
     REVIEW_GATE = "review_gate"
+    CONVERSATIONAL_INTAKE = "conversational_intake"
+
+
+class ConversationRole(StrEnum):
+    """Author of a single conversational turn.
+
+    Attributes:
+        USER: A human message into the Chief of Staff conversation.
+        ASSISTANT: A Chief of Staff reply (clarifying question or a
+            summary of the proposed work items).
+    """
+
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class ConversationStatus(StrEnum):
+    """Lifecycle state of a Chief of Staff conversation.
+
+    Attributes:
+        ACTIVE: Open for further turns; the clarify loop may continue.
+        PROPOSED: At least one work item has been proposed into the
+            approval queue from this conversation.
+        CLOSED: Terminal; no further turns are accepted.
+    """
+
+    ACTIVE = "active"
+    PROPOSED = "proposed"
+    CLOSED = "closed"
+
+
+class ConversationalProposalStatus(StrEnum):
+    """Lifecycle state of a conversational work proposal.
+
+    Attributes:
+        PENDING: Awaiting the human approval decision.
+        EXECUTED: Approved; the work item ran through the pipeline.
+        REJECTED: Declined; the work item never reached the pipeline.
+    """
+
+    PENDING = "pending"
+    EXECUTED = "executed"
+    REJECTED = "rejected"
 
 
 class ConflictType(StrEnum):
