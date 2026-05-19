@@ -166,7 +166,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         except MemoryError, RecursionError:
             raise
         except ProviderError as exc:
-            self._session.record_interaction(
+            await self._session.record_interaction(
                 method=CassetteMethod.COMPLETE,
                 request_hash=digest,
                 request_repr=request_repr,
@@ -176,7 +176,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
                 ),
             )
             raise
-        self._session.record_interaction(
+        await self._session.record_interaction(
             method=CassetteMethod.COMPLETE,
             request_hash=digest,
             request_repr=request_repr,
@@ -263,7 +263,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         except MemoryError, RecursionError:
             raise
         except ProviderError as exc:
-            self._session.record_interaction(
+            await self._session.record_interaction(
                 method=CassetteMethod.STREAM,
                 request_hash=digest,
                 request_repr=request_repr,
@@ -273,7 +273,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
                 ),
             )
             raise
-        self._session.record_interaction(
+        await self._session.record_interaction(
             method=CassetteMethod.STREAM,
             request_hash=digest,
             request_repr=request_repr,
@@ -341,7 +341,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
         except MemoryError, RecursionError:
             raise
         except ProviderError as exc:
-            self._session.record_interaction(
+            await self._session.record_interaction(
                 method=CassetteMethod.CAPABILITIES,
                 request_hash=digest,
                 request_repr=request_repr,
@@ -351,7 +351,7 @@ class CassetteCompletionProvider(BaseCompletionProvider):
                 ),
             )
             raise
-        self._session.record_interaction(
+        await self._session.record_interaction(
             method=CassetteMethod.CAPABILITIES,
             request_hash=digest,
             request_repr=request_repr,

@@ -38,9 +38,11 @@ class CassetteRedactor(Protocol):
 # just the ``Authorization`` label.
 _SUBSTITUTIONS: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
     (
+        # Tempered greedy token: match anything that is not the start
+        # of the closing marker. Linear-time (no catastrophic
+        # backtracking) even on a large input with no ``-----END``.
         re.compile(
-            r"-----BEGIN [A-Z ]+-----.*?-----END [A-Z ]+-----",
-            re.DOTALL,
+            r"-----BEGIN [A-Z ]+-----(?:(?!-----END)[\s\S])*-----END [A-Z ]+-----",
         ),
         REDACTION_PLACEHOLDER,
     ),
@@ -60,7 +62,7 @@ _SUBSTITUTIONS: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
         re.compile(
             r"(?i)\b(api[_-]?key|secret|password|token|authorization)\b"
             r"(['\"]?\s*[:=]\s*['\"]?)"
-            r"([^'\"\s,}]+)",
+            r"((?:\\.|[^'\"\s,}\\])+)",
         ),
         rf"\g<1>\g<2>{REDACTION_PLACEHOLDER}",
     ),
@@ -88,8 +90,8 @@ def _redact_value(value: object) -> object:
 class PatternRedactor:
     """Default redactor: scrubs common secret shapes from the stored copy.
 
-    Covers PEM private-key blocks, ``Bearer`` tokens, OpenAI-style
-    ``sk-`` keys, AWS access-key ids, and labelled
+    Covers PEM private-key blocks, ``Bearer`` tokens,
+    ``sk-``-prefixed opaque API keys, AWS access-key ids, and labelled
     ``api_key`` / ``secret`` / ``password`` / ``token`` /
     ``authorization`` assignments. Non-secret prose and non-string
     scalars pass through unchanged.

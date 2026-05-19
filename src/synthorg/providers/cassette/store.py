@@ -29,8 +29,11 @@ from typing import Any, Final, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
+    PROVIDER_CASSETTE_EXHAUSTED,
+    PROVIDER_CASSETTE_FORMAT_ERROR,
+    PROVIDER_CASSETTE_MISS,
     PROVIDER_CASSETTE_SESSION_FLUSHED,
 )
 from synthorg.providers.capabilities import (  # noqa: TC001 -- Pydantic field type
@@ -204,6 +207,11 @@ class CassetteSession:
         self._recorded: list[CassetteInteraction] = []
         self._replay: dict[tuple[str, int], list[CassetteInteraction]] = {}
         self._cursor: dict[tuple[str, int], int] = {}
+        # Serialises the offloaded per-interaction writes. Created
+        # lazily on first record (never in __init__: the session may
+        # be constructed outside a running loop, and an asyncio
+        # primitive must not bind to a loop at construction time).
+        self._persist_lock: asyncio.Lock | None = None
         if mode is CassetteMode.REPLAY:
             self._load()
 
@@ -235,7 +243,7 @@ class CassetteSession:
         self._lane_by_task[task] = lane
         return lane
 
-    def record_interaction(
+    async def record_interaction(
         self,
         *,
         method: CassetteMethod,
@@ -270,9 +278,22 @@ class CassetteSession:
         )
         # Persist after every interaction so a crash mid-run still
         # leaves a valid, replayable cassette and no end-of-run
-        # lifecycle hook is required. Bounded harness runs make the
-        # repeated full-document rewrite cost negligible.
-        self._persist()
+        # lifecycle hook is required. Serialise + offloaded write run
+        # under one lock so concurrent recorders cannot race on
+        # os.replace (Windows raises WinError 5 on a concurrent
+        # rename onto the same target); every write is a full-document
+        # snapshot of the monotonically growing log, so the last
+        # writer's file is complete. The blocking write is offloaded
+        # so it never stalls the event loop. The lazy check-then-set
+        # is synchronous (no await between) and therefore race-free.
+        lock = self._persist_lock
+        if lock is None:
+            lock = asyncio.Lock()
+            self._persist_lock = lock
+        async with lock:
+            payload = self._serialise()
+            if payload is not None:
+                await asyncio.to_thread(self._atomic_write, payload)
 
     def take(self, *, request_hash: str) -> CassetteOutcome:
         """Return the next recorded outcome for this request (replay).
@@ -291,12 +312,23 @@ class CassetteSession:
         key = (request_hash, lane)
         bucket = self._replay.get(key)
         if bucket is None:
+            logger.warning(
+                PROVIDER_CASSETTE_MISS,
+                request_hash=request_hash,
+                lane=lane,
+            )
             raise CassetteReplayMissError(
                 CassetteReplayMissError.default_message,
                 context={"request_hash": request_hash, "lane": lane},
             )
         idx = self._cursor.get(key, 0)
         if idx >= len(bucket):
+            logger.warning(
+                PROVIDER_CASSETTE_EXHAUSTED,
+                request_hash=request_hash,
+                lane=lane,
+                recorded=len(bucket),
+            )
             raise CassetteReplayExhaustedError(
                 CassetteReplayExhaustedError.default_message,
                 context={
@@ -308,20 +340,30 @@ class CassetteSession:
         self._cursor[key] = idx + 1
         return bucket[idx].outcome
 
-    def _persist(self) -> None:
-        """Atomically write the current cassette (record mode only)."""
+    def _serialise(self) -> str | None:
+        """Snapshot the cassette as canonical JSON (record mode only).
+
+        Synchronous and cheap; called on the event loop so the
+        ``self._recorded`` snapshot cannot race a concurrent append
+        from another task. Returns ``None`` when not recording.
+        """
         if self._mode is not CassetteMode.RECORD:
-            return
+            return None
         document = CassetteDocument(
             cassette_format_version=CASSETTE_FORMAT_VERSION,
             interactions=tuple(self._recorded),
         )
-        payload = json.dumps(
+        return json.dumps(
             document.model_dump(mode="json"),
             sort_keys=True,
             indent=2,
         )
-        self._atomic_write(payload)
+
+    def _persist(self) -> None:
+        """Atomically write the current cassette (record mode only)."""
+        payload = self._serialise()
+        if payload is not None:
+            self._atomic_write(payload)
 
     def flush(self) -> None:
         """Force-persist and log (record mode only); no-op in replay.
@@ -366,6 +408,13 @@ class CassetteSession:
         try:
             raw = self._path.read_text(encoding="utf-8")
         except OSError as exc:
+            logger.warning(
+                PROVIDER_CASSETTE_FORMAT_ERROR,
+                path=str(self._path),
+                reason="unreadable",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise CassetteFormatError(
                 CassetteFormatError.default_message,
                 context={"path": str(self._path), "reason": "unreadable"},
@@ -373,6 +422,13 @@ class CassetteSession:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as exc:
+            logger.warning(
+                PROVIDER_CASSETTE_FORMAT_ERROR,
+                path=str(self._path),
+                reason="invalid_json",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise CassetteFormatError(
                 CassetteFormatError.default_message,
                 context={"path": str(self._path), "reason": "invalid_json"},
@@ -381,6 +437,13 @@ class CassetteSession:
             data.get("cassette_format_version") if isinstance(data, dict) else None
         )
         if version != CASSETTE_FORMAT_VERSION:
+            logger.warning(
+                PROVIDER_CASSETTE_FORMAT_ERROR,
+                path=str(self._path),
+                reason="version_mismatch",
+                found=version,
+                expected=CASSETTE_FORMAT_VERSION,
+            )
             raise CassetteFormatError(
                 CassetteFormatError.default_message,
                 context={
@@ -393,6 +456,13 @@ class CassetteSession:
         try:
             document = CassetteDocument.model_validate(data)
         except ValueError as exc:
+            logger.warning(
+                PROVIDER_CASSETTE_FORMAT_ERROR,
+                path=str(self._path),
+                reason="schema",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise CassetteFormatError(
                 CassetteFormatError.default_message,
                 context={"path": str(self._path), "reason": "schema"},

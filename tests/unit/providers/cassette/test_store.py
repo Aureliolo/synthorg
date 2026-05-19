@@ -89,13 +89,13 @@ class TestRecordReplayRoundTrip:
             redactor=PatternRedactor(),
         )
         h = _hash("q")
-        rec.record_interaction(
+        await rec.record_interaction(
             method=CassetteMethod.COMPLETE,
             request_hash=h,
             request_repr={"prompt": "q"},
             outcome=CassetteOutcome.from_response(_response("first")),
         )
-        rec.record_interaction(
+        await rec.record_interaction(
             method=CassetteMethod.COMPLETE,
             request_hash=h,
             request_repr={"prompt": "q"},
@@ -138,7 +138,7 @@ class TestRecordReplayRoundTrip:
             redactor=NullRedactor(),
         )
         h = _hash("q")
-        rec.record_interaction(
+        await rec.record_interaction(
             method=CassetteMethod.COMPLETE,
             request_hash=h,
             request_repr={},
@@ -166,7 +166,7 @@ class TestRedactionBoundary:
             path=path,
             redactor=PatternRedactor(),
         )
-        rec.record_interaction(
+        await rec.record_interaction(
             method=CassetteMethod.COMPLETE,
             request_hash=_hash("q"),
             request_repr={"prompt": f"key {secret}"},
@@ -232,11 +232,15 @@ class TestAtomicFlush:
             path=path,
             redactor=NullRedactor(),
         )
-        rec.record_interaction(
-            method=CassetteMethod.COMPLETE,
-            request_hash=_hash("q"),
-            request_repr={},
-            outcome=CassetteOutcome.from_response(_response("x")),
+        # Sync test: drive the async record path via asyncio.run so the
+        # post-flush directory listing stays out of an async function.
+        asyncio.run(
+            rec.record_interaction(
+                method=CassetteMethod.COMPLETE,
+                request_hash=_hash("q"),
+                request_repr={},
+                outcome=CassetteOutcome.from_response(_response("x")),
+            )
         )
         rec.flush()
         children = list(tmp_path.iterdir())
@@ -296,7 +300,7 @@ class TestConcurrentFanoutDeterminism:
             outs: list[str] = []
             for call in range(2):
                 if record:
-                    session.record_interaction(
+                    await session.record_interaction(
                         method=CassetteMethod.COMPLETE,
                         request_hash=h,
                         request_repr={"lane": lane, "call": call},
