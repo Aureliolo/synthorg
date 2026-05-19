@@ -117,6 +117,20 @@ class TestLlmJudgedRoutingPolicy:
         verdict = await policy.decide(task=_LEAF_TASK, available_agents=())
         assert verdict is RoutingVerdict.LEAF
 
+    async def test_both_verdict_words_falls_back_to_deterministic(self) -> None:
+        provider = ScriptedProvider(
+            response=make_text_response("Splittable, though it could be a leaf.")
+        )
+        policy = LlmJudgedRoutingPolicy(
+            provider=provider,
+            model="test-model-001",
+            fallback=LeafThresholdRoutingPolicy(threshold=_THRESHOLD),
+        )
+        # Mentioning both words is ambiguous, not an implicit SPLITTABLE;
+        # the leaf task falls back to the deterministic LEAF verdict.
+        verdict = await policy.decide(task=_LEAF_TASK, available_agents=())
+        assert verdict is RoutingVerdict.LEAF
+
 
 class TestBuildWorkRoutingPolicy:
     def test_leaf_threshold(self) -> None:

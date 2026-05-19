@@ -138,20 +138,24 @@ class LlmJudgedRoutingPolicy:
     def _parse_verdict(content: str | None) -> RoutingVerdict | None:
         """Extract a verdict from model text, or ``None`` if ambiguous.
 
-        Whole-word matching with negation detection. ``SPLITTABLE`` is
-        checked first because the word ``leaf`` does not appear in it.
-        A negated or qualified response (e.g. ``"not splittable"``) is
-        treated as ambiguous so the caller falls back to the
-        deterministic policy instead of acting on a misread verdict.
+        Whole-word matching with negation detection. A response that
+        mentions both verdict words, or a negated / qualified one
+        (e.g. ``"not splittable"``), is treated as ambiguous so the
+        caller falls back to the deterministic policy instead of
+        acting on a misread verdict.
         """
         if content is None:
             return None
         text = content.strip().lower()
         if not text:
             return None
+        has_splittable = _SPLITTABLE_RE.search(text) is not None
+        has_leaf = _LEAF_RE.search(text) is not None
+        if has_splittable and has_leaf:
+            return None
         negated = _NEGATION_RE.search(text) is not None
-        if _SPLITTABLE_RE.search(text):
+        if has_splittable:
             return None if negated else RoutingVerdict.SPLITTABLE
-        if _LEAF_RE.search(text):
+        if has_leaf:
             return None if negated else RoutingVerdict.LEAF
         return None
