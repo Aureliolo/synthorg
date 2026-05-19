@@ -5,11 +5,13 @@ update parent. Rollup + parent lifecycle walk live in
 :mod:`synthorg.engine.coordination.parent_rollup`.
 """
 
+import asyncio
 from collections.abc import (
     Callable,  # noqa: TC003 -- runtime-read by typing.get_type_hints()
 )
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
+from synthorg.budget.coordination_collector import CollectionInputs
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import CoordinationTopology
@@ -41,6 +43,9 @@ from synthorg.observability.events.coordination import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.budget.coordination_collector import (
+        CoordinationMetricsCollector,
+    )
     from synthorg.engine.coordination.dispatcher_types import DispatchResult
     from synthorg.engine.coordination.models import CoordinationContext
     from synthorg.engine.decomposition.models import (
@@ -58,6 +63,20 @@ if TYPE_CHECKING:
     from synthorg.hr.performance.tracker import PerformanceTracker
 
 logger = get_logger(__name__)
+
+# Logging actor for the multi-agent (system-level) metrics collection.
+# The recorded ``CoordinationMetricsRecord`` carries ``agent_id=None``
+# (no single lead in a coordinated run); this label only tags the
+# collector's observability events / overhead alerts.
+_COORDINATOR_ACTOR: str = "coordinator"
+
+# Upper bound on the post-completion metrics-collection hook. The
+# collector awaits the message bus and similarity computer; a degraded
+# dependency must not wedge an already-completed coordination run.
+# Like ``budget/enforcer._DEFAULT_TIMEOUT_SEC`` this bounds a
+# never-fatal drain, not operator-tunable policy, so it stays a typed
+# constant rather than a registered setting.
+_METRICS_COLLECT_TIMEOUT_SECONDS: Final[float] = 30.0
 
 
 class MultiAgentCoordinator:
@@ -98,11 +117,16 @@ class MultiAgentCoordinator:
             rebuilding the coordinator. Falls back to
             ``CoordinationTopology.SAS`` (the historical default)
             when ``None`` is supplied.
+        coordination_metrics_collector: Optional collector invoked
+            post-completion to compute and record the multi-agent
+            coordination metrics. ``None`` disables collection (never
+            fatal: a collector failure cannot fail a completed run).
     """
 
     __slots__ = (
         "_clock",
         "_coordination_chain",
+        "_coordination_metrics_collector",
         "_decomposition_service",
         "_default_topology_provider",
         "_parallel_executor",
@@ -124,8 +148,10 @@ class MultiAgentCoordinator:
         coordination_chain: CoordinationMiddlewareChain | None = None,
         default_topology_provider: Callable[[], CoordinationTopology] | None = None,
         clock: Clock | None = None,
+        coordination_metrics_collector: CoordinationMetricsCollector | None = None,
     ) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._coordination_metrics_collector = coordination_metrics_collector
         self._decomposition_service = decomposition_service
         self._routing_service = routing_service
         self._parallel_executor = parallel_executor
@@ -426,6 +452,7 @@ class MultiAgentCoordinator:
             logger.warning(
                 COORDINATION_CLEANUP_FAILED,
                 parent_task_id=task.id,
+                error_type=type(attr_exc).__name__,
                 error=safe_error_description(attr_exc),
                 context="post_completion_attribution_build",
             )
@@ -441,13 +468,110 @@ class MultiAgentCoordinator:
                 logger.warning(
                     COORDINATION_CLEANUP_FAILED,
                     parent_task_id=task.id,
+                    error_type=type(tracker_exc).__name__,
                     error=safe_error_description(tracker_exc),
                     context="post_completion_tracker_write",
                 )
 
+        await self._collect_coordination_metrics(
+            task_id=task.id,
+            dispatch_result=dispatch_result,
+        )
+
         return CoordinationResultWithAttribution(
             result=result,
             agent_contributions=contributions,
+        )
+
+    async def _collect_coordination_metrics(
+        self,
+        *,
+        task_id: str,
+        dispatch_result: DispatchResult,
+    ) -> None:
+        """Compute and record the multi-agent coordination metrics.
+
+        Never fatal: a collector failure must not fail an already
+        completed coordination run (mirrors the ``_performance_tracker``
+        guard above). Skipped when no collector is wired or no sub-agent
+        produced a result. ``asyncio.wait_for`` bounds the hook so a
+        degraded message bus or similarity computer cannot wedge a
+        completed run; a timeout surfaces as ``TimeoutError`` in the
+        guard below (logged via ``error_type``).
+        """
+        collector = self._coordination_metrics_collector
+        if collector is None:
+            return
+        inputs = self._build_collection_inputs(task_id, dispatch_result)
+        if inputs is None:
+            return
+        try:
+            await asyncio.wait_for(
+                collector.collect(inputs),
+                timeout=_METRICS_COLLECT_TIMEOUT_SECONDS,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COORDINATION_CLEANUP_FAILED,
+                parent_task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                context="post_completion_coordination_metrics",
+            )
+
+    def _build_collection_inputs(
+        self,
+        task_id: str,
+        dispatch_result: DispatchResult,
+    ) -> CollectionInputs | None:
+        """Aggregate sub-agent results into the collector inputs.
+
+        Returns ``None`` when no sub-agent produced a result. The
+        aggregate ``ExecutionResult`` carries the team-wide turn records
+        (``model_copy`` off a real sub-agent result, swapping only
+        ``turns`` -- the collector reads nothing else off it) so
+        ``turns_mas`` is the total reasoning turns across the system.
+        Multi-agent coordination has no single lead, so ``agent_id`` is
+        the system-level ``_COORDINATOR_ACTOR`` label.
+        """
+        outcomes = [
+            outcome
+            for wave in dispatch_result.waves
+            if wave.execution_result is not None
+            for outcome in wave.execution_result.outcomes
+        ]
+        results = [outcome.result for outcome in outcomes if outcome.result is not None]
+        if not results:
+            return None
+        # Count every dispatched participant, including ones whose
+        # subtask failed (no result), so team-level metrics are not
+        # skewed low by partial failures.
+        participating_agents = {outcome.agent_id for outcome in outcomes}
+        aggregate_turns = tuple(
+            turn for r in results for turn in r.execution_result.turns
+        )
+        aggregate = results[0].execution_result.model_copy(
+            update={"turns": aggregate_turns},
+        )
+        # Sum durations per agent so StragglerGap reflects each actor's
+        # total time across waves rather than a single subtask slice.
+        durations_by_agent: dict[str, float] = {}
+        for r in results:
+            durations_by_agent[r.agent_id] = (
+                durations_by_agent.get(r.agent_id, 0.0) + r.duration_seconds
+            )
+        return CollectionInputs(
+            execution_result=aggregate,
+            agent_id=_COORDINATOR_ACTOR,
+            task_id=task_id,
+            team_size=len(participating_agents),
+            agent_durations=tuple(durations_by_agent.items()),
+            agent_outputs=tuple(
+                r.completion_summary for r in results if r.completion_summary
+            ),
+            is_multi_agent=True,
         )
 
     async def _phase_decompose(

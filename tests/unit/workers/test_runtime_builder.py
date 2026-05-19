@@ -7,6 +7,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.api.state import AppState
+from synthorg.budget.coordination_collector import CoordinationMetricsCollector
+from synthorg.budget.coordination_store import CoordinationMetricsStore
+from synthorg.budget.tracker import CostTracker
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
 from synthorg.engine.coordination.service import MultiAgentCoordinator
@@ -33,11 +36,16 @@ def _provider_app_state(
     workspace: Path,
     *,
     bridge_config_error: Exception | None = None,
+    cost_tracker: CostTracker | None = None,
+    coordination_metrics_store: CoordinationMetricsStore | None = None,
 ) -> AppState:
     """Build a mocked AppState for the provider-present path.
 
     ``bridge_config_error`` makes ``get_engine_bridge_config`` raise, to
     exercise the fail-open routing-scorer-config resolve branch.
+    ``cost_tracker`` (and the paired ``coordination_metrics_store``)
+    drive the coordination-metrics collector wiring: absent, the
+    collector is not constructed (mirrors the empty/degraded path).
     """
     if bridge_config_error is None:
         bridge_mock = AsyncMock(return_value=EngineBridgeConfig())
@@ -63,7 +71,11 @@ def _provider_app_state(
             event_stream_hub=None,
             interrupt_store=None,
             agent_workspace_root=workspace,
-            has_cost_tracker=False,
+            has_cost_tracker=cost_tracker is not None,
+            cost_tracker=cost_tracker,
+            has_message_bus=False,
+            has_coordination_metrics_store=coordination_metrics_store is not None,
+            coordination_metrics_store=coordination_metrics_store,
             has_audit_log=False,
             has_memory_backend=False,
             has_performance_tracker=False,
@@ -224,3 +236,73 @@ class TestProviderPresentSwitch:
         )
         assert isinstance(result.coordinator, MultiAgentCoordinator)
         assert deep.is_dir()
+
+
+class TestCoordinationMetricsWiring:
+    """The coordination-metrics collector is built and shared at boot."""
+
+    @staticmethod
+    def _registry() -> ProviderRegistry:
+        return ProviderRegistry.from_config(
+            {"test-provider": ProviderConfig(driver="scripted")}
+        )
+
+    async def test_no_collector_without_cost_tracker(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        app_state = _provider_app_state(self._registry(), tmp_path)
+        result = await build_runtime_services(app_state, workspace_root=tmp_path)
+
+        worker = result.worker_execution_service
+        coordinator = result.coordinator
+        assert isinstance(worker, AgentEngineExecutionService)
+        assert coordinator is not None
+        assert worker._engine._coordination_metrics_collector is None
+        assert coordinator._coordination_metrics_collector is None
+
+    async def test_collector_built_and_shared_when_cost_tracker_present(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        store = CoordinationMetricsStore()
+        app_state = _provider_app_state(
+            self._registry(),
+            tmp_path,
+            cost_tracker=mock_of[CostTracker](),
+            coordination_metrics_store=store,
+        )
+        result = await build_runtime_services(app_state, workspace_root=tmp_path)
+
+        worker = result.worker_execution_service
+        coordinator = result.coordinator
+        assert isinstance(worker, AgentEngineExecutionService)
+        assert coordinator is not None
+        collector = worker._engine._coordination_metrics_collector
+        assert isinstance(collector, CoordinationMetricsCollector)
+        # Same single instance threaded into the single-agent engine AND
+        # the multi-agent coordinator (no divergent collectors).
+        assert coordinator._coordination_metrics_collector is collector
+        assert collector._metrics_store is store
+
+    async def test_baseline_window_size_from_setting(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE", "7")
+        app_state = _provider_app_state(
+            self._registry(),
+            tmp_path,
+            cost_tracker=mock_of[CostTracker](),
+            coordination_metrics_store=CoordinationMetricsStore(),
+        )
+        result = await build_runtime_services(app_state, workspace_root=tmp_path)
+
+        worker = result.worker_execution_service
+        assert isinstance(worker, AgentEngineExecutionService)
+        collector = worker._engine._coordination_metrics_collector
+        assert isinstance(collector, CoordinationMetricsCollector)
+        baseline_store = collector._baseline_store
+        assert baseline_store is not None
+        assert baseline_store._window_size == 7

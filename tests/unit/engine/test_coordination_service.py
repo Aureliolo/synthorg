@@ -1,5 +1,6 @@
 """Tests for MultiAgentCoordinator service."""
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
@@ -9,6 +10,11 @@ import pytest
 if TYPE_CHECKING:
     from synthorg.engine.decomposition.models import DecompositionResult
 
+from synthorg.budget.coordination_collector import (
+    CollectionInputs,
+    CoordinationMetricsCollector,
+)
+from synthorg.budget.coordination_metrics import CoordinationMetrics
 from synthorg.core.enums import (
     CoordinationTopology,
     TaskStatus,
@@ -37,7 +43,7 @@ from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
 )
-from tests._shared import FakeClock
+from tests._shared import FakeClock, mock_of
 from tests.unit.engine.conftest import (
     build_run_result,
     make_assignment_agent,
@@ -61,6 +67,7 @@ def _make_coordinator(  # noqa: PLR0913
     decompose_error: Exception | None = None,
     route_error: Exception | None = None,
     clock: FakeClock | None = None,
+    collector: CoordinationMetricsCollector | None = None,
 ) -> MultiAgentCoordinator:
     """Build a MultiAgentCoordinator with mocked dependencies."""
     decomp_service = AsyncMock(spec=DecompositionService)
@@ -91,6 +98,7 @@ def _make_coordinator(  # noqa: PLR0913
         workspace_service=workspace_service,
         task_engine=task_engine,
         clock=clock,
+        coordination_metrics_collector=collector,
     )
 
 
@@ -931,3 +939,219 @@ class TestMultiAgentCoordinator:
 
         assert exc_info.value.phase == "dispatch"
         assert len(exc_info.value.partial_phases) >= 3
+
+
+class TestCoordinationMetricsCollection:
+    """The coordinator computes + records multi-agent metrics post-run."""
+
+    @staticmethod
+    def _two_agent_setup() -> tuple[
+        DecompositionResult,
+        RoutingResult,
+        list[ParallelExecutionResult],
+        CoordinationContext,
+    ]:
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+        agent_id_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
+        agent_id_b = str(routing.decisions[1].selected_candidate.agent_identity.id)
+        exec_results = [
+            make_exec_result(
+                "wave-0",
+                [("sub-a", agent_id_a), ("sub-b", agent_id_b)],
+            ),
+        ]
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(
+                make_assignment_agent("alice"),
+                make_assignment_agent("bob"),
+            ),
+        )
+        return decomp, routing, exec_results, ctx
+
+    @pytest.mark.unit
+    async def test_multi_agent_collect_invoked(self) -> None:
+        decomp, routing, exec_results, ctx = self._two_agent_setup()
+        collector = mock_of[CoordinationMetricsCollector](
+            collect=AsyncMock(return_value=CoordinationMetrics()),
+        )
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=exec_results,
+            collector=collector,
+        )
+
+        attributed = await coordinator.coordinate(ctx)
+
+        assert attributed.is_success
+        collector.collect.assert_awaited_once()
+        inputs = collector.collect.await_args.args[0]
+        assert isinstance(inputs, CollectionInputs)
+        assert inputs.is_multi_agent is True
+        assert inputs.task_id == "parent-1"
+        assert inputs.team_size == 2
+        assert inputs.agent_durations is not None
+        assert len(inputs.agent_durations) == 2
+        assert all(isinstance(d, tuple) and len(d) == 2 for d in inputs.agent_durations)
+        assert isinstance(inputs.agent_outputs, tuple)
+        # The aggregate carries the team-wide turn records.
+        assert hasattr(inputs.execution_result, "turns")
+
+    @pytest.mark.unit
+    async def test_collector_failure_is_never_fatal(self) -> None:
+        decomp, routing, exec_results, ctx = self._two_agent_setup()
+        collector = mock_of[CoordinationMetricsCollector](
+            collect=AsyncMock(side_effect=RuntimeError("collector boom")),
+        )
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=exec_results,
+            collector=collector,
+        )
+
+        attributed = await coordinator.coordinate(ctx)
+
+        assert attributed.is_success
+        collector.collect.assert_awaited_once()
+
+    @pytest.mark.unit
+    async def test_no_collector_completes_cleanly(self) -> None:
+        decomp, routing, exec_results, ctx = self._two_agent_setup()
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=exec_results,
+            collector=None,
+        )
+
+        attributed = await coordinator.coordinate(ctx)
+
+        assert attributed.is_success
+
+    @pytest.mark.unit
+    async def test_durations_aggregated_per_agent(self) -> None:
+        """One agent across two subtasks yields a single summed entry."""
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+        exec_results = [
+            make_exec_result(
+                "wave-0",
+                [("sub-a", agent_id), ("sub-b", agent_id)],
+            ),
+        ]
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(make_assignment_agent("alice"),),
+        )
+        collector = mock_of[CoordinationMetricsCollector](
+            collect=AsyncMock(return_value=CoordinationMetrics()),
+        )
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=exec_results,
+            collector=collector,
+        )
+
+        attributed = await coordinator.coordinate(ctx)
+
+        assert attributed.is_success
+        inputs = collector.collect.await_args.args[0]
+        assert isinstance(inputs, CollectionInputs)
+        assert inputs.team_size == 1
+        assert inputs.agent_durations is not None
+        assert len(inputs.agent_durations) == 1
+        entry_agent_id, entry_duration = inputs.agent_durations[0]
+        assert entry_agent_id == agent_id
+        # build_run_result sets duration_seconds=0.5 per subtask; the two
+        # subtasks for the same agent must sum rather than appear twice.
+        assert entry_duration == pytest.approx(1.0)
+
+    @pytest.mark.unit
+    async def test_team_size_counts_failed_participants(self) -> None:
+        """A participant whose subtask failed still counts in team_size."""
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = make_decomposition(
+            (sub_a, sub_b),
+            structure=TaskStructure.SEQUENTIAL,
+        )
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+        agent_id_a = str(routing.decisions[0].selected_candidate.agent_identity.id)
+        agent_id_b = str(routing.decisions[1].selected_candidate.agent_identity.id)
+        exec_results = [
+            make_exec_result("wave-0", [("sub-a", agent_id_a)], all_succeed=False),
+            make_exec_result("wave-1", [("sub-b", agent_id_b)], all_succeed=True),
+        ]
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(
+                make_assignment_agent("alice"),
+                make_assignment_agent("bob"),
+            ),
+            config=CoordinationConfig(fail_fast=False),
+        )
+        collector = mock_of[CoordinationMetricsCollector](
+            collect=AsyncMock(return_value=CoordinationMetrics()),
+        )
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=exec_results,
+            collector=collector,
+        )
+
+        await coordinator.coordinate(ctx)
+
+        collector.collect.assert_awaited_once()
+        inputs = collector.collect.await_args.args[0]
+        assert isinstance(inputs, CollectionInputs)
+        # Both agents were dispatched; alice's subtask failed (no result)
+        # but still counts toward team_size.
+        assert inputs.team_size == 2
+        # agent_durations only carries agents that produced a result.
+        assert inputs.agent_durations is not None
+        assert len(inputs.agent_durations) == 1
+        assert inputs.agent_durations[0][0] == agent_id_b
+
+    @pytest.mark.unit
+    async def test_collector_timeout_is_never_fatal(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A collector exceeding the bounded wait must not fail the run."""
+        monkeypatch.setattr(
+            "synthorg.engine.coordination.service._METRICS_COLLECT_TIMEOUT_SECONDS",
+            0.01,
+        )
+        decomp, routing, exec_results, ctx = self._two_agent_setup()
+
+        async def _hang(_inputs: object) -> CoordinationMetrics:
+            # Never completes; the bounded asyncio.wait_for must cancel
+            # it and surface TimeoutError into the non-fatal guard.
+            await asyncio.Event().wait()
+            return CoordinationMetrics()
+
+        collector = mock_of[CoordinationMetricsCollector](
+            collect=AsyncMock(side_effect=_hang),
+        )
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=exec_results,
+            collector=collector,
+        )
+
+        attributed = await coordinator.coordinate(ctx)
+
+        # The coordination run itself succeeded; the collector timeout
+        # is swallowed by the bounded-cleanup guard.
+        assert attributed.is_success
+        collector.collect.assert_awaited_once()

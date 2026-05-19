@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING, Any, Final
 
+from synthorg.budget.coordination_collector import CollectionInputs
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     make_loop_with_callback,
@@ -290,10 +291,12 @@ class AgentEnginePostExecMixin:
             return
         try:
             await self._coordination_metrics_collector.collect(
-                execution_result=execution_result,
-                agent_id=agent_id,
-                task_id=task_id,
-                is_multi_agent=False,
+                CollectionInputs(
+                    execution_result=execution_result,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    is_multi_agent=False,
+                ),
             )
         except MemoryError, RecursionError:
             raise

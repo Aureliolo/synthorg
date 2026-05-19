@@ -131,8 +131,8 @@ from synthorg.settings.errors import (
 from synthorg.settings.mirrors import (
     parse_bool,
     parse_float,
-    parse_int,
     parse_str_tuple_json,
+    resolve_init_int,
 )
 from synthorg.tools.invocation_tracker import ToolInvocationTracker  # noqa: TC001
 
@@ -192,11 +192,10 @@ def _resolve_api_str_tuple(key: str) -> tuple[str, ...]:
 def _resolve_api_int(key: str) -> int:
     """Resolve an integer-typed api.* setting at boot.
 
-    Uses ``parse_int`` so a non-integer env value falls through to the
-    registered default rather than raising at app construction time.
+    Non-integer env values fall through to the registered default rather
+    than raising at app construction time.
     """
-    resolved = resolve_init_value(SettingNamespace.API, key, parse=parse_int)
-    return int(resolved.value)
+    return resolve_init_int(SettingNamespace.API, key)
 
 
 def _resolve_api_str(key: str) -> str:
@@ -213,8 +212,7 @@ def _resolve_budget_int(key: str) -> int:
     registered default via the bootstrap resolver (a runtime change
     requires a restart -- the consumer is a fixed-length ring buffer).
     """
-    resolved = resolve_init_value(SettingNamespace.BUDGET, key, parse=parse_int)
-    return int(resolved.value)
+    return resolve_init_int(SettingNamespace.BUDGET, key)
 
 
 def _build_default_approval_timeout_scheduler(

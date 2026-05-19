@@ -257,8 +257,6 @@ class CoordinationMetricsConfig(BaseModel):
     Attributes:
         enabled: Whether coordination metrics are collected.
         collect: Which metrics to collect.
-        baseline_window: Number of recent records for baseline
-            computation.
         error_taxonomy: Error taxonomy tracking configuration.
         orchestration_alerts: Orchestration overhead alert thresholds.
     """
@@ -272,11 +270,6 @@ class CoordinationMetricsConfig(BaseModel):
     collect: tuple[CoordinationMetricName, ...] = Field(
         default=tuple(CoordinationMetricName),
         description="Which metrics to collect (must be unique)",
-    )
-    baseline_window: int = Field(
-        default=50,
-        gt=0,
-        description="Number of recent records for baseline computation",
     )
     error_taxonomy: ErrorTaxonomyConfig = Field(
         default_factory=ErrorTaxonomyConfig,

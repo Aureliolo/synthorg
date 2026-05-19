@@ -26,9 +26,12 @@ import pytest
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.state import AppState
+from synthorg.budget.coordination_config import CoordinationMetricsConfig
+from synthorg.budget.coordination_metrics import CoordinationMetrics
+from synthorg.budget.coordination_store import CoordinationMetricsStore
+from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.clock import SystemClock
 from synthorg.core.enums import (
     AgentStatus,
     Priority,
@@ -58,7 +61,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import mock_of
+from tests._shared import FakeClock, mock_of
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -199,7 +202,7 @@ async def test_coordinator_runs_decomposable_task_end_to_end(
         task_engine=task_engine,
         agent_registry=agent_registry,
         approval_store=ApprovalStore(),
-        clock=SystemClock(),
+        clock=FakeClock(),
         event_stream_hub=None,
         interrupt_store=None,
         agent_workspace_root=tmp_path,
@@ -286,3 +289,110 @@ async def test_coordinator_runs_decomposable_task_end_to_end(
     assert update_parent.success, update_parent.error
     assert result.total_duration_seconds >= 0.0
     assert isinstance(attributed.agent_contributions, tuple)
+
+
+async def test_coordinator_records_coordination_metrics_end_to_end(
+    persistence: FakePersistenceBackend,
+    task_engine: TaskEngine,
+    tmp_path: Path,
+) -> None:
+    """A real multi-agent run lands a record the read API would return.
+
+    With ``cost_tracker`` present and ``coordination_metrics.enabled``,
+    ``build_runtime_services`` constructs the collector and the
+    coordinator's post-completion hook persists a
+    ``CoordinationMetricsRecord`` into the ``CoordinationMetricsStore``.
+    ``store.query(...)`` is exactly the call the
+    ``GET /coordination/metrics`` controller makes, so a non-empty query
+    proves the endpoint serves real, persisted coordination metrics
+    rather than an empty list.
+    """
+    provider = ScriptedDriver(
+        "test-provider",
+        strategy=_DecompositionAwareStrategy(),
+    )
+    registry = ProviderRegistry({"test-provider": provider})
+    agent_registry = AgentRegistryService()
+    alice = _make_agent("alice", _RESEARCH_SKILL)
+    bob = _make_agent("bob", _ANALYSIS_SKILL)
+    await agent_registry.register(alice)
+    await agent_registry.register(bob)
+
+    root_config = RootConfig(
+        company_name="coordinator-metrics-test",
+        coordination_metrics=CoordinationMetricsConfig(enabled=True),
+    )
+    settings_service = SettingsService(
+        repository=persistence.settings,
+        registry=get_registry(),
+    )
+    config_resolver = ConfigResolver(
+        settings_service=settings_service,
+        config=root_config,
+    )
+    metrics_store = CoordinationMetricsStore()
+    app_state = mock_of[AppState](
+        has_active_provider=True,
+        provider_registry=registry,
+        config=root_config,
+        config_resolver=config_resolver,
+        task_engine=task_engine,
+        agent_registry=agent_registry,
+        approval_store=ApprovalStore(),
+        clock=FakeClock(),
+        event_stream_hub=None,
+        interrupt_store=None,
+        agent_workspace_root=tmp_path,
+        has_cost_tracker=True,
+        cost_tracker=CostTracker(),
+        has_message_bus=False,
+        has_coordination_metrics_store=True,
+        coordination_metrics_store=metrics_store,
+        has_audit_log=False,
+        has_memory_backend=False,
+        has_performance_tracker=False,
+    )
+
+    runtime = await build_runtime_services(
+        app_state,
+        workspace_root=tmp_path,
+    )
+    coordinator = runtime.coordinator
+    assert isinstance(coordinator, MultiAgentCoordinator)
+
+    created = await task_engine.create_task(
+        CreateTaskData(
+            title="Financial analysis",
+            description="Decompose into research and analysis.",
+            type=TaskType.DEVELOPMENT,
+            project="proj-coord-metrics",
+            created_by="operator",
+            priority=Priority.MEDIUM,
+        ),
+        requested_by="operator",
+    )
+
+    context = CoordinationContext(
+        task=created,
+        available_agents=(alice, bob),
+        decomposition_context=DecompositionContext(max_subtasks=4),
+        config=CoordinationConfig(
+            enable_workspace_isolation=False,
+            fail_fast=False,
+        ),
+    )
+
+    attributed = await coordinator.coordinate(context)
+    assert attributed.result.parent_task_id == created.id
+
+    # Exactly the call the GET /coordination/metrics controller makes.
+    records, total = metrics_store.query(limit=10)
+    assert total >= 1
+    assert metrics_store.count() >= 1
+    record = records[0]
+    assert record.task_id == created.id
+    # Multi-agent coordination is a system-level run: no single lead.
+    assert record.agent_id is None
+    assert record.team_size == 2
+    assert record.computed_at is not None
+    assert isinstance(record.metrics, CoordinationMetrics)

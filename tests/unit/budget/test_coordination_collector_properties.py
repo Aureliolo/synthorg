@@ -7,10 +7,14 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from synthorg.budget.baseline_store import BaselineRecord, BaselineStore
-from synthorg.budget.coordination_collector import CoordinationMetricsCollector
+from synthorg.budget.coordination_collector import (
+    CollectionInputs,
+    CoordinationMetricsCollector,
+)
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.coordination_metrics import CoordinationMetrics
 from synthorg.budget.tracker import CostTracker
+from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.providers.enums import FinishReason
 
 # ---------------------------------------------------------------------------
@@ -34,6 +38,31 @@ def _execution_result(*turns: MagicMock) -> MagicMock:
     result = MagicMock()
     result.turns = turns
     return result
+
+
+async def _collect(  # noqa: PLR0913
+    collector: CoordinationMetricsCollector,
+    *,
+    execution_result: ExecutionResult,
+    agent_id: str,
+    task_id: str,
+    team_size: int = 1,
+    agent_durations: tuple[tuple[str, float], ...] | None = None,
+    agent_outputs: tuple[str, ...] | None = None,
+    is_multi_agent: bool = False,
+) -> CoordinationMetrics:
+    """Invoke ``collect`` with the kwargs bundled into ``CollectionInputs``."""
+    return await collector.collect(
+        CollectionInputs(
+            execution_result=execution_result,
+            agent_id=agent_id,
+            task_id=task_id,
+            team_size=team_size,
+            agent_durations=agent_durations,
+            agent_outputs=agent_outputs,
+            is_multi_agent=is_multi_agent,
+        ),
+    )
 
 
 def _baseline_store_with_record(turns: float = 5.0) -> BaselineStore:
@@ -69,7 +98,8 @@ class TestCoordinationCollectorProperties:
             config=_cfg(),
             cost_tracker=MagicMock(spec=CostTracker),
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="agent-1",
             task_id="task-1",
@@ -84,7 +114,8 @@ class TestCoordinationCollectorProperties:
             config=_cfg(enabled=False),
             cost_tracker=MagicMock(spec=CostTracker),
         )
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(_turn()),
             agent_id="agent-1",
             task_id="task-1",
@@ -112,7 +143,8 @@ class TestCoordinationCollectorProperties:
             baseline_store=store,
         )
         for i in range(n_calls):
-            await collector.collect(
+            await _collect(
+                collector,
                 execution_result=_execution_result(_turn()),
                 agent_id=f"agent-{i}",
                 task_id="task-1",
@@ -135,7 +167,8 @@ class TestCoordinationCollectorProperties:
             baseline_store=store,
         )
         turns = tuple(_turn() for _ in range(turns_mas))
-        result = await collector.collect(
+        result = await _collect(
+            collector,
             execution_result=_execution_result(*turns),
             agent_id="a",
             task_id="t",

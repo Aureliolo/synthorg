@@ -690,6 +690,20 @@ def test_client(  # noqa: C901, PLR0912, PLR0913, PLR0915
         fake_persistence._connected = True
         if app_state._settings_service is not None:
             app_state._settings_service._cache.clear()
+        # ``create_app``'s ``_install_runtime_services`` startup hook is
+        # once-only (a ``_runtime_services_installed`` closure flag), but
+        # the session-scoped shared app re-runs lifespan startup every
+        # test. The hook therefore wires the coordinator / worker-exec
+        # seams only during the FIRST test's startup; the snapshot in
+        # step 5 then restores them to ``None`` for every later test.
+        # Left alone, the first test per xdist worker would observe a
+        # wired coordinator while all others observe ``None``, making any
+        # coordinator-dependent assertion order-dependent. Force the
+        # no-runtime-services baseline post-startup so every test sees
+        # the same state (the worker-exec property lazily re-defaults);
+        # tests that need a coordinator inject one via their own client.
+        app_state._coordinator = None
+        app_state._worker_execution_service = None
         _seed_test_users(fake_persistence, auth_service)
         _promote_first_owner(fake_persistence)
         client.headers.update(make_auth_headers("ceo"))

@@ -24,6 +24,9 @@ from synthorg.observability.events.decomposition import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.budget.coordination_collector import (
+        CoordinationMetricsCollector,
+    )
     from synthorg.config.schema import TaskAssignmentConfig
     from synthorg.core.enums import CoordinationTopology
     from synthorg.core.task import Task
@@ -169,6 +172,7 @@ def build_coordinator(  # noqa: PLR0913
     shutdown_manager: ShutdownManager | None = None,
     performance_tracker: PerformanceTracker | None = None,
     routing_scorer_config: RoutingScorerConfig | None = None,
+    coordination_metrics_collector: CoordinationMetricsCollector | None = None,
 ) -> MultiAgentCoordinator:
     """Build a fully wired :class:`MultiAgentCoordinator`.
 
@@ -208,6 +212,10 @@ def build_coordinator(  # noqa: PLR0913
             falls back to scorer defaults that mirror the historical
             hardcoded values; ``task_assignment_config.min_score`` is
             still honoured as a min-score override in that case.
+        coordination_metrics_collector: Shared collector the coordinator
+            invokes post-completion to compute and record the
+            multi-agent metrics. ``None`` disables collection (the
+            ``/coordination/metrics`` API stays empty).
 
     Returns:
         A fully constructed ``MultiAgentCoordinator``.
@@ -245,6 +253,7 @@ def build_coordinator(  # noqa: PLR0913
         task_engine=task_engine,
         performance_tracker=performance_tracker,
         default_topology_provider=_topology_provider,
+        coordination_metrics_collector=coordination_metrics_collector,
     )
 
     logger.debug(
