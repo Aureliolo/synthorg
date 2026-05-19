@@ -191,7 +191,9 @@ class WorkPipelineResult(BaseModel):
         description="Total wall-clock duration in seconds",
     )
 
-    @computed_field(description="Whether every recorded phase succeeded")
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Whether every recorded phase succeeded",
+    )
     @property
     def is_success(self) -> bool:
         """Derived: ``True`` only if every recorded phase succeeded."""
