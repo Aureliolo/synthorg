@@ -32,7 +32,6 @@ from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
-from synthorg.core.clock import SystemClock
 from synthorg.core.enums import (
     AgentStatus,
     Priority,
@@ -62,7 +61,7 @@ from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
 from synthorg.workers.runtime_builder import build_runtime_services
-from tests._shared import mock_of
+from tests._shared import FakeClock, mock_of
 from tests.unit.api.fakes import FakePersistenceBackend
 
 pytestmark = pytest.mark.e2e
@@ -203,7 +202,7 @@ async def test_coordinator_runs_decomposable_task_end_to_end(
         task_engine=task_engine,
         agent_registry=agent_registry,
         approval_store=ApprovalStore(),
-        clock=SystemClock(),
+        clock=FakeClock(),
         event_stream_hub=None,
         interrupt_store=None,
         agent_workspace_root=tmp_path,
@@ -340,7 +339,7 @@ async def test_coordinator_records_coordination_metrics_end_to_end(
         task_engine=task_engine,
         agent_registry=agent_registry,
         approval_store=ApprovalStore(),
-        clock=SystemClock(),
+        clock=FakeClock(),
         event_stream_hub=None,
         interrupt_store=None,
         agent_workspace_root=tmp_path,

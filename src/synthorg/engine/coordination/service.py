@@ -551,12 +551,19 @@ class MultiAgentCoordinator:
         aggregate = results[0].execution_result.model_copy(
             update={"turns": aggregate_turns},
         )
+        # Sum durations per agent so StragglerGap reflects each actor's
+        # total time across waves rather than a single subtask slice.
+        durations_by_agent: dict[str, float] = {}
+        for r in results:
+            durations_by_agent[r.agent_id] = (
+                durations_by_agent.get(r.agent_id, 0.0) + r.duration_seconds
+            )
         return CollectionInputs(
             execution_result=aggregate,
             agent_id=_COORDINATOR_ACTOR,
             task_id=task_id,
-            team_size=len({r.agent_id for r in results}),
-            agent_durations=tuple((r.agent_id, r.duration_seconds) for r in results),
+            team_size=len(durations_by_agent),
+            agent_durations=tuple(durations_by_agent.items()),
             agent_outputs=tuple(
                 r.completion_summary for r in results if r.completion_summary
             ),

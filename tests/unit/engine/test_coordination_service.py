@@ -1031,3 +1031,45 @@ class TestCoordinationMetricsCollection:
         attributed = await coordinator.coordinate(ctx)
 
         assert attributed.is_success
+
+    @pytest.mark.unit
+    async def test_durations_aggregated_per_agent(self) -> None:
+        """One agent across two subtasks yields a single summed entry."""
+        sub_a = make_subtask("sub-a")
+        sub_b = make_subtask("sub-b")
+        decomp = make_decomposition((sub_a, sub_b))
+        routing = make_routing([("sub-a", "alice"), ("sub-b", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+        exec_results = [
+            make_exec_result(
+                "wave-0",
+                [("sub-a", agent_id), ("sub-b", agent_id)],
+            ),
+        ]
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(make_assignment_agent("alice"),),
+        )
+        collector = mock_of[CoordinationMetricsCollector](
+            collect=AsyncMock(return_value=CoordinationMetrics()),
+        )
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=exec_results,
+            collector=collector,
+        )
+
+        attributed = await coordinator.coordinate(ctx)
+
+        assert attributed.is_success
+        inputs = collector.collect.await_args.args[0]
+        assert isinstance(inputs, CollectionInputs)
+        assert inputs.team_size == 1
+        assert inputs.agent_durations is not None
+        assert len(inputs.agent_durations) == 1
+        entry_agent_id, entry_duration = inputs.agent_durations[0]
+        assert entry_agent_id == agent_id
+        # build_run_result sets duration_seconds=0.5 per subtask; the two
+        # subtasks for the same agent must sum rather than appear twice.
+        assert entry_duration == pytest.approx(1.0)

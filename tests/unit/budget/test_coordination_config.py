@@ -21,6 +21,7 @@ from synthorg.settings.enums import SettingType
 from synthorg.settings.errors import SettingReadOnlyError
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
+from tests._shared import mock_of
 
 
 @pytest.mark.unit
@@ -351,10 +352,11 @@ class TestBaselineWindowSizeSetting:
         assert defn.env_var_override == "SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE"
 
     async def test_read_only_post_init_rejects_runtime_mutation(self) -> None:
-        repo = AsyncMock(spec=SettingsRepository)
-        repo.get.return_value = None
-        repo.get_namespace.return_value = ()
-        repo.list_items.return_value = ()
+        repo = mock_of[SettingsRepository](
+            get=AsyncMock(return_value=None),
+            get_namespace=AsyncMock(return_value=()),
+            list_items=AsyncMock(return_value=()),
+        )
         service = SettingsService(repository=repo, registry=get_registry())
         with pytest.raises(SettingReadOnlyError):
-            await service.set("budget", "baseline_window_size", "0")
+            await service.set("budget", "baseline_window_size", "51")

@@ -1,5 +1,6 @@
 """Tests for CoordinationMetricsCollector runtime collection pipeline."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -20,7 +21,7 @@ from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.engine.loop_protocol import ExecutionResult
 from synthorg.providers.enums import FinishReason
-from tests._shared import FakeClock
+from tests._shared import FakeClock, mock_of
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,20 +49,18 @@ def _turn(
     input_tokens: int = 100,
     output_tokens: int = 50,
     latency_ms: float | None = 50.0,
-) -> MagicMock:
-    """Build a minimal mock TurnRecord."""
-    turn = MagicMock()
-    turn.finish_reason = finish_reason
-    turn.total_tokens = input_tokens + output_tokens
-    turn.latency_ms = latency_ms
-    return turn
+) -> SimpleNamespace:
+    """Build a minimal TurnRecord attribute-bag."""
+    return SimpleNamespace(
+        finish_reason=finish_reason,
+        total_tokens=input_tokens + output_tokens,
+        latency_ms=latency_ms,
+    )
 
 
-def _execution_result(*turns: MagicMock) -> MagicMock:
-    """Build a minimal mock ExecutionResult."""
-    result = MagicMock()
-    result.turns = turns
-    return result
+def _execution_result(*turns: SimpleNamespace) -> ExecutionResult:
+    """Build a minimal typed ExecutionResult double."""
+    return mock_of[ExecutionResult](turns=turns)
 
 
 async def _collect(  # noqa: PLR0913
