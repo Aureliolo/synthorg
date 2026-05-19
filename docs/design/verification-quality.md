@@ -132,9 +132,12 @@ Key design decisions:
 ## Intake Engine
 
 The intake engine processes `ClientRequest` submissions through an independent
-state machine (`RequestStatus`) before creating tasks in the task engine. See
-[Client Simulation](client-simulation.md) for the full request lifecycle and
-intake strategy contracts.
+state machine (`RequestStatus`) before creating tasks in the task engine. The
+real work-entry path (`POST /requests/{id}/approve`) approves a request and
+runs it through the `IntakeEntryAdapter` into the work pipeline spine so an
+agent executes it; the terminal state lands asynchronously. See
+[Client Simulation](client-simulation.md) for the full request lifecycle,
+intake strategy contracts, and the real work-entry path.
 
 ---
 

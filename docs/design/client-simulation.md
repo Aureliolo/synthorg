@@ -208,6 +208,32 @@ A selected `agent` strategy that cannot be satisfied (no provider or
 no model) degrades to `direct` with a warning rather than failing
 boot.
 
+### Real work-entry path
+
+`POST /requests/{id}/approve` is the real (non-simulated) work-entry
+path. On approval the request is walked to `APPROVED` and a
+background task runs the `IntakeEntryAdapter`
+(`WorkSource.INTAKE`), which maps the `ClientRequest` onto a
+`WorkItem` and drives the work pipeline spine (intake -> projects ->
+decompose -> solo or team execution). The endpoint returns `202
+Accepted` with the `APPROVED` request; the terminal `TASK_CREATED`
+or `CANCELLED` state lands asynchronously and is observable via `GET
+/requests/{id}` and the request WebSocket channel. Reviewer
+`scoping_notes` from a prior `/scope` call are folded into the work
+item's intent body so the manual scope flow is preserved.
+
+The adapter is built once the work pipeline is online
+(`engine.pipeline.entry.boot.wire_real_intake_entry`, called from
+the boot runtime-services hook and the post-setup provider reinit)
+and attached to the `AppState.intake_entry_adapter` seam. When no
+work pipeline is wired (empty company / no provider) approve returns
+`AgentRuntimeNotConfiguredError` rather than minting a task no agent
+will run. The `simulations.intake_default_project` setting (env >
+registered default, baked in at startup) names the project the
+intake strategy files tasks into and the adapter stamps on the work
+item; that project is created at startup if absent so the pipeline's
+project-existence check and the created task agree.
+
 ---
 
 ## Task Source Tracking

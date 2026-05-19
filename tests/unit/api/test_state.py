@@ -9,6 +9,7 @@ from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine
@@ -711,3 +712,51 @@ class TestAppStateSimulationRuntime:
             review_pipeline=object(),
         )
         assert state.has_simulation_runtime is True
+
+
+@pytest.mark.unit
+class TestAppStateIntakeEntryAdapter:
+    """Tests for the intake_entry_adapter seam (mirrors work_pipeline)."""
+
+    def test_raises_when_none(self) -> None:
+        state = _make_state(intake_entry_adapter=None)
+        with pytest.raises(ServiceUnavailableError):
+            _ = state.intake_entry_adapter
+
+    def test_returns_when_set(self) -> None:
+        adapter = mock_of[WorkEntryAdapter]()
+        state = _make_state(intake_entry_adapter=adapter)
+        assert state.intake_entry_adapter is adapter
+
+    def test_has_false_when_none(self) -> None:
+        assert _make_state(intake_entry_adapter=None).has_intake_entry_adapter is False
+
+    def test_has_true_when_set(self) -> None:
+        state = _make_state(intake_entry_adapter=mock_of[WorkEntryAdapter]())
+        assert state.has_intake_entry_adapter is True
+
+    def test_set_is_once_only(self) -> None:
+        first = mock_of[WorkEntryAdapter]()
+        state = _make_state(intake_entry_adapter=first)
+        with pytest.raises(RuntimeError, match="already configured"):
+            state.set_intake_entry_adapter(mock_of[WorkEntryAdapter]())
+
+    def test_set_if_absent_installs_when_none(self) -> None:
+        adapter = mock_of[WorkEntryAdapter]()
+        state = _make_state(intake_entry_adapter=None)
+        assert state.set_intake_entry_adapter_if_absent(adapter) is True
+        assert state.intake_entry_adapter is adapter
+
+    def test_set_if_absent_keeps_injected(self) -> None:
+        injected = mock_of[WorkEntryAdapter]()
+        autowired = mock_of[WorkEntryAdapter]()
+        state = _make_state(intake_entry_adapter=injected)
+        assert state.set_intake_entry_adapter_if_absent(autowired) is False
+        assert state.intake_entry_adapter is injected
+
+    def test_swap_replaces_existing(self) -> None:
+        first = mock_of[WorkEntryAdapter]()
+        second = mock_of[WorkEntryAdapter]()
+        state = _make_state(intake_entry_adapter=first)
+        state.swap_intake_entry_adapter(second)
+        assert state.intake_entry_adapter is second

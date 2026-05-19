@@ -406,6 +406,7 @@ def _build_agent_intake(
     task_engine: TaskEngine,
     provider: CompletionProvider | None,
     cost_tracker: CostTracker | None,
+    default_project: NotBlankStr,
 ) -> IntakeStrategy:
     """Build the LLM-triage ``AgentIntake`` (needs provider + model)."""
     from synthorg.engine.intake import AgentIntake  # noqa: PLC0415
@@ -429,6 +430,7 @@ def _build_agent_intake(
         task_engine=task_engine,
         provider=provider,
         model=NotBlankStr(model),
+        project=default_project,
         cost_tracker=cost_tracker,
     )
 
@@ -437,6 +439,7 @@ def build_intake_strategy(
     config: IntakeConfig,
     *,
     task_engine: TaskEngine,
+    default_project: NotBlankStr,
     provider: CompletionProvider | None = None,
     cost_tracker: CostTracker | None = None,
 ) -> IntakeStrategy:
@@ -447,6 +450,10 @@ def build_intake_strategy(
     non-blank ``config.model``). Misconfiguration fails loudly with
     :class:`UnknownStrategyError`; the caller decides whether to
     degrade. ``cost_tracker`` is threaded into ``AgentIntake``.
+    ``default_project`` is the project the strategy files created
+    tasks into; the real work-entry adapter stamps the same value on
+    the ``WorkItem`` so the pipeline's project-existence check and the
+    created task agree.
     """
     # Lazy: synthorg.engine.intake pulls the provider/prompt-safety
     # graph; keep it off the synthorg.client package-import path.
@@ -454,13 +461,14 @@ def build_intake_strategy(
 
     strategy = config.strategy
     if strategy == "direct":
-        return DirectIntake(task_engine=task_engine)
+        return DirectIntake(task_engine=task_engine, project=default_project)
     if strategy == "agent":
         return _build_agent_intake(
             config,
             task_engine=task_engine,
             provider=provider,
             cost_tracker=cost_tracker,
+            default_project=default_project,
         )
     _raise_unknown_strategy(
         label="intake",
