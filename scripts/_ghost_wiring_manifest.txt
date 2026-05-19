@@ -32,6 +32,10 @@ ENFORCED build_autonomy_change_strategy #1957 -- built at boot in app_builders, 
 ENFORCED BaselineStore #1959 -- construct at boot (window from budget.baseline_window_size)
 ENFORCED CoordinationMetricsCollector #1959 -- construct at boot, thread into execution
 ENFORCED IntakeEngine #1961 -- wired at boot via client/runtime_builder.build_client_simulation_runtime
+ENFORCED DirectIntake #1962 -- constructed by client.factory.build_intake_strategy; real work-entry path via IntakeEntryAdapter -> work pipeline
+ENFORCED AgentIntake #1962 -- constructed by client.factory._build_agent_intake; LLM triage on the real work-entry path
+ENFORCED IntakeEntryAdapter #1962 -- built at boot by engine.pipeline.entry.boot.wire_real_intake_entry; fed by POST /requests/{id}/approve
+ENFORCED build_work_entry_adapter #1962 -- factory called at boot to construct the source-keyed work-entry adapter
 ENFORCED create_lifecycle_strategy #1965 -- constructed at boot in workers/runtime_builder._build_tool_registry and injected into the Docker sandbox backend
 ENFORCED build_distributed_backend_services #1966 -- called in api/auto_wire._register_distributed_dispatcher behind queue.enabled; builds the dead-letter consumer + dedup pruner + heartbeat subscriber bundle
 ENFORCED DeadLetterConsumer #1966 -- constructed by workers.backend_services.build_distributed_backend_services; drains the dead subject and fails exhausted tasks (no-loss closure)

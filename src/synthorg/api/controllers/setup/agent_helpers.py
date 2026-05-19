@@ -178,6 +178,11 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
             app_state.swap_coordinator(services.coordinator)
         if services.work_pipeline is not None:
             app_state.swap_work_pipeline(services.work_pipeline)
+        from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
+            wire_real_intake_entry,
+        )
+
+        await wire_real_intake_entry(app_state, hot_swap=True)
     except MemoryError, RecursionError:
         raise
     except RuntimeServicesBuildError:

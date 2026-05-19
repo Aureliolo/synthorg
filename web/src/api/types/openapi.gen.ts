@@ -19693,8 +19693,8 @@ export interface operations {
         };
         readonly requestBody?: never;
         readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
+            /** @description Request accepted, processing continues off-line */
+            readonly 202: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

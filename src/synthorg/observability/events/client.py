@@ -7,6 +7,9 @@ CLIENT_REQUEST_TRIAGING: Final[str] = "client.request.triaging"
 CLIENT_REQUEST_SCOPED: Final[str] = "client.request.scoped"
 CLIENT_REQUEST_APPROVED: Final[str] = "client.request.approved"
 CLIENT_REQUEST_REJECTED: Final[str] = "client.request.rejected"
+CLIENT_REQUEST_INTAKE_PIPELINE_FAILED: Final[str] = (
+    "client.request.intake_pipeline_failed"
+)
 CLIENT_REVIEW_STARTED: Final[str] = "client.review.started"
 CLIENT_REVIEW_COMPLETED: Final[str] = "client.review.completed"
 CLIENT_FEEDBACK_RECORDED: Final[str] = "client.feedback.recorded"

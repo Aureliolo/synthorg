@@ -51,6 +51,35 @@ def test_intake_model_registered() -> None:
     assert defn.restart_required is True
 
 
+def test_intake_default_project_registered() -> None:
+    defn = get_registry().get("simulations", "intake_default_project")
+    assert defn is not None
+    assert defn.type is SettingType.STRING
+    assert defn.default == "client-intake"
+    assert defn.read_only_post_init is True
+    assert defn.restart_required is True
+
+
+def test_intake_default_project_bootstrap_default() -> None:
+    resolved = resolve_init_value(
+        SettingNamespace.SIMULATIONS,
+        "intake_default_project",
+        env={},
+    )
+    assert resolved.value == "client-intake"
+    assert resolved.source is SettingSource.DEFAULT
+
+
+def test_intake_default_project_bootstrap_env_override() -> None:
+    resolved = resolve_init_value(
+        SettingNamespace.SIMULATIONS,
+        "intake_default_project",
+        env={"SYNTHORG_SIMULATIONS_INTAKE_DEFAULT_PROJECT": "ops-intake"},
+    )
+    assert resolved.value == "ops-intake"
+    assert resolved.source is SettingSource.ENVIRONMENT
+
+
 async def test_intake_strategy_default_resolves(service: SettingsService) -> None:
     result = await service.get("simulations", "intake_strategy")
     assert result.value == "direct"

@@ -154,6 +154,10 @@ export const clientsHandlers = [
       successFor<typeof approveRequest>(
         buildRequest({ request_id: String(params.id), status: 'approved' }),
       ),
+      // 202 Accepted: approval is acknowledged synchronously; the
+      // request runs through the work pipeline in the background and
+      // reaches its terminal state asynchronously.
+      { status: 202 },
     ),
   ),
   http.post('/api/v1/requests/:id/reject', async ({ params, request }) => {

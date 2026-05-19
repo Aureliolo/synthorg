@@ -42,6 +42,7 @@ logger = get_logger(__name__)
 
 _INTAKE_STRATEGY_KEY = "intake_strategy"
 _INTAKE_MODEL_KEY = "intake_model"
+_INTAKE_DEFAULT_PROJECT_KEY = "intake_default_project"
 _DEFAULT_STRATEGY = "direct"
 
 
@@ -62,11 +63,15 @@ def _select_provider(app_state: AppState) -> CompletionProvider | None:
     return registry.get(names[0])
 
 
-def _resolve_intake_settings(env: Mapping[str, str]) -> tuple[str, str | None]:
-    """Resolve ``(strategy, model)`` from the ``simulations`` namespace.
+def _resolve_intake_settings(
+    env: Mapping[str, str],
+) -> tuple[str, str | None, str]:
+    """Resolve ``(strategy, model, default_project)`` from settings.
 
     Boot-site read (env > registered default) via the bootstrap
-    resolver; ``ConfigResolver`` is not wired at construction.
+    resolver; ``ConfigResolver`` is not wired at construction. The
+    ``default_project`` resolves through the same chain and has a
+    non-blank registered default, so it is always a usable project id.
     """
     strategy = str(
         resolve_init_value(
@@ -77,13 +82,19 @@ def _resolve_intake_settings(env: Mapping[str, str]) -> tuple[str, str | None]:
         SettingNamespace.SIMULATIONS, _INTAKE_MODEL_KEY, env=env
     ).value
     model = None if raw_model is None else str(raw_model).strip() or None
-    return strategy, model
+    default_project = str(
+        resolve_init_value(
+            SettingNamespace.SIMULATIONS, _INTAKE_DEFAULT_PROJECT_KEY, env=env
+        ).value
+    ).strip()
+    return strategy, model, default_project
 
 
-def _build_intake_with_fallback(
+def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
     *,
     requested_strategy: str,
     model: str | None,
+    default_project: str,
     task_engine: TaskEngine,
     provider: CompletionProvider | None,
     cost_tracker: CostTracker | None,
@@ -99,6 +110,7 @@ def _build_intake_with_fallback(
         strategy = build_intake_strategy(
             IntakeConfig(strategy=requested_strategy, model=model),
             task_engine=task_engine,
+            default_project=default_project,
             provider=provider,
             cost_tracker=cost_tracker,
         )
@@ -124,6 +136,7 @@ def _build_intake_with_fallback(
         fallback = build_intake_strategy(
             IntakeConfig(strategy=_DEFAULT_STRATEGY),
             task_engine=task_engine,
+            default_project=default_project,
         )
         return fallback, _DEFAULT_STRATEGY
     else:
@@ -146,12 +159,13 @@ def build_client_simulation_runtime(
     tests.
     """
     task_engine = app_state.task_engine
-    requested_strategy, model = _resolve_intake_settings(env)
+    requested_strategy, model, default_project = _resolve_intake_settings(env)
     provider = _select_provider(app_state)
     cost_tracker = app_state.cost_tracker if app_state.has_cost_tracker else None
     strategy, effective_strategy = _build_intake_with_fallback(
         requested_strategy=requested_strategy,
         model=model,
+        default_project=default_project,
         task_engine=task_engine,
         provider=provider,
         cost_tracker=cost_tracker,
@@ -163,8 +177,10 @@ def build_client_simulation_runtime(
         effective_strategy=effective_strategy,
         has_provider=provider is not None,
         review_stages=list(review_pipeline.stage_names),
+        intake_default_project=default_project,
     )
     return ClientSimulationState(
         intake_engine=IntakeEngine(strategy=strategy),
         review_pipeline=review_pipeline,
+        intake_default_project=default_project,
     )

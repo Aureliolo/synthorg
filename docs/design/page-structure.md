@@ -397,6 +397,11 @@ Sidebar layout (220px expanded, 56px icon rail):
 | `/settings/observability/sinks` | Settings Sinks | Observability sink management (card grid with edit/test) |
 | `/settings/coordination/ceremony-policy` | Ceremony Policy | Strategy selection with resolved-policy source badges, department overrides with inherit/override toggle, per-ceremony overrides, velocity-calculator auto-selection per strategy |
 | `/settings/memory/fine-tuning` | Fine-Tuning | Embedding fine-tuning pipeline management (status, run history, preflight checks, start/cancel) |
+| `/clients` | Client List | Synthetic-client roster with search/filter |
+| `/clients/:clientId` | Client Detail | Per-client profile, request history, satisfaction |
+| `/clients/requests` | Request Queue | Client-request intake lifecycle (submit, scope, approve, reject). Approve returns `202`; the request runs through the work pipeline in the background and reaches its terminal state asynchronously |
+| `/clients/simulations` | Simulation Dashboard | Simulation run list, start, detail, cancel |
+| `/clients/reviews/:taskId` | Review Pipeline | Per-task review-pipeline stage progress and decisions |
 | `/docs/` | Documentation | Static MkDocs HTML served by Caddy (bypasses React Router) |
 | `*` | 404 Not Found | Catch-all |
 

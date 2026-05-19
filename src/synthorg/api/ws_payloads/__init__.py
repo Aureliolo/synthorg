@@ -58,6 +58,7 @@ from synthorg.api.ws_payloads._domain import (
     WsRequestScopedPayload,
     WsRequestStatusChangedPayload,
     WsRequestSubmittedPayload,
+    WsRequestTaskCreatedPayload,
     WsReviewPipelineCompletedPayload,
     WsReviewStageCompletedPayload,
     WsReviewStageDecidedPayload,
@@ -157,6 +158,7 @@ WsEventPayload = Annotated[
     | WsRequestSubmittedPayload
     | WsRequestScopedPayload
     | WsRequestApprovedPayload
+    | WsRequestTaskCreatedPayload
     | WsRequestRejectedPayload
     | WsRequestStatusChangedPayload
     | WsReviewStageCompletedPayload
@@ -234,6 +236,7 @@ __all__ = [
     "WsRequestScopedPayload",
     "WsRequestStatusChangedPayload",
     "WsRequestSubmittedPayload",
+    "WsRequestTaskCreatedPayload",
     "WsReviewPipelineCompletedPayload",
     "WsReviewStageCompletedPayload",
     "WsReviewStageDecidedPayload",

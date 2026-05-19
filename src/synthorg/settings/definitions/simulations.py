@@ -71,6 +71,26 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.SIMULATIONS,
+        key="intake_default_project",
+        type=SettingType.STRING,
+        default="client-intake",
+        description=(
+            "Project that the real work-entry path files intake tasks"
+            " into. The same value is wired into the intake strategy"
+            " (DirectIntake / AgentIntake) and the WorkItem the intake"
+            " entry adapter feeds the pipeline, and the project is"
+            " created at boot if absent. Baked in at process startup."
+        ),
+        group="Intake",
+        level=SettingLevel.ADVANCED,
+        read_only_post_init=True,
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SIMULATIONS,
         key="review_timeout_seconds",
         type=SettingType.FLOAT,
         default="30.0",
