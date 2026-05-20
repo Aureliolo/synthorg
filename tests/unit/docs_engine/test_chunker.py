@@ -127,21 +127,19 @@ class TestChunker:
         assert a == b
 
     def test_prose_run_flushes_before_exceeding_max_tokens(self) -> None:
-        # target_tokens is high enough that the target-based flush never
-        # fires; only the max_tokens guard can split the run. Each block
-        # alone is under max, but any two together exceed it, so the run
-        # must flush before a second block is appended.
-        block = "a" * 24  # ~6 tokens at 4 chars/token; two joined exceed 10
+        # A small run (~3 tokens, under target 5) followed by a block that
+        # would push the combined run past max (10) must flush the small
+        # run first rather than merge into one over-max chunk. At 4
+        # chars/token: "a"*12 -> 3 tokens; "b"*32 -> 8 tokens; joined -> 11.
         body = (
-            ProseBlock(text=block),
-            ProseBlock(text=block),
-            ProseBlock(text=block),
+            ProseBlock(text="a" * 12),
+            ProseBlock(text="b" * 32),
         )
-        chunks = DocChunker(target_tokens=1000, max_tokens=10).chunk(
+        chunks = DocChunker(target_tokens=5, max_tokens=10).chunk(
             project_id=NotBlankStr("proj-1"),
             doc=_doc(body),
         )
-        assert len(chunks) == 3
+        assert len(chunks) == 2
         assert all(len(c.block_ids) == 1 for c in chunks)
 
     def test_max_tokens_rejection(self) -> None:
