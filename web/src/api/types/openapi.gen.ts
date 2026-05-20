@@ -1028,6 +1028,108 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/budget/forecast": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** CreateForecast */
+        readonly post: operations["ApiV1BudgetForecastCreateForecast"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/budget/forecasts/{forecast_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetForecast */
+        readonly get: operations["ApiV1BudgetForecastsForecastIdGetForecast"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/budget/forecasts/{forecast_id}/approve": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ApproveForecast */
+        readonly post: operations["ApiV1BudgetForecastsForecastIdApproveApproveForecast"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/budget/forecasts/{forecast_id}/raise_ceiling": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** RaiseCeiling */
+        readonly post: operations["ApiV1BudgetForecastsForecastIdRaiseCeilingRaiseCeiling"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/budget/forecasts/{forecast_id}/reject": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** RejectForecast */
+        readonly post: operations["ApiV1BudgetForecastsForecastIdRejectRejectForecast"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/budget/pareto": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetPareto */
+        readonly get: operations["ApiV1BudgetParetoGetPareto"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/budget/records": {
         readonly parameters: {
             readonly query?: never;
@@ -5838,10 +5940,6 @@ export type components = {
          * @enum {string}
          */
         readonly ApprovalStatus: "pending" | "approved" | "rejected" | "expired";
-        /** ApproveRequest */
-        readonly ApproveRequest: {
-            readonly comment?: string | null;
-        };
         /** Artifact */
         readonly Artifact: {
             /**
@@ -6740,6 +6838,18 @@ export type components = {
          * @enum {string}
          */
         readonly ContentType: "procedural" | "semantic" | "tool_patterns";
+        /** ApproveRequest */
+        readonly controllers_budget_forecast_ApproveRequest: {
+            /** @description Approved per-run hard ceiling (None to inherit setting) */
+            readonly ceiling_amount?: number | null;
+            /** @description Operator identifier */
+            readonly decided_by: string;
+        };
+        /** RejectRequest */
+        readonly controllers_budget_forecast_RejectRequest: {
+            /** @description Operator identifier */
+            readonly decided_by: string;
+        };
         /** ConversationalProposeRequest */
         readonly ConversationalProposeRequest: {
             readonly conversation_id?: string | null;
@@ -7462,6 +7572,14 @@ export type components = {
             readonly entity_name: string;
             readonly recommendation: components["schemas"]["DriftAction"];
         };
+        /** ApproveRequest */
+        readonly dto_ApproveRequest: {
+            readonly comment?: string | null;
+        };
+        /** RejectRequest */
+        readonly dto_RejectRequest: {
+            readonly reason: string;
+        };
         /** EdgeChange */
         readonly EdgeChange: {
             /** @enum {string} */
@@ -8097,6 +8215,51 @@ export type components = {
          * @enum {string}
          */
         readonly FinishReason: "stop" | "max_tokens" | "tool_use" | "content_filter" | "error";
+        /** Forecast */
+        readonly Forecast: {
+            /** @description SHA-256 hex digest of canonical brief JSON */
+            readonly brief_hash: string;
+            /** @description Per-run hard ceiling the operator approved */
+            readonly ceiling_amount: number | null;
+            /**
+             * Format: date-time
+             * @description Row creation timestamp
+             */
+            readonly created_at: string;
+            /** @description ISO 4217 currency code stamped on the estimate */
+            readonly currency: string;
+            /**
+             * Format: date-time
+             * @description When the operator decided (None while pending)
+             */
+            readonly decided_at: string | null;
+            /** @description Identifier of the deciding operator */
+            readonly decided_by: string | null;
+            readonly decision: components["schemas"]["ForecastDecision"];
+            /** @description Mid-point cost estimate in `currency` */
+            readonly estimated_cost: number;
+            /**
+             * Format: uuid
+             * @description Stable UUID primary key
+             */
+            readonly forecast_id: string;
+            /** @description Lower bound of the cost estimate */
+            readonly lower_bound: number;
+            /**
+             * Format: date-time
+             * @description Last decision-state mutation timestamp
+             */
+            readonly updated_at: string;
+            /** @description Upper bound of the cost estimate */
+            readonly upper_bound: number;
+        };
+        /**
+         * ForecastDecision
+         * @description Operator decision state for a pre-flight cost forecast.
+         * @default pending
+         * @enum {string}
+         */
+        readonly ForecastDecision: "pending" | "approved" | "rejected" | "superseded";
         /** ForecastPoint */
         readonly ForecastPoint: {
             /**
@@ -8106,6 +8269,19 @@ export type components = {
             readonly day: string;
             /** @description Projected cumulative spend in the configured currency */
             readonly projected_spend: number;
+        };
+        /** ForecastRequest */
+        readonly ForecastRequest: {
+            /** @description Brief body to estimate */
+            readonly brief_text: string;
+            /** @description Optional per-role turn estimate */
+            readonly estimated_turns_per_role?: number | null;
+            /** @description Optional per-role model id (canonical alias) */
+            readonly model_assignments?: {
+                readonly [key: string]: string;
+            };
+            /** @description Ordered role ids participating in the run */
+            readonly role_skeleton: readonly string[];
         };
         /** ForecastResponse */
         readonly ForecastResponse: {
@@ -9686,6 +9862,40 @@ export type components = {
             /** @description Pinned semver */
             readonly pinned_version: string;
         };
+        /** ParetoFrontier */
+        readonly ParetoFrontier: {
+            /** @description Historical records consulted */
+            readonly baseline_window_size: number;
+            /**
+             * Format: date-time
+             * @description When the analyzer ran
+             */
+            readonly generated_at: string;
+            /**
+             * @description Frontier points sorted by cost_saving_pct descending
+             * @default []
+             */
+            readonly points: readonly components["schemas"]["ParetoPoint"][];
+            /** @description Aggregate provenance identifier */
+            readonly source: string;
+        };
+        /** ParetoPoint */
+        readonly ParetoPoint: {
+            /** @description Canonical model id of downgrade */
+            readonly candidate_model: string;
+            /** @description Percent of cost saved (0 to 100) */
+            readonly cost_saving_pct: number;
+            /** @description Canonical model id in use */
+            readonly current_model: string;
+            /** @description Percent of quality lost (0 to 100) */
+            readonly quality_delta_pct: number;
+            /** @description Identifier of the role */
+            readonly role_id: string;
+            /** @description Human-readable role label */
+            readonly role_label: string;
+            /** @description Benchmark-score provenance identifier */
+            readonly source: string;
+        };
         /** PerformanceSummary */
         readonly PerformanceSummary: {
             readonly collaboration_score: number | null;
@@ -10232,6 +10442,13 @@ export type components = {
             /** @description Override score */
             readonly score: number;
         };
+        /** RaiseCeilingRequest */
+        readonly RaiseCeilingRequest: {
+            /** @description Accumulated cost at the moment of parking, supplied by the operator UI so the endpoint can reject ceilings that would re-halt the run immediately on resume */
+            readonly accumulated_cost: number;
+            /** @description New hard ceiling (must be > accumulated cost at park) */
+            readonly new_ceiling: number;
+        };
         /** RateLimiterConfig */
         readonly RateLimiterConfig: {
             /**
@@ -10340,10 +10557,6 @@ export type components = {
         /** RejectionPayload */
         readonly RejectionPayload: {
             /** @description Reason for rejection */
-            readonly reason: string;
-        };
-        /** RejectRequest */
-        readonly RejectRequest: {
             readonly reason: string;
         };
         /** RemoveAllowlistEntryRequest */
@@ -14575,7 +14788,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["ApproveRequest"];
+                readonly "application/json": components["schemas"]["dto_ApproveRequest"];
             };
         };
         readonly responses: {
@@ -14610,7 +14823,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["RejectRequest"];
+                readonly "application/json": components["schemas"]["dto_RejectRequest"];
             };
         };
         readonly responses: {
@@ -15171,6 +15384,191 @@ export interface operations {
             readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BudgetForecastCreateForecast: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ForecastRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Forecast"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BudgetForecastsForecastIdGetForecast: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly forecast_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Forecast"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BudgetForecastsForecastIdApproveApproveForecast: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly forecast_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["controllers_budget_forecast_ApproveRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Forecast"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BudgetForecastsForecastIdRaiseCeilingRaiseCeiling: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly forecast_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RaiseCeilingRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Forecast"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BudgetForecastsForecastIdRejectRejectForecast: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly forecast_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["controllers_budget_forecast_RejectRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Forecast"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1BudgetParetoGetPareto: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ParetoFrontier"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

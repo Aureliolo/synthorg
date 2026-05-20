@@ -346,6 +346,14 @@ export const FINISH_REASON_VALUES = [
 ] as const
 export type FinishReason = (typeof FINISH_REASON_VALUES)[number]
 
+export const FORECAST_DECISION_VALUES = [
+    'pending',
+    'approved',
+    'rejected',
+    'superseded',
+] as const
+export type ForecastDecision = (typeof FORECAST_DECISION_VALUES)[number]
+
 export const GIT_ACCESS_VALUES = [
     'local_only',
     'read_and_branch',
