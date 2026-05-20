@@ -64,7 +64,7 @@ class TestAccessLevelCategories:
             (ToolAccessLevel.RESTRICTED, ToolCategory.MEMORY, True),
             (ToolAccessLevel.RESTRICTED, ToolCategory.TERMINAL, False),
             (ToolAccessLevel.RESTRICTED, ToolCategory.ANALYTICS, False),
-            # Standard: adds terminal and analytics
+            # Standard: adds terminal, analytics, and browser
             (ToolAccessLevel.STANDARD, ToolCategory.FILE_SYSTEM, True),
             (ToolAccessLevel.STANDARD, ToolCategory.WEB, True),
             (ToolAccessLevel.STANDARD, ToolCategory.TERMINAL, True),

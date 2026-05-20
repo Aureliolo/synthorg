@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Pre-push / CI gate: Playwright stays bound to the browser tool.
 
-EPIC #1987 ships the headless browser capability through one tool
-package (``src/synthorg/tools/browser/``). The contract is that only
-that package imports the ``playwright`` library; any other ``synthorg``
+The headless browser capability ships through one tool package
+(``src/synthorg/tools/browser/``). The contract is that only that
+package imports the ``playwright`` library; any other ``synthorg``
 module reaching for Playwright directly is a layering violation that
 makes the tool boundary leaky and the sandbox guarantees void.
 
@@ -58,7 +58,14 @@ def _scan(root: Path) -> int:
         if _is_allowlisted(rel):
             continue
         try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(path))
+        except (OSError, UnicodeDecodeError) as exc:
+            print(
+                f"{rel}: could not read file in playwright-import scan: {exc}",
+                file=sys.stderr,
+            )
+            return 2
         except SyntaxError as exc:
             print(
                 f"{rel}: syntax error in playwright-import scan: {exc.msg}",

@@ -10,7 +10,7 @@ so the audit log fires once at startup and the settings track operator
 overrides for the rest of the process lifetime.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -67,8 +67,8 @@ class BrowserSettings(BaseModel):
         ge=0.0,
         le=1.0,
     )
-    a11y_min_impact_default: NotBlankStr = Field(
-        default=A11Y_MIN_IMPACT_DEFAULT,
+    a11y_min_impact_default: Literal["minor", "moderate", "serious", "critical"] = (
+        Field(default=A11Y_MIN_IMPACT_DEFAULT)
     )
     image_pin: NotBlankStr = Field(default=BROWSER_IMAGE_PIN_DEFAULT)
 
@@ -96,9 +96,9 @@ async def resolve_browser_settings(
                 _NS,
                 _KEY_TOLERANCE,
             ),
-            a11y_min_impact_default=await resolver.get_str(
-                _NS,
-                _KEY_MIN_IMPACT,
+            a11y_min_impact_default=cast(
+                "Literal['minor', 'moderate', 'serious', 'critical']",
+                await resolver.get_str(_NS, _KEY_MIN_IMPACT),
             ),
             image_pin=await resolver.get_str(_NS, _KEY_IMAGE_PIN),
         )

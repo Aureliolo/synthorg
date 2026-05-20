@@ -328,6 +328,7 @@ _r.register(
         ),
         group="Browser",
         level=SettingLevel.BASIC,
+        validator_pattern=r"^(minor|moderate|serious|critical)$",
     )
 )
 

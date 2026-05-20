@@ -46,17 +46,32 @@ class TestPathResolution:
         assert relative.startswith(".synthorg/screenshots/login/")
 
     @pytest.mark.parametrize(
-        "name",
-        ["..", ".", "../escape", "a/b", "a\\b", ""],
-        ids=["parent", "dot", "escape_parent", "slash", "backslash", "empty"],
+        ("field_name", "name"),
+        [
+            ("spec_name", ".."),
+            ("spec_name", "."),
+            ("spec_name", "../escape"),
+            ("spec_name", "a/b"),
+            ("spec_name", "a\\b"),
+            ("spec_name", ""),
+            ("screenshot_name", ".."),
+            ("screenshot_name", "."),
+            ("screenshot_name", "../escape"),
+            ("screenshot_name", "a/b"),
+            ("screenshot_name", "a\\b"),
+            ("screenshot_name", ""),
+        ],
     )
     def test_rejects_path_traversal_names(
         self,
         store: WorkspaceBaselineStore,
+        field_name: str,
         name: str,
     ) -> None:
+        kwargs = {"spec_name": "login", "screenshot_name": "hero"}
+        kwargs[field_name] = name
         with pytest.raises(BrowserDomainError):
-            store.baseline_path(spec_name=name, screenshot_name="hero")
+            store.baseline_path(**kwargs)
 
 
 class TestSidecar:

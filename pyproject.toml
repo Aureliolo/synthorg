@@ -40,7 +40,7 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http==1.40.0",
     "playwright==1.60.0",
     "scikit-image==0.26.0",
-    "pillow==12.0.0",
+    "pillow==12.2.0",
     "numpy==2.3.4",
     "yoyo-migrations==9.0.0",
 ]

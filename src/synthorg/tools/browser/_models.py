@@ -161,8 +161,10 @@ class ScreenshotDiffResult(BaseModel):
 
     model_config = _RESPONSE_CONFIG
 
-    spec_name: str = Field(description="Spec identifier compared.")
-    screenshot_name: str = Field(description="Screenshot identifier compared.")
+    spec_name: NotBlankStr = Field(description="Spec identifier compared.")
+    screenshot_name: NotBlankStr = Field(
+        description="Screenshot identifier compared.",
+    )
     ssim_score: float = Field(
         ge=0.0,
         le=1.0,
@@ -223,7 +225,7 @@ class SpecResult(BaseModel):
 
     model_config = _RESPONSE_CONFIG
 
-    spec_name: str = Field(description="Spec identifier.")
+    spec_name: NotBlankStr = Field(description="Spec identifier.")
     viewport_width: int = Field(ge=1, description="Viewport width used.")
     viewport_height: int = Field(ge=1, description="Viewport height used.")
     navigation: NavigationResult = Field(description="Navigation outcome.")

@@ -1,9 +1,8 @@
 """Workspace-scoped baseline screenshot store.
 
 Reads and writes baseline PNG plus sidecar metadata under
-``<workspace>/.synthorg/screenshots/<spec>/`` per the EPIC #1987
-contract. The persistence boundary is filesystem-only; no
-sqlite / psycopg involvement.
+``<workspace>/.synthorg/screenshots/<spec>/``. The persistence
+boundary is filesystem-only; no sqlite / psycopg involvement.
 """
 
 import hashlib
@@ -111,6 +110,7 @@ class WorkspaceBaselineStore:
         axe-core version pin so future regression debugging has a
         provenance trail.
         """
+        self._reject_traversal(screenshot_name)
         meta_path = (
             self.spec_dir(spec_name=spec_name)
             / f"{screenshot_name}{BASELINE_META_FILENAME}"

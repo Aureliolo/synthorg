@@ -76,9 +76,9 @@ class TestPlaywrightGate:
         module = _load_module()
         assert module._scan(tmp_path) == 2
 
-    def test_only_first_import_flagged(self, tmp_path: Path) -> None:
-        # Both an import and a from-import in the SAME file produce
-        # two distinct violations (one per AST node).
+    def test_multiple_imports_in_one_file_fails(self, tmp_path: Path) -> None:
+        # The scanner reports every offending import (one per AST node);
+        # the gate still returns 1 because at least one violation was found.
         _write_pkg(
             tmp_path,
             "src/synthorg/tools/web/leak.py",

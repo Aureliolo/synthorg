@@ -1,8 +1,7 @@
 """Planted-defect acceptance test for the headless browser tool.
 
-EPIC #1987 (agent capability layer, "hands and senses") canonical
-acceptance: the org builds a small web app, an agent drives it
-headlessly, detects a planted UI / behaviour defect via E2E plus
+Canonical acceptance: the org builds a small web app, an agent drives
+it headlessly, detects a planted UI / behaviour defect via E2E plus
 screenshot-diff, and iterates to green.
 
 This test wires the real ``BrowserTool`` against a real

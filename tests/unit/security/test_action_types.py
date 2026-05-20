@@ -122,6 +122,7 @@ class TestRegistryExpandCategory:
             ("org", 3),
             ("db", 3),
             ("arch", 1),
+            ("browser", 5),
         ],
     )
     def test_builtin_category_expansion_counts(

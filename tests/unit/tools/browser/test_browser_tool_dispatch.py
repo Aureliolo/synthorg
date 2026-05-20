@@ -250,11 +250,15 @@ class TestBrowserToolExecutorErrorPaths:
         assert result.is_error is True
         assert result.metadata["error_type"] == "BrowserDomainError"
 
-    async def test_sandbox_timeout_raises_navigation_error(
+    async def test_sandbox_timeout_raises_launch_error(
         self,
         workspace: Path,
         fake_sandbox: Any,
     ) -> None:
+        # An outer sandbox.execute() timeout means the executor couldn't
+        # even bootstrap inside its budget; classify that as a launch
+        # failure (not navigation), so the agent's remediation routes to
+        # provider/sandbox reconfiguration rather than URL retry.
         fake_sandbox.execute.return_value = SandboxResult(
             stdout="",
             stderr="timed out",
@@ -266,7 +270,7 @@ class TestBrowserToolExecutorErrorPaths:
             arguments={"mode": "navigate", "url": "http://example.test"},
         )
         assert result.is_error is True
-        assert result.metadata["error_type"] == "BrowserNavigationError"
+        assert result.metadata["error_type"] == "BrowserLaunchError"
 
     @pytest.mark.parametrize(
         ("executor_error_type", "expected_class_name"),

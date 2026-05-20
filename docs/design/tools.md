@@ -120,9 +120,10 @@ individual tools additionally require a runtime dependency (e.g. image tools
 require an ``ImageProvider``, notification tools require a dispatcher, analytics
 query/metric tools require a provider or sink).
 
-Docker is optional; only required when code execution, terminal, web, or database tools are
-enabled. File system and git tools work out of the box with subprocess isolation. This keeps
-the local-first experience lightweight while providing strong isolation where it matters.
+Docker is optional; only required when code execution, terminal, web, database, or browser
+tools are enabled. File system and git tools work out of the box with subprocess isolation.
+This keeps the local-first experience lightweight while providing strong isolation where it
+matters.
 
 Docker MVP uses `aiodocker` (async-native) with a pre-built image
 (Python 3.14 + Node.js LTS + basic utils, <500MB). If Docker is unavailable, the framework

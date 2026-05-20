@@ -25,8 +25,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Final, assert_never, cast
 from uuid import uuid4
 
-from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
+from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
 
+from synthorg.api.boundary import parse_typed
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.browser import (
@@ -79,6 +81,7 @@ from synthorg.tools.browser.errors import (
     BrowserBaselineNotFoundError,
     BrowserDiffError,
     BrowserDomainError,
+    BrowserLaunchError,
     BrowserNavigationError,
     BrowserScreenshotError,
     BrowserStartCommandError,
@@ -199,8 +202,8 @@ class BrowserTool(BaseTool):
     ) -> ToolExecutionResult:
         """Dispatch on ``mode`` and return a structured result."""
         try:
-            args = BrowserToolArgs.model_validate(arguments)
-        except Exception as exc:
+            args = parse_typed("tool.browser", arguments, BrowserToolArgs)
+        except PydanticValidationError as exc:
             logger.warning(
                 BROWSER_ARGS_VALIDATION_FAILED,
                 error_type=type(exc).__name__,
@@ -283,27 +286,37 @@ class BrowserTool(BaseTool):
             spec=args.spec_name,
             screenshot=args.screenshot_name,
         )
-        screenshot_host = self._baselines.current_path(
-            spec_name=args.spec_name,
-            screenshot_name=args.screenshot_name,
+        # Serialise the capture step under the same per-(spec, screenshot)
+        # lock used for baseline promotion. Two concurrent screenshot
+        # captures would otherwise race on ``current.png`` and one task
+        # could publish the other task's bytes through metadata.
+        lock = _get_baseline_lock(
+            self._workspace,
+            args.spec_name,
+            args.screenshot_name,
         )
-        screenshot_container = self._to_container_path(screenshot_host)
-        try:
-            payload = await self._run_executor(
-                operation="screenshot",
-                url=url,
-                args=args,
-                screenshot_path=screenshot_container,
+        async with lock:
+            screenshot_host = self._baselines.current_path(
+                spec_name=args.spec_name,
+                screenshot_name=args.screenshot_name,
             )
-            metadata = self._build_screenshot(payload, screenshot_host)
-        except BrowserDomainError as exc:
-            logger.warning(
-                BROWSER_SCREENSHOT_FAILED,
-                url=url,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
+            screenshot_container = self._to_container_path(screenshot_host)
+            try:
+                payload = await self._run_executor(
+                    operation="screenshot",
+                    url=url,
+                    args=args,
+                    screenshot_path=screenshot_container,
+                )
+                metadata = self._build_screenshot(payload, screenshot_host)
+            except BrowserDomainError as exc:
+                logger.warning(
+                    BROWSER_SCREENSHOT_FAILED,
+                    url=url,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise
         logger.debug(
             BROWSER_SCREENSHOT_SUCCESS,
             url=url,
@@ -348,21 +361,29 @@ class BrowserTool(BaseTool):
             raise BrowserArgumentError(
                 "diff mode requires spec_name and screenshot_name",
             )
-        screenshot_host = self._baselines.current_path(
-            spec_name=args.spec_name,
-            screenshot_name=args.screenshot_name,
+        # Lock the capture→diff sequence so a concurrent task cannot
+        # overwrite ``current.png`` between capture and SSIM compare.
+        lock = _get_baseline_lock(
+            self._workspace,
+            args.spec_name,
+            args.screenshot_name,
         )
-        screenshot_container = self._to_container_path(screenshot_host)
-        await self._run_executor(
-            operation="screenshot",
-            url=url,
-            args=args,
-            screenshot_path=screenshot_container,
-        )
-        diff = await self._compute_diff(
-            args=args,
-            current_path=screenshot_host,
-        )
+        async with lock:
+            screenshot_host = self._baselines.current_path(
+                spec_name=args.spec_name,
+                screenshot_name=args.screenshot_name,
+            )
+            screenshot_container = self._to_container_path(screenshot_host)
+            await self._run_executor(
+                operation="screenshot",
+                url=url,
+                args=args,
+                screenshot_path=screenshot_container,
+            )
+            diff = await self._compute_diff(
+                args=args,
+                current_path=screenshot_host,
+            )
         return _ok_result(diff)
 
     async def _mode_spec(
@@ -375,33 +396,42 @@ class BrowserTool(BaseTool):
                 "spec mode requires spec_name and screenshot_name",
             )
         logger.debug(BROWSER_SPEC_START, spec=args.spec_name, url=url)
-        screenshot_host = self._baselines.current_path(
-            spec_name=args.spec_name,
-            screenshot_name=args.screenshot_name,
+        # Same per-key lock as screenshot / diff modes -- spec stitches
+        # capture + diff together and must not race a concurrent task
+        # using the same (spec, screenshot) slot.
+        lock = _get_baseline_lock(
+            self._workspace,
+            args.spec_name,
+            args.screenshot_name,
         )
-        screenshot_container = self._to_container_path(screenshot_host)
-        try:
-            payload = await self._run_executor(
-                operation="capture",
-                url=url,
-                args=args,
-                screenshot_path=screenshot_container,
+        async with lock:
+            screenshot_host = self._baselines.current_path(
+                spec_name=args.spec_name,
+                screenshot_name=args.screenshot_name,
             )
-            navigation = self._build_navigation(payload, url)
-            screenshot = self._build_screenshot(payload, screenshot_host)
-            a11y = self._build_a11y(payload, url, args)
-            diff = await self._compute_diff(
-                args=args,
-                current_path=screenshot_host,
-            )
-        except BrowserDomainError as exc:
-            logger.warning(
-                BROWSER_SPEC_FAILED,
-                spec=args.spec_name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise
+            screenshot_container = self._to_container_path(screenshot_host)
+            try:
+                payload = await self._run_executor(
+                    operation="capture",
+                    url=url,
+                    args=args,
+                    screenshot_path=screenshot_container,
+                )
+                navigation = self._build_navigation(payload, url)
+                screenshot = self._build_screenshot(payload, screenshot_host)
+                a11y = self._build_a11y(payload, url, args)
+                diff = await self._compute_diff(
+                    args=args,
+                    current_path=screenshot_host,
+                )
+            except BrowserDomainError as exc:
+                logger.warning(
+                    BROWSER_SPEC_FAILED,
+                    spec=args.spec_name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise
 
         result = SpecResult(
             spec_name=args.spec_name,
@@ -510,8 +540,10 @@ class BrowserTool(BaseTool):
     ) -> ScreenshotDiffResult:
         """Either promote current to baseline, or raise NotFound.
 
-        Promotion is serialised per (spec, screenshot) so two concurrent
-        invocations cannot race on ``current.replace(baseline)``.
+        Callers MUST hold the per-(spec, screenshot) baseline lock for
+        the full capture→diff window. This method assumes the lock is
+        already held so it does not re-acquire (asyncio.Lock is not
+        reentrant; re-acquiring would deadlock).
         """
         assert args.spec_name is not None  # noqa: S101 -- guarded by caller
         assert args.screenshot_name is not None  # noqa: S101 -- guarded by caller
@@ -530,37 +562,33 @@ class BrowserTool(BaseTool):
                 },
             )
 
-        lock = _get_baseline_lock(
-            self._workspace,
-            args.spec_name,
-            args.screenshot_name,
+        if baseline_path.exists():
+            # The outer per-key lock excludes other tasks in this
+            # process, so reaching this branch implies a baseline was
+            # promoted out-of-band (e.g. by a sibling process sharing
+            # the workspace). Forcing a retry is safer than returning
+            # a fabricated ``ssim_score=1.0`` pass: the agent should
+            # re-enter the compare path against the now-present
+            # baseline rather than treating a missed comparison as
+            # success.
+            raise BrowserDiffError(
+                "Baseline was created by a concurrent writer; retry the diff",
+                context={
+                    "spec_name": args.spec_name,
+                    "screenshot_name": args.screenshot_name,
+                    "baseline_path": str(baseline_path),
+                },
+            )
+        adopted = self._baselines.adopt_current_as_baseline(
+            spec_name=args.spec_name,
+            screenshot_name=args.screenshot_name,
         )
-        async with lock:
-            if baseline_path.exists():
-                # Another concurrent task promoted before us; re-enter the
-                # compare path on the caller's next iteration. Returning
-                # a passed sentinel here matches the documented contract.
-                return ScreenshotDiffResult(
-                    spec_name=args.spec_name,
-                    screenshot_name=args.screenshot_name,
-                    ssim_score=1.0,
-                    tolerance=tolerance,
-                    passed_tolerance=True,
-                    baseline_path=self._baselines.relative(baseline_path),
-                    current_path=self._baselines.relative(baseline_path),
-                    diff_image_path=None,
-                    is_baseline_new=False,
-                )
-            adopted = self._baselines.adopt_current_as_baseline(
-                spec_name=args.spec_name,
-                screenshot_name=args.screenshot_name,
-            )
-            self._baselines.write_sidecar(
-                spec_name=args.spec_name,
-                screenshot_name=args.screenshot_name,
-                png_bytes=adopted.read_bytes(),
-                chromium_image=self._settings.image_pin,
-            )
+        self._baselines.write_sidecar(
+            spec_name=args.spec_name,
+            screenshot_name=args.screenshot_name,
+            png_bytes=adopted.read_bytes(),
+            chromium_image=self._settings.image_pin,
+        )
         logger.info(
             BROWSER_DIFF_SUCCESS,
             spec=args.spec_name,
@@ -603,6 +631,7 @@ class BrowserTool(BaseTool):
             "navigation_timeout_seconds": (
                 args.navigation_timeout_seconds or NAVIGATION_TIMEOUT_SECONDS
             ),
+            "launch_timeout_seconds": self._settings.launch_timeout_seconds,
             "screenshot_path": screenshot_path,
             "axe_script_path": axe_container,
             "min_impact": args.min_impact,
@@ -662,7 +691,11 @@ class BrowserTool(BaseTool):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            raise BrowserNavigationError(
+            # Sandbox bootstrap / launch failures belong to the launch
+            # taxonomy regardless of which mode triggered the call --
+            # the agent's remediation differs from a navigation error
+            # (retry vs. reconfigure provider).
+            raise BrowserLaunchError(
                 "Sandbox execution failed",
                 context={
                     "operation": operation,
@@ -677,7 +710,7 @@ class BrowserTool(BaseTool):
                 reason="timeout",
                 timeout=timeout,
             )
-            raise BrowserNavigationError(
+            raise BrowserLaunchError(
                 "Sandbox execution timed out",
                 context={"operation": operation, "timeout": timeout},
             )
@@ -701,10 +734,7 @@ class BrowserTool(BaseTool):
 
         if decoded.get("status") != "ok":
             err_type = decoded.get("error_type", "BrowserDomainError")
-            message = decoded.get(
-                "message_tail",
-                decoded.get("message", "executor returned an error"),
-            )
+            message = decoded.get("message", "executor returned an error")
             raise _map_executor_error(err_type, str(message), operation)
 
         return cast("dict[str, Any]", decoded)
@@ -932,13 +962,17 @@ def _error_result(
 
 _EXECUTOR_ERROR_MAP: Final[dict[str, type[BrowserDomainError]]] = {
     "BrowserNavigationError": BrowserNavigationError,
+    "BrowserLaunchError": BrowserLaunchError,
     "BrowserScreenshotError": BrowserScreenshotError,
     "BrowserAccessibilityError": BrowserAccessibilityError,
     "BrowserDiffError": BrowserDiffError,
     "BrowserBaselineNotFoundError": BrowserBaselineNotFoundError,
     "BrowserStartCommandError": BrowserStartCommandError,
     "BrowserArgumentError": BrowserArgumentError,
-    "TimeoutError": BrowserNavigationError,
+    # ``asyncio.wait_for`` raises TimeoutError when the executor's
+    # launch budget is exceeded; navigation timeouts come back as
+    # PlaywrightTimeoutError from page.goto.
+    "TimeoutError": BrowserLaunchError,
     "PlaywrightTimeoutError": BrowserNavigationError,
     "FileNotFoundError": BrowserAccessibilityError,
 }

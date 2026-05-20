@@ -20,6 +20,7 @@ Payload schema (input)::
         "full_page": false,
         "wait_condition": "load",
         "navigation_timeout_seconds": 60.0,
+        "launch_timeout_seconds": 30.0,
         "screenshot_path": "/workspace/.synthorg/screenshots/...",
         "axe_script_path": "/workspace/.synthorg/browser/axe.min.js" | null,
         "min_impact": "serious",
@@ -39,7 +40,7 @@ On failure::
     {
         "status": "error",
         "error_type": "BrowserNavigationError",
-        "message": "redacted description",
+        "message": "Executor failed",
     }
 """
 
@@ -57,9 +58,45 @@ _DEFAULT_VIEWPORT_HEIGHT: Final[int] = 720
 _DEFAULT_NAV_TIMEOUT_SECONDS: Final[float] = 60.0
 _DEFAULT_SCREENSHOT_TIMEOUT_SECONDS: Final[float] = 30.0
 _DEFAULT_A11Y_TIMEOUT_SECONDS: Final[float] = 45.0
+_DEFAULT_LAUNCH_TIMEOUT_SECONDS: Final[float] = 30.0
 _MS_PER_SECOND: Final[int] = 1000
 _AXE_SCRIPT_MAX_BYTES: Final[int] = 5 * 1024 * 1024
-_ERROR_MESSAGE_TAIL_CHARS: Final[int] = 500
+
+# Every filesystem path the executor touches must live under this root.
+# The host BrowserTool always builds payload paths from
+# ``CONTAINER_WORKSPACE_ROOT`` (``/workspace``); reject anything else
+# before invoking ``Path(...).parent.mkdir`` / ``.stat()`` / ``.read_text``
+# so a malformed payload cannot reach arbitrary container paths.
+_SANDBOX_ROOT: Final[str] = "/workspace"
+
+
+def _validated_sandbox_path(raw: str, *, field: str) -> Path:
+    """Return ``Path(raw)`` after asserting it resolves under ``_SANDBOX_ROOT``.
+
+    Used at every filesystem-touching site inside the executor so the
+    user-controlled ``BROWSER_TOOL_ARGS_JSON`` payload cannot escape the
+    sandbox workspace. ``..`` segments, absolute paths outside the root,
+    and relative paths all raise ``ValueError`` so the boundary stays
+    defensive against malformed callers.
+    """
+    if not raw:
+        raise ValueError(f"{field} must be a non-empty path")
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        raise ValueError(f"{field} must be an absolute path; got {raw!r}")
+    if ".." in candidate.parts:
+        raise ValueError(f"{field} must not contain '..' segments; got {raw!r}")
+    # Resolve symlink-free against the sandbox root. ``resolve`` collapses
+    # any remaining relative components and ``is_relative_to`` enforces
+    # the containment invariant.
+    resolved = candidate.resolve()
+    sandbox = Path(_SANDBOX_ROOT).resolve()
+    if not resolved.is_relative_to(sandbox):
+        raise ValueError(
+            f"{field} must resolve under {_SANDBOX_ROOT!r}; got {raw!r}",
+        )
+    return resolved
+
 
 _A11Y_RANK = {
     "minor": 0,
@@ -119,10 +156,12 @@ async def _screenshot(
     page: Any,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
-    screenshot_path = payload["screenshot_path"]
+    out = _validated_sandbox_path(
+        payload["screenshot_path"],
+        field="screenshot_path",
+    )
     full_page = bool(payload.get("full_page", False))
     timeout_ms = int(_DEFAULT_SCREENSHOT_TIMEOUT_SECONDS * _MS_PER_SECOND)
-    out = Path(screenshot_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     png_bytes = await page.screenshot(
         path=str(out),
@@ -132,7 +171,7 @@ async def _screenshot(
     width = payload.get("viewport_width") or _DEFAULT_VIEWPORT_WIDTH
     height = payload.get("viewport_height") or _DEFAULT_VIEWPORT_HEIGHT
     return {
-        "saved_path": screenshot_path,
+        "saved_path": str(out),
         "width": int(width),
         "height": int(height),
         "file_size_bytes": out.stat().st_size,
@@ -190,7 +229,7 @@ def _partition_violations(
 
 def _load_axe_script(axe_script_path: str) -> str:
     """Read and size-check the bundled axe-core script."""
-    axe_path = Path(axe_script_path)
+    axe_path = _validated_sandbox_path(axe_script_path, field="axe_script_path")
     if not axe_path.exists():
         raise FileNotFoundError(
             f"axe script not found inside sandbox: {axe_script_path}",
@@ -247,15 +286,25 @@ async def _dispatch(payload: dict[str, Any]) -> dict[str, Any]:
     height = int(
         payload.get("viewport_height") or _DEFAULT_VIEWPORT_HEIGHT,
     )
+    launch_timeout_seconds = float(
+        payload.get("launch_timeout_seconds") or _DEFAULT_LAUNCH_TIMEOUT_SECONDS,
+    )
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
-            headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-gpu",
-                "--no-sandbox",
-            ],
+        # Bound the Chromium boot step so a slow launch consumes the
+        # launch budget rather than silently eating into the navigation
+        # budget. ``TimeoutError`` is mapped to BrowserLaunchError on the
+        # host side via the executor-error map.
+        browser = await asyncio.wait_for(
+            pw.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-gpu",
+                    "--no-sandbox",
+                ],
+            ),
+            timeout=launch_timeout_seconds,
         )
         try:
             context = await browser.new_context(
@@ -316,18 +365,16 @@ def main() -> int:
     try:
         result = asyncio.run(_dispatch(payload))
     except Exception as exc:
-        # Redact the raw exception message: it can carry filesystem
-        # paths, env vars, or credentials. Keep only the type name
-        # plus the last N chars (where the useful diagnostic sits).
-        raw = str(exc)
-        tail = raw[-_ERROR_MESSAGE_TAIL_CHARS:] if raw else ""
+        # Redact the raw exception message entirely: str(exc) can carry
+        # filesystem paths, env vars, URLs, or page content. Emit only
+        # the exception class name plus a static generic message so the
+        # host side has a stable shape without leaking secrets.
         sys.stdout.write(
             json.dumps(
                 {
                     "status": "error",
                     "error_type": type(exc).__name__,
-                    "message_tail": tail,
-                    "message_truncated": len(raw) > _ERROR_MESSAGE_TAIL_CHARS,
+                    "message": "Executor failed",
                 },
             ),
         )

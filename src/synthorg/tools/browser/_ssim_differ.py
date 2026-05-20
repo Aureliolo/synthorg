@@ -114,6 +114,8 @@ def _compare_sync(
 
     except BrowserDiffError:
         raise
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         logger.warning(
             BROWSER_DIFF_FAILED,
