@@ -124,7 +124,24 @@ async def assert_standalone_repo(
         log_event=GIT_BACKEND_PROVISION_FAILED,
     )
     if rc != 0:
-        return
+        # Fail closed. The whole point of this probe is to prevent
+        # identity writes from leaking into a shared parent config; if
+        # the probe itself fails we cannot prove the workspace is
+        # standalone, so the safe move is to abort provisioning rather
+        # than let the unguarded `git config user.{name,email}` writes
+        # proceed.
+        logger.warning(
+            GIT_BACKEND_PROVISION_FAILED,
+            project_id=project_id,
+            reason="git_common_dir_probe_failed",
+            repo_root=str(repo_root),
+            return_code=rc,
+        )
+        msg = (
+            f"failed to resolve git-common-dir for {repo_root!s} "
+            f"(rc={rc}); refusing identity configuration"
+        )
+        raise fail_exc(msg)
     common_path = Path(common_dir.strip())
     if not common_path.is_absolute():
         common_path = repo_root / common_path
