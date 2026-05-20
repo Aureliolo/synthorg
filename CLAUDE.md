@@ -87,6 +87,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 - **MCP**: 200+ tools across 15 domain modules under `meta/mcp/domains/`. Define `ToolHandler` + `args_model`; call `require_admin_guardrails()` on admin tools; route through service layers. See [mcp-handler-contract.md](docs/reference/mcp-handler-contract.md).
 - **Telemetry**: opt-in, off by default. Every event property must be in `_ALLOWED_PROPERTIES`. See [telemetry.md](docs/reference/telemetry.md).
 - **Resilience**: provider calls go through `BaseCompletionProvider` (retry + rate limit); never implement retry in driver subclasses. Retryable: `RateLimitError`, `Provider{Timeout,Connection,Internal}Error`. WebSocket: per-frame timeout closes silent peers (1008); revalidation saturation closes (4011).
+- **Conversational propose**: `POST /meta/chat/propose` is opt-in (`meta.chief_of_staff.propose_enabled`); `ChiefOfStaffProposer` is built by `build_chief_of_staff_proposer` (ENFORCED manifest entry, EPIC #1955 discipline) and 503s when ANY of provider, connected persistence, or work pipeline is missing. Approval decisions for `ApprovalSource.CONVERSATIONAL_INTAKE` route through Flow 0 of `signal_resume_intent` before the parked-context / review-gate flows. Human content is wrapped via `wrap_untrusted(TAG_TASK_DATA, ...)` (SEC-1).
 
 ## Testing (detail in [conventions.md](docs/reference/conventions.md))
 

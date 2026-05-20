@@ -5,8 +5,19 @@
  * A/B tests, configuration, and Chief of Staff chat.
  */
 
+import type {
+  ConversationalProposeRequest,
+  ProposeResult,
+  ProposedApprovalSummary as GeneratedProposedApprovalSummary,
+} from '../types'
 import type { ApiResponse } from '../types/http'
 import { apiClient, unwrap } from '../client'
+
+// Re-export the generated DTOs so call sites that previously imported
+// the hand-maintained interfaces keep working without changing every
+// site at once; the source of truth is the generated openapi.gen.ts.
+export type ConversationalProposeResponse = ProposeResult
+export type ProposedApprovalSummary = GeneratedProposedApprovalSummary
 
 // -- Types -------------------------------------------------------------------
 
@@ -97,6 +108,35 @@ export async function listABTests(): Promise<ABTestSummary[]> {
   const response = await apiClient.get<ApiResponse<ABTestSummary[]>>(
     `${BASE}/ab-tests`,
   )
+  return unwrap(response)
+}
+
+export async function postChatPropose(
+  message: string,
+  conversationId?: string,
+  project?: string,
+): Promise<ConversationalProposeResponse> {
+  const trimmed = message.trim()
+  if (!trimmed) {
+    throw new Error('Message must not be blank')
+  }
+  // The /meta/chat/propose endpoint is rate-limited via
+  // ``per_op_rate_limit_from_policy("meta.chat.propose", key="user")``
+  // (5 req / 60 s / user). Attach an Idempotency-Key so the axios 429
+  // interceptor retries after Retry-After; server replays of the same
+  // key are no-ops, so a retry never duplicates the parked proposal.
+  const body: ConversationalProposeRequest = {
+    message: trimmed,
+    conversation_id: conversationId ?? null,
+    project: project ?? null,
+  }
+  const response = await apiClient.post<
+    ApiResponse<ConversationalProposeResponse>
+  >(`${BASE}/chat/propose`, body, {
+    headers: {
+      'Idempotency-Key': crypto.randomUUID(),
+    },
+  })
   return unwrap(response)
 }
 

@@ -9,8 +9,36 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import RuleSeverity
+
+# Sampling temperature stays low (0.3) so the clarify/propose path
+# emits deterministic JSON structure rather than discursive text; the
+# 0.0/2.0 bounds mirror the provider-agnostic sampler range every
+# runtime integration passes through.
+_PROPOSE_TEMPERATURE_DEFAULT: float = 0.3
+_PROPOSE_TEMPERATURE_MIN: float = 0.0
+_PROPOSE_TEMPERATURE_MAX: float = 2.0
+# 2000 tokens fits a JSON payload of up to ~5 clarify+propose items
+# (the per-turn fan-out cap below) without truncation on typical
+# large-capability models; 100 is the floor below which even a minimal
+# clarifying question would not fit.
+_PROPOSE_MAX_TOKENS_DEFAULT: int = 2000
+_PROPOSE_MAX_TOKENS_MIN: int = 100
+# Five proposals per turn bounds the approval-queue fan-out a single
+# conversation turn can create; the 1..20 envelope is the same range
+# the model_validator on ProposeDecision enforces for the model's own
+# JSON output.
+_PROPOSE_MAX_PROPOSALS_DEFAULT: int = 5
+_PROPOSE_MAX_PROPOSALS_MIN: int = 1
+_PROPOSE_MAX_PROPOSALS_MAX: int = 20
+# Five clarifying turns is the cap before the conversation force-closes
+# with _CAP_MESSAGE; 1..20 is the same envelope as the per-turn cap so
+# operators tuning one routinely tune the other in tandem.
+_PROPOSE_MAX_CLARIFICATION_DEFAULT: int = 5
+_PROPOSE_MAX_CLARIFICATION_MIN: int = 1
+_PROPOSE_MAX_CLARIFICATION_MAX: int = 20
 
 
 class ChiefOfStaffConfig(BaseModel):
@@ -40,6 +68,18 @@ class ChiefOfStaffConfig(BaseModel):
         chat_model: LLM model identifier for chat responses.
         chat_temperature: Sampling temperature for chat.
         chat_max_tokens: Token budget for chat responses.
+        propose_enabled: Enable the clarify-and-propose interface
+            (``/meta/chat/propose``). Independent of ``chat_enabled``.
+        propose_model: LLM model identifier for clarify/propose turns.
+        propose_temperature: Sampling temperature for propose turns.
+        propose_max_tokens: Token budget for a propose turn.
+        propose_max_proposals_per_turn: Upper bound on work items a
+            single turn may emit (bounds approval-queue fan-out).
+        propose_max_clarification_turns: Maximum clarifying questions
+            before the model must either propose or yield a terminal
+            turn (prevents an unbounded clarify loop).
+        propose_default_risk_level: Risk level stamped on the approval
+            item created for each proposed work item.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -66,3 +106,31 @@ class ChiefOfStaffConfig(BaseModel):
     )
     chat_temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     chat_max_tokens: int = Field(default=2000, ge=100)
+
+    # ── Clarify + propose ─────────────────────────────────────────
+
+    propose_enabled: bool = False
+    propose_model: NotBlankStr = Field(
+        default=NotBlankStr("example-small-001"),
+        description="Model for clarify-and-propose LLM calls",
+    )
+    propose_temperature: float = Field(
+        default=_PROPOSE_TEMPERATURE_DEFAULT,
+        ge=_PROPOSE_TEMPERATURE_MIN,
+        le=_PROPOSE_TEMPERATURE_MAX,
+    )
+    propose_max_tokens: int = Field(
+        default=_PROPOSE_MAX_TOKENS_DEFAULT,
+        ge=_PROPOSE_MAX_TOKENS_MIN,
+    )
+    propose_max_proposals_per_turn: int = Field(
+        default=_PROPOSE_MAX_PROPOSALS_DEFAULT,
+        ge=_PROPOSE_MAX_PROPOSALS_MIN,
+        le=_PROPOSE_MAX_PROPOSALS_MAX,
+    )
+    propose_max_clarification_turns: int = Field(
+        default=_PROPOSE_MAX_CLARIFICATION_DEFAULT,
+        ge=_PROPOSE_MAX_CLARIFICATION_MIN,
+        le=_PROPOSE_MAX_CLARIFICATION_MAX,
+    )
+    propose_default_risk_level: ApprovalRiskLevel = ApprovalRiskLevel.MEDIUM

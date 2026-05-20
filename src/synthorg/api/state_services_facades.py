@@ -116,7 +116,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         """Return *service* or raise (implemented on concrete ``AppState``)."""
         raise NotImplementedError
 
-    def _init_facade_service_slots(self) -> None:
+    def _init_facade_service_slots(self) -> None:  # noqa: PLR0915 -- flat slot-init list, one None assignment per facade slot
         """Initialise every facade-service slot attribute to ``None``.
 
         Concrete :class:`AppState` calls this once from ``__init__`` so
@@ -174,6 +174,8 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self._subworkflow_service = None
         self._self_improvement_service = None
         self._chief_of_staff_chat = None
+        self._chief_of_staff_proposer = None
+        self._conversational_proposal_repo = None
 
     # Slot attrs for facade services (populated on concrete AppState).
     _signals_service: SignalsService | None

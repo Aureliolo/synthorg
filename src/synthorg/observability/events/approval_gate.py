@@ -36,6 +36,20 @@ APPROVAL_GATE_TASK_NOT_FOUND: Final[str] = "approval_gate.task.not_found"
 APPROVAL_GATE_TASK_UNASSIGNED: Final[str] = "approval_gate.task.unassigned"
 APPROVAL_GATE_NOTIFICATION_FAILED: Final[str] = "approval_gate.notification.failed"
 
+# Conversational-intake decision flow: a CONVERSATIONAL_INTAKE approval
+# decision either runs the parked WorkItem through the pipeline
+# (approved) or records the proposal declined (rejected).
+APPROVAL_GATE_CONVERSATIONAL_EXECUTED: Final[str] = (
+    "approval_gate.conversational.executed"
+)
+APPROVAL_GATE_CONVERSATIONAL_REJECTED: Final[str] = (
+    "approval_gate.conversational.rejected"
+)
+APPROVAL_GATE_CONVERSATIONAL_NO_PROPOSAL: Final[str] = (
+    "approval_gate.conversational.no_proposal"
+)
+APPROVAL_GATE_CONVERSATIONAL_FAILED: Final[str] = "approval_gate.conversational.failed"
+
 # Status-machine event: emitted on every ApprovalStatus hop --
 # user-decided (PENDING -> APPROVED / REJECTED) in
 # ``api/controllers/approvals.py``, and time-driven (PENDING ->

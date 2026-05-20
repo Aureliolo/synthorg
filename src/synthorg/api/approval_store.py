@@ -116,6 +116,17 @@ class ApprovalStore:
         # equality.
         self._generation: int = 0
 
+    @property
+    def has_persistent_repo(self) -> bool:
+        """``True`` iff a durable :class:`ApprovalRepository` is wired.
+
+        Used by startup wiring to detect backend combinations where
+        conversational-intake approvals cannot be durably persisted.
+        Callers should refuse proposer wiring for unsupported
+        persistence modes.
+        """
+        return self._repo is not None
+
     async def clear(self) -> None:
         """Reset the in-memory approval cache (cache-only).
 
@@ -205,6 +216,39 @@ class ApprovalStore:
                     )
                     raise ConflictError(msg) from None
             self._items[item.id] = item
+
+    async def delete(self, approval_id: NotBlankStr) -> bool:
+        """Remove a single approval item by id (cache + persistent repo).
+
+        Returns ``True`` iff a row was removed in the cache OR the
+        repo (whichever held the item). Used by compensation paths
+        that need to undo a just-committed ``add`` -- the multi-
+        proposal parking loop in
+        ``ChiefOfStaffProposer._record_proposals`` is the current
+        caller. The cache pop is unconditional even when the repo
+        reports a miss so the in-memory view never holds an item
+        that has already been removed durably.
+        """
+        async with self._lock:
+            cached = self._items.pop(approval_id, None)
+            repo_removed = False
+            if self._repo is not None:
+                try:
+                    repo_removed = await self._repo.delete(approval_id)
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    logger.warning(
+                        API_APPROVAL_CONFLICT,
+                        phase="delete_failed",
+                        approval_id=approval_id,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    if cached is not None:
+                        self._items[approval_id] = cached
+                    raise
+            return cached is not None or repo_removed
 
     async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
         """Get an approval item by ID, applying lazy expiration.
