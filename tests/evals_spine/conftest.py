@@ -1,9 +1,12 @@
 """Shared fixtures for the eval-spine test suite."""
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 import yaml
+
+BriefYamlWriter = Callable[..., Path]
 
 
 def _brief_yaml(kind: str, **overrides: object) -> str:
@@ -45,7 +48,7 @@ def _brief_yaml(kind: str, **overrides: object) -> str:
 
 
 @pytest.fixture
-def write_brief_yaml(tmp_path: Path):
+def write_brief_yaml(tmp_path: Path) -> BriefYamlWriter:
     """Return a helper that writes a brief YAML into *tmp_path*."""
 
     def _write(filename: str, kind: str, **overrides: object) -> Path:

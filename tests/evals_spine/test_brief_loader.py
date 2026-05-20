@@ -8,10 +8,13 @@ from pydantic import ValidationError
 from evals.errors import BriefSuiteDuplicateIdError, BriefSuiteEmptyError
 from evals.loader.briefs import load_brief_suite
 from evals.models.brief import BriefKind
+from tests.evals_spine.conftest import BriefYamlWriter
 
 
 @pytest.mark.unit
-def test_loads_one_executable_brief(tmp_path: Path, write_brief_yaml) -> None:
+def test_loads_one_executable_brief(
+    tmp_path: Path, write_brief_yaml: BriefYamlWriter
+) -> None:
     write_brief_yaml("BRIEF_001.yaml", "executable")
     briefs = load_brief_suite(tmp_path)
     assert len(briefs) == 1
@@ -21,7 +24,9 @@ def test_loads_one_executable_brief(tmp_path: Path, write_brief_yaml) -> None:
 
 
 @pytest.mark.unit
-def test_loads_one_judged_brief(tmp_path: Path, write_brief_yaml) -> None:
+def test_loads_one_judged_brief(
+    tmp_path: Path, write_brief_yaml: BriefYamlWriter
+) -> None:
     write_brief_yaml("BRIEF_002.yaml", "judged", brief_id="BRIEF_002")
     briefs = load_brief_suite(tmp_path)
     assert briefs[0].kind is BriefKind.JUDGED
@@ -30,7 +35,9 @@ def test_loads_one_judged_brief(tmp_path: Path, write_brief_yaml) -> None:
 
 
 @pytest.mark.unit
-def test_briefs_are_sorted_by_id(tmp_path: Path, write_brief_yaml) -> None:
+def test_briefs_are_sorted_by_id(
+    tmp_path: Path, write_brief_yaml: BriefYamlWriter
+) -> None:
     write_brief_yaml("zzz.yaml", "executable", brief_id="BRIEF_ZZZ")
     write_brief_yaml("aaa.yaml", "executable", brief_id="BRIEF_AAA")
     briefs = load_brief_suite(tmp_path)
@@ -40,7 +47,7 @@ def test_briefs_are_sorted_by_id(tmp_path: Path, write_brief_yaml) -> None:
 @pytest.mark.unit
 def test_underscore_files_are_skipped(
     tmp_path: Path,
-    write_brief_yaml,
+    write_brief_yaml: BriefYamlWriter,
 ) -> None:
     write_brief_yaml("_draft.yaml", "executable", brief_id="BRIEF_DRAFT")
     write_brief_yaml("BRIEF_001.yaml", "executable")
@@ -55,7 +62,9 @@ def test_empty_directory_raises(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_duplicate_brief_id_raises(tmp_path: Path, write_brief_yaml) -> None:
+def test_duplicate_brief_id_raises(
+    tmp_path: Path, write_brief_yaml: BriefYamlWriter
+) -> None:
     write_brief_yaml("a.yaml", "executable", brief_id="DUPE")
     write_brief_yaml("b.yaml", "executable", brief_id="DUPE")
     with pytest.raises(BriefSuiteDuplicateIdError):
@@ -65,9 +74,8 @@ def test_duplicate_brief_id_raises(tmp_path: Path, write_brief_yaml) -> None:
 @pytest.mark.unit
 def test_kind_mismatch_executable_with_rubric_raises(
     tmp_path: Path,
-    write_brief_yaml,
+    write_brief_yaml: BriefYamlWriter,
 ) -> None:
-    # executable kind + rubric block (instead of checks) -> XOR violation
     write_brief_yaml(
         "bad.yaml",
         "executable",
@@ -87,7 +95,7 @@ def test_kind_mismatch_executable_with_rubric_raises(
 @pytest.mark.unit
 def test_rubric_weights_must_sum_to_one(
     tmp_path: Path,
-    write_brief_yaml,
+    write_brief_yaml: BriefYamlWriter,
 ) -> None:
     write_brief_yaml(
         "judged.yaml",

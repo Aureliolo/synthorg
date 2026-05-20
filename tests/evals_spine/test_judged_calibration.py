@@ -1,5 +1,7 @@
 """Tests for the judged-brief grader and Spearman calibration gate."""
 
+from pathlib import Path
+
 import pytest
 
 from evals.errors import JudgeAnchorSetTooSmallError, JudgeCalibrationFailedError
@@ -267,7 +269,7 @@ def test_grade_judged_anchor_set_minimum_enforced() -> None:
 
 
 @pytest.mark.unit
-def test_load_anchor_set_below_minimum_raises(tmp_path) -> None:
+def test_load_anchor_set_below_minimum_raises(tmp_path: Path) -> None:
     import yaml
 
     from evals.loader.anchors import MIN_ANCHOR_SET_SIZE, load_anchor_set
