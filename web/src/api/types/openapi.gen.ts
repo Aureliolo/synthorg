@@ -5418,6 +5418,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[TaskBoardSubmissionResponse] */
+        readonly ApiResponse_TaskBoardSubmissionResponse_: {
+            readonly data: components["schemas"]["TaskBoardSubmissionResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[TeamResponse] */
         readonly ApiResponse_TeamResponse_: {
             readonly data: components["schemas"]["TeamResponse"] | null;
@@ -11346,6 +11354,20 @@ export type components = {
             /** @description Short task title */
             readonly title: string;
             readonly type: components["schemas"]["TaskType"];
+        };
+        /** TaskBoardSubmissionResponse */
+        readonly TaskBoardSubmissionResponse: {
+            /** @description End-to-end trace id stamped onto the work item */
+            readonly correlation_id: string;
+            /** @description Project the task was filed into */
+            readonly project: string;
+            /**
+             * @description Always 'submitted' for the 202 ack
+             * @default submitted
+             */
+            readonly status: string;
+            /** @description Title submitted by the user */
+            readonly title: string;
         };
         /**
          * TaskRequirement
@@ -21375,13 +21397,13 @@ export interface operations {
             };
         };
         readonly responses: {
-            /** @description Document created, URL follows */
-            readonly 201: {
+            /** @description Request accepted, processing continues off-line */
+            readonly 202: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_TaskBoardSubmissionResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

@@ -8,6 +8,7 @@ export type {
   CancelTaskRequest,
   CreateTaskRequest,
   ExpectedArtifact,
+  TaskBoardSubmissionResponse,
   TransitionTaskRequest,
   UpdateTaskRequest,
 } from './dtos.gen'

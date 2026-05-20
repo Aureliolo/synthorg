@@ -39,6 +39,8 @@ from synthorg.core.enums import (
     TaskStatus,
 )
 from synthorg.core.task import Task
+from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter
+from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.performance.tracker import PerformanceTracker
 from synthorg.hr.registry import AgentRegistryService
@@ -50,6 +52,7 @@ from synthorg.security.trust.service import TrustService
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
+from tests._shared import mock_of
 from tests._shared.trust import NoOpTrustStrategy
 from tests.unit.api.fakes import (
     FakeArtifactStorage,
@@ -409,6 +412,29 @@ def coordination_metrics_store() -> CoordinationMetricsStore:
     return CoordinationMetricsStore()
 
 
+@pytest.fixture(scope="session")
+def task_board_entry_adapter() -> TaskBoardEntryAdapter:
+    """A board entry adapter backed by a stub :class:`WorkPipeline`.
+
+    The shared API tests predate the entry-adapter switch on
+    ``POST /tasks``; they expect creation to succeed. Wiring a real
+    adapter with a mock pipeline keeps ``has_task_board_entry_adapter``
+    True without doing any spine work in the unit suite. The
+    integration test ``test_task_create_empty_company.py`` exercises
+    the absent-adapter / 409 path explicitly.
+    """
+    pipeline = mock_of[WorkPipeline]()
+
+    async def _no_run(_work_item: Any) -> Any:
+        # The detached background task swallows the return value; we
+        # only need ``submit`` not to raise. A real spine result is
+        # exercised in the e2e suite.
+        return None
+
+    pipeline.run.side_effect = _no_run
+    return TaskBoardEntryAdapter(work_pipeline=pipeline)
+
+
 # ── Session-scoped shared app ─────────────────────────────────
 
 
@@ -432,6 +458,7 @@ def _shared_app(  # noqa: PLR0913
     coordination_metrics_store: CoordinationMetricsStore,
     event_stream_hub: EventStreamHub,
     interrupt_store: InterruptStore,
+    task_board_entry_adapter: TaskBoardEntryAdapter,
 ) -> Litestar:
     """Build the Litestar app ONCE per xdist worker.
 
@@ -466,6 +493,7 @@ def _shared_app(  # noqa: PLR0913
         coordination_metrics_store=coordination_metrics_store,
         event_stream_hub=event_stream_hub,
         interrupt_store=interrupt_store,
+        task_board_entry_adapter=task_board_entry_adapter,
         _skip_lifecycle_shutdown=True,
     )
 

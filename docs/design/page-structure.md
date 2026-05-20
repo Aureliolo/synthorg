@@ -46,7 +46,9 @@ Kanban view (default) and list view toggle. Filter by status, assignee, departme
 
 Project filter dropdown available. Dedicated Projects page shipped (#946).
 
-**API endpoints**: `GET /tasks`, `GET /tasks/{id}`, `POST /tasks`, `PATCH /tasks/{id}`, `POST /tasks/{id}/transition`, `POST /tasks/{id}/cancel`, `DELETE /tasks/{id}`, `POST /tasks/{id}/coordinate`
+`POST /tasks` is a board-entry handoff: the controller routes the filing through `TaskBoardEntryAdapter` and returns HTTP 202 with `TaskBoardSubmissionResponse` (`correlation_id`, `title`, `project`, `status: "submitted"`). The spine creates the task inside its background intake phase; the board UI subscribes to the `tasks` WS channel and inserts the spine-created task on the matching `task.created` event correlated by `correlation_id`. Empty-company (no provider / no adapter) returns 409 `AgentRuntimeNotConfiguredError`. Board column moves remain pure status walks of the spine-created task.
+
+**API endpoints**: `GET /tasks`, `GET /tasks/{id}`, `POST /tasks` (202), `PATCH /tasks/{id}`, `POST /tasks/{id}/transition`, `POST /tasks/{id}/cancel`, `DELETE /tasks/{id}`, `POST /tasks/{id}/coordinate`
 **WS channels**: `tasks`
 
 #### Budget (`/budget`)

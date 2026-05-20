@@ -10,6 +10,7 @@ from synthorg.client.factory import UnknownStrategyError
 from synthorg.engine.pipeline.entry.factory import build_work_entry_adapter
 from synthorg.engine.pipeline.entry.intake_adapter import IntakeEntryAdapter
 from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveEntryAdapter
+from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter
 from synthorg.engine.pipeline.models import WorkSource
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from tests._shared import mock_of
@@ -37,11 +38,20 @@ def test_objective_source_builds_objective_adapter() -> None:
     assert adapter.source is WorkSource.OBJECTIVE
 
 
+def test_task_board_source_builds_task_board_adapter() -> None:
+    adapter = build_work_entry_adapter(
+        WorkSource.TASK_BOARD,
+        work_pipeline=mock_of[WorkPipeline](),
+        default_project="client-intake",
+    )
+    assert isinstance(adapter, TaskBoardEntryAdapter)
+    assert adapter.source is WorkSource.TASK_BOARD
+
+
 @pytest.mark.parametrize(
     "source",
     [
         WorkSource.SIMULATION,
-        WorkSource.TASK_BOARD,
         WorkSource.CONVERSATIONAL,
     ],
 )
