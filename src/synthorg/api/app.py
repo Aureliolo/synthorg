@@ -274,6 +274,24 @@ def _wire_cost_dial_services(app_state: AppState) -> None:
     app_state.swap_pareto_analyzer(analyzer)
 
 
+def _try_wire_cost_dial(app_state: AppState) -> None:
+    """Wire the cost-dial services best-effort; never poison startup."""
+    if not app_state.has_persistence or app_state.cost_forecaster is not None:
+        return
+    try:
+        _wire_cost_dial_services(app_state)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            service="cost_dial",
+            note="cost-dial wiring failed; controllers will 503",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
 def _build_default_approval_timeout_scheduler(
     *,
     approval_store: ApprovalStoreProtocol,
@@ -1109,12 +1127,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # ProjectWorkspaceService provisions one persistent git-backed
         # tree per project under the workspace base. Persistence-less
         # boots (test fixtures, dev apps with no DB) skip wiring -- the
-        # Cost-dial services: forecaster + repo + benchmark provider +
-        # Pareto analyzer. Wired once persistence is connected so the
-        # /budget/forecast + /budget/pareto controllers and the
-        # ForecastGate work-entry wrapper can resolve them via AppState.
-        if app_state.has_persistence and app_state.cost_forecaster is None:
-            _wire_cost_dial_services(app_state)
+        _try_wire_cost_dial(app_state)
 
         # service is optional and gates on ``has_project_workspace_service``.
         if app_state.has_persistence and app_state.project_workspace_service is None:
