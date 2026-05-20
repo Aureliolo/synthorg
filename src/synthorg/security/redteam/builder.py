@@ -21,6 +21,7 @@ from synthorg.core.clock import Clock  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.red_team import RED_TEAM_GATE_SKIPPED
 from synthorg.security.redteam.agent import build_red_team_agent_identity
+from synthorg.security.redteam.errors import RedTeamRuntimeSeedIncompleteError
 from synthorg.security.redteam.gate import RedTeamGateService
 from synthorg.security.redteam.grounding.factory import build_grounding_checker
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
@@ -148,7 +149,7 @@ def build_red_team_runtime(
             "build_red_team_tool_seed(config=...) before the engine so the "
             "tool is registered on the engine's tool registry."
         )
-        raise RuntimeError(msg)
+        raise RedTeamRuntimeSeedIncompleteError(msg)
 
     grounding = build_grounding_checker(config.grounding_checker_kind)
     identity = build_red_team_agent_identity(model=model, clock=clock)

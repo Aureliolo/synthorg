@@ -35,7 +35,7 @@ from synthorg.security.redteam import (
     RedTeamVerdict,
 )
 from synthorg.security.redteam.protocol import AgentRunner
-from tests._shared.fake_clock import FakeClock
+from tests._shared import FakeClock
 
 
 class _ScriptedAgentRunner:

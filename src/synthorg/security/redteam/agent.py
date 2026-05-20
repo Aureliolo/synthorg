@@ -20,6 +20,7 @@ from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME, get_builtin_role
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.red_team import RED_TEAM_GATE_SKIPPED
+from synthorg.security.redteam.errors import RedTeamRoleMissingError
 
 logger = get_logger(__name__)
 
@@ -90,9 +91,10 @@ def build_red_team_agent_identity(
         :class:`AgentEngine.run`.
 
     Raises:
-        RuntimeError: If the catalogued role is missing (should never
-            happen in normal use; surfaces as a hard configuration
-            error rather than a silent fallback to a default role).
+        RedTeamRoleMissingError: If the catalogued role is missing
+            (should never happen in normal use; surfaces as a hard
+            configuration error rather than a silent fallback to a
+            default role).
     """
     role = get_builtin_role(RED_TEAM_ROLE_NAME)
     if role is None:
@@ -109,7 +111,7 @@ def build_red_team_agent_identity(
             f"Built-in role {RED_TEAM_ROLE_NAME!r} not found in catalog. "
             "Check core/role_catalog.py BUILTIN_ROLES tuple."
         )
-        raise RuntimeError(msg)
+        raise RedTeamRoleMissingError(msg)
     hiring_dt = clock.now() if clock is not None else datetime.now(UTC)
     return AgentIdentity(
         name=name,

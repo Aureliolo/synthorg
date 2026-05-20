@@ -41,7 +41,7 @@ from synthorg.security.redteam.models import (
 )
 from synthorg.security.redteam.protocol import AgentRunner
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
-from tests._shared.fake_clock import FakeClock
+from tests._shared import FakeClock
 
 
 class _ScriptedRunner:

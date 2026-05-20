@@ -95,3 +95,37 @@ class RedTeamReportAlreadyExistsError(RedTeamError):
     def __init__(self, *, execution_id: NotBlankStr) -> None:
         super().__init__(self.default_message)
         self.execution_id: NotBlankStr = execution_id
+
+
+class RedTeamRoleMissingError(RedTeamError):
+    """Raised when the built-in ``Red Team`` role is absent from the catalog.
+
+    Surfaces as a hard configuration error (not a silent fallback)
+    because the agent identity factory cannot construct a meaningful
+    :class:`AgentIdentity` without the catalogued role.
+    """
+
+    status_code: ClassVar[int] = 500
+    error_code: ClassVar[ErrorCode] = ErrorCode.ENGINE_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    default_message: ClassVar[str] = (
+        "Built-in red-team role missing from BUILTIN_ROLES catalog"
+    )
+
+
+class RedTeamRuntimeSeedIncompleteError(RedTeamError):
+    """Raised when the runtime builder is invoked without a complete seed.
+
+    ``build_red_team_runtime`` requires the report repository and the
+    submit-report tool to be pre-built so the tool is registered on the
+    agent engine's shared tool registry. A ``None`` here is a wiring
+    fault: the builder caller did not run ``build_red_team_tool_seed``
+    before the engine was assembled.
+    """
+
+    status_code: ClassVar[int] = 500
+    error_code: ClassVar[ErrorCode] = ErrorCode.ENGINE_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    default_message: ClassVar[str] = (
+        "Red-team runtime seed is incomplete (report_repo / submit_tool unset)"
+    )

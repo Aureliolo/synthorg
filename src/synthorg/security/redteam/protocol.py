@@ -66,8 +66,8 @@ class RedTeamReportRepository(Protocol):
     Single-shot per ``execution_id``: ``put`` must reject a second
     submission for the same key (with
     :class:`RedTeamReportAlreadyExistsError`). The protocol does not
-    mandate persistence; v1 ships an in-memory implementation and a
-    persistent SQLite/Postgres implementation lands in a follow-up.
+    mandate persistence so an in-memory implementation suffices for
+    deployments that scope a single agent run to one process.
     """
 
     async def put(

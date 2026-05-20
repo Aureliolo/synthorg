@@ -258,16 +258,18 @@ class RedTeamGateService:
             )
             return self._fail_open_report(review_input)
 
-        if report.execution_id != review_input.execution_id:
+        if (
+            report.execution_id != review_input.execution_id
+            or report.task_id != review_input.task_id
+        ):
             logger.warning(
                 RED_TEAM_REPORT_EXECUTION_ID_MISMATCH,
                 stored_execution_id=report.execution_id,
                 expected_execution_id=review_input.execution_id,
-                task_id=review_input.task_id,
+                stored_task_id=report.task_id,
+                expected_task_id=review_input.task_id,
             )
-            report = report.model_copy(
-                update={"execution_id": review_input.execution_id},
-            )
+            return self._fail_open_report(review_input)
         logger.info(
             RED_TEAM_REPORT_RECEIVED,
             execution_id=review_input.execution_id,
