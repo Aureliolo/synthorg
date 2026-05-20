@@ -972,6 +972,7 @@ CREATE TABLE connections (
             webhook_receipt_retention_days IS NULL
             OR webhook_receipt_retention_days >= 0
         ),
+    sensitive BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
 );
@@ -1209,6 +1210,7 @@ CREATE TABLE approvals (
     task_id TEXT REFERENCES tasks(id),
     evidence_package JSONB,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    consumed_at TIMESTAMPTZ,
     CHECK (
         (decided_at IS NULL AND decided_by IS NULL)
         OR (decided_at IS NOT NULL AND decided_by IS NOT NULL)

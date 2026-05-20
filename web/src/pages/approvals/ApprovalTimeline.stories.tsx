@@ -18,6 +18,7 @@ const base: ApprovalResponse = {
   created_at: '2026-03-27T10:00:00Z',
   decided_at: null,
   expires_at: '2026-03-27T14:00:00Z',
+  consumed_at: null,
   evidence_package: null,
   seconds_remaining: 14400,
   urgency_level: 'high',

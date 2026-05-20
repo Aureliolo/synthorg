@@ -51,7 +51,7 @@ _SELECT_COLS = (
     "name, connection_type, auth_method, base_url, secret_refs_json, "
     "rate_limit_rpm, rate_limit_concurrent, health_check_enabled, "
     "health_status, last_health_check_at, metadata_json, "
-    "webhook_receipt_retention_days, created_at, updated_at"
+    "webhook_receipt_retention_days, sensitive, created_at, updated_at"
 )
 
 
@@ -70,6 +70,7 @@ def _row_to_connection(row: aiosqlite.Row | tuple[Any, ...]) -> Connection:
         last_health_check_at,
         metadata_json,
         webhook_receipt_retention_days,
+        sensitive,
         created_at,
         updated_at,
     ) = row
@@ -102,6 +103,7 @@ def _row_to_connection(row: aiosqlite.Row | tuple[Any, ...]) -> Connection:
             if webhook_receipt_retention_days is not None
             else None
         ),
+        sensitive=bool(sensitive),
         created_at=coerce_row_timestamp(created_at),
         updated_at=coerce_row_timestamp(updated_at),
     )
@@ -152,9 +154,9 @@ class SQLiteConnectionRepository:
                         secret_refs_json, rate_limit_rpm, rate_limit_concurrent,
                         health_check_enabled, health_status,
                         last_health_check_at, metadata_json,
-                        webhook_receipt_retention_days,
+                        webhook_receipt_retention_days, sensitive,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(name) DO UPDATE SET
                         connection_type = excluded.connection_type,
                         auth_method = excluded.auth_method,
@@ -168,6 +170,7 @@ class SQLiteConnectionRepository:
                         metadata_json = excluded.metadata_json,
                         webhook_receipt_retention_days =
                             excluded.webhook_receipt_retention_days,
+                        sensitive = excluded.sensitive,
                         updated_at = excluded.updated_at
                     """,
                     (
@@ -183,6 +186,7 @@ class SQLiteConnectionRepository:
                         last_health_check_at_iso,
                         metadata_json,
                         connection.webhook_receipt_retention_days,
+                        1 if connection.sensitive else 0,
                         created_at_iso,
                         updated_at_iso,
                     ),

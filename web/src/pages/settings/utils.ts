@@ -39,6 +39,7 @@ const SETTING_NAMESPACE_TABLE: Record<SettingNamespace, true> = {
   hr: true,
   workers: true,
   telemetry: true,
+  external_api: true,
 }
 
 /**

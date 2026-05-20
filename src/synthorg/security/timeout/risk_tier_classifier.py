@@ -42,6 +42,7 @@ _DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProx
         ActionType.CODE_DELETE: ApprovalRiskLevel.HIGH,
         ActionType.VCS_PUSH: ApprovalRiskLevel.HIGH,
         ActionType.COMMS_EXTERNAL: ApprovalRiskLevel.HIGH,
+        ActionType.EXTERNAL_DATA_REQUEST: ApprovalRiskLevel.HIGH,
         ActionType.BUDGET_EXCEED: ApprovalRiskLevel.HIGH,
         # MEDIUM
         ActionType.CODE_CREATE: ApprovalRiskLevel.MEDIUM,

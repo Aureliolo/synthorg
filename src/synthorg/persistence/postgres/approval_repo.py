@@ -11,6 +11,7 @@ Callers depend on the :class:`ApprovalRepository` Protocol from
 structurally.
 """
 
+from datetime import datetime  # noqa: TC003 -- runtime param type
 from typing import TYPE_CHECKING, Any
 
 import psycopg
@@ -45,12 +46,12 @@ _MAX_PAGE_LIMIT: int = 1_000
 _SELECT_COLS = (
     "id, action_type, title, description, requested_by, risk_level, "
     "source, status, created_at, expires_at, decided_at, decided_by, "
-    "decision_reason, task_id, evidence_package, metadata"
+    "decision_reason, task_id, evidence_package, metadata, consumed_at"
 )
 
 _APPROVALS_UPSERT_SQL = f"""
     INSERT INTO approvals ({_SELECT_COLS})
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (id) DO UPDATE SET
         action_type = EXCLUDED.action_type,
         title = EXCLUDED.title,
@@ -65,7 +66,8 @@ _APPROVALS_UPSERT_SQL = f"""
         decision_reason = EXCLUDED.decision_reason,
         task_id = EXCLUDED.task_id,
         evidence_package = EXCLUDED.evidence_package,
-        metadata = EXCLUDED.metadata
+        metadata = EXCLUDED.metadata,
+        consumed_at = EXCLUDED.consumed_at
 """  # noqa: S608 -- column list is compile-time constant
 
 
@@ -113,6 +115,11 @@ def _row_to_item(row: dict[str, Any]) -> ApprovalItem:
             if row["decided_at"] is not None
             else None
         )
+        consumed_at = (
+            coerce_row_timestamp(row["consumed_at"])
+            if row["consumed_at"] is not None
+            else None
+        )
         return ApprovalItem(
             id=str(row["id"]),
             action_type=str(row["action_type"]),
@@ -134,6 +141,7 @@ def _row_to_item(row: dict[str, Any]) -> ApprovalItem:
                 else None
             ),
             task_id=(str(row["task_id"]) if row["task_id"] is not None else None),
+            consumed_at=consumed_at,
             evidence_package=evidence_package,
             metadata=metadata_raw,
         )
@@ -195,6 +203,7 @@ class PostgresApprovalRepository:
             item.task_id,
             evidence_json,
             Jsonb(item.metadata),
+            item.consumed_at,
         )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -267,6 +276,7 @@ class PostgresApprovalRepository:
                     item.task_id,
                     evidence_json,
                     Jsonb(item.metadata),
+                    item.consumed_at,
                 ),
             )
         try:
@@ -621,6 +631,51 @@ class PostgresApprovalRepository:
             )
             raise QueryError(msg) from exc
         return updated
+
+    async def consume_if_approved(
+        self,
+        approval_id: NotBlankStr,
+        *,
+        consumed_at: datetime,
+    ) -> bool:
+        """Atomic compare-and-set: mark an APPROVED grant as consumed.
+
+        Sets ``consumed_at`` iff the row is currently ``approved`` and not
+        already consumed, so a one-shot approval can authorise exactly one
+        action. Returns ``True`` iff this call won the race (rowcount == 1);
+        ``False`` on replay (already consumed), state mismatch (not
+        approved), or missing row.
+
+        Args:
+            approval_id: The approval id.
+            consumed_at: Aware UTC timestamp to stamp on success.
+
+        Returns:
+            ``True`` iff the grant was consumed by this call.
+
+        Raises:
+            QueryError: On database errors.
+        """
+        sql = (
+            "UPDATE approvals SET consumed_at = %s "
+            "WHERE id = %s AND status = %s AND consumed_at IS NULL"
+        )
+        params = (consumed_at, approval_id, ApprovalStatus.APPROVED.value)
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(sql, params)
+                consumed = cur.rowcount > 0
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to consume approval {approval_id!r}"
+            logger.warning(
+                API_APPROVAL_REPO_FAILED,
+                approval_id=approval_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return consumed
 
     async def delete(self, approval_id: NotBlankStr) -> bool:
         """Delete an approval item; returns True when a row was removed.

@@ -291,6 +291,7 @@ function sanitizeApproval(c: ApprovalResponse): ApprovalResponse {
     created_at: sanitizeWsString(c.created_at, 64) ?? '',
     decided_at: sanitizeNullable(c.decided_at, 64),
     expires_at: sanitizeNullable(c.expires_at, 64),
+    consumed_at: sanitizeNullable(c.consumed_at, 64),
     evidence_package: sanitizeEvidencePackage(c.evidence_package),
     seconds_remaining: c.seconds_remaining,
     urgency_level: sanitizeWsEnum(c.urgency_level, URGENCY_LEVEL_VALUES, 'normal', {

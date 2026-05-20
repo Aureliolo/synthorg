@@ -28,6 +28,7 @@ export function buildConnection(
     rate_limiter: null,
     secret_refs: [],
     webhook_receipt_retention_days: null,
+    sensitive: false,
     created_at: NOW,
     updated_at: NOW,
     ...overrides,

@@ -48,6 +48,7 @@ const sampleConnection: Connection = {
   rate_limiter: null,
   secret_refs: [],
   webhook_receipt_retention_days: null,
+  sensitive: false,
   created_at: '2026-04-01T09:00:00Z',
   updated_at: '2026-04-12T08:00:00Z',
 }
@@ -119,6 +120,7 @@ describe('useConnectionsStore', () => {
       auth_method: 'bearer_token',
       credentials: { token: 'abc' },
       health_check_enabled: true,
+      sensitive: false,
     })
 
     expect(result).toEqual(sampleConnection)
@@ -128,6 +130,7 @@ describe('useConnectionsStore', () => {
       auth_method: 'bearer_token',
       credentials: { token: 'abc' },
       health_check_enabled: true,
+      sensitive: false,
     })
     expect(useConnectionsStore.getState().connections).toHaveLength(1)
   })

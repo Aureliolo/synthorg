@@ -49,6 +49,7 @@ from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import resolve_init_int
 from synthorg.tools.base import BaseTool  # noqa: TC001
 from synthorg.tools.factory import build_default_tools_from_config
+from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox.factory import build_sandbox_backends
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
@@ -67,12 +68,14 @@ if TYPE_CHECKING:
     from synthorg.engine.pipeline.protocol import WorkPipeline
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
+    from synthorg.tools.external_api._runtime import ExternalApiRuntime
     from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 
 _WEB_TIMEOUT_NS: str = "tools"
 _WEB_TIMEOUT_KEY: str = "web_request_timeout_seconds"
+_EXTERNAL_API_NS: str = SettingNamespace.EXTERNAL_API.value
 _GIT_TIMEOUT_NS: str = "tools"
 _GIT_TIMEOUT_KEY: str = "git_command_timeout_seconds"
 _DECOMPOSITION_NS: str = "coordination"
@@ -247,12 +250,81 @@ async def _build_tool_registry(
     return ToolRegistry(tools), len(tools), sandbox_backends
 
 
-def _construct_agent_engine(
+async def _build_external_api_runtime(
+    app_state: AppState,
+) -> ExternalApiRuntime | None:
+    """Resolve the boot-scoped external-access runtime, or ``None`` when off.
+
+    Returns ``None`` (so the tool is not registered) when the feature flag
+    is disabled or no connection catalog is wired. Otherwise resolves the
+    provider discriminator and default per-call limits via the settings
+    resolver and builds the configured ``ExternalAccessProvider``.
+
+    Fail-open: a resolution failure (missing setting, validation error,
+    unknown provider discriminator) keeps the rest of the runtime buildable
+    by logging a warning and returning ``None``, mirroring
+    :func:`_resolve_routing_scorer_config`. A misconfigured external-access
+    feature should not crash the whole agent runtime.
+    """
+    if not app_state.has_connection_catalog:
+        return None
+    resolver = app_state.config_resolver
+    try:
+        if not await resolver.get_bool(_EXTERNAL_API_NS, "enabled"):
+            return None
+
+        from synthorg.tools.external_api._runtime import (  # noqa: PLC0415
+            ExternalApiRuntime,
+        )
+        from synthorg.tools.external_api.provider_factory import (  # noqa: PLC0415
+            build_external_access_provider,
+        )
+
+        provider_type = await resolver.get_str(_EXTERNAL_API_NS, "provider_type")
+        max_response_bytes = await resolver.get_int(
+            _EXTERNAL_API_NS,
+            "default_max_response_bytes",
+        )
+        timeout_seconds = await resolver.get_float(
+            _EXTERNAL_API_NS,
+            "default_timeout_seconds",
+        )
+        default_max_rpm = await resolver.get_int(_EXTERNAL_API_NS, "default_max_rpm")
+        provider = build_external_access_provider(provider_type=provider_type)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            service="external_api",
+            context="external_api_runtime_resolve",
+            note="external-access feature unavailable; tool not registered",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None
+
+    web = app_state.config.web
+    network_policy = (
+        web.network_policy if web is not None and web.network_policy else None
+    )
+    return ExternalApiRuntime(
+        connection_catalog=app_state.connection_catalog,
+        provider=provider,
+        network_policy=network_policy or NetworkPolicy(),
+        max_response_bytes=max_response_bytes,
+        timeout_seconds=timeout_seconds,
+        default_max_rpm=default_max_rpm,
+    )
+
+
+def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
     app_state: AppState,
     provider: CompletionProvider,
     registry: ProviderRegistry,
     tool_registry: ToolRegistry,
     coordination_metrics_collector: CoordinationMetricsCollector | None,
+    external_api_runtime: ExternalApiRuntime | None = None,
 ) -> AgentEngine:
     """Assemble the boot ``AgentEngine`` from live application state.
 
@@ -288,6 +360,7 @@ def _construct_agent_engine(
         config_resolver=app_state.config_resolver,
         event_stream_hub=app_state.event_stream_hub,
         interrupt_store=app_state.interrupt_store,
+        external_api_runtime=external_api_runtime,
         clock=app_state.clock,
     )
 
@@ -541,12 +614,14 @@ async def build_runtime_services(
         extra_tools=red_team_seed.extra_tools,
     )
     coordination_metrics_collector = _construct_coordination_collector(app_state)
+    external_api_runtime = await _build_external_api_runtime(app_state)
     engine = _construct_agent_engine(
         app_state,
         provider,
         registry,
         tool_registry,
         coordination_metrics_collector,
+        external_api_runtime,
     )
     autonomy_resolver = AutonomyResolver(
         registry=ActionTypeRegistry(),

@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from datetime import datetime  # noqa: TC003 -- runtime param type
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -40,8 +41,8 @@ _APPROVALS_UPSERT_SQL = """
         id, action_type, title, description, requested_by,
         risk_level, source, status, created_at, expires_at,
         decided_at, decided_by, decision_reason,
-        task_id, evidence_package, metadata
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        task_id, evidence_package, metadata, consumed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
         action_type = excluded.action_type,
         title = excluded.title,
@@ -56,7 +57,8 @@ _APPROVALS_UPSERT_SQL = """
         decision_reason = excluded.decision_reason,
         task_id = excluded.task_id,
         evidence_package = excluded.evidence_package,
-        metadata = excluded.metadata
+        metadata = excluded.metadata,
+        consumed_at = excluded.consumed_at
 """
 
 
@@ -140,6 +142,11 @@ def _row_to_item(row: Row) -> ApprovalItem:
                 else None
             ),
             task_id=(str(row["task_id"]) if row["task_id"] is not None else None),
+            consumed_at=(
+                coerce_row_timestamp(row["consumed_at"])
+                if row["consumed_at"] is not None
+                else None
+            ),
             evidence_package=(
                 EvidencePackage.model_validate_json(str(row["evidence_package"]))
                 if row["evidence_package"] is not None
@@ -226,6 +233,7 @@ class SQLiteApprovalRepository:
             item.task_id,
             evidence_json,
             json.dumps(item.metadata),
+            format_iso_utc(item.consumed_at) if item.consumed_at else None,
         )
         async with self._write_context():
             try:
@@ -292,6 +300,7 @@ class SQLiteApprovalRepository:
                     item.task_id,
                     evidence_json,
                     json.dumps(item.metadata),
+                    format_iso_utc(item.consumed_at) if item.consumed_at else None,
                 ),
             )
         async with self._write_context():
@@ -398,7 +407,7 @@ class SQLiteApprovalRepository:
             SELECT id, action_type, title, description, requested_by,
                    risk_level, source, status, created_at, expires_at,
                    decided_at, decided_by, decision_reason,
-                   task_id, evidence_package, metadata
+                   task_id, evidence_package, metadata, consumed_at
             FROM approvals WHERE id = ?
         """
         try:
@@ -435,7 +444,7 @@ class SQLiteApprovalRepository:
             SELECT id, action_type, title, description, requested_by,
                    risk_level, source, status, created_at, expires_at,
                    decided_at, decided_by, decision_reason,
-                   task_id, evidence_package, metadata
+                   task_id, evidence_package, metadata, consumed_at
             FROM approvals WHERE id IN ({placeholders})
         """  # noqa: S608  -- placeholders is a closed-set "?,?,..." pattern
         try:
@@ -487,7 +496,7 @@ class SQLiteApprovalRepository:
             SELECT id, action_type, title, description, requested_by,
                    risk_level, source, status, created_at, expires_at,
                    decided_at, decided_by, decision_reason,
-                   task_id, evidence_package, metadata
+                   task_id, evidence_package, metadata, consumed_at
             FROM approvals
             ORDER BY created_at DESC, id DESC
             LIMIT ? OFFSET ?
@@ -556,7 +565,7 @@ class SQLiteApprovalRepository:
             SELECT id, action_type, title, description, requested_by,
                    risk_level, source, status, created_at, expires_at,
                    decided_at, decided_by, decision_reason,
-                   task_id, evidence_package, metadata
+                   task_id, evidence_package, metadata, consumed_at
             FROM approvals WHERE {where}
             ORDER BY created_at DESC, id DESC
             LIMIT ? OFFSET ?
@@ -665,6 +674,59 @@ class SQLiteApprovalRepository:
                 logger.warning(
                     API_APPROVAL_REPO_FAILED,
                     approval_id=entity_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return cursor.rowcount > 0
+
+    async def consume_if_approved(
+        self,
+        approval_id: NotBlankStr,
+        *,
+        consumed_at: datetime,
+    ) -> bool:
+        """Atomic compare-and-set: mark an APPROVED grant as consumed.
+
+        Sets ``consumed_at`` iff the row is currently ``approved`` and not
+        already consumed, so a one-shot approval can authorise exactly one
+        action. Returns ``True`` iff this call won the race (rowcount == 1);
+        ``False`` on replay (already consumed), state mismatch (not
+        approved), or missing row.
+
+        Args:
+            approval_id: The approval id.
+            consumed_at: Aware UTC timestamp to stamp on success.
+
+        Returns:
+            ``True`` iff the grant was consumed by this call.
+
+        Raises:
+            QueryError: On database errors.
+        """
+        sql = (
+            "UPDATE approvals SET consumed_at = ? "
+            "WHERE id = ? AND status = ? AND consumed_at IS NULL"
+        )
+        params = (
+            format_iso_utc(consumed_at),
+            approval_id,
+            ApprovalStatus.APPROVED.value,
+        )
+        async with self._write_context():
+            try:
+                cursor = await self._db.execute(sql, params)
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await _safe_rollback(
+                    self._db,
+                    operation="consume_if_approved",
+                    approval_id=approval_id,
+                )
+                msg = f"Failed to consume approval {approval_id!r}"
+                logger.warning(
+                    API_APPROVAL_REPO_FAILED,
+                    approval_id=approval_id,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )

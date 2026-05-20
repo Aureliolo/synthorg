@@ -104,6 +104,9 @@ class CreateConnectionRequest(BaseModel):
     # ``None`` falls back to the global ``integrations.webhook_receipt_retention_days``
     # setting; ``0`` opts this connection out of the sweep entirely.
     webhook_receipt_retention_days: int | None = Field(default=None, ge=0)
+    # Marks the connection sensitive so the governed external-access
+    # tool routes every call against it (read or write) to approval.
+    sensitive: bool = False
 
     @field_validator("name")
     @classmethod
@@ -137,6 +140,9 @@ class UpdateConnectionRequest(BaseModel):
     # an int sets the override, omitting the field keeps the existing
     # stored value (handled via ``model_fields_set`` below).
     webhook_receipt_retention_days: int | None = Field(default=None, ge=0)
+    # Omitting keeps the stored value; setting true/false toggles whether
+    # external-access calls against this connection require approval.
+    sensitive: bool | None = None
 
 
 class ConnectionsController(Controller):
@@ -242,6 +248,7 @@ class ConnectionsController(Controller):
                 metadata=metadata_copy,
                 health_check_enabled=data.health_check_enabled,
                 webhook_receipt_retention_days=data.webhook_receipt_retention_days,
+                sensitive=data.sensitive,
             )
         except DuplicateConnectionError as exc:
             logger.warning(
@@ -329,6 +336,11 @@ class ConnectionsController(Controller):
             if "webhook_receipt_retention_days" in data.model_fields_set
             else _UNSET
         )
+        sensitive: bool | _UnsetType = (
+            bool(data.sensitive)
+            if "sensitive" in data.model_fields_set and data.sensitive is not None
+            else _UNSET
+        )
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.update(
@@ -337,6 +349,7 @@ class ConnectionsController(Controller):
                 metadata=metadata,
                 health_check_enabled=health_check_enabled,
                 webhook_receipt_retention_days=webhook_receipt_retention_days,
+                sensitive=sensitive,
             )
         except ConnectionNotFoundError as exc:
             logger.warning(

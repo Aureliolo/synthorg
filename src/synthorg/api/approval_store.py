@@ -730,6 +730,56 @@ class ApprovalStore:
             self._items[item.id] = item
             return item
 
+    async def consume_if_approved(
+        self,
+        approval_id: NotBlankStr,
+    ) -> ApprovalItem | None:
+        """Atomically mark an APPROVED one-shot grant as consumed.
+
+        Stamps ``consumed_at`` (read through the store clock) iff the
+        approval is currently APPROVED and not already consumed, so a
+        single grant authorises exactly one action. The authoritative
+        compare-and-set runs in the repository when one is configured;
+        the in-memory cache is updated only after the CAS wins.
+
+        Args:
+            approval_id: The approval id to consume.
+
+        Returns:
+            The consumed item on success, or ``None`` when the approval
+            is missing, not APPROVED, already consumed, or the CAS lost a
+            concurrent race.
+        """
+        async with self._lock:
+            current = self._items.get(approval_id)
+            if current is None and self._repo is not None:
+                current = await self._repo.get(approval_id)
+                if current is not None:
+                    self._items[current.id] = current
+            if current is None:
+                return None
+            current = await self._check_expiration_locked(current)
+            if (
+                current.status != ApprovalStatus.APPROVED
+                or current.consumed_at is not None
+            ):
+                return None
+            consumed_at = self._clock.now()
+            if self._repo is not None:
+                won = await self._repo.consume_if_approved(
+                    approval_id,
+                    consumed_at=consumed_at,
+                )
+                if not won:
+                    # The backend rejected the CAS (concurrent consume or
+                    # state drift); drop the stale cache entry so the next
+                    # reader reloads committed truth.
+                    self._items.pop(approval_id, None)
+                    return None
+            consumed = current.model_copy(update={"consumed_at": consumed_at})
+            self._items[approval_id] = consumed
+            return consumed
+
     async def _invalidate_cache(self, approval_id: str) -> None:
         """Evict a cache entry, acquiring the lock first.
 

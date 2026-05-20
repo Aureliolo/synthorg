@@ -110,6 +110,7 @@ if TYPE_CHECKING:
     from synthorg.security.config import SecurityConfig
     from synthorg.security.trust.service import TrustService
     from synthorg.settings.resolver import ConfigResolver
+    from synthorg.tools.external_api._runtime import ExternalApiRuntime
     from synthorg.tools.invocation_tracker import ToolInvocationTracker
     from synthorg.tools.protocol import ToolInvokerProtocol
     from synthorg.tools.registry import ToolRegistry
@@ -198,6 +199,7 @@ class AgentEngine(
         event_stream_hub: EventStreamHub | None = None,
         interrupt_store: InterruptStore | None = None,
         approval_interrupt_timeout_seconds: float | None = None,
+        external_api_runtime: ExternalApiRuntime | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._agent_middleware_chain = agent_middleware_chain
@@ -217,6 +219,7 @@ class AgentEngine(
         self._provider_configs = provider_configs
         self._model_resolver = model_resolver
         self._approval_store = approval_store
+        self._external_api_runtime = external_api_runtime
         self._parked_context_repo = parked_context_repo
         self._cost_forecast_repo = cost_forecast_repo
         # The boot path constructs one ApprovalGate (backed by the

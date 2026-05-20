@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import { InputField } from '@/components/ui/input-field'
 import { SelectField } from '@/components/ui/select-field'
+import { ToggleField } from '@/components/ui/toggle-field'
 import { validateA2APeerCredentials } from './connection-type-fields'
 import { cn } from '@/lib/utils'
 import { useConnectionsStore } from '@/stores/connections'
@@ -49,6 +50,11 @@ interface FormState {
    * Parsed to `number | null` on submit.
    */
   webhookRetention: string
+  /**
+   * When true, the governed external-access tool routes every call
+   * against this connection (read or write) to human approval.
+   */
+  sensitive: boolean
 }
 
 const EMPTY_STATE: FormState = {
@@ -57,6 +63,7 @@ const EMPTY_STATE: FormState = {
   topLevel: {},
   credentials: {},
   webhookRetention: '',
+  sensitive: false,
 }
 
 function makeInitialState(
@@ -74,6 +81,7 @@ function makeInitialState(
         connection.webhook_receipt_retention_days === null
           ? ''
           : String(connection.webhook_receipt_retention_days),
+      sensitive: connection.sensitive,
     }
   }
   return {
@@ -284,6 +292,7 @@ export function ConnectionFormModal({
         credentials,
         base_url: form.topLevel.base_url?.trim() || null,
         health_check_enabled: true,
+        sensitive: form.sensitive,
         ...(supportsWebhookRetention
           ? { webhook_receipt_retention_days: retentionValue }
           : {}),
@@ -293,6 +302,7 @@ export function ConnectionFormModal({
     } else if (connection) {
       const result = await updateConnection(connection.name, {
         base_url: form.topLevel.base_url?.trim() || null,
+        sensitive: form.sensitive,
         ...(supportsWebhookRetention
           ? { webhook_receipt_retention_days: retentionValue }
           : {}),
@@ -414,6 +424,15 @@ export function ConnectionFormModal({
                     }}
                   />
                 )}
+
+                <ToggleField
+                  label="Sensitive connection"
+                  description="Route every external-access call against this connection (read or write) to human approval."
+                  checked={form.sensitive}
+                  onChange={(checked) =>
+                    setForm((prev) => ({ ...prev, sensitive: checked }))
+                  }
+                />
 
                 <div className="mt-2 flex justify-end gap-2">
                   <Button type="button" variant="ghost" onClick={onClose}>

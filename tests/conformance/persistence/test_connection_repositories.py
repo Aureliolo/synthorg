@@ -73,6 +73,24 @@ class TestConnectionRepository:
     async def test_get_missing_returns_none(self, backend: PersistenceBackend) -> None:
         assert await backend.connections.get(NotBlankStr("never-saved")) is None
 
+    async def test_sensitive_flag_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # Default is non-sensitive.
+        await backend.connections.save(_connection(name="conn-plain"))
+        plain = await backend.connections.get(NotBlankStr("conn-plain"))
+        assert plain is not None
+        assert plain.sensitive is False
+
+        # Explicitly sensitive round-trips and survives upsert.
+        sensitive = _connection(name="conn-secret").model_copy(
+            update={"sensitive": True},
+        )
+        await backend.connections.save(sensitive)
+        fetched = await backend.connections.get(NotBlankStr("conn-secret"))
+        assert fetched is not None
+        assert fetched.sensitive is True
+
     async def test_save_is_idempotent_upsert(self, backend: PersistenceBackend) -> None:
         await backend.connections.save(_connection(metadata={"team": "a"}))
         await backend.connections.save(_connection(metadata={"team": "b"}))

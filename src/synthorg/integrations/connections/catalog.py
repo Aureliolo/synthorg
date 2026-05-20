@@ -191,6 +191,7 @@ class ConnectionCatalog:
         metadata: dict[str, str] | None,
         health_check_enabled: bool,
         webhook_receipt_retention_days: int | None,
+        sensitive: bool = False,
     ) -> Connection:
         """Build and validate the ``Connection`` model BEFORE secret writes.
 
@@ -214,6 +215,7 @@ class ConnectionCatalog:
                 health_check_enabled=health_check_enabled,
                 metadata=metadata or {},
                 webhook_receipt_retention_days=webhook_receipt_retention_days,
+                sensitive=sensitive,
                 created_at=now,
                 updated_at=now,
             )
@@ -315,6 +317,7 @@ class ConnectionCatalog:
         metadata: dict[str, str] | None = None,
         health_check_enabled: bool = True,
         webhook_receipt_retention_days: int | None = None,
+        sensitive: bool = False,
     ) -> Connection:
         """Create a new connection.
 
@@ -333,6 +336,9 @@ class ConnectionCatalog:
                 for the webhook-receipt retention window (days). ``None``
                 falls back to the global default; ``0`` opts out of the
                 cleanup sweep entirely.
+            sensitive: Marks the connection sensitive so the governed
+                external-access tool routes every call against it to
+                human approval.
 
         Returns:
             The persisted connection.
@@ -364,6 +370,7 @@ class ConnectionCatalog:
                 metadata=metadata,
                 health_check_enabled=health_check_enabled,
                 webhook_receipt_retention_days=webhook_receipt_retention_days,
+                sensitive=sensitive,
             )
             await self._store_secret(secret_id, credentials, connection_name=name)
             await self._persist_connection_with_cleanup(
@@ -457,6 +464,7 @@ class ConnectionCatalog:
         metadata: dict[str, str] | None | _UnsetType,
         health_check_enabled: bool | None | _UnsetType,
         webhook_receipt_retention_days: int | None | _UnsetType,
+        sensitive: bool | _UnsetType,
     ) -> dict[str, object]:
         """Compose the PATCH candidate dict, normalising explicit nulls.
 
@@ -490,9 +498,11 @@ class ConnectionCatalog:
             # per-connection override and falls back to the global
             # default.  Pass through verbatim.
             candidate["webhook_receipt_retention_days"] = webhook_receipt_retention_days
+        if sensitive is not _UNSET:
+            candidate["sensitive"] = sensitive
         return candidate
 
-    async def update(
+    async def update(  # noqa: PLR0913 -- one kwarg per independently-patchable field
         self,
         name: str,
         *,
@@ -500,6 +510,7 @@ class ConnectionCatalog:
         metadata: dict[str, str] | None | _UnsetType = _UNSET,
         health_check_enabled: bool | None | _UnsetType = _UNSET,
         webhook_receipt_retention_days: int | None | _UnsetType = _UNSET,
+        sensitive: bool | _UnsetType = _UNSET,
     ) -> Connection:
         """Update a connection's mutable fields.
 
@@ -526,6 +537,7 @@ class ConnectionCatalog:
                     metadata=metadata,
                     health_check_enabled=health_check_enabled,
                     webhook_receipt_retention_days=webhook_receipt_retention_days,
+                    sensitive=sensitive,
                 )
             except MemoryError, RecursionError:
                 raise

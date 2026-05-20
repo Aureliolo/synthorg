@@ -967,6 +967,7 @@ CREATE TABLE connections (
             webhook_receipt_retention_days IS NULL
             OR webhook_receipt_retention_days >= 0
         ),
+    sensitive INTEGER NOT NULL DEFAULT 0 CHECK(sensitive IN (0, 1)),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -1141,6 +1142,9 @@ CREATE TABLE approvals (
     task_id TEXT CONSTRAINT fk_approvals_task_id REFERENCES tasks(id),
     evidence_package TEXT,
     metadata TEXT NOT NULL DEFAULT '{}',
+    consumed_at TEXT CHECK(
+        consumed_at IS NULL OR consumed_at LIKE '%+00:00' OR consumed_at LIKE '%Z'
+    ),
     CHECK(
         (decided_at IS NULL AND decided_by IS NULL)
         OR (decided_at IS NOT NULL AND decided_by IS NOT NULL)

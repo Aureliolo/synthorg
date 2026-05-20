@@ -71,6 +71,7 @@ export const EditMode: Story = {
       rate_limiter: null,
       secret_refs: [],
       webhook_receipt_retention_days: null,
+      sensitive: false,
       created_at: '2026-04-01T09:00:00Z',
       updated_at: '2026-04-12T08:00:00Z',
     },

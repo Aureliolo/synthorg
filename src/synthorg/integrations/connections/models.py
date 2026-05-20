@@ -101,6 +101,9 @@ class Connection(BaseModel):
             webhook-receipt retention window (days). ``None`` falls back
             to ``integrations.webhook_receipt_retention_days``; ``0``
             disables sweeping for this connection's receipts.
+        sensitive: Marks the connection as sensitive so the governed
+            external-access tool routes every call against it (read or
+            write) to human approval, not just write methods.
         created_at: Creation timestamp.
         updated_at: Last modification timestamp.
     """
@@ -119,6 +122,7 @@ class Connection(BaseModel):
     health_check_enabled: bool = True
     health_status: ConnectionStatus = ConnectionStatus.UNKNOWN
     last_health_check_at: AwareDatetime | None = None
+    sensitive: bool = False
     metadata: dict[str, str] = Field(default_factory=dict)
     webhook_receipt_retention_days: WebhookRetentionDays = Field(
         default=None,

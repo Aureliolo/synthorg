@@ -474,6 +474,7 @@ class ToolCategory(StrEnum):
     ONTOLOGY = "ontology"
     MCP = "mcp"
     BROWSER = "browser"
+    EXTERNAL_DATA = "external_data"
     OTHER = "other"
 
 
@@ -581,6 +582,7 @@ class ActionType(StrEnum):
     BROWSER_DIFF = "browser:diff"
     BROWSER_ACCESSIBILITY_SCAN = "browser:accessibility_scan"
     BROWSER_SPEC = "browser:spec"
+    EXTERNAL_DATA_REQUEST = "external_data:request"
 
 
 class MergeOrder(StrEnum):

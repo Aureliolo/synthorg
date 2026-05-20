@@ -541,3 +541,81 @@ class TestApprovalRepository:
             to_state=ApprovalStatus.EXPIRED,
         )
         assert result is False
+
+    async def test_consume_if_approved_wins_once_then_rejects_replay(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        approved = _make_item(
+            approval_id="consume-approved", status=ApprovalStatus.APPROVED
+        )
+        await repo.save(approved)
+        consumed_at = datetime(2026, 3, 1, 9, 30, tzinfo=UTC)
+
+        first = await repo.consume_if_approved(approved.id, consumed_at=consumed_at)
+        assert first is True
+
+        fetched = await repo.get(approved.id)
+        assert fetched is not None
+        assert fetched.consumed_at is not None
+        assert fetched.consumed_at == consumed_at
+        # The approval remains APPROVED; consumption is orthogonal.
+        assert fetched.status is ApprovalStatus.APPROVED
+
+        # Replay loses: the row is already consumed.
+        replay = await repo.consume_if_approved(
+            approved.id,
+            consumed_at=datetime(2026, 3, 1, 9, 31, tzinfo=UTC),
+        )
+        assert replay is False
+        unchanged = await repo.get(approved.id)
+        assert unchanged is not None
+        assert unchanged.consumed_at == consumed_at
+
+    async def test_consume_if_approved_returns_false_when_not_approved(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        pending = _make_item(
+            approval_id="consume-pending", status=ApprovalStatus.PENDING
+        )
+        await repo.save(pending)
+
+        result = await repo.consume_if_approved(
+            pending.id,
+            consumed_at=datetime(2026, 3, 1, tzinfo=UTC),
+        )
+        assert result is False
+        fetched = await repo.get(pending.id)
+        assert fetched is not None
+        assert fetched.consumed_at is None
+
+    async def test_consume_if_approved_returns_false_on_missing_row(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+
+        result = await repo.consume_if_approved(
+            NotBlankStr("consume-missing"),
+            consumed_at=datetime(2026, 3, 1, tzinfo=UTC),
+        )
+        assert result is False
+
+    async def test_consumed_at_round_trips(
+        self,
+        backend: PersistenceBackend,
+    ) -> None:
+        repo = _approval_repo(backend)
+        consumed_at = datetime(2026, 3, 2, 14, 0, tzinfo=UTC)
+        item = _make_item(
+            approval_id="consume-rt", status=ApprovalStatus.APPROVED
+        ).model_copy(update={"consumed_at": consumed_at})
+        await repo.save(item)
+
+        fetched = await repo.get(item.id)
+        assert fetched is not None
+        assert fetched.consumed_at is not None
+        assert fetched.consumed_at == consumed_at

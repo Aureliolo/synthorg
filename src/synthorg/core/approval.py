@@ -49,6 +49,12 @@ class ApprovalItem(BaseModel):
             Defaults to ``REVIEW_GATE``; the two park producers (SecOps
             escalation and the ``request_human_approval`` tool) set
             ``PARKED_CONTEXT``.
+        consumed_at: When an APPROVED one-shot grant was spent. ``None``
+            until consumed. The governed external-access tool sets this
+            via an atomic compare-and-set (``consume_if_approved``)
+            before egress so the same approval cannot authorise a second
+            call; the approval keeps ``status == APPROVED`` because
+            consumption is orthogonal to the decision lifecycle.
         metadata: Additional key-value metadata.
     """
 
@@ -68,6 +74,7 @@ class ApprovalItem(BaseModel):
     decided_by: NotBlankStr | None = None
     decision_reason: NotBlankStr | None = None
     task_id: NotBlankStr | None = None
+    consumed_at: AwareDatetime | None = None
     evidence_package: EvidencePackage | None = Field(
         default=None,
         description="Structured evidence for HITL approval",

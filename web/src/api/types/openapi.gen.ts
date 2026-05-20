@@ -5964,6 +5964,11 @@ export type components = {
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
              */
+            readonly consumed_at: string | null;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
             readonly created_at: string;
             /**
              * Format: date-time
@@ -6933,6 +6938,8 @@ export type components = {
             readonly rate_limiter: components["schemas"]["RateLimiterConfig"] | null;
             /** @default [] */
             readonly secret_refs: readonly components["schemas"]["SecretRef"][];
+            /** @default false */
+            readonly sensitive: boolean;
             /**
              * Format: date-time
              * @description datetime with the constraint that the value must have timezone info
@@ -7239,6 +7246,8 @@ export type components = {
                 readonly [key: string]: string;
             } | null;
             readonly name: string;
+            /** @default false */
+            readonly sensitive: boolean;
             readonly webhook_receipt_retention_days?: number | null;
         };
         /** CreateCustomRuleRequest */
@@ -11458,7 +11467,7 @@ export type components = {
          *     can be edited at runtime via the settings API.
          * @enum {string}
          */
-        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry";
+        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api";
         /**
          * SettingSource
          * @description Origin of a resolved setting value.
@@ -12222,7 +12231,7 @@ export type components = {
          * @description Category of a tool for access-level gating.
          * @enum {string}
          */
-        readonly ToolCategory: "file_system" | "code_execution" | "version_control" | "web" | "database" | "terminal" | "design" | "communication" | "analytics" | "deployment" | "memory" | "ontology" | "mcp" | "browser" | "other";
+        readonly ToolCategory: "file_system" | "code_execution" | "version_control" | "web" | "database" | "terminal" | "design" | "communication" | "analytics" | "deployment" | "memory" | "ontology" | "mcp" | "browser" | "external_data" | "other";
         /**
          * ToolPermissions
          * @description Tool permissions
@@ -12475,6 +12484,7 @@ export type components = {
             readonly metadata?: {
                 readonly [key: string]: string;
             } | null;
+            readonly sensitive?: boolean | null;
             readonly webhook_receipt_retention_days?: number | null;
         };
         /** UpdateCustomRuleRequest */
