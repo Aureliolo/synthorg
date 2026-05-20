@@ -28,6 +28,7 @@ from synthorg.engine.pipeline.models import WorkSource
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
     from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
+    from synthorg.engine.pipeline.forecast_gate import ForecastGate
     from synthorg.engine.pipeline.protocol import WorkPipeline
 
 
@@ -37,6 +38,7 @@ def build_work_entry_adapter(
     *,
     work_pipeline: WorkPipeline,
     default_project: NotBlankStr,
+    forecast_gate: ForecastGate | None = ...,
 ) -> IntakeEntryAdapter: ...
 
 
@@ -46,6 +48,7 @@ def build_work_entry_adapter(
     *,
     work_pipeline: WorkPipeline,
     default_project: NotBlankStr,
+    forecast_gate: ForecastGate | None = ...,
 ) -> ObjectiveEntryAdapter: ...
 
 
@@ -55,6 +58,7 @@ def build_work_entry_adapter(
     *,
     work_pipeline: WorkPipeline,
     default_project: NotBlankStr,
+    forecast_gate: ForecastGate | None = ...,
 ) -> TaskBoardEntryAdapter: ...
 
 
@@ -64,6 +68,7 @@ def build_work_entry_adapter(
     *,
     work_pipeline: WorkPipeline,
     default_project: NotBlankStr,
+    forecast_gate: ForecastGate | None = ...,
 ) -> WorkEntryAdapter[Any]: ...
 
 
@@ -72,6 +77,7 @@ def build_work_entry_adapter(
     *,
     work_pipeline: WorkPipeline,
     default_project: NotBlankStr,
+    forecast_gate: ForecastGate | None = None,
 ) -> WorkEntryAdapter[Any]:
     """Construct the work-entry adapter for ``source``.
 
@@ -84,6 +90,11 @@ def build_work_entry_adapter(
             TASK_BOARD arm ignores it (board filings carry their own
             project). The kwarg stays required so all boot wiring
             calls share a single uniform shape.
+        forecast_gate: Optional pre-flight cost forecast gate. When
+            present, the adapter dispatches through the gate (which
+            consults the persisted ``Forecast`` row before passing
+            the work item to the pipeline); when absent, the adapter
+            dispatches straight to the pipeline.
 
     Returns:
         The concrete work-entry adapter.
@@ -91,17 +102,18 @@ def build_work_entry_adapter(
     Raises:
         UnknownStrategyError: If ``source`` has no wired adapter.
     """
+    spine: WorkPipeline = forecast_gate if forecast_gate is not None else work_pipeline
     if source is WorkSource.INTAKE:
         return IntakeEntryAdapter(
-            work_pipeline=work_pipeline,
+            work_pipeline=spine,
             default_project=default_project,
         )
     if source is WorkSource.OBJECTIVE:
         return ObjectiveEntryAdapter(
-            work_pipeline=work_pipeline,
+            work_pipeline=spine,
             default_project=default_project,
         )
     if source is WorkSource.TASK_BOARD:
-        return TaskBoardEntryAdapter(work_pipeline=work_pipeline)
+        return TaskBoardEntryAdapter(work_pipeline=spine)
     msg = f"no work-entry adapter wired for source {source.value!r}"
     raise UnknownStrategyError(msg)

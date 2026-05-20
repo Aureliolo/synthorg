@@ -6,7 +6,11 @@ handling into a mixin so the main module stays under the size limit.
 
 from typing import TYPE_CHECKING, Any
 
-from synthorg.budget.errors import BudgetExhaustedError, QuotaExhaustedError
+from synthorg.budget.errors import (
+    BudgetExhaustedError,
+    QuotaExhaustedError,
+    RunHardCeilingExceededError,
+)
 from synthorg.budget.quota import DegradationAction
 from synthorg.engine.context import AgentContext
 from synthorg.engine.cost_recording import resolve_tracker_currency
@@ -169,7 +173,13 @@ class AgentEngineErrorsMixin:
         ctx: AgentContext | None = None,
         system_prompt: SystemPrompt | None = None,
     ) -> AgentRunResult:
-        """Build a BUDGET_EXHAUSTED result (no recovery -- controlled stop)."""
+        """Build a BUDGET_EXHAUSTED (or PARKED, for hard ceiling) result.
+
+        Hard-ceiling crossings route to a parked termination when the
+        approval gate is wired so the operator can raise the ceiling
+        and resume; the existing BUDGET_EXHAUSTED path covers all
+        other subclasses (monthly / daily / project / quota).
+        """
         logger.warning(
             EXECUTION_ENGINE_BUDGET_STOPPED,
             agent_id=agent_id,
@@ -177,11 +187,18 @@ class AgentEngineErrorsMixin:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+        is_ceiling = isinstance(exc, RunHardCeilingExceededError)
+        has_gate = getattr(self, "_approval_gate", None) is not None
         try:
             error_ctx = ctx or AgentContext.from_identity(identity, task=task)
+            termination = (
+                TerminationReason.PARKED
+                if is_ceiling and has_gate
+                else TerminationReason.BUDGET_EXHAUSTED
+            )
             budget_result = ExecutionResult(
                 context=error_ctx,
-                termination_reason=TerminationReason.BUDGET_EXHAUSTED,
+                termination_reason=termination,
             )
             error_prompt = build_error_prompt(
                 identity,

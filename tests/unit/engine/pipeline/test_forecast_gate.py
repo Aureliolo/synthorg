@@ -156,14 +156,14 @@ def _gate(
 class TestForecastGate:
     async def test_disabled_passes_through(self) -> None:
         gate, repo, _ = _gate(forecast_required=False)
-        result = await gate.dispatch(_work_item())
+        result = await gate.run(_work_item())
         assert result.task_id == "task-001"
         assert repo.saves == []
 
     async def test_missing_forecast_raises_approval_required(self) -> None:
         gate, repo, _ = _gate()
         with pytest.raises(CostForecastApprovalRequiredError) as info:
-            await gate.dispatch(_work_item())
+            await gate.run(_work_item())
         assert info.value.forecast_id is not None
         assert info.value.estimated_cost > 0
         assert info.value.currency == "USD"
@@ -188,7 +188,7 @@ class TestForecastGate:
         gate, _, _ = _gate(repo=repo)
 
         with pytest.raises(CostForecastApprovalRequiredError):
-            await gate.dispatch(_work_item(forecast_id=existing.forecast_id))
+            await gate.run(_work_item(forecast_id=existing.forecast_id))
 
     async def test_approved_forecast_dispatches(self) -> None:
         repo = _FakeForecastRepo()
@@ -209,7 +209,7 @@ class TestForecastGate:
         repo.rows[approved.forecast_id] = approved
         gate, _, _ = _gate(repo=repo)
 
-        result = await gate.dispatch(_work_item(forecast_id=approved.forecast_id))
+        result = await gate.run(_work_item(forecast_id=approved.forecast_id))
         assert result.task_id == "task-001"
 
     async def test_rejected_forecast_raises_terminal_error(self) -> None:
@@ -231,7 +231,7 @@ class TestForecastGate:
         gate, _, _ = _gate(repo=repo)
 
         with pytest.raises(CostForecastRejectedError) as info:
-            await gate.dispatch(_work_item(forecast_id=rejected.forecast_id))
+            await gate.run(_work_item(forecast_id=rejected.forecast_id))
         assert info.value.forecast_id == rejected.forecast_id
 
     async def test_superseded_forecast_triggers_fresh_estimate(self) -> None:
@@ -252,4 +252,4 @@ class TestForecastGate:
         gate, _, _ = _gate(repo=repo)
 
         with pytest.raises(CostForecastApprovalRequiredError):
-            await gate.dispatch(_work_item(forecast_id=superseded.forecast_id))
+            await gate.run(_work_item(forecast_id=superseded.forecast_id))

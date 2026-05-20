@@ -171,6 +171,15 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
             app_state,
             workspace_root=app_state.agent_workspace_root,
         )
+        # Retry cost-dial wiring if the on_startup attempt was skipped or
+        # absorbed (e.g. persistence not yet connected); the entry-adapter
+        # rebuild below threads the live forecast_gate through.
+        if app_state.has_persistence and app_state.cost_forecaster is None:
+            from synthorg.api.app import (  # noqa: PLC0415
+                _try_wire_cost_dial,
+            )
+
+            _try_wire_cost_dial(app_state)
         app_state.swap_worker_execution_service(
             services.worker_execution_service,
         )

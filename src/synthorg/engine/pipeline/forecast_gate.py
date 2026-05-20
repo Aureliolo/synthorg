@@ -93,7 +93,7 @@ class ForecastGate:
         self._forecast_repo = forecast_repo
         self._budget_config = budget_config
 
-    async def dispatch(self, work_item: WorkItem) -> WorkPipelineResult:
+    async def run(self, work_item: WorkItem) -> WorkPipelineResult:
         """Gate-check ``work_item`` and forward to the pipeline.
 
         Branching:
