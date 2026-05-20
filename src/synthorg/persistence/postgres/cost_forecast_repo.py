@@ -25,11 +25,11 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_FORECAST_FAILED,
     PERSISTENCE_COST_FORECAST_FETCHED,
     PERSISTENCE_COST_FORECAST_LISTED,
-    PERSISTENCE_COST_FORECAST_SAVED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
     coerce_row_timestamp,
+    format_iso_utc,
     validate_pagination_args,
 )
 from synthorg.persistence.cost_forecast_protocol import (  # noqa: TC001
@@ -199,22 +199,26 @@ class PostgresCostForecastRepository:
                 currencies=frozenset({entity.currency, live_currency}),
             )
         params = (
-            entity.forecast_id,
+            str(entity.forecast_id),
             entity.brief_hash,
             float(entity.estimated_cost),
             float(entity.lower_bound),
             float(entity.upper_bound),
             entity.currency,
             entity.decision.value,
-            entity.decided_at,
+            (
+                format_iso_utc(entity.decided_at)
+                if entity.decided_at is not None
+                else None
+            ),
             entity.decided_by,
             (
                 float(entity.ceiling_amount)
                 if entity.ceiling_amount is not None
                 else None
             ),
-            entity.created_at,
-            entity.updated_at,
+            format_iso_utc(entity.created_at),
+            format_iso_utc(entity.updated_at),
         )
         try:
             async with self._pool.connection() as conn:
@@ -243,11 +247,6 @@ class PostgresCostForecastRepository:
                 error=safe_error_description(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
-            PERSISTENCE_COST_FORECAST_SAVED,
-            forecast_id=str(entity.forecast_id),
-            decision=entity.decision.value,
-        )
 
     async def get(self, entity_id: UUID) -> Forecast | None:
         """Get a forecast by id, or ``None`` if not found."""
@@ -260,7 +259,7 @@ class PostgresCostForecastRepository:
                 self._pool.connection() as conn,
                 conn.cursor(row_factory=dict_row) as cur,
             ):
-                await cur.execute(sql, (entity_id,))
+                await cur.execute(sql, (str(entity_id),))
                 row = await cur.fetchone()
         except psycopg.Error as exc:
             msg = f"Failed to fetch forecast {entity_id!r}"
@@ -395,16 +394,16 @@ class PostgresCostForecastRepository:
         decided_by = updates.get("decided_by")
         decided_at_raw = updates.get("decided_at")
         ceiling_amount = updates.get("ceiling_amount")
-        decided_at_value: datetime | None = None
+        decided_at_value: str | None = None
         if to_state in {ForecastDecision.APPROVED, ForecastDecision.REJECTED}:
-            decided_at_value = (
+            decided_at_value = format_iso_utc(
                 decided_at_raw
                 if isinstance(decided_at_raw, datetime)
-                else datetime.now(UTC)
+                else datetime.now(UTC),
             )
         elif to_state is ForecastDecision.SUPERSEDED:
-            decided_at_value = datetime.now(UTC)
-        updated_at_value = datetime.now(UTC)
+            decided_at_value = format_iso_utc(datetime.now(UTC))
+        updated_at_value = format_iso_utc(datetime.now(UTC))
         sql = (
             "UPDATE cost_forecasts SET "
             "decision = %s, decided_at = %s, decided_by = %s, "
@@ -417,7 +416,7 @@ class PostgresCostForecastRepository:
             decided_by,
             ceiling_amount,
             updated_at_value,
-            entity_id,
+            str(entity_id),
             from_state.value,
         )
         try:
@@ -442,7 +441,7 @@ class PostgresCostForecastRepository:
         sql = "DELETE FROM cost_forecasts WHERE forecast_id = %s"
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(sql, (entity_id,))
+                await cur.execute(sql, (str(entity_id),))
                 rowcount = cur.rowcount
                 await conn.commit()
         except psycopg.Error as exc:

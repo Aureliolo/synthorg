@@ -27,7 +27,6 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_FORECAST_FAILED,
     PERSISTENCE_COST_FORECAST_FETCHED,
     PERSISTENCE_COST_FORECAST_LISTED,
-    PERSISTENCE_COST_FORECAST_SAVED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import (
@@ -295,11 +294,6 @@ class SQLiteCostForecastRepository:
                     error=safe_error_description(exc),
                 )
                 raise QueryError(msg) from exc
-        logger.debug(
-            PERSISTENCE_COST_FORECAST_SAVED,
-            forecast_id=str(entity.forecast_id),
-            decision=entity.decision.value,
-        )
 
     async def get(self, entity_id: UUID) -> Forecast | None:
         """Get a forecast by id, or ``None`` if not found."""

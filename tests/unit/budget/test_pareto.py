@@ -1,6 +1,6 @@
 """Unit tests for ParetoAnalyzer and StubBenchmarkScoreProvider (#1982)."""
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 
 from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
@@ -34,7 +34,7 @@ def _fake_now() -> datetime:
 def _assignments(
     *,
     items: Sequence[RoleAssignment],
-):
+) -> Callable[[], Awaitable[Sequence[RoleAssignment]]]:
     async def _lookup() -> Sequence[RoleAssignment]:
         return items
 

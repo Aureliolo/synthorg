@@ -9,6 +9,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, get_args
 from uuid import UUID  # noqa: TC003 -- runtime annotation
 
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.errors import RunHardCeilingExceededError
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
@@ -264,7 +265,7 @@ def _build_checker_closure(  # noqa: PLR0913
     project_baseline: float = 0.0,
     project_id: str | None = None,
     hard_ceiling: float = 0.0,
-    hard_ceiling_currency: str = "USD",
+    hard_ceiling_currency: str | None = None,
     task_id: str | None = None,
     forecast_id: UUID | None = None,
 ) -> BudgetChecker:
@@ -308,7 +309,7 @@ def _build_checker_closure(  # noqa: PLR0913
             _raise_hard_ceiling(
                 running_cost=running_cost,
                 hard_ceiling=hard_ceiling,
-                currency=hard_ceiling_currency,
+                currency=hard_ceiling_currency or DEFAULT_CURRENCY,
                 agent_id=agent_id,
                 task_id=task_id,
                 forecast_id=forecast_id,
