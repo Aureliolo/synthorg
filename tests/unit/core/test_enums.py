@@ -114,9 +114,11 @@ class TestEnumMemberCounts:
     def test_workflow_edge_type_has_7_members(self) -> None:
         assert len(WorkflowEdgeType) == 7
 
-    def test_action_type_has_26_members(self) -> None:
-        assert len(ActionType) == 26
+    def test_action_type_has_31_members(self) -> None:
+        # Five BROWSER_* members added for EPIC #1987 (issue #1992).
+        assert len(ActionType) == 31
         assert ActionType.MEMORY_READ.value == "memory:read"
+        assert ActionType.BROWSER_NAVIGATE.value == "browser:navigate"
 
 
 # ── String Values ──────────────────────────────────────────────────

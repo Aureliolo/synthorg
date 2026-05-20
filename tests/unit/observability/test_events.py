@@ -217,6 +217,7 @@ class TestEventConstants:
             "async_task",
             "autonomy",
             "behavior_tagging",
+            "browser",
             "budget",
             "cfo",
             "chief_of_staff",

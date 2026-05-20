@@ -11,7 +11,8 @@ from synthorg.security.action_types import ActionTypeCategory, ActionTypeRegistr
 @pytest.mark.unit
 class TestActionTypeCategory:
     def test_has_expected_member_count(self) -> None:
-        assert len(ActionTypeCategory) == 11
+        # BROWSER added for EPIC #1987 (issue #1992).
+        assert len(ActionTypeCategory) == 12
 
     @pytest.mark.parametrize(
         ("member", "value"),
@@ -27,6 +28,7 @@ class TestActionTypeCategory:
             (ActionTypeCategory.DB, "db"),
             (ActionTypeCategory.ARCH, "arch"),
             (ActionTypeCategory.MEMORY, "memory"),
+            (ActionTypeCategory.BROWSER, "browser"),
         ],
     )
     def test_member_values(self, member: ActionTypeCategory, value: str) -> None:
