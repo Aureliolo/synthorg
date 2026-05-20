@@ -7,7 +7,7 @@ repo.  No external dependency; pushes/fetches are pure-local.
 """
 
 import asyncio
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+from pathlib import Path
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
@@ -65,12 +65,16 @@ class EmbeddedGitBackend:
         return self._base_root / self._embedded_subdir / f"{project_id}.git"
 
     async def _reject_if_nested_in_parent_worktree(self, path: Path, pid: str) -> None:
-        """Refuse to provision inside an existing parent working tree.
+        """Refuse if *path* sits inside an EXISTING parent working tree.
 
-        ``rev-parse --show-toplevel`` succeeds (exit 0) iff *path* is inside
-        some git working tree. After ``mkdir`` of a fresh workspace dir, if
-        this succeeds the parent is a working tree and provisioning would
-        mutate the wrong repo. Raise instead of silently corrupting it.
+        ``rev-parse --show-toplevel`` succeeds (exit 0) and reports a
+        toplevel DIFFERENT from *path* iff some parent dir of *path* is a
+        working tree; in that case ``git init`` would silently no-op and
+        the subsequent ``git config`` / ``git commit`` would mutate the
+        outer repo. Raise instead of silently corrupting it. If git
+        already considers *path* itself the toplevel (idempotent provision
+        on a previously-initialised dir), we let the caller proceed and
+        rely on ``is_git_repo`` upstream for short-circuit semantics.
         """
         from synthorg.engine.workspace._git_subprocess import (  # noqa: PLC0415
             run_git_subprocess,
@@ -79,19 +83,23 @@ class EmbeddedGitBackend:
             GIT_BACKEND_PROVISION_FAILED,
         )
 
-        rc, _stdout, _stderr = await run_git_subprocess(
+        rc, stdout, _stderr = await run_git_subprocess(
             path,
             "rev-parse",
             "--show-toplevel",
             cmd_timeout=self._cmd_timeout,
             log_event=GIT_BACKEND_PROVISION_FAILED,
         )
-        if rc == 0:
-            msg = (
-                f"refusing to provision project {pid!r} inside an existing "
-                f"parent git working tree at {path!s}"
-            )
-            raise GitBackendProvisionError(msg)
+        if rc != 0:
+            return
+        toplevel = await asyncio.to_thread(Path(stdout).resolve)
+        if toplevel == await asyncio.to_thread(path.resolve):
+            return
+        msg = (
+            f"refusing to provision project {pid!r} inside an existing "
+            f"parent git working tree at {toplevel!s}"
+        )
+        raise GitBackendProvisionError(msg)
 
     async def _configure_identity(self, workspace_path: Path, pid: str) -> None:
         await git(
@@ -141,13 +149,15 @@ class EmbeddedGitBackend:
         except OSError as exc:
             msg = f"failed to create workspace dirs for {pid!r}"
             raise GitBackendProvisionError(msg) from exc
-        # Safety: never run ``git init`` / ``git config`` / ``git commit`` from
-        # inside an existing parent working tree. ``is_git_repo`` already
-        # short-circuits when *workspace_path* itself is a working tree, but
-        # if a parent dir is a working tree (e.g. the synthorg repo when
-        # base_root was misconfigured) the subsequent commands would mutate
-        # that outer repo's config and create stray empty commits on it.
-        await self._reject_if_nested_in_parent_worktree(bare, pid)
+        # Safety: never run ``git init`` / ``git config`` / ``git commit``
+        # from inside an existing parent working tree. ``is_git_repo``
+        # already short-circuits when *workspace_path* itself is a working
+        # tree, but if a parent dir is a working tree (e.g. the synthorg
+        # repo when base_root was misconfigured) the subsequent commands
+        # would mutate that outer repo's config and create stray empty
+        # commits on it. The bare path is created under our own
+        # config-controlled ``base_root`` so we only guard the working
+        # tree, which is where ``git config`` / ``git commit`` execute.
         await self._reject_if_nested_in_parent_worktree(workspace_path, pid)
 
         await git(
@@ -156,7 +166,6 @@ class EmbeddedGitBackend:
             "--bare",
             "--initial-branch",
             str(default_branch),
-            ".",
             cmd_timeout=self._cmd_timeout,
             fail_exc=GitBackendProvisionError,
             project_id=pid,
@@ -166,21 +175,10 @@ class EmbeddedGitBackend:
             "init",
             "--initial-branch",
             str(default_branch),
-            ".",
             cmd_timeout=self._cmd_timeout,
             fail_exc=GitBackendProvisionError,
             project_id=pid,
         )
-        # Defensive: ``git init`` must have created a local ``.git`` (dir or
-        # the worktree-link file). Otherwise a subsequent ``git config`` /
-        # ``git commit`` would silently walk up to a parent working tree and
-        # corrupt its config + add stray empty commits.
-        if not await asyncio.to_thread((workspace_path / ".git").exists):
-            msg = (
-                f"git init did not create .git for project {pid!r} at "
-                f"{workspace_path!s}; refusing to run git config/commit"
-            )
-            raise GitBackendProvisionError(msg)
         await self._configure_identity(workspace_path, pid)
         await git(
             workspace_path,

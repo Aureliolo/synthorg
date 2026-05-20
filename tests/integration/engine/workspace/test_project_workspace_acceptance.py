@@ -84,7 +84,7 @@ def _build_service(
     )
     return ProjectWorkspaceService(
         base_root=base_root,
-        repo=repo,  # type: ignore[arg-type]
+        repo=repo,
         git_backend=git_backend,
         config=config,
         clock=FakeClock(),

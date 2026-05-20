@@ -61,7 +61,7 @@ def _git_backend(kind: GitBackendType = GitBackendType.EMBEDDED) -> GitBackend:
         )
 
     backend.provision.side_effect = _provision
-    return backend
+    return backend  # type: ignore[no-any-return]
 
 
 def _service(
@@ -73,7 +73,7 @@ def _service(
 ) -> ProjectWorkspaceService:
     return ProjectWorkspaceService(
         base_root=tmp_path,
-        repo=repo,  # type: ignore[arg-type]
+        repo=repo,
         git_backend=backend,
         config=GitBackendConfig(kind=kind)
         if kind is GitBackendType.EMBEDDED
@@ -93,7 +93,7 @@ class TestProjectWorkspaceService:
         assert ws.project_id == "proj-1"
         assert ws.git_backend_kind is GitBackendType.EMBEDDED
         assert ws.workspace_path == str(tmp_path / "projects" / "proj-1")
-        backend.provision.assert_awaited_once()
+        backend.provision.assert_awaited_once()  # type: ignore[attr-defined]
         assert repo.save_calls == 1
 
     async def test_idempotent_same_kind_short_circuits(self, tmp_path: Path) -> None:
@@ -105,7 +105,7 @@ class TestProjectWorkspaceService:
         second = await svc.get_or_provision(NotBlankStr("proj-1"))
 
         assert first == second
-        backend.provision.assert_awaited_once()  # not re-provisioned
+        backend.provision.assert_awaited_once()  # type: ignore[attr-defined]
         assert repo.save_calls == 1
 
     async def test_backend_kind_change_reprovisions(self, tmp_path: Path) -> None:
@@ -119,7 +119,7 @@ class TestProjectWorkspaceService:
         ws2 = await svc2.get_or_provision(NotBlankStr("proj-1"))
 
         assert ws2.git_backend_kind is GitBackendType.LOCAL_PATH
-        local.provision.assert_awaited_once()
+        local.provision.assert_awaited_once()  # type: ignore[attr-defined]
 
     async def test_concurrent_first_touch_provisions_once(self, tmp_path: Path) -> None:
         repo = _FakeWorkspaceRepo()
@@ -132,5 +132,5 @@ class TestProjectWorkspaceService:
         )
 
         assert a == b
-        backend.provision.assert_awaited_once()
+        backend.provision.assert_awaited_once()  # type: ignore[attr-defined]
         assert repo.save_calls == 1
