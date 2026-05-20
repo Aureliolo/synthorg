@@ -15,7 +15,7 @@ needs.
 
 from datetime import date
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -74,8 +74,8 @@ async def test_hard_ceiling_with_approval_gate_routes_to_parked() -> None:
     )
 
     result = cast(
-        "object",
-        engine._handle_budget_error(  # type: ignore[attr-defined]
+        "Any",
+        engine._handle_budget_error(
             exc=exc,
             identity=_identity(),
             task=_task(),
@@ -85,7 +85,7 @@ async def test_hard_ceiling_with_approval_gate_routes_to_parked() -> None:
         ),
     )
 
-    assert result.execution_result.termination_reason is TerminationReason.PARKED  # type: ignore[attr-defined]
+    assert result.execution_result.termination_reason is TerminationReason.PARKED
 
 
 @pytest.mark.asyncio
@@ -100,8 +100,8 @@ async def test_hard_ceiling_without_approval_gate_falls_back_to_exhausted() -> N
     )
 
     result = cast(
-        "object",
-        engine._handle_budget_error(  # type: ignore[attr-defined]
+        "Any",
+        engine._handle_budget_error(
             exc=exc,
             identity=_identity(),
             task=_task(),
@@ -112,8 +112,7 @@ async def test_hard_ceiling_without_approval_gate_falls_back_to_exhausted() -> N
     )
 
     assert (
-        result.execution_result.termination_reason  # type: ignore[attr-defined]
-        is TerminationReason.BUDGET_EXHAUSTED
+        result.execution_result.termination_reason is TerminationReason.BUDGET_EXHAUSTED
     )
 
 
@@ -124,8 +123,8 @@ async def test_other_budget_errors_still_route_to_exhausted() -> None:
     exc = BudgetExhaustedError("monthly hard stop crossed")
 
     result = cast(
-        "object",
-        engine._handle_budget_error(  # type: ignore[attr-defined]
+        "Any",
+        engine._handle_budget_error(
             exc=exc,
             identity=_identity(),
             task=_task(),
@@ -136,6 +135,5 @@ async def test_other_budget_errors_still_route_to_exhausted() -> None:
     )
 
     assert (
-        result.execution_result.termination_reason  # type: ignore[attr-defined]
-        is TerminationReason.BUDGET_EXHAUSTED
+        result.execution_result.termination_reason is TerminationReason.BUDGET_EXHAUSTED
     )
