@@ -606,3 +606,30 @@ class TestConcurrentConverse:
         lock_a_again = await proposer._lock_for("conv-A")
         assert lock_a is not lock_b
         assert lock_a is lock_a_again
+
+    async def test_release_identity_check_skips_replaced_lock(self) -> None:
+        # If a concurrent caller has already minted a fresh lock for
+        # the same conversation id, releasing the OLD lock instance
+        # must NOT pop the dict entry -- otherwise the new caller's
+        # serialisation invariant breaks. The identity check inside
+        # ``_release_conversation_lock`` enforces this.
+        provider = ScriptedProvider(responses=[])
+        proposer, *_ = _build(provider=provider)
+        lock_v1 = await proposer._lock_for("conv-race")
+        # Simulate the dict slot being replaced by a concurrent caller
+        # after lock_v1's owner exited its ``async with``.
+        new_lock = asyncio.Lock()
+        proposer._conversation_locks["conv-race"] = new_lock
+        # Releasing under the OLD lock identity must leave the new
+        # entry intact.
+        await proposer._release_conversation_lock(
+            "conv-race",
+            expected_lock=lock_v1,
+        )
+        assert proposer._conversation_locks.get("conv-race") is new_lock
+        # Releasing under the CURRENT lock identity actually pops.
+        await proposer._release_conversation_lock(
+            "conv-race",
+            expected_lock=new_lock,
+        )
+        assert "conv-race" not in proposer._conversation_locks
