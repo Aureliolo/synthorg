@@ -1089,6 +1089,10 @@ CREATE TABLE approvals (
         risk_level IN ('low', 'medium', 'high', 'critical')
     ),
     source TEXT NOT NULL DEFAULT 'review_gate' CHECK(
+        -- SQLite retains the narrow domain here; the conversational
+        -- propose path keeps ApprovalStore in-memory by default so a
+        -- 'conversational_intake' row never reaches SQLite. Postgres
+        -- (the production backend) widens this CHECK to include it.
         source IN ('parked_context', 'review_gate')
     ),
     status TEXT NOT NULL DEFAULT 'pending' CHECK(
@@ -1136,6 +1140,62 @@ CREATE INDEX idx_approvals_risk_created_at
     ON approvals(risk_level, created_at DESC);
 CREATE INDEX idx_approvals_action_created_at
     ON approvals(action_type, created_at DESC);
+
+-- Conversational clarify-and-propose (Chief of Staff 1:1 interface).
+-- The conversation header carries the lifecycle status; ordered turns
+-- are an append-only child; proposals park a serialised WorkItem
+-- behind one approval-queue item and run only on human approval.
+-- ``approval_id`` is a plain TEXT reference (NOT a FK) because the
+-- ApprovalStore is in-memory-first: an approval may never be written
+-- to the approvals table, so a FK here would spuriously fail. This
+-- mirrors the existing parked_contexts.approval_id precedent.
+-- v1 keeps the index footprint minimal: only the dispatcher's
+-- ``approval_id`` lookup is hot at the size we expect. The
+-- ``conversation_turns`` UNIQUE on (conversation_id, sequence) is
+-- automatically indexed by SQLite and serves history reconstruction
+-- without an extra explicit index.
+CREATE TABLE conversations (
+    id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(id)) > 0),
+    created_by TEXT NOT NULL CHECK(length(trim(created_by)) > 0),
+    created_at TEXT NOT NULL CHECK(
+        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    ),
+    updated_at TEXT NOT NULL CHECK(
+        updated_at LIKE '%+00:00' OR updated_at LIKE '%Z'
+    ),
+    status TEXT NOT NULL DEFAULT 'active' CHECK(
+        status IN ('active', 'proposed', 'closed')
+    )
+);
+
+CREATE TABLE conversation_turns (
+    id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(id)) > 0),
+    conversation_id TEXT NOT NULL
+        CONSTRAINT fk_ct_conversation REFERENCES conversations(id),
+    sequence INTEGER NOT NULL CHECK(sequence >= 0),
+    role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+    content TEXT NOT NULL CHECK(length(trim(content)) > 0),
+    created_at TEXT NOT NULL CHECK(
+        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    ),
+    CONSTRAINT uq_ct_conversation_sequence UNIQUE(conversation_id, sequence)
+);
+
+CREATE TABLE conversational_proposals (
+    id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(id)) > 0),
+    conversation_id TEXT NOT NULL
+        CONSTRAINT fk_cp_conversation REFERENCES conversations(id),
+    approval_id TEXT NOT NULL CHECK(length(trim(approval_id)) > 0),
+    work_item_json TEXT NOT NULL CHECK(length(trim(work_item_json)) > 0),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(
+        status IN ('pending', 'executing', 'executed', 'rejected')
+    ),
+    created_at TEXT NOT NULL CHECK(
+        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    )
+);
+CREATE UNIQUE INDEX idx_cp_approval_id
+    ON conversational_proposals(approval_id);
 
 -- Conflict escalations: human escalation approval queue.
 -- Persists one row per conflict awaiting a human decision so the

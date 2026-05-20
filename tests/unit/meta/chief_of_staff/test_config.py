@@ -51,6 +51,38 @@ class TestChiefOfStaffConfig:
         cfg = ChiefOfStaffConfig()
         assert cfg.chat_max_tokens == 2000
 
+    def test_propose_defaults(self) -> None:
+        cfg = ChiefOfStaffConfig()
+        assert cfg.propose_enabled is False
+        assert cfg.propose_model == "example-small-001"
+        assert cfg.propose_temperature == pytest.approx(0.3)
+        assert cfg.propose_max_tokens == 2000
+        assert cfg.propose_max_proposals_per_turn == 5
+        assert cfg.propose_max_clarification_turns == 5
+
+    def test_propose_default_risk_level_medium(self) -> None:
+        from synthorg.core.enums import ApprovalRiskLevel
+
+        cfg = ChiefOfStaffConfig()
+        assert cfg.propose_default_risk_level is ApprovalRiskLevel.MEDIUM
+
+    def test_propose_enabled_independent_of_chat(self) -> None:
+        cfg = ChiefOfStaffConfig(propose_enabled=True)
+        assert cfg.propose_enabled is True
+        assert cfg.chat_enabled is False
+
+    def test_propose_max_proposals_upper_bound(self) -> None:
+        with pytest.raises(ValidationError):
+            ChiefOfStaffConfig(propose_max_proposals_per_turn=21)
+
+    def test_propose_max_clarification_turns_lower_bound(self) -> None:
+        with pytest.raises(ValidationError):
+            ChiefOfStaffConfig(propose_max_clarification_turns=0)
+
+    def test_propose_temperature_bounds(self) -> None:
+        with pytest.raises(ValidationError):
+            ChiefOfStaffConfig(propose_temperature=2.5)
+
     def test_frozen(self) -> None:
         cfg = ChiefOfStaffConfig()
         with pytest.raises(ValidationError):

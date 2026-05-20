@@ -40,6 +40,7 @@ export type ApprovalRiskLevel = (typeof APPROVAL_RISK_LEVEL_VALUES)[number]
 export const APPROVAL_SOURCE_VALUES = [
     'parked_context',
     'review_gate',
+    'conversational_intake',
 ] as const
 export type ApprovalSource = (typeof APPROVAL_SOURCE_VALUES)[number]
 

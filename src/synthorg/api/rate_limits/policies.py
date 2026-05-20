@@ -125,6 +125,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "messages.delete": (100, 3600),
     # meta
     "meta.chat": (5, 60),
+    "meta.chat.propose": (5, 60),
     "meta.ingest_events": (60, 60),
     "meta.trigger_cycle": (1, 60),
     # memory

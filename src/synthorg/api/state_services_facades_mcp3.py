@@ -31,9 +31,15 @@ from synthorg.engine.workflow.version_service import (
     WorkflowVersionService,  # noqa: TC001
 )
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat  # noqa: TC001
+from synthorg.meta.chief_of_staff.propose import (  # noqa: TC001
+    ChiefOfStaffProposer,
+)
 from synthorg.meta.service import SelfImprovementService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_STATE_SERVICE_ATTACHED
+from synthorg.persistence.conversational_proposal_protocol import (  # noqa: TC001
+    ConversationalProposalRepository,
+)
 
 logger = get_logger(__name__)
 
@@ -75,6 +81,8 @@ class _MetaMcp3FacadesMixin:
     _subworkflow_service: SubworkflowService | None
     _self_improvement_service: SelfImprovementService | None
     _chief_of_staff_chat: ChiefOfStaffChat | None
+    _chief_of_staff_proposer: ChiefOfStaffProposer | None
+    _conversational_proposal_repo: ConversationalProposalRepository | None
 
     # ── WorkflowService ──────────────────────────────────────────
 
@@ -221,6 +229,56 @@ class _MetaMcp3FacadesMixin:
             slot="_chief_of_staff_chat",
             service=service,
             name="chief_of_staff_chat",
+        )
+
+    # ── ChiefOfStaffProposer ─────────────────────────────────────
+
+    @property
+    def has_chief_of_staff_proposer(self) -> bool:
+        """Whether the clarify-and-propose backend has been attached."""
+        return self._chief_of_staff_proposer is not None
+
+    @property
+    def chief_of_staff_proposer(self) -> ChiefOfStaffProposer:
+        """Return the attached :class:`ChiefOfStaffProposer`."""
+        return self._require_service(
+            self._chief_of_staff_proposer,
+            "chief_of_staff_proposer",
+        )
+
+    def set_chief_of_staff_proposer(self, service: ChiefOfStaffProposer) -> None:
+        """Attach the clarify-and-propose backend (one-shot)."""
+        self._attach_service(
+            slot="_chief_of_staff_proposer",
+            service=service,
+            name="chief_of_staff_proposer",
+        )
+
+    # ── ConversationalProposalRepository ──────────────────────────
+
+    @property
+    def has_conversational_proposal_repo(self) -> bool:
+        """Whether the conversational proposal repo has been attached."""
+        return self._conversational_proposal_repo is not None
+
+    @property
+    def conversational_proposal_repo(
+        self,
+    ) -> ConversationalProposalRepository:
+        """Return the attached ``ConversationalProposalRepository``."""
+        return self._require_service(
+            self._conversational_proposal_repo,
+            "conversational_proposal_repo",
+        )
+
+    def set_conversational_proposal_repo(
+        self, repo: ConversationalProposalRepository
+    ) -> None:
+        """Attach the conversational proposal repo (one-shot)."""
+        self._attach_service(
+            slot="_conversational_proposal_repo",
+            service=repo,
+            name="conversational_proposal_repo",
         )
 
 

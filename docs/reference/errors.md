@@ -99,7 +99,8 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4012 | `TRAINING_PLAN_NOT_MODIFIABLE` | Training plan cannot be modified after execution or failure |
 | 4013 | `BACKUP_UNRESTARTABLE` | Backup service stopped in an unrestartable state |
 | 4014 | `AGENT_RUNTIME_NOT_CONFIGURED` | No LLM provider configured; agent runtime cannot execute |
-| 4015 | `PROJECT_WORKSPACE_NOT_PROVISIONED` | Project workspace required but never provisioned by the git backend |
+| 4015 | `CONVERSATION_CLOSED` | Conversation is closed; no further messages or actions accepted |
+| 4016 | `PROJECT_WORKSPACE_NOT_PROVISIONED` | Project workspace required but never provisioned by the git backend |
 
 ## Rate Limit (5xxx)
 

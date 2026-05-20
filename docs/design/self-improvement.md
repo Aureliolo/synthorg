@@ -114,9 +114,12 @@ src/synthorg/meta/
 
   chief_of_staff/      -- Interactive agent role + advanced capabilities
     role.py            -- CustomRole definition
-    prompts.py         -- Analysis + explanation prompt templates
-    config.py          -- ChiefOfStaffConfig (learning, alerts, chat)
-    models.py          -- ProposalOutcome, OutcomeStats, OrgInflection, Alert, ChatQuery/Response
+    prompts.py         -- Analysis + explanation + clarify-propose prompt templates
+    config.py          -- ChiefOfStaffConfig (learning, alerts, chat, propose)
+    models.py          -- ProposalOutcome, OutcomeStats, OrgInflection, Alert,
+                          ChatQuery/Response, Conversation, ConversationTurn,
+                          ProposedWork, ProposeDecision, ConversationalProposal,
+                          ProposeArgs, ProposedApprovalSummary, ProposeResult
     protocol.py        -- OutcomeStore, ConfidenceAdjuster, OrgInflectionSink, AlertSink
     outcome_store.py   -- MemoryBackendOutcomeStore (episodic memory persistence)
     learning.py        -- EMA + Bayesian confidence adjusters
@@ -124,6 +127,7 @@ src/synthorg/meta/
     monitor.py         -- OrgInflectionMonitor (async background loop)
     alerts.py          -- ProactiveAlertService + LoggingAlertSink
     chat.py            -- ChiefOfStaffChat (LLM-powered explanations)
+    propose.py         -- ChiefOfStaffProposer (clarify-and-propose v1)
 
   telemetry/           -- Cross-deployment analytics (opt-in, anonymized)
     config.py          -- CrossDeploymentAnalyticsConfig (disabled by default)
@@ -214,7 +218,9 @@ Every meta-loop entry point (`GET /meta/config`, `GET /meta/rules`, `GET /meta/s
 
 ### Interactive endpoints
 
-- **`POST /meta/chat`** (Chief of Staff conversational entry point): rate-limited via `per_op_rate_limit_from_policy("meta.chat", key="user")` at **5 requests per 60 seconds per authenticated user**.  The policy is defined in `api/rate_limits/policies.py` under the `meta.chat` key.  Clients exceeding the limit receive HTTP 429 with `Retry-After`; clients that want automatic retry on 429 must attach an `Idempotency-Key` header.
+- **`POST /meta/chat`** (Chief of Staff explain-only entry point): rate-limited via `per_op_rate_limit_from_policy("meta.chat", key="user")` at **5 requests per 60 seconds per authenticated user**.  The policy is defined in `api/rate_limits/policies.py` under the `meta.chat` key.  Clients exceeding the limit receive HTTP 429 with `Retry-After`; clients that want automatic retry on 429 must attach an `Idempotency-Key` header.
+
+- **`POST /meta/chat/propose`** (Chief of Staff clarify-and-propose entry point): the same human conversation, but the model either asks ONE clarifying question or emits one or more concrete `WorkItem`s parked behind the human approval queue (source `CONVERSATIONAL_INTAKE`). Nothing executes until the human approves; on approval the parked `WorkItem` runs through the work pipeline via the approval-decision seam (still no autonomous acting). Same rate-limit policy shape as `/meta/chat` (`meta.chat.propose`, 5/60s/user) and the same `Idempotency-Key` discipline. Opt-in via `meta.chief_of_staff.propose_enabled`; requires a registered LLM provider, a connected persistence backend, and a wired work pipeline (503 otherwise).
 
 ### YAML defaults
 
@@ -226,6 +232,15 @@ self_improvement:
   architecture_proposals_enabled: false  # Structural changes (opt-in)
   prompt_tuning_enabled: false      # Prompt policies (opt-in)
   code_modification_enabled: false  # Framework code changes (opt-in)
+  chief_of_staff:
+    # Clarify-and-propose (POST /meta/chat/propose). All opt-in.
+    propose_enabled: false                   # Master switch
+    propose_model: example-small-001         # LLM model id
+    propose_temperature: 0.3                 # Lower than chat: structured output
+    propose_max_tokens: 2000                 # Per-turn token budget
+    propose_max_proposals_per_turn: 5        # Approval-queue fan-out bound
+    propose_max_clarification_turns: 5       # Cap before force-closing the conversation
+    propose_default_risk_level: medium       # Risk stamp on each parked ApprovalItem
   schedule:
     cycle_interval_hours: 168       # Weekly
     inflection_trigger_enabled: true
@@ -261,6 +276,16 @@ self_improvement:
     min_deployments_for_pattern: 3       # Min unique deployments for pattern reporting
     recommendation_min_observations: 10  # Min events for threshold recommendations
 ```
+
+## Approval Decision Routing (Three Flows)
+
+`signal_resume_intent` dispatches every decided approval through a deterministic three-flow chain keyed off the persisted `ApprovalItem.source` discriminator. The discriminator is fixed at creation so a decided approval routes correctly even if the relevant subsystem is briefly unavailable.
+
+1. **Flow 0** (Conversational intake; `source = CONVERSATIONAL_INTAKE`, `try_conversational_intake_resume`): the dispatcher looks up the gating `ConversationalProposal`, rebuilds the parked `WorkItem` from `work_item_json`, and on approve drives it through `app_state.work_pipeline.run`. On reject the proposal moves to `REJECTED` and the pipeline is never touched. Hard misconfiguration (no work pipeline) raises 503 rather than silently stranding the work.
+2. **Flow 1** (Mid-execution parking; `source = PARKED_CONTEXT`, `try_mid_execution_resume`): the agent that called `request_human_approval` is parked; the decision resumes the parked context.
+3. **Flow 2** (Review gate; `source = REVIEW_GATE`, default): autonomy / hiring / promotion / pruning / scaling / training / signals approvals; the decision drives the task's IN_REVIEW transition.
+
+Each branch returns `True` once it owns the decision, suppressing fall-through. Source is the routing primary; the legacy parked-context probe is the fallback only when the just-decided approval cannot be re-read.
 
 ## Safety Mechanisms
 
