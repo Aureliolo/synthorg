@@ -530,70 +530,6 @@ class TestConcurrentConverse:
         ids = {t.id for t in turn_repo.turns}
         assert len(ids) == 4
 
-    async def test_lock_released_on_terminal_propose(self) -> None:
-        # Locking a conversation should not leak memory: when the
-        # conversation transitions to PROPOSED (a terminal state for
-        # the v1 1:1 flow), the per-conversation lock is dropped.
-        provider = ScriptedProvider(responses=[make_text_response(_PROPOSE_JSON)])
-        proposer, conv_repo, _, _, _ = _build(provider=provider)
-        conv_repo.items["c-prop"] = Conversation(
-            id=NotBlankStr("c-prop"),
-            created_by=NotBlankStr("user-1"),
-            created_at=_START,
-            updated_at=_START,
-            status=ConversationStatus.ACTIVE,
-        )
-
-        result = await proposer.converse(
-            ProposeArgs(
-                message=NotBlankStr("launch landing page"),
-                created_by=NotBlankStr("user-1"),
-                conversation_id=NotBlankStr("c-prop"),
-                project=NotBlankStr("marketing"),
-            )
-        )
-
-        assert result.status == "proposed"
-        assert "c-prop" not in proposer._conversation_locks
-
-    async def test_lock_released_on_clarification_cap(self) -> None:
-        # The other terminal path: clarification cap force-closes the
-        # conversation. Lock should drop here too.
-        provider = ScriptedProvider()
-        config = ChiefOfStaffConfig(
-            propose_enabled=True,
-            propose_max_clarification_turns=1,
-        )
-        proposer, conv_repo, turn_repo, _, _ = _build(provider=provider, config=config)
-        conv_repo.items["c-cap"] = Conversation(
-            id=NotBlankStr("c-cap"),
-            created_by=NotBlankStr("user-1"),
-            created_at=_START,
-            updated_at=_START,
-            status=ConversationStatus.ACTIVE,
-        )
-        turn_repo.turns.append(
-            ConversationTurn(
-                id=NotBlankStr("seed-a0"),
-                conversation_id=NotBlankStr("c-cap"),
-                sequence=0,
-                role=ConversationRole.ASSISTANT,
-                content=NotBlankStr("seeded assistant turn"),
-                created_at=_START,
-            )
-        )
-
-        result = await proposer.converse(
-            ProposeArgs(
-                message=NotBlankStr("still unclear"),
-                created_by=NotBlankStr("user-1"),
-                conversation_id=NotBlankStr("c-cap"),
-            )
-        )
-
-        assert result.conversation_closed is True
-        assert "c-cap" not in proposer._conversation_locks
-
     async def test_locks_isolated_per_conversation(self) -> None:
         # Two different conversations get independent locks; their
         # turn pipelines do not block one another. (Easier to verify
@@ -607,29 +543,57 @@ class TestConcurrentConverse:
         assert lock_a is not lock_b
         assert lock_a is lock_a_again
 
-    async def test_release_identity_check_skips_replaced_lock(self) -> None:
-        # If a concurrent caller has already minted a fresh lock for
-        # the same conversation id, releasing the OLD lock instance
-        # must NOT pop the dict entry -- otherwise the new caller's
-        # serialisation invariant breaks. The identity check inside
-        # ``_release_conversation_lock`` enforces this.
+    async def test_run_turn_aborts_if_conversation_terminal_under_lock(
+        self,
+    ) -> None:
+        # Race: caller B reads ACTIVE in _resolve_conversation,
+        # waits behind A on the lock, A commits PROPOSED, B wakes
+        # up and -- if not for the inside-lock re-fetch -- would
+        # park extra approvals against a terminal conversation
+        # (the transition_if no-ops but _park_proposal already
+        # ran). The inside-lock revalidation in _run_turn re-reads
+        # the conversation and raises ConversationClosedError if
+        # the status flipped, so B aborts without double-parking.
         provider = ScriptedProvider(responses=[])
-        proposer, *_ = _build(provider=provider)
-        lock_v1 = await proposer._lock_for("conv-race")
-        # Simulate the dict slot being replaced by a concurrent caller
-        # after lock_v1's owner exited its ``async with``.
-        new_lock = asyncio.Lock()
-        proposer._conversation_locks["conv-race"] = new_lock
-        # Releasing under the OLD lock identity must leave the new
-        # entry intact.
-        await proposer._release_conversation_lock(
-            "conv-race",
-            expected_lock=lock_v1,
+        proposer, conv_repo, turn_repo, _, _ = _build(provider=provider)
+        # Seed the conversation as ACTIVE so _resolve_conversation
+        # succeeds, then flip it to PROPOSED to simulate caller A's
+        # commit landing between the resolve and the inside-lock
+        # re-read.
+        conv_repo.items["c-race"] = Conversation(
+            id=NotBlankStr("c-race"),
+            created_by=NotBlankStr("user-1"),
+            created_at=_START,
+            updated_at=_START,
+            status=ConversationStatus.ACTIVE,
         )
-        assert proposer._conversation_locks.get("conv-race") is new_lock
-        # Releasing under the CURRENT lock identity actually pops.
-        await proposer._release_conversation_lock(
-            "conv-race",
-            expected_lock=new_lock,
-        )
-        assert "conv-race" not in proposer._conversation_locks
+
+        # Patch ``get`` so the inside-lock re-fetch returns PROPOSED
+        # even though the seeded item still reads as ACTIVE for the
+        # outside-lock pre-check. Counter-based: first call returns
+        # the ACTIVE seed, second returns the PROPOSED state.
+        original_get = conv_repo.get
+        get_calls = {"count": 0}
+
+        async def staged_get(entity_id: str) -> Conversation | None:
+            get_calls["count"] += 1
+            base = await original_get(entity_id)
+            if base is None:
+                return None
+            if get_calls["count"] == 1:
+                return base
+            return base.model_copy(update={"status": ConversationStatus.PROPOSED})
+
+        conv_repo.get = staged_get  # type: ignore[method-assign]
+
+        with pytest.raises(ConversationClosedError):
+            await proposer.converse(
+                ProposeArgs(
+                    message=NotBlankStr("late message"),
+                    created_by=NotBlankStr("user-1"),
+                    conversation_id=NotBlankStr("c-race"),
+                )
+            )
+        # No turns appended -- the abort fires before the user-turn
+        # write.
+        assert turn_repo.turns == []

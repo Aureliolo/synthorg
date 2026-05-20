@@ -181,28 +181,6 @@ class ChiefOfStaffProposer:
                 self._conversation_locks[conversation_id] = lock
             return lock
 
-    async def _release_conversation_lock(
-        self,
-        conversation_id: str,
-        *,
-        expected_lock: asyncio.Lock,
-    ) -> None:
-        """Drop the per-conversation lock once the conversation is terminal.
-
-        Called from ``converse()`` AFTER the ``async with`` releases
-        ``expected_lock``. The identity check is critical: if a
-        concurrent ``converse()`` already raced past us and stored a
-        fresh lock under the same key, popping the entry would
-        invalidate that caller's lock without cleaning up its
-        successors. Only remove the entry when it still points to the
-        lock instance we just released.
-        """
-        if self._conversation_locks_guard is None:
-            return
-        async with self._conversation_locks_guard:
-            if self._conversation_locks.get(conversation_id) is expected_lock:
-                self._conversation_locks.pop(conversation_id, None)
-
     async def converse(self, args: ProposeArgs) -> ProposeResult:
         """Run one clarify-or-propose turn.
 
@@ -238,24 +216,14 @@ class ChiefOfStaffProposer:
         # for v1's 1:1 conversational interface where turns must stay
         # linear; the LLM round-trip is the natural pacing unit and
         # the contention window is small (one user per conversation
-        # at v1 fan-out).
-        lock = await self._lock_for(conversation.id)
-        async with lock:
-            result = await self._run_turn(conversation, args, now)
-        # Cleanup runs AFTER the lock releases. Inside the ``async
-        # with`` we still hold the lock; popping the dict entry there
-        # would let a concurrent converse() observe an empty slot and
-        # mint a fresh lock while we still own the old one, defeating
-        # the serialisation invariant. The identity check inside
-        # ``_release_conversation_lock`` also protects against the
-        # converse-after-cleanup case where a second caller has
-        # already claimed the slot.
-        if result.status == "proposed" or result.conversation_closed:
-            await self._release_conversation_lock(
-                conversation.id,
-                expected_lock=lock,
-            )
-        return result
+        # at v1 fan-out). Locks accumulate in ``_conversation_locks``
+        # over the process lifetime -- the dict cannot be safely
+        # cleaned up without a refcount of in-flight + queued waiters
+        # (a deletion otherwise lets a concurrent caller mint a fresh
+        # lock while a queued waiter on the old one is still pending),
+        # which v1 does not need at its expected scale.
+        async with await self._lock_for(conversation.id):
+            return await self._run_turn(conversation, args, now)
 
     async def _run_turn(
         self,
@@ -263,7 +231,20 @@ class ChiefOfStaffProposer:
         args: ProposeArgs,
         now: datetime,
     ) -> ProposeResult:
-        """Body of one converse() turn under the conversation lock."""
+        """Body of one converse() turn under the conversation lock.
+
+        Re-fetches the conversation under the lock and aborts if the
+        status is no longer ACTIVE. Without this check a second
+        caller that read ACTIVE in ``_resolve_conversation`` before
+        the lock was free can wake up and park additional approvals
+        against a now-terminal conversation (``_park_proposal`` runs
+        before the ``transition_if`` no-ops, so proposals are saved
+        even though the status transition fails).
+        """
+        current = await self._conversation_repo.get(conversation.id)
+        if current is None or current.status is not ConversationStatus.ACTIVE:
+            raise ConversationClosedError(conversation_id=conversation.id)
+        conversation = current
         prior_turns = await self._ordered_turns(conversation.id)
         next_sequence = len(prior_turns)
 
