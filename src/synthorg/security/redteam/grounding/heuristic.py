@@ -34,8 +34,9 @@ _NUMERIC_CLAIM_RE: Final[re.Pattern[str]] = re.compile(
 
 Time-unit alternation runs from subsecond to year so latency claims
 (``250 milliseconds``) are caught alongside calendar-scale durations.
-Order matters because the alternation is greedy: ``milliseconds``
-must come BEFORE ``seconds`` so the longer match wins.
+The ordering keeps units grouped by scale for readability; Python
+``re`` alternation matches the first viable alternative from the
+current position, so order does not affect which unit wins.
 
 These are the highest-value targets for heuristic grounding: a number
 without a source is the canonical hallucination signature.
