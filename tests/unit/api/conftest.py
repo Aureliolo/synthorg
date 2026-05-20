@@ -724,6 +724,14 @@ def test_client(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # tests that need a coordinator inject one via their own client.
         app_state._coordinator = None
         app_state._worker_execution_service = None
+        # Same once-only-install reset for the docs engine (#1976): the
+        # ``_wire_docs_engine`` startup hook is gated by a closure flag,
+        # so only the FIRST test's startup wires ``docs_service`` /
+        # facade / tool factory. Reset to None for every test so tests
+        # that need a docs runtime inject their own via the client.
+        app_state._docs_service = None
+        app_state._project_doc_memory_facade = None
+        app_state._docs_tool_factory = None
         _seed_test_users(fake_persistence, auth_service)
         _promote_first_owner(fake_persistence)
         client.headers.update(make_auth_headers("ceo"))
