@@ -75,63 +75,43 @@ def _cmd_sleep() -> HiddenCheckSpec:
 
 
 @pytest.mark.unit
-def test_grade_full_pass(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("hidden_pass", "build_pass", "lint_pass", "expected_score"),
+    [
+        (True, True, True, EXEC_TOTAL),
+        (False, True, True, EXEC_TOTAL - EXEC_WEIGHT_HIDDEN),
+        (True, False, True, EXEC_TOTAL - EXEC_WEIGHT_BUILD),
+        (True, True, False, EXEC_TOTAL - EXEC_WEIGHT_LINT),
+        (False, True, False, EXEC_TOTAL - EXEC_WEIGHT_HIDDEN - EXEC_WEIGHT_LINT),
+        (False, False, False, 0),
+    ],
+    ids=[
+        "all_pass",
+        "hidden_fail",
+        "build_fail",
+        "lint_fail",
+        "hidden_and_lint_fail",
+        "all_fail",
+    ],
+)
+def test_grade_weights_by_class(
+    tmp_path: Path,
+    hidden_pass: bool,
+    build_pass: bool,
+    lint_pass: bool,
+    expected_score: int,
+) -> None:
+    """One row per pass/fail combination across hidden / build / lint."""
     brief = _exec_brief(
-        hidden=(_cmd_true(),),
-        build=(_cmd_true(),),
-        lint=(_cmd_true(),),
+        hidden=(_cmd_true() if hidden_pass else _cmd_false(),),
+        build=(_cmd_true() if build_pass else _cmd_false(),),
+        lint=(_cmd_true() if lint_pass else _cmd_false(),),
     )
     grade = grade_executable(brief, tmp_path)
-    assert grade.score == EXEC_TOTAL
-    assert grade.is_clean is True
-
-
-@pytest.mark.unit
-def test_grade_hidden_fails(tmp_path: Path) -> None:
-    brief = _exec_brief(
-        hidden=(_cmd_false(),),
-        build=(_cmd_true(),),
-        lint=(_cmd_true(),),
-    )
-    grade = grade_executable(brief, tmp_path)
-    assert grade.score == EXEC_TOTAL - EXEC_WEIGHT_HIDDEN
-    assert grade.hidden_pass is False
-    assert grade.build_pass is True
-    assert grade.lint_pass is True
-
-
-@pytest.mark.unit
-def test_grade_build_fails(tmp_path: Path) -> None:
-    brief = _exec_brief(
-        hidden=(_cmd_true(),),
-        build=(_cmd_false(),),
-        lint=(_cmd_true(),),
-    )
-    grade = grade_executable(brief, tmp_path)
-    assert grade.score == EXEC_TOTAL - EXEC_WEIGHT_BUILD
-
-
-@pytest.mark.unit
-def test_grade_lint_fails(tmp_path: Path) -> None:
-    brief = _exec_brief(
-        hidden=(_cmd_true(),),
-        build=(_cmd_true(),),
-        lint=(_cmd_false(),),
-    )
-    grade = grade_executable(brief, tmp_path)
-    assert grade.score == EXEC_TOTAL - EXEC_WEIGHT_LINT
-
-
-@pytest.mark.unit
-def test_grade_mixed_failure(tmp_path: Path) -> None:
-    brief = _exec_brief(
-        hidden=(_cmd_false(),),
-        build=(_cmd_true(),),
-        lint=(_cmd_false(),),
-    )
-    grade = grade_executable(brief, tmp_path)
-    expected = EXEC_TOTAL - EXEC_WEIGHT_HIDDEN - EXEC_WEIGHT_LINT
-    assert grade.score == expected
+    assert grade.score == expected_score
+    assert grade.hidden_pass is hidden_pass
+    assert grade.build_pass is build_pass
+    assert grade.lint_pass is lint_pass
 
 
 @pytest.mark.unit
@@ -163,6 +143,54 @@ def test_missing_tool_raises(tmp_path: Path) -> None:
     )
     with pytest.raises(EvalToolMissingError):
         grade_executable(brief, tmp_path)
+
+
+@pytest.mark.unit
+def test_check_outcome_timeout_must_use_posix_sentinel() -> None:
+    """CheckOutcome refuses timed_out=True with a non-sentinel exit code."""
+    from pydantic import ValidationError as PydValidationError
+
+    from evals.scoring.executable import CheckOutcome
+
+    with pytest.raises(PydValidationError, match="POSIX timeout sentinel"):
+        CheckOutcome(
+            label="hidden",
+            cmd=("x",),
+            exit_code=1,  # not 124
+            duration_seconds=0.0,
+            stdout_tail="",
+            stderr_tail="",
+            timed_out=True,
+        )
+
+
+@pytest.mark.unit
+def test_executable_grade_pass_flags_must_match_outcomes() -> None:
+    """ExecutableGrade refuses pass-flags that contradict the outcomes."""
+    from pydantic import ValidationError as PydValidationError
+
+    from evals.scoring.executable import (
+        EXEC_WEIGHT_HIDDEN,
+        CheckOutcome,
+        ExecutableGrade,
+    )
+
+    failing_hidden = CheckOutcome(
+        label="hidden",
+        cmd=("x",),
+        exit_code=2,
+        duration_seconds=0.0,
+        stdout_tail="",
+        stderr_tail="",
+    )
+    with pytest.raises(PydValidationError, match="do not match"):
+        ExecutableGrade(
+            score=EXEC_WEIGHT_HIDDEN,  # invalid combo for hidden=True
+            hidden_pass=True,
+            build_pass=True,
+            lint_pass=True,
+            outcomes=(failing_hidden,),
+        )
 
 
 @pytest.mark.unit

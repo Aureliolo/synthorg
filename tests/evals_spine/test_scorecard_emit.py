@@ -42,7 +42,10 @@ def _brief_result(  # noqa: PLR0913 -- test fixture; keeping the kw-only knobs e
     )
 
 
-def _scorecard(briefs: tuple[BriefResult, ...]) -> Scorecard:
+def _scorecard(
+    briefs: tuple[BriefResult, ...],
+    judge_calibrations: tuple[JudgeCalibrationReport, ...] = (),
+) -> Scorecard:
     aggregated_events: dict[str, int] = {}
     total = 0
     for b in briefs:
@@ -60,6 +63,7 @@ def _scorecard(briefs: tuple[BriefResult, ...]) -> Scorecard:
             total_events=total,
             events_by_class=aggregated_events,
         ),
+        judge_calibrations=judge_calibrations,
     )
 
 
@@ -173,23 +177,67 @@ def test_markdown_includes_judge_section_when_calibrations_present() -> None:
         passed=True,
         anchor_count=10,
     )
-    briefs = (_brief_result(),)
-    aggregated_events: dict[str, int] = {}
-    sc = Scorecard(
-        generated_at=datetime(2026, 5, 20, 12, 0, 0, tzinfo=UTC),
-        company_config_path="r.yaml",
-        cassette_path="c.json",
-        cassette_sha256="0" * 64,
-        suite_version="s",
-        briefs=briefs,
-        process_facts=AggregatedProcessFacts(
-            total_events=0, events_by_class=aggregated_events
-        ),
-        judge_calibrations=(judge,),
-    )
+    sc = _scorecard((_brief_result(),), judge_calibrations=(judge,))
     text = render_scorecard_md(sc)
     assert "Judge calibration" in text
     assert "summarise" in text
+
+
+@pytest.mark.unit
+def test_brief_result_rejects_score_not_matching_deduction() -> None:
+    """BriefResult refuses score != max(grade - deduction, GRADE_FLOOR)."""
+    with pytest.raises(ValueError, match="does not match"):
+        BriefResult(
+            brief_id="BRIEF_X",
+            kind=BriefKind.EXECUTABLE,
+            grade=80,
+            deduction=10,
+            score=60,  # should be 70
+            process_facts=ProcessFactReport(),
+            termination_reason="COMPLETED",
+        )
+
+
+@pytest.mark.unit
+def test_judge_calibration_report_rejects_inconsistent_passed_flag() -> None:
+    """JudgeCalibrationReport refuses passed != (spearman_rho >= gate)."""
+    with pytest.raises(ValueError, match="does not match"):
+        JudgeCalibrationReport(
+            rubric_id="summarise",
+            spearman_rho=0.5,
+            gate=0.7,
+            passed=True,  # should be False since 0.5 < 0.7
+            anchor_count=5,
+        )
+
+
+@pytest.mark.unit
+def test_aggregated_process_facts_total_must_match_class_sum() -> None:
+    """AggregatedProcessFacts refuses total_events != sum(events_by_class)."""
+    with pytest.raises(ValueError, match="does not match"):
+        AggregatedProcessFacts(
+            total_events=10,
+            events_by_class={"x": 3, "y": 4},  # sums to 7, not 10
+        )
+
+
+@pytest.mark.unit
+def test_process_fact_report_rejects_entries_disagreeing_with_events() -> None:
+    """ProcessFactReport refuses entries whose counts disagree with the
+    tracked slice of events_by_class for the same event constants."""
+    with pytest.raises(ValueError, match="disagree"):
+        ProcessFactReport(
+            events_by_class={"x": 3},
+            entries=(
+                PenaltyEntry(
+                    event_constant="x",
+                    count=2,  # claims 2 here but events_by_class["x"] is 3
+                    points_per_event=10,
+                    raw_points=20,
+                    applied_points=20,
+                ),
+            ),
+        )
 
 
 @pytest.mark.unit

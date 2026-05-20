@@ -1,18 +1,14 @@
 """Golden-company benchmark (eval spine) for SynthOrg.
 
-This top-level package implements issue #1980: a fixed brief suite the
-studio sits as a scored exam at every release. The result is a
-deterministic, per-release scorecard (JSON + Markdown) that downstream
-issues (#1983 learning curve, #1990, #1995, #1998) consume.
+A fixed brief suite that runs as a scored exam at every release,
+producing a deterministic, per-release scorecard (JSON + Markdown).
+The scorecard is a stable reference for measuring studio quality
+against a calibrated grading rubric, run-to-run.
 
-Out-of-package on purpose: eval code does not ship with the wheel; the
-suite is run from the repository as a benchmark harness, not as a
-library users import.
+Out-of-package on purpose: eval code does not ship with the wheel.
+The suite is a benchmark harness, not a library users import.
 """
 
-from typing import Final
-
-SCORECARD_SCHEMA_VERSION: Final[int] = 1
-
+from evals.models.scorecard import SCORECARD_SCHEMA_VERSION
 
 __all__ = ["SCORECARD_SCHEMA_VERSION"]

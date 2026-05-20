@@ -1,10 +1,13 @@
 """Tests for ``evals.scoring.penalties`` and ``evals.scoring.aggregate``."""
 
 import pytest
+from pydantic import ValidationError as PydValidationError
 
 from evals.scoring.aggregate import (
     GRADE_CEILING,
     GRADE_FLOOR,
+    AggregationResult,
+    PenaltyEntry,
     aggregate_brief_score,
 )
 from evals.scoring.penalties import (
@@ -138,3 +141,41 @@ def test_entries_are_sorted_for_determinism() -> None:
     )
     constants = [e.event_constant for e in result.entries]
     assert constants == sorted(constants)
+
+
+@pytest.mark.unit
+def test_penalty_entry_rejects_inconsistent_raw_points() -> None:
+    """PenaltyEntry refuses raw != points_per_event * count."""
+    with pytest.raises(PydValidationError, match="does not match"):
+        PenaltyEntry(
+            event_constant="x",
+            count=3,
+            points_per_event=10,
+            raw_points=25,  # should be 30
+            applied_points=25,
+        )
+
+
+@pytest.mark.unit
+def test_penalty_entry_rejects_applied_exceeding_raw() -> None:
+    """PenaltyEntry refuses applied > raw (cap goes one way only)."""
+    with pytest.raises(PydValidationError, match="exceeds"):
+        PenaltyEntry(
+            event_constant="x",
+            count=2,
+            points_per_event=10,
+            raw_points=20,
+            applied_points=30,
+        )
+
+
+@pytest.mark.unit
+def test_aggregation_result_rejects_inconsistent_score() -> None:
+    """AggregationResult refuses score != max(grade - deduction, floor)."""
+    with pytest.raises(PydValidationError, match="does not match"):
+        AggregationResult(
+            grade=80,
+            deduction=10,
+            score=60,  # should be 70
+            entries=(),
+        )

@@ -20,6 +20,22 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 
+# Shell metacharacters refused at the leading argv token in a hidden
+# check command. The grader runs commands with ``shell=False`` so a
+# leaked metachar should be inert; this list is a defence-in-depth
+# load-time check so a typo in a brief YAML surfaces immediately.
+_SHELL_METACHARS: Final[tuple[str, ...]] = (
+    ";",
+    "|",
+    "&",
+    ">",
+    "<",
+    "$",
+    "`",
+    "\n",
+    "\r",
+)
+
 # Lower bounds for brief schema validation. Allowlisted module-level
 # annotated constants per project conventions; named here so the YAML
 # loader's invariant errors quote the same numbers as the schema doc.
@@ -82,13 +98,30 @@ class HiddenCheckSpec(BaseModel):
 
     ``cmd`` is a tuple of argv tokens (never a shell string) so the
     grader can run it without ``shell=True``; the first token must be
-    a path or known binary, no shell metacharacters allowed.
+    a path or known binary, no shell metacharacters allowed. The
+    model validator below enforces that the leading token does not
+    carry metachars even though ``shell=False`` should already make a
+    leaked metachar inert -- defence in depth so a typo in a brief
+    YAML fails at load time, not at run time.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     cmd: tuple[NotBlankStr, ...] = Field(min_length=1)
     timeout_seconds: int = Field(default=30, gt=0)
+
+    @model_validator(mode="after")
+    def _leading_token_has_no_shell_metachars(self) -> Self:
+        leading = self.cmd[0]
+        for ch in _SHELL_METACHARS:
+            if ch in leading:
+                msg = (
+                    f"HiddenCheckSpec.cmd[0]={leading!r} contains "
+                    f"shell metacharacter {ch!r}; declare an argv token, "
+                    "not a shell fragment"
+                )
+                raise ValueError(msg)
+        return self
 
 
 class ExecutableChecks(BaseModel):

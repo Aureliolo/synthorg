@@ -5,9 +5,9 @@ final score", combining the grader's deterministic ``[0, 100]`` and
 the runner's collected process-fact event counts via the penalty table.
 """
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 if TYPE_CHECKING:
     from evals.scoring.penalties import PenaltyTable
@@ -20,7 +20,12 @@ GRADE_CEILING: Final[int] = 100
 
 
 class PenaltyEntry(BaseModel):
-    """One row in the per-brief penalty breakdown."""
+    """One row in the per-brief penalty breakdown.
+
+    Invariants:
+      - ``raw_points == points_per_event * count``
+      - ``applied_points <= raw_points`` (the cap may have clamped it)
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -30,9 +35,32 @@ class PenaltyEntry(BaseModel):
     raw_points: int = Field(ge=0)
     applied_points: int = Field(ge=0)
 
+    @model_validator(mode="after")
+    def _arithmetic_is_consistent(self) -> Self:
+        expected_raw = self.points_per_event * self.count
+        if self.raw_points != expected_raw:
+            msg = (
+                f"PenaltyEntry {self.event_constant!r}: "
+                f"raw_points={self.raw_points} does not match "
+                f"points_per_event={self.points_per_event} * count={self.count}"
+                f" (={expected_raw})"
+            )
+            raise ValueError(msg)
+        if self.applied_points > self.raw_points:
+            msg = (
+                f"PenaltyEntry {self.event_constant!r}: "
+                f"applied_points={self.applied_points} exceeds "
+                f"raw_points={self.raw_points}"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class AggregationResult(BaseModel):
-    """The outcome of combining grade + process facts for one brief."""
+    """The outcome of combining grade + process facts for one brief.
+
+    Invariant: ``score == max(grade - deduction, GRADE_FLOOR)``.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -45,6 +73,19 @@ class AggregationResult(BaseModel):
     def is_clean(self) -> bool:
         """Whether no process-fact penalties were applied."""
         return self.deduction == 0
+
+    @model_validator(mode="after")
+    def _score_matches_grade_minus_deduction(self) -> Self:
+        expected = max(self.grade - self.deduction, GRADE_FLOOR)
+        if self.score != expected:
+            msg = (
+                f"AggregationResult: score={self.score} does not match "
+                f"expected {expected} "
+                f"(grade={self.grade} - deduction={self.deduction}, "
+                f"floored at {GRADE_FLOOR})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 def aggregate_brief_score(

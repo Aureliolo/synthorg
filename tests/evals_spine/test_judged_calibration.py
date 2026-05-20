@@ -33,42 +33,54 @@ from evals.scoring.spearman import (
 
 
 @pytest.mark.unit
-def test_spearman_perfect_positive() -> None:
-    rho = spearman_rho([1.0, 2.0, 3.0, 4.0], [10.0, 20.0, 30.0, 40.0])
-    assert rho == pytest.approx(1.0)
-
-
-@pytest.mark.unit
-def test_spearman_perfect_negative() -> None:
-    rho = spearman_rho([1.0, 2.0, 3.0, 4.0], [40.0, 30.0, 20.0, 10.0])
-    assert rho == pytest.approx(-1.0)
-
-
-@pytest.mark.unit
-def test_spearman_mid_correlation_below_gate() -> None:
-    # A clearly scrambled ordering that ends up below the 0.7 gate.
-    xs = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
-    ys = [4.0, 3.0, 5.0, 6.0, 1.0, 2.0]
-    assert spearman_rho(xs, ys) < SPEARMAN_GATE
-
-
-@pytest.mark.unit
-def test_spearman_handles_ties() -> None:
-    # Both samples have ties; should still return a finite value.
-    rho = spearman_rho([1.0, 1.0, 2.0, 3.0], [1.0, 2.0, 2.0, 3.0])
-    assert -1.0 <= rho <= 1.0
-
-
-@pytest.mark.unit
-def test_spearman_constant_both_returns_one() -> None:
-    rho = spearman_rho([5.0, 5.0, 5.0, 5.0], [9.0, 9.0, 9.0, 9.0])
-    assert rho == pytest.approx(1.0)
-
-
-@pytest.mark.unit
-def test_spearman_constant_one_side_returns_zero() -> None:
-    rho = spearman_rho([5.0, 5.0, 5.0, 5.0], [1.0, 2.0, 3.0, 4.0])
-    assert rho == pytest.approx(0.0)
+@pytest.mark.parametrize(
+    ("xs", "ys", "predicate"),
+    [
+        (
+            [1.0, 2.0, 3.0, 4.0],
+            [10.0, 20.0, 30.0, 40.0],
+            lambda r: r == pytest.approx(1.0),
+        ),
+        (
+            [1.0, 2.0, 3.0, 4.0],
+            [40.0, 30.0, 20.0, 10.0],
+            lambda r: r == pytest.approx(-1.0),
+        ),
+        (
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            [4.0, 3.0, 5.0, 6.0, 1.0, 2.0],
+            lambda r: r < SPEARMAN_GATE,
+        ),
+        (
+            [1.0, 1.0, 2.0, 3.0],
+            [1.0, 2.0, 2.0, 3.0],
+            lambda r: -1.0 <= r <= 1.0,
+        ),
+        (
+            [5.0, 5.0, 5.0, 5.0],
+            [9.0, 9.0, 9.0, 9.0],
+            lambda r: r == pytest.approx(1.0),
+        ),
+        (
+            [5.0, 5.0, 5.0, 5.0],
+            [1.0, 2.0, 3.0, 4.0],
+            lambda r: r == pytest.approx(0.0),
+        ),
+    ],
+    ids=[
+        "perfect_positive",
+        "perfect_negative",
+        "mid_correlation_below_gate",
+        "handles_ties",
+        "both_constant_returns_one",
+        "one_side_constant_returns_zero",
+    ],
+)
+def test_spearman_rho_cases(
+    xs: list[float], ys: list[float], predicate: object
+) -> None:
+    rho = spearman_rho(xs, ys)
+    assert predicate(rho)  # type: ignore[operator]
 
 
 @pytest.mark.unit
@@ -266,6 +278,71 @@ def test_grade_judged_anchor_set_minimum_enforced() -> None:
     )
     with pytest.raises(ValueError, match="paired samples"):
         calibrate_judge(rubric, judge, tiny_anchors)
+
+
+@pytest.mark.unit
+def test_judged_grade_requires_calibration_passed() -> None:
+    """JudgedGrade refuses construction with a calibration that did not pass."""
+    from pydantic import ValidationError as PydValidationError
+
+    from evals.models.scorecard import JudgeCalibrationReport
+    from evals.scoring.judged import JudgedGrade
+
+    failing = JudgeCalibrationReport(
+        rubric_id="r",
+        spearman_rho=0.3,
+        gate=0.7,
+        passed=False,
+        anchor_count=5,
+    )
+    with pytest.raises(PydValidationError, match="did not pass"):
+        JudgedGrade(score=50, calibration=failing)
+
+
+@pytest.mark.unit
+def test_path_traversal_rubric_id_rejected(tmp_path: Path) -> None:
+    """A rubric_id that escapes anchors_dir via .. must be refused."""
+    from evals.loader.anchors import load_anchor_set
+
+    # Drop a legit file outside anchors_dir to make sure the check would
+    # otherwise find something; the containment guard must block it.
+    parent_yaml = tmp_path.parent / "summarise.yaml"
+    parent_yaml.write_text("{}", encoding="utf-8")
+    try:
+        with pytest.raises(ValueError, match="path traversal blocked"):
+            load_anchor_set(tmp_path, "../summarise")
+    finally:
+        parent_yaml.unlink(missing_ok=True)
+
+
+@pytest.mark.unit
+def test_anchor_item_hand_scores_outside_range_rejected() -> None:
+    """AnchorItem refuses hand_scores outside [HAND_SCORE_FLOOR, ...CEILING]."""
+    from pydantic import ValidationError as PydValidationError
+
+    from evals.loader.anchors import AnchorItem
+
+    with pytest.raises(PydValidationError, match="outside"):
+        AnchorItem(
+            anchor_id="a1",
+            output="o",
+            hand_scores={"faithfulness": 1.5},
+        )
+    with pytest.raises(PydValidationError, match="outside"):
+        AnchorItem(
+            anchor_id="a1",
+            output="o",
+            hand_scores={"faithfulness": -0.1},
+        )
+
+
+@pytest.mark.unit
+def test_scripted_judge_requires_at_least_one_data_source() -> None:
+    """A ScriptedJudge with neither responses nor default_scores raises."""
+    from pydantic import ValidationError as PydValidationError
+
+    with pytest.raises(PydValidationError, match="at least one"):
+        ScriptedJudge()
 
 
 @pytest.mark.unit

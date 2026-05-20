@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from evals.errors import BriefSuiteDuplicateIdError, BriefSuiteEmptyError
@@ -110,4 +111,33 @@ def test_rubric_weights_must_sum_to_one(
         },
     )
     with pytest.raises(ValidationError):
+        load_brief_suite(tmp_path)
+
+
+@pytest.mark.unit
+def test_non_dict_top_level_yaml_raises_type_error(tmp_path: Path) -> None:
+    """A YAML file whose top level is a list (or any non-mapping) is rejected
+    with TypeError, not the semantically wrong BriefSuiteEmptyError."""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(yaml.safe_dump(["not", "a", "mapping"]), encoding="utf-8")
+    with pytest.raises(TypeError, match="must be a mapping"):
+        load_brief_suite(tmp_path)
+
+
+@pytest.mark.unit
+def test_shell_metacharacter_in_cmd_rejected(
+    tmp_path: Path,
+    write_brief_yaml: BriefYamlWriter,
+) -> None:
+    """HiddenCheckSpec rejects shell metacharacters in cmd[0] at load time."""
+    write_brief_yaml(
+        "bad.yaml",
+        "executable",
+        checks={
+            "hidden_tests": [
+                {"cmd": ["echo ok; rm -rf /"], "timeout_seconds": 5},
+            ],
+        },
+    )
+    with pytest.raises(ValidationError, match="shell metacharacter"):
         load_brief_suite(tmp_path)

@@ -12,9 +12,9 @@ ordering is real news, not a flake, and the eval should fail loud
 rather than silently drift the scorecard.
 """
 
-from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from evals.errors import JudgeCalibrationFailedError
 from evals.models.brief import Brief, BriefKind, JudgedRubric, RubricGradeType
@@ -60,7 +60,15 @@ class JudgeProtocol(Protocol):
         rubric: JudgedRubric,
         text: str,
     ) -> dict[str, float]:
-        """Return a {dimension_name: score in [0,1]} mapping for *text*."""
+        """Return a ``{dimension_name: score}`` mapping for *text*.
+
+        Score values are expected in ``[0.0, 1.0]``; values outside
+        that range will be clamped by the grader and binary / ternary
+        dimensions will be snapped to their nearest allowed value
+        (see :func:`_quantize_to_scale`). The mapping MUST cover every
+        dimension named in *rubric.dimensions*; unknown dimension
+        names raise.
+        """
         ...
 
 
@@ -72,12 +80,26 @@ class ScriptedJudge(BaseModel):
     used by the unit suite and by the broken-vs-reference acceptance
     test where we want to assert score gaps without spending LLM
     tokens.
+
+    Invariant: at least one of ``responses`` / ``default_scores`` MUST
+    be populated. A judge with neither would raise on every call and
+    is almost certainly a wiring mistake.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     responses: dict[str, dict[str, float]] = Field(default_factory=dict)
     default_scores: dict[str, float] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _has_response_data(self) -> Self:
+        if not self.responses and not self.default_scores:
+            msg = (
+                "ScriptedJudge requires at least one of "
+                "'responses' or 'default_scores' to be non-empty"
+            )
+            raise ValueError(msg)
+        return self
 
     def score_against_rubric(
         self,
@@ -98,13 +120,30 @@ class ScriptedJudge(BaseModel):
 
 
 class JudgedGrade(BaseModel):
-    """Aggregate grade for one judged brief."""
+    """Aggregate grade for one judged brief.
+
+    Invariant: ``calibration.passed`` MUST be True. A judged grade
+    constructed from a failing calibration would be silently
+    untrustworthy, so we refuse to materialise one.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     score: int = Field(ge=0, le=JUDGED_TOTAL)
     per_dimension: dict[str, float] = Field(default_factory=dict)
     calibration: JudgeCalibrationReport
+
+    @model_validator(mode="after")
+    def _calibration_must_pass(self) -> Self:
+        if not self.calibration.passed:
+            msg = (
+                f"JudgedGrade: calibration for rubric "
+                f"{self.calibration.rubric_id!r} did not pass "
+                f"(spearman_rho={self.calibration.spearman_rho:.3f}, "
+                f"gate={self.calibration.gate})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 def _quantize_to_scale(raw: float, grade_type: RubricGradeType) -> float:

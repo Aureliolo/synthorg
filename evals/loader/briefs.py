@@ -45,8 +45,11 @@ def load_brief_suite(briefs_dir: Path) -> tuple[Brief, ...]:
     for path in files:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
-            msg = f"Brief file {path.name!r}: top-level YAML must be a mapping"
-            raise BriefSuiteEmptyError(msg)
+            msg = (
+                f"Brief file {path.name!r}: top-level YAML must be a mapping "
+                f"(got {type(raw).__name__})"
+            )
+            raise TypeError(msg)
         brief = parse_typed("evals.brief", cast("dict[str, object]", raw), Brief)
         briefs.append(brief)
 

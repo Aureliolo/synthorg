@@ -15,9 +15,9 @@ the brief's failure attributable.
 """
 
 import subprocess
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from evals.errors import EvalToolMissingError
 from evals.models.brief import Brief, BriefKind, ExecutableChecks, HiddenCheckSpec
@@ -42,9 +42,25 @@ EXEC_WEIGHT_LINT: Final[int] = 20
 OUTPUT_TAIL_BYTES: Final[int] = 512
 OUTPUT_TRUNCATED_MARKER: Final[str] = "...[truncated]"
 
+# Check-class labels used by every outcome. Centralised so the
+# ExecutableGrade validator below can partition outcomes by label
+# without sprinkling string literals across the module.
+LABEL_HIDDEN: Final[str] = "hidden"
+LABEL_BUILD: Final[str] = "build"
+LABEL_LINT: Final[str] = "lint"
+
+# POSIX-conventional timeout exit code. Surfaces as a failing outcome
+# without conflating with the inner command's own non-zero exits.
+TIMEOUT_EXIT_CODE: Final[int] = 124
+
 
 class CheckOutcome(BaseModel):
-    """The result of running one subprocess command in a check class."""
+    """The result of running one subprocess command in a check class.
+
+    Invariant: when ``timed_out`` is True, ``exit_code`` is
+    :data:`TIMEOUT_EXIT_CODE` (the POSIX sentinel the grader uses to
+    distinguish a timeout from any other non-zero exit).
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -56,9 +72,24 @@ class CheckOutcome(BaseModel):
     stderr_tail: str
     timed_out: bool = False
 
+    @model_validator(mode="after")
+    def _timeout_exit_code_consistent(self) -> Self:
+        if self.timed_out and self.exit_code != TIMEOUT_EXIT_CODE:
+            msg = (
+                f"CheckOutcome: timed_out=True but exit_code={self.exit_code} "
+                f"(expected POSIX timeout sentinel {TIMEOUT_EXIT_CODE})"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class ExecutableGrade(BaseModel):
-    """Aggregate grade across hidden + build + lint check classes."""
+    """Aggregate grade across hidden + build + lint check classes.
+
+    Invariant: each ``*_pass`` boolean reflects whether every outcome
+    in that label-bucket exited cleanly (``exit_code == 0`` and not
+    ``timed_out``). The validator below enforces it.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -73,6 +104,21 @@ class ExecutableGrade(BaseModel):
         """Whether every declared check class passed."""
         return self.hidden_pass and self.build_pass and self.lint_pass
 
+    @model_validator(mode="after")
+    def _pass_flags_match_outcomes(self) -> Self:
+        expected_hidden = _all_pass(o for o in self.outcomes if o.label == LABEL_HIDDEN)
+        expected_build = _all_pass(o for o in self.outcomes if o.label == LABEL_BUILD)
+        expected_lint = _all_pass(o for o in self.outcomes if o.label == LABEL_LINT)
+        observed = (self.hidden_pass, self.build_pass, self.lint_pass)
+        expected = (expected_hidden, expected_build, expected_lint)
+        if observed != expected:
+            msg = (
+                f"ExecutableGrade: pass flags {observed} do not match "
+                f"per-label outcome aggregation {expected}"
+            )
+            raise ValueError(msg)
+        return self
+
 
 def _tail(payload: bytes) -> str:
     """Decode the trailing bytes of *payload* with a truncation marker."""
@@ -82,21 +128,46 @@ def _tail(payload: bytes) -> str:
     return f"{OUTPUT_TRUNCATED_MARKER}\n{tail}"
 
 
+def _outcome_from_completed(
+    spec: HiddenCheckSpec,
+    label: str,
+    completed: subprocess.CompletedProcess[bytes],
+) -> CheckOutcome:
+    return CheckOutcome(
+        label=label,
+        cmd=spec.cmd,
+        exit_code=completed.returncode,
+        duration_seconds=0.0,
+        stdout_tail=_tail(completed.stdout),
+        stderr_tail=_tail(completed.stderr),
+    )
+
+
+def _outcome_from_timeout(
+    spec: HiddenCheckSpec,
+    label: str,
+    exc: subprocess.TimeoutExpired,
+) -> CheckOutcome:
+    logger.warning(
+        "evals.executable.timeout",
+        cmd=spec.cmd,
+        timeout=spec.timeout_seconds,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
+    return CheckOutcome(
+        label=label,
+        cmd=spec.cmd,
+        exit_code=TIMEOUT_EXIT_CODE,
+        duration_seconds=float(spec.timeout_seconds),
+        stdout_tail=_tail(exc.stdout or b""),
+        stderr_tail=_tail(exc.stderr or b""),
+        timed_out=True,
+    )
+
+
 def _run_check(spec: HiddenCheckSpec, label: str, work_dir: Path) -> CheckOutcome:
-    """Run one check; never raises on non-zero exit; raises on tool-missing.
-
-    Returns:
-        :class:`CheckOutcome`. ``timed_out`` is True when the command
-        exceeded ``spec.timeout_seconds``; in that case ``exit_code``
-        is set to a non-zero sentinel so downstream scoring treats it
-        as a failure.
-
-    Raises:
-        EvalToolMissingError: If ``spec.cmd[0]`` cannot be launched
-            (FileNotFoundError / NotADirectoryError). Sharp failure:
-            the eval cannot grade a brief whose tools are not
-            installed.
-    """
+    """Run one check; never raises on non-zero exit; raises on tool-missing."""
     try:
         completed = subprocess.run(  # noqa: S603 -- args validated, no shell
             list(spec.cmd),
@@ -106,31 +177,8 @@ def _run_check(spec: HiddenCheckSpec, label: str, work_dir: Path) -> CheckOutcom
             check=False,
             shell=False,
         )
-        return CheckOutcome(
-            label=label,
-            cmd=spec.cmd,
-            exit_code=completed.returncode,
-            duration_seconds=0.0,
-            stdout_tail=_tail(completed.stdout),
-            stderr_tail=_tail(completed.stderr),
-        )
     except subprocess.TimeoutExpired as exc:
-        logger.warning(
-            "evals.executable.timeout",
-            cmd=spec.cmd,
-            timeout=spec.timeout_seconds,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return CheckOutcome(
-            label=label,
-            cmd=spec.cmd,
-            exit_code=124,  # POSIX-conventional timeout exit code
-            duration_seconds=float(spec.timeout_seconds),
-            stdout_tail=_tail(exc.stdout or b""),
-            stderr_tail=_tail(exc.stderr or b""),
-            timed_out=True,
-        )
+        return _outcome_from_timeout(spec, label, exc)
     except (FileNotFoundError, NotADirectoryError) as exc:
         logger.error(
             "evals.executable.tool_missing",
@@ -140,6 +188,7 @@ def _run_check(spec: HiddenCheckSpec, label: str, work_dir: Path) -> CheckOutcom
         )
         msg = f"Required eval tool not found: {spec.cmd[0]!r}"
         raise EvalToolMissingError(msg) from exc
+    return _outcome_from_completed(spec, label, completed)
 
 
 def _all_pass(outcomes: Iterable[CheckOutcome]) -> bool:
@@ -148,6 +197,14 @@ def _all_pass(outcomes: Iterable[CheckOutcome]) -> bool:
     if not outs:
         return True
     return all(o.exit_code == 0 and not o.timed_out for o in outs)
+
+
+def _run_class(
+    specs: tuple[HiddenCheckSpec, ...],
+    label: str,
+    work_dir: Path,
+) -> tuple[CheckOutcome, ...]:
+    return tuple(_run_check(spec, label=label, work_dir=work_dir) for spec in specs)
 
 
 def grade_executable(brief: Brief, work_dir: Path) -> ExecutableGrade:
@@ -178,20 +235,13 @@ def grade_executable(brief: Brief, work_dir: Path) -> ExecutableGrade:
         raise ValueError(msg)
 
     checks: ExecutableChecks = brief.checks
-    hidden_outcomes = tuple(
-        _run_check(spec, label="hidden", work_dir=work_dir)
-        for spec in checks.hidden_tests
-    )
-    build_outcomes = tuple(
-        _run_check(spec, label="build", work_dir=work_dir) for spec in checks.build
-    )
-    lint_outcomes = tuple(
-        _run_check(spec, label="lint", work_dir=work_dir) for spec in checks.lint
-    )
+    hidden = _run_class(checks.hidden_tests, LABEL_HIDDEN, work_dir)
+    build = _run_class(checks.build, LABEL_BUILD, work_dir)
+    lint = _run_class(checks.lint, LABEL_LINT, work_dir)
 
-    hidden_pass = _all_pass(hidden_outcomes)
-    build_pass = _all_pass(build_outcomes)
-    lint_pass = _all_pass(lint_outcomes)
+    hidden_pass = _all_pass(hidden)
+    build_pass = _all_pass(build)
+    lint_pass = _all_pass(lint)
 
     score = (
         (EXEC_WEIGHT_HIDDEN if hidden_pass else 0)
@@ -204,7 +254,7 @@ def grade_executable(brief: Brief, work_dir: Path) -> ExecutableGrade:
         hidden_pass=hidden_pass,
         build_pass=build_pass,
         lint_pass=lint_pass,
-        outcomes=hidden_outcomes + build_outcomes + lint_outcomes,
+        outcomes=hidden + build + lint,
     )
 
 
@@ -213,8 +263,12 @@ __all__ = [
     "EXEC_WEIGHT_BUILD",
     "EXEC_WEIGHT_HIDDEN",
     "EXEC_WEIGHT_LINT",
+    "LABEL_BUILD",
+    "LABEL_HIDDEN",
+    "LABEL_LINT",
     "OUTPUT_TAIL_BYTES",
     "OUTPUT_TRUNCATED_MARKER",
+    "TIMEOUT_EXIT_CODE",
     "CheckOutcome",
     "ExecutableGrade",
     "grade_executable",

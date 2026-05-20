@@ -1,10 +1,10 @@
 """Per-release scorecard model.
 
-The scorecard is the canonical artefact emitted by every benchmark run.
-It is deterministic, schema-versioned, and round-trips through
-``model_validate_json``. Downstream consumers (issue #1983 learning
-curve, #1990, #1995, #1998) read the JSON form; humans read the
-Markdown rendering produced by :mod:`evals.emit.markdown_writer`.
+The scorecard is the canonical artefact emitted by every benchmark
+run. It is deterministic, schema-versioned, and round-trips through
+``model_validate_json``: the JSON form is the machine-readable wire
+contract; humans read the Markdown rendering produced by
+:mod:`evals.emit.markdown_writer`.
 """
 
 from datetime import datetime  # noqa: TC003 -- Pydantic field type
@@ -44,7 +44,10 @@ PASS_FRACTION: Final[float] = 0.65
 
 
 class JudgeCalibrationReport(BaseModel):
-    """Per-rubric ordinal-calibration outcome at scoring time."""
+    """Per-rubric ordinal-calibration outcome at scoring time.
+
+    Invariant: ``passed`` MUST equal ``spearman_rho >= gate``.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -53,6 +56,18 @@ class JudgeCalibrationReport(BaseModel):
     gate: float = Field(ge=-1.0, le=1.0)
     passed: bool
     anchor_count: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _passed_matches_gate(self) -> Self:
+        expected = self.spearman_rho >= self.gate
+        if self.passed != expected:
+            msg = (
+                f"JudgeCalibrationReport {self.rubric_id!r}: "
+                f"passed={self.passed} does not match "
+                f"spearman_rho={self.spearman_rho:.3f} >= gate={self.gate}"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ProcessFactReport(BaseModel):
@@ -77,9 +92,41 @@ class ProcessFactReport(BaseModel):
                 raise ValueError(msg)
         return value
 
+    @model_validator(mode="after")
+    def _entries_match_events_by_class(self) -> Self:
+        """Reject a report whose entries disagree with events_by_class.
+
+        Each penalty entry counts the same events as the corresponding
+        event class; the two views must stay in sync so the scorecard
+        can be audited from either field.
+        """
+        from_entries: dict[str, int] = {}
+        for entry in self.entries:
+            from_entries[entry.event_constant] = (
+                from_entries.get(entry.event_constant, 0) + entry.count
+            )
+        tracked_in_events = {
+            event: count
+            for event, count in self.events_by_class.items()
+            if event in from_entries
+        }
+        if from_entries != tracked_in_events:
+            msg = (
+                "ProcessFactReport: penalty entries disagree with the "
+                "tracked events_by_class slice "
+                f"(entries={from_entries}, tracked={tracked_in_events})"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class BriefResult(BaseModel):
-    """One row in the scorecard's per-brief table."""
+    """One row in the scorecard's per-brief table.
+
+    Invariant: ``score == max(grade - deduction, GRADE_FLOOR)``. The
+    validator below enforces it at construction time so a manually
+    built ``BriefResult`` cannot ship an internally inconsistent row.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -92,9 +139,25 @@ class BriefResult(BaseModel):
     termination_reason: NotBlankStr
     judge_calibration: JudgeCalibrationReport | None = None
 
+    @model_validator(mode="after")
+    def _score_matches_grade_minus_deduction(self) -> Self:
+        expected = max(self.grade - self.deduction, GRADE_FLOOR)
+        if self.score != expected:
+            msg = (
+                f"BriefResult {self.brief_id!r}: score={self.score} "
+                f"does not match expected {expected} "
+                f"(grade={self.grade} - deduction={self.deduction}, "
+                f"floored at {GRADE_FLOOR})"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class AggregatedProcessFacts(BaseModel):
-    """Suite-level rollup of every brief's process-fact events."""
+    """Suite-level rollup of every brief's process-fact events.
+
+    Invariant: ``total_events == sum(events_by_class.values())``.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
@@ -105,6 +168,17 @@ class AggregatedProcessFacts(BaseModel):
     def is_clean(self) -> bool:
         """Whether no brief in the suite emitted any tracked event."""
         return self.total_events == 0
+
+    @model_validator(mode="after")
+    def _total_matches_class_sum(self) -> Self:
+        class_sum = sum(self.events_by_class.values())
+        if self.total_events != class_sum:
+            msg = (
+                f"AggregatedProcessFacts: total_events={self.total_events} "
+                f"does not match sum of events_by_class={class_sum}"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class Scorecard(BaseModel):
