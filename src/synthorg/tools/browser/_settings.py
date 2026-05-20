@@ -12,9 +12,13 @@ overrides for the rest of the process lifetime.
 
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.browser import (
+    BROWSER_ARGS_VALIDATION_FAILED,
+)
 from synthorg.tools.browser._constants import (
     A11Y_MIN_IMPACT_DEFAULT,
     BROWSER_IMAGE_PIN_DEFAULT,
@@ -26,6 +30,8 @@ from synthorg.tools.browser._constants import (
 
 if TYPE_CHECKING:
     from synthorg.settings.resolver import ConfigResolver
+
+logger = get_logger(__name__)
 
 _NS = "tools"
 _KEY_LAUNCH_TIMEOUT = "browser_launch_timeout_seconds"
@@ -70,15 +76,37 @@ class BrowserSettings(BaseModel):
 async def resolve_browser_settings(
     resolver: ConfigResolver,
 ) -> BrowserSettings:
-    """Resolve the ``tools.browser_*`` registry into a :class:`BrowserSettings`."""
-    return BrowserSettings(
-        launch_timeout_seconds=await resolver.get_float(
-            _NS,
-            _KEY_LAUNCH_TIMEOUT,
-        ),
-        viewport_width=await resolver.get_int(_NS, _KEY_VIEWPORT_W),
-        viewport_height=await resolver.get_int(_NS, _KEY_VIEWPORT_H),
-        diff_ssim_tolerance=await resolver.get_float(_NS, _KEY_TOLERANCE),
-        a11y_min_impact_default=await resolver.get_str(_NS, _KEY_MIN_IMPACT),
-        image_pin=await resolver.get_str(_NS, _KEY_IMAGE_PIN),
-    )
+    """Resolve the ``tools.browser_*`` registry into a :class:`BrowserSettings`.
+
+    Boot tolerance: a malformed registry value (e.g. a fake resolver in
+    tests returning a sentinel that violates the field constraints)
+    must not crash the boot path. On validation failure log a warning
+    and return the BrowserSettings defaults so the BrowserTool behaves
+    as if no overrides were configured.
+    """
+    try:
+        return BrowserSettings(
+            launch_timeout_seconds=await resolver.get_float(
+                _NS,
+                _KEY_LAUNCH_TIMEOUT,
+            ),
+            viewport_width=await resolver.get_int(_NS, _KEY_VIEWPORT_W),
+            viewport_height=await resolver.get_int(_NS, _KEY_VIEWPORT_H),
+            diff_ssim_tolerance=await resolver.get_float(
+                _NS,
+                _KEY_TOLERANCE,
+            ),
+            a11y_min_impact_default=await resolver.get_str(
+                _NS,
+                _KEY_MIN_IMPACT,
+            ),
+            image_pin=await resolver.get_str(_NS, _KEY_IMAGE_PIN),
+        )
+    except ValidationError as exc:
+        logger.warning(
+            BROWSER_ARGS_VALIDATION_FAILED,
+            origin="browser_settings_resolution",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return BrowserSettings()
