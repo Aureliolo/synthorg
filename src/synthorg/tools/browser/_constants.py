@@ -7,7 +7,7 @@ one canonical place when tuning runtime behaviour.
 """
 
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 BROWSER_LAUNCH_TIMEOUT_SECONDS: Final[float] = 30.0
 NAVIGATION_TIMEOUT_SECONDS: Final[float] = 60.0
@@ -40,7 +40,9 @@ A11Y_IMPACT_LEVELS: Final[tuple[str, ...]] = (
     "serious",
     "critical",
 )
-A11Y_MIN_IMPACT_DEFAULT: Final[str] = "serious"
+A11Y_MIN_IMPACT_DEFAULT: Final[Literal["minor", "moderate", "serious", "critical"]] = (
+    "serious"
+)
 A11Y_IMPACT_RANK: Final[dict[str, int]] = {
     level: index for index, level in enumerate(A11Y_IMPACT_LEVELS)
 }
