@@ -36,7 +36,7 @@ class _MockEngine(AgentEngineErrorsMixin):
 
     def __init__(self, *, approval_gate: object | None) -> None:
         self._approval_gate = approval_gate
-        self._cost_tracker = None  # type: ignore[assignment]
+        self._cost_tracker = None
 
 
 def _identity() -> AgentIdentity:
