@@ -34,13 +34,19 @@ from synthorg.telemetry import TelemetryCollector, TelemetryConfig
 # in-function below for the constructor call site, so the runtime
 # constructor reference is independent of the annotation surface.
 if TYPE_CHECKING:
+    from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.tracker import CostTracker
     from synthorg.config.schema import RootConfig
+    from synthorg.core.clock import Clock
     from synthorg.hr.performance.config import PerformanceConfig
     from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
     from synthorg.hr.performance.tracker import PerformanceTracker
     from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat
     from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
+    from synthorg.meta.chief_of_staff.propose import ChiefOfStaffProposer
+    from synthorg.persistence.conversational_factory import (
+        ConversationalRepositories,
+    )
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.autonomy.models import AutonomyConfig
     from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
@@ -184,6 +190,69 @@ def build_chief_of_staff_chat(
     return ChiefOfStaffChat(
         provider=provider,
         config=chief_of_staff_config,
+        cost_tracker=cost_tracker,
+    )
+
+
+def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
+    chief_of_staff_config: ChiefOfStaffConfig,
+    *,
+    provider_registry: ProviderRegistry,
+    approval_store: ApprovalStoreProtocol,
+    repositories: ConversationalRepositories | None,
+    cost_tracker: CostTracker | None,
+    clock: Clock | None = None,
+) -> ChiefOfStaffProposer | None:
+    """Resolve a ChiefOfStaffProposer from config + wiring.
+
+    Returns ``None`` -- and ``POST /meta/chat/propose`` then surfaces
+    503 -- when:
+
+    - ``chief_of_staff_config.propose_enabled`` is False (opt-in
+      default), or
+    - no LLM provider is registered, or
+    - the conversational repositories could not be built (persistence
+      absent / not connected).
+
+    The provider is the first registered one (same convention as the
+    explain-only chat backend); the propose model name in config is
+    provider-agnostic.
+    """
+    from synthorg.meta.chief_of_staff.propose import (  # noqa: PLC0415
+        ChiefOfStaffProposer,
+    )
+
+    if not chief_of_staff_config.propose_enabled:
+        return None
+    if repositories is None:
+        logger.warning(
+            API_APP_STARTUP,
+            note="Chief of Staff propose enabled but persistence unavailable",
+        )
+        return None
+    available = provider_registry.list_providers()
+    if not available:
+        logger.warning(
+            API_APP_STARTUP,
+            note="Chief of Staff propose enabled but no providers registered",
+        )
+        return None
+
+    provider = provider_registry.get(available[0])
+    logger.info(
+        API_APP_STARTUP,
+        note="Chief of Staff propose configured",
+        provider=available[0],
+        propose_model=str(chief_of_staff_config.propose_model),
+    )
+    return ChiefOfStaffProposer(
+        provider=provider,
+        config=chief_of_staff_config,
+        conversation_repo=repositories.conversation_repo,
+        turn_repo=repositories.turn_repo,
+        proposal_repo=repositories.proposal_repo,
+        approval_store=approval_store,
+        clock=clock,
         cost_tracker=cost_tracker,
     )
 

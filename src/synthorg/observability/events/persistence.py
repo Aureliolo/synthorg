@@ -608,3 +608,37 @@ PERSISTENCE_PRINCIPLE_OVERRIDE_DELETE_FAILED: Final[str] = (
 PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED: Final[str] = (
     "persistence.principle_override.list_failed"
 )
+
+# Conversational clarify-and-propose repo events. Failure paths only:
+# the persistence-boundary gate forbids repos from emitting their own
+# mutation lifecycle (_SAVED / _DELETED) events; the service layer
+# owns the audit hop. FETCHED / LISTED / QUERIED are debug-level
+# read markers and APPENDED is an immutable-log marker, none of which
+# the gate considers mutations.
+PERSISTENCE_CONVERSATION_FETCHED: Final[str] = "persistence.conversation.fetched"
+PERSISTENCE_CONVERSATION_LISTED: Final[str] = "persistence.conversation.listed"
+PERSISTENCE_CONVERSATION_FAILED: Final[str] = "persistence.conversation.failed"
+PERSISTENCE_CONVERSATION_TURN_APPENDED: Final[str] = (
+    "persistence.conversation_turn.appended"
+)
+PERSISTENCE_CONVERSATION_TURN_QUERIED: Final[str] = (
+    "persistence.conversation_turn.queried"
+)
+PERSISTENCE_CONVERSATION_TURN_FAILED: Final[str] = (
+    "persistence.conversation_turn.failed"
+)
+PERSISTENCE_CONVERSATIONAL_PROPOSAL_FETCHED: Final[str] = (
+    "persistence.conversational_proposal.fetched"
+)
+PERSISTENCE_CONVERSATIONAL_PROPOSAL_LISTED: Final[str] = (
+    "persistence.conversational_proposal.listed"
+)
+PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED: Final[str] = (
+    "persistence.conversational_proposal.failed"
+)
+PERSISTENCE_CONVERSATIONAL_UNKNOWN_BACKEND: Final[str] = (
+    "persistence.conversational.unknown_backend"
+)
+PERSISTENCE_CONVERSATIONAL_HANDLE_UNAVAILABLE: Final[str] = (
+    "persistence.conversational.handle_unavailable"
+)

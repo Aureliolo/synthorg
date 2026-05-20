@@ -26,6 +26,7 @@ from synthorg.api.app_builders import (
     _build_performance_tracker,
     _build_telemetry_collector,
     build_chief_of_staff_chat,
+    build_chief_of_staff_proposer,
 )
 from synthorg.api.app_helpers import (
     _make_expire_callback,
@@ -89,6 +90,7 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config.schema import RootConfig
 from synthorg.core.clock import SystemClock
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter  # noqa: TC001
@@ -1163,6 +1165,68 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             app_state.set_chief_of_staff_chat(chat_backend)
 
     startup = [*startup, _wire_chief_of_staff_chat]
+
+    async def _wire_chief_of_staff_proposer() -> None:
+        # Wired only when ``chief_of_staff.propose_enabled`` is set AND
+        # a provider is registered AND persistence is connected (the
+        # conversation/turn/proposal stores are durable). Otherwise
+        # ``POST /meta/chat/propose`` honestly surfaces 503.
+        # Idempotent for re-entered lifespans (shared-app test fixtures).
+        if app_state.has_chief_of_staff_proposer:
+            return
+        from synthorg.meta.config import (  # noqa: PLC0415
+            load_self_improvement_config,
+        )
+        from synthorg.persistence.conversational_factory import (  # noqa: PLC0415
+            build_conversational_repositories,
+        )
+
+        # Repo wiring must run before the provider-missing early return:
+        # a conversational-intake approval that exists from a previous
+        # boot still needs the repo to route approve/reject decisions,
+        # even on boots without an LLM provider (proposer absent).
+        repositories = build_conversational_repositories(persistence)
+        if repositories is not None:
+            app_state.set_conversational_proposal_repo(repositories.proposal_repo)
+        if provider_registry is None:
+            return
+        meta_self_improvement = await load_self_improvement_config(
+            app_state.settings_service if app_state.has_settings_service else None,
+        )
+        # Hard-block the unsupported SQLite + persistent ApprovalStore
+        # combination at startup: this schema does not admit
+        # ``conversational_intake`` approval rows, so proposal writes
+        # would fail at runtime. Supported configurations are Postgres
+        # or an in-memory ApprovalStore on SQLite.
+        store_has_persistent_repo = (
+            isinstance(effective_approval_store, ApprovalStore)
+            and effective_approval_store.has_persistent_repo
+        )
+        if (
+            meta_self_improvement.chief_of_staff.propose_enabled
+            and persistence is not None
+            and persistence.backend_name == "sqlite"
+            and store_has_persistent_repo
+        ):
+            msg = (
+                "Chief of Staff propose is enabled with a persistent "
+                "SQLite ApprovalStore. This combination cannot durably "
+                "persist conversational-intake approvals. Switch the "
+                "backend to Postgres, or keep ApprovalStore in-memory "
+                "on SQLite."
+            )
+            raise ServiceUnavailableError(msg)
+        proposer = build_chief_of_staff_proposer(
+            meta_self_improvement.chief_of_staff,
+            provider_registry=provider_registry,
+            approval_store=effective_approval_store,
+            repositories=repositories,
+            cost_tracker=cost_tracker,
+        )
+        if proposer is not None:
+            app_state.set_chief_of_staff_proposer(proposer)
+
+    startup = [*startup, _wire_chief_of_staff_proposer]
 
     # Bring up the notification dispatcher's HTTP-bearing sinks
     # (slack/ntfy ``httpx.AsyncClient``) lazily under their lifecycle

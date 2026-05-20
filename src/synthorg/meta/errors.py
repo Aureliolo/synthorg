@@ -57,3 +57,89 @@ class UnknownArchitectureTargetError(RollbackMutationDeniedError):
     """
 
     default_message: ClassVar[str] = "Unknown architecture-restore target"
+
+
+class ChiefOfStaffError(DomainError):
+    """Base class for the conversational clarify-and-propose interface.
+
+    Raised by ``ChiefOfStaffProposer`` and the ``/meta/chat/propose``
+    boundary; translated to REST envelopes by the handler layer.
+    """
+
+    default_message: ClassVar[str] = "Chief of Staff operation failed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    status_code: ClassVar[int] = 500
+
+
+class ConversationNotFoundError(ChiefOfStaffError):
+    """Raised when a referenced conversation id does not exist.
+
+    The message is deliberately generic; the ``conversation_id`` is
+    available for structured logs but must NOT reach user-facing
+    responses.
+
+    Attributes:
+        conversation_id: The conversation id that was not found.
+    """
+
+    default_message: ClassVar[str] = "Conversation not found"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.CONVERSATION_NOT_FOUND
+    status_code: ClassVar[int] = 404
+
+    def __init__(self, *, conversation_id: str) -> None:
+        super().__init__("Conversation not found")
+        self.conversation_id: str = conversation_id
+
+
+class ConversationClosedError(ChiefOfStaffError):
+    """Raised when a turn is sent to a CLOSED conversation.
+
+    A closed conversation is terminal; the caller must open a new one
+    rather than resurrecting a finished thread.
+
+    Attributes:
+        conversation_id: The closed conversation id.
+    """
+
+    default_message: ClassVar[str] = "Conversation is closed"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.CONVERSATION_CLOSED
+    status_code: ClassVar[int] = 409
+
+    def __init__(self, *, conversation_id: str) -> None:
+        super().__init__("Conversation is closed")
+        self.conversation_id: str = conversation_id
+
+
+class ConversationalProposeUnavailableError(ChiefOfStaffError):
+    """Raised when the propose path is not fully wired.
+
+    Surfaces when ``propose_enabled`` is off, no provider is
+    registered, the work pipeline is absent, or the conversational
+    repositories were not connected. The operator can fix the
+    underlying configuration and retry.
+    """
+
+    default_message: ClassVar[str] = "Conversational propose interface is unavailable"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.SERVICE_UNAVAILABLE
+    status_code: ClassVar[int] = 503
+
+
+class ConversationalProposeResponseInvalidError(ChiefOfStaffError):
+    """Raised when the model's clarify-or-propose output is unparseable.
+
+    The structured-output contract (``ProposeDecision``) was violated:
+    the response was not valid JSON or failed schema validation. Never
+    silently swallowed -- the turn fails loudly so the operator sees a
+    real upstream problem rather than a dropped request.
+    """
+
+    default_message: ClassVar[str] = (
+        "Chief of Staff produced an invalid proposal response"
+    )
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.PROVIDER_ERROR
+    error_code: ClassVar[ErrorCode] = ErrorCode.CONVERSATIONAL_PROPOSE_RESPONSE_INVALID
+    status_code: ClassVar[int] = 502

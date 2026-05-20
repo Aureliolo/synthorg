@@ -40,7 +40,7 @@ A tested platform you can run, inspect, and build on:
 These are the capabilities that make SynthOrg an autonomous studio. They are designed and largely written as components, but not yet wired into a running product. Each is tracked in the open:
 
 - **Agent runtime online**: agents actually executing tasks (LLM + sandboxed tools) under a minimal safety spine. This is the foundational item everything else depends on.
-- **Conversational org interface**: talk to the company in natural language; it clarifies, proposes, and (later) acts under governance.
+- **Conversational org interface**: talk to the company in natural language. v1 lands clarify-and-propose against the Chief of Staff (asks clarifying questions when the request is underspecified, then parks one or more concrete `WorkItem`s in the human approval queue; on approval they run through the work pipeline). Still no autonomous acting; direct MCP acting under governance is the separate follow-up child.
 - **Autonomous product studio substrate**: persistent project workspace with pluggable git, brownfield codebase intake, living documentation, and a deep requirements interview.
 - **Best-in-class operate tier**: a golden-company benchmark, mission control with run replay, a cost forecast/kill-switch dial, a measurable learning curve, deterministic replay, run narratives, and an adversarial red-team.
 - **Agent capability layer**: a knowledge and provenance retrieval substrate, research mode, continual improvement, governed external API access, headless-browser and virtual-desktop testing, and more.

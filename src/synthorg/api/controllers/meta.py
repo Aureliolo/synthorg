@@ -12,14 +12,16 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import (
     ServiceUnavailableError,
     resource_not_found,
 )
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.persistence_errors import QueryError
-from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.meta.chief_of_staff.models import ChatQuery
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.meta.chief_of_staff.models import ChatQuery, ProposeArgs, ProposeResult
 from synthorg.meta.config import load_self_improvement_config
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
@@ -38,6 +40,16 @@ class ChatRequest(BaseModel):
     question: NotBlankStr = Field(max_length=2000)
     proposal_id: UUID | None = Field(default=None)
     alert_id: UUID | None = Field(default=None)
+
+
+class ConversationalProposeRequest(BaseModel):
+    """Request body for the Chief of Staff clarify-and-propose endpoint."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    message: NotBlankStr = Field(max_length=2000)
+    conversation_id: NotBlankStr | None = Field(default=None)
+    project: NotBlankStr | None = Field(default=None)
 
 
 logger = get_logger(__name__)
@@ -390,6 +402,81 @@ class MetaController(Controller):
                 "confidence": result.confidence,
             },
         )
+
+    @post(
+        "/chat/propose",
+        # One clarify-or-propose turn. Parking a proposal is an
+        # approval-queue write, but the HTTP response only reports the
+        # turn outcome (question or summaries); no addressable resource
+        # is created at this URL, so 200 (not 201) is correct.
+        status_code=200,
+        guards=[
+            require_org_mutation(),
+            per_op_rate_limit_from_policy("meta.chat.propose", key="user"),
+        ],
+    )
+    async def chat_propose(
+        self,
+        data: ConversationalProposeRequest,
+        state: State,
+    ) -> ApiResponse[ProposeResult]:
+        """Clarify an underspecified request, or park work for approval.
+
+        Routes to ``ChiefOfStaffProposer``. Either returns a clarifying
+        question (conversation stays open) or parks one or more work
+        items in the approval queue (a human must approve before the
+        pipeline runs -- still no autonomous acting).
+
+        Returns 503 when the propose backend is not configured
+        (``meta.chief_of_staff.propose_enabled`` is False, no LLM
+        provider is registered, or persistence / the work pipeline is
+        unavailable so an approved item could never execute).
+        """
+        app_state = state.app_state
+        proposer = (
+            app_state.chief_of_staff_proposer
+            if app_state.has_chief_of_staff_proposer
+            else None
+        )
+        if proposer is None:
+            logger.warning(
+                META_CHAT_DEPENDENCY_UNAVAILABLE,
+                dependency="chief_of_staff_proposer",
+                hint=(
+                    "Set meta.chief_of_staff.propose_enabled, register an "
+                    "LLM provider, and connect a persistence backend."
+                ),
+            )
+            msg = (
+                "Chief of Staff propose is not configured. Enable "
+                "``meta.chief_of_staff.propose_enabled`` in settings, "
+                "register an LLM provider, and connect persistence."
+            )
+            raise ServiceUnavailableError(msg)
+        if not app_state.has_work_pipeline:
+            logger.warning(
+                META_CHAT_DEPENDENCY_UNAVAILABLE,
+                dependency="work_pipeline",
+                hint="A provider-backed runtime is required to execute approved work.",
+            )
+            msg = (
+                "Work pipeline is not configured; an approved proposal "
+                "could never execute. Configure a provider-backed runtime."
+            )
+            raise ServiceUnavailableError(msg)
+        actor = require_actor()
+        # Fence the human-supplied prompt content at the API boundary
+        # in a ``<task-data>`` envelope so the model treats it as data,
+        # not instructions, before it reaches domain orchestration.
+        result = await proposer.converse(
+            ProposeArgs(
+                message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, data.message)),
+                created_by=NotBlankStr(actor.actor_id),
+                conversation_id=data.conversation_id,
+                project=data.project,
+            )
+        )
+        return ApiResponse[ProposeResult](data=result)
 
     @post(
         "/cycle",
