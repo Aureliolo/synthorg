@@ -77,6 +77,7 @@ The NotFound hierarchy is driven by a single `NotFoundError` class with domain-s
 | 3014 | `AB_TEST_NOT_FOUND` | A/B test record for a proposal |
 | 3015 | `BACKUP_NOT_FOUND` | Backup archive |
 | 3016 | `MEMORY_ENTRY_NOT_FOUND` | Agent memory entry |
+| 3017 | `CONVERSATION_NOT_FOUND` | Conversation record |
 
 All share the same `type` URI; the numeric code is the discriminator.
 
@@ -134,6 +135,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 7007 | `INTEGRATION_ERROR` | Non-LLM integration failure |
 | 7008 | `OAUTH_ERROR` | OAuth exchange failed |
 | 7009 | `WEBHOOK_ERROR` | Webhook receive/replay failure |
+| 7010 | `CONVERSATIONAL_PROPOSE_RESPONSE_INVALID` | Chief-of-Staff proposer returned an invalid response |
 
 ## Internal (8xxx)
 

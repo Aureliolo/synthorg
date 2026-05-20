@@ -577,8 +577,12 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     # responsive while waiting for the cross-worker lock. Generation
     # itself only happens once per session; subsequent workers find
     # the file already present and skip the migrate_apply call.
+    # 180s matches ``tests/conformance/persistence/conftest.py``'s
+    # postgres-container coordinator. Bounds a worker that dies mid-
+    # acquire so peers don't sit forever on a stuck lockfile; covers
+    # the yoyo migration chain on cold caches with generous headroom.
     def _acquire() -> FileLock:
-        lock = FileLock(str(lock_path))
+        lock = FileLock(str(lock_path), timeout=180)
         lock.acquire()
         return lock
 

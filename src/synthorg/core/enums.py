@@ -404,8 +404,8 @@ class GitBackendType(StrEnum):
     ``EMBEDDED`` is the safe default: the product self-hosts a bare repo
     on the persistent volume, with no external dependency.  ``LOCAL_PATH``
     targets a caller-supplied repository on disk.  ``EXTERNAL_REMOTE``
-    delegates to a GitHub/GitLab/Gitea/Forgejo remote resolved via the
-    connection catalog.
+    delegates to an external forge remote resolved via the connection
+    catalog.
     """
 
     EMBEDDED = "embedded"
