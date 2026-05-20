@@ -69,7 +69,8 @@ async def test_skips_create_when_project_exists() -> None:
 
 
 async def test_hot_swap_uses_swap_seam() -> None:
-    app_state, _ = _app_state(has_work_pipeline=True, project=None)
+    app_state, projects = _app_state(has_work_pipeline=True, project=None)
     await wire_real_objective_entry(app_state, hot_swap=True, env=_EMPTY_ENV)
+    projects.create.assert_called_once()
     app_state.swap_objective_entry_adapter.assert_called_once()
     app_state.set_objective_entry_adapter_if_absent.assert_not_called()

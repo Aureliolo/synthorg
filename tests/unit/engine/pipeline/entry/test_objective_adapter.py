@@ -46,6 +46,15 @@ def _submission(**overrides: Any) -> ObjectiveSubmission:
 
 
 def _result(work_item: WorkItem) -> WorkPipelineResult:
+    """Build a minimal :class:`WorkPipelineResult` for adapter tests.
+
+    Phases is intentionally a single-entry tuple: tests using this
+    helper assert on top-level fields (verdict, execution_path,
+    task_id, correlation_id) only and do not introspect per-phase
+    timing. If a future test inspects ``phases`` directly, populate
+    the full intake-projects-decompose-route-execute-metrics tuple
+    rather than extending this minimal stub.
+    """
     return WorkPipelineResult(
         work_item=work_item,
         verdict=RoutingVerdict.SPLITTABLE,
@@ -95,6 +104,23 @@ def test_submission_rejects_blank_strings() -> None:
             title="not blank",
             description="   ",
             requested_by="human",
+        )
+
+
+def test_submission_rejects_blank_acceptance_criteria() -> None:
+    """A blank-string entry in the acceptance_criteria tuple is rejected.
+
+    ``acceptance_criteria`` is typed ``tuple[NotBlankStr, ...]``: the
+    element annotation already enforces non-blank, but a regression
+    test pins the contract so a future relaxation of the field type
+    cannot silently let blank criteria through to the pipeline.
+    """
+    with pytest.raises(ValidationError):
+        ObjectiveSubmission(
+            title="t",
+            description="d",
+            requested_by="r",
+            acceptance_criteria=("valid criterion", "   "),
         )
 
 

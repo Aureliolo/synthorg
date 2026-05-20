@@ -155,7 +155,7 @@ async def test_done_callback_discards_task_from_set() -> None:
     await submit_objective_impl(app_state, _payload())
     pending = next(iter(app_state.objective_background_tasks))
     await pending
-    # Yield once to let done-callbacks run.
+    await asyncio.sleep(0)
     await asyncio.sleep(0)
     assert len(app_state.objective_background_tasks) == 0
 
@@ -173,3 +173,24 @@ def test_payload_rejects_unknown_fields() -> None:
 def test_payload_rejects_blank_fields() -> None:
     with pytest.raises(ValidationError):
         SubmitObjectivePayload(title="   ", description="d", requested_by="r")
+
+
+async def test_submit_rejects_unknown_enum_string() -> None:
+    """A bogus enum string in the payload surfaces as ValidationError.
+
+    The HTTP payload accepts ``priority`` / ``estimated_complexity`` /
+    ``task_type`` as strings (Litestar deserialises whatever the client
+    sends). ``_build_submission`` then constructs
+    :class:`ObjectiveSubmission` which coerces the string against the
+    real enum; an unknown value must fail loudly rather than silently
+    falling through.
+    """
+    app_state, _ = _state_with_recording_adapter()
+    bogus = SubmitObjectivePayload(
+        title="t",
+        description="d",
+        requested_by="r",
+        priority="BOGUS_PRIORITY",
+    )
+    with pytest.raises(ValidationError):
+        await submit_objective_impl(app_state, bogus)
