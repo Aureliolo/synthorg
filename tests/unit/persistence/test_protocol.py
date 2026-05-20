@@ -1027,6 +1027,13 @@ class _FakeBackend:
         return _FakeProjectWorkspaceRepository()
 
     @property
+    def project_docs(self) -> object:
+        # Living-doc metadata repo (#1976). ``PersistenceBackend`` is
+        # ``@runtime_checkable``, which only verifies attribute presence;
+        # returning ``object()`` is enough for the isinstance check.
+        return object()
+
+    @property
     def custom_presets(self) -> _FakePersonalityPresetRepository:
         return _FakePersonalityPresetRepository()
 
