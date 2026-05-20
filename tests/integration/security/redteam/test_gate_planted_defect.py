@@ -95,11 +95,20 @@ _ACCEPTANCE_CRITERIA: tuple[str, ...] = (
 )
 
 
-def _build_planted_report() -> RedTeamReport:
-    """The report the red-team agent should produce for the planted defects."""
+def _build_planted_report(
+    *,
+    execution_id: str = "exec-planted-defect-001",
+    task_id: str = "task-planted-defect-001",
+) -> RedTeamReport:
+    """The report the red-team agent should produce for the planted defects.
+
+    The ids are parameterised so a caller running the gate against a
+    different review_input pair (e.g. ``...002``) can supply matching
+    ids and keep the stored report aligned with the review-input keys.
+    """
     return RedTeamReport(
-        execution_id="exec-planted-defect-001",
-        task_id="task-planted-defect-001",
+        execution_id=execution_id,
+        task_id=task_id,
         findings=(
             RedTeamFinding(
                 attack_surface=RedTeamAttackSurface.REQUIREMENTS,
@@ -190,8 +199,8 @@ async def test_planted_defects_block_completion_via_red_team_gate() -> None:
     assert RedTeamSeverity.HIGH in severities
 
     # The heuristic grounding stub must catch the ungrounded numeric
-    # claim on its own -- this is what makes the acceptance test honest
-    # before EPIC E #1988 lands.
+    # claim on its own; that's what makes the acceptance test honest
+    # without depending on a substrate-backed checker.
     assert len(result.grounding_claims) >= 1
     grounded_excerpts = [c.excerpt for c in result.grounding_claims]
     assert any("47%" in excerpt for excerpt in grounded_excerpts)
@@ -205,7 +214,10 @@ async def test_red_team_emits_observability_events_in_order() -> None:
     repo = InMemoryRedTeamReportRepository()
     runner: AgentRunner = _ScriptedAgentRunner(
         repo=repo,
-        report=_build_planted_report(),
+        report=_build_planted_report(
+            execution_id="exec-planted-defect-002",
+            task_id="task-planted-defect-002",
+        ),
     )
     gate = RedTeamGateService(
         agent_runner=runner,

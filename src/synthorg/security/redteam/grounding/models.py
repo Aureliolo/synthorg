@@ -43,7 +43,7 @@ class UngroundedClaim(BaseModel):
             :data:`HEURISTIC_CONFIDENCE_CEILING`; substrate-backed
             checkers may use the full range.
         source: ``"heuristic"`` for stub-produced claims;
-            ``"knowledge_substrate"`` reserved for the EPIC E #1988
+            ``"knowledge_substrate"`` reserved for the
             substrate-backed implementation.
         expected_source_kind: When the substrate-backed checker knows
             what kind of source the claim should have traced to

@@ -51,12 +51,18 @@ class RedTeamSeverity(StrEnum):
     CRITICAL = "critical"
 
 
+SEVERITY_RANK_INFO: Final[int] = 0
+SEVERITY_RANK_LOW: Final[int] = 1
+SEVERITY_RANK_MEDIUM: Final[int] = 2
+SEVERITY_RANK_HIGH: Final[int] = 3
+SEVERITY_RANK_CRITICAL: Final[int] = 4
+
 _SEVERITY_RANK: Final[dict[RedTeamSeverity, int]] = {
-    RedTeamSeverity.INFO: 0,
-    RedTeamSeverity.LOW: 1,
-    RedTeamSeverity.MEDIUM: 2,
-    RedTeamSeverity.HIGH: 3,
-    RedTeamSeverity.CRITICAL: 4,
+    RedTeamSeverity.INFO: SEVERITY_RANK_INFO,
+    RedTeamSeverity.LOW: SEVERITY_RANK_LOW,
+    RedTeamSeverity.MEDIUM: SEVERITY_RANK_MEDIUM,
+    RedTeamSeverity.HIGH: SEVERITY_RANK_HIGH,
+    RedTeamSeverity.CRITICAL: SEVERITY_RANK_CRITICAL,
 }
 
 
@@ -103,7 +109,7 @@ class RedTeamFinding(BaseModel):
         source: Where the finding originated. ``"agent"`` for findings
             filed by the red-team agent via the tool; ``"heuristic"``
             for findings produced by the grounding stub;
-            ``"knowledge_substrate"`` reserved for the EPIC E #1988
+            ``"knowledge_substrate"`` reserved for the
             substrate-backed checker.
         citations: Source references the finding cites
             (URLs, document IDs, etc.). Default empty.
@@ -188,7 +194,7 @@ class RedTeamReviewInput(BaseModel):
         execution_id: The execution that produced the deliverable.
         deliverable_content: The artifact text the red-team attacks.
         acceptance_criteria: The brief's acceptance criteria, used by
-            the agent prompt and (post #1988) by the substrate checker
+            the agent prompt and by a future substrate-backed checker
             to verify requirements coverage.
         assigned_agent_id: The agent that produced the deliverable
             (forbidden as red-team reviewer; enforced one layer up by

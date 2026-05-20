@@ -120,3 +120,17 @@ class TestUngroundedClaim:
             source="knowledge_substrate",
             expected_source_kind="finance_report",
         )
+        UngroundedClaim(
+            excerpt="z-floor",
+            reason="r",
+            confidence=0.0,
+            source="knowledge_substrate",
+            expected_source_kind="finance_report",
+        )
+        UngroundedClaim(
+            excerpt="z-ceiling",
+            reason="r",
+            confidence=1.0,
+            source="knowledge_substrate",
+            expected_source_kind="finance_report",
+        )

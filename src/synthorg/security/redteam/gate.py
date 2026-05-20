@@ -59,6 +59,10 @@ from synthorg.security.redteam.routing import (
     HEURISTIC_GROUNDING_MAX_SEVERITY,
     compute_red_team_verdict,
 )
+from synthorg.security.redteam.runtime_context import (
+    RedTeamRuntimeContext,
+    red_team_runtime_context,
+)
 
 if TYPE_CHECKING:
     from synthorg.security.redteam.grounding.models import UngroundedClaim
@@ -222,8 +226,13 @@ class RedTeamGateService:
             execution_id=review_input.execution_id,
             task_id=review_input.task_id,
         )
+        trusted_ctx = RedTeamRuntimeContext(
+            execution_id=review_input.execution_id,
+            task_id=review_input.task_id,
+        )
         try:
-            await self._agent_runner.run(review_input=review_input)
+            with red_team_runtime_context(trusted_ctx):
+                await self._agent_runner.run(review_input=review_input)
         except RedTeamDispatchError as exc:
             original = exc.__cause__ if exc.__cause__ is not None else exc
             logger.warning(
@@ -290,6 +299,8 @@ class RedTeamGateService:
                 execution_id=review_input.execution_id,
             )
         except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(

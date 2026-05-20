@@ -86,6 +86,8 @@ class AgentEngineRunner:
         task = self._build_transient_task(review_input, prompt)
         try:
             await self._engine.run(identity=self._identity, task=task)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 RED_TEAM_AGENT_FAILED,

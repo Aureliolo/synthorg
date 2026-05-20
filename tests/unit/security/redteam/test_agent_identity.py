@@ -13,7 +13,7 @@ from synthorg.security.redteam.agent import (
     RED_TEAM_AGENT_NAME,
     build_red_team_agent_identity,
 )
-from tests._shared.fake_clock import FakeClock
+from tests._shared import FakeClock
 
 
 @pytest.fixture

@@ -48,10 +48,14 @@ class TestPositiveFlags:
     async def test_time_unit_claim_flagged(
         self, checker: HeuristicGroundingChecker
     ) -> None:
-        text = "Latency was 250 milliseconds on average."
-        text = "The system was online for 365 days without incident."
+        text = (
+            "Latency was 250 milliseconds on average. "
+            "The system was online for 365 days without incident."
+        )
         claims = await checker.check(deliverable_content=text, execution_id="e1")
-        assert len(claims) >= 1
+        excerpts = " | ".join(c.excerpt for c in claims)
+        assert "250 milliseconds" in excerpts
+        assert "365 days" in excerpts
 
 
 @pytest.mark.unit
@@ -153,7 +157,7 @@ class TestEmptyAndWhitespace:
         # Whitespace-only would fail NotBlankStr on the gate's review
         # input, but the checker itself accepts any non-blank string;
         # we still confirm graceful behaviour at the lower bound.
-        text = "Backend service implementation complete."
+        text = "   \t\n"
         claims = await checker.check(deliverable_content=text, execution_id="e1")
         assert claims == ()
 

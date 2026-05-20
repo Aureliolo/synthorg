@@ -15,7 +15,6 @@ from typing import Final
 
 from synthorg.core.agent import AgentIdentity, ModelConfig, SkillSet
 from synthorg.core.clock import Clock  # noqa: TC001
-from synthorg.core.enums import DepartmentName, SeniorityLevel
 from synthorg.core.role import Skill
 from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME, get_builtin_role
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -115,8 +114,8 @@ def build_red_team_agent_identity(
     return AgentIdentity(
         name=name,
         role=role.name,
-        department=DepartmentName.QUALITY_ASSURANCE.value,
-        level=SeniorityLevel.SENIOR,
+        department=role.department.value,
+        level=role.authority_level,
         skills=SkillSet(primary=_build_primary_skills()),
         model=model,
         hiring_date=hiring_dt.date(),

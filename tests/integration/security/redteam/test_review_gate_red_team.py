@@ -11,7 +11,8 @@ the gate's verdict in isolation; this file validates the ReviewGate
 service consumes the verdict correctly.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -23,6 +24,7 @@ from synthorg.engine.review import (
     ReviewVerdict,
 )
 from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskMutationResult
 from synthorg.security.redteam.errors import RedTeamDispatchError
 from synthorg.security.redteam.gate import RedTeamGateService
@@ -36,7 +38,7 @@ from synthorg.security.redteam.models import (
 )
 from synthorg.security.redteam.protocol import AgentRunner
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
-from tests._shared.fake_clock import FakeClock
+from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.integration
 
@@ -59,13 +61,17 @@ def _task() -> Task:
     )
 
 
-def _mock_task_engine(task: Task) -> MagicMock:
-    engine = MagicMock()
-    engine.submit = AsyncMock(
-        return_value=TaskMutationResult(request_id="req", success=True, version=1),
+def _mock_task_engine(task: Task) -> Any:
+    return mock_of[TaskEngine](
+        submit=AsyncMock(
+            return_value=TaskMutationResult(
+                request_id="req",
+                success=True,
+                version=1,
+            ),
+        ),
+        get_task=AsyncMock(return_value=task),
     )
-    engine.get_task = AsyncMock(return_value=task)
-    return engine
 
 
 class _ScriptedRunner:
@@ -131,7 +137,7 @@ def _planted_review_input() -> RedTeamReviewInput:
     )
 
 
-def _build_review_gate(*, runner: AgentRunner) -> tuple[ReviewGateService, MagicMock]:
+def _build_review_gate(*, runner: AgentRunner) -> tuple[ReviewGateService, Any]:
     """Wire a ReviewGateService with a real RedTeamGateService."""
     task = _task()
     task_engine = _mock_task_engine(task)

@@ -9,6 +9,10 @@ from synthorg.security.redteam.models import (
     RedTeamSeverity,
 )
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
+from synthorg.security.redteam.runtime_context import (
+    RedTeamRuntimeContext,
+    red_team_runtime_context,
+)
 from synthorg.security.redteam.tools.submit_report import (
     SUBMIT_RED_TEAM_REPORT_TOOL_NAME,
     SubmitRedTeamReportTool,
@@ -205,3 +209,82 @@ class TestExecutionIdArguments:
         report_b = await repo.get(execution_id="exec-B")
         assert report_a.task_id == "task-A"
         assert report_b.task_id == "task-B"
+
+
+@pytest.mark.unit
+class TestTrustedContextEnforcement:
+    """The tool rejects payloads whose ids disagree with the gate's context."""
+
+    @pytest.mark.asyncio
+    async def test_matching_ids_pass(
+        self,
+        tool: SubmitRedTeamReportTool,
+        repo: InMemoryRedTeamReportRepository,
+    ) -> None:
+        ctx = RedTeamRuntimeContext(execution_id="exec-1", task_id="task-1")
+        with red_team_runtime_context(ctx):
+            result = await tool.execute(
+                arguments={
+                    "execution_id": "exec-1",
+                    "task_id": "task-1",
+                    "summary": "match",
+                },
+            )
+        assert result.is_error is False
+        report = await repo.get(execution_id="exec-1")
+        assert report.task_id == "task-1"
+
+    @pytest.mark.asyncio
+    async def test_execution_id_mismatch_rejected(
+        self,
+        tool: SubmitRedTeamReportTool,
+    ) -> None:
+        ctx = RedTeamRuntimeContext(execution_id="trusted-exec", task_id="task-1")
+        with (
+            red_team_runtime_context(ctx),
+            pytest.raises(RedTeamReportValidationError),
+        ):
+            await tool.execute(
+                arguments={
+                    "execution_id": "attacker-exec",
+                    "task_id": "task-1",
+                    "summary": "mismatch",
+                },
+            )
+
+    @pytest.mark.asyncio
+    async def test_task_id_mismatch_rejected(
+        self,
+        tool: SubmitRedTeamReportTool,
+    ) -> None:
+        ctx = RedTeamRuntimeContext(execution_id="exec-1", task_id="trusted-task")
+        with (
+            red_team_runtime_context(ctx),
+            pytest.raises(RedTeamReportValidationError),
+        ):
+            await tool.execute(
+                arguments={
+                    "execution_id": "exec-1",
+                    "task_id": "attacker-task",
+                    "summary": "mismatch",
+                },
+            )
+
+    @pytest.mark.asyncio
+    async def test_no_context_skips_check(
+        self,
+        tool: SubmitRedTeamReportTool,
+        repo: InMemoryRedTeamReportRepository,
+    ) -> None:
+        # Outside a gate-bound context (e.g. direct-call tests), the
+        # trust check short-circuits so existing call sites keep working.
+        result = await tool.execute(
+            arguments={
+                "execution_id": "exec-direct",
+                "task_id": "task-direct",
+                "summary": "direct call",
+            },
+        )
+        assert result.is_error is False
+        report = await repo.get(execution_id="exec-direct")
+        assert report.task_id == "task-direct"

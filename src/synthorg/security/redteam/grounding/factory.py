@@ -1,7 +1,7 @@
 """Factory for the configured :class:`GroundingChecker`.
 
-The factory is the swap point for EPIC E #1988: when the knowledge +
-provenance substrate ships, this module gains a
+The factory is the swap point for a substrate-backed checker: once a
+knowledge / provenance substrate is available, this module gains a
 ``KnowledgeSubstrateGroundingChecker`` branch behind a discriminator
 in :class:`synthorg.security.config.RedTeamConfig`. The gate's call
 sites (:mod:`synthorg.security.redteam.gate`) do not change.
@@ -17,8 +17,9 @@ if TYPE_CHECKING:
 GroundingCheckerKind = Literal["heuristic"]
 """Allowed values for the ``RedTeamConfig.grounding_checker_kind`` field.
 
-#1988 will extend this with ``"knowledge_substrate"``; tests covering
-the literal will need updating in lockstep with the substrate landing.
+A substrate-backed checker will extend this with
+``"knowledge_substrate"``; tests covering the literal will need
+updating in lockstep with the substrate landing.
 """
 
 

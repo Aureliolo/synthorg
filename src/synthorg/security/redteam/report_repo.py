@@ -1,6 +1,6 @@
 """In-memory :class:`RedTeamReportRepository` implementation.
 
-The v1 repository is a thread/async-safe in-memory dict keyed by
+The v1 repository is an async-safe in-memory dict keyed by
 ``execution_id``. A persistent SQLite/Postgres adapter is deferred to a
 follow-up (see plan doc Open items). The repo is single-shot per
 ``execution_id``: a second ``put`` for the same key raises
@@ -21,14 +21,17 @@ if TYPE_CHECKING:
 
 
 class InMemoryRedTeamReportRepository:
-    """Concurrent-safe in-memory store of :class:`RedTeamReport` entries.
+    """Async-safe in-memory store of :class:`RedTeamReport` entries.
 
     Concurrency model:
 
     A single ``asyncio.Lock`` serialises ``put`` so the
-    single-shot-per-execution invariant holds under concurrent writers.
-    ``get`` is lock-free: read-after-write within the same event loop
-    is ordered by Python's GIL on the underlying dict.
+    single-shot-per-execution invariant holds under concurrent writers
+    inside one event loop. ``get`` is lock-free: read-after-write
+    within the same event loop is ordered by Python's GIL on the
+    underlying dict. The repo is NOT safe for cross-thread access;
+    callers running multiple event loops or threads must own
+    serialisation themselves.
     """
 
     def __init__(self) -> None:

@@ -17,6 +17,7 @@ from typing import Any, ClassVar, Final
 
 from pydantic import BaseModel, ValidationError
 
+from synthorg.api.boundary import parse_typed
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
@@ -30,6 +31,9 @@ from synthorg.security.redteam.errors import (
 )
 from synthorg.security.redteam.models import RedTeamReport
 from synthorg.security.redteam.protocol import RedTeamReportRepository  # noqa: TC001
+from synthorg.security.redteam.runtime_context import (
+    get_red_team_runtime_context,
+)
 from synthorg.security.redteam.tools._args import SubmitRedTeamReportArgs
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
@@ -92,7 +96,11 @@ class SubmitRedTeamReportTool(BaseTool):
     ) -> ToolExecutionResult:
         """Validate args, persist the :class:`RedTeamReport`, return ack."""
         try:
-            args = SubmitRedTeamReportArgs.model_validate(arguments)
+            args = parse_typed(
+                "agent.tool.submit_red_team_report",
+                arguments,
+                SubmitRedTeamReportArgs,
+            )
         except ValidationError as exc:
             logger.warning(
                 RED_TEAM_REPORT_VALIDATION_FAILED,
@@ -102,6 +110,25 @@ class SubmitRedTeamReportTool(BaseTool):
             )
             msg = "submit_red_team_report payload failed validation"
             raise RedTeamReportValidationError(msg) from exc
+
+        trusted_ctx = get_red_team_runtime_context()
+        if trusted_ctx is not None and (
+            args.execution_id != trusted_ctx.execution_id
+            or args.task_id != trusted_ctx.task_id
+        ):
+            logger.warning(
+                RED_TEAM_REPORT_VALIDATION_FAILED,
+                reason="trusted_context_mismatch",
+                supplied_execution_id=args.execution_id,
+                supplied_task_id=args.task_id,
+                trusted_execution_id=trusted_ctx.execution_id,
+                trusted_task_id=trusted_ctx.task_id,
+            )
+            msg = (
+                "submit_red_team_report execution_id/task_id do not match "
+                "the gate's trusted runtime context"
+            )
+            raise RedTeamReportValidationError(msg)
 
         report = RedTeamReport(
             execution_id=args.execution_id,

@@ -18,6 +18,8 @@ from synthorg.settings.definitions.security import (
     AUDIT_RETENTION_TICK_DEFAULT_SECONDS,
     AUDIT_RETENTION_TICK_MAX_SECONDS,
     AUDIT_RETENTION_TICK_MIN_SECONDS,
+    RED_TEAM_TIMEOUT_DEFAULT_SECONDS,
+    RED_TEAM_TIMEOUT_MAX_SECONDS,
 )
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import (
@@ -327,7 +329,9 @@ class RedTeamConfig(BaseModel):
             short-circuits as if the gate were absent.
         grounding_checker_kind: Discriminator for the grounding
             sub-system implementation. Today only ``"heuristic"`` is
-            supported; EPIC E #1988 lands ``"knowledge_substrate"``.
+            supported; a substrate-backed checker will add
+            ``"knowledge_substrate"`` once a knowledge / provenance
+            substrate is available.
         timeout_seconds: Per-evaluation cap on the inline AgentEngine
             invocation. Bounds inline latency at the completion edge.
     """
@@ -336,7 +340,11 @@ class RedTeamConfig(BaseModel):
 
     enabled: bool = False
     grounding_checker_kind: Literal["heuristic"] = "heuristic"
-    timeout_seconds: float = Field(default=60.0, gt=0.0, le=600.0)
+    timeout_seconds: float = Field(
+        default=RED_TEAM_TIMEOUT_DEFAULT_SECONDS,
+        gt=0.0,
+        le=RED_TEAM_TIMEOUT_MAX_SECONDS,
+    )
 
 
 class McpSelfConsumerConfig(BaseModel):

@@ -2,8 +2,8 @@
 
 A built-in adversarial agent role and the gate that runs it as the
 LAST check before a deliverable is marked complete. The gate is
-opt-in via :attr:`synthorg.security.config.SecurityConfig.red_team_enabled`
-(see also ``RedTeamConfig``).
+opt-in via :attr:`synthorg.security.config.SecurityConfig.red_team`
+(``RedTeamConfig.enabled``).
 
 Layering:
 
@@ -14,8 +14,8 @@ Layering:
   :class:`RedTeamGate`, and :class:`RedTeamReportRepository` protocols.
 - :mod:`.routing` computes the severity x autonomy verdict.
 - :mod:`.grounding` ships the stub :class:`HeuristicGroundingChecker`
-  and the :class:`GroundingChecker` protocol that EPIC E #1988 will
-  plug into.
+  and the :class:`GroundingChecker` protocol that a substrate-backed
+  checker can plug into once a knowledge substrate is available.
 - :mod:`.report_repo` provides the in-memory repo implementation.
 - :mod:`.gate` provides :class:`RedTeamGateService`, the inline-
   AgentEngine.run orchestrator.

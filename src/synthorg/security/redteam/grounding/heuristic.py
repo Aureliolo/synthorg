@@ -18,7 +18,6 @@ from typing import Final
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.security.redteam.grounding.models import (
     HEURISTIC_CONFIDENCE_CEILING,
-    HEURISTIC_CONFIDENCE_FLOOR,
     UngroundedClaim,
 )
 
@@ -69,9 +68,6 @@ _CODE_FENCE_RE: Final[re.Pattern[str]] = re.compile(
 _HEURISTIC_NUMERIC_CLAIM_CONFIDENCE: Final[float] = HEURISTIC_CONFIDENCE_CEILING
 """Numeric ungrounded claims are the most reliable heuristic signal."""
 
-_HEURISTIC_DECLARATIVE_CLAIM_CONFIDENCE: Final[float] = HEURISTIC_CONFIDENCE_FLOOR
-"""Pure declarative assertions (no number) get the floor confidence."""
-
 
 def _strip_code_blocks(text: str) -> str:
     """Replace fenced / inline code regions with spaces of equal length.
@@ -103,10 +99,10 @@ class HeuristicGroundingChecker:
        citation marker get a CEILING-confidence
        :class:`UngroundedClaim` with reason "numeric assertion without
        citation".
-    3. Non-numeric declarative assertions (assertive verbs without a
-       citation marker) get a FLOOR-confidence
-       :class:`UngroundedClaim` with reason "declarative assertion
-       without citation".
+    3. Non-numeric declarative assertions return ``None`` -- pure
+       declarative prose without numerics is too noisy for the
+       heuristic; only the agent or a substrate-backed checker may
+       flag it.
 
     Returns at most one claim per sentence; duplicates are deduplicated
     by excerpt.

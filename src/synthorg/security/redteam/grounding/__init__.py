@@ -5,9 +5,10 @@ deliverable trace to a source. The current ``HeuristicGroundingChecker``
 implementation is deterministic and runs without an LLM or knowledge
 store, so the gate can honestly catch ungrounded claims today.
 
-EPIC E #1988 ships a real knowledge + provenance substrate that will
-plug into the same :class:`GroundingChecker` protocol via
-:mod:`synthorg.security.redteam.grounding.factory`. Call sites in
+A substrate-backed checker will plug into the same
+:class:`GroundingChecker` protocol via
+:mod:`synthorg.security.redteam.grounding.factory` once a knowledge +
+provenance substrate is available. Call sites in
 :mod:`synthorg.security.redteam.gate` consume the protocol, so the
 swap is local to the factory module.
 """

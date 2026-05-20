@@ -61,10 +61,10 @@ the GROUNDING attack surface.
 SUBSTRATE_GROUNDING_MAX_SEVERITY: Final[RedTeamSeverity] = RedTeamSeverity.HIGH
 """Maximum severity a substrate-source grounding finding may carry.
 
-The EPIC E #1988 substrate-backed checker resolves claims against a
-real corpus; its findings carry more weight than heuristic flags.
-Capped at HIGH (not CRITICAL) because even an authoritative grounding
-gap is a quality defect, not a security incident.
+The substrate-backed checker resolves claims against a real corpus; its
+findings carry more weight than heuristic flags. Capped at HIGH (not
+CRITICAL) because even an authoritative grounding gap is a quality
+defect, not a security incident.
 """
 
 

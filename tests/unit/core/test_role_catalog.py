@@ -78,6 +78,11 @@ class TestBuiltinRoles:
         """Verify BUILTIN_ROLES contains exactly 33 roles (32 + Red Team)."""
         assert len(BUILTIN_ROLES) == 33
 
+    def test_red_team_role_present(self) -> None:
+        """The built-in Red Team role is registered under its catalogued name."""
+        names = {r.name for r in BUILTIN_ROLES}
+        assert "Red Team" in names
+
     def test_all_entries_are_role(self) -> None:
         """Verify every entry is a Role instance."""
         for role in BUILTIN_ROLES:
