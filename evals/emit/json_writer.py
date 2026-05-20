@@ -17,12 +17,8 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
-
 if TYPE_CHECKING:
     from evals.models.scorecard import Scorecard
-
-logger = get_logger(__name__)
 
 SCORECARD_JSON_FILENAME: str = "scorecard.json"
 JSON_INDENT: int = 2

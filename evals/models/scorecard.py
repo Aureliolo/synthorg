@@ -7,6 +7,7 @@ contract; humans read the Markdown rendering produced by
 :mod:`evals.emit.markdown_writer`.
 """
 
+import math
 from datetime import datetime  # noqa: TC003 -- Pydantic field type
 from typing import Final, Self
 
@@ -250,8 +251,14 @@ class Scorecard(BaseModel):
 
     @property
     def is_passing(self) -> bool:
-        """Whether the suite cleared the pass threshold."""
-        return self.total >= int(self.max_total * PASS_FRACTION)
+        """Whether the suite cleared the pass threshold.
+
+        Uses ``math.ceil`` (not ``int``) so a fractional threshold
+        rounds UP to the next integer; otherwise the required score
+        could silently relax (e.g. ``int(295 * 0.65)`` is 191 while the
+        intended bar at 65% of 295 is 192).
+        """
+        return self.total >= math.ceil(self.max_total * PASS_FRACTION)
 
     @field_validator("schema_version")
     @classmethod

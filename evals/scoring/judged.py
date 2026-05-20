@@ -21,6 +21,7 @@ from evals.models.brief import Brief, BriefKind, JudgedRubric, RubricGradeType
 from evals.models.scorecard import JudgeCalibrationReport
 from evals.scoring.spearman import spearman_rho
 from synthorg.observability import get_logger
+from synthorg.observability.events.evals import EVALS_JUDGE_CALIBRATION_FAILED
 
 if TYPE_CHECKING:
     from evals.loader.anchors import AnchorSet
@@ -208,7 +209,7 @@ def calibrate_judge(
     )
     if not passed:
         logger.warning(
-            "evals.judge.calibration_failed",
+            EVALS_JUDGE_CALIBRATION_FAILED,
             rubric_id=rubric.rubric_id,
             rho=rho,
             gate=SPEARMAN_GATE,

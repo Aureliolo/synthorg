@@ -110,9 +110,10 @@ def aggregate_brief_score(
 
     Args:
         grade: Raw grade in ``[0, 100]`` produced by the grader (
-            executable or judged); values outside the range are clamped
-            and a ValueError is raised because the grader is internal,
-            never untrusted input.
+            executable or judged). Values outside the range raise
+            :class:`ValueError`; the grader is internal code, so an
+            out-of-range value is a bug to surface rather than data to
+            silently fix up.
         events_by_class: Map of event-constant strings to occurrence
             counts collected during the brief's run.
         penalty_table: Resolved penalty configuration; defaults at the

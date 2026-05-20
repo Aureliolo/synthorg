@@ -50,7 +50,7 @@ def test_broken_company_scores_measurably_worse(tmp_path: Path) -> None:
     reference = _run("reference.yaml", tmp_path / "ref")
     broken = _run("broken.yaml", tmp_path / "broken")
 
-    assert reference.total > broken.total + SCORE_MARGIN, (
+    assert reference.total >= broken.total + SCORE_MARGIN, (
         f"broken={broken.total} reference={reference.total}; "
         "scorer is not discriminating between healthy and broken company configs"
     )

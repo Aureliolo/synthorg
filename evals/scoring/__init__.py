@@ -1,6 +1,6 @@
 """Scoring primitives for the eval spine.
 
-Three concerns split into modules:
+Four concerns split into modules:
 
 * :mod:`evals.scoring.penalties` -- per-event deduction constants
   + the penalty table.

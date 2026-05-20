@@ -82,7 +82,9 @@ def _cmd_sleep() -> HiddenCheckSpec:
         (False, True, True, EXEC_TOTAL - EXEC_WEIGHT_HIDDEN),
         (True, False, True, EXEC_TOTAL - EXEC_WEIGHT_BUILD),
         (True, True, False, EXEC_TOTAL - EXEC_WEIGHT_LINT),
+        (True, False, False, EXEC_TOTAL - EXEC_WEIGHT_BUILD - EXEC_WEIGHT_LINT),
         (False, True, False, EXEC_TOTAL - EXEC_WEIGHT_HIDDEN - EXEC_WEIGHT_LINT),
+        (False, False, True, EXEC_TOTAL - EXEC_WEIGHT_HIDDEN - EXEC_WEIGHT_BUILD),
         (False, False, False, 0),
     ],
     ids=[
@@ -90,7 +92,9 @@ def _cmd_sleep() -> HiddenCheckSpec:
         "hidden_fail",
         "build_fail",
         "lint_fail",
+        "build_and_lint_fail",
         "hidden_and_lint_fail",
+        "hidden_and_build_fail",
         "all_fail",
     ],
 )

@@ -11,3 +11,4 @@ from typing import Final
 
 EVALS_EXECUTABLE_TIMEOUT: Final[str] = "evals.executable.timeout"
 EVALS_EXECUTABLE_TOOL_MISSING: Final[str] = "evals.executable.tool_missing"
+EVALS_JUDGE_CALIBRATION_FAILED: Final[str] = "evals.judge.calibration_failed"

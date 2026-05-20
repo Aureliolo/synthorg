@@ -4,9 +4,16 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+import yaml
+from pydantic import ValidationError as PydValidationError
 
 from evals.errors import JudgeAnchorSetTooSmallError, JudgeCalibrationFailedError
-from evals.loader.anchors import AnchorItem, AnchorSet
+from evals.loader.anchors import (
+    MIN_ANCHOR_SET_SIZE,
+    AnchorItem,
+    AnchorSet,
+    load_anchor_set,
+)
 from evals.models.brief import (
     Brief,
     BriefKind,
@@ -16,9 +23,11 @@ from evals.models.brief import (
     RubricDimension,
     RubricGradeType,
 )
+from evals.models.scorecard import JudgeCalibrationReport
 from evals.scoring.judged import (
     JUDGED_TOTAL,
     SPEARMAN_GATE,
+    JudgedGrade,
     JudgedOutput,
     ScriptedJudge,
     calibrate_judge,
@@ -284,11 +293,6 @@ def test_grade_judged_anchor_set_minimum_enforced() -> None:
 @pytest.mark.unit
 def test_judged_grade_requires_calibration_passed() -> None:
     """JudgedGrade refuses construction with a calibration that did not pass."""
-    from pydantic import ValidationError as PydValidationError
-
-    from evals.models.scorecard import JudgeCalibrationReport
-    from evals.scoring.judged import JudgedGrade
-
     failing = JudgeCalibrationReport(
         rubric_id="r",
         spearman_rho=0.3,
@@ -303,8 +307,6 @@ def test_judged_grade_requires_calibration_passed() -> None:
 @pytest.mark.unit
 def test_path_traversal_rubric_id_rejected(tmp_path: Path) -> None:
     """A rubric_id that escapes anchors_dir via .. must be refused."""
-    from evals.loader.anchors import load_anchor_set
-
     # Drop a legit file outside anchors_dir to make sure the check would
     # otherwise find something; the containment guard must block it.
     parent_yaml = tmp_path.parent / "summarise.yaml"
@@ -319,10 +321,6 @@ def test_path_traversal_rubric_id_rejected(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_anchor_item_hand_scores_outside_range_rejected() -> None:
     """AnchorItem refuses hand_scores outside [HAND_SCORE_FLOOR, ...CEILING]."""
-    from pydantic import ValidationError as PydValidationError
-
-    from evals.loader.anchors import AnchorItem
-
     with pytest.raises(PydValidationError, match="outside"):
         AnchorItem(
             anchor_id="a1",
@@ -340,18 +338,12 @@ def test_anchor_item_hand_scores_outside_range_rejected() -> None:
 @pytest.mark.unit
 def test_scripted_judge_requires_at_least_one_data_source() -> None:
     """A ScriptedJudge with neither responses nor default_scores raises."""
-    from pydantic import ValidationError as PydValidationError
-
     with pytest.raises(PydValidationError, match="at least one"):
         ScriptedJudge()
 
 
 @pytest.mark.unit
 def test_load_anchor_set_below_minimum_raises(tmp_path: Path) -> None:
-    import yaml
-
-    from evals.loader.anchors import MIN_ANCHOR_SET_SIZE, load_anchor_set
-
     payload = {
         "rubric_id": "summarise",
         "anchor_set_version": 1,

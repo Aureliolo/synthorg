@@ -8,8 +8,6 @@ across runs without rendering churn.
 
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
-
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -19,8 +17,6 @@ if TYPE_CHECKING:
         JudgeCalibrationReport,
         Scorecard,
     )
-
-logger = get_logger(__name__)
 
 SCORECARD_MD_FILENAME: str = "scorecard.md"
 
@@ -126,10 +122,15 @@ def render_scorecard_md(scorecard: Scorecard) -> str:
 
 
 def write_scorecard_md(scorecard: Scorecard, out_dir: Path) -> Path:
-    """Write the Markdown rendering of *scorecard* into *out_dir*."""
+    """Write the Markdown rendering of *scorecard* into *out_dir*.
+
+    Newline is pinned to LF so the on-disk Markdown is byte-identical
+    across platforms; downstream consumers diff scorecards across runs
+    and a CRLF translation would surface as spurious churn.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / SCORECARD_MD_FILENAME
-    target.write_text(render_scorecard_md(scorecard), encoding="utf-8")
+    target.write_text(render_scorecard_md(scorecard), encoding="utf-8", newline="\n")
     return target
 
 
