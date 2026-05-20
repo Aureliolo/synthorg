@@ -51,12 +51,18 @@ class _FakeForecastRepo:
         self.rows[str(entity.forecast_id)] = entity
 
 
-def _state(*, repo: object | None, budget_config: object | None) -> State:
+def _state(
+    *,
+    repo: object | None,
+    budget_config: object | None,
+    pareto_analyzer: object | None = None,
+) -> State:
     state = State()
     state.app_state = SimpleNamespace(
         cost_forecast_repo=repo,
         budget_config=budget_config,
         cost_forecaster=None,
+        pareto_analyzer=pareto_analyzer,
     )
     return state
 
@@ -97,6 +103,15 @@ async def test_create_forecast_503_when_unwired() -> None:
             data=cast("object", SimpleNamespace()),
             state=state,
         )
+
+
+async def test_get_pareto_503_when_unwired() -> None:
+    """An unconfigured Pareto analyzer returns 503, consistent with the
+    rest of the cost-dial API, rather than a misleading empty frontier."""
+    controller = _controller()
+    state = _state(repo=None, budget_config=None, pareto_analyzer=None)
+    with pytest.raises(ServiceUnavailableError):
+        await ForecastBudgetController.get_pareto.fn(controller, state=state)
 
 
 async def test_raise_ceiling_rejects_below_accumulated() -> None:

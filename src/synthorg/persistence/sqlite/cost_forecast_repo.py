@@ -120,7 +120,7 @@ def _row_to_forecast(row: Row) -> Forecast:
             else None
         )
         return Forecast(
-            forecast_id=UUID(str(row["forecast_id"])),
+            forecast_id=UUID(row["forecast_id"]),
             brief_hash=str(row["brief_hash"]),
             estimated_cost=float(row["estimated_cost"]),
             lower_bound=float(row["lower_bound"]),
@@ -477,6 +477,9 @@ class SQLiteCostForecastRepository:
         decided_at_raw = updates.get("decided_at")
         ceiling_amount = updates.get("ceiling_amount")
         decided_at_value: str | None = None
+        # decided_at marks an operator decision (approve/reject). A
+        # supersede is a system transition triggered by a brief edit, so
+        # it leaves decided_at NULL to avoid implying an operator acted.
         if to_state in {ForecastDecision.APPROVED, ForecastDecision.REJECTED}:
             decided_at_dt = (
                 decided_at_raw
@@ -484,8 +487,6 @@ class SQLiteCostForecastRepository:
                 else datetime.now(UTC)
             )
             decided_at_value = format_iso_utc(decided_at_dt)
-        elif to_state is ForecastDecision.SUPERSEDED:
-            decided_at_value = format_iso_utc(datetime.now(UTC))
         updated_at_value = format_iso_utc(datetime.now(UTC))
         sql = (
             "UPDATE cost_forecasts SET "

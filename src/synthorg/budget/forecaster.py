@@ -25,6 +25,7 @@ prevents two pending rows from existing simultaneously for the same
 brief.
 """
 
+import asyncio
 import hashlib
 import json
 import math
@@ -294,15 +295,29 @@ class CostForecaster:
             if signal.estimated_turns_per_role is not None
             else _DEFAULT_TURNS_PER_ROLE
         )
+        roles = tuple(signal.role_skeleton)
+        tiers: list[str] = []
+        for role_id in roles:
+            model_id = signal.model_assignments.get(role_id, "")
+            tier = _tier_from_model_id(model_id) if model_id else "medium"
+            tiers.append(tier if tier is not None else "medium")
+
+        # Per-role history lookups are independent; fan them out so a
+        # many-role brief does not pay the sum of their latencies.
+        async def _lookup(tier: str, role_id: str) -> Sequence[float]:
+            return await self._history_lookup(tier, role_id)
+
+        async with asyncio.TaskGroup() as tg:
+            lookup_tasks = [
+                tg.create_task(_lookup(tier, role_id))
+                for tier, role_id in zip(tiers, roles, strict=True)
+            ]
+        observations_by_role = [task.result() for task in lookup_tasks]
+
         per_role_estimates: list[float] = []
         per_role_stddevs: list[float] = []
         cold_start = True
-        for role_id in signal.role_skeleton:
-            model_id = signal.model_assignments.get(role_id, "")
-            tier = _tier_from_model_id(model_id) if model_id else "medium"
-            if tier is None:
-                tier = "medium"
-            observations = await self._history_lookup(tier, role_id)
+        for tier, observations in zip(tiers, observations_by_role, strict=True):
             if observations:
                 cold_start = False
             blended_per_turn, std_per_turn = _bayesian_blend(

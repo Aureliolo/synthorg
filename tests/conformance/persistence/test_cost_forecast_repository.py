@@ -273,7 +273,9 @@ class TestCostForecastRepository:
         assert fetched is not None
         assert fetched.decision is ForecastDecision.SUPERSEDED
         assert fetched.decided_by is None
-        assert fetched.decided_at is not None
+        # A supersede is a system transition, not an operator decision,
+        # so decided_at stays NULL (no operator acted on this row).
+        assert fetched.decided_at is None
 
     async def test_transition_superseded_rejects_decided_by(
         self, backend: PersistenceBackend

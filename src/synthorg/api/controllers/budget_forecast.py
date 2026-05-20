@@ -25,12 +25,13 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.errors import RunHardCeilingTooLowError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.forecaster import BriefSignal
-from synthorg.budget.pareto import ParetoFrontier
+from synthorg.budget.pareto import (  # noqa: TC001 -- runtime return annotation
+    ParetoFrontier,
+)
 from synthorg.core.domain_errors import (
     ServiceUnavailableError,
     resource_not_found,
 )
-from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime by Pydantic
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
@@ -297,13 +298,6 @@ class ForecastBudgetController(Controller):
         app_state: AppState = state.app_state
         analyzer = app_state.pareto_analyzer
         if analyzer is None:
-            return ParetoFrontier(
-                points=(),
-                generated_at=datetime.now(UTC),
-                baseline_window_size=1,
-                source="stub:calibrated-v1",
-            )
+            msg = "Pareto analyzer not configured"
+            raise ServiceUnavailableError(msg)
         return await analyzer.analyse()
-
-
-_ = ErrorCode  # keep import; ErrorCode used by future refinements

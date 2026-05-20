@@ -15,6 +15,7 @@ analyzer change, and the provenance is surfaced verbatim via
 for measured data.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 
@@ -182,11 +183,19 @@ class ParetoAnalyzer:
             self._budget_config.auto_downgrade.downgrade_map,
         )
 
+        # Each assignment is evaluated independently; fan them out so a
+        # company with many roles does not pay the sum of the per-role
+        # benchmark-lookup latencies.
+        async with asyncio.TaskGroup() as tg:
+            eval_tasks = [
+                tg.create_task(self._evaluate(assignment, downgrade_map))
+                for assignment in assignments
+            ]
+
         points: list[ParetoPoint] = []
         sources: set[str] = set()
-
-        for assignment in assignments:
-            point = await self._evaluate(assignment, downgrade_map)
+        for task in eval_tasks:
+            point = task.result()
             if point is None:
                 continue
             points.append(point)
