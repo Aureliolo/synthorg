@@ -88,9 +88,24 @@ class DocChunker:
         prose_run: list[ProseBlock] = []
         for block in doc.body:
             if isinstance(block, ProseBlock):
-                prose_run.append(block)
-                flush_at = min(self._target_tokens, self._max_tokens)
-                if self._token_count(_prose_run_text(prose_run)) >= flush_at:
+                candidate = [*prose_run, block]
+                if (
+                    prose_run
+                    and self._token_count(_prose_run_text(candidate)) > self._max_tokens
+                ):
+                    chunks.append(
+                        self._make_prose_chunk(
+                            project_id=project_id,
+                            doc=doc,
+                            chunk_index=len(chunks),
+                            prose_blocks=prose_run,
+                            base_tags=base_tags,
+                        )
+                    )
+                    prose_run = [block]
+                else:
+                    prose_run.append(block)
+                if self._token_count(_prose_run_text(prose_run)) >= self._target_tokens:
                     chunks.append(
                         self._make_prose_chunk(
                             project_id=project_id,

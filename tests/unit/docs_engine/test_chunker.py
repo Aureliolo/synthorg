@@ -126,6 +126,24 @@ class TestChunker:
         b = chunker.chunk(project_id=NotBlankStr("proj-1"), doc=doc)
         assert a == b
 
+    def test_prose_run_flushes_before_exceeding_max_tokens(self) -> None:
+        # target_tokens is high enough that the target-based flush never
+        # fires; only the max_tokens guard can split the run. Each block
+        # alone is under max, but any two together exceed it, so the run
+        # must flush before a second block is appended.
+        block = "a" * 24  # ~6 tokens at 4 chars/token; two joined exceed 10
+        body = (
+            ProseBlock(text=block),
+            ProseBlock(text=block),
+            ProseBlock(text=block),
+        )
+        chunks = DocChunker(target_tokens=1000, max_tokens=10).chunk(
+            project_id=NotBlankStr("proj-1"),
+            doc=_doc(body),
+        )
+        assert len(chunks) == 3
+        assert all(len(c.block_ids) == 1 for c in chunks)
+
     def test_max_tokens_rejection(self) -> None:
         with pytest.raises(ValueError, match=r"max_tokens .* must be >= target_tokens"):
             DocChunker(target_tokens=512, max_tokens=256)

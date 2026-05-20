@@ -52,7 +52,7 @@ and all access flows through the [`MemoryBackend`](#memorybackend-protocol) prot
 | **Semantic** | Knowledge | Long-term | "This project uses Litestar with aiosqlite" |
 | **Procedural** | Skills/patterns | Long-term | "Code reviews require 2 approvals here" |
 | **Social** | Relationships | Long-term | "The QA lead prefers detailed test plans" |
-| **Project doc** | Project-scoped living documentation | Long-term | "Q3 status report: checkout flow shipped, retention up 4%" |
+| **Project doc** | Project-scoped living documentation | Long-term | "Q3 status report: checkout flow shipped, retention trending up" |
 
 ---
 
