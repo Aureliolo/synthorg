@@ -433,6 +433,12 @@ class DocsService:
         if supplied_slug is not None:
             _validate_slug(supplied_slug)
             prior = await self._repo.get((project_id, supplied_slug))
+            if prior is None:
+                msg = (
+                    f"living doc {project_id!r}/{supplied_slug!r} not found; "
+                    f"an explicit slug targets the update path"
+                )
+                raise DocNotFoundError(msg)
             return supplied_slug, prior
         spec = DocsFilterSpec(project_id=project_id, doc_type=doc_type)
         existing_slugs: set[NotBlankStr] = set()
@@ -544,7 +550,9 @@ def _entry_to_hit(
 def _extract_tag(entry: MemoryEntry, prefix: str) -> NotBlankStr | None:
     for tag in entry.metadata.tags:
         if tag.startswith(prefix):
-            return NotBlankStr(tag[len(prefix) :])
+            suffix = tag[len(prefix) :]
+            if suffix.strip():
+                return NotBlankStr(suffix)
     return None
 
 

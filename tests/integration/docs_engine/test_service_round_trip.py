@@ -244,6 +244,21 @@ class TestServiceRoundTrip:
         finally:
             await backend.disconnect()
 
+    async def test_write_with_unknown_slug_raises(self, tmp_path: Path) -> None:
+        runtime, _, backend, _, _ = await _build_runtime(tmp_path)
+        try:
+            with pytest.raises(DocNotFoundError):
+                await runtime.docs_service.write_doc(
+                    project_id=NotBlankStr("proj-1"),
+                    title=NotBlankStr("Iter"),
+                    doc_type=DocType.KNOWLEDGE_NOTE,
+                    author_agent_id=NotBlankStr("agent_alice"),
+                    body=(ProseBlock(text="content"),),
+                    slug=NotBlankStr("does-not-exist"),
+                )
+        finally:
+            await backend.disconnect()
+
     async def test_read_missing_raises(self, tmp_path: Path) -> None:
         runtime, _, backend, _, _ = await _build_runtime(tmp_path)
         try:

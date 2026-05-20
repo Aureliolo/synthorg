@@ -936,3 +936,25 @@ def test_update_baseline_with_justification_fills_new_and_backfills_placeholder(
     assert reasons["column:old:placeholder:TEXT:TIMESTAMPTZ"] == justification
     # A curated reason is preserved verbatim.
     assert reasons["column:old:curated:TEXT:JSONB"] == "hand-written audit reason"
+
+
+def test_update_baseline_trims_justification_and_rejects_blank(
+    tmp_path: Path,
+) -> None:
+    """A whitespace-only --justification aborts; a padded one is trimmed."""
+    baseline_path = _write_baseline(tmp_path, [])
+    rc = _MODULE._do_update_baseline(
+        baseline_path,
+        {"column:t:c:TEXT:TIMESTAMPTZ"},
+        "   ",
+    )
+    assert rc == 2
+
+    rc = _MODULE._do_update_baseline(
+        baseline_path,
+        {"column:t:c:TEXT:TIMESTAMPTZ"},
+        "  padded reason  ",
+    )
+    assert rc == 0
+    reasons = _MODULE.load_baseline_with_reasons(baseline_path)
+    assert reasons["column:t:c:TEXT:TIMESTAMPTZ"] == "padded reason"

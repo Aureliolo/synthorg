@@ -12,6 +12,11 @@ from typing import TYPE_CHECKING, Any
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
+from synthorg.docs_engine.constants import (
+    DOCS_HISTORY_DEFAULT_LIMIT,
+    DOCS_LIST_DEFAULT_LIMIT,
+    DOCS_SEARCH_DEFAULT_LIMIT,
+)
 from synthorg.docs_engine.errors import (
     DocCommitError,
     DocIndexError,
@@ -69,6 +74,7 @@ _TY_STR_SEQ = "sequence of strings"
 _TY_BLOCK_LIST = "non-empty list of block dicts"
 _TY_POS_INT = "positive int"
 _TY_NONNEG_INT = "non-negative int"
+_TY_OPT_STR = "string or null"
 
 
 def _require_docs_service(app_state: Any) -> Any:
@@ -160,6 +166,25 @@ def _parse_nonneg_int(
     return raw
 
 
+def _parse_opt_nonblank_str(
+    arguments: dict[str, Any],
+    key: str,
+) -> NotBlankStr | None:
+    """Return a ``NotBlankStr`` for *key*, or ``None`` for null / blank.
+
+    A present-but-non-string value is a caller bug, so it raises
+    ``invalid_argument`` rather than being silently coerced to ``None``.
+    """
+    raw = arguments.get(key)
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise invalid_argument(key, _TY_OPT_STR)
+    if not raw.strip():
+        return None
+    return NotBlankStr(raw)
+
+
 def _parse_doc_type_filter(
     arguments: dict[str, Any],
 ) -> frozenset[DocType] | None:
@@ -196,12 +221,7 @@ async def _docs_write(
         body = _materialise_body(block_args)
         tags = _parse_str_tuple(arguments, _ARG_TAGS)
         related = _parse_str_tuple(arguments, _ARG_RELATED)
-        slug_raw = arguments.get(_ARG_SLUG)
-        slug = (
-            NotBlankStr(slug_raw)
-            if isinstance(slug_raw, str) and slug_raw.strip()
-            else None
-        )
+        slug = _parse_opt_nonblank_str(arguments, _ARG_SLUG)
         metadata = await svc.write_doc(
             project_id=project_id,
             title=title,
@@ -237,12 +257,7 @@ async def _docs_get(
         svc = _require_docs_service(app_state)
         project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
         slug = NotBlankStr(require_arg(arguments, _ARG_SLUG, str))
-        version_raw = arguments.get(_ARG_VERSION)
-        version = (
-            NotBlankStr(version_raw)
-            if isinstance(version_raw, str) and version_raw.strip()
-            else None
-        )
+        version = _parse_opt_nonblank_str(arguments, _ARG_VERSION)
         doc = await svc.read_doc(
             project_id=project_id,
             slug=slug,
@@ -273,13 +288,10 @@ async def _docs_list(
         svc = _require_docs_service(app_state)
         project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
         doc_type = _parse_opt_doc_type(arguments, _ARG_DOC_TYPE)
-        tag_raw = arguments.get(_ARG_TAG)
-        tag = (
-            NotBlankStr(tag_raw)
-            if isinstance(tag_raw, str) and tag_raw.strip()
-            else None
+        tag = _parse_opt_nonblank_str(arguments, _ARG_TAG)
+        limit = _parse_positive_int(
+            arguments, _ARG_LIMIT, default=DOCS_LIST_DEFAULT_LIMIT
         )
-        limit = _parse_positive_int(arguments, _ARG_LIMIT, default=50)
         offset = _parse_nonneg_int(arguments, _ARG_OFFSET, default=0)
         summaries = await svc.list_docs(
             project_id=project_id,
@@ -311,7 +323,9 @@ async def _docs_search(
         project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
         query = NotBlankStr(require_arg(arguments, _ARG_QUERY, str))
         doc_types = _parse_doc_type_filter(arguments)
-        limit = _parse_positive_int(arguments, _ARG_LIMIT, default=8)
+        limit = _parse_positive_int(
+            arguments, _ARG_LIMIT, default=DOCS_SEARCH_DEFAULT_LIMIT
+        )
         hits = await svc.search(
             project_id=project_id,
             query=query,
@@ -340,7 +354,9 @@ async def _docs_history(
         svc = _require_docs_service(app_state)
         project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
         slug = NotBlankStr(require_arg(arguments, _ARG_SLUG, str))
-        limit = _parse_positive_int(arguments, _ARG_LIMIT, default=50)
+        limit = _parse_positive_int(
+            arguments, _ARG_LIMIT, default=DOCS_HISTORY_DEFAULT_LIMIT
+        )
         versions = await svc.history(
             project_id=project_id,
             slug=slug,

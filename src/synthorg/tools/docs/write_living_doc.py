@@ -32,6 +32,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+SHORT_SHA_LENGTH: int = 12
+
 
 class WriteLivingDocTool(BaseTool):
     """Agent tool that creates or updates a living document.
@@ -127,7 +129,7 @@ class WriteLivingDocTool(BaseTool):
         return ToolExecutionResult(
             content=(
                 f"Wrote living doc {metadata.doc_type.value}/{metadata.slug}"
-                f" at {metadata.head_commit_sha[:12]}"
+                f" at {metadata.head_commit_sha[:SHORT_SHA_LENGTH]}"
             ),
             metadata={
                 "slug": metadata.slug,

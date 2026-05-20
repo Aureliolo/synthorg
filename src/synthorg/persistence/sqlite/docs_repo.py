@@ -243,8 +243,10 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
             limit, offset, event=PERSISTENCE_PROJECT_DOC_QUERY_FAILED
         )
         effective_limit = min(limit, _MAX_LIST_ROWS)
-        sql, params = _build_query_sql(filter_spec)
-        sql += " ORDER BY updated_at DESC, slug ASC LIMIT ? OFFSET ?"
+        where_sql, params = _build_query_sql(filter_spec)
+        sql = (
+            f"SELECT * {where_sql} ORDER BY updated_at DESC, slug ASC LIMIT ? OFFSET ?"
+        )
         params = (*params, effective_limit, offset)
         try:
             cursor = await self._db.execute(sql, params)
@@ -270,8 +272,8 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
 
     async def count(self, filter_spec: DocsFilterSpec) -> int:
         """Count docs matching the filter spec."""
-        base_sql, params = _build_query_sql(filter_spec)
-        sql = base_sql.replace("SELECT *", "SELECT COUNT(*) AS n", 1)
+        where_sql, params = _build_query_sql(filter_spec)
+        sql = f"SELECT COUNT(*) AS n {where_sql}"
         try:
             cursor = await self._db.execute(sql, params)
             row = await cursor.fetchone()
@@ -319,21 +321,26 @@ def _escape_like(value: str) -> str:
 
 
 def _build_query_sql(filter_spec: DocsFilterSpec) -> tuple[str, tuple[object, ...]]:
-    """Compose the WHERE clause for ``query`` / ``count``.
+    """Compose the ``FROM ... WHERE`` fragment for ``query`` / ``count``.
+
+    Returns the fragment without a SELECT head so both callers can
+    prepend their own (``SELECT *`` vs ``SELECT COUNT(*)``).
 
     Tag filtering uses ``LIKE`` against the JSON-encoded tag list. The
-    pattern is anchored with the surrounding quotes so partial-substring
-    false matches are avoided (e.g. tag ``"a"`` cannot match a stored
-    tag ``"ab"``).
+    needle is the ``json.dumps`` of the tag (its quoted, JSON-escaped
+    form), so a tag containing quote characters matches its stored
+    representation, and the surrounding quotes prevent partial-substring
+    false matches (e.g. tag ``a`` cannot match a stored tag ``ab``).
     """
-    sql = "SELECT * FROM project_docs WHERE project_id = ?"
+    sql = "FROM project_docs WHERE project_id = ?"
     params: list[object] = [filter_spec.project_id]
     if filter_spec.doc_type is not None:
         sql += " AND doc_type = ?"
         params.append(filter_spec.doc_type.value)
     if filter_spec.tag is not None:
         sql += " AND tags LIKE ? ESCAPE '\\'"
-        params.append(f'%"{_escape_like(filter_spec.tag)}"%')
+        needle = json.dumps(filter_spec.tag)
+        params.append(f"%{_escape_like(needle)}%")
     if filter_spec.updated_since is not None:
         sql += " AND updated_at >= ?"
         params.append(format_iso_utc(filter_spec.updated_since))

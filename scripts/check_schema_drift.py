@@ -305,6 +305,14 @@ def _do_update_baseline(
     behind (the gap that made placeholders un-fixable for non-human
     authors).
     """
+    if justification is not None:
+        justification = justification.strip()
+        if not justification:
+            print(
+                "--justification must be a non-empty audit-cited reason",
+                file=sys.stderr,
+            )
+            return 2
     try:
         existing_reasons = load_baseline_with_reasons(baseline_path)
     except ValueError, OSError:
