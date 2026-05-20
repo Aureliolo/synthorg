@@ -7,9 +7,9 @@ simulation harness can replay it.
 
 The intent is calibration, not authority. Heuristic findings are
 capped at :data:`synthorg.security.redteam.routing.HEURISTIC_GROUNDING_MAX_SEVERITY`
-(LOW) by the gate, so the stub can never block on its own. A future
-substrate-backed checker replaces this for authoritative grounding
-decisions.
+(LOW) by the gate, so the checker can never block on its own;
+authoritative grounding decisions belong to a substrate-backed checker
+behind the same :class:`GroundingChecker` protocol.
 """
 
 import re

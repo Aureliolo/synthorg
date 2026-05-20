@@ -112,7 +112,19 @@ class SubmitRedTeamReportTool(BaseTool):
             raise RedTeamReportValidationError(msg) from exc
 
         trusted_ctx = get_red_team_runtime_context()
-        if trusted_ctx is not None and (
+        if trusted_ctx is None:
+            logger.warning(
+                RED_TEAM_REPORT_VALIDATION_FAILED,
+                reason="no_trusted_context",
+                supplied_execution_id=args.execution_id,
+                supplied_task_id=args.task_id,
+            )
+            msg = (
+                "submit_red_team_report requires a trusted runtime context; "
+                "it cannot be called outside a red-team gate evaluation"
+            )
+            raise RedTeamReportValidationError(msg)
+        if (
             args.execution_id != trusted_ctx.execution_id
             or args.task_id != trusted_ctx.task_id
         ):

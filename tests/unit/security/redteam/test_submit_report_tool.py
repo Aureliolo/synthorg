@@ -58,14 +58,16 @@ class TestToolExecute:
         tool: SubmitRedTeamReportTool,
         repo: InMemoryRedTeamReportRepository,
     ) -> None:
-        result = await tool.execute(
-            arguments={
-                "execution_id": "exec-1",
-                "task_id": "task-1",
-                "findings": (_high_finding().model_dump(mode="json"),),
-                "summary": "One HIGH defect found.",
-            },
-        )
+        ctx = RedTeamRuntimeContext(execution_id="exec-1", task_id="task-1")
+        with red_team_runtime_context(ctx):
+            result = await tool.execute(
+                arguments={
+                    "execution_id": "exec-1",
+                    "task_id": "task-1",
+                    "findings": (_high_finding().model_dump(mode="json"),),
+                    "summary": "One HIGH defect found.",
+                },
+            )
         assert result.is_error is False
         report = await repo.get(execution_id="exec-1")
         assert len(report.findings) == 1
@@ -77,13 +79,15 @@ class TestToolExecute:
         tool: SubmitRedTeamReportTool,
         repo: InMemoryRedTeamReportRepository,
     ) -> None:
-        result = await tool.execute(
-            arguments={
-                "execution_id": "exec-1",
-                "task_id": "task-1",
-                "summary": "Clean deliverable, no findings.",
-            },
-        )
+        ctx = RedTeamRuntimeContext(execution_id="exec-1", task_id="task-1")
+        with red_team_runtime_context(ctx):
+            result = await tool.execute(
+                arguments={
+                    "execution_id": "exec-1",
+                    "task_id": "task-1",
+                    "summary": "Clean deliverable, no findings.",
+                },
+            )
         assert result.is_error is False
         report = await repo.get(execution_id="exec-1")
         assert report.findings == ()
@@ -159,11 +163,13 @@ class TestToolExecute:
             "task_id": "task-1",
             "summary": "first",
         }
-        first = await tool.execute(arguments=first_args)
-        assert first.is_error is False
-        second = await tool.execute(
-            arguments={**first_args, "summary": "second"},
-        )
+        ctx = RedTeamRuntimeContext(execution_id="exec-1", task_id="task-1")
+        with red_team_runtime_context(ctx):
+            first = await tool.execute(arguments=first_args)
+            assert first.is_error is False
+            second = await tool.execute(
+                arguments={**first_args, "summary": "second"},
+            )
         assert second.is_error is True
         assert "single-shot" in second.content
 
@@ -190,21 +196,26 @@ class TestExecutionIdArguments:
         repo: InMemoryRedTeamReportRepository,
     ) -> None:
         # One tool instance serves both writes. This is the production
-        # pattern: the tool is registered once on the engine's registry.
-        await tool.execute(
-            arguments={
-                "execution_id": "exec-A",
-                "task_id": "task-A",
-                "summary": "A clean",
-            },
-        )
-        await tool.execute(
-            arguments={
-                "execution_id": "exec-B",
-                "task_id": "task-B",
-                "summary": "B clean",
-            },
-        )
+        # pattern: the tool is registered once on the engine's registry,
+        # and each evaluation binds its own trusted runtime context.
+        ctx_a = RedTeamRuntimeContext(execution_id="exec-A", task_id="task-A")
+        with red_team_runtime_context(ctx_a):
+            await tool.execute(
+                arguments={
+                    "execution_id": "exec-A",
+                    "task_id": "task-A",
+                    "summary": "A clean",
+                },
+            )
+        ctx_b = RedTeamRuntimeContext(execution_id="exec-B", task_id="task-B")
+        with red_team_runtime_context(ctx_b):
+            await tool.execute(
+                arguments={
+                    "execution_id": "exec-B",
+                    "task_id": "task-B",
+                    "summary": "B clean",
+                },
+            )
         report_a = await repo.get(execution_id="exec-A")
         report_b = await repo.get(execution_id="exec-B")
         assert report_a.task_id == "task-A"
@@ -271,20 +282,18 @@ class TestTrustedContextEnforcement:
             )
 
     @pytest.mark.asyncio
-    async def test_no_context_skips_check(
+    async def test_no_context_rejected(
         self,
         tool: SubmitRedTeamReportTool,
-        repo: InMemoryRedTeamReportRepository,
     ) -> None:
-        # Outside a gate-bound context (e.g. direct-call tests), the
-        # trust check short-circuits so existing call sites keep working.
-        result = await tool.execute(
-            arguments={
-                "execution_id": "exec-direct",
-                "task_id": "task-direct",
-                "summary": "direct call",
-            },
-        )
-        assert result.is_error is False
-        report = await repo.get(execution_id="exec-direct")
-        assert report.task_id == "task-direct"
+        # Outside a gate-bound context the tool must reject the call: a
+        # submit with no trusted context is an out-of-band (spoofable)
+        # write path that production never exercises.
+        with pytest.raises(RedTeamReportValidationError):
+            await tool.execute(
+                arguments={
+                    "execution_id": "exec-direct",
+                    "task_id": "task-direct",
+                    "summary": "direct call",
+                },
+            )

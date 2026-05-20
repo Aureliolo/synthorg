@@ -13,9 +13,10 @@ Layering:
 - :mod:`.protocol` defines the :class:`AgentRunner`,
   :class:`RedTeamGate`, and :class:`RedTeamReportRepository` protocols.
 - :mod:`.routing` computes the severity x autonomy verdict.
-- :mod:`.grounding` ships the stub :class:`HeuristicGroundingChecker`
-  and the :class:`GroundingChecker` protocol that a substrate-backed
-  checker can plug into once a knowledge substrate is available.
+- :mod:`.grounding` ships the deterministic
+  :class:`HeuristicGroundingChecker` and the :class:`GroundingChecker`
+  protocol it implements (the seam a substrate-backed checker plugs
+  into).
 - :mod:`.report_repo` provides the in-memory repo implementation.
 - :mod:`.gate` provides :class:`RedTeamGateService`, the inline-
   AgentEngine.run orchestrator.

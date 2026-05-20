@@ -36,10 +36,7 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_REPORT_MISSING,
     RED_TEAM_REPORT_RECEIVED,
 )
-from synthorg.security.redteam.errors import (
-    RedTeamDispatchError,
-    RedTeamReportNotFoundError,
-)
+from synthorg.security.redteam.errors import RedTeamDispatchError
 from synthorg.security.redteam.grounding.protocol import GroundingChecker  # noqa: TC001
 from synthorg.security.redteam.models import (
     RedTeamAttackSurface,
@@ -250,7 +247,11 @@ class RedTeamGateService:
             report = await self._report_repo.get(
                 execution_id=review_input.execution_id,
             )
-        except RedTeamReportNotFoundError as exc:
+        except asyncio.CancelledError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
             logger.warning(
                 RED_TEAM_REPORT_MISSING,
                 execution_id=review_input.execution_id,
