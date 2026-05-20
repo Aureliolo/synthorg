@@ -57,12 +57,10 @@ async def _reread_approval_item(
     """Re-read the just-decided approval, degrading to ``None`` on error.
 
     The decision is already persisted by the caller; a failed reread
-    must not 500 the request. ``None`` is treated per flow:
-    ``try_conversational_intake_resume`` (Flow 0) raises because that
-    flow owns the approval the moment it reads the source, so a
-    missing source read can't be safely fallen-through; later flows
-    (mid-execution-resume, review-gate) degrade gracefully because
-    they probe additional state to determine ownership.
+    must not 500 the request. ``None`` routes the caller through the
+    flow chain so each flow can apply its own ownership probe
+    (Flow 0: yields to later flows; Flow 1: parked-context gate
+    probe; Flow 2: review-gate is a no-op without ``task_id``).
     """
     try:
         return await app_state.approval_store.get(approval_id)
@@ -193,7 +191,11 @@ async def _load_conversational_proposal(
     Returns a (owns_decision, proposal_or_none) tuple:
 
     * ``(False, None)``: the approval is NOT a conversational-intake
-      one; the caller falls through to other resume flows.
+      one (or the source could not be determined); the caller falls
+      through to other resume flows. ``try_mid_execution_resume``
+      owns the parked-context probe for the unreadable case, so
+      yielding here is the safe default rather than raising and
+      breaking that fallback.
     * ``(True, None)``: this flow owns the decision but there is no
       proposal row to act on (a logged no-op); the caller returns
       ``True`` without further work.
@@ -201,10 +203,10 @@ async def _load_conversational_proposal(
       proposal to transition.
 
     Raises:
-        ServiceUnavailableError: When the approval store read fails
-            (``item is None``) or the proposal repo is not wired.
-            Both are hard misconfigurations -- swallowing them would
-            silently strand a decided conversational approval.
+        ServiceUnavailableError: When the source is confirmed
+            CONVERSATIONAL_INTAKE but the proposal repo is not wired.
+            A hard misconfiguration -- swallowing it would silently
+            strand a decided conversational approval.
     """
     from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
     from synthorg.persistence.conversational_proposal_protocol import (  # noqa: PLC0415
@@ -212,15 +214,7 @@ async def _load_conversational_proposal(
     )
 
     item = await _reread_approval_item(app_state, approval_id)
-    if item is None:
-        logger.error(
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            approval_id=approval_id,
-            note="approval reread failed; cannot determine source",
-        )
-        msg = "Approval state unavailable"
-        raise ServiceUnavailableError(msg)
-    if item.source is not ApprovalSource.CONVERSATIONAL_INTAKE:
+    if item is None or item.source is not ApprovalSource.CONVERSATIONAL_INTAKE:
         return False, None
     # This flow now owns the decision regardless of outcome.
     if not app_state.has_conversational_proposal_repo:
