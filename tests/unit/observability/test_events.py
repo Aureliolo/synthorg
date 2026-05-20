@@ -333,6 +333,10 @@ class TestEventConstants:
             "resilience",
             # A/B experiment variant registry + deterministic assignment.
             "experiments",
+            # Golden-benchmark eval spine (executable grader subprocess
+            # outcomes); distinct from "eval_loop"/"evaluation" which
+            # serve the legacy eval-loop subsystem.
+            "evals",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
