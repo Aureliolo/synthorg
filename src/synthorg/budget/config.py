@@ -255,6 +255,54 @@ class BudgetConfig(BaseModel):
             namespace=SettingNamespace.BUDGET,
             key="currency",
         ),
+        MirrorField(
+            field="forecast_required",
+            namespace=SettingNamespace.BUDGET,
+            key="forecast_required",
+            parse=parse_bool,
+        ),
+        MirrorField(
+            field="forecast_default_ceiling_multiplier",
+            namespace=SettingNamespace.BUDGET,
+            key="forecast_default_ceiling_multiplier",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="run_hard_ceiling",
+            namespace=SettingNamespace.BUDGET,
+            key="run_hard_ceiling",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="forecast_static_prior_per_turn_large",
+            namespace=SettingNamespace.BUDGET,
+            key="forecast_static_prior_per_turn_large",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="forecast_static_prior_per_turn_medium",
+            namespace=SettingNamespace.BUDGET,
+            key="forecast_static_prior_per_turn_medium",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="forecast_static_prior_per_turn_small",
+            namespace=SettingNamespace.BUDGET,
+            key="forecast_static_prior_per_turn_small",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="forecast_static_prior_per_turn_local_small",
+            namespace=SettingNamespace.BUDGET,
+            key="forecast_static_prior_per_turn_local_small",
+            parse=parse_float,
+        ),
+        MirrorField(
+            field="forecast_shrinkage_prior_weight",
+            namespace=SettingNamespace.BUDGET,
+            key="forecast_shrinkage_prior_weight",
+            parse=parse_float,
+        ),
     )
 
     total_monthly: float = Field(
@@ -309,6 +357,51 @@ class BudgetConfig(BaseModel):
     pte_tracking_enabled: bool = Field(
         default=False,
         description="Enable Prefill Token Equivalents tracking (observability-only)",
+    )
+    forecast_required: bool = Field(
+        default=True,
+        description="Require operator approval of a pre-flight cost forecast",
+    )
+    forecast_default_ceiling_multiplier: float = Field(
+        default=1.5,
+        ge=1.0,
+        description=(
+            "Multiplier applied to the forecast upper bound when suggesting a"
+            " per-run hard ceiling at approval time"
+        ),
+    )
+    run_hard_ceiling: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Absolute hard real-money ceiling applied when Task.hard_ceiling"
+            " is unset (zero disables the global fallback)"
+        ),
+    )
+    forecast_static_prior_per_turn_large: float = Field(
+        default=0.10,
+        ge=0.0,
+        description="Static prior cost per turn for the `large` model tier",
+    )
+    forecast_static_prior_per_turn_medium: float = Field(
+        default=0.03,
+        ge=0.0,
+        description="Static prior cost per turn for the `medium` model tier",
+    )
+    forecast_static_prior_per_turn_small: float = Field(
+        default=0.005,
+        ge=0.0,
+        description="Static prior cost per turn for the `small` model tier",
+    )
+    forecast_static_prior_per_turn_local_small: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Static prior cost per turn for the `local-small` model tier",
+    )
+    forecast_shrinkage_prior_weight: float = Field(
+        default=5.0,
+        ge=0.0,
+        description="Prior pseudo-count for the Bayesian shrinkage blend",
     )
 
     @model_validator(mode="before")

@@ -13,6 +13,8 @@ from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from synthorg.budget.quota import DegradationAction
 
 
@@ -176,6 +178,165 @@ class MixedCurrencyAggregationError(DomainError):
         self.task_id = task_id
         self.project_id = project_id
         self.department_id = department_id
+
+
+class RunHardCeilingExceededError(BudgetExhaustedError):
+    """Per-run hard real-money ceiling exceeded mid-execution.
+
+    Raised by the in-loop ``BudgetChecker`` when accumulated cost meets
+    or exceeds the per-task ``Task.hard_ceiling`` (or the global
+    ``budget.run_hard_ceiling`` setting when the per-task value is
+    absent).
+
+    Subclass of :class:`BudgetExhaustedError` so the engine's existing
+    ``except BudgetExhaustedError`` catch absorbs it transparently; the
+    engine then routes the run to ``ApprovalGate.park_context`` with a
+    payload carrying ``accumulated_cost`` and ``ceiling_amount`` so the
+    operator can raise the ceiling and resume.
+
+    Attributes:
+        ceiling_amount: The hard ceiling that was crossed.
+        accumulated_cost: Total cost accumulated at the moment of the
+            crossing (inclusive of the turn that pushed past the line).
+        currency: ISO 4217 code stamped on both values.
+        task_id: Optional task identifier for downstream telemetry.
+        forecast_id: Optional forecast row id linking back to the
+            pre-flight estimate.
+    """
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.RUN_HARD_CEILING_EXCEEDED
+    default_message: ClassVar[str] = "Run hard ceiling exceeded"
+
+    def __init__(  # noqa: PLR0913 -- carries the values the resume UI renders
+        self,
+        msg: str,
+        *,
+        ceiling_amount: float,
+        accumulated_cost: float,
+        currency: NotBlankStr,
+        task_id: NotBlankStr | None = None,
+        forecast_id: UUID | None = None,
+    ) -> None:
+        super().__init__(msg)
+        self.ceiling_amount = ceiling_amount
+        self.accumulated_cost = accumulated_cost
+        self.currency = currency
+        self.task_id = task_id
+        self.forecast_id = forecast_id
+
+
+class CostForecastApprovalRequiredError(DomainError):
+    """Pre-flight cost forecast awaiting operator approval.
+
+    Raised by work-entry adapters when ``budget.forecast_required`` is
+    enabled and the inbound brief either has no ``forecast_id``, or the
+    referenced forecast row is in a non-terminal-approved state
+    (``pending`` / ``superseded``). The HTTP envelope carries the
+    forecast payload so the operator can decide via the queue UI or
+    the inline modal.
+
+    Intentionally a sibling of :class:`BudgetExhaustedError` (not a
+    subclass): the engine's ceiling-handler must NOT absorb forecast
+    approvals; they are gated upstream at the work-entry seam.
+
+    Attributes:
+        forecast_id: The forecast row awaiting decision.
+        brief_hash: Canonical hash of the brief that produced the row.
+        estimated_cost: Mid-point cost estimate in ``currency``.
+        currency: ISO 4217 code stamped on the estimate.
+    """
+
+    status_code: ClassVar[int] = 402
+    error_code: ClassVar[ErrorCode] = ErrorCode.COST_FORECAST_APPROVAL_REQUIRED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.BUDGET_EXHAUSTED
+    retryable: ClassVar[bool] = False
+    default_message: ClassVar[str] = "Cost forecast approval required"
+
+    def __init__(
+        self,
+        msg: str,
+        *,
+        forecast_id: UUID,
+        brief_hash: NotBlankStr,
+        estimated_cost: float,
+        currency: NotBlankStr,
+    ) -> None:
+        super().__init__(msg)
+        self.forecast_id = forecast_id
+        self.brief_hash = brief_hash
+        self.estimated_cost = estimated_cost
+        self.currency = currency
+
+
+class CostForecastRejectedError(DomainError):
+    """Pre-flight forecast was rejected by the operator.
+
+    Raised by work-entry adapters when ``Task.forecast_id`` maps to a
+    row with ``decision=rejected``. Terminal: the work item never
+    dispatches; the caller must resubmit the brief.
+
+    Attributes:
+        forecast_id: The rejected forecast row.
+        brief_hash: Canonical hash of the rejected brief.
+    """
+
+    status_code: ClassVar[int] = 402
+    error_code: ClassVar[ErrorCode] = ErrorCode.COST_FORECAST_REJECTED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.BUDGET_EXHAUSTED
+    retryable: ClassVar[bool] = False
+    default_message: ClassVar[str] = "Cost forecast rejected by operator"
+
+    def __init__(
+        self,
+        msg: str,
+        *,
+        forecast_id: UUID,
+        brief_hash: NotBlankStr,
+    ) -> None:
+        super().__init__(msg)
+        self.forecast_id = forecast_id
+        self.brief_hash = brief_hash
+
+
+class RunHardCeilingTooLowError(DomainError):
+    """Operator attempted to raise the ceiling below accumulated cost.
+
+    Raised by the ``raise_ceiling`` API endpoint when the requested new
+    ceiling is less than or equal to the cost already accumulated at
+    the moment of parking. A new ceiling at or below the accumulated
+    cost would re-halt the run immediately on resume, which is almost
+    never the operator's intent; the endpoint rejects the request so
+    the UI can prompt for a value above the accumulated total.
+
+    Validation-category (HTTP 422) rather than budget-exhausted: this
+    is a malformed instruction from the operator, not a budget signal.
+
+    Attributes:
+        requested_ceiling: The value the operator attempted to set.
+        accumulated_cost: Cost already spent at park time.
+        currency: ISO 4217 code stamped on both values.
+    """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.RUN_HARD_CEILING_TOO_LOW
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    retryable: ClassVar[bool] = False
+    default_message: ClassVar[str] = (
+        "Requested ceiling is not greater than accumulated cost"
+    )
+
+    def __init__(
+        self,
+        msg: str,
+        *,
+        requested_ceiling: float,
+        accumulated_cost: float,
+        currency: NotBlankStr,
+    ) -> None:
+        super().__init__(msg)
+        self.requested_ceiling = requested_ceiling
+        self.accumulated_cost = accumulated_cost
+        self.currency = currency
 
 
 class QuotaExhaustedError(BudgetExhaustedError):

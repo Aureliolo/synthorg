@@ -174,6 +174,157 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BUDGET,
+        key="forecast_required",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Require operator approval of a pre-flight cost forecast before"
+            " the work pipeline dispatches a brief. When true, work-entry"
+            " adapters create a Forecast row and raise"
+            " CostForecastApprovalRequiredError (HTTP 402) until the"
+            " operator approves via the queue UI or the inline modal."
+            " Disable only for non-interactive intake where the operator"
+            " has already approved budget at a higher level."
+        ),
+        group="Forecast",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="forecast_default_ceiling_multiplier",
+        type=SettingType.FLOAT,
+        default="1.5",
+        description=(
+            "Multiplier applied to the forecast upper bound when"
+            " suggesting a per-run hard ceiling at approval time."
+            " Effective ceiling = forecast.upper_bound *"
+            " forecast_default_ceiling_multiplier. Operators may override"
+            " the suggestion per brief in the approval UI."
+        ),
+        group="Forecast",
+        level=SettingLevel.ADVANCED,
+        min_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="run_hard_ceiling",
+        type=SettingType.FLOAT,
+        default="0.0",
+        description=(
+            "Absolute hard real-money ceiling (in budget.currency) applied"
+            " to any run whose Task.hard_ceiling is unset. The in-loop"
+            " BudgetChecker raises RunHardCeilingExceededError when the"
+            " accumulated cost meets or exceeds this value; the engine"
+            " parks the context so the operator can raise the ceiling and"
+            " resume. Zero disables the global fallback (per-task ceilings"
+            " still apply)."
+        ),
+        group="Forecast",
+        min_value=0.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="forecast_static_prior_per_turn_large",
+        type=SettingType.FLOAT,
+        default="0.10",
+        description=(
+            "Static prior cost per turn (in budget.currency) for an agent"
+            " on the `large` model tier. Used as the cold-start estimate"
+            " when no per-role historical baseline is available; blended"
+            " with BaselineStore history via the Bayesian shrinkage"
+            " specified by forecast_shrinkage_prior_weight."
+        ),
+        group="Forecast",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="forecast_static_prior_per_turn_medium",
+        type=SettingType.FLOAT,
+        default="0.03",
+        description=(
+            "Static prior cost per turn (in budget.currency) for an agent"
+            " on the `medium` model tier. See"
+            " forecast_static_prior_per_turn_large for the blend rule."
+        ),
+        group="Forecast",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="forecast_static_prior_per_turn_small",
+        type=SettingType.FLOAT,
+        default="0.005",
+        description=(
+            "Static prior cost per turn (in budget.currency) for an agent"
+            " on the `small` model tier. See"
+            " forecast_static_prior_per_turn_large for the blend rule."
+        ),
+        group="Forecast",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="forecast_static_prior_per_turn_local_small",
+        type=SettingType.FLOAT,
+        default="0.0",
+        description=(
+            "Static prior cost per turn (in budget.currency) for an agent"
+            " on the `local-small` model tier. Defaults to zero because"
+            " self-hosted local models incur no provider spend; override"
+            " only if the operator's deployment carries an internal"
+            " chargeback rate."
+        ),
+        group="Forecast",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="forecast_shrinkage_prior_weight",
+        type=SettingType.FLOAT,
+        default="5.0",
+        description=(
+            "Prior pseudo-count for the Bayesian shrinkage blend in"
+            " CostForecaster. Blend formula:"
+            " (prior_weight * static_prior + n * historical_mean) /"
+            " (prior_weight + n) where n is the number of historical"
+            " observations for the role. Larger values pull the estimate"
+            " toward the static prior; smaller values trust history more"
+            " aggressively."
+        ),
+        group="Forecast",
+        level=SettingLevel.ADVANCED,
+        min_value=0.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
         key="baseline_window_size",
         type=SettingType.INTEGER,
         default="50",
