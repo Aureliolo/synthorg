@@ -187,7 +187,7 @@ torch = [
 [tool.ruff]
 target-version = "py314"
 line-length = 88
-src = ["src", "tests"]
+src = ["src", "tests", "evals"]
 
 [tool.ruff.lint]
 # preview + explicit-preview-rules: required to activate TID255 (added via
@@ -280,7 +280,7 @@ convention = "google"
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["synthorg"]
+known-first-party = ["synthorg", "evals"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "__future__.annotations".msg = "Python 3.14+ has native lazy annotations (PEP 649). Do not use `from __future__ import annotations`."
@@ -360,6 +360,7 @@ pythonVersion = "3.14"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
+extraPaths = ["src", "."]
 
 # ---------------------------------------------------------------------------
 # commitizen: conventional commits
@@ -374,7 +375,7 @@ tag_format = "v$version"
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 asyncio_mode = "auto"
 timeout = 30
 markers = [
