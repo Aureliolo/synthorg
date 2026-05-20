@@ -239,6 +239,7 @@ class TestEventConstants:
             "delegation",
             "design",
             "docker",
+            "docs",
             "eval_loop",
             "evaluation",
             "event_stream",

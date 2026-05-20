@@ -1,4 +1,4 @@
-"""Living-documentation REST controller (#1976).
+"""Living-documentation REST controller.
 
 Read-only HTTP surface that mirrors the agent-tool / MCP write surface.
 Writes happen in-process via the agent tool or MCP handler; this

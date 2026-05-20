@@ -1,4 +1,4 @@
-"""Agent tools for the living-documentation engine (#1976).
+"""Agent tools for the living-documentation engine.
 
 Exposes :class:`WriteLivingDocTool` and :class:`SearchLivingDocsTool`.
 Tools delegate to :class:`DocsService`; they perform argument

@@ -118,6 +118,7 @@ class DocIndexer:
         """
         project_tag = NotBlankStr(f"{DOCS_PROJECT_TAG_PREFIX}{project_id}")
         slug_tag = NotBlankStr(f"{DOCS_SLUG_TAG_PREFIX}{slug}")
+        # lint-allow: long-running-loop-kill-switch -- bounded drain
         while True:
             existing = await self._backend.retrieve(
                 SYSTEM_DOCS_AGENT_ID,

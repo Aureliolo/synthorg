@@ -13,6 +13,7 @@ from synthorg.meta.mcp.handlers.approvals import APPROVAL_HANDLERS
 from synthorg.meta.mcp.handlers.budget import BUDGET_HANDLERS
 from synthorg.meta.mcp.handlers.communication import COMMUNICATION_HANDLERS
 from synthorg.meta.mcp.handlers.coordination import COORDINATION_HANDLERS
+from synthorg.meta.mcp.handlers.docs import DOCS_HANDLERS
 from synthorg.meta.mcp.handlers.infrastructure import INFRASTRUCTURE_HANDLERS
 from synthorg.meta.mcp.handlers.integrations import INTEGRATION_HANDLERS
 from synthorg.meta.mcp.handlers.memory import MEMORY_HANDLERS
@@ -48,6 +49,7 @@ _ALL_HANDLER_MAPS: tuple[Mapping[str, ToolHandler], ...] = (
     COMMUNICATION_HANDLERS,
     INTEGRATION_HANDLERS,
     INFRASTRUCTURE_HANDLERS,
+    DOCS_HANDLERS,
 )
 
 

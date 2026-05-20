@@ -218,7 +218,7 @@ class TestHandlerParity:
         MCP tool surface is intentionally grown or shrunk.
         """
         registry = build_full_registry()
-        assert registry.tool_count == 205
+        assert registry.tool_count == 210
 
 
 class TestNoPlaceholderInProduction:

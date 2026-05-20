@@ -5,7 +5,7 @@ against a real git repo via :class:`EmbeddedGitBackend`, a real
 :class:`InMemoryBackend`, the in-process fake docs repo, and a real
 :class:`ProjectWorkspaceService` rooted at a pytest tmp dir.
 
-Validates the Phase 4 critical path: write_doc commits to the docs
+Validates the critical write_doc -> commits to the docs
 branch, indexes chunks under PROJECT_DOC, and the same doc is later
 retrievable via the dashboard read path AND via the search path.
 """

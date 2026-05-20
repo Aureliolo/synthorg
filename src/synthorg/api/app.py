@@ -1219,13 +1219,13 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     _docs_engine_installed = False
 
     async def _wire_docs_engine() -> None:
-        # Living-documentation engine (#1976). Constructs DocsService and
-        # the ProjectAwareMemoryFacade behind the same persistence +
-        # project workspace gate used by _install_runtime_services. The
-        # facade is held on the engine bundle so the per-agent retrieval
-        # pipeline (Phase 6) can consult it when an execution context
-        # exposes a project_id; the dev / empty-company path with no
-        # persistence cleanly skips wiring.
+        # Living-documentation engine. Constructs DocsService and the
+        # ProjectAwareMemoryFacade behind the same persistence + project
+        # workspace gate used by _install_runtime_services. The facade is
+        # held on the engine bundle so the per-agent retrieval pipeline
+        # can consult it when an execution context exposes a project_id;
+        # the dev / empty-company path with no persistence cleanly skips
+        # wiring.
         nonlocal _docs_engine_installed
         if _docs_engine_installed:
             return

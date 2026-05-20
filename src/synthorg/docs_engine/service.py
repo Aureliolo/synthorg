@@ -2,9 +2,9 @@
 
 Composes the slug helper, chunker, indexer, writer, and the docs
 metadata repository into a single async entry point. Agents call
-:class:`DocsService` indirectly via the ``WriteLivingDocTool`` /
-``SearchLivingDocsTool`` (Phase 6) and via the MCP handlers; the REST
-endpoints (Phase 7) call it directly for read-only operations.
+:class:`DocsService` indirectly via :class:`WriteLivingDocTool` /
+:class:`SearchLivingDocsTool` and via the MCP handlers; the REST
+endpoints call it directly for read-only operations.
 """
 
 import asyncio
@@ -18,6 +18,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
     DOCS_BRANCH_NAME,
     DOCS_HISTORY_DEFAULT_LIMIT,
+    DOCS_LIST_DEFAULT_LIMIT,
     DOCS_MEMORY_NAMESPACE,
     DOCS_PROJECT_TAG_PREFIX,
     DOCS_SEARCH_DEFAULT_LIMIT,
@@ -245,7 +246,7 @@ class DocsService:
         project_id: NotBlankStr,
         doc_type: DocType | None = None,
         tag: NotBlankStr | None = None,
-        limit: int = 100,
+        limit: int = DOCS_LIST_DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[DocSummary, ...]:
         """List docs for a project (newest first)."""

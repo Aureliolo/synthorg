@@ -3,7 +3,7 @@
 Confirms the new enum member round-trips through the inmemory backend's
 store/retrieve path with the same machinery as every other category
 (no special-case code paths needed). The end-to-end facade behaviour is
-exercised in Phase 9's dual-purpose e2e test; this file only verifies
+exercised by the dual-purpose integration tests; this file only verifies
 that adding PROJECT_DOC to the enum did not require backend changes
 beyond the constant's introduction.
 """

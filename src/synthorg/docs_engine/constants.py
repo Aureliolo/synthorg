@@ -80,3 +80,6 @@ DOCS_SLUG_MAX_LENGTH: Final[int] = 128
 
 DOCS_HISTORY_DEFAULT_LIMIT: Final[int] = 50
 """Default number of history entries returned by :meth:`DocsService.history`."""
+
+DOCS_LIST_DEFAULT_LIMIT: Final[int] = 100
+"""Default page size for :meth:`DocsService.list_docs`."""

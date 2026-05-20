@@ -1,4 +1,4 @@
-"""Pydantic args models for living-documentation MCP tools (#1976)."""
+"""Pydantic args models for living-documentation MCP tools."""
 
 from pydantic import BaseModel, ConfigDict, Field
 

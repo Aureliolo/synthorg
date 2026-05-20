@@ -452,7 +452,7 @@ CREATE TABLE project_workspaces (
 CREATE INDEX idx_project_workspaces_created_at
     ON project_workspaces(created_at);
 
--- ── Living-documentation metadata (#1976) ────────────────────
+-- ── Living-documentation metadata ────────────────────────────
 CREATE TABLE project_docs (
     project_id TEXT NOT NULL,
     slug TEXT NOT NULL,

@@ -503,7 +503,7 @@ class AppState(AppStateServicesMixin):
         self._pareto_analyzer: ParetoAnalyzer | None = None
         self._benchmark_provider: BenchmarkScoreProvider | None = None
         self._budget_config: BudgetConfig | None = None
-        # Living-documentation engine (#1976). Wired at boot when both
+        # Living-documentation engine. Wired at boot when both
         # persistence and the project workspace service are present; the
         # accessor returns None for dev / empty-company runs that skipped
         # the wiring.

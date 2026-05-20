@@ -1,4 +1,4 @@
-"""Living-documentation domain MCP tools (#1976).
+"""Living-documentation domain MCP tools.
 
 Exposes operator-driven MCP tools that mirror the agent-tool surface
 exposed by :mod:`synthorg.tools.docs`. The write tool is gated by the
