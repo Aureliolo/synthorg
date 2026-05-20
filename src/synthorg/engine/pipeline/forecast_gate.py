@@ -15,7 +15,7 @@ and inherit the forecast workflow without learning about the
 underlying ``CostForecaster`` / ``CostForecastRepository`` machinery.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from synthorg.budget.errors import (
     CostForecastApprovalRequiredError,
@@ -29,6 +29,7 @@ from synthorg.observability.events.budget import (
     BUDGET_FORECAST_REJECTED,
     BUDGET_FORECAST_SUPERSEDED,
 )
+from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
 
 if TYPE_CHECKING:
     from synthorg.budget.config import BudgetConfig
@@ -142,26 +143,28 @@ class ForecastGate:
                 )
             if existing.decision is ForecastDecision.PENDING:
                 # A pending forecast already covers this brief; reuse it
-                # rather than minting a duplicate, which would trip the
-                # partial-unique index on (brief_hash) WHERE
-                # decision='pending'. Re-raise approval-required against
-                # the existing row so the operator decides on one stable
-                # forecast id.
-                self._log_approval_required(existing)
-                msg = (
-                    f"Pre-flight cost forecast required: "
-                    f"estimated {existing.estimated_cost:.4f} {existing.currency} "
-                    f"awaiting operator approval"
-                )
-                raise CostForecastApprovalRequiredError(
-                    msg,
-                    forecast_id=existing.forecast_id,
-                    brief_hash=existing.brief_hash,
-                    estimated_cost=existing.estimated_cost,
-                    currency=existing.currency,
-                )
+                # rather than minting a duplicate (handled by the shared
+                # brief-hash reuse path below, but short-circuit here when
+                # the caller already pointed us at the matching row).
+                self._raise_approval_required(existing)
 
-        fresh = await self._issue_fresh_forecast(work_item)
+        # No matching forecast via the caller's id. A pending row may
+        # still exist for this brief (a prior dispatch left one awaiting a
+        # decision); reuse it rather than minting a duplicate, which would
+        # trip the partial-unique index on (brief_hash) WHERE
+        # decision='pending'.
+        signal = _signal_from_work_item(
+            work_item,
+            currency=self._budget_config.currency,
+        )
+        pending = await self._pending_forecast_for_brief(compute_brief_hash(signal))
+        if pending is not None:
+            self._raise_approval_required(pending)
+
+        fresh = await self._forecaster.forecast(signal)
+        await self._forecast_repo.save(fresh)
+        # Inlined (rather than via _raise_approval_required) so the static
+        # analyser sees run() always terminates in a return or raise.
         self._log_approval_required(fresh)
         msg = (
             f"Pre-flight cost forecast required: "
@@ -176,11 +179,45 @@ class ForecastGate:
             currency=fresh.currency,
         )
 
+    def _raise_approval_required(self, forecast: Forecast) -> NoReturn:
+        """Log and raise the approval-required signal for a pending forecast."""
+        self._log_approval_required(forecast)
+        msg = (
+            f"Pre-flight cost forecast required: "
+            f"estimated {forecast.estimated_cost:.4f} {forecast.currency} "
+            f"awaiting operator approval"
+        )
+        raise CostForecastApprovalRequiredError(
+            msg,
+            forecast_id=forecast.forecast_id,
+            brief_hash=forecast.brief_hash,
+            estimated_cost=forecast.estimated_cost,
+            currency=forecast.currency,
+        )
+
     async def _lookup_forecast(self, work_item: WorkItem) -> Forecast | None:
         """Look up a forecast row by ``work_item.forecast_id``."""
         if work_item.forecast_id is None:
             return None
         return await self._forecast_repo.get(work_item.forecast_id)
+
+    async def _pending_forecast_for_brief(
+        self,
+        brief_hash: str,
+    ) -> Forecast | None:
+        """Return the existing pending forecast for ``brief_hash``, if any.
+
+        The repository's partial-unique index allows at most one pending
+        row per brief, so a hit here is the single reusable forecast.
+        """
+        rows = await self._forecast_repo.query(
+            CostForecastFilterSpec(
+                brief_hash=brief_hash,
+                decision=ForecastDecision.PENDING,
+            ),
+            limit=1,
+        )
+        return rows[0] if rows else None
 
     def _forecast_covers_brief(
         self,
@@ -210,16 +247,6 @@ class ForecastGate:
             work_item_brief_hash=expected,
         )
         return False
-
-    async def _issue_fresh_forecast(self, work_item: WorkItem) -> Forecast:
-        """Generate and persist a fresh ``pending`` forecast."""
-        signal = _signal_from_work_item(
-            work_item,
-            currency=self._budget_config.currency,
-        )
-        forecast = await self._forecaster.forecast(signal)
-        await self._forecast_repo.save(forecast)
-        return forecast
 
     def _log_rejected(self, forecast: Forecast) -> None:
         logger.warning(

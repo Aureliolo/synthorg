@@ -23,6 +23,7 @@ from synthorg.engine.pipeline.models import (
     WorkPipelineResult,
     WorkSource,
 )
+from synthorg.persistence.cost_forecast_protocol import CostForecastFilterSpec
 from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
@@ -119,15 +120,20 @@ class _FakeForecastRepo:
 
     async def query(
         self,
-        _filter_spec: object,
+        filter_spec: CostForecastFilterSpec,
         *,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[Forecast, ...]:
-        return await self.list_items(limit=limit, offset=offset)
+        rows = sorted(self.rows.values(), key=lambda f: f.created_at, reverse=True)
+        if filter_spec.brief_hash is not None:
+            rows = [r for r in rows if r.brief_hash == filter_spec.brief_hash]
+        if filter_spec.decision is not None:
+            rows = [r for r in rows if r.decision is filter_spec.decision]
+        return tuple(rows[offset : offset + limit])
 
-    async def count(self, _filter_spec: object) -> int:
-        return len(self.rows)
+    async def count(self, filter_spec: CostForecastFilterSpec) -> int:
+        return len(await self.query(filter_spec, limit=len(self.rows) + 1))
 
 
 def _gate(
@@ -222,6 +228,31 @@ class TestForecastGate:
             await gate.run(_work_item(forecast_id=existing.forecast_id))
         assert info.value.forecast_id == existing.forecast_id
         # No fresh row minted, no dispatch.
+        assert repo.saves == []
+        assert work_pipeline.calls == []
+
+    async def test_pending_forecast_for_brief_reused_without_id(self) -> None:
+        """A pending row for the brief is reused even when the work item
+        carries no forecast_id, so the gate never mints a duplicate that
+        would trip the partial-unique index."""
+        repo = _FakeForecastRepo()
+        existing = Forecast(
+            forecast_id=uuid4(),
+            brief_hash=_BRIEF_HASH,
+            estimated_cost=0.5,
+            lower_bound=0.3,
+            upper_bound=0.7,
+            currency="USD",
+            decision=ForecastDecision.PENDING,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+        repo.rows[existing.forecast_id] = existing
+        gate, _, work_pipeline = _gate(repo=repo)
+
+        with pytest.raises(CostForecastApprovalRequiredError) as info:
+            await gate.run(_work_item(forecast_id=None))
+        assert info.value.forecast_id == existing.forecast_id
         assert repo.saves == []
         assert work_pipeline.calls == []
 
