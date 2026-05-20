@@ -147,6 +147,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "ontology.delete_entity": (10, 60),
     "ontology.drift_check": (5, 60),
     "ontology.update_entity": (30, 60),
+    # objectives
+    "objectives.submit": (30, 60),
     # personalities
     "personalities.create": (20, 60),
     "personalities.delete": (10, 60),

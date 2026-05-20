@@ -10,7 +10,7 @@ import tempfile
 import threading
 from collections import OrderedDict
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.api.auth.presence import UserPresence
 from synthorg.api.auth.service import AuthService  # noqa: TC001
@@ -257,6 +257,8 @@ class AppState(AppStateServicesMixin):
         "_oauth_facade_service",
         "_oauth_state_service",
         "_oauth_token_manager",
+        "_objective_background_tasks",
+        "_objective_entry_adapter",
         "_ontology_facade_service",
         "_ontology_service",
         "_ontology_sync_service",
@@ -343,7 +345,8 @@ class AppState(AppStateServicesMixin):
         approval_gate: ApprovalGate | None = None,
         coordinator: MultiAgentCoordinator | None = None,
         work_pipeline: WorkPipeline | None = None,
-        intake_entry_adapter: WorkEntryAdapter | None = None,
+        intake_entry_adapter: WorkEntryAdapter[Any] | None = None,
+        objective_entry_adapter: WorkEntryAdapter[Any] | None = None,
         agent_registry: AgentRegistryService | None = None,
         performance_tracker: PerformanceTracker | None = None,
         meeting_orchestrator: MeetingOrchestrator | None = None,
@@ -402,6 +405,8 @@ class AppState(AppStateServicesMixin):
         self._coordinator = coordinator
         self._work_pipeline = work_pipeline
         self._intake_entry_adapter = intake_entry_adapter
+        self._objective_entry_adapter = objective_entry_adapter
+        self._objective_background_tasks: set[asyncio.Task[None]] = set()
         self._agent_registry = agent_registry
         self._performance_tracker = performance_tracker
         self._trust_service = trust_service
@@ -1418,7 +1423,7 @@ class AppState(AppStateServicesMixin):
             )
 
     @property
-    def intake_entry_adapter(self) -> WorkEntryAdapter:
+    def intake_entry_adapter(self) -> WorkEntryAdapter[Any]:
         """Return the intake work-entry adapter or raise 503."""
         return self._require_service(
             self._intake_entry_adapter,
@@ -1439,7 +1444,7 @@ class AppState(AppStateServicesMixin):
 
     def set_intake_entry_adapter(
         self,
-        intake_entry_adapter: WorkEntryAdapter,
+        intake_entry_adapter: WorkEntryAdapter[Any],
     ) -> None:
         """Attach the intake work-entry adapter (once-only, boot only).
 
@@ -1457,7 +1462,7 @@ class AppState(AppStateServicesMixin):
 
     def set_intake_entry_adapter_if_absent(
         self,
-        intake_entry_adapter: WorkEntryAdapter,
+        intake_entry_adapter: WorkEntryAdapter[Any],
     ) -> bool:
         """Attach the intake adapter only if none is configured (atomic).
 
@@ -1491,7 +1496,7 @@ class AppState(AppStateServicesMixin):
 
     def swap_intake_entry_adapter(
         self,
-        intake_entry_adapter: WorkEntryAdapter,
+        intake_entry_adapter: WorkEntryAdapter[Any],
     ) -> None:
         """Replace the intake work-entry adapter (hot-reload).
 
@@ -1515,6 +1520,120 @@ class AppState(AppStateServicesMixin):
             logger.info(
                 API_APP_STARTUP,
                 service="intake_entry_adapter",
+                transition=transition,
+            )
+
+    @property
+    def objective_entry_adapter(self) -> WorkEntryAdapter[Any]:
+        """Return the objective work-entry adapter or raise 503."""
+        return self._require_service(
+            self._objective_entry_adapter,
+            "objective_entry_adapter",
+        )
+
+    @property
+    def has_objective_entry_adapter(self) -> bool:
+        """Check whether the objective work-entry adapter is configured.
+
+        Unsynchronised by design, identical to
+        :meth:`has_intake_entry_adapter`: a single reference read is
+        atomic under CPython and ``swap_objective_entry_adapter``
+        only reassigns one already-set adapter for another. The only
+        ``None -> set`` flip happens once at boot before HTTP traffic.
+        """
+        return self._objective_entry_adapter is not None
+
+    def set_objective_entry_adapter(
+        self,
+        objective_entry_adapter: WorkEntryAdapter[Any],
+    ) -> None:
+        """Attach the objective work-entry adapter (once-only, boot only).
+
+        Once-only: a second set raises, matching the
+        :meth:`set_intake_entry_adapter` seam. The boot
+        runtime-services hook uses
+        :meth:`set_objective_entry_adapter_if_absent` so an
+        explicitly injected adapter wins; hot-reload after setup uses
+        :meth:`swap_objective_entry_adapter`.
+        """
+        self._set_once(
+            "_objective_entry_adapter",
+            objective_entry_adapter,
+            "Objective entry adapter",
+        )
+
+    def set_objective_entry_adapter_if_absent(
+        self,
+        objective_entry_adapter: WorkEntryAdapter[Any],
+    ) -> bool:
+        """Attach the objective adapter only if none is configured (atomic).
+
+        The boot runtime-services hook calls this unconditionally
+        once the work pipeline is online so the real ``/objectives``
+        entry path comes up with it. An explicitly injected adapter
+        (constructor ``objective_entry_adapter=``) is already set and
+        wins: this is a logged no-op then. The check-and-set is
+        atomic under ``_lazy_service_lock`` so the boot install
+        cannot race a concurrent ``swap_objective_entry_adapter`` or
+        property read.
+
+        Returns:
+            ``True`` if this call installed the adapter, ``False`` if
+            one was already configured (injected) and kept.
+        """
+        with self._lazy_service_lock:
+            if self._objective_entry_adapter is not None:
+                logger.info(
+                    API_APP_STARTUP,
+                    service="objective_entry_adapter",
+                    transition="skipped_injected",
+                )
+                return False
+            self._objective_entry_adapter = objective_entry_adapter
+            logger.info(
+                API_APP_STARTUP,
+                service="objective_entry_adapter",
+                transition="attached",
+            )
+            return True
+
+    @property
+    def objective_background_tasks(self) -> set[asyncio.Task[None]]:
+        """Set of in-flight objective-pipeline tasks.
+
+        The ``ObjectiveController`` adds each spawned
+        ``pipeline.submit`` task here so a strong reference outlives
+        the request handler; a ``done_callback`` discards completed
+        tasks so the set does not grow unbounded.
+        """
+        return self._objective_background_tasks
+
+    def swap_objective_entry_adapter(
+        self,
+        objective_entry_adapter: WorkEntryAdapter[Any],
+    ) -> None:
+        """Replace the objective work-entry adapter (hot-reload).
+
+        Distinct from :meth:`set_objective_entry_adapter`, which is
+        once-only: this replaces an already-wired adapter so a
+        provider configured against an empty-company start brings
+        the real objective entry path online without a restart
+        (``post_setup_reinit``). Holds ``_lazy_service_lock`` so the
+        write is synchronised against concurrent property reads,
+        mirroring :meth:`swap_intake_entry_adapter`.
+        """
+        with self._lazy_service_lock:
+            previous = self._objective_entry_adapter
+            if previous is objective_entry_adapter:
+                transition = "noop"
+            elif previous is None:
+                transition = "attached"
+            else:
+                transition = "replaced"
+            self._objective_entry_adapter = objective_entry_adapter
+            logger.info(
+                API_APP_STARTUP,
+                service="objective_entry_adapter",
                 transition=transition,
             )
 
