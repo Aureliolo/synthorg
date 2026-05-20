@@ -1,6 +1,7 @@
 """Unit tests for ``EmbeddedGitBackend`` (real git in tmp_path)."""
 
 import asyncio
+import os
 from pathlib import Path
 
 import pytest
@@ -12,11 +13,22 @@ from synthorg.engine.workspace.git_backend import EmbeddedGitBackend
 pytestmark = pytest.mark.unit
 
 
+def _clean_env() -> dict[str, str]:
+    """Strip ``GIT_*`` env vars so child git commands resolve via *cwd* alone.
+
+    Running under a pre-push hook inherits ``GIT_DIR`` / ``GIT_WORK_TREE``
+    which would otherwise make ``git`` operate on the synthorg repo
+    instead of the per-test workspace.
+    """
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
+
 async def _git(cwd: Path, *args: str) -> None:
     proc = await asyncio.create_subprocess_exec(
         "git",
         *args,
         cwd=str(cwd),
+        env=_clean_env(),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

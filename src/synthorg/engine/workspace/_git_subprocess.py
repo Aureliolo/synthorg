@@ -9,6 +9,7 @@ PST-1 so the subprocess lifecycle lives in one focused place.
 """
 
 import asyncio
+import os
 
 # ``Path`` is imported at runtime (not under TYPE_CHECKING) because it is used
 # in a runtime-evaluated annotation on ``run_git_subprocess``; under PEP 649
@@ -20,6 +21,20 @@ from urllib.parse import urlsplit, urlunsplit
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
+
+
+def _sanitised_env() -> dict[str, str]:
+    """Return ``os.environ`` minus git's discovery-override vars.
+
+    When this code runs from inside a git pre-push hook (or any caller
+    whose own cwd is a git working tree), git inherits ``GIT_DIR`` /
+    ``GIT_WORK_TREE`` / ``GIT_COMMON_DIR`` from the parent process and
+    those override ordinary path-based repo discovery. A child ``git
+    rev-parse --is-inside-work-tree`` then reports the PARENT repo even
+    though we passed a fresh tmp-dir as ``cwd``. Strip them so our
+    git subprocesses see only the path hierarchy under ``cwd``.
+    """
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 
 
 def _redact_arg(arg: str) -> str:
@@ -78,6 +93,7 @@ async def run_git_subprocess(
             "git",
             *args,
             cwd=str(repo_root),
+            env=_sanitised_env(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
