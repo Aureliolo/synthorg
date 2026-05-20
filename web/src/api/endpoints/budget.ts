@@ -75,51 +75,51 @@ export async function getAgentSpending(agentId: string): Promise<AgentSpending> 
 }
 
 export async function getParetoFrontier(): Promise<ParetoFrontier> {
-  const response = await apiClient.get<ParetoFrontier>('/budget/pareto')
-  return response.data
+  const response = await apiClient.get<ApiResponse<ParetoFrontier>>('/budget/pareto')
+  return unwrap(response)
 }
 
 export async function createForecast(data: ForecastRequest): Promise<Forecast> {
-  const response = await apiClient.post<Forecast>('/budget/forecast', data)
-  return response.data
+  const response = await apiClient.post<ApiResponse<Forecast>>('/budget/forecast', data)
+  return unwrap(response)
 }
 
 export async function getForecast(forecastId: string): Promise<Forecast> {
-  const response = await apiClient.get<Forecast>(
+  const response = await apiClient.get<ApiResponse<Forecast>>(
     `/budget/forecasts/${encodeURIComponent(forecastId)}`,
   )
-  return response.data
+  return unwrap(response)
 }
 
 export async function approveForecast(
   forecastId: string,
   data: ForecastApproveRequest,
 ): Promise<Forecast> {
-  const response = await apiClient.post<Forecast>(
+  const response = await apiClient.post<ApiResponse<Forecast>>(
     `/budget/forecasts/${encodeURIComponent(forecastId)}/approve`,
     data,
   )
-  return response.data
+  return unwrap(response)
 }
 
 export async function rejectForecast(
   forecastId: string,
   data: ForecastRejectRequest,
 ): Promise<Forecast> {
-  const response = await apiClient.post<Forecast>(
+  const response = await apiClient.post<ApiResponse<Forecast>>(
     `/budget/forecasts/${encodeURIComponent(forecastId)}/reject`,
     data,
   )
-  return response.data
+  return unwrap(response)
 }
 
 export async function raiseCeiling(
   forecastId: string,
   data: RaiseCeilingRequest,
 ): Promise<Forecast> {
-  const response = await apiClient.post<Forecast>(
+  const response = await apiClient.post<ApiResponse<Forecast>>(
     `/budget/forecasts/${encodeURIComponent(forecastId)}/raise_ceiling`,
     data,
   )
-  return response.data
+  return unwrap(response)
 }

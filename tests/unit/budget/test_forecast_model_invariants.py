@@ -54,6 +54,30 @@ def test_forecast_accepts_estimate_within_band() -> None:
     assert forecast.estimated_cost == 1.0
 
 
+def test_forecast_rejects_pending_with_decided_at() -> None:
+    with pytest.raises(ValidationError, match="decision"):
+        _forecast(decision=ForecastDecision.PENDING, decided_at=_NOW)
+
+
+def test_forecast_rejects_approved_without_decided_by() -> None:
+    with pytest.raises(ValidationError, match="decision"):
+        _forecast(decision=ForecastDecision.APPROVED, decided_at=_NOW)
+
+
+def test_forecast_rejects_superseded_with_decided_by() -> None:
+    with pytest.raises(ValidationError, match="decision"):
+        _forecast(
+            decision=ForecastDecision.SUPERSEDED,
+            decided_at=_NOW,
+            decided_by="op-1",
+        )
+
+
+def test_forecast_accepts_superseded_with_timestamp_only() -> None:
+    forecast = _forecast(decision=ForecastDecision.SUPERSEDED, decided_at=_NOW)
+    assert forecast.decided_by is None
+
+
 def test_halt_context_rejects_accumulated_below_ceiling() -> None:
     with pytest.raises(ValidationError, match="accumulated_cost"):
         HaltContext(

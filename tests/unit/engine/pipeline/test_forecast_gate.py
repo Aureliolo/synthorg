@@ -12,9 +12,9 @@ from synthorg.budget.errors import (
     CostForecastRejectedError,
 )
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
-from synthorg.budget.forecaster import CostForecaster
+from synthorg.budget.forecaster import CostForecaster, compute_brief_hash
 from synthorg.core.enums import Priority, TaskStatus, TaskType
-from synthorg.engine.pipeline.forecast_gate import ForecastGate
+from synthorg.engine.pipeline.forecast_gate import ForecastGate, _signal_from_work_item
 from synthorg.engine.pipeline.models import (
     ExecutionPath,
     RoutingVerdict,
@@ -23,6 +23,7 @@ from synthorg.engine.pipeline.models import (
     WorkPipelineResult,
     WorkSource,
 )
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -31,10 +32,6 @@ _NOW = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
 
 def _config(*, forecast_required: bool = True) -> BudgetConfig:
     return BudgetConfig(forecast_required=forecast_required)
-
-
-def _fake_now() -> datetime:
-    return _NOW
 
 
 def _work_item(*, forecast_id: UUID | None = None) -> WorkItem:
@@ -49,6 +46,13 @@ def _work_item(*, forecast_id: UUID | None = None) -> WorkItem:
         task_type=TaskType.DEVELOPMENT,
         forecast_id=forecast_id,
     )
+
+
+# Hash the standard work item exactly as the gate does so "covering"
+# fixtures carry a brief_hash that matches the live work item.
+_BRIEF_HASH = compute_brief_hash(
+    _signal_from_work_item(_work_item(), currency="USD"),
+)
 
 
 def _result(work_item: WorkItem) -> WorkPipelineResult:
@@ -141,7 +145,7 @@ def _gate(
     forecaster = CostForecaster(
         budget_config=config,
         history_lookup=lookup,
-        clock=_fake_now,
+        clock=FakeClock(start=_NOW).now,
     )
 
     repo_instance = repo if repo is not None else _FakeForecastRepo()
@@ -196,7 +200,7 @@ class TestForecastGate:
         repo = _FakeForecastRepo()
         approved = Forecast(
             forecast_id=uuid4(),
-            brief_hash="b" * 64,
+            brief_hash=_BRIEF_HASH,
             estimated_cost=0.5,
             lower_bound=0.3,
             upper_bound=0.7,
@@ -224,7 +228,7 @@ class TestForecastGate:
         repo = _FakeForecastRepo()
         approved = Forecast(
             forecast_id=uuid4(),
-            brief_hash="e" * 64,
+            brief_hash=_BRIEF_HASH,
             estimated_cost=0.5,
             lower_bound=0.3,
             upper_bound=0.7,
@@ -246,11 +250,39 @@ class TestForecastGate:
         assert dispatched.hard_ceiling == 1.8
         assert dispatched.forecast_id == approved.forecast_id
 
+    async def test_approved_forecast_for_other_brief_is_ignored(self) -> None:
+        """A reused forecast_id whose brief_hash no longer matches the
+        work item must not carry its stale approval; the gate issues a
+        fresh forecast and requires approval instead of dispatching."""
+        repo = _FakeForecastRepo()
+        stale = Forecast(
+            forecast_id=uuid4(),
+            brief_hash="z" * 64,
+            estimated_cost=0.5,
+            lower_bound=0.3,
+            upper_bound=0.7,
+            currency="USD",
+            decision=ForecastDecision.APPROVED,
+            decided_at=_NOW,
+            decided_by="op-1",
+            ceiling_amount=1.0,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+        repo.rows[stale.forecast_id] = stale
+        gate, _, work_pipeline = _gate(repo=repo)
+
+        with pytest.raises(CostForecastApprovalRequiredError):
+            await gate.run(_work_item(forecast_id=stale.forecast_id))
+        assert work_pipeline.calls == []
+        assert len(repo.saves) == 1
+        assert repo.saves[0].decision is ForecastDecision.PENDING
+
     async def test_rejected_forecast_raises_terminal_error(self) -> None:
         repo = _FakeForecastRepo()
         rejected = Forecast(
             forecast_id=uuid4(),
-            brief_hash="c" * 64,
+            brief_hash=_BRIEF_HASH,
             estimated_cost=0.5,
             lower_bound=0.3,
             upper_bound=0.7,

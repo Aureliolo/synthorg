@@ -19,7 +19,7 @@ from synthorg.api.controllers.budget_forecast import (
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.errors import RunHardCeilingTooLowError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision, HaltContext
-from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.domain_errors import ConflictError, ServiceUnavailableError
 
 pytestmark = pytest.mark.unit
 
@@ -147,3 +147,20 @@ async def test_raise_ceiling_clears_halt_and_updates_ceiling() -> None:
     assert updated.ceiling_amount == 3.0
     assert updated.halt_context is None
     assert len(repo.saved) == 1
+
+
+async def test_raise_ceiling_rejects_when_not_halted() -> None:
+    """Raising the ceiling on a non-halted forecast is a 409 conflict."""
+    forecast = _approved_forecast().model_copy(update={"halt_context": None})
+    repo = _FakeForecastRepo(forecast)
+    controller = _controller()
+    state = _state(repo=repo, budget_config=BudgetConfig(total_monthly=100.0))
+
+    with pytest.raises(ConflictError):
+        await ForecastBudgetController.raise_ceiling.fn(
+            controller,
+            forecast_id=str(forecast.forecast_id),
+            data=RaiseCeilingRequest(new_ceiling=3.0, accumulated_cost=1.5),
+            state=state,
+        )
+    assert repo.saved == []

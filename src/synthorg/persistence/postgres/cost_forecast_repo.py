@@ -442,15 +442,18 @@ class PostgresCostForecastRepository:
         decided_at_raw = updates.get("decided_at")
         ceiling_amount = updates.get("ceiling_amount")
         decided_at_value: str | None = None
-        # decided_at marks an operator decision (approve/reject). A
-        # supersede is a system transition triggered by a brief edit, so
-        # it leaves decided_at NULL to avoid implying an operator acted.
+        # The chk_cf_decision_timestamp constraint requires a superseded
+        # row to carry decided_at (the supersede time) with decided_by
+        # NULL; it is decided_by absence, not decided_at, that marks a
+        # system supersede apart from an operator approve/reject.
         if to_state in {ForecastDecision.APPROVED, ForecastDecision.REJECTED}:
             decided_at_value = format_iso_utc(
                 decided_at_raw
                 if isinstance(decided_at_raw, datetime)
                 else datetime.now(UTC),
             )
+        elif to_state is ForecastDecision.SUPERSEDED:
+            decided_at_value = format_iso_utc(datetime.now(UTC))
         updated_at_value = format_iso_utc(datetime.now(UTC))
         sql = (
             "UPDATE cost_forecasts SET "

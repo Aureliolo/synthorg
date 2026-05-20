@@ -254,7 +254,14 @@ class ParetoAnalyzer:
             candidate_model=candidate_model,
             quality_delta_pct=min(quality_delta, 100.0),
             cost_saving_pct=min(cost_saving_pct, 100.0),
-            source=current_score.source,
+            # quality_delta_pct blends both scores; surface both
+            # provenances when they differ so the dashboard never
+            # attributes a measured candidate to a stub baseline.
+            source=(
+                current_score.source
+                if current_score.source == candidate_score.source
+                else f"{current_score.source} | {candidate_score.source}"
+            ),
         )
 
     def _project_candidate_cost(
@@ -279,7 +286,10 @@ class ParetoAnalyzer:
         }
         current_prior = priors.get(current_tier, 0.0)
         candidate_prior = priors.get(candidate_tier, 0.0)
-        if current_prior <= 0:
+        # A non-positive prior on either side means the static-prior ratio
+        # cannot project a meaningful cost; fall back to the observed cost
+        # (zero saving) rather than emitting a collapsed/invalid figure.
+        if current_prior <= 0 or candidate_prior <= 0:
             return current_cost_per_task
         ratio = candidate_prior / current_prior
         return current_cost_per_task * ratio

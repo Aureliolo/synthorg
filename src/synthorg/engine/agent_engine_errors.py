@@ -6,6 +6,7 @@ handling into a mixin so the main module stays under the size limit.
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from synthorg.budget.errors import (
     BudgetExhaustedError,
@@ -293,8 +294,14 @@ class AgentEngineErrorsMixin:
                 f" {exc.accumulated_cost:.4f} {exc.currency}"
                 f" >= ceiling {exc.ceiling_amount:.4f} {exc.currency}"
             )
+            # A fresh suffix per crossing keeps the approval_id unique
+            # across retries: a resumed run that re-crosses the ceiling
+            # must not collide with the prior parked-context row (the
+            # ParkedContext/get_by_approval lookup expects 1:1).
             escalation = EscalationInfo(
-                approval_id=f"hard-ceiling-{task_id}-{forecast_id_str}",
+                approval_id=(
+                    f"hard-ceiling-{task_id}-{forecast_id_str}-{uuid4().hex[:12]}"
+                ),
                 tool_call_id=f"budget-checker-{task_id}",
                 tool_name="budget_checker",
                 action_type="budget:hard_ceiling_exceeded",

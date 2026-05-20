@@ -84,12 +84,14 @@ class StubBenchmarkScoreProvider:
         return _TIER_SCORES[tier]
 
     async def list_scores(self) -> Mapping[NotBlankStr, BenchmarkScore]:
-        """Return the per-tier stub scores keyed by tier label.
+        """Return the stub scores keyed by canonical model id.
 
-        Tiers double as model ids for the purposes of the frontier;
-        the dashboard maps tier -> sample model id when rendering.
+        The protocol contract keys scores by canonical model id; the
+        stub maps each tier to its representative ``example-<tier>-001``
+        sample model so callers receive model-id-indexed scores rather
+        than bare tier labels.
         """
-        return dict(_TIER_SCORES)
+        return {f"example-{tier}-001": score for tier, score in _TIER_SCORES.items()}
 
 
 __all__ = ["StubBenchmarkScoreProvider"]

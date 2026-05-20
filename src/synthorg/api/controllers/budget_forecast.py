@@ -19,7 +19,7 @@ from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.guards import require_read_access
+from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import PathId
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.errors import RunHardCeilingTooLowError
@@ -29,6 +29,7 @@ from synthorg.budget.pareto import (  # noqa: TC001 -- runtime return annotation
     ParetoFrontier,
 )
 from synthorg.core.domain_errors import (
+    ConflictError,
     ServiceUnavailableError,
     resource_not_found,
 )
@@ -135,7 +136,7 @@ class ForecastBudgetController(Controller):
     guards = (require_read_access,)
     tags = ("budget", "forecast")
 
-    @post("/forecast", status_code=201)
+    @post("/forecast", status_code=201, guards=[require_write_access])
     async def create_forecast(
         self,
         data: ForecastRequest,
@@ -186,7 +187,7 @@ class ForecastBudgetController(Controller):
             raise AssertionError  # unreachable; _raise_not_found always raises
         return forecast
 
-    @post("/forecasts/{forecast_id:str}/approve")
+    @post("/forecasts/{forecast_id:str}/approve", guards=[require_write_access])
     async def approve_forecast(
         self,
         forecast_id: Annotated[str, PathId],
@@ -217,7 +218,7 @@ class ForecastBudgetController(Controller):
         )
         return forecast
 
-    @post("/forecasts/{forecast_id:str}/reject")
+    @post("/forecasts/{forecast_id:str}/reject", guards=[require_write_access])
     async def reject_forecast(
         self,
         forecast_id: Annotated[str, PathId],
@@ -246,7 +247,7 @@ class ForecastBudgetController(Controller):
         )
         return forecast
 
-    @post("/forecasts/{forecast_id:str}/raise_ceiling")
+    @post("/forecasts/{forecast_id:str}/raise_ceiling", guards=[require_write_access])
     async def raise_ceiling(
         self,
         forecast_id: Annotated[str, PathId],
@@ -276,6 +277,12 @@ class ForecastBudgetController(Controller):
         if forecast is None:
             _raise_not_found(forecast_id)
             raise AssertionError
+        if forecast.halt_context is None:
+            msg = (
+                f"Forecast {forecast_id} is not in a halted state; there is"
+                f" no parked run to resume by raising the ceiling"
+            )
+            raise ConflictError(msg)
         updated = forecast.model_copy(
             update={
                 "ceiling_amount": data.new_ceiling,

@@ -12,6 +12,7 @@ from synthorg.budget.forecaster import (
     CostForecaster,
     compute_brief_hash,
 )
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -38,10 +39,6 @@ def _config(  # noqa: PLR0913 -- test helper exposes every static prior knob
     )
 
 
-def _fixed_clock() -> datetime:
-    return _FIXED_NOW
-
-
 def _signal(
     *,
     brief_text: str = "Build the marketing site",
@@ -61,7 +58,9 @@ def _signal(
 
 class TestCostForecaster:
     async def test_cold_start_uses_static_prior(self) -> None:
-        forecaster = CostForecaster(budget_config=_config(), clock=_fixed_clock)
+        forecaster = CostForecaster(
+            budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
+        )
         signal = _signal(
             role_skeleton=("Engineer",),
             assignments={"Engineer": "example-medium-001"},
@@ -77,14 +76,18 @@ class TestCostForecaster:
         assert forecast.created_at == _FIXED_NOW
 
     async def test_uncertainty_band_brackets_estimate(self) -> None:
-        forecaster = CostForecaster(budget_config=_config(), clock=_fixed_clock)
+        forecaster = CostForecaster(
+            budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
+        )
         forecast = await forecaster.forecast(_signal())
 
         assert forecast.lower_bound <= forecast.estimated_cost <= forecast.upper_bound
         assert forecast.lower_bound >= 0.0
 
     async def test_cold_start_band_is_forty_percent(self) -> None:
-        forecaster = CostForecaster(budget_config=_config(), clock=_fixed_clock)
+        forecaster = CostForecaster(
+            budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
+        )
         forecast = await forecaster.forecast(
             _signal(role_skeleton=("Engineer",), turns=10.0)
         )
@@ -102,7 +105,7 @@ class TestCostForecaster:
         forecaster = CostForecaster(
             budget_config=_config(prior_weight=5.0),
             history_lookup=history,
-            clock=_fixed_clock,
+            clock=FakeClock(start=_FIXED_NOW).now,
         )
         forecast = await forecaster.forecast(
             _signal(
@@ -126,7 +129,7 @@ class TestCostForecaster:
         forecaster = CostForecaster(
             budget_config=_config(prior_medium=0.03, prior_weight=5.0),
             history_lookup=history,
-            clock=_fixed_clock,
+            clock=FakeClock(start=_FIXED_NOW).now,
         )
         forecast = await forecaster.forecast(
             _signal(
@@ -141,7 +144,9 @@ class TestCostForecaster:
 
     async def test_tier_lookup_falls_back_to_medium(self) -> None:
         """Unknown model id -> medium tier prior."""
-        forecaster = CostForecaster(budget_config=_config(), clock=_fixed_clock)
+        forecaster = CostForecaster(
+            budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
+        )
         unknown = _signal(
             role_skeleton=("Engineer",),
             assignments={"Engineer": "no-such-pattern"},
@@ -152,7 +157,9 @@ class TestCostForecaster:
         assert forecast.estimated_cost == pytest.approx(0.30)
 
     async def test_static_prior_per_tier_respected(self) -> None:
-        forecaster = CostForecaster(budget_config=_config(), clock=_fixed_clock)
+        forecaster = CostForecaster(
+            budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
+        )
         large_only = _signal(
             role_skeleton=("Engineer",),
             assignments={"Engineer": "example-large-001"},
@@ -172,19 +179,25 @@ class TestCostForecaster:
         assert small_forecast.estimated_cost == pytest.approx(0.05)
 
     async def test_empty_role_skeleton_raises(self) -> None:
-        forecaster = CostForecaster(budget_config=_config(), clock=_fixed_clock)
+        forecaster = CostForecaster(
+            budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
+        )
         with pytest.raises(ValueError, match="role_skeleton is empty"):
             await forecaster.forecast(
                 _signal(role_skeleton=()),
             )
 
     async def test_currency_stamp_from_signal(self) -> None:
-        forecaster = CostForecaster(budget_config=_config(), clock=_fixed_clock)
+        forecaster = CostForecaster(
+            budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
+        )
         forecast = await forecaster.forecast(_signal(currency="GBP"))
         assert forecast.currency == "GBP"
 
     async def test_fresh_uuid_per_forecast(self) -> None:
-        forecaster = CostForecaster(budget_config=_config(), clock=_fixed_clock)
+        forecaster = CostForecaster(
+            budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
+        )
         first = await forecaster.forecast(_signal())
         second = await forecaster.forecast(_signal())
         assert first.forecast_id != second.forecast_id
@@ -215,7 +228,9 @@ class TestCostForecaster:
         )
 
     async def test_brief_hash_in_forecast_row(self) -> None:
-        forecaster = CostForecaster(budget_config=_config(), clock=_fixed_clock)
+        forecaster = CostForecaster(
+            budget_config=_config(), clock=FakeClock(start=_FIXED_NOW).now
+        )
         signal = _signal()
         forecast = await forecaster.forecast(signal)
         assert forecast.brief_hash == compute_brief_hash(signal)

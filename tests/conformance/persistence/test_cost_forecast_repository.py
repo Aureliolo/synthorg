@@ -195,7 +195,7 @@ class TestCostForecastRepository:
         pending_count = await repo.count(pending_spec)
         pending_rows = await repo.query(pending_spec)
         assert pending_count == len(pending_rows)
-        assert pending_count >= 2
+        assert pending_count == 2
 
         hash_spec = CostForecastFilterSpec(brief_hash="ca" * 32)
         assert await repo.count(hash_spec) == 1
@@ -272,10 +272,11 @@ class TestCostForecastRepository:
         fetched = await repo.get(forecast.forecast_id)
         assert fetched is not None
         assert fetched.decision is ForecastDecision.SUPERSEDED
+        # decided_by NULL marks the system supersede; the schema's
+        # chk_cf_decision_timestamp still requires decided_at (the
+        # supersede time) to be set.
         assert fetched.decided_by is None
-        # A supersede is a system transition, not an operator decision,
-        # so decided_at stays NULL (no operator acted on this row).
-        assert fetched.decided_at is None
+        assert fetched.decided_at is not None
 
     async def test_transition_superseded_rejects_decided_by(
         self, backend: PersistenceBackend
@@ -378,12 +379,16 @@ class TestCostForecastRepository:
 
     async def test_list_items_newest_first(self, backend: PersistenceBackend) -> None:
         repo = _repo(backend)
-        older = _make_forecast(forecast_id="o1", brief_hash="o" * 64)
-        newer = _make_forecast(forecast_id="o2", brief_hash="n" * 64)
+        older = _make_forecast(forecast_id="o1", brief_hash="o" * 64).model_copy(
+            update={"created_at": _NOW.replace(second=0)},
+        )
+        newer = _make_forecast(forecast_id="o2", brief_hash="n" * 64).model_copy(
+            update={"created_at": _NOW.replace(second=1)},
+        )
         await repo.save(older)
         await repo.save(newer)
 
         rows = await repo.list_items()
         ids = [r.forecast_id for r in rows]
-        assert older.forecast_id in ids
-        assert newer.forecast_id in ids
+        assert ids[0] == newer.forecast_id
+        assert ids[1] == older.forecast_id

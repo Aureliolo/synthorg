@@ -1,8 +1,14 @@
 import { http, HttpResponse } from 'msw'
 import type {
   CostRecordListResponseBody,
+  approveForecast,
+  createForecast,
   getAgentSpending,
   getBudgetConfig,
+  getForecast,
+  getParetoFrontier,
+  raiseCeiling,
+  rejectForecast,
 } from '@/api/endpoints/budget'
 import type { AgentSpending, BudgetConfig } from '@/api/types/budget'
 import type { Forecast, ParetoFrontier } from '@/api/types'
@@ -117,41 +123,53 @@ export const budgetHandlers = [
     ),
   ),
   http.get('/api/v1/budget/pareto', () =>
-    HttpResponse.json(buildParetoFrontier()),
+    HttpResponse.json(
+      successFor<typeof getParetoFrontier>(buildParetoFrontier()),
+    ),
   ),
   http.post('/api/v1/budget/forecast', () =>
-    HttpResponse.json(buildForecast()),
+    HttpResponse.json(successFor<typeof createForecast>(buildForecast())),
   ),
   http.get('/api/v1/budget/forecasts/:forecastId', ({ params }) =>
-    HttpResponse.json(buildForecast({ forecast_id: String(params.forecastId) })),
+    HttpResponse.json(
+      successFor<typeof getForecast>(
+        buildForecast({ forecast_id: String(params.forecastId) }),
+      ),
+    ),
   ),
   http.post('/api/v1/budget/forecasts/:forecastId/approve', ({ params }) =>
     HttpResponse.json(
-      buildForecast({
-        forecast_id: String(params.forecastId),
-        decision: 'approved',
-        decided_at: '2026-05-20T12:30:00Z',
-        decided_by: 'operator',
-      }),
+      successFor<typeof approveForecast>(
+        buildForecast({
+          forecast_id: String(params.forecastId),
+          decision: 'approved',
+          decided_at: '2026-05-20T12:30:00Z',
+          decided_by: 'operator',
+        }),
+      ),
     ),
   ),
   http.post('/api/v1/budget/forecasts/:forecastId/reject', ({ params }) =>
     HttpResponse.json(
-      buildForecast({
-        forecast_id: String(params.forecastId),
-        decision: 'rejected',
-        decided_at: '2026-05-20T12:30:00Z',
-        decided_by: 'operator',
-      }),
+      successFor<typeof rejectForecast>(
+        buildForecast({
+          forecast_id: String(params.forecastId),
+          decision: 'rejected',
+          decided_at: '2026-05-20T12:30:00Z',
+          decided_by: 'operator',
+        }),
+      ),
     ),
   ),
   http.post('/api/v1/budget/forecasts/:forecastId/raise_ceiling', ({ params }) =>
     HttpResponse.json(
-      buildForecast({
-        forecast_id: String(params.forecastId),
-        decision: 'approved',
-        ceiling_amount: 2.5,
-      }),
+      successFor<typeof raiseCeiling>(
+        buildForecast({
+          forecast_id: String(params.forecastId),
+          decision: 'approved',
+          ceiling_amount: 2.5,
+        }),
+      ),
     ),
   ),
 ]

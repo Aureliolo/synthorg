@@ -23,6 +23,7 @@ simulation runtime).
 import os
 from typing import TYPE_CHECKING
 
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
@@ -59,6 +60,23 @@ def _forecast_gate_for(app_state: AppState) -> ForecastGate | None:
     repo = app_state.cost_forecast_repo
     budget_config = app_state.budget_config
     if forecaster is None or repo is None or budget_config is None:
+        # With persistence up the cost-dial set wires atomically before
+        # this seam, so a missing forecaster/repo while forecasts are
+        # REQUIRED is a genuine partial-wire failure -- fail fast rather
+        # than silently dispatch work past a gate the operator mandated.
+        # The no-persistence / empty-company path stays tolerated (no
+        # work pipeline reaches here, and the gate is legitimately None).
+        if (
+            app_state.has_persistence
+            and budget_config is not None
+            and budget_config.forecast_required
+        ):
+            msg = (
+                "budget.forecast_required is enabled but the cost-dial"
+                " forecaster/repository did not wire; refusing to dispatch"
+                " work past a required pre-flight forecast gate"
+            )
+            raise ServiceUnavailableError(msg)
         return None
     return ForecastGate(
         work_pipeline=app_state.work_pipeline,

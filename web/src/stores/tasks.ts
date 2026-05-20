@@ -319,6 +319,12 @@ function isNullableString(value: unknown): boolean {
   return value === undefined || value === null || typeof value === 'string'
 }
 
+/** Either nullable/absent or a finite number -- rejects NaN/Infinity and
+ * non-numeric junk so downstream ceiling math cannot be poisoned. */
+function isNullableNumber(value: unknown): boolean {
+  return value === undefined || value === null || Number.isFinite(value)
+}
+
 /** Either ``undefined`` or a string -- used for the two optional timestamp fields. */
 function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === 'string'
@@ -430,6 +436,11 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     Number.isFinite(c.budget_limit) &&
     (c.cost === undefined || Number.isFinite(c.cost)) &&
     Number.isFinite(c.max_retries) &&
+    // Cost-dial linkage fields consumed by ``sanitizeTask``: a
+    // non-numeric hard_ceiling or non-string forecast_id would break
+    // the ceiling math / id sanitizer invariants downstream.
+    isNullableNumber(c.hard_ceiling) &&
+    isNullableString(c.forecast_id) &&
     // Enum scalars: complexity / task_structure / coordination_topology
     // are intentionally NOT routed through sanitizeWsEnum -- they're
     // closed enums coupled to coordination + scheduling code paths

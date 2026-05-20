@@ -12,6 +12,7 @@ from synthorg.budget.pareto import (
     ParetoFrontier,
     RoleAssignment,
 )
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -29,10 +30,6 @@ def _config() -> BudgetConfig:
         forecast_static_prior_per_turn_medium=0.03,
         forecast_static_prior_per_turn_small=0.005,
     )
-
-
-def _fake_now() -> datetime:
-    return _NOW
 
 
 def _assignments(
@@ -57,10 +54,15 @@ class TestStubBenchmarkScoreProvider:
         provider = StubBenchmarkScoreProvider()
         assert await provider.get_score("totally-made-up") is None
 
-    async def test_list_scores_covers_all_tiers(self) -> None:
+    async def test_list_scores_keyed_by_canonical_model_id(self) -> None:
         provider = StubBenchmarkScoreProvider()
         scores = await provider.list_scores()
-        assert {"large", "medium", "small", "local-small"} <= set(scores)
+        assert {
+            "example-large-001",
+            "example-medium-001",
+            "example-small-001",
+            "example-local-small-001",
+        } <= set(scores)
 
 
 class TestParetoAnalyzer:
@@ -68,7 +70,7 @@ class TestParetoAnalyzer:
         analyzer = ParetoAnalyzer(
             benchmark_provider=StubBenchmarkScoreProvider(),
             budget_config=_config(),
-            clock=_fake_now,
+            clock=FakeClock(start=_NOW).now,
         )
         frontier = await analyzer.analyse()
         assert isinstance(frontier, ParetoFrontier)
@@ -87,7 +89,7 @@ class TestParetoAnalyzer:
             benchmark_provider=StubBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
-            clock=_fake_now,
+            clock=FakeClock(start=_NOW).now,
         )
         frontier = await analyzer.analyse()
         assert len(frontier.points) == 1
@@ -109,7 +111,7 @@ class TestParetoAnalyzer:
             benchmark_provider=StubBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
-            clock=_fake_now,
+            clock=FakeClock(start=_NOW).now,
         )
         frontier = await analyzer.analyse()
         assert frontier.points == ()
@@ -126,7 +128,7 @@ class TestParetoAnalyzer:
             benchmark_provider=StubBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
-            clock=_fake_now,
+            clock=FakeClock(start=_NOW).now,
         )
         frontier = await analyzer.analyse()
         assert frontier.points == ()
@@ -150,15 +152,15 @@ class TestParetoAnalyzer:
             benchmark_provider=StubBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=assignments),
-            clock=_fake_now,
+            clock=FakeClock(start=_NOW).now,
         )
         frontier = await analyzer.analyse()
-        if len(frontier.points) >= 2:
-            for i in range(len(frontier.points) - 1):
-                assert (
-                    frontier.points[i].cost_saving_pct
-                    >= frontier.points[i + 1].cost_saving_pct
-                )
+        assert len(frontier.points) >= 2
+        for i in range(len(frontier.points) - 1):
+            assert (
+                frontier.points[i].cost_saving_pct
+                >= frontier.points[i + 1].cost_saving_pct
+            )
 
     async def test_quality_delta_within_bounds(self) -> None:
         assignment = RoleAssignment(
@@ -171,9 +173,10 @@ class TestParetoAnalyzer:
             benchmark_provider=StubBenchmarkScoreProvider(),
             budget_config=_config(),
             assignment_lookup=_assignments(items=[assignment]),
-            clock=_fake_now,
+            clock=FakeClock(start=_NOW).now,
         )
         frontier = await analyzer.analyse()
+        assert frontier.points
         for point in frontier.points:
             assert 0 <= point.quality_delta_pct <= 100
             assert 0 <= point.cost_saving_pct <= 100

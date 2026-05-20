@@ -184,3 +184,30 @@ class Forecast(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+    @model_validator(mode="after")
+    def _decision_timestamp_invariant(self) -> Self:
+        """Mirror the DB chk_cf_decision_timestamp constraint.
+
+        ``pending`` carries neither timestamp nor operator; ``superseded``
+        is a system transition (timestamp set, operator NULL);
+        ``approved`` / ``rejected`` are operator decisions (both set).
+        ``decided_by`` absence -- not ``decided_at`` -- distinguishes a
+        system supersede from an operator decision.
+        """
+        decided = self.decided_at is not None
+        attributed = self.decided_by is not None
+        if self.decision is ForecastDecision.PENDING:
+            consistent = not decided and not attributed
+        elif self.decision is ForecastDecision.SUPERSEDED:
+            consistent = decided and not attributed
+        else:
+            consistent = decided and attributed
+        if not consistent:
+            msg = (
+                f"decision {self.decision.value!r} is inconsistent with"
+                f" decided_at={self.decided_at!r} /"
+                f" decided_by={self.decided_by!r}"
+            )
+            raise ValueError(msg)
+        return self

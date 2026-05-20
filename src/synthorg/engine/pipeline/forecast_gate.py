@@ -22,11 +22,12 @@ from synthorg.budget.errors import (
     CostForecastRejectedError,
 )
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
-from synthorg.budget.forecaster import BriefSignal
+from synthorg.budget.forecaster import BriefSignal, compute_brief_hash
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
     BUDGET_FORECAST_APPROVAL_REQUIRED,
     BUDGET_FORECAST_REJECTED,
+    BUDGET_FORECAST_SUPERSEDED,
 )
 
 if TYPE_CHECKING:
@@ -119,7 +120,7 @@ class ForecastGate:
             return await self._work_pipeline.run(work_item)
 
         existing = await self._lookup_forecast(work_item)
-        if existing is not None:
+        if existing is not None and self._forecast_covers_brief(work_item, existing):
             if existing.decision is ForecastDecision.APPROVED:
                 # Carry the operator-approved ceiling onto the work item so
                 # the intake phase can stamp it onto the Task; without this
@@ -160,6 +161,35 @@ class ForecastGate:
         if work_item.forecast_id is None:
             return None
         return await self._forecast_repo.get(work_item.forecast_id)
+
+    def _forecast_covers_brief(
+        self,
+        work_item: WorkItem,
+        existing: Forecast,
+    ) -> bool:
+        """Reject a forecast whose brief no longer matches the work item.
+
+        A reused ``forecast_id`` pointing at a row for a *different*
+        brief (the operator edited the brief after the forecast was
+        issued) must not carry its stale approval / rejection / ceiling
+        onto the new brief. On a mismatch the gate falls through to
+        issue a fresh forecast for the current brief.
+        """
+        expected = compute_brief_hash(
+            _signal_from_work_item(
+                work_item,
+                currency=self._budget_config.currency,
+            ),
+        )
+        if existing.brief_hash == expected:
+            return True
+        logger.warning(
+            BUDGET_FORECAST_SUPERSEDED,
+            forecast_id=str(existing.forecast_id),
+            stored_brief_hash=existing.brief_hash,
+            work_item_brief_hash=expected,
+        )
+        return False
 
     async def _issue_fresh_forecast(self, work_item: WorkItem) -> Forecast:
         """Generate and persist a fresh ``pending`` forecast."""

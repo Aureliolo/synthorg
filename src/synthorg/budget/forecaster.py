@@ -41,7 +41,10 @@ from synthorg.budget.config import BudgetConfig  # noqa: TC001 -- runtime attr a
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime by Pydantic
 from synthorg.observability import get_logger
-from synthorg.observability.events.budget import BUDGET_FORECAST_GENERATED
+from synthorg.observability.events.budget import (
+    BUDGET_FORECAST_GENERATED,
+    BUDGET_PREFLIGHT_ERROR,
+)
 
 logger = get_logger(__name__)
 
@@ -142,13 +145,14 @@ def _tier_from_model_id(model_id: str) -> str | None:
     parts = model_id.split("-")
     if len(parts) < 2:  # noqa: PLR2004 -- canonical id requires at least two parts
         return None
+    # Check local-small before the plain-tier set: a canonical
+    # ``example-local-small-001`` id has ``parts[-2] == "small"``, so the
+    # bare-tier branch would otherwise shadow the local-small case.
+    if "local" in parts and "small" in parts:
+        return "local-small"
     candidate = parts[-2].lower()
     if candidate in {"large", "medium", "small"}:
         return candidate
-    if candidate == "small" and "local" in parts:
-        return "local-small"
-    if "local" in parts and "small" in parts:
-        return "local-small"
     return None
 
 
@@ -242,6 +246,11 @@ class CostForecaster:
                 (cannot estimate without roles).
         """
         if not signal.role_skeleton:
+            logger.warning(
+                BUDGET_PREFLIGHT_ERROR,
+                reason="empty_role_skeleton",
+                currency=signal.currency,
+            )
             msg = "Cannot forecast: role_skeleton is empty"
             raise ValueError(msg)
 
