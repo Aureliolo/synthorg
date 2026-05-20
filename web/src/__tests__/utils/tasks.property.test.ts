@@ -49,6 +49,8 @@ function arbTask(): fc.Arbitrary<Task> {
     middleware_override: fc.constant(null),
     source: fc.constant(null),
     metadata: fc.constant({}),
+    hard_ceiling: fc.constant(null),
+    forecast_id: fc.constant(null),
   })
 }
 

@@ -37,6 +37,8 @@ export function buildTask(overrides: Partial<Task> = {}): Task {
     middleware_override: null,
     source: null,
     metadata: {},
+    hard_ceiling: null,
+    forecast_id: null,
     version: 1,
     ...overrides,
   }

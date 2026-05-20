@@ -246,6 +246,8 @@ function sanitizeTask(c: DashboardTask): DashboardTask {
     middleware_override:
       c.middleware_override == null ? null : sanitizeIds(c.middleware_override),
     metadata: sanitizeMetadata(c.metadata),
+    hard_ceiling: c.hard_ceiling ?? null,
+    forecast_id: sanitizeNullable(c.forecast_id ?? null, 64),
     source:
       c.source === undefined || c.source === null
         ? c.source

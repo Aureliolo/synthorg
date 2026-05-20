@@ -5940,6 +5940,10 @@ export type components = {
          * @enum {string}
          */
         readonly ApprovalStatus: "pending" | "approved" | "rejected" | "expired";
+        /** ApproveRequest */
+        readonly ApproveRequest: {
+            readonly comment?: string | null;
+        };
         /** Artifact */
         readonly Artifact: {
             /**
@@ -6838,18 +6842,6 @@ export type components = {
          * @enum {string}
          */
         readonly ContentType: "procedural" | "semantic" | "tool_patterns";
-        /** ApproveRequest */
-        readonly controllers_budget_forecast_ApproveRequest: {
-            /** @description Approved per-run hard ceiling (None to inherit setting) */
-            readonly ceiling_amount?: number | null;
-            /** @description Operator identifier */
-            readonly decided_by: string;
-        };
-        /** RejectRequest */
-        readonly controllers_budget_forecast_RejectRequest: {
-            /** @description Operator identifier */
-            readonly decided_by: string;
-        };
         /** ConversationalProposeRequest */
         readonly ConversationalProposeRequest: {
             readonly conversation_id?: string | null;
@@ -7572,14 +7564,6 @@ export type components = {
             readonly entity_name: string;
             readonly recommendation: components["schemas"]["DriftAction"];
         };
-        /** ApproveRequest */
-        readonly dto_ApproveRequest: {
-            readonly comment?: string | null;
-        };
-        /** RejectRequest */
-        readonly dto_RejectRequest: {
-            readonly reason: string;
-        };
         /** EdgeChange */
         readonly EdgeChange: {
             /** @enum {string} */
@@ -8253,6 +8237,13 @@ export type components = {
             /** @description Upper bound of the cost estimate */
             readonly upper_bound: number;
         };
+        /** ForecastApproveRequest */
+        readonly ForecastApproveRequest: {
+            /** @description Approved per-run hard ceiling (None to inherit setting) */
+            readonly ceiling_amount?: number | null;
+            /** @description Operator identifier */
+            readonly decided_by: string;
+        };
         /**
          * ForecastDecision
          * @description Operator decision state for a pre-flight cost forecast.
@@ -8269,6 +8260,11 @@ export type components = {
             readonly day: string;
             /** @description Projected cumulative spend in the configured currency */
             readonly projected_spend: number;
+        };
+        /** ForecastRejectRequest */
+        readonly ForecastRejectRequest: {
+            /** @description Operator identifier */
+            readonly decided_by: string;
         };
         /** ForecastRequest */
         readonly ForecastRequest: {
@@ -10557,6 +10553,10 @@ export type components = {
         /** RejectionPayload */
         readonly RejectionPayload: {
             /** @description Reason for rejection */
+            readonly reason: string;
+        };
+        /** RejectRequest */
+        readonly RejectRequest: {
             readonly reason: string;
         };
         /** RemoveAllowlistEntryRequest */
@@ -14788,7 +14788,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["dto_ApproveRequest"];
+                readonly "application/json": components["schemas"]["ApproveRequest"];
             };
         };
         readonly responses: {
@@ -14823,7 +14823,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["dto_RejectRequest"];
+                readonly "application/json": components["schemas"]["RejectRequest"];
             };
         };
         readonly responses: {
@@ -15459,7 +15459,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["controllers_budget_forecast_ApproveRequest"];
+                readonly "application/json": components["schemas"]["ForecastApproveRequest"];
             };
         };
         readonly responses: {
@@ -15527,7 +15527,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["controllers_budget_forecast_RejectRequest"];
+                readonly "application/json": components["schemas"]["ForecastRejectRequest"];
             };
         };
         readonly responses: {

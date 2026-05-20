@@ -27,6 +27,8 @@ const baseTask: DashboardTask = {
   middleware_override: null,
   source: null,
   metadata: {},
+  hard_ceiling: null,
+  forecast_id: null,
   cost: 12.4,
   version: 1,
   created_at: '2026-04-19T00:00:00Z',

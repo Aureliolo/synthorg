@@ -98,6 +98,8 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     middleware_override: null,
     source: null,
     metadata: {},
+    hard_ceiling: null,
+    forecast_id: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: undefined,
     ...overrides,

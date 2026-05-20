@@ -66,7 +66,7 @@ class ForecastRequest(BaseModel):
     )
 
 
-class ApproveRequest(BaseModel):
+class ForecastApproveRequest(BaseModel):
     """POST /budget/forecasts/{id}/approve payload."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -79,7 +79,7 @@ class ApproveRequest(BaseModel):
     )
 
 
-class RejectRequest(BaseModel):
+class ForecastRejectRequest(BaseModel):
     """POST /budget/forecasts/{id}/reject payload."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -178,7 +178,7 @@ class ForecastBudgetController(Controller):
     async def approve_forecast(
         self,
         forecast_id: Annotated[str, PathId],
-        data: ApproveRequest,
+        data: ForecastApproveRequest,
         state: State,
     ) -> Forecast:
         """Approve a pending forecast; releases the work pipeline."""
@@ -209,7 +209,7 @@ class ForecastBudgetController(Controller):
     async def reject_forecast(
         self,
         forecast_id: Annotated[str, PathId],
-        data: RejectRequest,
+        data: ForecastRejectRequest,
         state: State,
     ) -> Forecast:
         """Reject a pending forecast; terminates the work item."""
