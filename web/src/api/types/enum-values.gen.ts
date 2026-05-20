@@ -618,6 +618,7 @@ export const SETTING_NAMESPACE_VALUES = [
     'integrations',
     'meta',
     'notifications',
+    'objectives',
     'simulations',
     'tools',
     'settings',
