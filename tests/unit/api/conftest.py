@@ -71,29 +71,21 @@ _TEST_USER_ID = "test-user-001"
 _TEST_USERNAME = "testadmin"
 
 
-@pytest.fixture(scope="session", autouse=True)
-def _lightweight_argon2_hasher() -> Any:
-    """Replace the production argon2 hasher with a lightweight one.
-
-    The production hasher uses ``memory_cost=65536`` (64 MiB per hash)
-    and ``parallelism=4``.  With 8 xdist workers each creating multiple
-    ``TestClient`` fixtures that hash passwords during user seeding,
-    peak memory reaches several hundred MB and triggers
-    ``argon2.exceptions.HashingError: Memory allocation error``.
-
-    Session-scoped so every worker replaces the module global exactly
-    once and restores it on teardown, avoiding isolation drift.
-    """
-    original = _auth_mod._hasher
-    _auth_mod._hasher = argon2.PasswordHasher(
-        time_cost=1,
-        memory_cost=8,  # 8 KiB instead of 64 MiB
-        parallelism=1,
-        hash_len=32,
-        salt_len=16,
-    )
-    yield
-    _auth_mod._hasher = original
+# Production argon2 hasher uses memory_cost=65536 (64 MiB per hash)
+# and parallelism=4. Test modules call ``make_auth_headers`` at MODULE
+# IMPORT time (not inside a fixture), so the swap MUST happen at
+# conftest import. With 8 xdist workers each collecting test modules
+# concurrently, peak memory crosses 512 MiB and triggers
+# ``argon2.exceptions.HashingError: Memory allocation error``. The
+# lightweight hasher (8 KiB, parallelism=1) keeps the hash format and
+# argon2 verification semantics intact while removing memory pressure.
+_auth_mod._hasher = argon2.PasswordHasher(
+    time_cost=1,
+    memory_cost=8,  # 8 KiB instead of 64 MiB
+    parallelism=1,
+    hash_len=32,
+    salt_len=16,
+)
 
 
 @pytest.fixture(scope="session", autouse=True)
