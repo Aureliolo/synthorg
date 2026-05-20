@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar runtime ref
 
+from synthorg.api.boundary import parse_typed
 from synthorg.core.enums import (
     ActionType,
     ToolCategory,
@@ -63,7 +64,7 @@ class SearchLivingDocsTool(BaseTool):
     ) -> ToolExecutionResult:
         """Dispatch a ``search_living_docs`` invocation to :class:`DocsService`."""
         try:
-            parsed = SearchLivingDocsArgs.model_validate(arguments)
+            parsed = parse_typed("mcp.tool", arguments, SearchLivingDocsArgs)
             logger.info(
                 DOC_SEARCH_START,
                 project_id=self._project_id,
@@ -90,6 +91,8 @@ class SearchLivingDocsTool(BaseTool):
                 ),
                 is_error=True,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.error(
                 DOC_SEARCH_FAILED,

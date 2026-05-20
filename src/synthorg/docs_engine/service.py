@@ -75,6 +75,20 @@ _HISTORY_FIELDS_PER_LINE: int = 3
 _MIN_SHA_LENGTH: int = 7
 _MAX_SHA_LENGTH: int = 40
 _COMMIT_SHA_RE = re.compile(rf"^[0-9a-fA-F]{{{_MIN_SHA_LENGTH},{_MAX_SHA_LENGTH}}}$")
+_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_EXISTING_SLUGS_PAGE_SIZE: int = 1_024
+
+
+def _validate_slug(slug: NotBlankStr) -> None:
+    """Reject slugs that are not safe kebab-case identifiers.
+
+    Slugs flow into filesystem paths (``<type>/<slug>.json``) and git
+    pathspecs, so an unvalidated value such as ``../../etc/passwd`` would
+    be a path-traversal sink.
+    """
+    if _SLUG_RE.match(slug) is None:
+        msg = f"invalid slug format: {slug!r}"
+        raise DocValidationError(msg)
 
 
 class DocsService:
@@ -250,6 +264,7 @@ class DocsService:
             DocValidationError: ``version`` is not a valid commit SHA.
             DocNotFoundError: Slug or version not found.
         """
+        _validate_slug(slug)
         if version is not None and _COMMIT_SHA_RE.match(version) is None:
             msg = (
                 f"version {version!r} is not a valid commit SHA "
@@ -339,6 +354,7 @@ class DocsService:
             hit
             for entry in entries
             if (hit := _entry_to_hit(entry, doc_types=doc_types)) is not None
+            and hit.project_id == project_id
         )
         logger.info(
             DOC_SEARCH_COMPLETE,
@@ -367,6 +383,7 @@ class DocsService:
         Raises:
             DocNotFoundError: Slug not found in the metadata repo.
         """
+        _validate_slug(slug)
         metadata = await self._repo.get((project_id, slug))
         if metadata is None:
             msg = f"living doc {project_id!r}/{slug!r} not found"
@@ -414,13 +431,22 @@ class DocsService:
     ) -> tuple[NotBlankStr, DocMetadata | None]:
         """Return (slug, prior_metadata) for create / update branch."""
         if supplied_slug is not None:
+            _validate_slug(supplied_slug)
             prior = await self._repo.get((project_id, supplied_slug))
             return supplied_slug, prior
-        existing = await self._repo.query(
-            DocsFilterSpec(project_id=project_id, doc_type=doc_type),
-            limit=10_000,
-        )
-        existing_slugs = {row.slug for row in existing}
+        spec = DocsFilterSpec(project_id=project_id, doc_type=doc_type)
+        existing_slugs: set[NotBlankStr] = set()
+        offset = 0
+        while True:
+            page = await self._repo.query(
+                spec, limit=_EXISTING_SLUGS_PAGE_SIZE, offset=offset
+            )
+            if not page:
+                break
+            existing_slugs.update(row.slug for row in page)
+            if len(page) < _EXISTING_SLUGS_PAGE_SIZE:
+                break
+            offset += _EXISTING_SLUGS_PAGE_SIZE
         slug = derive_slug(title, existing_slugs=existing_slugs)
         logger.debug(
             DOC_SLUG_DERIVED,
@@ -451,6 +477,18 @@ class DocsService:
                     f"{safe_error_description(exc)}"
                 )
                 raise DocCommitError(msg) from exc
+        ancestry_rc, _, _ = await run_git_subprocess(
+            repo_root,
+            "merge-base",
+            "--is-ancestor",
+            version,
+            DOCS_BRANCH_NAME,
+            cmd_timeout=_GIT_CMD_TIMEOUT_SECONDS,
+            log_event=DOC_NOT_FOUND,
+        )
+        if ancestry_rc != 0:
+            msg = f"version {version!r} is not reachable from {DOCS_BRANCH_NAME!r}"
+            raise DocNotFoundError(msg)
         rc, stdout_text, stderr = await run_git_subprocess(
             repo_root,
             "show",

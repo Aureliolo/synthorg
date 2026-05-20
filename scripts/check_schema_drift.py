@@ -200,6 +200,18 @@ def _add_mode_args(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "--justification",
+        type=str,
+        default=None,
+        metavar="TEXT",
+        help=(
+            "Audit-cited justification applied to every newly registered "
+            "drift entry AND any existing entry still holding the placeholder, "
+            "so --update-baseline never leaves an unresolvable placeholder "
+            "behind. Without it, new entries fall back to the placeholder."
+        ),
+    )
+    parser.add_argument(
         "--explain",
         type=str,
         default=None,
@@ -251,7 +263,7 @@ def _parse_both(
 
 _NEW_DRIFT_REMEDIATION: Final[str] = (
     "Either fix the schema (preferred) or regenerate the baseline with "
-    "--update-baseline + a per-entry justification "
+    '--update-baseline --justification "<audit-cited reason>" '
     "(requires explicit user approval)."
 )
 _PLACEHOLDER_BASELINE_REASON: Final[str] = (
@@ -277,23 +289,38 @@ def _report_findings(new_drift: list[str], stale_baseline: list[str]) -> int:
     return 1
 
 
-def _do_update_baseline(baseline_path: Path, findings_set: set[str]) -> int:
+def _do_update_baseline(
+    baseline_path: Path,
+    findings_set: set[str],
+    justification: str | None = None,
+) -> int:
     """Persist the baseline file; return exit code.
 
     Existing reasons are preserved across regeneration: keys still in
     ``findings_set`` keep whatever reason the operator already wrote;
-    new keys get the placeholder reason and need editing before commit.
+    new keys get ``justification`` when supplied, else the placeholder
+    reason. When ``justification`` is given it also backfills any
+    existing entry still holding the placeholder, so a single
+    operator-approved run never leaves an unresolvable placeholder
+    behind (the gap that made placeholders un-fixable for non-human
+    authors).
     """
     try:
         existing_reasons = load_baseline_with_reasons(baseline_path)
     except ValueError, OSError:
         existing_reasons = {}
+    default_reason = justification or _PLACEHOLDER_BASELINE_REASON
+    reasons = dict(existing_reasons)
+    if justification is not None:
+        for key, reason in existing_reasons.items():
+            if reason == _PLACEHOLDER_BASELINE_REASON:
+                reasons[key] = justification
     try:
         write_baseline(
             baseline_path,
             sorted(findings_set),
-            default_reason=_PLACEHOLDER_BASELINE_REASON,
-            reasons=existing_reasons,
+            default_reason=default_reason,
+            reasons=reasons,
         )
     except OSError as exc:
         print(
@@ -335,7 +362,7 @@ def main(argv: list[str] | None = None) -> int:
         findings.extend(diff_migrations(args.sqlite_revisions, args.postgres_revisions))
     findings_set = set(findings)
     if args.update_baseline:
-        return _do_update_baseline(args.baseline, findings_set)
+        return _do_update_baseline(args.baseline, findings_set, args.justification)
     try:
         baseline_keys = load_baseline(args.baseline)
     except ValueError as exc:

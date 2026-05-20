@@ -94,6 +94,12 @@ class ProjectAwareMemoryFacade:
                 if group.exceptions
                 else "no exceptions",
             )
+            if (
+                agent_task.done()
+                and not agent_task.cancelled()
+                and agent_task.exception() is None
+            ):
+                return agent_task.result()
             return await self._backend.retrieve(agent_id, query)
         merged = _merge_by_score(
             agent_task.result(),

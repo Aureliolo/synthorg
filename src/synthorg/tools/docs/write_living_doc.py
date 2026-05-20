@@ -102,6 +102,8 @@ class WriteLivingDocTool(BaseTool):
                 ),
                 is_error=True,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.error(
                 DOC_WRITE_FAILED,

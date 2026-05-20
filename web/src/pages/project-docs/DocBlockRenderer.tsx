@@ -1,4 +1,21 @@
-import type { DocBlock } from '@/api/endpoints/projectDocs'
+import type {
+  BulletListBlock,
+  CodeBlock,
+  DecisionBlock,
+  HeadingBlock,
+  LinkBlock,
+  MetricBlock,
+  ProseBlock,
+} from '@/api/types'
+
+type DocBlock =
+  | HeadingBlock
+  | ProseBlock
+  | BulletListBlock
+  | CodeBlock
+  | DecisionBlock
+  | MetricBlock
+  | LinkBlock
 
 /**
  * Single living-document block renderer.

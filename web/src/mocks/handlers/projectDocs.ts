@@ -4,11 +4,13 @@ import type {
   getProjectDocHistory,
   listProjectDocs,
   searchProjectDocs,
-  DocSummary,
-  LivingDocument,
-  DocVersion,
-  DocSearchHit,
 } from '@/api/endpoints/projectDocs'
+import type {
+  DocSearchHit,
+  DocSummary,
+  DocVersion,
+  LivingDocument,
+} from '@/api/types'
 import type { PaginationMeta } from '@/api/types/http'
 import {
   apiSuccess,

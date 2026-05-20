@@ -177,6 +177,7 @@ class PersistenceBackend(Protocol):
         settings: Repository for namespaced settings persistence.
         artifacts: Repository for Artifact persistence.
         projects: Repository for Project persistence.
+        project_docs: Repository for living-documentation metadata persistence.
         custom_presets: Repository for custom personality preset persistence.
         workflow_definitions: Repository for workflow definition persistence.
         workflow_executions: Repository for workflow execution persistence.

@@ -1,12 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import {
-  getProjectDoc,
-  listProjectDocs,
-  type DocSummary,
-  type DocType,
-  type LivingDocument,
-} from '@/api/endpoints/projectDocs'
+import { getProjectDoc, listProjectDocs } from '@/api/endpoints/projectDocs'
+import type { DocSummary, DocType, LivingDocument } from '@/api/types'
+import { isAxiosError } from '@/utils/errors'
 import { Breadcrumbs } from '@/components/ui/breadcrumbs'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -33,38 +29,36 @@ export default function ProjectDocsPage() {
 
   useEffect(() => {
     if (!projectId) return
-    let cancelled = false
-    listProjectDocs(projectId)
+    const controller = new AbortController()
+    listProjectDocs(projectId, undefined, controller.signal)
       .then((result) => {
-        if (cancelled) return
         setDocs(result.data)
         setListError(null)
       })
       .catch((err: unknown) => {
-        if (cancelled) return
+        if (isAxiosError(err) && err.code === 'ERR_CANCELED') return
         log.warn('list docs failed', err)
         setListError('Could not load documents for this project.')
       })
     return () => {
-      cancelled = true
+      controller.abort()
     }
   }, [projectId])
 
   useEffect(() => {
     if (!projectId || !slug) return
-    let cancelled = false
-    getProjectDoc(projectId, slug)
+    const controller = new AbortController()
+    getProjectDoc(projectId, slug, controller.signal)
       .then((value) => {
-        if (cancelled) return
         setDocResult({ slug, doc: value, error: null })
       })
       .catch((err: unknown) => {
-        if (cancelled) return
+        if (isAxiosError(err) && err.code === 'ERR_CANCELED') return
         log.warn('get doc failed', err)
         setDocResult({ slug, doc: null, error: 'Could not load this document.' })
       })
     return () => {
-      cancelled = true
+      controller.abort()
     }
   }, [projectId, slug])
 

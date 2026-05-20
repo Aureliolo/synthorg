@@ -12,12 +12,14 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import DOCS_SLUG_MAX_LENGTH
+from synthorg.docs_engine.errors import DocValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Container
 
 _KEEP_PATTERN = re.compile(r"[^a-z0-9]+")
 _FALLBACK_SLUG: NotBlankStr = NotBlankStr("doc")
+_MAX_SUFFIX: int = 10_000
 
 
 def derive_slug(
@@ -44,11 +46,13 @@ def derive_slug(
     if base not in existing_slugs:
         return base
     suffix = 2
-    while True:
+    while suffix < _MAX_SUFFIX:
         candidate = NotBlankStr(_truncate_with_suffix(base, suffix))
         if candidate not in existing_slugs:
             return candidate
         suffix += 1
+    msg = f"Could not derive a unique slug from {title!r} (exhausted suffix space)"
+    raise DocValidationError(msg)
 
 
 def _slugify(title: str) -> NotBlankStr:

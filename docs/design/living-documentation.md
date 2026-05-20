@@ -17,7 +17,7 @@ agent on task T2 days later via the standard memory search path.
 
 ## Surface
 
-```
+```text
 src/synthorg/docs_engine/
   models.py          - LivingDocument + DocBlock discriminated union
   serializer.py      - deterministic JSON on disk (sorted keys, indent=2)

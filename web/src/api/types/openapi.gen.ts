@@ -8803,8 +8803,9 @@ export type components = {
          *
          *     ``PROJECT_DOC`` is a project-scoped (not agent-scoped) category used
          *     by the living-documentation engine. Entries are stored under a
-         *     system docs agent_id with ``namespace=f"project:{project_id}"`` and
-         *     surfaced to agents transparently via ``ProjectAwareMemoryFacade``.
+         *     system docs agent_id in the docs namespace and scoped to a project
+         *     via the ``project:<project_id>`` tag, then surfaced transparently
+         *     via ``ProjectAwareMemoryFacade``.
          * @enum {string}
          */
         readonly MemoryCategory: "working" | "episodic" | "semantic" | "procedural" | "social" | "project_doc";

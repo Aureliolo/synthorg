@@ -680,7 +680,15 @@ class FakeDocsRepository:
         return tuple(rows[offset : offset + limit])
 
     async def count(self, filter_spec: Any) -> int:
-        rows = await self.query(filter_spec, limit=10_000, offset=0)
+        rows = [
+            r for r in self._rows.values() if r.project_id == filter_spec.project_id
+        ]
+        if filter_spec.doc_type is not None:
+            rows = [r for r in rows if r.doc_type == filter_spec.doc_type]
+        if filter_spec.tag is not None:
+            rows = [r for r in rows if filter_spec.tag in r.tags]
+        if filter_spec.updated_since is not None:
+            rows = [r for r in rows if r.updated_at >= filter_spec.updated_since]
         return len(rows)
 
 

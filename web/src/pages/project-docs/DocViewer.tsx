@@ -1,4 +1,4 @@
-import type { LivingDocument } from '@/api/endpoints/projectDocs'
+import type { LivingDocument } from '@/api/types'
 import { DocBlockRenderer } from './DocBlockRenderer'
 
 export interface DocViewerProps {

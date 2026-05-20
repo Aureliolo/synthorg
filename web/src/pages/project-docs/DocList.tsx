@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { DocSummary, DocType } from '@/api/endpoints/projectDocs'
+import type { DocSummary, DocType } from '@/api/types'
 
 const DOC_TYPE_LABEL: Record<DocType, string> = {
   status_report: 'Status report',

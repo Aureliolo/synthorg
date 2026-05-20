@@ -15,7 +15,7 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
-from synthorg.core.domain_errors import NotFoundError, ValidationError
+from synthorg.core.domain_errors import ServiceUnavailableError, ValidationError
 from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
@@ -43,7 +43,7 @@ def _docs_service(state: State) -> DocsService:
     svc: DocsService | None = state.app_state.docs_service
     if svc is None:
         msg = "Living-documentation engine is not wired in this deployment"
-        raise NotFoundError(msg)
+        raise ServiceUnavailableError(msg)
     return svc
 
 

@@ -68,6 +68,7 @@ _TY_DOC_TYPE = "doc_type enum value"
 _TY_STR_SEQ = "sequence of strings"
 _TY_BLOCK_LIST = "non-empty list of block dicts"
 _TY_POS_INT = "positive int"
+_TY_NONNEG_INT = "non-negative int"
 
 
 def _require_docs_service(app_state: Any) -> Any:
@@ -145,6 +146,20 @@ def _parse_positive_int(
     return raw
 
 
+def _parse_nonneg_int(
+    arguments: dict[str, Any],
+    key: str,
+    *,
+    default: int,
+) -> int:
+    raw = arguments.get(key)
+    if raw in (None, ""):
+        return default
+    if not isinstance(raw, int) or isinstance(raw, bool) or raw < 0:
+        raise invalid_argument(key, _TY_NONNEG_INT)
+    return raw
+
+
 def _parse_doc_type_filter(
     arguments: dict[str, Any],
 ) -> frozenset[DocType] | None:
@@ -205,6 +220,8 @@ async def _docs_write(
     except (DocCommitError, DocIndexError, DocValidationError) as exc:
         log_handler_invoke_failed(_TOOL_DOCS_WRITE, exc)
         return err(exc)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         log_handler_invoke_failed(_TOOL_DOCS_WRITE, exc)
         return err(exc)
@@ -239,6 +256,8 @@ async def _docs_get(
     except DocNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_DOCS_GET, exc)
         return err(exc)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         log_handler_invoke_failed(_TOOL_DOCS_GET, exc)
         return err(exc)
@@ -261,8 +280,7 @@ async def _docs_list(
             else None
         )
         limit = _parse_positive_int(arguments, _ARG_LIMIT, default=50)
-        offset_raw = arguments.get(_ARG_OFFSET, 0)
-        offset = offset_raw if isinstance(offset_raw, int) else 0
+        offset = _parse_nonneg_int(arguments, _ARG_OFFSET, default=0)
         summaries = await svc.list_docs(
             project_id=project_id,
             doc_type=doc_type,
@@ -275,6 +293,8 @@ async def _docs_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_DOCS_LIST, exc)
         return err(exc)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         log_handler_invoke_failed(_TOOL_DOCS_LIST, exc)
         return err(exc)
@@ -303,6 +323,8 @@ async def _docs_search(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_DOCS_SEARCH, exc)
         return err(exc)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         log_handler_invoke_failed(_TOOL_DOCS_SEARCH, exc)
         return err(exc)
@@ -332,6 +354,8 @@ async def _docs_history(
     except DocNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_DOCS_HISTORY, exc)
         return err(exc)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         log_handler_invoke_failed(_TOOL_DOCS_HISTORY, exc)
         return err(exc)

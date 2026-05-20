@@ -132,6 +132,8 @@ class DocWriter:
             )
         except DocCommitError:
             raise
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             msg = (
                 f"Failed to write living doc {project_id!r}/{doc.slug!r} "

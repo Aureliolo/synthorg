@@ -25,6 +25,9 @@ CREATE TABLE project_docs (
 CREATE INDEX idx_project_docs_updated_at
     ON project_docs(updated_at DESC);
 
+CREATE INDEX idx_project_docs_project_recent
+    ON project_docs(project_id, updated_at DESC, slug DESC);
+
 CREATE INDEX idx_project_docs_doc_type
     ON project_docs(project_id, doc_type);
 

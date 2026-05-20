@@ -93,9 +93,9 @@ def _with_docs_service(test_client: TestClient[Any], svc: object) -> Iterator[No
 
 @pytest.mark.unit
 class TestProjectDocsController:
-    def test_not_wired_returns_404(self, test_client: TestClient[Any]) -> None:
+    def test_not_wired_returns_503(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/projects/proj-1/docs")
-        assert resp.status_code == 404
+        assert resp.status_code == 503
 
     def test_list_docs(self, test_client: TestClient[Any]) -> None:
         with _with_docs_service(test_client, _FakeDocsService()):

@@ -11,6 +11,8 @@ backend across the docs engine; the chunker is pure and the writer
 talks to the workspace, not the memory backend.
 """
 
+import asyncio
+import builtins
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import MemoryCategory
@@ -36,7 +38,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _INDEX_PAGE_SIZE: int = 100
-_MAX_DELETE_ITERATIONS: int = 10_000
+_MAX_DELETE_ITERATIONS: int = 100
 
 
 class DocIndexer:
@@ -67,6 +69,8 @@ class DocIndexer:
         """
         try:
             await self._delete_prior(project_id=project_id, slug=slug)
+        except builtins.MemoryError, RecursionError:
+            raise
         except Exception as exc:
             msg = (
                 f"Failed to clear prior chunks for {project_id!r}/{slug!r} "
@@ -82,12 +86,20 @@ class DocIndexer:
             )
             raise DocIndexError(msg) from exc
         try:
-            for chunk in chunks:
-                await self._backend.store(
-                    SYSTEM_DOCS_AGENT_ID,
-                    _chunk_to_request(chunk),
-                )
-        except Exception as exc:
+            async with asyncio.TaskGroup() as tg:
+                for chunk in chunks:
+                    tg.create_task(
+                        self._backend.store(
+                            SYSTEM_DOCS_AGENT_ID,
+                            _chunk_to_request(chunk),
+                        )
+                    )
+        except builtins.BaseExceptionGroup as group:
+            if group.subgroup(asyncio.CancelledError) is not None:
+                raise
+            if group.subgroup((MemoryError, RecursionError)) is not None:
+                raise
+            exc = group.exceptions[0]
             msg = f"Failed to store chunks for {project_id!r}/{slug!r}"
             logger.warning(
                 DOC_INDEX_FAILED,
