@@ -9,6 +9,7 @@ instance; per-evaluation state (``execution_id``, ``task_id``) flows
 through the tool's arguments.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -86,6 +87,8 @@ class AgentEngineRunner:
         task = self._build_transient_task(review_input, prompt)
         try:
             await self._engine.run(identity=self._identity, task=task)
+        except asyncio.CancelledError:
+            raise
         except MemoryError, RecursionError:
             raise
         except Exception as exc:

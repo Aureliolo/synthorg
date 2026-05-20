@@ -3,7 +3,7 @@
 ## Current status
 
 SynthOrg is in **active development**. The platform, infrastructure, and
-subsystem libraries are built and tested (<!--RS:tests-->31,000+<!--/RS-->
+subsystem libraries are built and tested (<!--RS:tests-->32,000+<!--/RS-->
 tests in the latest run, 80%+ coverage) and integrated through a REST +
 WebSocket API, a React 19 dashboard, and a Go CLI. The autonomous agent
 **runtime** that makes the organisation actually execute work is the focus of

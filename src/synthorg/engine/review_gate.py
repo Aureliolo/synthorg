@@ -285,22 +285,33 @@ class ReviewGateService:
         ``IN_PROGRESS`` (rework) with the red-team summary as the
         transition reason. PASS / PASS_WITH_FINDINGS leaves the existing
         target unchanged so the original review-pipeline verdict stands.
+
+        When the gate is configured but ``red_team_input`` is absent the
+        transition is blocked (fail-closed): a configured security gate
+        must not be silently bypassed by a caller that omits the
+        adversarial-review payload. The task is held out of COMPLETED and
+        routed back to ``IN_PROGRESS`` until the input is wired.
         """
         gate = self._red_team_gate
         if gate is None:
             return target, transition_reason, event, approved
         if red_team_input is None:
-            logger.info(
+            logger.warning(
                 RED_TEAM_GATE_SKIPPED,
                 task_id=task_id,
-                reason="no_red_team_input",
+                reason="red_team_input_required",
                 note=(
-                    "Red-team gate wired but caller did not supply "
-                    "red_team_input; deliverable proceeds without "
-                    "adversarial review."
+                    "Red-team gate is configured but the caller did not "
+                    "supply red_team_input; blocking completion (fail-closed) "
+                    "until the adversarial-review payload is wired."
                 ),
             )
-            return target, transition_reason, event, approved
+            return (
+                TaskStatus.IN_PROGRESS,
+                "red_team_input_required",
+                RED_TEAM_GATE_SKIPPED,
+                False,
+            )
 
         from synthorg.security.redteam.models import RedTeamVerdict  # noqa: PLC0415
 

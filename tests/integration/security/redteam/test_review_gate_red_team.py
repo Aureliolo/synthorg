@@ -180,8 +180,8 @@ async def test_planted_defect_blocks_review_gate_and_routes_to_in_progress() -> 
     assert "Red-team review blocked" in call.reason
 
 
-async def test_red_team_gate_skipped_when_review_input_missing() -> None:
-    """No ``red_team_input`` means the gate is skipped; PASS proceeds to COMPLETED."""
+async def test_red_team_gate_blocks_when_review_input_missing() -> None:
+    """A configured gate with no ``red_team_input`` fails closed (no COMPLETED)."""
     repo = InMemoryRedTeamReportRepository()
     runner: AgentRunner = _ScriptedRunner(repo=repo, report=_planted_report())
     service, task_engine = _build_review_gate(runner=runner)
@@ -196,7 +196,8 @@ async def test_red_team_gate_skipped_when_review_input_missing() -> None:
     )
 
     call = task_engine.submit.call_args[0][0]
-    assert call.target_status is TaskStatus.COMPLETED
+    assert call.target_status is TaskStatus.IN_PROGRESS
+    assert call.reason == "red_team_input_required"
 
 
 async def test_red_team_gate_absent_no_change() -> None:
