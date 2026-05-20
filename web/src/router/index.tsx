@@ -31,6 +31,7 @@ const EscalationQueuePage = lazy(() => import('@/pages/EscalationQueuePage'))
 const UsersPage = lazy(() => import('@/pages/UsersPage'))
 const ProjectsPage = lazy(() => import('@/pages/ProjectsPage'))
 const ProjectDetailPage = lazy(() => import('@/pages/ProjectDetailPage'))
+const ProjectDocsPage = lazy(() => import('@/pages/ProjectDocsPage'))
 const ArtifactsPage = lazy(() => import('@/pages/ArtifactsPage'))
 const ArtifactDetailPage = lazy(() => import('@/pages/ArtifactDetailPage'))
 const WorkflowsPage = lazy(() => import('@/pages/WorkflowsPage'))
@@ -155,6 +156,8 @@ export const router = createBrowserRouter([
               { path: ROUTES.USERS.slice(1), element: <UsersPage /> },
               { path: 'projects', element: <ProjectsPage /> },
               { path: 'projects/:projectId', element: <ProjectDetailPage /> },
+              { path: 'projects/:projectId/docs', element: <ProjectDocsPage /> },
+              { path: 'projects/:projectId/docs/:slug', element: <ProjectDocsPage /> },
               { path: 'artifacts', element: <ArtifactsPage /> },
               { path: 'artifacts/:artifactId', element: <ArtifactDetailPage /> },
               { path: 'workflows', element: <WorkflowsPage /> },

@@ -65,6 +65,7 @@ from synthorg.api.controllers.ontology import OntologyController
 from synthorg.api.controllers.personalities import (
     PersonalityPresetController,
 )
+from synthorg.api.controllers.project_docs import ProjectDocsController
 from synthorg.api.controllers.projects import ProjectController
 from synthorg.api.controllers.providers import ProviderController
 from synthorg.api.controllers.quality import QualityController
@@ -113,6 +114,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     ActivityController,
     DepartmentController,
     ProjectController,
+    ProjectDocsController,
     TaskController,
     ExperimentsController,
     MessageController,
@@ -244,6 +246,7 @@ __all__ = [
     "OntologyController",
     "PersonalityPresetController",
     "ProjectController",
+    "ProjectDocsController",
     "ProviderController",
     "QualityController",
     "ReadinessController",

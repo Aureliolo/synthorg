@@ -271,6 +271,13 @@ export const DEPARTMENT_NAME_VALUES = [
 ] as const
 export type DepartmentName = (typeof DEPARTMENT_NAME_VALUES)[number]
 
+export const DOC_TYPE_VALUES = [
+    'status_report',
+    'deliverable',
+    'knowledge_note',
+] as const
+export type DocType = (typeof DOC_TYPE_VALUES)[number]
+
 export const DRIFT_ACTION_VALUES = [
     'no_action',
     'notify',
@@ -432,6 +439,7 @@ export const MEMORY_CATEGORY_VALUES = [
     'semantic',
     'procedural',
     'social',
+    'project_doc',
 ] as const
 export type MemoryCategory = (typeof MEMORY_CATEGORY_VALUES)[number]
 

@@ -10,6 +10,7 @@ from synthorg.meta.mcp.domains.approvals import APPROVAL_TOOLS
 from synthorg.meta.mcp.domains.budget import BUDGET_TOOLS
 from synthorg.meta.mcp.domains.communication import COMMUNICATION_TOOLS
 from synthorg.meta.mcp.domains.coordination import COORDINATION_TOOLS
+from synthorg.meta.mcp.domains.docs import DOCS_TOOLS
 from synthorg.meta.mcp.domains.infrastructure import INFRASTRUCTURE_TOOLS
 from synthorg.meta.mcp.domains.integrations import INTEGRATION_TOOLS
 from synthorg.meta.mcp.domains.memory import MEMORY_TOOLS
@@ -41,6 +42,7 @@ ALL_DOMAIN_TOOLS: tuple[tuple[MCPToolDef, ...], ...] = (
     COMMUNICATION_TOOLS,
     INTEGRATION_TOOLS,
     INFRASTRUCTURE_TOOLS,
+    DOCS_TOOLS,
 )
 
 

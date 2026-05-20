@@ -65,3 +65,12 @@ ENFORCED CostForecaster #1982 -- constructed in api/app.py::_wire_cost_dial_serv
 ENFORCED ForecastGate #1982 -- constructed in engine/pipeline/entry/boot.py::_forecast_gate_for and passed through build_work_entry_adapter as the work_pipeline seam; consulted on every brief submission before the work pipeline dispatches
 ENFORCED ParetoAnalyzer #1982 -- constructed in api/app.py::_wire_cost_dial_services; consumed by ForecastBudgetController.get_pareto
 ENFORCED StubBenchmarkScoreProvider #1982 -- constructed in api/app.py::_wire_cost_dial_services; powers ParetoAnalyzer's quality axis; swap to real benchmark provider when #1980 lands
+ENFORCED build_docs_service #1976 -- called in api/app.py::_wire_docs_engine; assembles chunker + indexer + writer + service + facade
+ENFORCED DocsService #1976 -- constructed by docs_engine/factory.py::build_docs_service; attached to AppState by _wire_docs_engine
+ENFORCED DocChunker #1976 -- constructed inside docs_engine/factory.py::build_docs_service; produces block-aware chunks for the indexer
+ENFORCED DocIndexer #1976 -- constructed inside docs_engine/factory.py::build_docs_service; stores PROJECT_DOC memory entries via MemoryBackend.store
+ENFORCED DocWriter #1976 -- constructed inside docs_engine/factory.py::build_docs_service; serializes doc + commits on synthorg/docs via the configured GitBackend
+ENFORCED ProjectAwareMemoryFacade #1976 -- constructed inside docs_engine/factory.py::build_docs_service; attached to AppState by _wire_docs_engine for transparent project-doc retrieval
+ENFORCED DocsToolFactory #1976 -- constructed in api/app.py::_wire_docs_engine; per-task source of WriteLivingDocTool + SearchLivingDocsTool bound to the boot DocsService
+ENFORCED WriteLivingDocTool #1976 -- constructed by docs_engine/tool_factory.py::DocsToolFactory.build_tools per task with the agent's project + author binding
+ENFORCED SearchLivingDocsTool #1976 -- constructed by docs_engine/tool_factory.py::DocsToolFactory.build_tools per task with the agent's project binding

@@ -77,6 +77,7 @@ RUNTIME_PREFIXES: Final[tuple[str, ...]] = (
     # factory + tool-class construction lets the manifest track tool
     # wiring (e.g. EPIC #1987 children that add new tool classes).
     "src/synthorg/tools/",
+    "src/synthorg/docs_engine/",
 )
 
 

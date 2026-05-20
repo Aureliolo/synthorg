@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.cost_record_protocol import CostRecordRepository
     from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
     from synthorg.persistence.decision_protocol import DecisionRepository
+    from synthorg.persistence.docs_protocol import DocsRepository
     from synthorg.persistence.fine_tune_protocol import (
         FineTuneCheckpointRepository,
         FineTuneRunRepository,
@@ -144,6 +145,7 @@ class _BackendRepositoryAccessors:
     _artifacts: ArtifactRepository | None
     _projects: ProjectRepository | None
     _project_workspaces: ProjectWorkspaceRepository | None
+    _project_docs: DocsRepository | None
     _project_cost_aggregates: ProjectCostAggregateRepository | None
     _fine_tune_checkpoints: FineTuneCheckpointRepository | None
     _fine_tune_runs: FineTuneRunRepository | None
@@ -308,6 +310,11 @@ class _BackendRepositoryAccessors:
     def project_workspaces(self) -> ProjectWorkspaceRepository:
         """Repository for persistent per-project workspace mappings."""
         return self._require_connected(self._project_workspaces, "project_workspaces")
+
+    @property
+    def project_docs(self) -> DocsRepository:
+        """Repository for living-documentation metadata persistence."""
+        return self._require_connected(self._project_docs, "project_docs")
 
     @property
     def project_cost_aggregates(self) -> ProjectCostAggregateRepository:

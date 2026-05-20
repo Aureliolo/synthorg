@@ -1216,7 +1216,55 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         await wire_real_task_board_entry(app_state)
         _runtime_services_installed = True
 
-    startup = [*startup, _install_runtime_services]
+    _docs_engine_installed = False
+
+    async def _wire_docs_engine() -> None:
+        # Living-documentation engine (#1976). Constructs DocsService and
+        # the ProjectAwareMemoryFacade behind the same persistence +
+        # project workspace gate used by _install_runtime_services. The
+        # facade is held on the engine bundle so the per-agent retrieval
+        # pipeline (Phase 6) can consult it when an execution context
+        # exposes a project_id; the dev / empty-company path with no
+        # persistence cleanly skips wiring.
+        nonlocal _docs_engine_installed
+        if _docs_engine_installed:
+            return
+        if not app_state.has_persistence:
+            return
+        if app_state.project_workspace_service is None:
+            return
+        if app_state.docs_service is not None:
+            _docs_engine_installed = True
+            return
+        from synthorg.docs_engine.factory import (  # noqa: PLC0415
+            build_docs_service,
+        )
+        from synthorg.docs_engine.tool_factory import (  # noqa: PLC0415
+            DocsToolFactory,
+        )
+
+        if not app_state.has_memory_backend:
+            logger.info(
+                API_APP_STARTUP,
+                service="docs_engine",
+                note="memory backend not wired; docs engine wiring skipped",
+            )
+            return
+        runtime = build_docs_service(
+            repo=app_state.persistence.project_docs,
+            workspace_service=app_state.project_workspace_service,
+            git_backend=app_state.project_workspace_service.git_backend,
+            memory_backend=app_state.memory_backend,
+            clock=app_state.clock,
+        )
+        app_state.set_docs_service(runtime.docs_service)
+        app_state.set_project_doc_memory_facade(runtime.memory_facade)
+        app_state.set_docs_tool_factory(
+            DocsToolFactory(docs_service=runtime.docs_service)
+        )
+        _docs_engine_installed = True
+
+    startup = [*startup, _install_runtime_services, _wire_docs_engine]
 
     # Project telemetry: build collector (reads SYNTHORG_TELEMETRY_ENABLED env for
     # opt-in, defaults to disabled). Attach to app_state so the health

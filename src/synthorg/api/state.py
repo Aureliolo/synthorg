@@ -156,6 +156,11 @@ if TYPE_CHECKING:
     from synthorg.api.services.workflow_rollback_service import (
         WorkflowRollbackService,
     )
+    from synthorg.docs_engine.retrieval_facade import (
+        ProjectAwareMemoryFacade,
+    )
+    from synthorg.docs_engine.service import DocsService
+    from synthorg.docs_engine.tool_factory import DocsToolFactory
     from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,
@@ -237,6 +242,8 @@ class AppState(AppStateServicesMixin):
         "_department_service",
         "_distributed_backend_services",
         "_distributed_task_queue",
+        "_docs_service",
+        "_docs_tool_factory",
         "_drift_detection_service",
         "_drift_report_store",
         "_escalation_notify_subscriber",
@@ -286,6 +293,7 @@ class AppState(AppStateServicesMixin):
         "_persistence",
         "_personality_service",
         "_preset_override_service",
+        "_project_doc_memory_facade",
         "_project_facade_service",
         "_project_workspace_service",
         "_prometheus_collector",
@@ -495,6 +503,13 @@ class AppState(AppStateServicesMixin):
         self._pareto_analyzer: ParetoAnalyzer | None = None
         self._benchmark_provider: BenchmarkScoreProvider | None = None
         self._budget_config: BudgetConfig | None = None
+        # Living-documentation engine (#1976). Wired at boot when both
+        # persistence and the project workspace service are present; the
+        # accessor returns None for dev / empty-company runs that skipped
+        # the wiring.
+        self._docs_service: DocsService | None = None
+        self._docs_tool_factory: DocsToolFactory | None = None
+        self._project_doc_memory_facade: ProjectAwareMemoryFacade | None = None
         # Guards the double-checked locking on first-access lazy wiring
         # of worker_execution_service / experiment_service. Both
         # properties may be invoked from concurrent request handlers
@@ -1028,6 +1043,54 @@ class AppState(AppStateServicesMixin):
             "_project_workspace_service",
             service,
             "Project workspace service",
+        )
+
+    @property
+    def docs_service(self) -> DocsService | None:
+        """Living-documentation engine, or ``None`` when not wired.
+
+        Wired at boot after ``project_workspace_service`` and persistence
+        are connected; ``None`` for dev / empty-company runs.
+        """
+        return self._docs_service
+
+    def set_docs_service(self, service: DocsService) -> None:
+        """Attach the docs service (once-only, startup)."""
+        self._set_once(
+            "_docs_service",
+            service,
+            "Docs service",
+        )
+
+    @property
+    def project_doc_memory_facade(self) -> ProjectAwareMemoryFacade | None:
+        """Project-aware memory facade for transparent doc retrieval.
+
+        Held alongside :attr:`docs_service`; consumed by the per-agent
+        retrieval pipeline patch so an agent's normal ``memory.retrieve``
+        call also returns PROJECT_DOC hits scoped to its active project.
+        """
+        return self._project_doc_memory_facade
+
+    def set_project_doc_memory_facade(self, facade: ProjectAwareMemoryFacade) -> None:
+        """Attach the project-aware memory facade (once-only, startup)."""
+        self._set_once(
+            "_project_doc_memory_facade",
+            facade,
+            "Project-doc memory facade",
+        )
+
+    @property
+    def docs_tool_factory(self) -> DocsToolFactory | None:
+        """Per-task factory for the living-doc agent tools, or ``None``."""
+        return self._docs_tool_factory
+
+    def set_docs_tool_factory(self, factory: DocsToolFactory) -> None:
+        """Attach the docs tool factory (once-only, startup)."""
+        self._set_once(
+            "_docs_tool_factory",
+            factory,
+            "Docs tool factory",
         )
 
     @property

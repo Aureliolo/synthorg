@@ -66,6 +66,7 @@ from synthorg.persistence.postgres.custom_rule_repo import (
     PostgresCustomRuleRepository,
 )
 from synthorg.persistence.postgres.decision_repo import PostgresDecisionRepository
+from synthorg.persistence.postgres.docs_repo import PostgresDocsRepository
 from synthorg.persistence.postgres.fine_tune_repo import (
     PostgresFineTuneCheckpointRepository,
     PostgresFineTuneRunRepository,
@@ -210,6 +211,7 @@ if TYPE_CHECKING:
     from synthorg.persistence.cost_record_protocol import CostRecordRepository
     from synthorg.persistence.custom_rule_protocol import CustomRuleRepository
     from synthorg.persistence.decision_protocol import DecisionRepository
+    from synthorg.persistence.docs_protocol import DocsRepository
     from synthorg.persistence.escalation_protocol import EscalationQueueRepository
     from synthorg.persistence.idempotency_protocol import IdempotencyRepository
     from synthorg.persistence.mcp_protocol import McpInstallationRepository
@@ -289,6 +291,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._artifacts: ArtifactRepository | None = None
         self._projects: ProjectRepository | None = None
         self._project_workspaces: ProjectWorkspaceRepository | None = None
+        self._project_docs: DocsRepository | None = None
         self._tasks: TaskRepository | None = None
         self._cost_records: CostRecordRepository | None = None
         self._messages: MessageRepository | None = None
@@ -414,6 +417,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._artifacts = PostgresArtifactRepository(pool)
         self._projects = PostgresProjectRepository(pool)
         self._project_workspaces = PostgresProjectWorkspaceRepository(pool)
+        self._project_docs = PostgresDocsRepository(pool)
         self._tasks = PostgresTaskRepository(pool)
         self._cost_records = PostgresCostRecordRepository(pool)
         self._messages = PostgresMessageRepository(pool)
@@ -675,6 +679,11 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
     def project_workspaces(self) -> ProjectWorkspaceRepository:
         """Repository for persistent per-project workspace mappings."""
         return self._require_connected(self._project_workspaces, "project_workspaces")
+
+    @property
+    def project_docs(self) -> DocsRepository:
+        """Repository for living-documentation metadata persistence."""
+        return self._require_connected(self._project_docs, "project_docs")
 
     @property
     def custom_presets(self) -> PersonalityPresetRepository:
