@@ -13,6 +13,7 @@ the SSIM-based diff confirms convergence.
 """
 
 import asyncio
+import json
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -53,6 +54,9 @@ if TYPE_CHECKING:
 
 pytestmark = [
     pytest.mark.integration,
+    # 300s budget: Docker image pull (~1.5 GB on a cold cache) plus
+    # Chromium cold-start plus two full spec rounds plus host-side SSIM
+    # diff. The hot-cache path completes in well under a minute.
     pytest.mark.timeout(300),
 ]
 
@@ -329,28 +333,28 @@ async def test_browser_iterates_to_green_on_planted_defect(
         )
 
         conversation = result.execution_result.context.conversation
-        tool_results = [
-            m.tool_result.content for m in conversation if m.tool_result is not None
-        ]
-        browser_results = [
-            content for content in tool_results if "ssim_score" in content
-        ]
-        assert len(browser_results) >= 2, (
-            "Expected at least two browser-tool results (detect plus verify)"
+        spec_payloads: list[dict[str, object]] = []
+        for message in conversation:
+            if message.tool_result is None:
+                continue
+            try:
+                decoded = json.loads(message.tool_result.content)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(decoded, dict) and "diff" in decoded:
+                spec_payloads.append(decoded)
+        assert len(spec_payloads) >= 2, (
+            "Expected at least two browser spec results (detect plus verify)"
         )
-        first, last = browser_results[0], browser_results[-1]
-        assert (
-            '"passed_tolerance": false'
-            in first.lower()
-            .replace(
-                " ",
-                "",
-            )
-            .replace("\n", "")
-            or '"passed_tolerance":false' in first
-        ), f"First spec must show diff failure; content={first!r}"
-        assert '"passed_tolerance": true' in last or '"passed_tolerance":true' in (
-            last.replace(" ", "").replace("\n", "")
-        ), f"Final spec must show diff passing; content={last!r}"
+        first_diff = spec_payloads[0]["diff"]
+        last_diff = spec_payloads[-1]["diff"]
+        assert isinstance(first_diff, dict)
+        assert isinstance(last_diff, dict)
+        assert first_diff["passed_tolerance"] is False, (
+            f"First spec must show diff failure; diff={first_diff!r}"
+        )
+        assert last_diff["passed_tolerance"] is True, (
+            f"Final spec must show diff passing; diff={last_diff!r}"
+        )
     finally:
         await sandbox.cleanup()

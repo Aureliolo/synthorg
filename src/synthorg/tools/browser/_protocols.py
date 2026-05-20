@@ -20,6 +20,9 @@ class ScreenshotDiffer(Protocol):
       * load both images from disk
       * raise :class:`BrowserDiffError` on size mismatch or load failure
       * write a diff visualisation to disk at ``diff_output``
+      * be stateless and safe for concurrent invocation from multiple
+        agent tasks. The default :class:`SSIMDiffer` honours this by
+        offloading the blocking compute to ``asyncio.to_thread``.
     """
 
     async def compare(

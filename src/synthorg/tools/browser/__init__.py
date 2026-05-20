@@ -14,6 +14,7 @@ from synthorg.tools.browser._models import (
     SpecResult,
 )
 from synthorg.tools.browser._protocols import ScreenshotDiffer
+from synthorg.tools.browser._settings import BrowserSettings
 from synthorg.tools.browser.browser_tool import BrowserTool
 from synthorg.tools.browser.errors import (
     BrowserAccessibilityError,
@@ -38,6 +39,7 @@ __all__ = (
     "BrowserLaunchError",
     "BrowserNavigationError",
     "BrowserScreenshotError",
+    "BrowserSettings",
     "BrowserStartCommandError",
     "BrowserTool",
     "BrowserToolArgs",

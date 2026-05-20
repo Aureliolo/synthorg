@@ -33,6 +33,11 @@ BROWSER_DIFF_FAILED: Final[str] = "browser.diff.failed"
 
 BROWSER_BASELINE_CREATED: Final[str] = "browser.baseline.created"
 BROWSER_BASELINE_NOT_FOUND: Final[str] = "browser.baseline.not_found"
+BROWSER_BASELINE_WRITE_FAILED: Final[str] = "browser.baseline.write_failed"
+BROWSER_BASELINE_SIDECAR_WRITTEN: Final[str] = "browser.baseline.sidecar_written"
+BROWSER_ARGS_VALIDATION_FAILED: Final[str] = "browser.args.validation_failed"
+BROWSER_EXECUTOR_FAILED: Final[str] = "browser.executor.failed"
+BROWSER_ASSETS_DEPLOYED: Final[str] = "browser.assets.deployed"
 
 BROWSER_SPEC_START: Final[str] = "browser.spec.start"
 BROWSER_SPEC_SUCCESS: Final[str] = "browser.spec.success"

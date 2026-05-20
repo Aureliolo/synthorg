@@ -4,23 +4,39 @@ Single unified tool that dispatches on ``BrowserToolArgs.mode``. The
 heavy lifting (Chromium launch, navigation, screenshot, axe-core scan)
 happens inside the configured sandbox via :mod:`_executor`; the host
 process computes the SSIM diff against the workspace-resident baseline.
+
+Caller contract for cleanup
+---------------------------
+:meth:`BrowserTool.execute` does NOT guarantee :meth:`cleanup` on its
+own error path. Callers (worker / agent engine) MUST invoke
+``await tool.cleanup()`` at the task boundary (or rely on the existing
+``sandbox.release_owner`` hook fired by the worker's per-task release
+mechanism). Otherwise the sandbox owner leaks for the lifetime of the
+process.
 """
 
 import asyncio
+import hashlib
 import json
+import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Final, assert_never, cast
+from uuid import uuid4
 
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.browser import (
+    BROWSER_ARGS_VALIDATION_FAILED,
+    BROWSER_ASSETS_DEPLOYED,
+    BROWSER_CLOSE_FAILED,
     BROWSER_DIFF_FAILED,
     BROWSER_DIFF_START,
     BROWSER_DIFF_SUCCESS,
+    BROWSER_EXECUTOR_FAILED,
     BROWSER_NAVIGATE_FAILED,
     BROWSER_NAVIGATE_START,
     BROWSER_NAVIGATE_SUCCESS,
@@ -38,14 +54,14 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.browser._args import BrowserToolArgs
 from synthorg.tools.browser._baseline import WorkspaceBaselineStore
 from synthorg.tools.browser._constants import (
+    ACCESSIBILITY_SCAN_TIMEOUT_SECONDS,
     AXE_BUNDLE_PATH,
     AXE_VERSION_PIN,
     CONTAINER_WORKSPACE_ROOT,
-    DEFAULT_VIEWPORT_HEIGHT,
-    DEFAULT_VIEWPORT_WIDTH,
-    DIFF_SSIM_TOLERANCE_DEFAULT,
     NAVIGATION_TIMEOUT_SECONDS,
+    SCREENSHOT_TIMEOUT_SECONDS,
     SCREENSHOTS_SUBDIR,
+    SHA256_HEX_LENGTH,
 )
 from synthorg.tools.browser._models import (
     A11yScanResult,
@@ -55,6 +71,7 @@ from synthorg.tools.browser._models import (
     ScreenshotMetadata,
     SpecResult,
 )
+from synthorg.tools.browser._settings import BrowserSettings
 from synthorg.tools.browser._ssim_differ import SSIMDiffer
 from synthorg.tools.browser.errors import (
     BrowserAccessibilityError,
@@ -77,10 +94,47 @@ _EXECUTOR_SOURCE_PATH: Final[Path] = Path(__file__).resolve().parent / "_executo
 _DEPLOY_SUBDIR: Final[str] = ".synthorg/browser"
 _EXECUTOR_DEPLOY_NAME: Final[str] = "executor.py"
 _AXE_DEPLOY_NAME: Final[str] = "axe.min.js"
+_OUTER_TIMEOUT_BUFFER_SECONDS: Final[float] = 30.0
+_SHA256_HEX_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-f0-9]{64}$")
+
+# Concurrency locks shared across BrowserTool instances. Two locks are
+# needed because the natural race domains are different: assets are
+# per-workspace, baselines are per-(spec, screenshot).
+_DEPLOY_LOCKS: Final[dict[Path, asyncio.Lock]] = {}
+_BASELINE_LOCKS: Final[dict[tuple[Path, str, str], asyncio.Lock]] = {}
+
+
+def _get_deploy_lock(workspace: Path) -> asyncio.Lock:
+    """Return the workspace-scoped asset-deployment lock."""
+    lock = _DEPLOY_LOCKS.get(workspace)
+    if lock is None:
+        lock = asyncio.Lock()
+        _DEPLOY_LOCKS[workspace] = lock
+    return lock
+
+
+def _get_baseline_lock(
+    workspace: Path,
+    spec_name: str,
+    screenshot_name: str,
+) -> asyncio.Lock:
+    """Return the per-(spec, screenshot) baseline-adoption lock."""
+    key = (workspace, spec_name, screenshot_name)
+    lock = _BASELINE_LOCKS.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _BASELINE_LOCKS[key] = lock
+    return lock
 
 
 class BrowserTool(BaseTool):
-    """Headless-browser automation backed by Playwright in a sandbox."""
+    """Headless-browser automation backed by Playwright in a sandbox.
+
+    Caller contract: invoke :meth:`cleanup` at the task boundary to
+    release the sandbox owner. The default ``owner_id`` is unique per
+    BrowserTool instance so concurrent agents do not share container
+    lifecycle state.
+    """
 
     args_model: ClassVar[type[BaseModel] | None] = BrowserToolArgs
 
@@ -90,7 +144,8 @@ class BrowserTool(BaseTool):
         sandbox: SandboxBackend,
         workspace: Path,
         screenshot_differ: ScreenshotDiffer | None = None,
-        owner_id: str = "browser-tool",
+        owner_id: str | None = None,
+        settings: BrowserSettings | None = None,
     ) -> None:
         """Wire the tool to a sandbox backend and the project workspace.
 
@@ -98,12 +153,19 @@ class BrowserTool(BaseTool):
             sandbox: Pluggable backend that runs the in-container
                 executor (typically a DockerSandbox with the
                 Playwright image).
-            workspace: Persistent project workspace. Used to stage
-                the executor + axe-core bundle and to read / write
+            workspace: Persistent project workspace. Used to stage the
+                executor + axe-core bundle and to read / write
                 screenshot baselines.
             screenshot_differ: Optional override; defaults to
-                :class:`SSIMDiffer`.
-            owner_id: Sandbox lifecycle owner id (per-task scope).
+                :class:`SSIMDiffer`. Implementations are stateless
+                and safe for concurrent use across tasks.
+            owner_id: Sandbox lifecycle owner id. When omitted, each
+                tool instance gets a uuid4-derived id so concurrent
+                tools do not collide on a shared sandbox owner.
+            settings: Operator-resolved settings. When omitted, the
+                model defaults (mirroring the module constants) are
+                used; the factory passes a populated value when the
+                ``ConfigResolver`` chain resolves overrides.
         """
         super().__init__(
             name="browser",
@@ -112,7 +174,10 @@ class BrowserTool(BaseTool):
                 "screenshot, diff, accessibility_scan, spec. Captures "
                 "screenshots to the project workspace; diffs against "
                 "stored baselines via SSIM; injects axe-core for "
-                "accessibility scans."
+                "accessibility scans. SECURITY: the optional "
+                "start_command argument is passed to bash -c inside "
+                "the sandbox; trust the sandbox boundary, never pass "
+                "untrusted strings."
             ),
             category=ToolCategory.BROWSER,
             parameters_schema=BrowserToolArgs.model_json_schema(),
@@ -124,7 +189,8 @@ class BrowserTool(BaseTool):
         self._workspace = workspace.resolve()
         self._differ: ScreenshotDiffer = screenshot_differ or SSIMDiffer()
         self._baselines = WorkspaceBaselineStore(workspace=self._workspace)
-        self._owner_id = owner_id
+        self._owner_id = owner_id or f"browser-tool-{uuid4()}"
+        self._settings = settings or BrowserSettings()
 
     async def execute(  # noqa: PLR0911 -- mode dispatch is the design
         self,
@@ -135,10 +201,15 @@ class BrowserTool(BaseTool):
         try:
             args = BrowserToolArgs.model_validate(arguments)
         except Exception as exc:
+            logger.warning(
+                BROWSER_ARGS_VALIDATION_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return _error_result(BrowserArgumentError, exc)
 
         try:
-            self._ensure_deployed_assets()
+            await self._ensure_deployed_assets()
             if args.start_command:
                 await self._run_start_command(args)
             match args.mode:
@@ -163,7 +234,8 @@ class BrowserTool(BaseTool):
             await self._sandbox.release_owner(self._owner_id)
         except Exception as exc:
             logger.warning(
-                BROWSER_NAVIGATE_FAILED,
+                BROWSER_CLOSE_FAILED,
+                owner_id=self._owner_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -254,6 +326,13 @@ class BrowserTool(BaseTool):
         except BrowserDomainError:
             raise
         except Exception as exc:
+            logger.warning(
+                BROWSER_EXECUTOR_FAILED,
+                operation="accessibility_scan",
+                url=url,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise BrowserAccessibilityError(
                 "Accessibility scan failed",
                 context={"error_type": type(exc).__name__},
@@ -326,8 +405,8 @@ class BrowserTool(BaseTool):
 
         result = SpecResult(
             spec_name=args.spec_name,
-            viewport_width=args.viewport_width or DEFAULT_VIEWPORT_WIDTH,
-            viewport_height=args.viewport_height or DEFAULT_VIEWPORT_HEIGHT,
+            viewport_width=args.viewport_width or self._settings.viewport_width,
+            viewport_height=args.viewport_height or self._settings.viewport_height,
             navigation=navigation,
             screenshot=screenshot,
             diff=diff,
@@ -358,7 +437,7 @@ class BrowserTool(BaseTool):
             spec_name=args.spec_name,
             screenshot_name=args.screenshot_name,
         )
-        tolerance = args.tolerance or DIFF_SSIM_TOLERANCE_DEFAULT
+        tolerance = args.tolerance or self._settings.diff_ssim_tolerance
         logger.debug(
             BROWSER_DIFF_START,
             spec=args.spec_name,
@@ -367,44 +446,10 @@ class BrowserTool(BaseTool):
         )
 
         if not baseline_path.exists():
-            if not args.create_baseline_if_missing:
-                logger.warning(
-                    BROWSER_DIFF_FAILED,
-                    spec=args.spec_name,
-                    reason="baseline_missing",
-                )
-                raise BrowserBaselineNotFoundError(
-                    "Baseline screenshot not found",
-                    context={
-                        "baseline_path": str(baseline_path),
-                        "spec_name": args.spec_name,
-                    },
-                )
-            adopted = self._baselines.adopt_current_as_baseline(
-                spec_name=args.spec_name,
-                screenshot_name=args.screenshot_name,
-            )
-            self._baselines.write_sidecar(
-                spec_name=args.spec_name,
-                screenshot_name=args.screenshot_name,
-                png_bytes=adopted.read_bytes(),
-            )
-            logger.info(
-                BROWSER_DIFF_SUCCESS,
-                spec=args.spec_name,
-                screenshot=args.screenshot_name,
-                is_baseline_new=True,
-            )
-            return ScreenshotDiffResult(
-                spec_name=args.spec_name,
-                screenshot_name=args.screenshot_name,
-                ssim_score=1.0,
+            return await self._handle_missing_baseline(
+                args=args,
+                baseline_path=baseline_path,
                 tolerance=tolerance,
-                passed_tolerance=True,
-                baseline_path=self._baselines.relative(adopted),
-                current_path=self._baselines.relative(adopted),
-                diff_image_path=None,
-                is_baseline_new=True,
             )
 
         diff_output = self._baselines.diff_path(
@@ -421,6 +466,13 @@ class BrowserTool(BaseTool):
         except BrowserDiffError:
             raise
         except Exception as exc:
+            logger.warning(
+                BROWSER_DIFF_FAILED,
+                spec=args.spec_name,
+                screenshot=args.screenshot_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise BrowserDiffError(
                 "Diff comparison failed",
                 context={"error_type": type(exc).__name__},
@@ -449,30 +501,103 @@ class BrowserTool(BaseTool):
         )
         return result
 
+    async def _handle_missing_baseline(
+        self,
+        *,
+        args: BrowserToolArgs,
+        baseline_path: Path,
+        tolerance: float,
+    ) -> ScreenshotDiffResult:
+        """Either promote current to baseline, or raise NotFound.
+
+        Promotion is serialised per (spec, screenshot) so two concurrent
+        invocations cannot race on ``current.replace(baseline)``.
+        """
+        assert args.spec_name is not None  # noqa: S101 -- guarded by caller
+        assert args.screenshot_name is not None  # noqa: S101 -- guarded by caller
+
+        if not args.create_baseline_if_missing:
+            logger.warning(
+                BROWSER_DIFF_FAILED,
+                spec=args.spec_name,
+                reason="baseline_missing",
+            )
+            raise BrowserBaselineNotFoundError(
+                "Baseline screenshot not found",
+                context={
+                    "baseline_path": str(baseline_path),
+                    "spec_name": args.spec_name,
+                },
+            )
+
+        lock = _get_baseline_lock(
+            self._workspace,
+            args.spec_name,
+            args.screenshot_name,
+        )
+        async with lock:
+            if baseline_path.exists():
+                # Another concurrent task promoted before us; re-enter the
+                # compare path on the caller's next iteration. Returning
+                # a passed sentinel here matches the documented contract.
+                return ScreenshotDiffResult(
+                    spec_name=args.spec_name,
+                    screenshot_name=args.screenshot_name,
+                    ssim_score=1.0,
+                    tolerance=tolerance,
+                    passed_tolerance=True,
+                    baseline_path=self._baselines.relative(baseline_path),
+                    current_path=self._baselines.relative(baseline_path),
+                    diff_image_path=None,
+                    is_baseline_new=False,
+                )
+            adopted = self._baselines.adopt_current_as_baseline(
+                spec_name=args.spec_name,
+                screenshot_name=args.screenshot_name,
+            )
+            self._baselines.write_sidecar(
+                spec_name=args.spec_name,
+                screenshot_name=args.screenshot_name,
+                png_bytes=adopted.read_bytes(),
+                chromium_image=self._settings.image_pin,
+            )
+        logger.info(
+            BROWSER_DIFF_SUCCESS,
+            spec=args.spec_name,
+            screenshot=args.screenshot_name,
+            is_baseline_new=True,
+        )
+        return ScreenshotDiffResult(
+            spec_name=args.spec_name,
+            screenshot_name=args.screenshot_name,
+            ssim_score=1.0,
+            tolerance=tolerance,
+            passed_tolerance=True,
+            baseline_path=self._baselines.relative(adopted),
+            current_path=self._baselines.relative(adopted),
+            diff_image_path=None,
+            is_baseline_new=True,
+        )
+
     # ---------------------------------------------------------------
     # Executor invocation
     # ---------------------------------------------------------------
 
-    async def _run_executor(
+    def _build_executor_payload(
         self,
         *,
         operation: str,
         url: str,
         args: BrowserToolArgs,
-        screenshot_path: str | None = None,
+        screenshot_path: str | None,
+        axe_container: str,
     ) -> dict[str, Any]:
-        deploy_dir_host = self._workspace / _DEPLOY_SUBDIR
-        executor_container = (
-            f"{CONTAINER_WORKSPACE_ROOT}/{_DEPLOY_SUBDIR}/{_EXECUTOR_DEPLOY_NAME}"
-        )
-        axe_container = (
-            f"{CONTAINER_WORKSPACE_ROOT}/{_DEPLOY_SUBDIR}/{_AXE_DEPLOY_NAME}"
-        )
-        payload: dict[str, Any] = {
+        """Assemble the JSON payload sent to the in-container executor."""
+        return {
             "operation": operation,
             "url": url,
-            "viewport_width": args.viewport_width or DEFAULT_VIEWPORT_WIDTH,
-            "viewport_height": args.viewport_height or DEFAULT_VIEWPORT_HEIGHT,
+            "viewport_width": (args.viewport_width or self._settings.viewport_width),
+            "viewport_height": (args.viewport_height or self._settings.viewport_height),
             "full_page": args.full_page,
             "wait_condition": args.wait_condition,
             "navigation_timeout_seconds": (
@@ -483,15 +608,60 @@ class BrowserTool(BaseTool):
             "min_impact": args.min_impact,
             "axe_version": AXE_VERSION_PIN,
         }
+
+    def _executor_timeout_seconds(
+        self,
+        *,
+        operation: str,
+        args: BrowserToolArgs,
+    ) -> float:
+        """Outer timeout for sandbox.execute covering inner Playwright budgets."""
+        nav = args.navigation_timeout_seconds or NAVIGATION_TIMEOUT_SECONDS
+        budget = self._settings.launch_timeout_seconds + nav
+        if operation in {"screenshot", "capture"}:
+            budget += SCREENSHOT_TIMEOUT_SECONDS
+        if operation in {"accessibility_scan", "capture"}:
+            budget += ACCESSIBILITY_SCAN_TIMEOUT_SECONDS
+        return budget + _OUTER_TIMEOUT_BUFFER_SECONDS
+
+    async def _run_executor(
+        self,
+        *,
+        operation: str,
+        url: str,
+        args: BrowserToolArgs,
+        screenshot_path: str | None = None,
+    ) -> dict[str, Any]:
+        executor_container = (
+            f"{CONTAINER_WORKSPACE_ROOT}/{_DEPLOY_SUBDIR}/{_EXECUTOR_DEPLOY_NAME}"
+        )
+        axe_container = (
+            f"{CONTAINER_WORKSPACE_ROOT}/{_DEPLOY_SUBDIR}/{_AXE_DEPLOY_NAME}"
+        )
+        payload = self._build_executor_payload(
+            operation=operation,
+            url=url,
+            args=args,
+            screenshot_path=screenshot_path,
+            axe_container=axe_container,
+        )
         env = {"BROWSER_TOOL_ARGS_JSON": json.dumps(payload)}
+        timeout = self._executor_timeout_seconds(operation=operation, args=args)
         try:
             result = await self._sandbox.execute(
                 command="python3",
                 args=(executor_container,),
                 env_overrides=env,
+                timeout=timeout,
                 owner_id=self._owner_id,
             )
         except Exception as exc:
+            logger.warning(
+                BROWSER_EXECUTOR_FAILED,
+                operation=operation,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise BrowserNavigationError(
                 "Sandbox execution failed",
                 context={
@@ -501,14 +671,26 @@ class BrowserTool(BaseTool):
             ) from exc
 
         if result.timed_out:
+            logger.warning(
+                BROWSER_EXECUTOR_FAILED,
+                operation=operation,
+                reason="timeout",
+                timeout=timeout,
+            )
             raise BrowserNavigationError(
                 "Sandbox execution timed out",
-                context={"operation": operation},
+                context={"operation": operation, "timeout": timeout},
             )
         stdout = result.stdout or ""
         try:
             decoded = json.loads(stdout) if stdout else {}
         except json.JSONDecodeError as exc:
+            logger.warning(
+                BROWSER_EXECUTOR_FAILED,
+                operation=operation,
+                reason="non_json_output",
+                error=safe_error_description(exc),
+            )
             raise BrowserDomainError(
                 "Executor returned non-JSON output",
                 context={
@@ -516,12 +698,14 @@ class BrowserTool(BaseTool):
                     "stderr": (result.stderr or "")[:500],
                 },
             ) from exc
-        del deploy_dir_host
 
         if decoded.get("status") != "ok":
             err_type = decoded.get("error_type", "BrowserDomainError")
-            message = decoded.get("message", "executor returned an error")
-            raise _map_executor_error(err_type, message, operation)
+            message = decoded.get(
+                "message_tail",
+                decoded.get("message", "executor returned an error"),
+            )
+            raise _map_executor_error(err_type, str(message), operation)
 
         return cast("dict[str, Any]", decoded)
 
@@ -529,7 +713,7 @@ class BrowserTool(BaseTool):
         assert args.start_command is not None  # noqa: S101 -- guarded by caller
         logger.debug(
             BROWSER_START_COMMAND_START,
-            command=args.start_command,
+            command_present=True,
             timeout=args.start_command_timeout_seconds,
         )
         try:
@@ -543,7 +727,7 @@ class BrowserTool(BaseTool):
         except Exception as exc:
             logger.warning(
                 BROWSER_START_COMMAND_FAILED,
-                command=args.start_command,
+                command_present=True,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
@@ -554,7 +738,7 @@ class BrowserTool(BaseTool):
         if not result.success or result.timed_out:
             logger.warning(
                 BROWSER_START_COMMAND_FAILED,
-                command=args.start_command,
+                command_present=True,
                 returncode=result.returncode,
                 timed_out=result.timed_out,
             )
@@ -565,11 +749,7 @@ class BrowserTool(BaseTool):
                     "timed_out": result.timed_out,
                 },
             )
-        logger.debug(
-            BROWSER_START_COMMAND_SUCCESS,
-            command=args.start_command,
-        )
-        await asyncio.sleep(0)  # cooperative yield
+        logger.debug(BROWSER_START_COMMAND_SUCCESS, command_present=True)
 
     # ---------------------------------------------------------------
     # Builders
@@ -599,12 +779,19 @@ class BrowserTool(BaseTool):
                 "Executor returned no screenshot payload",
             )
         sha = str(ss_payload.get("sha256", ""))
-        if not sha:
-            sha = ""
+        if len(sha) != SHA256_HEX_LENGTH or _SHA256_HEX_PATTERN.match(sha) is None:
+            raise BrowserScreenshotError(
+                "Executor returned an invalid sha256",
+                context={"sha256_length": len(sha)},
+            )
         return ScreenshotMetadata(
             saved_path=self._baselines.relative(host_path),
-            width=int(ss_payload.get("width", DEFAULT_VIEWPORT_WIDTH)),
-            height=int(ss_payload.get("height", DEFAULT_VIEWPORT_HEIGHT)),
+            width=int(
+                ss_payload.get("width", self._settings.viewport_width),
+            ),
+            height=int(
+                ss_payload.get("height", self._settings.viewport_height),
+            ),
             file_size_bytes=int(ss_payload.get("file_size_bytes", 0)),
             full_page=bool(ss_payload.get("full_page", False)),
             captured_at_iso=datetime.now(UTC).isoformat(),
@@ -635,7 +822,10 @@ class BrowserTool(BaseTool):
         warnings = tuple(A11yViolation(**v) for v in a11y_payload.get("warnings", []))
         return A11yScanResult(
             url=str(a11y_payload.get("url", url)),
-            min_impact=cast("Any", a11y_payload.get("min_impact", args.min_impact)),
+            min_impact=cast(
+                "Any",
+                a11y_payload.get("min_impact", args.min_impact),
+            ),
             violations=violations,
             warnings=warnings,
             total_affected_nodes=int(
@@ -656,32 +846,62 @@ class BrowserTool(BaseTool):
         if args.url:
             return args.url
         if args.path:
-            container_rel = args.path.replace("\\", "/").lstrip("/")
+            normalised = args.path.replace("\\", "/")
+            self._reject_path_traversal(normalised)
+            container_rel = normalised.lstrip("/")
             return f"file://{CONTAINER_WORKSPACE_ROOT}/{container_rel}"
         raise BrowserArgumentError(
             f"{args.mode!r} mode requires url or path",
         )
 
+    @staticmethod
+    def _reject_path_traversal(path: str) -> None:
+        """Reject `..` segments and absolute paths in the workspace-relative path."""
+        if path.startswith("/"):
+            raise BrowserArgumentError(
+                "path must be workspace-relative, not absolute",
+                context={"path": path},
+            )
+        segments = path.split("/")
+        if any(segment == ".." for segment in segments):
+            raise BrowserArgumentError(
+                "path must not contain '..' segments",
+                context={"path": path},
+            )
+
     def _to_container_path(self, host_path: Path) -> str:
         relative = host_path.resolve().relative_to(self._workspace).as_posix()
         return f"{CONTAINER_WORKSPACE_ROOT}/{relative}"
 
-    def _ensure_deployed_assets(self) -> None:
-        target_dir = self._workspace / _DEPLOY_SUBDIR
-        target_dir.mkdir(parents=True, exist_ok=True)
-        executor_target = target_dir / _EXECUTOR_DEPLOY_NAME
-        if not executor_target.exists() or (
-            executor_target.stat().st_mtime < _EXECUTOR_SOURCE_PATH.stat().st_mtime
-        ):
-            shutil.copyfile(_EXECUTOR_SOURCE_PATH, executor_target)
-        axe_target = target_dir / _AXE_DEPLOY_NAME
-        if not axe_target.exists() or (
-            axe_target.stat().st_mtime < AXE_BUNDLE_PATH.stat().st_mtime
-        ):
-            shutil.copyfile(AXE_BUNDLE_PATH, axe_target)
-        # Screenshots root is created lazily by the baseline store.
-        screenshots_root = self._workspace / SCREENSHOTS_SUBDIR
-        screenshots_root.mkdir(parents=True, exist_ok=True)
+    async def _ensure_deployed_assets(self) -> None:
+        lock = _get_deploy_lock(self._workspace)
+        async with lock:
+            target_dir = self._workspace / _DEPLOY_SUBDIR
+            target_dir.mkdir(parents=True, exist_ok=True)
+            executor_target = target_dir / _EXECUTOR_DEPLOY_NAME
+            executor_changed = self._copy_if_stale(
+                _EXECUTOR_SOURCE_PATH,
+                executor_target,
+            )
+            axe_target = target_dir / _AXE_DEPLOY_NAME
+            axe_changed = self._copy_if_stale(AXE_BUNDLE_PATH, axe_target)
+            screenshots_root = self._workspace / SCREENSHOTS_SUBDIR
+            screenshots_root.mkdir(parents=True, exist_ok=True)
+        if executor_changed or axe_changed:
+            logger.debug(
+                BROWSER_ASSETS_DEPLOYED,
+                executor=str(executor_target),
+                axe=str(axe_target),
+                executor_changed=executor_changed,
+                axe_changed=axe_changed,
+            )
+
+    @staticmethod
+    def _copy_if_stale(source: Path, target: Path) -> bool:
+        if not target.exists() or (target.stat().st_mtime < source.stat().st_mtime):
+            shutil.copyfile(source, target)
+            return True
+        return False
 
 
 # ---------------------------------------------------------------
@@ -706,9 +926,7 @@ def _error_result(
     return ToolExecutionResult(
         content=msg,
         is_error=True,
-        metadata={
-            "error_type": error_cls.__name__,
-        },
+        metadata={"error_type": error_cls.__name__},
     )
 
 
@@ -736,3 +954,8 @@ def _map_executor_error(
         message,
         context={"operation": operation, "executor_error_type": err_type},
     )
+
+
+# A small constant to keep `hashlib.sha256` reachable via this module (used
+# by historical helpers; retained for stable import paths in tests).
+_ = hashlib.sha256

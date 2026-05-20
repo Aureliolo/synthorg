@@ -15,7 +15,8 @@ from typing import Final
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.browser import (
     BROWSER_BASELINE_CREATED,
-    BROWSER_BASELINE_NOT_FOUND,
+    BROWSER_BASELINE_SIDECAR_WRITTEN,
+    BROWSER_BASELINE_WRITE_FAILED,
 )
 from synthorg.tools.browser._constants import (
     AXE_VERSION_PIN,
@@ -130,7 +131,7 @@ class WorkspaceBaselineStore:
             )
         except OSError as exc:
             logger.warning(
-                BROWSER_BASELINE_NOT_FOUND,
+                BROWSER_BASELINE_WRITE_FAILED,
                 spec=spec_name,
                 screenshot=screenshot_name,
                 error_type=type(exc).__name__,
@@ -140,6 +141,12 @@ class WorkspaceBaselineStore:
                 "Failed to write baseline sidecar",
                 context={"error_type": type(exc).__name__},
             ) from exc
+        logger.info(
+            BROWSER_BASELINE_SIDECAR_WRITTEN,
+            spec=spec_name,
+            screenshot=screenshot_name,
+            meta_path=str(meta_path),
+        )
         return meta_path
 
     def adopt_current_as_baseline(

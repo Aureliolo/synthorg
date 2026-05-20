@@ -7,9 +7,12 @@ is also placed into ``content`` so the LLM-facing surface remains
 plain text.
 """
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+from synthorg.tools.browser._constants import SHA256_HEX_PATTERN
 
 _RESPONSE_CONFIG = ConfigDict(
     frozen=True,
@@ -23,7 +26,9 @@ class A11yViolation(BaseModel):
 
     model_config = _RESPONSE_CONFIG
 
-    rule_id: str = Field(description="axe-core rule id (e.g. 'button-name').")
+    rule_id: NotBlankStr = Field(
+        description="axe-core rule id (e.g. 'button-name').",
+    )
     impact: Literal["minor", "moderate", "serious", "critical"] = Field(
         description="axe-core impact level.",
     )
@@ -41,7 +46,13 @@ class A11yViolation(BaseModel):
 
 
 class A11yScanResult(BaseModel):
-    """Aggregated accessibility scan result for a single page load."""
+    """Aggregated accessibility scan result for a single page load.
+
+    Enforces two cross-field invariants in its after-validator:
+      * ``passed`` is true iff ``violations`` is empty.
+      * ``total_affected_nodes`` equals the sum of affected_nodes
+        across both ``violations`` and ``warnings``.
+    """
 
     model_config = _RESPONSE_CONFIG
 
@@ -68,6 +79,27 @@ class A11yScanResult(BaseModel):
         description=("True when no violations at or above min_impact were found."),
     )
 
+    @model_validator(mode="after")
+    def _validate_passed_matches_violations(self) -> Self:
+        """Enforce passed and aggregate invariants."""
+        if self.passed != (len(self.violations) == 0):
+            msg = (
+                f"passed must equal (violations is empty); got "
+                f"passed={self.passed}, violations_len={len(self.violations)}"
+            )
+            raise ValueError(msg)
+        computed_total = sum(v.affected_nodes for v in self.violations) + sum(
+            v.affected_nodes for v in self.warnings
+        )
+        if self.total_affected_nodes != computed_total:
+            msg = (
+                f"total_affected_nodes must equal sum of "
+                f"violations + warnings affected_nodes; got "
+                f"{self.total_affected_nodes}, computed {computed_total}"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class NavigationResult(BaseModel):
     """Result of a navigation step."""
@@ -82,7 +114,10 @@ class NavigationResult(BaseModel):
         default=None,
         ge=0,
         le=999,
-        description="HTTP status code, if available.",
+        description=(
+            "HTTP status code, if available. ``None`` for file:// URLs "
+            "and other transports that do not surface a status code."
+        ),
     )
     duration_seconds: float = Field(
         ge=0,
@@ -111,12 +146,18 @@ class ScreenshotMetadata(BaseModel):
         description="UTC ISO 8601 capture timestamp.",
     )
     sha256: str = Field(
-        description="Hex SHA-256 of the captured PNG bytes.",
+        pattern=SHA256_HEX_PATTERN,
+        description="Lowercase hex SHA-256 (64 chars) of the captured PNG bytes.",
     )
 
 
 class ScreenshotDiffResult(BaseModel):
-    """Outcome of an SSIM comparison against a stored baseline."""
+    """Outcome of an SSIM comparison against a stored baseline.
+
+    Enforces ``passed_tolerance ⟺ ssim_score >= tolerance`` so
+    callers (LLM or controller) cannot be misled by a manually
+    constructed result.
+    """
 
     model_config = _RESPONSE_CONFIG
 
@@ -143,7 +184,10 @@ class ScreenshotDiffResult(BaseModel):
     )
     diff_image_path: str | None = Field(
         default=None,
-        description="Workspace-relative path to the heatmap, if generated.",
+        description=(
+            "Workspace-relative path to the heatmap PNG. ``None`` when no "
+            "comparison was performed (e.g. baseline freshly created)."
+        ),
     )
     is_baseline_new: bool = Field(
         description=(
@@ -152,6 +196,19 @@ class ScreenshotDiffResult(BaseModel):
         ),
     )
 
+    @model_validator(mode="after")
+    def _validate_passed_matches_score(self) -> Self:
+        """Enforce passed_tolerance equals ssim_score >= tolerance."""
+        expected = self.ssim_score >= self.tolerance
+        if self.passed_tolerance != expected:
+            msg = (
+                "passed_tolerance must equal (ssim_score >= tolerance); "
+                f"got passed_tolerance={self.passed_tolerance}, "
+                f"ssim_score={self.ssim_score}, tolerance={self.tolerance}"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class SpecResult(BaseModel):
     """Aggregated result for a full spec run.
@@ -159,6 +216,9 @@ class SpecResult(BaseModel):
     A spec stitches together navigation, screenshot, diff, and
     accessibility scan in one invocation so the agent reasons over one
     structured payload per check-cycle.
+
+    Enforces ``passed_all_checks ⟺ diff.passed_tolerance AND
+    accessibility.passed``.
     """
 
     model_config = _RESPONSE_CONFIG
@@ -179,3 +239,18 @@ class SpecResult(BaseModel):
     passed_all_checks: bool = Field(
         description=("True when diff.passed_tolerance and accessibility.passed."),
     )
+
+    @model_validator(mode="after")
+    def _validate_aggregate_pass(self) -> Self:
+        """Enforce passed_all_checks reflects both nested results."""
+        expected = self.diff.passed_tolerance and self.accessibility.passed
+        if self.passed_all_checks != expected:
+            msg = (
+                "passed_all_checks must equal "
+                "(diff.passed_tolerance and accessibility.passed); "
+                f"got passed_all_checks={self.passed_all_checks}, "
+                f"diff.passed_tolerance={self.diff.passed_tolerance}, "
+                f"accessibility.passed={self.accessibility.passed}"
+            )
+            raise ValueError(msg)
+        return self

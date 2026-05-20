@@ -13,7 +13,7 @@ inputs arrive via the ``BROWSER_TOOL_ARGS_JSON`` environment variable
 Payload schema (input)::
 
     {
-        "operation": "capture" | "navigate" | "accessibility_scan",
+        "operation": "capture" | "navigate" | "screenshot" | "accessibility_scan",
         "url": "file:///workspace/...",
         "viewport_width": 1280,
         "viewport_height": 720,
@@ -58,6 +58,8 @@ _DEFAULT_NAV_TIMEOUT_SECONDS: Final[float] = 60.0
 _DEFAULT_SCREENSHOT_TIMEOUT_SECONDS: Final[float] = 30.0
 _DEFAULT_A11Y_TIMEOUT_SECONDS: Final[float] = 45.0
 _MS_PER_SECOND: Final[int] = 1000
+_AXE_SCRIPT_MAX_BYTES: Final[int] = 5 * 1024 * 1024
+_ERROR_MESSAGE_TAIL_CHARS: Final[int] = 500
 
 _A11Y_RANK = {
     "minor": 0,
@@ -66,6 +68,8 @@ _A11Y_RANK = {
     "critical": 3,
 }
 
+# Browser-side wrapper: injects axe-core, runs the scan via Promise,
+# and normalises each violation to the host-side schema.
 _AXE_RUN_JS = """
 async () => {
   return await new Promise((resolve) => {
@@ -137,42 +141,29 @@ async def _screenshot(
     }
 
 
-async def _accessibility(
-    page: Any,
-    payload: dict[str, Any],
-) -> dict[str, Any]:
-    axe_script_path = payload.get("axe_script_path")
-    min_impact = payload.get("min_impact") or "serious"
-    if not axe_script_path:
-        return {
-            "url": page.url,
-            "min_impact": min_impact,
-            "violations": [],
-            "warnings": [],
-            "total_affected_nodes": 0,
-            "scan_duration_seconds": 0.0,
-            "axe_version": "unknown",
-            "passed": True,
-        }
-    axe_path = Path(axe_script_path)
-    if not axe_path.exists():
-        raise FileNotFoundError(
-            f"axe script not found inside sandbox: {axe_script_path}",
-        )
-    axe_source = axe_path.read_text(encoding="utf-8")
-    start = time.monotonic()
-    await page.add_script_tag(content=axe_source)
-    page.set_default_timeout(
-        int(_DEFAULT_A11Y_TIMEOUT_SECONDS * _MS_PER_SECOND),
-    )
-    raw = await page.evaluate(_AXE_RUN_JS)
-    duration = time.monotonic() - start
-    if raw.get("error"):
-        raise RuntimeError(f"axe-core internal error: {raw['error']}")
+def _empty_a11y_result(url: str, min_impact: str) -> dict[str, Any]:
+    """A11y result when no axe script is staged in the sandbox."""
+    return {
+        "url": url,
+        "min_impact": min_impact,
+        "violations": [],
+        "warnings": [],
+        "total_affected_nodes": 0,
+        "scan_duration_seconds": 0.0,
+        "axe_version": "unknown",
+        "passed": True,
+    }
+
+
+def _partition_violations(
+    raw_violations: list[dict[str, Any]],
+    min_impact: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Sort axe-core violations into (failing, warning) buckets."""
     min_rank = _A11Y_RANK[min_impact]
     violations: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
-    for entry in raw["violations"]:
+    for entry in raw_violations:
         impact = entry.get("impact") or "minor"
         if impact not in _A11Y_RANK:
             continue
@@ -194,6 +185,40 @@ async def _accessibility(
         key=lambda v: (_A11Y_RANK[v["impact"]], v["rule_id"]),
         reverse=True,
     )
+    return violations, warnings
+
+
+def _load_axe_script(axe_script_path: str) -> str:
+    """Read and size-check the bundled axe-core script."""
+    axe_path = Path(axe_script_path)
+    if not axe_path.exists():
+        raise FileNotFoundError(
+            f"axe script not found inside sandbox: {axe_script_path}",
+        )
+    if axe_path.stat().st_size > _AXE_SCRIPT_MAX_BYTES:
+        raise ValueError(f"axe script exceeds {_AXE_SCRIPT_MAX_BYTES} bytes")
+    return axe_path.read_text(encoding="utf-8")
+
+
+async def _accessibility(
+    page: Any,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    axe_script_path = payload.get("axe_script_path")
+    min_impact = payload.get("min_impact") or "serious"
+    if not axe_script_path:
+        return _empty_a11y_result(page.url, min_impact)
+    axe_source = _load_axe_script(axe_script_path)
+    start = time.monotonic()
+    await page.add_script_tag(content=axe_source)
+    page.set_default_timeout(
+        int(_DEFAULT_A11Y_TIMEOUT_SECONDS * _MS_PER_SECOND),
+    )
+    raw = await page.evaluate(_AXE_RUN_JS)
+    duration = time.monotonic() - start
+    if raw.get("error"):
+        raise RuntimeError(f"axe-core internal error: {raw['error']}")
+    violations, warnings = _partition_violations(raw["violations"], min_impact)
     total_affected = sum(v["affected_nodes"] for v in violations) + sum(
         v["affected_nodes"] for v in warnings
     )
@@ -291,12 +316,18 @@ def main() -> int:
     try:
         result = asyncio.run(_dispatch(payload))
     except Exception as exc:
+        # Redact the raw exception message: it can carry filesystem
+        # paths, env vars, or credentials. Keep only the type name
+        # plus the last N chars (where the useful diagnostic sits).
+        raw = str(exc)
+        tail = raw[-_ERROR_MESSAGE_TAIL_CHARS:] if raw else ""
         sys.stdout.write(
             json.dumps(
                 {
                     "status": "error",
                     "error_type": type(exc).__name__,
-                    "message": str(exc)[:500],
+                    "message_tail": tail,
+                    "message_truncated": len(raw) > _ERROR_MESSAGE_TAIL_CHARS,
                 },
             ),
         )

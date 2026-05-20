@@ -227,3 +227,197 @@ class TestBrowserToolDispatch:
         assert diff.passed_tolerance is True
         baseline_path = workspace / ".synthorg" / "screenshots" / "spec1" / "hero.png"
         assert baseline_path.exists()
+
+
+class TestBrowserToolExecutorErrorPaths:
+    """Cover the error paths surfaced by the executor IPC boundary."""
+
+    async def test_non_json_stdout_raises(
+        self,
+        workspace: Path,
+        fake_sandbox: Any,
+    ) -> None:
+        fake_sandbox.execute.return_value = SandboxResult(
+            stdout="CRASHED: segfault",
+            stderr="error tail",
+            returncode=0,
+            timed_out=False,
+        )
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={"mode": "navigate", "url": "http://example.test"},
+        )
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "BrowserDomainError"
+
+    async def test_sandbox_timeout_raises_navigation_error(
+        self,
+        workspace: Path,
+        fake_sandbox: Any,
+    ) -> None:
+        fake_sandbox.execute.return_value = SandboxResult(
+            stdout="",
+            stderr="timed out",
+            returncode=-1,
+            timed_out=True,
+        )
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={"mode": "navigate", "url": "http://example.test"},
+        )
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "BrowserNavigationError"
+
+    @pytest.mark.parametrize(
+        ("executor_error_type", "expected_class_name"),
+        [
+            ("PlaywrightTimeoutError", "BrowserNavigationError"),
+            ("FileNotFoundError", "BrowserAccessibilityError"),
+            ("BrowserDiffError", "BrowserDiffError"),
+            ("CompletelyUnknownError", "BrowserDomainError"),
+        ],
+    )
+    async def test_executor_error_remap(
+        self,
+        workspace: Path,
+        fake_sandbox: Any,
+        executor_error_type: str,
+        expected_class_name: str,
+    ) -> None:
+        fake_sandbox.execute.return_value = SandboxResult(
+            stdout=json.dumps(
+                {
+                    "status": "error",
+                    "error_type": executor_error_type,
+                    "message_tail": "boom",
+                    "message_truncated": False,
+                },
+            ),
+            stderr="",
+            returncode=0,
+            timed_out=False,
+        )
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={"mode": "navigate", "url": "http://example.test"},
+        )
+        assert result.is_error is True
+        assert result.metadata["error_type"] == expected_class_name
+
+
+class _FailingDiffer:
+    """ScreenshotDiffer that raises a non-BrowserDiffError exception."""
+
+    async def compare(
+        self,
+        *,
+        baseline: Path,
+        current: Path,
+        tolerance: float,
+        diff_output: Path,
+    ) -> float:
+        del baseline, current, tolerance, diff_output
+        msg = "unexpected differ failure"
+        raise RuntimeError(msg)
+
+
+class TestDifferExceptionWrapping:
+    async def test_unexpected_diff_exception_wrapped(
+        self,
+        workspace: Path,
+        fake_sandbox: Any,
+    ) -> None:
+        spec_dir = workspace / ".synthorg" / "screenshots" / "spec1"
+        current_rel = spec_dir / "hero.current.png"
+        baseline_rel = spec_dir / "hero.png"
+        baseline_rel.parent.mkdir(parents=True, exist_ok=True)
+        baseline_rel.write_bytes(b"png-baseline")
+        current_rel.write_bytes(b"png-current")
+        fake_sandbox.execute.return_value = _sandbox_success(
+            _executor_payload(screenshot_path=str(current_rel)),
+        )
+        tool = BrowserTool(
+            sandbox=fake_sandbox,
+            workspace=workspace,
+            screenshot_differ=_FailingDiffer(),
+        )
+        result = await tool.execute(
+            arguments={
+                "mode": "diff",
+                "path": "fixture/index.html",
+                "spec_name": "spec1",
+                "screenshot_name": "hero",
+            },
+        )
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "BrowserDiffError"
+
+
+class TestA11yPayloadShape:
+    async def test_violations_and_warnings_parsed(
+        self,
+        workspace: Path,
+        fake_sandbox: Any,
+    ) -> None:
+        payload = _executor_payload(
+            screenshot_path=str(
+                workspace / ".synthorg" / "screenshots" / "spec1" / "hero.current.png",
+            ),
+        )
+        payload["accessibility"]["violations"] = [
+            {
+                "rule_id": "button-name",
+                "impact": "critical",
+                "description": "buttons must be labelled",
+                "help_url": "https://dequeuniversity.test/button-name",
+                "affected_nodes": 3,
+            },
+        ]
+        payload["accessibility"]["warnings"] = [
+            {
+                "rule_id": "color-contrast",
+                "impact": "moderate",
+                "description": "low contrast",
+                "help_url": "https://dequeuniversity.test/color-contrast",
+                "affected_nodes": 5,
+            },
+        ]
+        payload["accessibility"]["total_affected_nodes"] = 8
+        payload["accessibility"]["passed"] = False
+        fake_sandbox.execute.return_value = _sandbox_success(payload)
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={
+                "mode": "accessibility_scan",
+                "path": "fixture/index.html",
+            },
+        )
+        assert result.is_error is False, result.content
+        assert result.metadata["passed"] is False
+        assert len(result.metadata["violations"]) == 1
+        assert result.metadata["violations"][0]["impact"] == "critical"
+        assert len(result.metadata["warnings"]) == 1
+
+
+class TestPathTraversalRejection:
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "../escape.html",
+            "fixture/../../etc/passwd",
+            "/absolute/path",
+        ],
+        ids=["parent_segment", "deep_escape", "absolute"],
+    )
+    async def test_traversal_path_rejected(
+        self,
+        workspace: Path,
+        fake_sandbox: Any,
+        path: str,
+    ) -> None:
+        tool = BrowserTool(sandbox=fake_sandbox, workspace=workspace)
+        result = await tool.execute(
+            arguments={"mode": "navigate", "path": path},
+        )
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "BrowserArgumentError"

@@ -48,6 +48,7 @@ class TestPathResolution:
     @pytest.mark.parametrize(
         "name",
         ["..", ".", "../escape", "a/b", "a\\b", ""],
+        ids=["parent", "dot", "escape_parent", "slash", "backslash", "empty"],
     )
     def test_rejects_path_traversal_names(
         self,
