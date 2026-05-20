@@ -212,17 +212,17 @@ def test_penalty_table_rejects_floor_above_grade_ceiling() -> None:
 
 @pytest.mark.unit
 def test_aggregate_uses_penalty_table_floor_consistently() -> None:
-    """A custom PenaltyTable.floor must clamp the final score without tripping
-    the AggregationResult validator (which would have used global GRADE_FLOOR
-    instead of penalty_table.floor before the round-4 fix)."""
+    """A custom ``PenaltyTable.floor`` clamps the final score, and the same
+    floor flows into ``AggregationResult`` so the score validator never
+    disagrees with the aggregator about which lower bound applies."""
     custom_floor = 50
     table = PenaltyTable(
         points_per_event={"x.event": 80},
         cap_per_class=80,
         floor=custom_floor,
     )
-    # grade=70, one tracked event * 80 points = 80 deduction -> raw final 70-80=-10
-    # without floor; clamped at penalty_table.floor=50.
+    # grade 70 minus a single 80-point penalty would land at -10 without
+    # any clamp; ``penalty_table.floor=50`` bounds the score upward to 50.
     result = aggregate_brief_score(
         grade=70,
         events_by_class={"x.event": 1},
