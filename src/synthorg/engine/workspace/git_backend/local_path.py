@@ -21,7 +21,11 @@ from synthorg.engine.errors import (
     GitBackendProvisionError,
     GitBackendPushError,
 )
-from synthorg.engine.workspace.git_backend._git_ops import git, is_git_repo
+from synthorg.engine.workspace.git_backend._git_ops import (
+    assert_standalone_repo,
+    git,
+    is_git_repo,
+)
 from synthorg.engine.workspace.git_backend.protocol import (
     FetchResult,
     ProvisionResult,
@@ -160,6 +164,16 @@ class LocalPathGitBackend:
             "init",
             "--initial-branch",
             str(default_branch),
+            cmd_timeout=self._cmd_timeout,
+            fail_exc=GitBackendProvisionError,
+            project_id=pid,
+        )
+        # Refuse if repo_path is a worktree / shared-config repo. Without
+        # this guard, ``git config user.{email,name}`` writes here would
+        # mutate the parent repo's shared config and silently rewrite the
+        # operator's identity across every other linked worktree.
+        await assert_standalone_repo(
+            repo_path,
             cmd_timeout=self._cmd_timeout,
             fail_exc=GitBackendProvisionError,
             project_id=pid,
