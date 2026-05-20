@@ -181,6 +181,21 @@ class ChiefOfStaffProposer:
                 self._conversation_locks[conversation_id] = lock
             return lock
 
+    async def _release_conversation_lock(self, conversation_id: str) -> None:
+        """Drop the per-conversation lock once the conversation is terminal.
+
+        Called from the paths that flip the conversation to a terminal
+        status (``_cap_conversation`` -> CLOSED, ``_record_proposals``
+        -> PROPOSED). The dict otherwise grows unbounded over the
+        process lifetime as new conversations are created. The pop
+        is guarded so a removal cannot race with a concurrent
+        ``_lock_for`` resolving the same id.
+        """
+        if self._conversation_locks_guard is None:
+            return
+        async with self._conversation_locks_guard:
+            self._conversation_locks.pop(conversation_id, None)
+
     async def converse(self, args: ProposeArgs) -> ProposeResult:
         """Run one clarify-or-propose turn.
 
@@ -457,6 +472,10 @@ class ChiefOfStaffProposer:
             conversation_id=conversation.id,
             proposal_count=len(summaries),
         )
+        # Conversation is now PROPOSED (terminal for the v1 1:1 flow);
+        # drop the per-conversation lock so the dict cannot grow
+        # unbounded over the process lifetime.
+        await self._release_conversation_lock(conversation.id)
         return ProposeResult(
             conversation_id=conversation.id,
             status="proposed",
@@ -592,6 +611,10 @@ class ChiefOfStaffProposer:
                 to_state=ConversationStatus.CLOSED.value,
             )
         logger.warning(COS_PROPOSE_CAP_REACHED, conversation_id=conversation.id)
+        # Conversation is now CLOSED (terminal); drop the
+        # per-conversation lock so the dict cannot grow unbounded
+        # over the process lifetime.
+        await self._release_conversation_lock(conversation.id)
         return ProposeResult(
             conversation_id=conversation.id,
             status="needs_clarification",

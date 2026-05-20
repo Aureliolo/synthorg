@@ -530,6 +530,70 @@ class TestConcurrentConverse:
         ids = {t.id for t in turn_repo.turns}
         assert len(ids) == 4
 
+    async def test_lock_released_on_terminal_propose(self) -> None:
+        # Locking a conversation should not leak memory: when the
+        # conversation transitions to PROPOSED (a terminal state for
+        # the v1 1:1 flow), the per-conversation lock is dropped.
+        provider = ScriptedProvider(responses=[make_text_response(_PROPOSE_JSON)])
+        proposer, conv_repo, _, _, _ = _build(provider=provider)
+        conv_repo.items["c-prop"] = Conversation(
+            id=NotBlankStr("c-prop"),
+            created_by=NotBlankStr("user-1"),
+            created_at=_START,
+            updated_at=_START,
+            status=ConversationStatus.ACTIVE,
+        )
+
+        result = await proposer.converse(
+            ProposeArgs(
+                message=NotBlankStr("launch landing page"),
+                created_by=NotBlankStr("user-1"),
+                conversation_id=NotBlankStr("c-prop"),
+                project=NotBlankStr("marketing"),
+            )
+        )
+
+        assert result.status == "proposed"
+        assert "c-prop" not in proposer._conversation_locks
+
+    async def test_lock_released_on_clarification_cap(self) -> None:
+        # The other terminal path: clarification cap force-closes the
+        # conversation. Lock should drop here too.
+        provider = ScriptedProvider()
+        config = ChiefOfStaffConfig(
+            propose_enabled=True,
+            propose_max_clarification_turns=1,
+        )
+        proposer, conv_repo, turn_repo, _, _ = _build(provider=provider, config=config)
+        conv_repo.items["c-cap"] = Conversation(
+            id=NotBlankStr("c-cap"),
+            created_by=NotBlankStr("user-1"),
+            created_at=_START,
+            updated_at=_START,
+            status=ConversationStatus.ACTIVE,
+        )
+        turn_repo.turns.append(
+            ConversationTurn(
+                id=NotBlankStr("seed-a0"),
+                conversation_id=NotBlankStr("c-cap"),
+                sequence=0,
+                role=ConversationRole.ASSISTANT,
+                content=NotBlankStr("seeded assistant turn"),
+                created_at=_START,
+            )
+        )
+
+        result = await proposer.converse(
+            ProposeArgs(
+                message=NotBlankStr("still unclear"),
+                created_by=NotBlankStr("user-1"),
+                conversation_id=NotBlankStr("c-cap"),
+            )
+        )
+
+        assert result.conversation_closed is True
+        assert "c-cap" not in proposer._conversation_locks
+
     async def test_locks_isolated_per_conversation(self) -> None:
         # Two different conversations get independent locks; their
         # turn pipelines do not block one another. (Easier to verify
