@@ -1,4 +1,4 @@
-"""Pre-flight cost forecast service (#1982).
+"""Pre-flight cost forecast service.
 
 :class:`CostForecaster` produces a calibrated estimate
 ``(estimated_cost, lower_bound, upper_bound)`` for a brief and a

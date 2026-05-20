@@ -1,4 +1,4 @@
-"""Hard real-money ceiling enforcement (#1982).
+"""Hard real-money ceiling enforcement.
 
 Covers the per-brief absolute ceiling honored by
 ``BudgetEnforcer.make_budget_checker``. Two failure modes:

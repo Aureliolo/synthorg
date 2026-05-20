@@ -2,16 +2,14 @@
 
 The Pareto view answers "90% of the quality at 40% of the cost if you
 downgrade these roles". The quality axis comes from a calibrated
-per-model benchmark score; the canonical source for those scores is
-sibling issue #1980 (Golden-company benchmark).
+per-model benchmark score.
 
-Until #1980 lands, :class:`StubBenchmarkScoreProvider`
-(in :mod:`synthorg.budget.benchmark_stub`) returns per-tier calibrated
-constants in code so the operator-facing Pareto view ships immediately.
-When #1980 provides a real implementation, the factory wiring in
-``lifecycle_helpers.py`` swaps the stub for the real provider behind
-this protocol; the UI surfaces the :attr:`BenchmarkScore.source` field
-so operators can see whether they are reading stub or measured data.
+:class:`StubBenchmarkScoreProvider` (in
+:mod:`synthorg.budget.benchmark_stub`) returns per-tier calibrated
+constants in code; real benchmark implementations swap in behind this
+protocol via the factory wiring in ``lifecycle_helpers.py``. The UI
+surfaces the :attr:`BenchmarkScore.source` field so operators can
+see whether they are reading stub or measured data.
 """
 
 from collections.abc import Mapping  # noqa: TC003 -- required at runtime by Pydantic

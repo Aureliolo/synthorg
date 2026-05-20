@@ -1,6 +1,6 @@
 -- depends: 20260519000001_conversational_intake
 
--- Pre-flight cost forecasts (#1982).
+-- Pre-flight cost forecasts.
 --
 -- See ``synthorg/persistence/sqlite/revisions/20260520000001_cost_forecasts.sql``
 -- for the design notes on brief identity, the decision state machine,

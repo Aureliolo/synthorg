@@ -1,4 +1,4 @@
-"""Tests for the cost-dial domain-error hierarchy (#1982)."""
+"""Tests for the cost-dial domain-error hierarchy."""
 
 from uuid import uuid4
 

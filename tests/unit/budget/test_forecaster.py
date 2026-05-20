@@ -1,4 +1,4 @@
-"""Unit tests for the :class:`CostForecaster` hybrid algorithm (#1982)."""
+"""Unit tests for the CostForecaster hybrid algorithm."""
 
 from collections.abc import Sequence
 from datetime import UTC, datetime

@@ -1,4 +1,4 @@
-"""Pre-flight cost forecast gate at the work-entry seam (#1982).
+"""Pre-flight cost forecast gate at the work-entry seam.
 
 The gate sits between an entry adapter (intake, task-board, objective,
 conversational propose) and the composed work pipeline. When
@@ -50,9 +50,8 @@ def _signal_from_work_item(
     At the work-entry stage the role-skeleton is not yet assigned;
     the gate uses a single-role placeholder (``"default"``) so the
     forecast is a coarse estimate over the brief text. A sharper
-    estimate fires later when the work pipeline assigns concrete
-    agents to roles (out of scope for #1982 Phase 4; tracked under
-    the broader operate-tier follow-ups).
+    estimate can be computed downstream once the work pipeline
+    assigns concrete agents to roles.
     """
     return BriefSignal(
         brief_text=work_item.raw_intent,

@@ -1,14 +1,12 @@
-"""Stub benchmark-score provider for the Pareto view (#1982).
+"""Stub benchmark-score provider for the Pareto view.
 
 Implements :class:`BenchmarkScoreProvider` using calibrated per-tier
-constants. Sibling issue #1980 (Golden-company benchmark) will land a
-real implementation behind the same protocol; the factory wiring in
-``lifecycle_helpers.py`` swaps the stub for the real provider when
-#1980 is available.
+constants. Real benchmark implementations swap in behind the same
+protocol via the factory wiring in ``lifecycle_helpers.py``.
 
 The stub source identifier (``"stub:calibrated-v1"``) is rendered
 verbatim by the dashboard so operators can see at a glance that the
-quality axis is illustrative until the real benchmark scores ship.
+quality axis is illustrative when real benchmark scores are absent.
 """
 
 from collections.abc import Mapping  # noqa: TC003 -- runtime by return annotations

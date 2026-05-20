@@ -1,4 +1,4 @@
-"""Unit tests for ParetoAnalyzer and StubBenchmarkScoreProvider (#1982)."""
+"""Unit tests for ParetoAnalyzer and StubBenchmarkScoreProvider."""
 
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime

@@ -1,4 +1,4 @@
-"""Unit tests for the pre-flight :class:`ForecastGate` (#1982)."""
+"""Unit tests for the pre-flight ForecastGate."""
 
 from collections.abc import Sequence
 from datetime import UTC, datetime

@@ -1,4 +1,4 @@
-"""AgentEngine park / resume on hard-ceiling exceeded (#1982).
+"""AgentEngine park / resume on hard-ceiling exceeded.
 
 When the per-turn ``BudgetChecker`` raises
 ``RunHardCeilingExceededError`` mid-run, the engine must:
@@ -16,30 +16,32 @@ the task cleanly on the next turn.
 
 import pytest
 
+# Skipped until the AgentEngine catch-handler is extended to route
+# RunHardCeilingExceededError through ApprovalGate.park_context.
 pytestmark = pytest.mark.skip(
-    reason="Awaiting #1982 Phase 6 (AgentEngine ceiling -> park / resume)",
+    reason="AgentEngine ceiling -> park / resume wiring not yet landed",
 )
 
 
 @pytest.mark.asyncio
 async def test_run_hard_ceiling_exceeded_parks_context() -> None:
     """Ceiling hit -> ApprovalGate.park_context invoked with payload."""
-    pytest.fail("scheduled by #1982 Phase 6")
+    pytest.fail("engine ceiling handler not landed")
 
 
 @pytest.mark.asyncio
 async def test_run_hard_ceiling_exceeded_returns_parked_termination() -> None:
     """ExecutionResult.termination_reason == TerminationReason.PARKED."""
-    pytest.fail("scheduled by #1982 Phase 6")
+    pytest.fail("engine ceiling handler not landed")
 
 
 @pytest.mark.asyncio
 async def test_resume_after_raised_ceiling_completes_task() -> None:
     """ApprovalGate.resume() re-enters the loop; task reaches COMPLETED."""
-    pytest.fail("scheduled by #1982 Phase 6")
+    pytest.fail("engine ceiling handler not landed")
 
 
 @pytest.mark.asyncio
 async def test_parked_payload_carries_accumulated_cost_and_forecast_id() -> None:
     """Parked payload includes accumulated_cost, forecast_id, ceiling_amount."""
-    pytest.fail("scheduled by #1982 Phase 6")
+    pytest.fail("engine ceiling handler not landed")

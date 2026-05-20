@@ -1196,7 +1196,7 @@ CREATE TABLE conversational_proposals (
 CREATE UNIQUE INDEX idx_cp_approval_id
     ON conversational_proposals(approval_id);
 
--- Pre-flight cost forecasts (#1982).
+-- Pre-flight cost forecasts.
 -- One row per pre-flight estimate. ``decision`` gates dispatch:
 -- pending blocks, approved releases, rejected terminates, superseded
 -- signals an edited brief replaced by a fresh pending row.

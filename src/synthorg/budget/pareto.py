@@ -1,4 +1,4 @@
-"""Cost / quality Pareto frontier models + analyzer (#1982).
+"""Cost / quality Pareto frontier models + analyzer.
 
 The Pareto frontier is the operator-facing answer to "90 percent of
 the quality at 40 percent of the cost if you downgrade these roles".
@@ -255,9 +255,8 @@ class ParetoAnalyzer:
     ) -> float:
         """Project the candidate cost via the static-prior ratio.
 
-        The real wiring (a follow-up to Phase 9) will swap this for a
-        BaselineStore-backed observed ratio when sufficient history
-        exists.
+        Future enhancements may consult a BaselineStore-backed
+        observed ratio when sufficient history exists.
         """
         priors: Mapping[str, float] = {
             "large": self._budget_config.forecast_static_prior_per_turn_large,

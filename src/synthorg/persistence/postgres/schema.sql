@@ -1253,7 +1253,7 @@ CREATE TABLE conversational_proposals (
 CREATE UNIQUE INDEX idx_cp_approval_id
     ON conversational_proposals(approval_id);
 
--- Pre-flight cost forecasts (#1982).
+-- Pre-flight cost forecasts.
 CREATE TABLE cost_forecasts (
     forecast_id TEXT NOT NULL PRIMARY KEY
         CHECK (char_length(trim(forecast_id)) > 0),

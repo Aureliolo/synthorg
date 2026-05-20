@@ -1,6 +1,6 @@
 -- depends: 20260519000001_conversational_intake
 
--- Pre-flight cost forecasts (#1982).
+-- Pre-flight cost forecasts.
 --
 -- One row per pre-flight estimate. The work-entry adapter consults the
 -- row's ``decision`` before dispatching a brief into the work pipeline;
