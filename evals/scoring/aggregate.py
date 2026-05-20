@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
+
 if TYPE_CHECKING:
     from evals.scoring.penalties import PenaltyTable
 
@@ -29,7 +31,7 @@ class PenaltyEntry(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    event_constant: str
+    event_constant: NotBlankStr
     count: int = Field(ge=0)
     points_per_event: int = Field(ge=0)
     raw_points: int = Field(ge=0)
@@ -37,6 +39,7 @@ class PenaltyEntry(BaseModel):
 
     @model_validator(mode="after")
     def _arithmetic_is_consistent(self) -> Self:
+        """Enforce ``raw == points * count`` and ``applied <= raw`` at build time."""
         expected_raw = self.points_per_event * self.count
         if self.raw_points != expected_raw:
             msg = (
@@ -69,6 +72,10 @@ class AggregationResult(BaseModel):
     score: int = Field(ge=GRADE_FLOOR, le=GRADE_CEILING)
     entries: tuple[PenaltyEntry, ...]
 
+    # ``@property`` (not ``@computed_field``) so the derived value never
+    # lands in serialised JSON; ``model_validate_json`` would reparse the
+    # value and trip ``extra="forbid"``. Same pattern as
+    # :class:`evals.models.scorecard.ProcessFactReport.is_clean`.
     @property
     def is_clean(self) -> bool:
         """Whether no process-fact penalties were applied."""
@@ -76,6 +83,7 @@ class AggregationResult(BaseModel):
 
     @model_validator(mode="after")
     def _score_matches_grade_minus_deduction(self) -> Self:
+        """Enforce ``score == max(grade - deduction, GRADE_FLOOR)`` at build time."""
         expected = max(self.grade - self.deduction, GRADE_FLOOR)
         if self.score != expected:
             msg = (
@@ -120,6 +128,9 @@ def aggregate_brief_score(
     entries: list[PenaltyEntry] = []
     total_deduction = 0
     for event_constant, count in sorted(events_by_class.items()):
+        if count < 0:
+            msg = f"event count for {event_constant!r} must be >= 0 (got {count})"
+            raise ValueError(msg)
         if not penalty_table.is_tracked(event_constant):
             continue
         per_event = penalty_table.points_for(event_constant)

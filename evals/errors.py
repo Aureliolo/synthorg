@@ -40,6 +40,19 @@ class BriefSuiteDuplicateIdError(EvalError):
     default_message: ClassVar[str] = "Duplicate brief_id across the suite"
 
 
+class BriefSuitePathTraversalError(EvalError):
+    """Raised when a globbed brief file escapes the briefs directory.
+
+    Glob results are trusted by suffix alone, so a ``*.yaml`` symlink
+    or a directory entry with a YAML suffix could otherwise read a
+    file outside the briefs directory. The loader resolves each path
+    and refuses anything that is not a regular file inside the
+    briefs directory's resolved root.
+    """
+
+    default_message: ClassVar[str] = "Brief file escapes the briefs directory"
+
+
 class BriefShapeError(EvalError):
     """Raised when a brief's ``kind`` does not match its payload (checks vs rubric)."""
 
@@ -104,6 +117,7 @@ __all__ = [
     "BriefShapeError",
     "BriefSuiteDuplicateIdError",
     "BriefSuiteEmptyError",
+    "BriefSuitePathTraversalError",
     "BriefTimeoutError",
     "CassetteIntegrityError",
     "CassetteNotFoundError",

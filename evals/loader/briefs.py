@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, cast
 
 import yaml
 
-from evals.errors import BriefSuiteDuplicateIdError, BriefSuiteEmptyError
+from evals.errors import (
+    BriefSuiteDuplicateIdError,
+    BriefSuiteEmptyError,
+    BriefSuitePathTraversalError,
+)
 from evals.models.brief import Brief
 from synthorg.api.boundary import parse_typed
 from synthorg.observability import get_logger
@@ -37,13 +41,29 @@ def load_brief_suite(briefs_dir: Path) -> tuple[Brief, ...]:
     Raises:
         BriefSuiteEmptyError: If no eligible YAML files were found.
         BriefSuiteDuplicateIdError: If two briefs share a ``brief_id``.
+        BriefSuitePathTraversalError: If a globbed brief is not a
+            regular file or its resolved path escapes *briefs_dir*.
         pydantic.ValidationError: If a YAML file's payload does not
             match the :class:`Brief` schema.
     """
+    resolved_briefs_dir = briefs_dir.resolve()
     files = sorted(p for p in briefs_dir.glob("*.yaml") if not p.name.startswith("_"))
     briefs: list[Brief] = []
     for path in files:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        resolved_path = path.resolve()
+        if not resolved_path.is_file():
+            msg = (
+                f"Brief file {path.name!r}: not a regular file "
+                f"(resolved to {resolved_path})"
+            )
+            raise BriefSuitePathTraversalError(msg)
+        if not resolved_path.is_relative_to(resolved_briefs_dir):
+            msg = (
+                f"Brief file {path.name!r}: resolved path {resolved_path} "
+                f"escapes briefs directory {resolved_briefs_dir}"
+            )
+            raise BriefSuitePathTraversalError(msg)
+        raw = yaml.safe_load(resolved_path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             msg = (
                 f"Brief file {path.name!r}: top-level YAML must be a mapping "

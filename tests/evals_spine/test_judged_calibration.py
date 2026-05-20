@@ -1,5 +1,6 @@
 """Tests for the judged-brief grader and Spearman calibration gate."""
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -77,10 +78,10 @@ from evals.scoring.spearman import (
     ],
 )
 def test_spearman_rho_cases(
-    xs: list[float], ys: list[float], predicate: object
+    xs: list[float], ys: list[float], predicate: Callable[[float], bool]
 ) -> None:
     rho = spearman_rho(xs, ys)
-    assert predicate(rho)  # type: ignore[operator]
+    assert predicate(rho)
 
 
 @pytest.mark.unit

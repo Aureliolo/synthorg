@@ -6,7 +6,11 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from evals.errors import BriefSuiteDuplicateIdError, BriefSuiteEmptyError
+from evals.errors import (
+    BriefSuiteDuplicateIdError,
+    BriefSuiteEmptyError,
+    BriefSuitePathTraversalError,
+)
 from evals.loader.briefs import load_brief_suite
 from evals.models.brief import BriefKind
 from tests.evals_spine.conftest import BriefYamlWriter
@@ -122,6 +126,38 @@ def test_non_dict_top_level_yaml_raises_type_error(tmp_path: Path) -> None:
     bad.write_text(yaml.safe_dump(["not", "a", "mapping"]), encoding="utf-8")
     with pytest.raises(TypeError, match="must be a mapping"):
         load_brief_suite(tmp_path)
+
+
+@pytest.mark.unit
+def test_directory_entry_with_yaml_suffix_rejected(tmp_path: Path) -> None:
+    """A directory named ``foo.yaml`` is matched by glob but is not a regular
+    file; the loader refuses it instead of attempting to read it as YAML."""
+    (tmp_path / "fake.yaml").mkdir()
+    with pytest.raises(BriefSuitePathTraversalError, match="not a regular file"):
+        load_brief_suite(tmp_path)
+
+
+@pytest.mark.unit
+def test_symlink_escaping_briefs_dir_rejected(
+    tmp_path: Path,
+    write_brief_yaml: BriefYamlWriter,
+) -> None:
+    """A YAML symlink whose target resolves outside *briefs_dir* must be
+    refused so that path-traversal via the file-system boundary is blocked."""
+    outside = tmp_path.parent / "outside.yaml"
+    write_brief_yaml("real.yaml", "executable", brief_id="BRIEF_REAL")
+    outside.write_text("{}", encoding="utf-8")
+    link = tmp_path / "escape.yaml"
+    try:
+        link.symlink_to(outside)
+    except OSError, NotImplementedError:
+        pytest.skip("symlink creation requires elevated privileges on this OS")
+    try:
+        with pytest.raises(BriefSuitePathTraversalError, match="escapes"):
+            load_brief_suite(tmp_path)
+    finally:
+        link.unlink(missing_ok=True)
+        outside.unlink(missing_ok=True)
 
 
 @pytest.mark.unit

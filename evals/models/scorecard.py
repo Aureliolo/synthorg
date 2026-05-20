@@ -18,7 +18,7 @@ from pydantic import (
     model_validator,
 )
 
-from evals.models.brief import BriefKind  # noqa: TC001 -- Pydantic field type
+from evals.models.brief import BriefKind
 from evals.scoring.aggregate import (
     GRADE_CEILING,
     GRADE_FLOOR,
@@ -59,6 +59,7 @@ class JudgeCalibrationReport(BaseModel):
 
     @model_validator(mode="after")
     def _passed_matches_gate(self) -> Self:
+        """Enforce ``passed == (spearman_rho >= gate)`` at construction time."""
         expected = self.spearman_rho >= self.gate
         if self.passed != expected:
             msg = (
@@ -78,6 +79,10 @@ class ProcessFactReport(BaseModel):
     events_by_class: dict[str, int] = Field(default_factory=dict)
     entries: tuple[PenaltyEntry, ...] = Field(default=())
 
+    # ``@computed_field`` is rejected here: this model is round-tripped via
+    # ``model_validate_json``, and a serialised ``is_clean`` would land in
+    # the input dict and trip ``extra="forbid"`` on reparse. The project's
+    # existing derived-field pattern (e.g. ``Scorecard.total``) is the same.
     @property
     def is_clean(self) -> bool:
         """Whether any tracked process-fact event contributed to the penalty."""
@@ -140,7 +145,25 @@ class BriefResult(BaseModel):
     judge_calibration: JudgeCalibrationReport | None = None
 
     @model_validator(mode="after")
+    def _kind_matches_judge_calibration(self) -> Self:
+        """Enforce ``judged`` <=> ``judge_calibration is not None``."""
+        if self.kind is BriefKind.JUDGED and self.judge_calibration is None:
+            msg = (
+                f"BriefResult {self.brief_id!r}: kind={self.kind.value} "
+                "requires a judge_calibration report"
+            )
+            raise ValueError(msg)
+        if self.kind is not BriefKind.JUDGED and self.judge_calibration is not None:
+            msg = (
+                f"BriefResult {self.brief_id!r}: kind={self.kind.value} "
+                "must not carry a judge_calibration report"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _score_matches_grade_minus_deduction(self) -> Self:
+        """Enforce the floored score invariant at construction time."""
         expected = max(self.grade - self.deduction, GRADE_FLOOR)
         if self.score != expected:
             msg = (
@@ -164,13 +187,26 @@ class AggregatedProcessFacts(BaseModel):
     total_events: int = Field(default=0, ge=0)
     events_by_class: dict[str, int] = Field(default_factory=dict)
 
+    # ``@property`` (not ``@computed_field``) for the same round-trip
+    # reason as ``ProcessFactReport.is_clean`` above.
     @property
     def is_clean(self) -> bool:
         """Whether no brief in the suite emitted any tracked event."""
         return self.total_events == 0
 
+    @field_validator("events_by_class")
+    @classmethod
+    def _counts_are_non_negative(cls, value: dict[str, int]) -> dict[str, int]:
+        """Reject negative per-class counts; aggregation invariants assume ge=0."""
+        for event, count in value.items():
+            if count < 0:
+                msg = f"event count for {event!r} must be >= 0 (got {count})"
+                raise ValueError(msg)
+        return value
+
     @model_validator(mode="after")
     def _total_matches_class_sum(self) -> Self:
+        """Reject a rollup whose total_events disagrees with the per-class sum."""
         class_sum = sum(self.events_by_class.values())
         if self.total_events != class_sum:
             msg = (
@@ -220,6 +256,7 @@ class Scorecard(BaseModel):
     @field_validator("schema_version")
     @classmethod
     def _schema_version_must_be_current(cls, value: int) -> int:
+        """Reject scorecards built against a mismatched schema version."""
         if value != SCORECARD_SCHEMA_VERSION:
             msg = (
                 f"scorecard schema version mismatch: got {value}, "
@@ -231,6 +268,7 @@ class Scorecard(BaseModel):
     @field_validator("generated_at")
     @classmethod
     def _generated_at_must_be_aware(cls, value: datetime) -> datetime:
+        """Reject naive timestamps; UTC-aware values are required for emit order."""
         if value.tzinfo is None:
             msg = "generated_at must be timezone-aware"
             raise ValueError(msg)

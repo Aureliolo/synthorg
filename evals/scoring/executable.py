@@ -15,13 +15,19 @@ the brief's failure attributable.
 """
 
 import subprocess
+import time
 from typing import TYPE_CHECKING, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from evals.errors import EvalToolMissingError
 from evals.models.brief import Brief, BriefKind, ExecutableChecks, HiddenCheckSpec
+from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.evals import (
+    EVALS_EXECUTABLE_TIMEOUT,
+    EVALS_EXECUTABLE_TOOL_MISSING,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -64,7 +70,7 @@ class CheckOutcome(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-    label: str
+    label: NotBlankStr
     cmd: tuple[str, ...]
     exit_code: int
     duration_seconds: float = Field(ge=0.0)
@@ -74,6 +80,7 @@ class CheckOutcome(BaseModel):
 
     @model_validator(mode="after")
     def _timeout_exit_code_consistent(self) -> Self:
+        """Reject ``timed_out=True`` paired with a non-POSIX-sentinel exit code."""
         if self.timed_out and self.exit_code != TIMEOUT_EXIT_CODE:
             msg = (
                 f"CheckOutcome: timed_out=True but exit_code={self.exit_code} "
@@ -99,6 +106,11 @@ class ExecutableGrade(BaseModel):
     lint_pass: bool
     outcomes: tuple[CheckOutcome, ...]
 
+    # ``@property`` rather than ``@computed_field``: ExecutableGrade does
+    # not currently round-trip through JSON, but the project's
+    # ``extra="forbid"`` pattern still rejects computed-field values on
+    # validate (see :class:`evals.models.scorecard.ProcessFactReport`).
+    # Keep the family uniform so future serialisation does not regress.
     @property
     def is_clean(self) -> bool:
         """Whether every declared check class passed."""
@@ -106,6 +118,7 @@ class ExecutableGrade(BaseModel):
 
     @model_validator(mode="after")
     def _pass_flags_match_outcomes(self) -> Self:
+        """Enforce per-label ``*_pass`` bools match each label-bucket's outcomes."""
         expected_hidden = _all_pass(o for o in self.outcomes if o.label == LABEL_HIDDEN)
         expected_build = _all_pass(o for o in self.outcomes if o.label == LABEL_BUILD)
         expected_lint = _all_pass(o for o in self.outcomes if o.label == LABEL_LINT)
@@ -132,12 +145,14 @@ def _outcome_from_completed(
     spec: HiddenCheckSpec,
     label: str,
     completed: subprocess.CompletedProcess[bytes],
+    duration_seconds: float,
 ) -> CheckOutcome:
+    """Pack a finished subprocess into a CheckOutcome with measured duration."""
     return CheckOutcome(
         label=label,
         cmd=spec.cmd,
         exit_code=completed.returncode,
-        duration_seconds=0.0,
+        duration_seconds=duration_seconds,
         stdout_tail=_tail(completed.stdout),
         stderr_tail=_tail(completed.stderr),
     )
@@ -148,8 +163,9 @@ def _outcome_from_timeout(
     label: str,
     exc: subprocess.TimeoutExpired,
 ) -> CheckOutcome:
+    """Pack a TimeoutExpired into a CheckOutcome at the POSIX timeout sentinel."""
     logger.warning(
-        "evals.executable.timeout",
+        EVALS_EXECUTABLE_TIMEOUT,
         cmd=spec.cmd,
         timeout=spec.timeout_seconds,
         error_type=type(exc).__name__,
@@ -167,7 +183,14 @@ def _outcome_from_timeout(
 
 
 def _run_check(spec: HiddenCheckSpec, label: str, work_dir: Path) -> CheckOutcome:
-    """Run one check; never raises on non-zero exit; raises on tool-missing."""
+    """Run one check; never raises on non-zero exit; raises on tool-missing.
+
+    PermissionError joins FileNotFoundError / NotADirectoryError in the
+    tool-missing branch: a non-executable file on PATH is functionally
+    the same failure mode as a missing binary, and conflating them with
+    a generic subprocess error would lose attribution.
+    """
+    start = time.perf_counter()
     try:
         completed = subprocess.run(  # noqa: S603 -- args validated, no shell
             list(spec.cmd),
@@ -179,16 +202,17 @@ def _run_check(spec: HiddenCheckSpec, label: str, work_dir: Path) -> CheckOutcom
         )
     except subprocess.TimeoutExpired as exc:
         return _outcome_from_timeout(spec, label, exc)
-    except (FileNotFoundError, NotADirectoryError) as exc:
+    except (FileNotFoundError, NotADirectoryError, PermissionError) as exc:
         logger.error(
-            "evals.executable.tool_missing",
+            EVALS_EXECUTABLE_TOOL_MISSING,
             cmd=spec.cmd,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        msg = f"Required eval tool not found: {spec.cmd[0]!r}"
+        msg = f"Required eval tool not found or not executable: {spec.cmd[0]!r}"
         raise EvalToolMissingError(msg) from exc
-    return _outcome_from_completed(spec, label, completed)
+    duration_seconds = time.perf_counter() - start
+    return _outcome_from_completed(spec, label, completed, duration_seconds)
 
 
 def _all_pass(outcomes: Iterable[CheckOutcome]) -> bool:
@@ -204,6 +228,7 @@ def _run_class(
     label: str,
     work_dir: Path,
 ) -> tuple[CheckOutcome, ...]:
+    """Run every spec in a check-class bucket and return their outcomes."""
     return tuple(_run_check(spec, label=label, work_dir=work_dir) for spec in specs)
 
 

@@ -18,6 +18,7 @@ from evals.scoring.penalties import (
     PENALTY_FLOOR,
     PENALTY_STAGNATION_DETECTED,
     PENALTY_STAGNATION_TERMINATED,
+    PenaltyTable,
 )
 from synthorg.observability.events.budget import BUDGET_HARD_STOP_EXCEEDED
 from synthorg.observability.events.stagnation import (
@@ -179,3 +180,31 @@ def test_aggregation_result_rejects_inconsistent_score() -> None:
             score=60,  # should be 70
             entries=(),
         )
+
+
+@pytest.mark.unit
+def test_aggregate_brief_score_rejects_negative_count() -> None:
+    """aggregate_brief_score refuses negative per-class counts; a "negative
+    penalty" would silently become a bonus and corrupt the score."""
+    with pytest.raises(ValueError, match="must be >= 0"):
+        aggregate_brief_score(
+            grade=80,
+            events_by_class={STAGNATION_DETECTED: -1},
+            penalty_table=DEFAULT_PENALTY_TABLE,
+        )
+
+
+@pytest.mark.unit
+def test_penalty_table_rejects_negative_points() -> None:
+    """PenaltyTable refuses points_per_event values < 0; a per-event "penalty"
+    that adds points is a bonus, not a penalty, and is rejected."""
+    with pytest.raises(PydValidationError, match="must be >= 0"):
+        PenaltyTable(points_per_event={"x.event": -5})
+
+
+@pytest.mark.unit
+def test_penalty_table_rejects_floor_above_grade_ceiling() -> None:
+    """PenaltyTable refuses floor > GRADE_CEILING; the floor must live inside
+    the grade domain or downstream math produces out-of-range scores."""
+    with pytest.raises(PydValidationError):
+        PenaltyTable(floor=GRADE_CEILING + 1)

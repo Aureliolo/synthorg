@@ -14,10 +14,11 @@ warning the company chose to push through. ``PENALTY_CAP_PER_CLASS``
 prevents one noisy event class from zeroing a brief on its own.
 """
 
-from typing import Final
+from typing import Final, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from evals.scoring.aggregate import GRADE_CEILING
 from synthorg.observability.events.approval_gate import APPROVAL_GATE_REVIEW_REWORK
 from synthorg.observability.events.budget import (
     BUDGET_DAILY_LIMIT_EXCEEDED,
@@ -87,7 +88,7 @@ class PenaltyTable(BaseModel):
 
     points_per_event: dict[str, int] = Field(default_factory=dict)
     cap_per_class: int = Field(default=PENALTY_CAP_PER_CLASS, ge=0)
-    floor: int = Field(default=PENALTY_FLOOR, ge=0)
+    floor: int = Field(default=PENALTY_FLOOR, ge=0, le=GRADE_CEILING)
 
     def points_for(self, event_constant: str) -> int:
         """Return the per-event penalty for *event_constant*, or 0 if untracked."""
@@ -96,6 +97,17 @@ class PenaltyTable(BaseModel):
     def is_tracked(self, event_constant: str) -> bool:
         """Whether *event_constant* contributes to the scorer."""
         return event_constant in self.points_per_event
+
+    @model_validator(mode="after")
+    def _points_per_event_non_negative(self) -> Self:
+        """Reject negative per-event point values; a "negative penalty" is a bonus."""
+        for event_constant, points in self.points_per_event.items():
+            if points < 0:
+                msg = (
+                    f"points_per_event[{event_constant!r}] must be >= 0 (got {points})"
+                )
+                raise ValueError(msg)
+        return self
 
 
 DEFAULT_PENALTY_TABLE: Final[PenaltyTable] = PenaltyTable(

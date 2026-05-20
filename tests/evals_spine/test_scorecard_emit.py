@@ -28,6 +28,17 @@ def _brief_result(  # noqa: PLR0913 -- test fixture; keeping the kw-only knobs e
     entries: tuple[PenaltyEntry, ...] = (),
     kind: BriefKind = BriefKind.EXECUTABLE,
 ) -> BriefResult:
+    judge_calibration = (
+        JudgeCalibrationReport(
+            rubric_id=f"rubric-for-{brief_id}",
+            spearman_rho=0.9,
+            gate=0.7,
+            passed=True,
+            anchor_count=5,
+        )
+        if kind is BriefKind.JUDGED
+        else None
+    )
     return BriefResult(
         brief_id=brief_id,
         kind=kind,
@@ -39,6 +50,7 @@ def _brief_result(  # noqa: PLR0913 -- test fixture; keeping the kw-only knobs e
             entries=entries,
         ),
         termination_reason="COMPLETED",
+        judge_calibration=judge_calibration,
     )
 
 
@@ -218,6 +230,55 @@ def test_aggregated_process_facts_total_must_match_class_sum() -> None:
         AggregatedProcessFacts(
             total_events=10,
             events_by_class={"x": 3, "y": 4},  # sums to 7, not 10
+        )
+
+
+@pytest.mark.unit
+def test_aggregated_process_facts_rejects_negative_count() -> None:
+    """AggregatedProcessFacts refuses negative counts in events_by_class."""
+    with pytest.raises(ValueError, match="must be >= 0"):
+        AggregatedProcessFacts(
+            total_events=0,
+            events_by_class={"x": -1},
+        )
+
+
+@pytest.mark.unit
+def test_brief_result_judged_requires_calibration() -> None:
+    """BriefResult refuses kind=JUDGED with no judge_calibration."""
+    with pytest.raises(ValueError, match="requires a judge_calibration"):
+        BriefResult(
+            brief_id="BRIEF_J",
+            kind=BriefKind.JUDGED,
+            grade=80,
+            deduction=0,
+            score=80,
+            process_facts=ProcessFactReport(),
+            termination_reason="COMPLETED",
+            judge_calibration=None,
+        )
+
+
+@pytest.mark.unit
+def test_brief_result_executable_must_not_carry_calibration() -> None:
+    """BriefResult refuses kind=EXECUTABLE carrying a judge_calibration."""
+    calibration = JudgeCalibrationReport(
+        rubric_id="r",
+        spearman_rho=0.9,
+        gate=0.7,
+        passed=True,
+        anchor_count=5,
+    )
+    with pytest.raises(ValueError, match="must not carry"):
+        BriefResult(
+            brief_id="BRIEF_X",
+            kind=BriefKind.EXECUTABLE,
+            grade=80,
+            deduction=0,
+            score=80,
+            process_facts=ProcessFactReport(),
+            termination_reason="COMPLETED",
+            judge_calibration=calibration,
         )
 
 

@@ -50,6 +50,12 @@ MAX_COMPLEXITY: Final[int] = 5
 RUBRIC_WEIGHT_TOLERANCE: Final[float] = 0.001
 RUBRIC_WEIGHT_TARGET: Final[float] = 1.0
 
+# Default wall-clock timeout for a single hidden-check subprocess. Brief
+# authors override per-check via the YAML schema; named here so the
+# allowlisted no-magic-numbers gate passes and authors have a single
+# place to tune the suite-wide default.
+DEFAULT_HIDDEN_CHECK_TIMEOUT_SECONDS: Final[int] = 30
+
 
 class BriefKind(StrEnum):
     """Discriminator between executable and judged briefs."""
@@ -108,10 +114,11 @@ class HiddenCheckSpec(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     cmd: tuple[NotBlankStr, ...] = Field(min_length=1)
-    timeout_seconds: int = Field(default=30, gt=0)
+    timeout_seconds: int = Field(default=DEFAULT_HIDDEN_CHECK_TIMEOUT_SECONDS, gt=0)
 
     @model_validator(mode="after")
     def _leading_token_has_no_shell_metachars(self) -> Self:
+        """Refuse a leading argv token carrying any shell metacharacter."""
         leading = self.cmd[0]
         for ch in _SHELL_METACHARS:
             if ch in leading:
@@ -243,6 +250,7 @@ class Brief(BaseModel):
 
 
 __all__ = [
+    "DEFAULT_HIDDEN_CHECK_TIMEOUT_SECONDS",
     "MAX_COMPLEXITY",
     "MIN_ACCEPTANCE_CRITERIA",
     "MIN_COMPLEXITY",
