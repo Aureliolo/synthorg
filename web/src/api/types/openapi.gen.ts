@@ -11364,8 +11364,9 @@ export type components = {
             /**
              * @description Always 'submitted' for the 202 ack
              * @default submitted
+             * @constant
              */
-            readonly status: string;
+            readonly status: "submitted";
             /** @description Title submitted by the user */
             readonly title: string;
         };

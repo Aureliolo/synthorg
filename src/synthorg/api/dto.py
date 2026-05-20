@@ -6,7 +6,7 @@ models because they omit server-generated fields).
 """
 
 from datetime import datetime
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -508,7 +508,7 @@ class TaskBoardSubmissionResponse(BaseModel):
     )
     title: NotBlankStr = Field(description="Title submitted by the user")
     project: NotBlankStr = Field(description="Project the task was filed into")
-    status: NotBlankStr = Field(
+    status: Literal["submitted"] = Field(
         default="submitted",
         description="Always 'submitted' for the 202 ack",
     )

@@ -43,6 +43,7 @@ from synthorg.engine.pipeline.entry.task_board_adapter import (
     TaskBoardEntryAdapter,
     TaskBoardFiling,
 )
+from synthorg.engine.pipeline.models import WorkSource
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.providers.drivers.scripted import ScriptedDriver
@@ -255,3 +256,104 @@ async def test_board_filing_executes_through_pipeline(
     # CREATED means no agent ran; the scripted provider drove the solo
     # path past CREATED.
     assert task.status is not TaskStatus.CREATED
+
+
+async def test_board_filing_unknown_project_is_swallowed_by_background_task(
+    persistence: FakePersistenceBackend,
+    task_engine: TaskEngine,
+    tmp_path: Path,
+) -> None:
+    """An unknown project surfaces as a swallowed pipeline failure.
+
+    The spine's projects-phase rejects an unknown project with
+    ``WorkProjectNotFoundError``. The controller's background
+    coroutine catches non-rejection failures, logs ERROR, and does
+    not propagate (the HTTP 202 was already returned to the caller).
+    No task is created.
+    """
+    sim_state = _sim_state(task_engine)
+    app_state = await _build_app_state(
+        persistence=persistence,
+        task_engine=task_engine,
+        tmp_path=tmp_path,
+        sim_state=sim_state,
+    )
+    # The board project (_PROJECT) exists, but file against a project
+    # that does not exist anywhere in persistence to drive the
+    # projects-phase rejection.
+    filing = TaskBoardFiling(
+        title="Targets a missing project",
+        description="The spine should reject this in the projects phase.",
+        task_type=TaskType.DEVELOPMENT,
+        project="never-created-project",
+        requested_by="user-42",
+    )
+
+    # process_task_board_pipeline swallows the pipeline failure
+    # (logs ERROR; the 202 was already returned to the caller).
+    await process_task_board_pipeline(
+        adapter=app_state.task_board_entry_adapter,
+        filing=filing,
+    )
+
+    # Intake still ran (creates the task before projects-phase rejects),
+    # but no task lives in the unknown project. The intake-project task
+    # remains because intake commits before the projects phase.
+    unknown_tasks, _ = await task_engine.list_tasks(project="never-created-project")
+    assert len(unknown_tasks) == 0
+
+
+async def test_board_filing_propagates_memory_error(
+    persistence: FakePersistenceBackend,
+    task_engine: TaskEngine,
+    tmp_path: Path,
+) -> None:
+    """``MemoryError`` from the spine is NOT swallowed by the background task.
+
+    The controller's background coroutine re-raises
+    ``MemoryError`` / ``RecursionError`` so a resource-exhaustion
+    failure surfaces to the asyncio loop's exception handler rather
+    than being silently logged. Exercising this end-to-end against the
+    live spine confirms the contract holds with the production adapter.
+    """
+    sim_state = _sim_state(task_engine)
+    app_state = await _build_app_state(
+        persistence=persistence,
+        task_engine=task_engine,
+        tmp_path=tmp_path,
+        sim_state=sim_state,
+    )
+
+    oom_reason = "simulated OOM in the spine"
+
+    class _OOMAdapter:
+        """Stand-in adapter whose ``submit`` raises ``MemoryError``.
+
+        Replaces the real adapter just for this test; using a stand-in
+        is cleaner than monkeypatching the spine internals to fail
+        with OOM at a specific phase.
+        """
+
+        source = WorkSource.TASK_BOARD
+
+        async def submit(self, _filing: TaskBoardFiling) -> object:
+            raise MemoryError(oom_reason)
+
+    filing = TaskBoardFiling(
+        title="OOM probe",
+        description="Force MemoryError to verify re-raise contract.",
+        task_type=TaskType.DEVELOPMENT,
+        project=_PROJECT,
+        requested_by="user-42",
+    )
+
+    with pytest.raises(MemoryError, match="simulated OOM"):
+        await process_task_board_pipeline(
+            adapter=_OOMAdapter(),  # type: ignore[arg-type] -- test seam
+            filing=filing,
+        )
+
+    # No task was created (submit raised before the spine got control).
+    assert app_state.has_task_board_entry_adapter
+    all_tasks, _total = await task_engine.list_tasks(project=_PROJECT)
+    assert len(all_tasks) == 0

@@ -122,3 +122,38 @@ async def test_submit_propagates_pipeline_error() -> None:
     pipeline.run.side_effect = WorkIntakeRejectedError("nope")
     with pytest.raises(WorkIntakeRejectedError):
         await _adapter(pipeline).submit(_filing())
+
+
+async def test_submit_propagates_memory_error() -> None:
+    """``MemoryError`` must surface to the caller untouched.
+
+    The controller's background coroutine has an explicit re-raise on
+    ``MemoryError`` / ``RecursionError``; the adapter must not catch
+    them either, or the never-give-up rule on resource exhaustion is
+    silently broken.
+    """
+    pipeline = mock_of[WorkPipeline]()
+    pipeline.run.side_effect = MemoryError("OOM")
+    with pytest.raises(MemoryError):
+        await _adapter(pipeline).submit(_filing())
+
+
+async def test_submit_propagates_recursion_error() -> None:
+    pipeline = mock_of[WorkPipeline]()
+    pipeline.run.side_effect = RecursionError("stack overflow")
+    with pytest.raises(RecursionError):
+        await _adapter(pipeline).submit(_filing())
+
+
+async def test_submit_propagates_generic_exception() -> None:
+    """An unexpected pipeline failure surfaces to the caller.
+
+    The background coroutine in the controller logs and swallows
+    broad exceptions to keep the detached task safe; the adapter
+    layer itself must not pre-empt that and propagates everything
+    so the controller's logging seam sees the real type.
+    """
+    pipeline = mock_of[WorkPipeline]()
+    pipeline.run.side_effect = ValueError("unexpected pipeline failure")
+    with pytest.raises(ValueError, match="unexpected pipeline failure"):
+        await _adapter(pipeline).submit(_filing())
