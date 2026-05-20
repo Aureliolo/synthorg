@@ -19,7 +19,7 @@ from synthorg.engine.pipeline.entry.factory import build_work_entry_adapter
 from synthorg.engine.pipeline.models import WorkSource
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
-from synthorg.observability.events.objectives import OBJECTIVE_SUBMISSION_RECEIVED
+from synthorg.observability.events.objectives import OBJECTIVE_ENTRY_WIRED
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
 
@@ -105,7 +105,7 @@ async def wire_real_objective_entry(
     """
     if not app_state.has_work_pipeline:
         logger.info(
-            OBJECTIVE_SUBMISSION_RECEIVED,
+            OBJECTIVE_ENTRY_WIRED,
             service="objective_entry_adapter",
             mode="disabled",
             note="no work pipeline; real objective entry offline",
@@ -120,7 +120,7 @@ async def wire_real_objective_entry(
     ).strip()
     if not default_project:
         logger.warning(
-            OBJECTIVE_SUBMISSION_RECEIVED,
+            OBJECTIVE_ENTRY_WIRED,
             service="objective_entry_adapter",
             mode="disabled",
             note="objectives.default_project resolved blank",
@@ -130,7 +130,7 @@ async def wire_real_objective_entry(
         app_state,
         default_project,
         service="objective_entry_adapter",
-        event=OBJECTIVE_SUBMISSION_RECEIVED,
+        event=OBJECTIVE_ENTRY_WIRED,
         description="Default project for real goal/objective intake.",
     )
     adapter = build_work_entry_adapter(

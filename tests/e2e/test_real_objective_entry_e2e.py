@@ -36,6 +36,8 @@ from synthorg.core.enums import (
 )
 from synthorg.core.project import Project
 from synthorg.core.role import Authority, Skill
+from synthorg.engine.intake.engine import IntakeEngine
+from synthorg.engine.intake.strategies import DirectIntake
 from synthorg.engine.pipeline.entry.objective_adapter import (
     ObjectiveEntryAdapter,
     ObjectiveSubmission,
@@ -149,7 +151,12 @@ async def _build_objective_adapter(
         settings_service=settings_service,
         config=root_config,
     )
-    sim_state = ClientSimulationState()
+    sim_state = ClientSimulationState(
+        intake_engine=IntakeEngine(
+            strategy=DirectIntake(task_engine=task_engine, project=_PROJECT),
+        ),
+        intake_default_project=_PROJECT,
+    )
     harness_state = mock_of[AppState](
         has_active_provider=True,
         provider_registry=registry,

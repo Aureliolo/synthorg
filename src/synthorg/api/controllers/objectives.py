@@ -105,7 +105,6 @@ async def submit_objective_impl(
     logger.info(
         OBJECTIVE_SUBMISSION_RECEIVED,
         submission_id=submission.submission_id,
-        requested_by=submission.requested_by,
     )
     task = asyncio.create_task(_drive_pipeline(adapter, submission))
     task.add_done_callback(
@@ -115,8 +114,8 @@ async def submit_objective_impl(
             submission_id=submission.submission_id,
         ),
     )
-    task.add_done_callback(app_state.objective_background_tasks.discard)
     app_state.objective_background_tasks.add(task)
+    task.add_done_callback(app_state.objective_background_tasks.discard)
     return ApiResponse(
         data=SubmitObjectiveAck(
             submission_id=submission.submission_id,

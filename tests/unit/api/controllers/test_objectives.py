@@ -13,7 +13,7 @@ the identical control flow the production HTTP handler runs.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from pydantic import ValidationError
@@ -40,6 +40,8 @@ from synthorg.engine.pipeline.models import (
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
+
+_DONE_CALLBACK_POLL_ITERATIONS: Final[int] = 10
 
 
 def _payload(**overrides: Any) -> SubmitObjectivePayload:
@@ -155,8 +157,10 @@ async def test_done_callback_discards_task_from_set() -> None:
     await submit_objective_impl(app_state, _payload())
     pending = next(iter(app_state.objective_background_tasks))
     await pending
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
+    for _ in range(_DONE_CALLBACK_POLL_ITERATIONS):
+        if not app_state.objective_background_tasks:
+            break
+        await asyncio.sleep(0)
     assert len(app_state.objective_background_tasks) == 0
 
 

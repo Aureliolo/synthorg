@@ -142,7 +142,6 @@ class ObjectiveEntryAdapter:
         logger.info(
             OBJECTIVE_SUBMISSION_RECEIVED,
             submission_id=request.submission_id,
-            requested_by=request.requested_by,
             project=self._default_project,
         )
         return await self._work_pipeline.run(work_item)
