@@ -8,6 +8,7 @@ through the work pipeline via the approval-decision seam (still no
 autonomous acting).
 """
 
+import asyncio
 import uuid
 from typing import TYPE_CHECKING
 
@@ -146,6 +147,39 @@ class ChiefOfStaffProposer:
         self._approval_store = approval_store
         self._clock: Clock = clock or SystemClock()
         self._cost_tracker = cost_tracker
+        # Per-conversation locks serialise the whole turn pipeline
+        # (resolve -> ordered_turns -> append user -> run model ->
+        # append assistant + proposals -> update conversation) so two
+        # concurrent ``converse()`` calls on the same conversation
+        # cannot interleave their snapshots of history nor commit
+        # turns the other side never saw. New conversations
+        # (``args.conversation_id is None``) skip the lock because no
+        # other caller can address the id before it's assigned.
+        # ``_conversation_locks_guard`` is lazy-initialised on first
+        # use so the lock binds to the request-handling event loop
+        # rather than whichever loop ran ``__init__``.
+        self._conversation_locks: dict[str, asyncio.Lock] = {}
+        self._conversation_locks_guard: asyncio.Lock | None = None
+
+    async def _lock_for(self, conversation_id: str) -> asyncio.Lock:
+        """Return the asyncio.Lock for *conversation_id*, creating it once.
+
+        Lazy-initialises ``_conversation_locks_guard`` so the guard
+        lock binds to the live request-handling loop rather than the
+        loop that built the proposer. Subsequent callers re-use the
+        same per-conversation lock instance through the guarded
+        dict lookup; a tight race on first guard-init merely wastes
+        a Lock() instance (the loser drops its instance after
+        observing the populated guard).
+        """
+        if self._conversation_locks_guard is None:
+            self._conversation_locks_guard = asyncio.Lock()
+        async with self._conversation_locks_guard:
+            lock = self._conversation_locks.get(conversation_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._conversation_locks[conversation_id] = lock
+            return lock
 
     async def converse(self, args: ProposeArgs) -> ProposeResult:
         """Run one clarify-or-propose turn.
@@ -175,6 +209,24 @@ class ChiefOfStaffProposer:
         """
         now = self._clock.now()
         conversation = await self._resolve_conversation(args, now)
+        # Serialise the turn pipeline per conversation so concurrent
+        # converse() calls cannot snapshot the same prior_turns and
+        # then commit assistant turns the other side never saw.
+        # The lock is held across the LLM call -- this is intentional
+        # for v1's 1:1 conversational interface where turns must stay
+        # linear; the LLM round-trip is the natural pacing unit and
+        # the contention window is small (one user per conversation
+        # at v1 fan-out).
+        async with await self._lock_for(conversation.id):
+            return await self._run_turn(conversation, args, now)
+
+    async def _run_turn(
+        self,
+        conversation: Conversation,
+        args: ProposeArgs,
+        now: datetime,
+    ) -> ProposeResult:
+        """Body of one converse() turn under the conversation lock."""
         prior_turns = await self._ordered_turns(conversation.id)
         next_sequence = len(prior_turns)
 

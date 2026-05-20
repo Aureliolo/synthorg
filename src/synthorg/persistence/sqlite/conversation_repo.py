@@ -468,12 +468,28 @@ class SQLiteConversationTurnRepository:
                         and attempt < _TURN_APPEND_MAX_RETRIES
                     )
                     if sequence_race:
-                        cursor = await self._db.execute(
-                            _TURN_NEXT_SEQUENCE_SQL,
-                            (current.conversation_id,),
-                        )
-                        row = await cursor.fetchone()
-                        next_sequence = int(row[0]) if row is not None else 0
+                        try:
+                            cursor = await self._db.execute(
+                                _TURN_NEXT_SEQUENCE_SQL,
+                                (current.conversation_id,),
+                            )
+                            row = await cursor.fetchone()
+                            next_sequence = int(row[0]) if row is not None else 0
+                        except (sqlite3.Error, aiosqlite.Error) as resequence_exc:
+                            msg = (
+                                "Failed to resolve next sequence while "
+                                f"appending turn {current.id!r} "
+                                f"(conversation {current.conversation_id!r})"
+                            )
+                            logger.warning(
+                                PERSISTENCE_CONVERSATION_TURN_FAILED,
+                                operation="append",
+                                phase="resequence",
+                                conversation_id=current.conversation_id,
+                                error_type=type(resequence_exc).__name__,
+                                error=safe_error_description(resequence_exc),
+                            )
+                            raise QueryError(msg) from resequence_exc
                         current = current.model_copy(
                             update={"sequence": next_sequence},
                         )

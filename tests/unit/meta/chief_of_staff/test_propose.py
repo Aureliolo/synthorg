@@ -1,5 +1,6 @@
 """Unit tests for the Chief of Staff clarify-and-propose service."""
 
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
@@ -486,3 +487,58 @@ class TestClarificationCap:
         assert result.conversation_closed is True
         assert provider.call_count == 0
         assert conv_repo.items["c1"].status is ConversationStatus.CLOSED
+
+
+class TestConcurrentConverse:
+    async def test_per_conversation_lock_serialises_turns(self) -> None:
+        # Two converse() calls on the SAME conversation must not
+        # interleave; the second must see the first's user turn in
+        # its prior history. Without the lock, both calls would
+        # snapshot prior_turns=() and assign sequence=0 each.
+        provider = ScriptedProvider(
+            responses=[
+                make_text_response(_CLARIFY_JSON),
+                make_text_response(_CLARIFY_JSON),
+            ],
+        )
+        proposer, conv_repo, turn_repo, _, _ = _build(provider=provider)
+        conv_repo.items["c-conc"] = Conversation(
+            id=NotBlankStr("c-conc"),
+            created_by=NotBlankStr("user-1"),
+            created_at=_START,
+            updated_at=_START,
+            status=ConversationStatus.ACTIVE,
+        )
+
+        async def call(message: str) -> object:
+            return await proposer.converse(
+                ProposeArgs(
+                    message=NotBlankStr(message),
+                    created_by=NotBlankStr("user-1"),
+                    conversation_id=NotBlankStr("c-conc"),
+                )
+            )
+
+        # Fire both concurrently; the lock must serialise them.
+        await asyncio.gather(call("first"), call("second"))
+
+        # Two USER turns (the inputs) + two ASSISTANT turns (the
+        # clarifying questions). Sequences must be 0, 1, 2, 3 with no
+        # collisions; absent the lock both calls would assign 0.
+        sequences = sorted(t.sequence for t in turn_repo.turns)
+        assert sequences == [0, 1, 2, 3]
+        ids = {t.id for t in turn_repo.turns}
+        assert len(ids) == 4
+
+    async def test_locks_isolated_per_conversation(self) -> None:
+        # Two different conversations get independent locks; their
+        # turn pipelines do not block one another. (Easier to verify
+        # structurally than via timing -- assert that distinct
+        # ``_lock_for`` calls return distinct lock instances.)
+        provider = ScriptedProvider(responses=[])
+        proposer, *_ = _build(provider=provider)
+        lock_a = await proposer._lock_for("conv-A")
+        lock_b = await proposer._lock_for("conv-B")
+        lock_a_again = await proposer._lock_for("conv-A")
+        assert lock_a is not lock_b
+        assert lock_a is lock_a_again
