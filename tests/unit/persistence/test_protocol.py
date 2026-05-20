@@ -72,6 +72,7 @@ if TYPE_CHECKING:
     from synthorg.core.artifact import Artifact
     from synthorg.core.auth.models import ApiKey, User
     from synthorg.core.project import Project
+    from synthorg.core.project_workspace import ProjectWorkspace
     from synthorg.core.task import Task
     from synthorg.engine.agent_state import AgentRuntimeState
     from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
@@ -584,10 +585,10 @@ class _FakeArtifactRepository:
 
 
 class _FakeProjectWorkspaceRepository:
-    async def save(self, entity: object) -> None:
+    async def save(self, entity: ProjectWorkspace) -> None:
         del entity
 
-    async def get(self, entity_id: NotBlankStr) -> object | None:
+    async def get(self, entity_id: NotBlankStr) -> ProjectWorkspace | None:
         del entity_id
         return None
 
@@ -596,7 +597,7 @@ class _FakeProjectWorkspaceRepository:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[object, ...]:
+    ) -> tuple[ProjectWorkspace, ...]:
         del limit, offset
         return ()
 

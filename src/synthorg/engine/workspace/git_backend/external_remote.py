@@ -76,13 +76,11 @@ class ExternalRemoteGitBackend:
                 "registered or has no base_url"
             )
             raise GitBackendConfigError(msg)
+        # ``get_credentials`` returns ``dict[str, str]`` per its protocol
+        # (never None); an empty dict / missing ``token`` key surfaces as
+        # the same typed ``GitBackendConfigError`` below, which is the
+        # path a None return would have taken.
         credentials = await self._catalog.get_credentials(self._connection_name)
-        if credentials is None:
-            msg = (
-                f"external git connection {self._connection_name!r} has no "
-                "stored credentials"
-            )
-            raise GitBackendConfigError(msg)
         token = credentials.get("token")
         if not token:
             msg = (

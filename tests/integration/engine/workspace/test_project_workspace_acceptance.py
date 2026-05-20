@@ -204,14 +204,14 @@ class TestConcurrentAgentsNoCollision:
         )
         await coord.start()
         try:
-            both = asyncio.create_task(
-                asyncio.gather(
-                    coord.enqueue_merge_push(
-                        workspace=_workspace("w1", "feature-a", repo_root)
-                    ),
-                    coord.enqueue_merge_push(
-                        workspace=_workspace("w2", "feature-b", repo_root)
-                    ),
+            task1 = asyncio.create_task(
+                coord.enqueue_merge_push(
+                    workspace=_workspace("w1", "feature-a", repo_root),
+                ),
+            )
+            task2 = asyncio.create_task(
+                coord.enqueue_merge_push(
+                    workspace=_workspace("w2", "feature-b", repo_root),
                 ),
             )
             # Wait until the first push is parked inside ``_push``; if
@@ -222,7 +222,8 @@ class TestConcurrentAgentsNoCollision:
             # entry if a regression broke serialisation.
             await asyncio.sleep(0)
             release_first_push.set()
-            r1, r2 = await both
+            r1 = await task1
+            r2 = await task2
         finally:
             await coord.stop()
             backend.push = real_push  # type: ignore[method-assign]
