@@ -149,6 +149,13 @@ def build_red_team_runtime(
             "build_red_team_tool_seed(config=...) before the engine so the "
             "tool is registered on the engine's tool registry."
         )
+        logger.error(
+            RED_TEAM_GATE_SKIPPED,
+            reason="seed_incomplete",
+            has_report_repo=seed.report_repo is not None,
+            has_submit_tool=seed.submit_tool is not None,
+            note=msg,
+        )
         raise RedTeamRuntimeSeedIncompleteError(msg)
 
     grounding = build_grounding_checker(config.grounding_checker_kind)

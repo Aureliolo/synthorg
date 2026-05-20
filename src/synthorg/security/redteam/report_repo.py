@@ -1,8 +1,8 @@
 """In-memory :class:`RedTeamReportRepository` implementation.
 
 The v1 repository is an async-safe in-memory dict keyed by
-``execution_id``. A persistent SQLite/Postgres adapter is deferred to a
-follow-up (see plan doc Open items). The repo is single-shot per
+``execution_id``. An in-memory store suffices because each agent run is
+scoped to a single host process. The repo is single-shot per
 ``execution_id``: a second ``put`` for the same key raises
 :class:`RedTeamReportAlreadyExistsError`.
 """

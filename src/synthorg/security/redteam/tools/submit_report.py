@@ -130,12 +130,25 @@ class SubmitRedTeamReportTool(BaseTool):
             )
             raise RedTeamReportValidationError(msg)
 
-        report = RedTeamReport(
-            execution_id=args.execution_id,
-            task_id=args.task_id,
-            findings=args.findings,
-            summary=args.summary,
-        )
+        try:
+            report = RedTeamReport(
+                execution_id=args.execution_id,
+                task_id=args.task_id,
+                findings=args.findings,
+                summary=args.summary,
+            )
+        except ValidationError as exc:
+            logger.warning(
+                RED_TEAM_REPORT_VALIDATION_FAILED,
+                reason="report_model_validation",
+                execution_id=args.execution_id,
+                task_id=args.task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = "submit_red_team_report report construction failed validation"
+            raise RedTeamReportValidationError(msg) from exc
+
         try:
             await self._report_repo.put(
                 execution_id=args.execution_id,

@@ -5,10 +5,10 @@ defect, after the normal ReviewPipeline returns PASS, is BLOCKed by
 the red-team gate and the task transitions IN_REVIEW -> IN_PROGRESS
 (rework) instead of COMPLETED.
 
-This is the missing end-to-end coverage flagged by the pre-PR review:
-the gate test in tests/unit/security/redteam/test_gate.py validates
-the gate's verdict in isolation; this file validates the ReviewGate
-service consumes the verdict correctly.
+Unit coverage in tests/unit/security/redteam/test_gate.py validates
+the gate's verdict in isolation; this integration file verifies the
+service-level routing contract: the ReviewGateService consumes that
+verdict and applies the expected IN_REVIEW -> IN_PROGRESS transition.
 """
 
 from typing import Any
