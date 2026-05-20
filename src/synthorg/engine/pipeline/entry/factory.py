@@ -1,15 +1,17 @@
 """Factory for source-keyed work-entry adapters.
 
-Dispatch on :class:`WorkSource`. This child ships the ``INTAKE`` arm;
-sibling work adds ``TASK_BOARD`` / ``OBJECTIVE`` arms here. A source
-with no adapter is a hard error (no silent default), matching the
-project-wide pluggable-subsystems contract.
+Dispatch on :class:`WorkSource`. Ships the ``INTAKE`` and
+``OBJECTIVE`` arms; sibling work adds ``TASK_BOARD`` /
+``CONVERSATIONAL`` here. A source with no adapter is a hard error
+(no silent default), matching the project-wide pluggable-subsystems
+contract.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.client.factory import UnknownStrategyError
 from synthorg.engine.pipeline.entry.intake_adapter import IntakeEntryAdapter
+from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveEntryAdapter
 from synthorg.engine.pipeline.models import WorkSource
 
 if TYPE_CHECKING:
@@ -23,13 +25,17 @@ def build_work_entry_adapter(
     *,
     work_pipeline: WorkPipeline,
     default_project: NotBlankStr,
-) -> WorkEntryAdapter:
+) -> WorkEntryAdapter[Any]:
     """Construct the work-entry adapter for ``source``.
 
     Args:
         source: The originating work source discriminator.
         work_pipeline: The composed pipeline spine to drive.
-        default_project: Project intake work items are filed into.
+        default_project: Project work items are filed into. For
+            ``INTAKE`` this is the client-intake project; for
+            ``OBJECTIVE`` it is the objectives default project. The
+            same value is created at boot by the corresponding
+            ``wire_real_*_entry`` hook.
 
     Returns:
         The concrete :class:`WorkEntryAdapter`.
@@ -39,6 +45,11 @@ def build_work_entry_adapter(
     """
     if source is WorkSource.INTAKE:
         return IntakeEntryAdapter(
+            work_pipeline=work_pipeline,
+            default_project=default_project,
+        )
+    if source is WorkSource.OBJECTIVE:
+        return ObjectiveEntryAdapter(
             work_pipeline=work_pipeline,
             default_project=default_project,
         )

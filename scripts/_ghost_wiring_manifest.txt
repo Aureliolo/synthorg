@@ -43,3 +43,4 @@ ENFORCED SeenClaimsPruner #1966 -- constructed by workers.backend_services.build
 ENFORCED WorkerHeartbeatSubscriber #1966 -- constructed by workers.backend_services.build_distributed_backend_services; surfaces worker liveness in the log pipeline
 ENFORCED build_work_pipeline #1960 -- called by workers.runtime_builder._build_runtime_work_pipeline behind the provider-present switch; composes the work spine (intake -> projects -> solo/team -> coordination metrics)
 ENFORCED build_chief_of_staff_proposer #1968 -- called by api.app._wire_chief_of_staff_proposer behind propose_enabled + provider switch; constructs ChiefOfStaffProposer which parks approval-gated WorkItems for the conversational interface
+ENFORCED ObjectiveEntryAdapter #1964 -- built at boot by engine.pipeline.entry.boot.wire_real_objective_entry; fed by POST /objectives
