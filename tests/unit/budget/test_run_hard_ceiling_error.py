@@ -14,6 +14,8 @@ from synthorg.budget.errors import (
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
+pytestmark = pytest.mark.unit
+
 
 def test_run_hard_ceiling_exceeded_inherits_budget_exhausted() -> None:
     """Engine's existing `except BudgetExhaustedError` must absorb the ceiling.

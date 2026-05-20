@@ -127,6 +127,16 @@ class WorkItem(BaseModel):
             " has not yet attached one)"
         ),
     )
+    hard_ceiling: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Per-run hard ceiling carried from the approved forecast's"
+            " ceiling_amount. The intake phase stamps this onto the Task"
+            " so the in-loop BudgetChecker enforces the operator-approved"
+            " ceiling (None falls back to the global budget.run_hard_ceiling)"
+        ),
+    )
 
 
 class WorkPhaseResult(BaseModel):

@@ -37,6 +37,7 @@ from synthorg.observability.events.budget import (
     BUDGET_FORECAST_APPROVED,
     BUDGET_FORECAST_GENERATED,
     BUDGET_FORECAST_REJECTED,
+    BUDGET_FORECAST_UNAVAILABLE,
     BUDGET_HARD_CEILING_RAISED,
 )
 from synthorg.persistence.cost_forecast_protocol import (  # noqa: TC001
@@ -53,7 +54,8 @@ class ForecastRequest(BaseModel):
 
     brief_text: NotBlankStr = Field(description="Brief body to estimate")
     role_skeleton: tuple[NotBlankStr, ...] = Field(
-        description="Ordered role ids participating in the run",
+        min_length=1,
+        description="Ordered role ids participating in the run (non-empty)",
     )
     model_assignments: dict[NotBlankStr, NotBlankStr] = Field(
         default_factory=dict,
@@ -100,8 +102,11 @@ class RaiseCeilingRequest(BaseModel):
         ge=0.0,
         description=(
             "Accumulated cost at the moment of parking, supplied by the"
-            " operator UI so the endpoint can reject ceilings that would"
-            " re-halt the run immediately on resume"
+            " operator UI. The endpoint rejects ceilings that would"
+            " re-halt the run immediately on resume with a typed"
+            " RunHardCeilingTooLowError (richer than a generic 422), so"
+            " the cross-field check stays in the handler rather than a"
+            " model validator that would shadow that typed error"
         ),
     )
 
@@ -141,6 +146,12 @@ class ForecastBudgetController(Controller):
         repo = app_state.cost_forecast_repo
         budget = app_state.budget_config
         if forecaster is None or repo is None or budget is None:
+            logger.warning(
+                BUDGET_FORECAST_UNAVAILABLE,
+                has_forecaster=forecaster is not None,
+                has_repo=repo is not None,
+                has_budget_config=budget is not None,
+            )
             msg = "Cost forecaster not configured"
             raise ServiceUnavailableError(msg)
         signal = BriefSignal(

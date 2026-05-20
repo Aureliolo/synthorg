@@ -7,10 +7,12 @@ the quality at 40 percent of the cost if you downgrade these roles".
 ``cost_saving_pct`` so the dashboard can render "biggest wins first".
 
 Quality scores come from a :class:`BenchmarkScoreProvider` (see
-:mod:`synthorg.budget.benchmark_protocol`). Until sibling issue
-#1980 ships, :class:`StubBenchmarkScoreProvider` supplies calibrated
-per-tier constants and surfaces its provenance via
-:attr:`ParetoPoint.source`.
+:mod:`synthorg.budget.benchmark_protocol`). :class:`StubBenchmarkScoreProvider`
+supplies calibrated per-tier constants pending a measured benchmark
+integration; a real provider swaps in behind the protocol with no
+analyzer change, and the provenance is surfaced verbatim via
+:attr:`ParetoPoint.source` so the dashboard never mistakes stub data
+for measured data.
 """
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -18,7 +20,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.budget.benchmark_protocol import (  # noqa: TC001 -- runtime by Pydantic / analyzer
+from synthorg.budget.benchmark_protocol import (  # noqa: TC001 -- runtime by Pydantic
     BenchmarkScoreProvider,
 )
 from synthorg.budget.config import (  # noqa: TC001 -- runtime attr access

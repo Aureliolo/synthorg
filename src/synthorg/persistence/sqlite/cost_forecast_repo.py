@@ -145,7 +145,10 @@ def _row_to_forecast(row: Row) -> Forecast:
             updated_at=coerce_row_timestamp(row["updated_at"]),
         )
     except (ValueError, TypeError, KeyError) as exc:
-        msg = "Failed to parse cost forecast row"
+        msg = (
+            f"Failed to parse cost forecast row: "
+            f"{type(exc).__name__} ({safe_error_description(exc)})"
+        )
         logger.warning(
             PERSISTENCE_COST_FORECAST_FAILED,
             operation="deserialize",
@@ -322,7 +325,10 @@ class SQLiteCostForecastRepository:
                     operation="save",
                     forecast_id=str(entity.forecast_id),
                 )
-                msg = f"Failed to save forecast {entity.forecast_id!r}"
+                msg = (
+                    f"Failed to save forecast {entity.forecast_id!r}: "
+                    f"{type(exc).__name__} ({safe_error_description(exc)})"
+                )
                 logger.warning(
                     PERSISTENCE_COST_FORECAST_FAILED,
                     operation="save",

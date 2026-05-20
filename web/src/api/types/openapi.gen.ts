@@ -8278,7 +8278,7 @@ export type components = {
             readonly model_assignments?: {
                 readonly [key: string]: string;
             };
-            /** @description Ordered role ids participating in the run */
+            /** @description Ordered role ids participating in the run (non-empty) */
             readonly role_skeleton: readonly string[];
         };
         /** ForecastResponse */
@@ -10456,7 +10456,7 @@ export type components = {
         };
         /** RaiseCeilingRequest */
         readonly RaiseCeilingRequest: {
-            /** @description Accumulated cost at the moment of parking, supplied by the operator UI so the endpoint can reject ceilings that would re-halt the run immediately on resume */
+            /** @description Accumulated cost at the moment of parking, supplied by the operator UI. The endpoint rejects ceilings that would re-halt the run immediately on resume with a typed RunHardCeilingTooLowError (richer than a generic 422), so the cross-field check stays in the handler rather than a model validator that would shadow that typed error */
             readonly accumulated_cost: number;
             /** @description New hard ceiling (must be > accumulated cost at park) */
             readonly new_ceiling: number;

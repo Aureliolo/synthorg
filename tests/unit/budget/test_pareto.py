@@ -3,6 +3,8 @@
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 
+import pytest
+
 from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.budget.config import AutoDowngradeConfig, BudgetConfig
 from synthorg.budget.pareto import (
@@ -10,6 +12,8 @@ from synthorg.budget.pareto import (
     ParetoFrontier,
     RoleAssignment,
 )
+
+pytestmark = pytest.mark.unit
 
 _NOW = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
 

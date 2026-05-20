@@ -121,7 +121,13 @@ class ForecastGate:
         existing = await self._lookup_forecast(work_item)
         if existing is not None:
             if existing.decision is ForecastDecision.APPROVED:
-                return await self._work_pipeline.run(work_item)
+                # Carry the operator-approved ceiling onto the work item so
+                # the intake phase can stamp it onto the Task; without this
+                # the in-loop BudgetChecker only sees the global fallback.
+                released = work_item.model_copy(
+                    update={"hard_ceiling": existing.ceiling_amount},
+                )
+                return await self._work_pipeline.run(released)
             if existing.decision is ForecastDecision.REJECTED:
                 self._log_rejected(existing)
                 msg = (

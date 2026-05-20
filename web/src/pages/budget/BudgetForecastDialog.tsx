@@ -33,6 +33,16 @@ export function BudgetForecastDialog({
 }: BudgetForecastDialogProps) {
   const suggested = forecast ? Math.round(forecast.upper_bound * 1.5 * 100) / 100 : 0
   const [ceilingInput, setCeilingInput] = useState<string>(String(suggested))
+  // Reset the suggested ceiling when a different forecast is shown in the
+  // same mounted dialog (React's set-state-during-render pattern); without
+  // this the input keeps the first forecast's default.
+  const [trackedForecastId, setTrackedForecastId] = useState<string | null>(
+    forecast?.forecast_id ?? null,
+  )
+  if (forecast && forecast.forecast_id !== trackedForecastId) {
+    setTrackedForecastId(forecast.forecast_id)
+    setCeilingInput(String(suggested))
+  }
 
   const handleApprove = () => {
     const parsed = Number.parseFloat(ceilingInput)

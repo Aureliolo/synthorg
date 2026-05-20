@@ -36,6 +36,14 @@ export function HardCeilingHaltedBanner({
 }: HardCeilingHaltedBannerProps) {
   const suggested = Math.round(accumulatedCost * 1.5 * 100) / 100
   const [newCeiling, setNewCeiling] = useState<string>(String(suggested))
+  // Re-suggest when a different parked run is shown in the same mounted
+  // banner (set-state-during-render); otherwise the input keeps the
+  // first run's default ceiling.
+  const [trackedCost, setTrackedCost] = useState<number>(accumulatedCost)
+  if (accumulatedCost !== trackedCost) {
+    setTrackedCost(accumulatedCost)
+    setNewCeiling(String(suggested))
+  }
 
   const parsed = Number.parseFloat(newCeiling)
   const valid = Number.isFinite(parsed) && parsed > accumulatedCost

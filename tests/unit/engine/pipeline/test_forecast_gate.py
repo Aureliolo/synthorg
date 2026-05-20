@@ -24,6 +24,8 @@ from synthorg.engine.pipeline.models import (
     WorkSource,
 )
 
+pytestmark = pytest.mark.unit
+
 _NOW = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
 
 
@@ -211,6 +213,38 @@ class TestForecastGate:
 
         result = await gate.run(_work_item(forecast_id=approved.forecast_id))
         assert result.task_id == "task-001"
+
+    async def test_approved_forecast_stamps_ceiling_on_dispatched_item(self) -> None:
+        """The approved ceiling rides onto the work item the pipeline runs.
+
+        Guards the intake-phase plumbing: without this the in-loop
+        BudgetChecker would only see the global fallback ceiling, never
+        the operator-approved per-brief ceiling.
+        """
+        repo = _FakeForecastRepo()
+        approved = Forecast(
+            forecast_id=uuid4(),
+            brief_hash="e" * 64,
+            estimated_cost=0.5,
+            lower_bound=0.3,
+            upper_bound=0.7,
+            currency="USD",
+            decision=ForecastDecision.APPROVED,
+            decided_at=_NOW,
+            decided_by="op-1",
+            ceiling_amount=1.8,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+        repo.rows[approved.forecast_id] = approved
+        gate, _, work_pipeline = _gate(repo=repo)
+
+        await gate.run(_work_item(forecast_id=approved.forecast_id))
+
+        assert len(work_pipeline.calls) == 1
+        dispatched = work_pipeline.calls[0]
+        assert dispatched.hard_ceiling == 1.8
+        assert dispatched.forecast_id == approved.forecast_id
 
     async def test_rejected_forecast_raises_terminal_error(self) -> None:
         repo = _FakeForecastRepo()

@@ -31,6 +31,8 @@ from synthorg.core.task import Task
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.loop_protocol import TerminationReason
 
+pytestmark = pytest.mark.unit
+
 
 class _FakeApprovalGate:
     """Async ApprovalGate double recording park_context calls."""

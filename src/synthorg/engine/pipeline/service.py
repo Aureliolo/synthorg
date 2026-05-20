@@ -242,7 +242,30 @@ class DefaultWorkPipeline:
         if task is None:
             msg = f"intake reported task {result.task_id!r} but it is not persisted"
             raise WorkIntakeRejectedError(msg)
-        return task
+        return await self._link_forecast(task, work_item)
+
+    async def _link_forecast(self, task: Task, work_item: WorkItem) -> Task:
+        """Stamp the approved forecast id + ceiling onto the task.
+
+        The forecast gate releases an approved work item carrying its
+        ``forecast_id`` and the operator-approved ``hard_ceiling``. The
+        intake engine creates the task without those, so persist them
+        here: the in-loop ``BudgetChecker`` reads ``Task.hard_ceiling``
+        to enforce the per-brief ceiling, and the engine reads
+        ``Task.forecast_id`` to stamp halt context for the resume banner.
+        """
+        updates: dict[str, object] = {}
+        if work_item.forecast_id is not None:
+            updates["forecast_id"] = work_item.forecast_id
+        if work_item.hard_ceiling is not None:
+            updates["hard_ceiling"] = work_item.hard_ceiling
+        if not updates:
+            return task
+        return await self._task_engine.update_task(
+            task.id,
+            updates,
+            requested_by=work_item.requested_by,
+        )
 
     async def _resolve_project(self, work_item: WorkItem) -> None:
         """Bind the work to its project context (existence check)."""

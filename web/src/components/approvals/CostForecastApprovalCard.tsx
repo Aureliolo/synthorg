@@ -35,7 +35,7 @@ export function CostForecastApprovalCard({
       role="article"
       aria-label={`Cost forecast ${forecast.forecast_id.slice(0, 8)}`}
       className={cn(
-        'rounded-lg border bg-card p-card transition-all duration-200',
+        'rounded-lg border bg-card p-card transition-all duration-[var(--so-transition-default)]',
         isPending
           ? 'border-border hover:bg-card-hover hover:-translate-y-px hover:shadow-md'
           : 'border-border opacity-70',
@@ -91,7 +91,7 @@ export function CostForecastApprovalCard({
           <Button
             size="sm"
             variant="outline"
-            className="h-7 gap-1 border-success/30 text-success hover:bg-success/10"
+            className="border-success/30 text-success hover:bg-success/10"
             onClick={() => onApprove(null)}
             disabled={mutating}
           >
@@ -101,7 +101,7 @@ export function CostForecastApprovalCard({
           <Button
             size="sm"
             variant="outline"
-            className="h-7 gap-1 border-danger/30 text-danger hover:bg-danger/10"
+            className="border-danger/30 text-danger hover:bg-danger/10"
             onClick={onReject}
             disabled={mutating}
           >

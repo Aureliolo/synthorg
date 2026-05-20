@@ -20,10 +20,10 @@ The state machine for :class:`ForecastDecision`:
 
 from datetime import datetime  # noqa: TC003 -- required at runtime by Pydantic
 from enum import StrEnum
-from typing import Final
+from typing import Final, Self
 from uuid import UUID  # noqa: TC003 -- required at runtime by Pydantic
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.budget.currency import CurrencyCode  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -77,6 +77,18 @@ class HaltContext(BaseModel):
         description="ISO 4217 code stamped on both amounts",
     )
     halted_at: datetime = Field(description="When the halt was recorded")
+
+    @model_validator(mode="after")
+    def _accumulated_at_or_above_ceiling(self) -> Self:
+        """A halt only exists because the ceiling was crossed."""
+        if self.accumulated_cost < self.ceiling_amount:
+            msg = (
+                f"halt accumulated_cost ({self.accumulated_cost}) must be"
+                f" >= ceiling_amount ({self.ceiling_amount}); a halt is"
+                f" recorded only when the ceiling is crossed"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class Forecast(BaseModel):
@@ -161,3 +173,14 @@ class Forecast(BaseModel):
     )
     created_at: datetime = Field(description="Row creation timestamp")
     updated_at: datetime = Field(description="Last decision-state mutation timestamp")
+
+    @model_validator(mode="after")
+    def _estimate_within_band(self) -> Self:
+        """Mirror the DB CHECK so bad estimates fail at construction."""
+        if not (self.lower_bound <= self.estimated_cost <= self.upper_bound):
+            msg = (
+                f"estimated_cost ({self.estimated_cost}) must lie within"
+                f" [{self.lower_bound}, {self.upper_bound}]"
+            )
+            raise ValueError(msg)
+        return self

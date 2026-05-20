@@ -22,6 +22,7 @@ from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.task_sync import sync_to_task_engine
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.budget import BUDGET_HARD_CEILING_HALT_STAMPED
 from synthorg.observability.events.degradation import DEGRADATION_PROVIDER_SWAPPED
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_BUDGET_STOPPED,
@@ -366,6 +367,14 @@ class AgentEngineErrorsMixin:
                 error_type=type(stamp_exc).__name__,
                 error=safe_error_description(stamp_exc),
             )
+            return
+        logger.debug(
+            BUDGET_HARD_CEILING_HALT_STAMPED,
+            task_id=task_id,
+            forecast_id=str(exc.forecast_id),
+            accumulated_cost=exc.accumulated_cost,
+            ceiling_amount=exc.ceiling_amount,
+        )
 
     async def _handle_fatal_error(  # noqa: PLR0913
         self,

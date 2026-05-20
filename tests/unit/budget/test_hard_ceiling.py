@@ -32,6 +32,8 @@ from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 
+pytestmark = pytest.mark.unit
+
 
 def _config(
     *,

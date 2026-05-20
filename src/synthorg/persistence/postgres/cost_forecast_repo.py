@@ -123,7 +123,10 @@ def _row_to_forecast(row: dict[str, Any]) -> Forecast:
             updated_at=coerce_row_timestamp(row["updated_at"]),
         )
     except (ValueError, TypeError, KeyError) as exc:
-        msg = "Failed to parse cost forecast row"
+        msg = (
+            f"Failed to parse cost forecast row: "
+            f"{type(exc).__name__} ({safe_error_description(exc)})"
+        )
         logger.warning(
             PERSISTENCE_COST_FORECAST_FAILED,
             operation="deserialize",
@@ -258,6 +261,10 @@ class PostgresCostForecastRepository:
             format_iso_utc(entity.updated_at),
         )
         try:
+            # The connection context manager rolls back any uncommitted
+            # transaction on exception exit, so a failed execute/commit
+            # below never leaves a half-applied write (the explicit
+            # rollback the SQLite arm performs is implicit here).
             async with self._pool.connection() as conn:
                 await conn.execute(_UPSERT_SQL, params)
                 await conn.commit()
@@ -275,7 +282,10 @@ class PostgresCostForecastRepository:
             )
             raise ConstraintViolationError(msg, constraint=str(exc)) from exc
         except psycopg.Error as exc:
-            msg = f"Failed to save forecast {entity.forecast_id!r}"
+            msg = (
+                f"Failed to save forecast {entity.forecast_id!r}: "
+                f"{type(exc).__name__} ({safe_error_description(exc)})"
+            )
             logger.warning(
                 PERSISTENCE_COST_FORECAST_FAILED,
                 operation="save",

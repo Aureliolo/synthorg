@@ -244,49 +244,7 @@ class CostForecaster:
             msg = "Cannot forecast: role_skeleton is empty"
             raise ValueError(msg)
 
-        turns_per_role = (
-            signal.estimated_turns_per_role
-            if signal.estimated_turns_per_role is not None
-            else _DEFAULT_TURNS_PER_ROLE
-        )
-
-        # Per-role static priors blended with whatever observations
-        # history_lookup returns for the (tier, role) key.
-        per_role_estimates: list[float] = []
-        per_role_stddevs: list[float] = []
-        cold_start = True
-        for role_id in signal.role_skeleton:
-            model_id = signal.model_assignments.get(role_id, "")
-            tier = _tier_from_model_id(model_id) if model_id else "medium"
-            if tier is None:
-                tier = "medium"
-            prior_cost_per_turn = _static_prior_per_turn(self._config, tier)
-            observations = await self._history_lookup(tier, role_id)
-            if observations:
-                cold_start = False
-            blended_per_turn, std_per_turn = _bayesian_blend(
-                prior_mean=prior_cost_per_turn,
-                prior_weight=self._config.forecast_shrinkage_prior_weight,
-                observations=observations,
-            )
-            role_cost = blended_per_turn * turns_per_role
-            role_std = std_per_turn * turns_per_role
-            per_role_estimates.append(role_cost)
-            per_role_stddevs.append(role_std)
-
-        point_estimate = sum(per_role_estimates)
-        # Cold-start band: +/- _COLD_START_BAND_FRACTION around point;
-        # warm-band: sqrt-sum-of-squares of per-role stddevs, floored at
-        # _WARM_BAND_FLOOR_COEFFICIENT * point_estimate so the band
-        # never claims unrealistic precision.
-        if cold_start:
-            band = point_estimate * _COLD_START_BAND_FRACTION
-        else:
-            warm_std = math.sqrt(sum(s * s for s in per_role_stddevs))
-            band = max(warm_std, point_estimate * _WARM_BAND_FLOOR_COEFFICIENT)
-
-        lower = max(0.0, point_estimate - band)
-        upper = point_estimate + band
+        point_estimate, lower, upper, cold_start = await self._estimate_band(signal)
         now = self._clock()
 
         forecast_id: UUID = uuid4()
@@ -317,6 +275,53 @@ class CostForecaster:
             cold_start=cold_start,
         )
         return forecast
+
+    async def _estimate_band(
+        self,
+        signal: BriefSignal,
+    ) -> tuple[float, float, float, bool]:
+        """Blend per-role priors with history into ``(point, lo, hi, cold)``.
+
+        Each role's static per-turn prior is blended (Bayesian shrinkage)
+        with whatever observations ``history_lookup`` returns for the
+        ``(tier, role)`` key. The band is cold-start (a fixed fraction of
+        the point estimate) when no role had history, else the
+        sqrt-sum-of-squares of per-role stddevs floored at a coefficient
+        of the point estimate so it never claims unrealistic precision.
+        """
+        turns_per_role = (
+            signal.estimated_turns_per_role
+            if signal.estimated_turns_per_role is not None
+            else _DEFAULT_TURNS_PER_ROLE
+        )
+        per_role_estimates: list[float] = []
+        per_role_stddevs: list[float] = []
+        cold_start = True
+        for role_id in signal.role_skeleton:
+            model_id = signal.model_assignments.get(role_id, "")
+            tier = _tier_from_model_id(model_id) if model_id else "medium"
+            if tier is None:
+                tier = "medium"
+            observations = await self._history_lookup(tier, role_id)
+            if observations:
+                cold_start = False
+            blended_per_turn, std_per_turn = _bayesian_blend(
+                prior_mean=_static_prior_per_turn(self._config, tier),
+                prior_weight=self._config.forecast_shrinkage_prior_weight,
+                observations=observations,
+            )
+            per_role_estimates.append(blended_per_turn * turns_per_role)
+            per_role_stddevs.append(std_per_turn * turns_per_role)
+
+        point_estimate = sum(per_role_estimates)
+        if cold_start:
+            band = point_estimate * _COLD_START_BAND_FRACTION
+        else:
+            warm_std = math.sqrt(sum(s * s for s in per_role_stddevs))
+            band = max(warm_std, point_estimate * _WARM_BAND_FLOOR_COEFFICIENT)
+        lower = max(0.0, point_estimate - band)
+        upper = point_estimate + band
+        return point_estimate, lower, upper, cold_start
 
 
 __all__ = [

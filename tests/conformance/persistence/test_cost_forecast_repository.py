@@ -175,6 +175,31 @@ class TestCostForecastRepository:
         with pytest.raises(MixedCurrencyAggregationError):
             await repo.save(forecast)
 
+    async def test_count_matches_filtered_query(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """``count(spec)`` agrees with the length of ``query(spec)``."""
+        repo = _repo(backend)
+        await repo.save(_make_forecast(forecast_id="c1", brief_hash="ca" * 32))
+        await repo.save(_make_forecast(forecast_id="c2", brief_hash="cb" * 32))
+        approved = _make_forecast(
+            forecast_id="c3",
+            brief_hash="cc" * 32,
+            decision=ForecastDecision.APPROVED,
+            decided_by="op-1",
+            decided_at=_NOW,
+        )
+        await repo.save(approved)
+
+        pending_spec = CostForecastFilterSpec(decision=ForecastDecision.PENDING)
+        pending_count = await repo.count(pending_spec)
+        pending_rows = await repo.query(pending_spec)
+        assert pending_count == len(pending_rows)
+        assert pending_count >= 2
+
+        hash_spec = CostForecastFilterSpec(brief_hash="ca" * 32)
+        assert await repo.count(hash_spec) == 1
+
     async def test_query_filter_by_brief_hash(
         self, backend: PersistenceBackend
     ) -> None:

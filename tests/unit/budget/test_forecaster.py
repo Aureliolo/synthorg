@@ -13,6 +13,8 @@ from synthorg.budget.forecaster import (
     compute_brief_hash,
 )
 
+pytestmark = pytest.mark.unit
+
 _FIXED_NOW = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
 
 

@@ -14,9 +14,9 @@ see whether they are reading stub or measured data.
 
 from collections.abc import Mapping  # noqa: TC003 -- required at runtime by Pydantic
 from datetime import datetime  # noqa: TC003 -- required at runtime by Pydantic
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -54,6 +54,17 @@ class BenchmarkScore(BaseModel):
         description='Provenance identifier (e.g. "stub:calibrated-v1")',
     )
     last_updated: datetime = Field(description="When this score was last refreshed")
+
+    @model_validator(mode="after")
+    def _score_within_confidence_band(self) -> Self:
+        """The point estimate must lie inside its confidence interval."""
+        if not (self.confidence_lower <= self.score <= self.confidence_upper):
+            msg = (
+                f"score ({self.score}) must lie within the confidence band"
+                f" [{self.confidence_lower}, {self.confidence_upper}]"
+            )
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable
