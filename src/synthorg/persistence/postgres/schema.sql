@@ -1253,6 +1253,45 @@ CREATE TABLE conversational_proposals (
 CREATE UNIQUE INDEX idx_cp_approval_id
     ON conversational_proposals(approval_id);
 
+-- Pre-flight cost forecasts (#1982).
+CREATE TABLE cost_forecasts (
+    forecast_id UUID NOT NULL PRIMARY KEY,
+    brief_hash TEXT NOT NULL
+        CHECK (char_length(trim(brief_hash)) > 0),
+    estimated_cost DOUBLE PRECISION NOT NULL CHECK (estimated_cost >= 0),
+    lower_bound DOUBLE PRECISION NOT NULL CHECK (lower_bound >= 0),
+    upper_bound DOUBLE PRECISION NOT NULL CHECK (upper_bound >= 0),
+    currency TEXT NOT NULL CHECK (char_length(currency) = 3),
+    decision TEXT NOT NULL DEFAULT 'pending' CHECK (
+        decision IN ('pending', 'approved', 'rejected', 'superseded')
+    ),
+    decided_at TIMESTAMPTZ,
+    decided_by TEXT
+        CHECK (decided_by IS NULL OR char_length(trim(decided_by)) > 0),
+    ceiling_amount DOUBLE PRECISION
+        CHECK (ceiling_amount IS NULL OR ceiling_amount >= 0),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT chk_cf_lower_le_upper CHECK (lower_bound <= upper_bound),
+    CONSTRAINT chk_cf_estimate_within_band CHECK (
+        estimated_cost >= lower_bound AND estimated_cost <= upper_bound
+    ),
+    CONSTRAINT chk_cf_decision_timestamp CHECK (
+        (decision = 'pending' AND decided_at IS NULL AND decided_by IS NULL)
+        OR (decision = 'superseded' AND decided_at IS NOT NULL AND decided_by IS NULL)
+        OR (decision IN ('approved', 'rejected')
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL)
+    )
+);
+CREATE UNIQUE INDEX idx_cost_forecasts_unique_pending
+    ON cost_forecasts(brief_hash)
+    WHERE decision = 'pending';
+CREATE INDEX idx_cost_forecasts_brief_hash
+    ON cost_forecasts(brief_hash);
+CREATE INDEX idx_cost_forecasts_decision
+    ON cost_forecasts(decision);
+
 -- Org memory: MVCC operation log + materialized snapshot.
 -- Tags are TEXT JSON to match the SQLite backend's serialization;
 -- cross-backend parity wins over Postgres-native JSONB idiom here.
