@@ -208,3 +208,25 @@ def test_penalty_table_rejects_floor_above_grade_ceiling() -> None:
     the grade domain or downstream math produces out-of-range scores."""
     with pytest.raises(PydValidationError):
         PenaltyTable(floor=GRADE_CEILING + 1)
+
+
+@pytest.mark.unit
+def test_aggregate_uses_penalty_table_floor_consistently() -> None:
+    """A custom PenaltyTable.floor must clamp the final score without tripping
+    the AggregationResult validator (which would have used global GRADE_FLOOR
+    instead of penalty_table.floor before the round-4 fix)."""
+    custom_floor = 50
+    table = PenaltyTable(
+        points_per_event={"x.event": 80},
+        cap_per_class=80,
+        floor=custom_floor,
+    )
+    # grade=70, one tracked event * 80 points = 80 deduction -> raw final 70-80=-10
+    # without floor; clamped at penalty_table.floor=50.
+    result = aggregate_brief_score(
+        grade=70,
+        events_by_class={"x.event": 1},
+        penalty_table=table,
+    )
+    assert result.score == custom_floor
+    assert result.floor == custom_floor

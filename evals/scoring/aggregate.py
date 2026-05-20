@@ -62,7 +62,11 @@ class PenaltyEntry(BaseModel):
 class AggregationResult(BaseModel):
     """The outcome of combining grade + process facts for one brief.
 
-    Invariant: ``score == max(grade - deduction, GRADE_FLOOR)``.
+    Invariant: ``score == max(grade - deduction, floor)`` where ``floor``
+    is whichever lower bound the aggregator was configured with (the
+    penalty table's ``floor``, never the loose global ``GRADE_FLOOR``).
+    The aggregator and validator share that one source so a custom
+    ``PenaltyTable.floor`` does not desynchronise the two.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -70,6 +74,7 @@ class AggregationResult(BaseModel):
     grade: int = Field(ge=GRADE_FLOOR, le=GRADE_CEILING)
     deduction: int = Field(ge=0)
     score: int = Field(ge=GRADE_FLOOR, le=GRADE_CEILING)
+    floor: int = Field(default=GRADE_FLOOR, ge=GRADE_FLOOR, le=GRADE_CEILING)
     entries: tuple[PenaltyEntry, ...]
 
     # ``@property`` (not ``@computed_field``) so the derived value never
@@ -83,14 +88,14 @@ class AggregationResult(BaseModel):
 
     @model_validator(mode="after")
     def _score_matches_grade_minus_deduction(self) -> Self:
-        """Enforce ``score == max(grade - deduction, GRADE_FLOOR)`` at build time."""
-        expected = max(self.grade - self.deduction, GRADE_FLOOR)
+        """Enforce ``score == max(grade - deduction, floor)`` at build time."""
+        expected = max(self.grade - self.deduction, self.floor)
         if self.score != expected:
             msg = (
                 f"AggregationResult: score={self.score} does not match "
                 f"expected {expected} "
                 f"(grade={self.grade} - deduction={self.deduction}, "
-                f"floored at {GRADE_FLOOR})"
+                f"floored at {self.floor})"
             )
             raise ValueError(msg)
         return self
@@ -152,6 +157,7 @@ def aggregate_brief_score(
         grade=grade,
         deduction=total_deduction,
         score=final_score,
+        floor=penalty_table.floor,
         entries=tuple(entries),
     )
 

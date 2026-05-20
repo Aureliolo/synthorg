@@ -38,6 +38,7 @@ def write_scorecard_json(scorecard: Scorecard, out_dir: Path) -> Path:
         mode="w",
         dir=out_dir,
         encoding="utf-8",
+        newline="\n",
         prefix=f".{SCORECARD_JSON_FILENAME}.",
         suffix=".tmp",
         delete=False,
