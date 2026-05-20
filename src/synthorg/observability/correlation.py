@@ -36,6 +36,7 @@ def _build_bindings(
     request_id: str | None,
     task_id: str | None,
     agent_id: str | None,
+    project_id: str | None = None,
 ) -> dict[str, str]:
     """Build a contextvars bindings dict from non-None correlation IDs."""
     bindings: dict[str, str] = {}
@@ -45,6 +46,8 @@ def _build_bindings(
         bindings["task_id"] = task_id
     if agent_id is not None:
         bindings["agent_id"] = agent_id
+    if project_id is not None:
+        bindings["project_id"] = project_id
     return bindings
 
 
@@ -62,6 +65,7 @@ def bind_correlation_id(
     request_id: str | None = None,
     task_id: str | None = None,
     agent_id: str | None = None,
+    project_id: str | None = None,
 ) -> None:
     """Bind correlation IDs to the current context.
 
@@ -72,8 +76,9 @@ def bind_correlation_id(
         request_id: Request correlation identifier.
         task_id: Task correlation identifier.
         agent_id: Agent correlation identifier.
+        project_id: Project correlation identifier.
     """
-    bindings = _build_bindings(request_id, task_id, agent_id)
+    bindings = _build_bindings(request_id, task_id, agent_id, project_id)
     if bindings:
         structlog.contextvars.bind_contextvars(**bindings)
 
@@ -83,6 +88,7 @@ def unbind_correlation_id(
     request_id: bool = False,
     task_id: bool = False,
     agent_id: bool = False,
+    project_id: bool = False,
 ) -> None:
     """Remove specific correlation IDs from the current context.
 
@@ -90,6 +96,7 @@ def unbind_correlation_id(
         request_id: Whether to unbind the ``request_id`` key.
         task_id: Whether to unbind the ``task_id`` key.
         agent_id: Whether to unbind the ``agent_id`` key.
+        project_id: Whether to unbind the ``project_id`` key.
     """
     keys: list[str] = []
     if request_id:
@@ -98,6 +105,8 @@ def unbind_correlation_id(
         keys.append("task_id")
     if agent_id:
         keys.append("agent_id")
+    if project_id:
+        keys.append("project_id")
     if keys:
         structlog.contextvars.unbind_contextvars(*keys)
 
@@ -105,13 +114,14 @@ def unbind_correlation_id(
 def clear_correlation_ids() -> None:
     """Remove all correlation IDs from the current context.
 
-    Unbinds ``request_id``, ``task_id``, and ``agent_id``.  Other
-    context variables are preserved.
+    Unbinds ``request_id``, ``task_id``, ``agent_id``, and
+    ``project_id``.  Other context variables are preserved.
     """
     structlog.contextvars.unbind_contextvars(
         "request_id",
         "task_id",
         "agent_id",
+        "project_id",
     )
 
 
@@ -121,6 +131,7 @@ def correlation_scope(
     request_id: str | None = None,
     task_id: str | None = None,
     agent_id: str | None = None,
+    project_id: str | None = None,
 ) -> Iterator[None]:
     """Scoped correlation binding that restores prior values on exit.
 
@@ -132,8 +143,10 @@ def correlation_scope(
         request_id: Request correlation identifier to bind.
         task_id: Task correlation identifier to bind.
         agent_id: Agent correlation identifier to bind.
+        project_id: Project correlation identifier to bind (consumed by
+            the sandbox backend to select the per-project mount).
     """
-    bindings = _build_bindings(request_id, task_id, agent_id)
+    bindings = _build_bindings(request_id, task_id, agent_id, project_id)
     if bindings:
         with structlog.contextvars.bound_contextvars(**bindings):
             yield
@@ -146,6 +159,7 @@ def with_correlation(
     request_id: str | None = None,
     task_id: str | None = None,
     agent_id: str | None = None,
+    project_id: str | None = None,
 ) -> Callable[[Callable[_P, _T]], Callable[_P, _T]]:
     """Decorator that binds correlation IDs for a function's duration.
 
@@ -161,6 +175,7 @@ def with_correlation(
         request_id: Request correlation identifier to bind.
         task_id: Task correlation identifier to bind.
         agent_id: Agent correlation identifier to bind.
+        project_id: Project correlation identifier to bind.
 
     Returns:
         A decorator that manages correlation ID lifecycle.
@@ -183,7 +198,7 @@ def with_correlation(
 
         @functools.wraps(func)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-            bindings = _build_bindings(request_id, task_id, agent_id)
+            bindings = _build_bindings(request_id, task_id, agent_id, project_id)
             with structlog.contextvars.bound_contextvars(**bindings):
                 return func(*args, **kwargs)
 
@@ -197,6 +212,7 @@ def with_correlation_async(
     request_id: str | None = None,
     task_id: str | None = None,
     agent_id: str | None = None,
+    project_id: str | None = None,
 ) -> Callable[
     [Callable[_P, Coroutine[object, object, _T]]],
     Callable[_P, Coroutine[object, object, _T]],
@@ -215,6 +231,7 @@ def with_correlation_async(
         request_id: Request correlation identifier to bind.
         task_id: Task correlation identifier to bind.
         agent_id: Agent correlation identifier to bind.
+        project_id: Project correlation identifier to bind.
 
     Returns:
         A decorator that manages correlation ID lifecycle for async
@@ -240,7 +257,7 @@ def with_correlation_async(
 
         @functools.wraps(func)
         async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-            bindings = _build_bindings(request_id, task_id, agent_id)
+            bindings = _build_bindings(request_id, task_id, agent_id, project_id)
             with structlog.contextvars.bound_contextvars(**bindings):
                 return await func(*args, **kwargs)
 

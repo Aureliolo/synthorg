@@ -378,7 +378,11 @@ class AgentEngine(
         validate_task(task, agent_id, task_id)
         validate_task_metadata(task, agent_id, task_id)
 
-        with correlation_scope(agent_id=agent_id, task_id=task_id):
+        with correlation_scope(
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=task.project,
+        ):
             start = self._clock.monotonic()
             ctx: AgentContext | None = None
             system_prompt: SystemPrompt | None = None

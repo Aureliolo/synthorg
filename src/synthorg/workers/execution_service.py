@@ -409,6 +409,7 @@ class AgentEngineExecutionService:
             await self._release_sandbox_owner(
                 identity=identity,
                 task_id=task_id,
+                project_id=task.project,
             )
         logger.info(
             WORKERS_EXECUTION_SERVICE_AGENT_RUN,
@@ -477,6 +478,7 @@ class AgentEngineExecutionService:
         *,
         identity: AgentIdentity,
         task_id: str,
+        project_id: str | None,
     ) -> None:
         """Release the sandbox lifecycle owner at the task boundary.
 
@@ -486,9 +488,17 @@ class AgentEngineExecutionService:
         are logged and swallowed: sandbox teardown must never fail an
         otherwise-successful task.
 
+        ``project_id`` is passed explicitly (not derived from the
+        correlation context) because this release fires AFTER the
+        engine's ``correlation_scope`` has exited; the Docker backend
+        prefixes the owner key with it so the release matches the
+        project-prefixed key ``execute`` acquired the container under.
+
         Args:
             identity: The agent that ran the task.
             task_id: The task that just completed.
+            project_id: The project the task ran under (matches the
+                sandbox mount + lifecycle key prefix).
         """
         backend = self._sandbox_backend
         if backend is None:
@@ -500,7 +510,7 @@ class AgentEngineExecutionService:
         else:
             return
         try:
-            await backend.release_owner(owner_id)
+            await backend.release_owner(owner_id, project_id=project_id)
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -648,6 +658,7 @@ class AgentEngineExecutionService:
             decision_reason=decision_reason,
         )
         task_id = ctx.task_execution.task.id if ctx.task_execution else ""
+        project_id = ctx.task_execution.task.project if ctx.task_execution else None
         effective_autonomy = self._resolve_autonomy(
             ctx.identity,
             task_id=task_id,
@@ -667,6 +678,7 @@ class AgentEngineExecutionService:
             await self._release_sandbox_owner(
                 identity=ctx.identity,
                 task_id=task_id,
+                project_id=project_id,
             )
 
     async def drain_resume_tasks(

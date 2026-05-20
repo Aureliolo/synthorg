@@ -25,6 +25,41 @@ if TYPE_CHECKING:
 
 _DEFAULT_EMBEDDED_SUBDIR: Final[str] = "git-repos"
 _DEFAULT_GIT_CMD_TIMEOUT_SECONDS: Final[float] = 60.0
+_DEFAULT_RETRY_MAX_ATTEMPTS: Final[int] = 3
+_DEFAULT_RETRY_BASE_DELAY_SECONDS: Final[float] = 1.0
+_DEFAULT_RETRY_CAP_DELAY_SECONDS: Final[float] = 30.0
+_DEFAULT_FORGE_API_TIMEOUT_SECONDS: Final[float] = 30.0
+
+
+class GitBackendResilienceConfig(BaseModel):
+    """Backoff tuning for transient external-remote git operations.
+
+    Mirrors the transient-I/O retry semantics of
+    :class:`~synthorg.core.resilience.GeneralRetryHandler` (Pattern A):
+    push/fetch failures classified as transient (or forge rate-limit)
+    retry with exponential backoff; auth / repo-missing failures do not.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    max_attempts: int = Field(default=_DEFAULT_RETRY_MAX_ATTEMPTS, ge=1, le=10)
+    base_delay_seconds: float = Field(
+        default=_DEFAULT_RETRY_BASE_DELAY_SECONDS,
+        ge=0.0,
+    )
+    cap_delay_seconds: float = Field(
+        default=_DEFAULT_RETRY_CAP_DELAY_SECONDS,
+        gt=0.0,
+    )
+    jitter: bool = True
+
+    @model_validator(mode="after")
+    def _check_cap_ge_base(self) -> Self:
+        """The delay cap cannot be below the base delay."""
+        if self.cap_delay_seconds < self.base_delay_seconds:
+            msg = "cap_delay_seconds must be >= base_delay_seconds"
+            raise ValueError(msg)
+        return self
 
 
 class GitBackendConfig(BaseModel):
@@ -49,6 +84,20 @@ class GitBackendConfig(BaseModel):
     # Maximum seconds any single git subprocess may run.
     git_cmd_timeout_seconds: float = Field(
         default=_DEFAULT_GIT_CMD_TIMEOUT_SECONDS,
+        gt=0.0,
+    )
+    # EXTERNAL_REMOTE: transient-failure backoff tuning for push/fetch.
+    resilience: GitBackendResilienceConfig = Field(
+        default_factory=GitBackendResilienceConfig,
+    )
+    # EXTERNAL_REMOTE: create the forge repo on first push if it is
+    # missing (lazy on-404 provisioning via the forge REST API).
+    forge_provisioning_enabled: bool = True
+    # EXTERNAL_REMOTE: visibility of an auto-provisioned forge repo.
+    forge_repo_private: bool = True
+    # EXTERNAL_REMOTE: per-request timeout for forge REST API calls.
+    forge_api_timeout_seconds: float = Field(
+        default=_DEFAULT_FORGE_API_TIMEOUT_SECONDS,
         gt=0.0,
     )
 

@@ -37,6 +37,7 @@ __all__ = [
     "VALID_OTLP_OUTCOMES",
     "VALID_PG_BACKENDS",
     "VALID_PROVIDER_ERROR_CLASSES",
+    "VALID_PUSH_QUEUE_OUTCOMES",
     "VALID_SETTINGS_NAMESPACES",
     "VALID_STATUS_CLASSES",
     "VALID_TASK_OUTCOMES",
@@ -277,6 +278,7 @@ VALID_ESCALATION_OUTCOMES: Final[frozenset[str]] = frozenset(
 VALID_BLUEPRINT_OUTCOMES: Final[frozenset[str]] = frozenset(
     {"success", "validation_error", "not_found", "unknown_error"}
 )
+VALID_PUSH_QUEUE_OUTCOMES: Final[frozenset[str]] = frozenset({"enqueued", "merged"})
 VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
     {
         "a2a",

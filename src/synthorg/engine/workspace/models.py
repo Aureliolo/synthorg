@@ -17,6 +17,9 @@ class WorkspaceRequest(BaseModel):
         agent_id: Identifier of the agent that will work in the workspace.
         base_branch: Git branch to branch from.
         file_scope: Optional file path hints for the workspace.
+        project_id: Owning project. Selects the per-project repo tree
+            (``<base>/projects/<project_id>``) the worktree branches
+            from; ``None`` uses the strategy's singleton repo root.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -31,6 +34,10 @@ class WorkspaceRequest(BaseModel):
         default=(),
         description="Optional file path hints",
     )
+    project_id: NotBlankStr | None = Field(
+        default=None,
+        description="Owning project for per-project worktree root",
+    )
 
 
 class Workspace(BaseModel):
@@ -44,6 +51,9 @@ class Workspace(BaseModel):
         worktree_path: Filesystem path to the worktree directory.
         base_branch: Branch this workspace was created from.
         created_at: Timestamp of workspace creation.
+        project_id: Owning project. Selects the per-project repo tree
+            for merge / teardown so they run in the same repo the
+            worktree was created from; ``None`` uses the singleton root.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -63,6 +73,10 @@ class Workspace(BaseModel):
         description="Branch workspace was created from",
     )
     created_at: datetime = Field(description="Workspace creation timestamp")
+    project_id: NotBlankStr | None = Field(
+        default=None,
+        description="Owning project for per-project merge/teardown root",
+    )
 
 
 class MergeConflict(BaseModel):

@@ -17,6 +17,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import COORDINATION_PHASE_FAILED
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from synthorg.core.types import NotBlankStr
     from synthorg.engine.coordination.config import CoordinationConfig
     from synthorg.engine.coordination.models import CoordinationPhaseResult
     from synthorg.engine.decomposition.models import DecompositionResult
@@ -39,7 +42,7 @@ class DecentralizedDispatcher:
     def __init__(self, *, clock: Clock | None = None) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
-    async def dispatch(
+    async def dispatch(  # noqa: PLR0913 -- dispatch contract surface
         self,
         *,
         decomposition_result: DecompositionResult,
@@ -47,6 +50,8 @@ class DecentralizedDispatcher:
         parallel_executor: ParallelExecutor,
         workspace_service: WorkspaceIsolationService | None,
         config: CoordinationConfig,
+        project_id: NotBlankStr | None = None,
+        repo_root: Path | None = None,
     ) -> DispatchResult:
         """Execute subtasks with mandatory workspace isolation."""
         validate_routing_against_decomposition(decomposition_result, routing_result)
@@ -67,7 +72,11 @@ class DecentralizedDispatcher:
         merge_result: WorkspaceGroupResult | None = None
 
         workspaces, setup_phase = await setup_workspaces(
-            workspace_service, routing_result, config, clock=self._clock
+            workspace_service,
+            routing_result,
+            config,
+            clock=self._clock,
+            project_id=project_id,
         )
         all_phases.append(setup_phase)
         if not setup_phase.success:
@@ -92,7 +101,11 @@ class DecentralizedDispatcher:
             all_succeeded = all(p.success for p in exec_phases)
             if workspaces and all_succeeded:
                 merge_result, merge_phase = await merge_workspaces(
-                    workspace_service, workspaces, clock=self._clock
+                    workspace_service,
+                    workspaces,
+                    clock=self._clock,
+                    project_id=project_id,
+                    repo_root=repo_root,
                 )
                 all_phases.append(merge_phase)
             elif workspaces:

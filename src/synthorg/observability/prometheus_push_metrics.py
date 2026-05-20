@@ -244,6 +244,17 @@ class PushMetrics:
             registry=registry,
         )
 
+        # Per-project workspace push-queue events. ``outcome`` is
+        # low-cardinality (``enqueued`` / ``merged``); ``project_id`` is
+        # deliberately NOT a label (unbounded cardinality) -- it stays
+        # in the structured logs only.
+        self.push_queue_events = PromCounter(
+            f"{prefix}_push_queue_events_total",
+            "Workspace merge+push queue events",
+            ["outcome"],
+            registry=registry,
+        )
+
         # -- Workflow blueprint instantiation counter ----------------
         # Single neutral terminal counter so dashboards can compute
         # success rate as

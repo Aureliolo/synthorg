@@ -7,8 +7,7 @@ repo.  No external dependency; pushes/fetches are pure-local.
 """
 
 import asyncio
-from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import GitBackendType
@@ -19,9 +18,11 @@ from synthorg.engine.errors import (
     GitBackendPushError,
 )
 from synthorg.engine.workspace.git_backend._git_ops import (
-    assert_standalone_repo,
+    REMOTE_NAME,
+    configure_identity,
     git,
     is_git_repo,
+    reject_if_nested_in_parent_worktree,
 )
 from synthorg.engine.workspace.git_backend.protocol import (
     FetchResult,
@@ -38,11 +39,10 @@ from synthorg.observability.events.workspace import (
     GIT_BACKEND_PUSH_FAILED,
 )
 
-logger = get_logger(__name__)
+if TYPE_CHECKING:
+    from pathlib import Path
 
-_BOT_NAME: Final[str] = "SynthOrg"
-_BOT_EMAIL: Final[str] = "synthorg-bot@synthorg.local"
-_REMOTE_NAME: Final[str] = "origin"
+logger = get_logger(__name__)
 
 
 class EmbeddedGitBackend:
@@ -67,73 +67,6 @@ class EmbeddedGitBackend:
 
     def _bare_repo_path(self, project_id: str) -> Path:
         return self._base_root / self._embedded_subdir / f"{project_id}.git"
-
-    async def _reject_if_nested_in_parent_worktree(self, path: Path, pid: str) -> None:
-        """Refuse if *path* sits inside an EXISTING parent working tree.
-
-        ``rev-parse --show-toplevel`` succeeds (exit 0) and reports a
-        toplevel DIFFERENT from *path* iff some parent dir of *path* is a
-        working tree; in that case ``git init`` would silently no-op and
-        the subsequent ``git config`` / ``git commit`` would mutate the
-        outer repo. Raise instead of silently corrupting it. If git
-        already considers *path* itself the toplevel (idempotent provision
-        on a previously-initialised dir), we let the caller proceed and
-        rely on ``is_git_repo`` upstream for short-circuit semantics.
-        """
-        from synthorg.engine.workspace._git_subprocess import (  # noqa: PLC0415
-            run_git_subprocess,
-        )
-        from synthorg.observability.events.workspace import (  # noqa: PLC0415
-            GIT_BACKEND_PROVISION_FAILED,
-        )
-
-        rc, stdout, _stderr = await run_git_subprocess(
-            path,
-            "rev-parse",
-            "--show-toplevel",
-            cmd_timeout=self._cmd_timeout,
-            log_event=GIT_BACKEND_PROVISION_FAILED,
-        )
-        if rc != 0:
-            return
-        toplevel = await asyncio.to_thread(Path(stdout).resolve)
-        if toplevel == await asyncio.to_thread(path.resolve):
-            return
-        msg = (
-            f"refusing to provision project {pid!r} inside an existing "
-            f"parent git working tree at {toplevel!s}"
-        )
-        raise GitBackendProvisionError(msg)
-
-    async def _configure_identity(self, workspace_path: Path, pid: str) -> None:
-        # Refuse if the workspace shares its common-dir with a parent
-        # repo (linked worktree or aliased repo). user.{email,name}
-        # writes would otherwise rewrite the operator's identity across
-        # every other worktree of that shared repo.
-        await assert_standalone_repo(
-            workspace_path,
-            cmd_timeout=self._cmd_timeout,
-            fail_exc=GitBackendProvisionError,
-            project_id=pid,
-        )
-        await git(
-            workspace_path,
-            "config",
-            "user.email",
-            _BOT_EMAIL,
-            cmd_timeout=self._cmd_timeout,
-            fail_exc=GitBackendProvisionError,
-            project_id=pid,
-        )
-        await git(
-            workspace_path,
-            "config",
-            "user.name",
-            _BOT_NAME,
-            cmd_timeout=self._cmd_timeout,
-            fail_exc=GitBackendProvisionError,
-            project_id=pid,
-        )
 
     async def provision(
         self,
@@ -172,7 +105,12 @@ class EmbeddedGitBackend:
         # commits on it. The bare path is created under our own
         # config-controlled ``base_root`` so we only guard the working
         # tree, which is where ``git config`` / ``git commit`` execute.
-        await self._reject_if_nested_in_parent_worktree(workspace_path, pid)
+        await reject_if_nested_in_parent_worktree(
+            workspace_path,
+            cmd_timeout=self._cmd_timeout,
+            fail_exc=GitBackendProvisionError,
+            project_id=pid,
+        )
 
         await git(
             bare,
@@ -193,7 +131,12 @@ class EmbeddedGitBackend:
             fail_exc=GitBackendProvisionError,
             project_id=pid,
         )
-        await self._configure_identity(workspace_path, pid)
+        await configure_identity(
+            workspace_path,
+            cmd_timeout=self._cmd_timeout,
+            fail_exc=GitBackendProvisionError,
+            project_id=pid,
+        )
         await git(
             workspace_path,
             "commit",
@@ -208,7 +151,7 @@ class EmbeddedGitBackend:
             workspace_path,
             "remote",
             "add",
-            _REMOTE_NAME,
+            REMOTE_NAME,
             str(bare),
             cmd_timeout=self._cmd_timeout,
             fail_exc=GitBackendProvisionError,
@@ -217,7 +160,7 @@ class EmbeddedGitBackend:
         await git(
             workspace_path,
             "push",
-            _REMOTE_NAME,
+            REMOTE_NAME,
             str(default_branch),
             cmd_timeout=self._cmd_timeout,
             fail_exc=GitBackendProvisionError,
@@ -247,7 +190,7 @@ class EmbeddedGitBackend:
         await git(
             repo_root,
             "push",
-            _REMOTE_NAME,
+            REMOTE_NAME,
             str(branch),
             cmd_timeout=self._cmd_timeout,
             fail_exc=GitBackendPushError,
@@ -275,7 +218,7 @@ class EmbeddedGitBackend:
     ) -> FetchResult:
         """Fetch from the project's bare repo into *repo_root*."""
         pid = str(project_id)
-        args = ["fetch", _REMOTE_NAME]
+        args = ["fetch", REMOTE_NAME]
         if branch is not None:
             args.append(str(branch))
         await git(

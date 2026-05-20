@@ -17,7 +17,7 @@ pytestmark = pytest.mark.unit
 class _FakeSandbox:
     """Minimal fake that satisfies the SandboxBackend protocol."""
 
-    async def execute(
+    async def execute(  # noqa: PLR0913 -- mirrors the SandboxBackend protocol
         self,
         *,
         command: str,
@@ -25,6 +25,8 @@ class _FakeSandbox:
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
     ) -> SandboxResult:
         return SandboxResult(
             stdout="fake",
@@ -35,7 +37,12 @@ class _FakeSandbox:
     async def cleanup(self) -> None:
         pass
 
-    async def release_owner(self, owner_id: str) -> None:
+    async def release_owner(
+        self,
+        owner_id: str,
+        *,
+        project_id: NotBlankStr | None = None,
+    ) -> None:
         pass
 
     async def health_check(self) -> bool:

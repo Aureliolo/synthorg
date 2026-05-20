@@ -552,8 +552,10 @@ class TestConcurrentSetup:
         async def mock_git(
             self_: PlannerWorktreeStrategy,
             *args: str,
-            timeout: float = 60.0,  # noqa: ASYNC109
+            **kwargs: object,
         ) -> tuple[int, str, str]:
+            # Accept any keyword (``cwd`` / ``log_event`` / ...) so the
+            # mock stays robust to ``_run_git`` signature changes.
             first_entered.set()
             await release_first.wait()
             return (0, "", "")
@@ -611,7 +613,7 @@ class TestCollectConflicts:
             ),
             pytest.raises(WorkspaceMergeError, match="conflict details"),
         ):
-            await strategy._collect_conflicts()
+            await strategy._collect_conflicts(strategy._repo_root)
 
     @pytest.mark.unit
     async def test_empty_stdout_returns_empty(self) -> None:
@@ -626,7 +628,7 @@ class TestCollectConflicts:
             "_run_git",
             mock_run_git,
         ):
-            result = await strategy._collect_conflicts()
+            result = await strategy._collect_conflicts(strategy._repo_root)
 
         assert result == ()
 

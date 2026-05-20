@@ -8,6 +8,9 @@ from synthorg.engine.coordination.dispatcher_types import DispatchResult
 from synthorg.engine.coordination.group_builder import build_execution_waves
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from synthorg.core.types import NotBlankStr
     from synthorg.engine.coordination.config import CoordinationConfig
     from synthorg.engine.decomposition.models import DecompositionResult
     from synthorg.engine.parallel import ParallelExecutor
@@ -26,7 +29,7 @@ class SasDispatcher:
     def __init__(self, *, clock: Clock | None = None) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
-    async def dispatch(
+    async def dispatch(  # noqa: PLR0913 -- dispatch contract surface
         self,
         *,
         decomposition_result: DecompositionResult,
@@ -34,6 +37,8 @@ class SasDispatcher:
         parallel_executor: ParallelExecutor,
         workspace_service: WorkspaceIsolationService | None,  # noqa: ARG002
         config: CoordinationConfig,
+        project_id: NotBlankStr | None = None,  # noqa: ARG002 -- no isolation in SAS
+        repo_root: Path | None = None,  # noqa: ARG002 -- no isolation in SAS
     ) -> DispatchResult:
         """Execute subtasks sequentially, one per wave."""
         groups = build_execution_waves(

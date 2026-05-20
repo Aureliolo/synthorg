@@ -19,6 +19,9 @@ from synthorg.engine.workspace.models import (  # noqa: TC001
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from synthorg.core.types import NotBlankStr
     from synthorg.engine.coordination.config import CoordinationConfig
     from synthorg.engine.decomposition.models import DecompositionResult
     from synthorg.engine.parallel import ParallelExecutor
@@ -60,7 +63,7 @@ class DispatchResult(BaseModel):
 class TopologyDispatcher(Protocol):
     """Protocol for topology-specific dispatch strategies."""
 
-    async def dispatch(
+    async def dispatch(  # noqa: PLR0913 -- dispatch contract surface
         self,
         *,
         decomposition_result: DecompositionResult,
@@ -68,6 +71,8 @@ class TopologyDispatcher(Protocol):
         parallel_executor: ParallelExecutor,
         workspace_service: WorkspaceIsolationService | None,
         config: CoordinationConfig,
+        project_id: NotBlankStr | None = None,
+        repo_root: Path | None = None,
     ) -> DispatchResult:
         """Execute subtasks according to topology-specific rules.
 
@@ -77,6 +82,11 @@ class TopologyDispatcher(Protocol):
             parallel_executor: Executor for parallel agent runs.
             workspace_service: Optional workspace isolation service.
             config: Coordination configuration.
+            project_id: Owning project for the post-wave merge. When set
+                with *repo_root* and a git backend, the merge routes
+                through the per-project push queue.
+            repo_root: Project working tree the push runs from; ``None``
+                falls back to the in-memory ``merge_group``.
 
         Returns:
             Dispatch result with waves, workspaces, and phases.

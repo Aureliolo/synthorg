@@ -46,6 +46,7 @@ from synthorg.tools.sandbox.result import SandboxResult
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
     import aiodocker
 
@@ -105,6 +106,7 @@ class DockerSandboxExecMixin:
             args: tuple[str, ...],
             container_cwd: str,
             env_overrides: Mapping[str, str] | None,
+            effective_root: Path | None = None,
             category: str = "",
             network_mode: str | None = None,
             owner_id: str | None = None,
@@ -180,7 +182,30 @@ class DockerSandboxExecMixin:
             ctx_key = None
         return str(ctx_key) if ctx_key else None
 
-    def _resolve_lifecycle(self, owner_id: str | None) -> tuple[str, bool]:
+    @staticmethod
+    def _context_project() -> str | None:
+        """Project id from the structlog correlation context, if any."""
+        ctx = structlog.contextvars.get_contextvars()
+        value = ctx.get("project_id")
+        return str(value) if value else None
+
+    @staticmethod
+    def _project_prefixed(key: str, project_id: str | None) -> str:
+        """Prefix a reusable owner key with ``<project_id>:``.
+
+        Forces a per-agent/per-task reused container to be torn down and
+        recreated when the project changes, so a container mounted for
+        project A is never reused for project B (the isolation
+        guarantee). ``None`` leaves the key unprefixed.
+        """
+        return f"{project_id}:{key}" if project_id else key
+
+    def _resolve_lifecycle(
+        self,
+        owner_id: str | None,
+        *,
+        project_id: str | None = None,
+    ) -> tuple[str, bool]:
         """Resolve the lifecycle owner key and teardown ownership.
 
         Returns ``(owner_key, strategy_owns_teardown)``.  An explicit
@@ -191,8 +216,13 @@ class DockerSandboxExecMixin:
         per-call (``strategy_owns`` ``False`` so the backend destroys
         the container and the strategy is not poisoned).
 
+        A reusable key is prefixed with ``<project_id>:`` so a container
+        mounted for one project is never reused for another.
+
         Args:
             owner_id: Explicit lifecycle owner, or ``None``.
+            project_id: Owning project, or ``None`` for the no-project
+                execution mode.
 
         Returns:
             ``(owner_key, strategy_owns_teardown)``.
@@ -211,28 +241,30 @@ class DockerSandboxExecMixin:
                 )
                 return self._ephemeral_key(), False
             owns = strategy.reuses_container
+            prefixed = self._project_prefixed(key, project_id)
             logger.info(
                 SANDBOX_LIFECYCLE_DISPATCH,
                 strategy=strategy_kind,
-                owner_id=key,
+                owner_id=prefixed,
                 owner_source="explicit",
                 strategy_owns=owns,
             )
-            return key, owns
+            return prefixed, owns
 
         if not strategy.reuses_container:
             return self._ephemeral_key(), False
 
         ctx_key = self._context_owner(strategy_kind)
         if ctx_key is not None and self._valid_owner(ctx_key):
+            prefixed = self._project_prefixed(ctx_key, project_id)
             logger.info(
                 SANDBOX_LIFECYCLE_DISPATCH,
                 strategy=strategy_kind,
-                owner_id=ctx_key,
+                owner_id=prefixed,
                 owner_source="correlation_context",
                 strategy_owns=True,
             )
-            return ctx_key, True
+            return prefixed, True
 
         logger.warning(
             SANDBOX_LIFECYCLE_OWNER_DEGRADED,
@@ -244,7 +276,12 @@ class DockerSandboxExecMixin:
         )
         return self._ephemeral_key(), False
 
-    async def release_owner(self, owner_id: str) -> None:
+    async def release_owner(
+        self,
+        owner_id: str,
+        *,
+        project_id: str | None = None,
+    ) -> None:
         """Signal that *owner_id* no longer needs its sandbox container.
 
         Dispatches to the configured lifecycle strategy's ``release``:
@@ -252,14 +289,22 @@ class DockerSandboxExecMixin:
         per-call is a no-op.  Wired at the owner boundary (task
         completion / agent stop).
 
+        The key is prefixed with the project (explicit ``project_id`` or
+        the correlation context) so it matches the project-prefixed key
+        ``execute`` used to acquire the container; otherwise a per-task
+        container provisioned under a project would leak until shutdown.
+
         Args:
             owner_id: The same identifier passed as ``owner_id`` to
                 ``execute`` (agent ID for per-agent, task ID for
                 per-task).
+            project_id: Owning project; falls back to the correlation
+                context when ``None``.
         """
         if not owner_id or not owner_id.strip():
             return
-        key = owner_id.strip()
+        effective_project = project_id or self._context_project()
+        key = self._project_prefixed(owner_id.strip(), effective_project)
         logger.info(
             SANDBOX_LIFECYCLE_RELEASE,
             strategy=self._config.lifecycle.strategy,
@@ -396,12 +441,13 @@ class DockerSandboxExecMixin:
             raise SandboxStartError(msg) from exc
         return container_id
 
-    async def _create_keepalive_handle(
+    async def _create_keepalive_handle(  # noqa: PLR0913 -- mount + lifecycle inputs
         self,
         *,
         docker: aiodocker.Docker,
         container_cwd: str,
         env_overrides: Mapping[str, str] | None,
+        effective_root: Path,
         category: str,
         owner_label: str,
     ) -> ContainerHandle:
@@ -416,6 +462,8 @@ class DockerSandboxExecMixin:
             docker: Docker client.
             container_cwd: Container working directory.
             env_overrides: Environment baked into the container.
+            effective_root: Host path bound at ``/workspace`` (project
+                subtree or the whole workspace root).
             category: Tool category for runtime resolution.
             owner_label: Lifecycle owner recorded as a container label.
 
@@ -437,6 +485,7 @@ class DockerSandboxExecMixin:
             args=_KEEPALIVE_ARGS,
             container_cwd=container_cwd,
             env_overrides=env_overrides,
+            effective_root=effective_root,
             category=category,
             network_mode=network_mode,
             owner_id=owner_label,

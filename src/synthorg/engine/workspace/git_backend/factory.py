@@ -77,6 +77,10 @@ def _build_external_remote(
         connection_name=config.remote_connection_name,
         connection_catalog=deps.connection_catalog,
         cmd_timeout=config.git_cmd_timeout_seconds,
+        resilience=config.resilience,
+        forge_provisioning_enabled=config.forge_provisioning_enabled,
+        forge_repo_private=config.forge_repo_private,
+        forge_api_timeout=config.forge_api_timeout_seconds,
         clock=deps.clock,
     )
 

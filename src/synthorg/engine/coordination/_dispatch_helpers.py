@@ -6,6 +6,7 @@ concrete dispatchers.
 """
 
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from synthorg.engine.coordination.models import (
     CoordinationPhaseResult,
@@ -30,12 +31,16 @@ from synthorg.observability.events.coordination import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from synthorg.core.clock import Clock
+    from synthorg.core.types import NotBlankStr
     from synthorg.engine.coordination.config import CoordinationConfig
     from synthorg.engine.decomposition.models import DecompositionResult
     from synthorg.engine.parallel import ParallelExecutor
     from synthorg.engine.parallel_models import ParallelExecutionGroup
     from synthorg.engine.routing.models import RoutingResult
+    from synthorg.engine.workspace.models import MergeResult
     from synthorg.engine.workspace.service import WorkspaceIsolationService
 
 logger = get_logger(__name__)
@@ -44,6 +49,7 @@ logger = get_logger(__name__)
 def build_workspace_requests(
     routing_result: RoutingResult,
     config: CoordinationConfig,
+    project_id: NotBlankStr | None = None,
 ) -> tuple[WorkspaceRequest, ...]:
     """Build workspace requests from routing decisions."""
     return tuple(
@@ -51,6 +57,7 @@ def build_workspace_requests(
             task_id=d.subtask_id,
             agent_id=str(d.selected_candidate.agent_identity.id),
             base_branch=config.base_branch,
+            project_id=project_id,
         )
         for d in routing_result.decisions
     )
@@ -90,6 +97,7 @@ async def setup_workspaces(
     config: CoordinationConfig,
     *,
     clock: Clock,
+    project_id: NotBlankStr | None = None,
 ) -> tuple[tuple[Workspace, ...], CoordinationPhaseResult]:
     """Set up workspaces and return them with a phase result."""
     start = clock.monotonic()
@@ -97,7 +105,7 @@ async def setup_workspaces(
 
     logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
     try:
-        requests = build_workspace_requests(routing_result, config)
+        requests = build_workspace_requests(routing_result, config, project_id)
         workspaces = await workspace_service.setup_group(requests=requests)
     except MemoryError, RecursionError:
         raise
@@ -138,21 +146,72 @@ async def setup_workspaces(
         return workspaces, phase
 
 
-async def merge_workspaces(
+async def _merge_group_via_push_queue(
+    workspace_service: WorkspaceIsolationService,
+    workspaces: tuple[Workspace, ...],
+    *,
+    project_id: NotBlankStr,
+    repo_root: Path,
+    clock: Clock,
+) -> WorkspaceGroupResult:
+    """Merge each workspace through the per-project serial push queue.
+
+    Aggregates the per-workspace :class:`MergeResult`s into the same
+    :class:`WorkspaceGroupResult` shape ``merge_group`` returns, so
+    downstream consumers see no contract drift. The queue serialises
+    the merge+push per project, exercising forge-collision safety end
+    to end at runtime.
+    """
+    start = clock.monotonic()
+    results: list[MergeResult] = [
+        await workspace_service.merge_workspace_with_push(
+            workspace=workspace,
+            project_id=project_id,
+            repo_root=repo_root,
+        )
+        for workspace in workspaces
+    ]
+    elapsed = clock.monotonic() - start
+    return WorkspaceGroupResult(
+        group_id=str(uuid4()),
+        merge_results=tuple(results),
+        duration_seconds=elapsed,
+    )
+
+
+async def merge_workspaces(  # noqa: PLR0913 -- project/repo routing inputs
     workspace_service: WorkspaceIsolationService,
     workspaces: tuple[Workspace, ...],
     *,
     clock: Clock,
     phase_name: str = "merge",
+    project_id: NotBlankStr | None = None,
+    repo_root: Path | None = None,
 ) -> tuple[WorkspaceGroupResult | None, CoordinationPhaseResult]:
-    """Merge workspaces and return result with a phase result."""
+    """Merge workspaces and return result with a phase result.
+
+    When *project_id* and *repo_root* are both supplied the merge runs
+    through the per-project push queue (``merge_workspace_with_push``);
+    otherwise it falls back to the in-memory ``merge_group``.
+    """
     start = clock.monotonic()
 
     logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
     try:
-        merge_result = await workspace_service.merge_group(
-            workspaces=workspaces,
-        )
+        if project_id is not None and repo_root is not None:
+            merge_result: (
+                WorkspaceGroupResult | None
+            ) = await _merge_group_via_push_queue(
+                workspace_service,
+                workspaces,
+                project_id=project_id,
+                repo_root=repo_root,
+                clock=clock,
+            )
+        else:
+            merge_result = await workspace_service.merge_group(
+                workspaces=workspaces,
+            )
     except MemoryError, RecursionError:
         raise
     except Exception as exc:

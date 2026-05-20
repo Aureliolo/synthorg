@@ -16,6 +16,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.coordination import COORDINATION_PHASE_FAILED
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from synthorg.core.types import NotBlankStr
     from synthorg.engine.coordination.config import CoordinationConfig
     from synthorg.engine.coordination.models import CoordinationPhaseResult
     from synthorg.engine.decomposition.models import DecompositionResult
@@ -37,7 +40,7 @@ class CentralizedDispatcher:
     def __init__(self, *, clock: Clock | None = None) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
-    async def dispatch(
+    async def dispatch(  # noqa: PLR0913 -- dispatch contract surface
         self,
         *,
         decomposition_result: DecompositionResult,
@@ -45,6 +48,8 @@ class CentralizedDispatcher:
         parallel_executor: ParallelExecutor,
         workspace_service: WorkspaceIsolationService | None,
         config: CoordinationConfig,
+        project_id: NotBlankStr | None = None,
+        repo_root: Path | None = None,
     ) -> DispatchResult:
         """Execute waves with workspace isolation and post-merge."""
         validate_routing_against_decomposition(decomposition_result, routing_result)
@@ -55,7 +60,11 @@ class CentralizedDispatcher:
 
         if workspace_service is not None and config.enable_workspace_isolation:
             workspaces, setup_phase = await setup_workspaces(
-                workspace_service, routing_result, config, clock=self._clock
+                workspace_service,
+                routing_result,
+                config,
+                clock=self._clock,
+                project_id=project_id,
             )
             all_phases.append(setup_phase)
             if not setup_phase.success:
@@ -80,7 +89,11 @@ class CentralizedDispatcher:
             all_succeeded = all(p.success for p in exec_phases)
             if workspaces and workspace_service is not None and all_succeeded:
                 merge_result, merge_phase = await merge_workspaces(
-                    workspace_service, workspaces, clock=self._clock
+                    workspace_service,
+                    workspaces,
+                    clock=self._clock,
+                    project_id=project_id,
+                    repo_root=repo_root,
                 )
                 all_phases.append(merge_phase)
             elif workspaces and workspace_service is not None:

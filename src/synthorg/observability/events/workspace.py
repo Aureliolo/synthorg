@@ -47,6 +47,14 @@ GIT_BACKEND_PUSH_COMPLETE: Final[str] = "git_backend.push.complete"
 GIT_BACKEND_PUSH_FAILED: Final[str] = "git_backend.push.failed"
 GIT_BACKEND_FETCH_COMPLETE: Final[str] = "git_backend.fetch.complete"
 GIT_BACKEND_FETCH_FAILED: Final[str] = "git_backend.fetch.failed"
+GIT_BACKEND_PUSH_RETRY: Final[str] = "git_backend.push.retry"
+GIT_BACKEND_REMOTE_PROVISIONED: Final[str] = "git_backend.remote.provisioned"
+
+# ── Forge REST API events ────────────────────────────────────────
+FORGE_API_REPO_CREATED: Final[str] = "forge_api.repo.created"
+FORGE_API_REPO_EXISTS_CHECK: Final[str] = "forge_api.repo.exists_check"
+FORGE_API_REQUEST_FAILED: Final[str] = "forge_api.request.failed"
+FORGE_API_RATE_LIMITED: Final[str] = "forge_api.rate_limited"
 
 # ── Project workspace provisioning events ────────────────────────
 PROJECT_WORKSPACE_PROVISIONED: Final[str] = "project_workspace.provisioned"

@@ -47,6 +47,7 @@ _PATH_SEP = ";" if os.name == "nt" else ":"
 
 _DEFAULT_CONFIG = SubprocessSandboxConfig()
 _DEFAULT_KILL_GRACE_SECONDS: Final[float] = 5.0
+_PROJECTS_SUBDIR: Final[str] = "projects"
 """Fallback kill-grace used when no operator override is supplied.
 
 Mirrors the ``tools.subprocess_kill_grace_timeout_seconds`` setting.
@@ -361,6 +362,25 @@ class SubprocessSandbox:
             msg = f"Working directory '{cwd}' is outside workspace '{self._workspace}'"
             raise SandboxError(msg) from exc
 
+    def _project_root(self, project_id: NotBlankStr | None) -> Path:
+        """Resolve the default working dir for *project_id*.
+
+        ``None`` returns the workspace root; a set ``project_id`` returns
+        ``<workspace>/projects/<project_id>`` (separator-guarded to block
+        traversal out of the projects subtree).
+
+        Raises:
+            SandboxError: ``project_id`` bears path separators.
+        """
+        if project_id is None:
+            return self._workspace
+        pid = str(project_id)
+        if "/" in pid or "\\" in pid or ".." in pid:
+            msg = f"refusing path-separator-bearing project_id {pid!r}"
+            logger.warning(SANDBOX_WORKSPACE_VIOLATION, cwd=pid)
+            raise SandboxError(msg)
+        return self._workspace / _PROJECTS_SUBDIR / pid
+
     @staticmethod
     def _kill_process(proc: asyncio.subprocess.Process) -> None:
         """Kill the process, targeting the process group on Unix.
@@ -524,16 +544,23 @@ class SubprocessSandbox:
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
         owner_id: str | None = None,  # noqa: ARG002
+        project_id: NotBlankStr | None = None,
     ) -> SandboxResult:
         """Execute a command in the sandbox.
 
         Args:
             command: Executable name or path.
             args: Command arguments.
-            cwd: Working directory (defaults to workspace root).
+            cwd: Working directory (defaults to the project subtree when
+                *project_id* is set, else the workspace root).
             env_overrides: Extra env vars applied on top of filtered env.
             timeout: Seconds before the process is killed.
             owner_id: Lifecycle owner (ignored by subprocess backend).
+            project_id: Owning project; when set and *cwd* is ``None``,
+                the working dir defaults to
+                ``<workspace>/projects/<project_id>``. The subprocess
+                backend has no container mount, so this scopes the
+                working directory rather than the filesystem view.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
@@ -543,7 +570,7 @@ class SubprocessSandbox:
             SandboxError: If cwd is outside the workspace boundary or
                 if no safe PATH directories can be determined.
         """
-        work_dir = cwd if cwd is not None else self._workspace
+        work_dir = cwd if cwd is not None else self._project_root(project_id)
         self._validate_cwd(work_dir)
 
         effective_timeout = (
@@ -611,7 +638,12 @@ class SubprocessSandbox:
         """Subprocesses are ephemeral -- no resources to release."""
         logger.debug(SANDBOX_CLEANUP, backend="subprocess")
 
-    async def release_owner(self, owner_id: NotBlankStr) -> None:
+    async def release_owner(
+        self,
+        owner_id: NotBlankStr,
+        *,
+        project_id: NotBlankStr | None = None,
+    ) -> None:
         """No-op -- subprocesses hold no per-owner resources."""
 
     async def health_check(self) -> bool:

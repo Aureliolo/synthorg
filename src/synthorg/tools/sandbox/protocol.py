@@ -31,6 +31,7 @@ class SandboxBackend(Protocol):
         env_overrides: Mapping[str, str] | None = None,
         timeout: float | None = None,  # noqa: ASYNC109
         owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
     ) -> SandboxResult:
         """Execute a command in the sandbox.
 
@@ -45,6 +46,13 @@ class SandboxBackend(Protocol):
                 ``None`` for per-call semantics).  Must be non-blank
                 when provided.  Used by the Docker backend's lifecycle
                 strategy to decide container reuse.
+            project_id: Owning project for per-execution per-project
+                isolation.  The Docker backend rebinds
+                ``<workspace>/projects/<project_id>`` at ``/workspace``
+                and prefixes the lifecycle owner key so a container
+                mounted for one project is never reused for another.
+                ``None`` (or context-derived) selects the no-project
+                whole-workspace mount.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
@@ -63,7 +71,12 @@ class SandboxBackend(Protocol):
         """
         ...
 
-    async def release_owner(self, owner_id: NotBlankStr) -> None:
+    async def release_owner(
+        self,
+        owner_id: NotBlankStr,
+        *,
+        project_id: NotBlankStr | None = None,
+    ) -> None:
         """Signal that *owner_id* no longer needs its sandbox resources.
 
         Wired at the owner boundary (task completion / agent stop).
@@ -76,6 +89,9 @@ class SandboxBackend(Protocol):
             owner_id: The same identifier passed as ``owner_id`` to
                 ``execute`` (agent ID for per-agent, task ID for
                 per-task).
+            project_id: The project the owner ran under; the Docker
+                backend prefixes the lifecycle key with it so the
+                release matches the key ``execute`` acquired under.
         """
         ...
 

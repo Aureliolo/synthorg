@@ -732,6 +732,11 @@ def test_client(  # noqa: C901, PLR0912, PLR0913, PLR0915
         app_state._docs_service = None
         app_state._project_doc_memory_facade = None
         app_state._docs_tool_factory = None
+        # Symmetric with the coordinator / worker-exec resets above: the
+        # persistence-gated boot wiring sets the per-project workspace
+        # service once on the first test's startup, so clear it too or
+        # later tests would observe a wired service the first did not.
+        app_state._project_workspace_service = None
         _seed_test_users(fake_persistence, auth_service)
         _promote_first_owner(fake_persistence)
         client.headers.update(make_auth_headers("ceo"))
