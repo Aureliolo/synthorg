@@ -4,7 +4,7 @@ The prompt is the gate's authority over the agent's behaviour: it
 constrains the attack surface (the four locked dimensions), forbids
 deference to the deliverable's apparent authority, instructs the
 agent to call ``submit_red_team_report`` exactly once, and wraps all
-untrusted deliverable content via ``wrap_untrusted`` (SEC-1).
+untrusted deliverable content via ``wrap_untrusted``.
 """
 
 from typing import TYPE_CHECKING, Final

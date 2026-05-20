@@ -53,9 +53,9 @@ HEURISTIC_GROUNDING_MAX_SEVERITY: Final[RedTeamSeverity] = RedTeamSeverity.LOW
 
 Heuristic grounding flags are deterministic but not authoritative;
 capping their severity at LOW means a noisy stub can never block on
-its own. Only the LLM agent's own findings (or, post-#1988, the
-substrate-backed checker) may escalate to MEDIUM/HIGH/CRITICAL on the
-GROUNDING attack surface.
+its own. Only the LLM agent's own findings (or, once it ships, a
+substrate-backed checker) may escalate to MEDIUM/HIGH/CRITICAL on
+the GROUNDING attack surface.
 """
 
 SUBSTRATE_GROUNDING_MAX_SEVERITY: Final[RedTeamSeverity] = RedTeamSeverity.HIGH
