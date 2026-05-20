@@ -74,9 +74,14 @@ class TestSeniorityInfo:
 class TestBuiltinRoles:
     """Tests for the BUILTIN_ROLES tuple completeness and invariants."""
 
-    def test_has_32_roles(self) -> None:
-        """Verify BUILTIN_ROLES contains exactly 32 roles."""
-        assert len(BUILTIN_ROLES) == 32
+    def test_has_33_roles(self) -> None:
+        """Verify BUILTIN_ROLES contains exactly 33 roles (32 + Red Team)."""
+        assert len(BUILTIN_ROLES) == 33
+
+    def test_red_team_role_present(self) -> None:
+        """The built-in Red Team role is registered under its catalogued name."""
+        names = {r.name for r in BUILTIN_ROLES}
+        assert "Red Team" in names
 
     def test_all_entries_are_role(self) -> None:
         """Verify every entry is a Role instance."""
@@ -197,6 +202,7 @@ class TestGetBuiltinRole:
             "Brand Strategist",
             "Growth Marketer",
             "Knowledge Architect",
+            "Red Team",
         ],
     )
     def test_all_roles_lookupable(self, name: str) -> None:

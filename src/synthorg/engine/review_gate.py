@@ -33,6 +33,10 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_TASK_NOT_FOUND,
     APPROVAL_GATE_TASK_UNASSIGNED,
 )
+from synthorg.observability.events.red_team import (
+    RED_TEAM_GATE_SKIPPED,
+    RED_TEAM_REWORK_ROUTED,
+)
 from synthorg.observability.events.review_pipeline import (
     APPROVAL_GATE_PIPELINE_ALL_SKIPPED,
 )
@@ -47,6 +51,8 @@ if TYPE_CHECKING:
     from synthorg.engine.review.pipeline import ReviewPipeline
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.persistence.protocol import PersistenceBackend
+    from synthorg.security.redteam.models import RedTeamReviewInput
+    from synthorg.security.redteam.protocol import RedTeamGate
 
 logger = get_logger(__name__)
 
@@ -77,9 +83,11 @@ class ReviewGateService:
         *,
         task_engine: TaskEngine,
         persistence: PersistenceBackend | None = None,
+        red_team_gate: RedTeamGate | None = None,
     ) -> None:
         self._task_engine = task_engine
         self._persistence = persistence
+        self._red_team_gate = red_team_gate
 
     async def check_can_decide(
         self,
@@ -181,7 +189,7 @@ class ReviewGateService:
             normalized_reason=normalized_reason,
         )
 
-    async def run_pipeline(
+    async def run_pipeline(  # noqa: PLR0913
         self,
         *,
         task_id: str,
@@ -189,6 +197,7 @@ class ReviewGateService:
         decided_by: str,
         requested_by: str,
         approval_id: str | None = None,
+        red_team_input: RedTeamReviewInput | None = None,
     ) -> PipelineResult:
         """Drive a review pipeline and apply its final verdict.
 
@@ -207,6 +216,12 @@ class ReviewGateService:
                 pipeline's operator or the invoking agent).
             requested_by: Agent that requested the review.
             approval_id: Optional foreign key to an approval item.
+            red_team_input: Optional adversarial-review payload. When
+                this and ``red_team_gate`` are both wired, a pipeline
+                PASS verdict is offered to the red-team gate before
+                the task-engine transition; a BLOCK verdict overrides
+                the pipeline's COMPLETED target and routes the task
+                back to IN_PROGRESS as rework.
 
         Returns:
             The :class:`PipelineResult` produced by the pipeline
@@ -224,6 +239,20 @@ class ReviewGateService:
         target, transition_reason, event, approved = self._map_pipeline_verdict(
             result, decided_by
         )
+        if approved:
+            (
+                target,
+                transition_reason,
+                event,
+                approved,
+            ) = await self._apply_red_team_gate(
+                task_id=task_id,
+                target=target,
+                transition_reason=transition_reason,
+                event=event,
+                approved=approved,
+                red_team_input=red_team_input,
+            )
         await self._apply_decision(
             task=task,
             target=target,
@@ -236,6 +265,73 @@ class ReviewGateService:
             normalized_reason=transition_reason,
         )
         return result
+
+    async def _apply_red_team_gate(  # noqa: PLR0913
+        self,
+        *,
+        task_id: str,
+        target: TaskStatus,
+        transition_reason: str,
+        event: str,
+        approved: bool,
+        red_team_input: RedTeamReviewInput | None,
+    ) -> tuple[TaskStatus, str, str, bool]:
+        """Invoke the red-team gate; override target on BLOCK verdict.
+
+        Called after the review pipeline returns its target verdict but
+        before the task-engine transition lands. When the gate is
+        configured AND ``red_team_input`` is provided, the gate evaluates
+        the deliverable; a BLOCK verdict reroutes the task to
+        ``IN_PROGRESS`` (rework) with the red-team summary as the
+        transition reason. PASS / PASS_WITH_FINDINGS leaves the existing
+        target unchanged so the original review-pipeline verdict stands.
+
+        When the gate is configured but ``red_team_input`` is absent the
+        transition is blocked (fail-closed): a configured security gate
+        must not be silently bypassed by a caller that omits the
+        adversarial-review payload. The task is held out of COMPLETED and
+        routed back to ``IN_PROGRESS`` until the input is wired.
+        """
+        gate = self._red_team_gate
+        if gate is None:
+            return target, transition_reason, event, approved
+        if red_team_input is None:
+            logger.warning(
+                RED_TEAM_GATE_SKIPPED,
+                task_id=task_id,
+                reason="red_team_input_required",
+                note=(
+                    "Red-team gate is configured but the caller did not "
+                    "supply red_team_input; blocking completion (fail-closed) "
+                    "until the adversarial-review payload is wired."
+                ),
+            )
+            return (
+                TaskStatus.IN_PROGRESS,
+                "red_team_input_required",
+                RED_TEAM_GATE_SKIPPED,
+                False,
+            )
+
+        from synthorg.security.redteam.models import RedTeamVerdict  # noqa: PLC0415
+
+        result = await gate.evaluate(red_team_input)
+        if result.verdict is not RedTeamVerdict.BLOCK:
+            return target, transition_reason, event, approved
+        logger.warning(
+            RED_TEAM_REWORK_ROUTED,
+            task_id=task_id,
+            execution_id=red_team_input.execution_id,
+            findings=len(result.report.findings),
+            verdict=result.verdict.value,
+        )
+        rework_reason = f"Red-team review blocked completion: {result.report.summary}"
+        return (
+            TaskStatus.IN_PROGRESS,
+            rework_reason,
+            APPROVAL_GATE_REVIEW_REWORK,
+            False,
+        )
 
     @staticmethod
     def _map_pipeline_verdict(

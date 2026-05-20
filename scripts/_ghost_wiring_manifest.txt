@@ -54,3 +54,10 @@ ENFORCED PushQueueCoordinator #1974 -- constructed per-project by engine/workspa
 ENFORCED BrowserTool #1992 -- constructed by tools/factory.py::_build_browser_tools behind the BROWSER sandbox category; EPIC #1987 hands-and-senses headless browser
 ENFORCED SSIMDiffer #1992 -- default ScreenshotDiffer constructed by tools/browser/browser_tool.py::BrowserTool.__init__
 ENFORCED WorkspaceBaselineStore #1992 -- constructed by tools/browser/browser_tool.py::BrowserTool.__init__; per-workspace baseline-screenshot resolver
+ENFORCED build_red_team_runtime #1986 -- called at boot by workers/runtime_builder._build_red_team_runtime_or_none behind CompanyConfig.security.red_team.enabled; returns RedTeamRuntime carrying the gate + tool + repo + runner
+ENFORCED RedTeamGateService #1986 -- constructed by security/redteam/builder.build_red_team_runtime; coordinates the inline AgentEngine.run + grounding stub + severity-tiered routing for one deliverable
+ENFORCED AgentEngineRunner #1986 -- constructed by security/redteam/builder.build_red_team_runtime; production AgentRunner that builds the transient red-team Task and delegates to AgentEngine.run
+ENFORCED SubmitRedTeamReportTool #1986 -- constructed by security/redteam/builder.build_red_team_runtime; agent-callable tool that persists a single RedTeamReport per execution via the report repo
+ENFORCED InMemoryRedTeamReportRepository #1986 -- constructed by security/redteam/builder.build_red_team_runtime; single-shot per-execution storage for RedTeamReport entries (persistent backends land in a follow-up)
+ENFORCED HeuristicGroundingChecker #1986 -- constructed by security/redteam/grounding/factory.build_grounding_checker when RedTeamConfig.grounding_checker_kind=="heuristic"; deterministic regex-based ungrounded-claim flag, swappable for a substrate-backed checker
+ENFORCED build_red_team_agent_identity #1986 -- called by security/redteam/builder.build_red_team_runtime; constructs the built-in Red Team AgentIdentity from the BUILTIN_ROLES catalog

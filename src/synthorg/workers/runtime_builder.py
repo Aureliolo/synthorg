@@ -39,8 +39,15 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.resolver import AutonomyResolver
+from synthorg.security.redteam.builder import (
+    RedTeamRuntime,
+    RedTeamToolSeed,
+    build_red_team_runtime,
+    build_red_team_tool_seed,
+)
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import resolve_init_int
+from synthorg.tools.base import BaseTool  # noqa: TC001
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox.factory import build_sandbox_backends
@@ -134,11 +141,14 @@ class RuntimeServices(NamedTuple):
     empty-company (no-provider) case, where ``worker_execution_service``
     is a :class:`NoProviderExecutionService`; ``work_pipeline`` is also
     ``None`` when no intake runtime is wired (no work entry path).
+    ``red_team_runtime`` is ``None`` when the adversarial gate is
+    disabled (default) OR when no provider is configured.
     """
 
     worker_execution_service: WorkerExecutionService
     coordinator: MultiAgentCoordinator | None
     work_pipeline: WorkPipeline | None
+    red_team_runtime: RedTeamRuntime | None = None
 
 
 def _select_active_provider(
@@ -186,6 +196,7 @@ def _select_active_provider(
 async def _build_tool_registry(
     app_state: AppState,
     workspace_root: Path,
+    extra_tools: tuple[BaseTool, ...] = (),
 ) -> tuple[ToolRegistry, int, Mapping[str, SandboxBackend]]:
     """Create the sandbox workspace and the config-driven tool registry.
 
@@ -195,6 +206,12 @@ async def _build_tool_registry(
     injected, then wires the tool registry against those backends.  The
     backends mapping is returned so the execution service can release
     the lifecycle owner at the task boundary and shut backends down.
+
+    The ``extra_tools`` parameter accepts BOOT-time tools that must
+    join the registry before any agent runs (e.g. the red-team gate's
+    ``submit_red_team_report`` tool). They are appended to the
+    config-driven default tools so the resulting registry sees every
+    tool the agent engine should expose.
     """
     await asyncio.to_thread(
         workspace_root.mkdir,
@@ -219,14 +236,15 @@ async def _build_tool_registry(
         workspace=workspace_root,
         lifecycle_strategy=lifecycle_strategy,
     )
-    tools = build_default_tools_from_config(
+    default_tools = build_default_tools_from_config(
         workspace=workspace_root,
         config=app_state.config,
         sandbox_backends=sandbox_backends,
         web_request_timeout=web_request_timeout,
         browser_settings=browser_settings,
     )
-    return ToolRegistry(list(tools)), len(tools), sandbox_backends
+    tools: list[BaseTool] = [*default_tools, *extra_tools]
+    return ToolRegistry(tools), len(tools), sandbox_backends
 
 
 def _construct_agent_engine(
@@ -513,9 +531,13 @@ async def build_runtime_services(
     registry, names = selected
     provider = registry.get(names[0])
 
+    red_team_seed = build_red_team_tool_seed(
+        config=app_state.config.security.red_team,
+    )
     tool_registry, tool_count, sandbox_backends = await _build_tool_registry(
         app_state,
         workspace_root,
+        extra_tools=red_team_seed.extra_tools,
     )
     coordination_metrics_collector = _construct_coordination_collector(app_state)
     engine = _construct_agent_engine(
@@ -559,8 +581,48 @@ async def build_runtime_services(
         provider=provider,
         decomposition_model=decomposition_model,
     )
+    red_team_runtime = _build_red_team_runtime_or_none(
+        app_state=app_state,
+        engine=engine,
+        provider_name=names[0],
+        seed=red_team_seed,
+    )
     return RuntimeServices(
         worker_execution_service=worker_execution_service,
         coordinator=coordinator,
         work_pipeline=work_pipeline,
+        red_team_runtime=red_team_runtime,
+    )
+
+
+def _build_red_team_runtime_or_none(
+    *,
+    app_state: AppState,
+    engine: AgentEngine,
+    provider_name: str,
+    seed: RedTeamToolSeed,
+) -> RedTeamRuntime | None:
+    """Construct the red-team runtime when the gate is enabled.
+
+    Pulls :class:`RedTeamConfig` from ``app_state.config.security.red_team``
+    and pins the red-team agent's :class:`ModelConfig` to the company's
+    active provider with the vendor-agnostic ``example-medium-001``
+    model id; operators override via the post-init swap path. The
+    ``seed`` parameter carries the per-boot
+    :class:`InMemoryRedTeamReportRepository` and
+    :class:`SubmitRedTeamReportTool` already registered on the engine's
+    tool registry, so the runtime shares those instances rather than
+    constructing fresh ones.
+    """
+    from synthorg.core.agent import ModelConfig  # noqa: PLC0415
+
+    return build_red_team_runtime(
+        config=app_state.config.security.red_team,
+        engine=engine,
+        model=ModelConfig(
+            provider=provider_name,
+            model_id="example-medium-001",
+        ),
+        seed=seed,
+        clock=app_state.clock,
     )

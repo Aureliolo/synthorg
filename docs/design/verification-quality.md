@@ -143,15 +143,17 @@ intake strategy contracts, and the real work-entry path.
 
 ## Order of Operations
 
-The four quality and approval surfaces (verification stage, review
+Five quality and approval surfaces (verification stage, review
 pipeline, mid-execution `AUTH_REQUIRED` park, post-completion
-`IN_REVIEW` gate) operate at distinct points in the task lifecycle.
+`IN_REVIEW` gate, adversarial red-team gate) operate at distinct
+points in the task lifecycle.
 
 | Phase | Surface | Trigger | Task status during | Exit | Where documented |
 |-------|---------|---------|--------------------|------|------------------|
 | Mid-execution | `AUTH_REQUIRED` park | Agent calls a tool that requires approval at runtime (e.g. `deploy`, `db:admin`). Driven by `ApprovalGate` middleware. | `AUTH_REQUIRED` | Approved: returns to `ASSIGNED`. Denied / timeout: `CANCELLED`. | [Security: Approval Workflow](security.md#approval-workflow) |
 | Agent done | Verification stage | Workflow blueprint has a `VERIFICATION` control-flow node. Runs as a separate evaluator agent with its own context. | `IN_PROGRESS` (engine-internal) | Pass: continue to next node. Fail: regenerate. Refer: hand to human via `VERIFICATION_REFER` edge. | This page, [Workflow Node and Edge Types](#workflow-node-and-edge-types) |
 | Agent done | Review pipeline | Task transitions `IN_PROGRESS` to `IN_REVIEW`. Chain of `ReviewStage` instances runs. | `IN_REVIEW` | First-failing stage returns the task to `IN_PROGRESS`; all-pass moves to `COMPLETED`. | This page, [Review Pipeline](#review-pipeline) |
+| Review pipeline PASS | Red-team gate | Opt-in (`CompanyConfig.security.red_team.enabled`). Fires when the review pipeline returns its COMPLETED verdict, BEFORE the task-engine transition lands. | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the red-team summary as the rework reason. PASS / PASS_WITH_FINDINGS: pipeline's verdict stands. | [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate) |
 
 Key invariants:
 

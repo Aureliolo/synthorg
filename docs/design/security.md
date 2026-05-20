@@ -700,8 +700,73 @@ account-lockout duration) and is intentionally **not** coupled to the
 revalidation cadence; the unified cadence governs WS and SSE auth
 revalidation only.
 
+## Adversarial Red-Team Gate
+
+The red-team gate is an opt-in adversarial check that fires as the
+LAST step before a deliverable transitions IN_REVIEW -> COMPLETED,
+after the normal `ReviewPipeline` has returned PASS. It treats every
+about-to-ship artefact as untrusted input and attacks it along four
+locked surfaces:
+
+- CORRECTNESS: does the deliverable do what was asked.
+- SECURITY: input validation, secret handling, injection sinks, OWASP-style defects.
+- REQUIREMENTS: brief / acceptance-criteria coverage vs. the deliverable's actual content.
+- GROUNDING: traceability of every assertive factual claim (numbers, percentages, named entities) to a source.
+
+### Shape
+
+- The red team is a built-in `Role` (`name="Red Team"`, department `quality_assurance`, seniority `senior`) carried in `BUILTIN_ROLES`. The role is instantiated as a real `AgentIdentity` at boot via `build_red_team_agent_identity` and dispatched through `AgentEngine.run` like any other agent.
+- The gate's only agent-side side effect is one `submit_red_team_report` tool call carrying a frozen `RedTeamReport` (`execution_id`, `task_id`, `findings`, `summary`). The tool is registered ONCE on the engine's tool registry; `execution_id` / `task_id` flow through tool arguments, NOT through constructor-bound state, so the tool is a singleton.
+- The agent prompt wraps the deliverable in `<untrusted-artifact>` and the brief in `<task-data>` via `wrap_untrusted` (SEC-1). The system prompt explicitly forbids deference to seniority and authority cues in the deliverable, mitigating the authority-deference failure pattern (`docs/design/communication-coordination.md`).
+
+### Severity x autonomy routing
+
+Mirrors `AutonomyTieredPolicy` in `security/output_scan_policy.py`:
+
+| Severity   | LOCKED | SUPERVISED | SEMI       | FULL       |
+|------------|--------|------------|------------|------------|
+| CRITICAL   | BLOCK  | BLOCK      | BLOCK      | BLOCK      |
+| HIGH       | BLOCK  | BLOCK      | BLOCK      | BLOCK      |
+| MEDIUM     | BLOCK  | BLOCK      | PASS+      | PASS+      |
+| LOW / INFO | PASS+  | PASS+      | PASS+      | PASS+      |
+
+`PASS+` is `RedTeamVerdict.PASS_WITH_FINDINGS`: the deliverable
+proceeds but findings attach to the audit trail. `BLOCK` returns the
+task to IN_PROGRESS with the structured critique as the rework brief.
+
+### Grounding subsystem
+
+A small `GroundingChecker` protocol lets the substrate-backed
+implementation that EPIC E #1988 ships drop in without changing the
+gate. The current `HeuristicGroundingChecker` is deterministic
+regex-based: it flags assertive numeric / temporal claims with no
+citation marker. Heuristic-source findings are capped at LOW severity
+by `HEURISTIC_GROUNDING_MAX_SEVERITY` so the stub never blocks on its
+own; only the LLM agent's own findings (or, post-#1988, the
+substrate-backed checker) may escalate to HIGH/CRITICAL on the
+GROUNDING surface.
+
+### Configuration
+
+`CompanyConfig.security.red_team.enabled` is `False` by default. When
+enabled, the boot path in `workers/runtime_builder.py` constructs the
+full subsystem via `security/redteam/builder.py::build_red_team_runtime`,
+which returns a `RedTeamRuntime` NamedTuple (gate, submit tool, repo,
+runner). Operators flip the flag once the review-gate integration
+point is wired in their deployment.
+
+### Failure modes
+
+- AGENT FAULTS: agent never files a report, or the dispatch raises.
+  The gate fails OPEN with a synthetic INFO-severity finding;
+  completion is not blocked by an agent fault, but the audit record
+  shows the degraded review.
+- GROUNDING FAULTS: heuristic stub raises. The gate logs the failure
+  and proceeds without heuristic findings.
+
 ## See Also
 
 - [Tools](tools.md): tool categories, sandboxing, progressive trust
 - [Budget](budget.md): risk budget, shadow mode enforcement
+- [Verification & Quality](verification-quality.md): verification stage and review pipeline (the red-team gate is the LAST adversarial layer AFTER the review pipeline passes)
 - [Design Overview](index.md): full index

@@ -15,6 +15,12 @@ AUDIT_RETENTION_TICK_DEFAULT_SECONDS: Final[float] = 86400.0
 AUDIT_RETENTION_TICK_MIN_SECONDS: Final[float] = 60.0
 AUDIT_RETENTION_TICK_MAX_SECONDS: Final[float] = 604800.0
 
+# Red-team gate per-evaluation timeout bounds. Shared so the Pydantic
+# field validator on ``RedTeamConfig.timeout_seconds`` and any future
+# settings-registry entry resolve from the same literal source.
+RED_TEAM_TIMEOUT_DEFAULT_SECONDS: Final[float] = 60.0
+RED_TEAM_TIMEOUT_MAX_SECONDS: Final[float] = 600.0
+
 _r = get_registry()
 
 _r.register(
