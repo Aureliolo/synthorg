@@ -11,8 +11,9 @@ discriminating ``ExecutionPath.TEAM`` assertion proves the objective
 genuinely decomposed via the multi-agent coordinator rather than
 running solo.
 
-Zero real LLM spend: the scripted provider returns a plain STOP
-completion for every agent turn.
+Zero real LLM spend: the scripted provider returns a decomposition
+plan when the LLM is invoked for decomposition (tool call), and a
+plain STOP completion for every agent turn.
 """
 
 from collections.abc import AsyncGenerator
@@ -52,6 +53,7 @@ from synthorg.providers.models import (
     CompletionConfig,
     CompletionResponse,
     TokenUsage,
+    ToolCall,
     ToolDefinition,
 )
 from synthorg.providers.registry import ProviderRegistry
@@ -66,10 +68,19 @@ pytestmark = pytest.mark.e2e
 
 _PROJECT = "objectives"
 _RESEARCH_SKILL = "research"
+_DECOMPOSITION_TOOL = "submit_decomposition_plan"
 
 
 class _StopStrategy:
-    """Every agent turn is a plain STOP completion (no tool calls)."""
+    """Branches decomposition tool calls vs plain sub-agent turns.
+
+    The multi-agent coordinator's decomposition stage invokes the LLM
+    with a ``submit_decomposition_plan`` tool definition; the strategy
+    returns a structured single-subtask plan so the decomposer parses
+    a valid response. Every other turn (agent execution) returns a
+    plain STOP completion so the worker execution service drives the
+    subtask past ASSIGNED through to a post-execution status.
+    """
 
     def next_response(
         self,
@@ -78,11 +89,42 @@ class _StopStrategy:
         tools: list[ToolDefinition] | None,
         config: CompletionConfig | None,
     ) -> CompletionResponse:
-        del messages, tools, config
+        del messages, config
+        usage = TokenUsage(input_tokens=8, output_tokens=4, cost=0.0)
+        is_decomposition = tools is not None and any(
+            t.name == _DECOMPOSITION_TOOL for t in tools
+        )
+        if is_decomposition:
+            return CompletionResponse(
+                content=None,
+                tool_calls=(
+                    ToolCall(
+                        id="decomp-1",
+                        name=_DECOMPOSITION_TOOL,
+                        arguments={
+                            "task_structure": "sequential",
+                            "coordination_topology": "centralized",
+                            "subtasks": [
+                                {
+                                    "id": "sub-research",
+                                    "title": "Research release scope",
+                                    "description": (
+                                        "Investigate the work the objective describes."
+                                    ),
+                                    "required_skills": [_RESEARCH_SKILL],
+                                },
+                            ],
+                        },
+                    ),
+                ),
+                finish_reason=FinishReason.TOOL_USE,
+                usage=usage,
+                model=model,
+            )
         return CompletionResponse(
             content="Work complete.",
             finish_reason=FinishReason.STOP,
-            usage=TokenUsage(input_tokens=8, output_tokens=4, cost=0.0),
+            usage=usage,
             model=model,
         )
 
