@@ -31,6 +31,9 @@ and optional rate limiting and health check configuration.
 | Type | Auth Fields | Health Check |
 |------|------------|--------------|
 | `github` | `token`, `api_url` | `GET /user` |
+| `gitlab` | `token`, `api_url` | `GET /user` |
+| `gitea` | `token`, `api_url` | `GET /api/v1/user` |
+| `forgejo` | `token`, `api_url` | `GET /api/v1/user` |
 | `slack` | `token`, `signing_secret` | `POST auth.test` |
 | `smtp` | `host`, `port`, `username`, `password` | SMTP EHLO |
 | `database` | `dialect`, `host`, `port`, `username`, `password`, `database` | `SELECT 1` |

@@ -4,10 +4,13 @@ High-level service that coordinates workspace lifecycle:
 setup, merge, and teardown for groups of agent workspaces.
 """
 
+import asyncio
+from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     WorkspaceCleanupError,
 )
@@ -16,6 +19,7 @@ from synthorg.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
 )
+from synthorg.engine.workspace.push_queue import PushQueueCoordinator
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     WORKSPACE_GROUP_SETUP_COMPLETE,
@@ -30,12 +34,15 @@ if TYPE_CHECKING:
     from synthorg.engine.workspace.config import (
         WorkspaceIsolationConfig,
     )
-    from synthorg.engine.workspace.models import WorkspaceRequest
+    from synthorg.engine.workspace.git_backend import GitBackend
+    from synthorg.engine.workspace.models import MergeResult, WorkspaceRequest
     from synthorg.engine.workspace.protocol import (
         WorkspaceIsolationStrategy,
     )
 
 logger = get_logger(__name__)
+
+_DEFAULT_BRANCH: NotBlankStr = NotBlankStr("main")
 
 
 class WorkspaceIsolationService:
@@ -49,18 +56,41 @@ class WorkspaceIsolationService:
         config: Workspace isolation configuration.
     """
 
-    __slots__ = ("_clock", "_config", "_merge_orchestrator", "_strategy")
+    __slots__ = (
+        "_clock",
+        "_config",
+        "_default_branch",
+        "_git_backend",
+        "_merge_orchestrator",
+        "_push_queues",
+        "_push_queues_lock",
+        "_shutting_down",
+        "_strategy",
+    )
 
     def __init__(
         self,
         *,
         strategy: WorkspaceIsolationStrategy,
         config: WorkspaceIsolationConfig,
+        git_backend: GitBackend | None = None,
+        default_branch: NotBlankStr = _DEFAULT_BRANCH,
         clock: Clock | None = None,
     ) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._strategy = strategy
         self._config = config
+        self._git_backend = git_backend
+        self._default_branch = default_branch
+        self._push_queues: dict[str, PushQueueCoordinator] = {}
+        self._push_queues_lock = asyncio.Lock()
+        # Set by ``shutdown()`` under ``_push_queues_lock`` so
+        # ``_get_or_create_queue()`` cannot resurrect a coordinator
+        # after the service has begun tearing down. Without this flag
+        # a queue created mid-shutdown would survive the teardown loop
+        # and keep accepting merge+push work against a service that
+        # claims to have stopped.
+        self._shutting_down = False
         pw = config.planner_worktrees
         self._merge_orchestrator = MergeOrchestrator(
             strategy=strategy,
@@ -182,6 +212,101 @@ class WorkspaceIsolationService:
             merge_results=merge_results,
             duration_seconds=elapsed,
         )
+
+    async def _get_or_create_queue(
+        self,
+        *,
+        project_id: NotBlankStr,
+        repo_root: Path,
+    ) -> PushQueueCoordinator:
+        """Return the project's push queue, creating it once on first use.
+
+        Double-checked under ``_push_queues_lock`` so two agents
+        finishing concurrently on a fresh project create exactly one
+        coordinator.
+        """
+        async with self._push_queues_lock:
+            existing = self._push_queues.get(project_id)
+            if existing is not None:
+                return existing
+            if self._shutting_down:
+                # Shutdown started before this caller acquired the lock;
+                # a new queue would survive the teardown loop's snapshot
+                # and keep accepting work against a stopped service.
+                msg = (
+                    f"WorkspaceIsolationService for project "
+                    f"{project_id!r} is shutting down; refusing new queue"
+                )
+                raise WorkspaceCleanupError(msg)
+            if self._git_backend is None:  # pragma: no cover - guarded by caller
+                msg = "push queue requires a git backend"
+                raise WorkspaceCleanupError(msg)
+            queue = PushQueueCoordinator(
+                project_id=project_id,
+                strategy=self._strategy,
+                git_backend=self._git_backend,
+                repo_root=repo_root,
+                default_branch=self._default_branch,
+                clock=self._clock,
+            )
+            await queue.start()
+            self._push_queues[project_id] = queue
+            return queue
+
+    async def merge_workspace_with_push(
+        self,
+        *,
+        workspace: Workspace,
+        project_id: NotBlankStr,
+        repo_root: Path,
+    ) -> MergeResult:
+        """Merge *workspace* then push the default branch, serialised.
+
+        When no git backend is wired the merge still runs (via the
+        strategy) but nothing is pushed -- this keeps the call site
+        uniform whether or not durable backing is configured.
+
+        Args:
+            workspace: The agent workspace to merge back.
+            project_id: Owning project (selects the serial queue).
+            repo_root: Project working tree the push runs from.
+
+        Returns:
+            The :class:`MergeResult`.
+
+        Raises:
+            WorkspaceMergeError: The merge failed fatally.
+            WorkspacePushError: The backend push failed.
+        """
+        if self._git_backend is None:
+            return await self._strategy.merge_workspace(workspace=workspace)
+        queue = await self._get_or_create_queue(
+            project_id=project_id,
+            repo_root=repo_root,
+        )
+        return await queue.enqueue_merge_push(workspace=workspace)
+
+    async def shutdown(self) -> None:
+        """Stop every per-project push queue (best-effort, all attempted)."""
+        async with self._push_queues_lock:
+            # Flip ``_shutting_down`` under the same lock that
+            # ``_get_or_create_queue`` takes so a concurrent first-touch
+            # cannot slip a freshly-created coordinator in behind us.
+            self._shutting_down = True
+            queues = tuple(self._push_queues.values())
+            self._push_queues.clear()
+        for queue in queues:
+            try:
+                await queue.stop()
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    WORKSPACE_TEARDOWN_FAILED,
+                    reason="push_queue_stop_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
     async def teardown_group(
         self,

@@ -82,6 +82,9 @@ if TYPE_CHECKING:
         ProjectCostAggregateRepository,
     )
     from synthorg.persistence.project_protocol import ProjectRepository
+    from synthorg.persistence.project_workspace_protocol import (
+        ProjectWorkspaceRepository,
+    )
     from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
     from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
     from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
@@ -140,6 +143,7 @@ class _BackendRepositoryAccessors:
     _settings: SettingsRepository | None
     _artifacts: ArtifactRepository | None
     _projects: ProjectRepository | None
+    _project_workspaces: ProjectWorkspaceRepository | None
     _project_cost_aggregates: ProjectCostAggregateRepository | None
     _fine_tune_checkpoints: FineTuneCheckpointRepository | None
     _fine_tune_runs: FineTuneRunRepository | None
@@ -299,6 +303,11 @@ class _BackendRepositoryAccessors:
     def projects(self) -> ProjectRepository:
         """Repository for Project persistence."""
         return self._require_connected(self._projects, "projects")
+
+    @property
+    def project_workspaces(self) -> ProjectWorkspaceRepository:
+        """Repository for persistent per-project workspace mappings."""
+        return self._require_connected(self._project_workspaces, "project_workspaces")
 
     @property
     def project_cost_aggregates(self) -> ProjectCostAggregateRepository:

@@ -45,3 +45,9 @@ ENFORCED build_work_pipeline #1960 -- called by workers.runtime_builder._build_r
 ENFORCED build_chief_of_staff_proposer #1968 -- called by api.app._wire_chief_of_staff_proposer behind propose_enabled + provider switch; constructs ChiefOfStaffProposer which parks approval-gated WorkItems for the conversational interface
 ENFORCED TaskBoardEntryAdapter #1963 -- constructed by engine.pipeline.entry.factory.build_work_entry_adapter on the TASK_BOARD arm; wired at boot by engine.pipeline.entry.boot.wire_real_task_board_entry; drives the spine for human-filed board tasks (POST /tasks)
 ENFORCED ObjectiveEntryAdapter #1964 -- built at boot by engine.pipeline.entry.boot.wire_real_objective_entry; fed by POST /objectives
+ENFORCED ProjectWorkspaceService #1974 -- constructed in api/app.py _install_runtime_services; per-project persistent git-backed workspace provisioning
+ENFORCED build_git_backend #1974 -- called in api/app.py _install_runtime_services; builds the configured GitBackend strategy (embedded default)
+ENFORCED EmbeddedGitBackend #1974 -- default GitBackend strategy built by engine/workspace/git_backend/factory.py::_build_embedded
+ENFORCED LocalPathGitBackend #1974 -- GitBackend strategy built by engine/workspace/git_backend/factory.py::_build_local_path for the LOCAL_PATH discriminator
+ENFORCED ExternalRemoteGitBackend #1974 -- GitBackend strategy built by engine/workspace/git_backend/factory.py::_build_external_remote for the EXTERNAL_REMOTE discriminator
+ENFORCED PushQueueCoordinator #1974 -- constructed per-project by engine/workspace/service.py::WorkspaceIsolationService._get_or_create_queue; serialises merge+push to the backend

@@ -1,5 +1,6 @@
 """Root test configuration and shared fixtures."""
 
+import asyncio
 import faulthandler
 import logging
 import os
@@ -9,7 +10,7 @@ import sys
 import time
 from collections.abc import AsyncGenerator, Iterable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 # Boot-time guard parity (see synthorg.api.app create_app): every backend
 # boot -- dev, pre-release, prod -- refuses to start with an ephemeral
@@ -201,7 +202,15 @@ DISALLOWED_VENDOR_NAMES: frozenset[str] = frozenset(
 # into 10-minute test runs.  Integration and e2e tests are exempt.
 # Disabled for fuzz profile where 10k examples per test routinely
 # exceed the limit.
-_UNIT_TEST_WALL_CLOCK_LIMIT = 8.0  # seconds
+#
+# 12s (was 8s) absorbs the migration chain that intrinsic-migration
+# tests (e.g. ``test_migrate_creates_tables``, ``test_save_and_get``)
+# pay on the worker that generates the cross-worker template; the
+# chain is ~8s on Windows under xdist contention and grows with every
+# new yoyo revision. Tests that ran in <8s before still run in <8s
+# (the gate's job is to catch new regressions, not to pin a moving
+# floor).
+_UNIT_TEST_WALL_CLOCK_LIMIT = 12.0  # seconds
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
 _start_key = pytest.StashKey[float]()
 # Accumulator for unit-only wall-clock time, summed across tests in
@@ -542,26 +551,61 @@ def _reset_prometheus_label_snapshot() -> Iterator[None]:
 
 
 _TEMPLATE_DB: Path | None = None
-"""Session-wide migrated template DB.  Created once, copied per test."""
+"""Worker-local cache of the session-wide migrated template DB path."""
+
+# 180s matches ``tests/conformance/persistence/conftest.py``'s
+# postgres-container coordinator. Bounds a worker that dies mid-acquire
+# so peers don't sit forever on a stuck lockfile; covers the yoyo
+# migration chain on cold caches with generous headroom.
+_FILE_LOCK_TIMEOUT_SECONDS: Final[int] = 180
 
 
 async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Return path to the session-wide migrated template database.
 
-    Migrates a fresh SQLite file via yoyo on first call, then reuses
-    the same file for all subsequent calls.  Each test copies this
-    file instead of running migrations again.
+    Migrates a fresh SQLite file via yoyo ONCE per pytest session,
+    shared across all pytest-xdist workers via a ``FileLock`` on a
+    directory under ``tmp_path_factory.getbasetemp().parent`` (the
+    directory xdist allocates for the whole run -- shared across
+    workers, unlike ``mktemp`` which is worker-local). Without the
+    cross-worker lock every worker would re-run yoyo migrations on
+    its first persistence test (8x cost under ``-n 8``), and the
+    per-test wall-clock guard would fire on the first persistence
+    test in each worker once the migration chain grows past ~7 steps.
+
+    Pattern mirrors ``tests/conformance/persistence/conftest.py``'s
+    Postgres testcontainer coordination.
     """
     global _TEMPLATE_DB  # noqa: PLW0603
-    if _TEMPLATE_DB is not None:
+    if _TEMPLATE_DB is not None and await asyncio.to_thread(_TEMPLATE_DB.exists):
         return _TEMPLATE_DB
-    base = tmp_path_factory.mktemp("yoyo_template")
-    db_path = base / "template.db"
-    rev_path = migrations.copy_revisions(base / "revisions")
-    await migrations.migrate_apply(
-        migrations.to_sqlite_url(str(db_path)),
-        revisions_path=rev_path,
-    )
+    # ``getbasetemp().parent`` is the xdist run-wide base; ``getbasetemp()``
+    # itself is the worker-local ``popen-gw0`` etc. subdir.
+    shared_dir = tmp_path_factory.getbasetemp().parent / "yoyo_template_shared"
+    await asyncio.to_thread(shared_dir.mkdir, parents=True, exist_ok=True)
+    db_path = shared_dir / "template.db"
+    lock_path = shared_dir / "template.lock"
+    from filelock import FileLock
+
+    # ``FileLock`` is sync; ``asyncio.to_thread`` keeps the event loop
+    # responsive while waiting for the cross-worker lock. Generation
+    # itself only happens once per session; subsequent workers find
+    # the file already present and skip the migrate_apply call.
+    def _acquire() -> FileLock:
+        lock = FileLock(str(lock_path), timeout=_FILE_LOCK_TIMEOUT_SECONDS)
+        lock.acquire()
+        return lock
+
+    lock = await asyncio.to_thread(_acquire)
+    try:
+        if not await asyncio.to_thread(db_path.exists):
+            rev_path = migrations.copy_revisions(shared_dir / "revisions")
+            await migrations.migrate_apply(
+                migrations.to_sqlite_url(str(db_path)),
+                revisions_path=rev_path,
+            )
+    finally:
+        await asyncio.to_thread(lock.release)
     _TEMPLATE_DB = db_path
     return _TEMPLATE_DB
 

@@ -603,6 +603,33 @@ class FakeArtifactRepository:
         return self._artifacts.pop(entity_id, None) is not None
 
 
+class FakeProjectWorkspaceRepository:
+    """In-memory project_workspaces repository for tests."""
+
+    def __init__(self) -> None:
+        from synthorg.core.project_workspace import ProjectWorkspace
+
+        self._rows: dict[str, ProjectWorkspace] = {}
+
+    async def save(self, entity: Any) -> None:
+        self._rows[entity.project_id] = entity
+
+    async def get(self, entity_id: NotBlankStr) -> Any | None:
+        return self._rows.get(entity_id)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        result = sorted(self._rows.values(), key=lambda r: r.project_id)
+        return tuple(result[offset : offset + limit])
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._rows.pop(entity_id, None) is not None
+
+
 class FakeProjectRepository:
     """In-memory project repository for tests."""
 

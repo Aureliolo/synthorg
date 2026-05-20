@@ -9,16 +9,57 @@ PST-1 so the subprocess lifecycle lives in one focused place.
 """
 
 import asyncio
+import os
 
 # ``Path`` is imported at runtime (not under TYPE_CHECKING) because it is used
 # in a runtime-evaluated annotation on ``run_git_subprocess``; under PEP 649
 # lazy annotations ``inspect.get_annotations`` resolves these in module globals,
 # so a TYPE_CHECKING-only import would raise ``NameError`` at introspection time.
 from pathlib import Path  # noqa: TC003
+from urllib.parse import urlsplit, urlunsplit
 
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
+
+
+def _sanitised_env() -> dict[str, str]:
+    """Return ``os.environ`` minus git's discovery-override vars.
+
+    When this code runs from inside a git pre-push hook (or any caller
+    whose own cwd is a git working tree), git inherits ``GIT_DIR`` /
+    ``GIT_WORK_TREE`` / ``GIT_COMMON_DIR`` from the parent process and
+    those override ordinary path-based repo discovery. A child ``git
+    rev-parse --is-inside-work-tree`` then reports the PARENT repo even
+    though we passed a fresh tmp-dir as ``cwd``. Strip them so our
+    git subprocesses see only the path hierarchy under ``cwd``.
+    """
+    return {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
+
+def _redact_arg(arg: str) -> str:
+    """Strip embedded userinfo from a URL-looking arg, leave others as-is.
+
+    The external-remote backend invokes ``git clone https://x-access-token:
+    TOKEN@host/...`` style URLs. Without redaction the token would land in the
+    structured log when the spawn / timeout / cancellation handlers below
+    record the failing args.
+    """
+    if "://" not in arg or "@" not in arg:
+        return arg
+    try:
+        parts = urlsplit(arg)
+    except ValueError:
+        return arg
+    if "@" not in parts.netloc:
+        return arg
+    host = parts.netloc.rsplit("@", 1)[1]
+    return urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+
+
+def _redact_args(args: tuple[str, ...]) -> tuple[str, ...]:
+    """Redact every URL-looking element of *args* (token-in-URL safe)."""
+    return tuple(_redact_arg(a) for a in args)
 
 
 async def run_git_subprocess(
@@ -52,6 +93,7 @@ async def run_git_subprocess(
             "git",
             *args,
             cwd=str(repo_root),
+            env=_sanitised_env(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -61,7 +103,7 @@ async def run_git_subprocess(
             log_event,
             error_type=exc.__class__.__name__,
             error=msg,
-            args=args,
+            args=_redact_args(args),
         )
         return (-1, "", msg)
     try:
@@ -77,7 +119,7 @@ async def run_git_subprocess(
             log_event,
             error_type="TimeoutError",
             error=msg,
-            args=args,
+            args=_redact_args(args),
         )
         return (-1, "", msg)
     except asyncio.CancelledError:
@@ -87,7 +129,7 @@ async def run_git_subprocess(
             log_event,
             error_type="CancelledError",
             error="git subprocess cancelled by caller",
-            args=args,
+            args=_redact_args(args),
         )
         raise
 
