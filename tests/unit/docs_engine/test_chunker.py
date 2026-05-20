@@ -15,6 +15,7 @@ from synthorg.docs_engine.constants import (
 from synthorg.docs_engine.models import (
     BulletListBlock,
     DecisionBlock,
+    DocBlock,
     HeadingBlock,
     LivingDocument,
     MetricBlock,
@@ -28,7 +29,7 @@ def _ts() -> datetime:
     return datetime(2026, 5, 20, 12, 0, 0, tzinfo=UTC)
 
 
-def _doc(body: tuple) -> LivingDocument:
+def _doc(body: tuple[DocBlock, ...]) -> LivingDocument:
     return LivingDocument(
         slug=NotBlankStr("q2-status"),
         title=NotBlankStr("Q2 status"),

@@ -11,6 +11,7 @@ suite (`tests/integration/docs_engine/`).
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -55,7 +56,7 @@ class _InMemoryWorkspaceRepo:
         return self._rows.pop(entity_id, None) is not None
 
 
-async def _build_tools(tmp_path: Path):
+async def _build_tools(tmp_path: Path) -> tuple[tuple[Any, ...], InMemoryBackend]:
     config = GitBackendConfig(kind=GitBackendType.EMBEDDED)
     git_backend = build_git_backend(
         config,

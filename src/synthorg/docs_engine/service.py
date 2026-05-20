@@ -161,6 +161,7 @@ class DocsService:
         )
         write_result = await self._writer.write(project_id=project_id, doc=doc)
         chunks = self._chunker.chunk(project_id=project_id, doc=doc)
+        last_indexed: NotBlankStr | None
         try:
             await self._indexer.index(
                 project_id=project_id, slug=resolved_slug, chunks=chunks

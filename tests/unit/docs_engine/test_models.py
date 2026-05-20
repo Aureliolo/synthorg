@@ -83,7 +83,8 @@ class TestLivingDocument:
             HeadingBlock(level=3, text="C"),
         )
         doc = _make_doc(body=body)
-        assert tuple(b.text for b in doc.body) == ("A", "B", "C")
+        heading_texts = tuple(b.text for b in doc.body if isinstance(b, HeadingBlock))
+        assert heading_texts == ("A", "B", "C")
 
 
 class TestBlockDiscriminator:

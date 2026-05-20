@@ -41,7 +41,7 @@ _DEFAULT_LIST_LIMIT: Final[int] = 50
 
 def _docs_service(state: State) -> DocsService:
     """Resolve the docs service from app state, surfacing 503 if absent."""
-    svc = state.app_state.docs_service
+    svc: DocsService | None = state.app_state.docs_service
     if svc is None:
         msg = "Living-documentation engine is not wired in this deployment"
         raise NotFoundError(msg)

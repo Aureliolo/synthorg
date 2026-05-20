@@ -218,5 +218,8 @@ def _block_to_text(block: DocBlock) -> str:  # noqa: PLR0911 -- one branch per b
         return f"{block.name}: {block.value}{unit}"
     if isinstance(block, LinkBlock):
         return f"{block.label} ({block.url})"
-    msg = f"Unhandled block kind: {type(block).__name__}"
+    # Exhaustive over the DocBlock union; mypy already proves this is
+    # unreachable, but the ``raise`` is preserved for the runtime path
+    # when a new block kind is added without updating this rendering.
+    msg = f"Unhandled block kind: {type(block).__name__}"  # type: ignore[unreachable]
     raise ValueError(msg)
