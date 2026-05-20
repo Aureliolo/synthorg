@@ -10,6 +10,7 @@ pluggable :class:`ExternalAccessProvider`.
 
 from datetime import UTC
 from typing import TYPE_CHECKING, Any, ClassVar
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -199,7 +200,9 @@ class ExternalApiTool(BaseTool):
         """Build the target URL and confirm its host matches the connection.
 
         The agent may narrow within the connection (relative path, or an
-        absolute url on the same host) but never widen to another host.
+        absolute url on the same host) but never widen to another host, and
+        cannot use ``..`` traversal to reach paths outside the connection's
+        base-URL prefix.
         """
         if not conn.base_url:
             msg = f"Connection {args.connection!r} has no base_url"
@@ -209,6 +212,15 @@ class ExternalApiTool(BaseTool):
             resolved = conn.base_url.rstrip("/") + "/" + args.path.lstrip("/")
         else:
             resolved = args.url
+        if self._has_dot_segment(resolved):
+            logger.warning(
+                EXTERNAL_API_EGRESS_BLOCKED,
+                connection=args.connection,
+                url=redact_url(resolved),
+                reason="path_traversal",
+            )
+            msg = "URL path must not contain '.' or '..' traversal segments"
+            raise ExternalApiEgressBlockedError(msg)
         resolved_host = extract_hostname(resolved)
         if (
             base_host is None
@@ -227,6 +239,12 @@ class ExternalApiTool(BaseTool):
             )
             raise ExternalApiEgressBlockedError(msg)
         return resolved
+
+    @staticmethod
+    def _has_dot_segment(url: str) -> bool:
+        """Whether the URL path contains a ``.`` or ``..`` traversal segment."""
+        path = urlsplit(url).path
+        return any(segment in {".", ".."} for segment in path.split("/"))
 
     async def _credentials(self, conn: Connection) -> dict[str, str]:
         """Fetch decrypted credentials, mapping retrieval failure to a domain error."""

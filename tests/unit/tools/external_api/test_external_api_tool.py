@@ -184,6 +184,15 @@ class TestExternalApiToolEgress:
         assert result.is_error is True
         assert provider.requests == []
 
+    async def test_path_traversal_blocked(self) -> None:
+        provider = StubProvider()
+        tool = _build_tool(conn=_connection(), provider=provider)
+        result = await tool.execute(
+            arguments={"connection": "crm-api", "path": "/v2/../../admin"},
+        )
+        assert result.is_error is True
+        assert provider.requests == []
+
     async def test_ssrf_private_ip_blocked(self) -> None:
         provider = StubProvider()
         conn = Connection(
