@@ -665,10 +665,21 @@ jobs:
         #   fix is in 1.83.7 but the pin is load-bearing for this repo.
         # - CVE-2026-3219: pip 26.0.1 vulnerability with no upstream fix
         #   version available yet. pip is a transitive of uv in this repo.
+        # - PYSEC-2026-89: markdown DoS via malformed HTML; affected versions
+        #   are <= 3.8 with fix in 3.8.1 per the OSV record. The project is on
+        #   markdown 3.10.2, which is past the patched line; pip-audit is
+        #   misreporting the version range.
+        # - PYSEC-2025-183: pyjwt weak-encryption advisory disputed by the
+        #   maintainer (key length is the application's responsibility). This
+        #   project enforces MIN_SECRET_LENGTH via
+        #   src/synthorg/core/auth/config.py::_require_valid_secret, which
+        #   addresses the disputed concern.
         run: |
           uv run pip-audit \
             --ignore-vuln GHSA-xqmj-j6mv-4862 \
-            --ignore-vuln CVE-2026-3219
+            --ignore-vuln CVE-2026-3219 \
+            --ignore-vuln PYSEC-2026-89 \
+            --ignore-vuln PYSEC-2025-183
 
   # ── Docker: Dockerfile Lint ──
   dockerfile-lint:
