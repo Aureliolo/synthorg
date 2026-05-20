@@ -2,14 +2,14 @@
 
 Pure-regex implementation that flags assertive declarative sentences
 which lack any obvious citation marker. Runs without an LLM, without
-a knowledge store, and without provider state, so the simulation
-harness (#1980) can replay it deterministically.
+a knowledge store, and without provider state, so the deterministic
+simulation harness can replay it.
 
 The intent is calibration, not authority. Heuristic findings are
 capped at :data:`synthorg.security.redteam.routing.HEURISTIC_GROUNDING_MAX_SEVERITY`
-(LOW) by the gate, so the stub can never block on its own. The
-EPIC E #1988 substrate-backed checker replaces this for authoritative
-grounding decisions.
+(LOW) by the gate, so the stub can never block on its own. A future
+substrate-backed checker replaces this for authoritative grounding
+decisions.
 """
 
 import re

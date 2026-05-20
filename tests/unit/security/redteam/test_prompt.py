@@ -1,8 +1,9 @@
 """Unit tests for the red-team agent prompt assembly.
 
-The prompt is the SEC-1 boundary between the gate and the LLM: any
-deliverable content must be wrapped via ``wrap_untrusted`` and the
-system-prompt directive about untrusted tags must be present.
+The prompt is the prompt-injection-safe boundary between the gate
+and the LLM: any deliverable content must be wrapped via
+``wrap_untrusted`` and the system-prompt directive about untrusted
+tags must be present.
 """
 
 import pytest
@@ -29,7 +30,7 @@ def _input(deliverable: str = "Backend service done.") -> RedTeamReviewInput:
 
 @pytest.mark.unit
 class TestPromptStructure:
-    """Prompt contains the SEC-1 untrusted-content directive + wrap tags."""
+    """Prompt contains the untrusted-content directive + wrap tags."""
 
     def test_contains_untrusted_content_directive(self) -> None:
         prompt = build_red_team_system_prompt(_input())

@@ -3,9 +3,9 @@
 :class:`UngroundedClaim` is the unit produced by any
 :class:`GroundingChecker` implementation. It carries enough context to
 become a :class:`synthorg.security.redteam.models.RedTeamFinding` in
-the gate, and enough metadata that the EPIC E #1988 substrate-backed
-checker can layer source-resolution data on top without breaking
-existing callers.
+the gate, and enough metadata that a future substrate-backed checker
+can layer source-resolution data on top without breaking existing
+callers.
 """
 
 from typing import Final, Literal
@@ -22,9 +22,9 @@ HEURISTIC_CONFIDENCE_CEILING: Final[float] = 0.7
 
 Capping below 1.0 enforces the design contract that heuristic flags
 never reach the gate's HIGH/CRITICAL routing tier on their own: only
-the agent's own findings (or post-#1988 substrate-backed claims) may
-escalate above the heuristic ceiling. See
-:mod:`synthorg.security.redteam.routing`.
+the agent's own findings (or, once a substrate-backed checker ships,
+substrate-backed claims) may escalate above the heuristic ceiling.
+See :mod:`synthorg.security.redteam.routing`.
 """
 
 

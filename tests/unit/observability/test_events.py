@@ -299,6 +299,7 @@ class TestEventConstants:
             "pipeline",
             "reporting",
             "review_pipeline",
+            "red_team",
             "risk_budget",
             "quality",
             "health",

@@ -2,9 +2,9 @@
 
 The protocol is the seam between the gate and any grounding
 implementation. The current heuristic implementation runs without
-an LLM; the EPIC E #1988 substrate-backed implementation will
-resolve each claim to a source chunk in the knowledge store. The
-gate does not change between the two.
+an LLM; a future substrate-backed implementation will resolve each
+claim to a source chunk in the knowledge store. The gate does not
+change between the two.
 """
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -20,8 +20,8 @@ class GroundingChecker(Protocol):
     """Inspect deliverable text for claims that lack a traceable source.
 
     Implementations MUST be deterministic enough to support the
-    simulation harness (#1980). The heuristic implementation is
-    pure-Python regex; substrate-backed implementations should pin
+    deterministic simulation harness. The heuristic implementation
+    is pure-Python regex; substrate-backed implementations should pin
     their corpus snapshot and any LLM extractor to fixed temperature
     so the harness can replay golden runs.
     """

@@ -6,8 +6,8 @@ agent via :class:`AgentEngine.run`; the factory binds the catalogued
 so operators can choose the provider without forking the subsystem.
 
 Tests cover the structural invariants (role name, department, level,
-skill bag). Integration into the production wiring path lands in
-Phase 5 via :mod:`synthorg.workers.runtime_builder`.
+skill bag). Integration into the production wiring path runs via
+:mod:`synthorg.workers.runtime_builder`.
 """
 
 from datetime import UTC, datetime

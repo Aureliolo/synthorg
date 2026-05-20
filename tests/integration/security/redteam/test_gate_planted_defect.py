@@ -1,6 +1,6 @@
 """Planted-defect acceptance test for the red-team gate.
 
-Acceptance contract for issue #1986:
+Acceptance contract:
 
     A deliverable with a planted defect (failing requirement,
     unsupported claim) is caught by the red-team and sent back

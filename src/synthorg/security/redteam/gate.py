@@ -9,8 +9,8 @@ Drives one evaluation cycle for one deliverable:
    :class:`RedTeamReportRepository`. If the agent did not file one,
    fail-OPEN with a synthetic INFO finding instead of breaking
    completion.
-3. Run the heuristic :class:`GroundingChecker` (or, post-#1988, the
-   substrate-backed implementation) and convert its
+3. Run the heuristic :class:`GroundingChecker` (or, once the knowledge
+   substrate ships, a substrate-backed implementation) and convert its
    :class:`UngroundedClaim` entries into ``source="heuristic"``
    :class:`RedTeamFinding` entries on the GROUNDING attack surface,
    capped at :data:`HEURISTIC_GROUNDING_MAX_SEVERITY`.
@@ -72,7 +72,19 @@ _AGENT_FAILED_FINDING_DESCRIPTION: Final[str] = (
 )
 
 
-def _evidence_excerpt(claim: UngroundedClaim, *, max_chars: int = 240) -> str:
+_MAX_EVIDENCE_EXCERPT_CHARS: Final[int] = 240
+"""Cap on the length of a heuristic-derived evidence excerpt.
+
+Long excerpts pollute the rework brief; the cap keeps a finding
+self-contained while leaving room for one full sentence.
+"""
+
+
+def _evidence_excerpt(
+    claim: UngroundedClaim,
+    *,
+    max_chars: int = _MAX_EVIDENCE_EXCERPT_CHARS,
+) -> str:
     """Truncate a claim's excerpt to a bounded length for finding evidence."""
     if len(claim.excerpt) <= max_chars:
         return claim.excerpt
@@ -83,8 +95,8 @@ def _claim_to_finding(claim: UngroundedClaim) -> RedTeamFinding:
     """Convert a heuristic :class:`UngroundedClaim` into a :class:`RedTeamFinding`.
 
     Always at or below :data:`HEURISTIC_GROUNDING_MAX_SEVERITY` (LOW)
-    so the stub cannot block on its own; only the LLM agent (or the
-    substrate-backed checker, post-#1988) may file blocking grounding
+    so the stub cannot block on its own; only the LLM agent (or a
+    future substrate-backed checker) may file blocking grounding
     findings.
     """
     return RedTeamFinding(
@@ -109,8 +121,8 @@ class RedTeamGateService:
             implementation wraps :class:`AgentEngine.run`; tests use
             a scripted runner that writes the report directly.
         report_repo: Per-execution storage for the agent's report.
-        grounding_checker: Heuristic (or substrate-backed, post-#1988)
-            checker. Capped at
+        grounding_checker: Heuristic (or, when the knowledge substrate
+            ships, substrate-backed) checker. Capped at
             :data:`HEURISTIC_GROUNDING_MAX_SEVERITY` when source is
             ``"heuristic"``.
         clock: Clock seam. Production passes :class:`SystemClock`;
