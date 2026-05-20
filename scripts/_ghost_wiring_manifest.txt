@@ -63,3 +63,5 @@ ENFORCED HeuristicGroundingChecker #1986 -- constructed by security/redteam/grou
 ENFORCED build_red_team_agent_identity #1986 -- called by security/redteam/builder.build_red_team_runtime; constructs the built-in Red Team AgentIdentity from the BUILTIN_ROLES catalog
 PENDING CostForecaster #1982 -- pre-flight cost forecast service; wired in lifecycle_helpers at boot once #1982 Phase 5 controllers land
 PENDING ForecastGate #1982 -- gates work-entry adapters on operator-approved forecast rows; wired into IntakeEntryAdapter / TaskBoardEntryAdapter / ObjectiveEntryAdapter / ChiefOfStaffProposer at boot once #1982 Phase 5 controllers land
+PENDING ParetoAnalyzer #1982 -- cost/quality frontier analyzer; wired in lifecycle_helpers behind GET /budget/pareto once #1982 Phase 5 controllers land
+PENDING StubBenchmarkScoreProvider #1982 -- calibrated per-tier stub for BenchmarkScoreProvider; wired in lifecycle_helpers at boot once #1982 Phase 5 controllers land; replaced by the real #1980 implementation when that ships
