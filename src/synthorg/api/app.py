@@ -90,6 +90,7 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config.schema import RootConfig
 from synthorg.core.clock import SystemClock
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter  # noqa: TC001
@@ -1185,7 +1186,48 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         meta_self_improvement = await load_self_improvement_config(
             app_state.settings_service if app_state.has_settings_service else None,
         )
+        # Hard-block the SQLite + persistent-ApprovalRepository +
+        # propose_enabled combination at startup. The v1
+        # 20260519000001_conversational_intake SQLite migration
+        # deliberately keeps the ``approvals.source`` CHECK narrow
+        # (``parked_context``/``review_gate`` only) to dodge the
+        # ``approvals`` table rebuild's Windows 8s-budget regression on
+        # the conformance suite; a persistent ApprovalRepository on
+        # SQLite would reject every ``conversational_intake`` row at
+        # write time. Postgres has no such narrowing (the sibling
+        # migration widens the CHECK), so the only sanctioned exits
+        # are Postgres for production or keeping ApprovalStore
+        # in-memory on SQLite. Failing loud at startup beats failing
+        # late on the first ``/meta/chat/propose`` call.
+        store_has_persistent_repo = (
+            isinstance(effective_approval_store, ApprovalStore)
+            and effective_approval_store.has_persistent_repo
+        )
+        if (
+            meta_self_improvement.chief_of_staff.propose_enabled
+            and persistence is not None
+            and persistence.backend_name == "sqlite"
+            and store_has_persistent_repo
+        ):
+            msg = (
+                "Chief of Staff propose is enabled with a persistent "
+                "SQLite ApprovalRepository wired into ApprovalStore, "
+                "but the v1 SQLite migration keeps "
+                "``approvals.source`` narrow ('parked_context', "
+                "'review_gate') -- 'conversational_intake' rows would "
+                "be rejected at write time. Switch the backend to "
+                "Postgres or keep ApprovalStore in-memory on SQLite."
+            )
+            raise ServiceUnavailableError(msg)
         repositories = build_conversational_repositories(persistence)
+        # Wire the proposal repo independently of the proposer: a
+        # conversational-intake approval that exists from a previous
+        # boot must still route through the repo even if the proposer
+        # itself is currently unavailable (e.g. provider absent this
+        # boot), or its decision would silently fail in
+        # ``try_conversational_intake_resume``.
+        if repositories is not None:
+            app_state.set_conversational_proposal_repo(repositories.proposal_repo)
         proposer = build_chief_of_staff_proposer(
             meta_self_improvement.chief_of_staff,
             provider_registry=provider_registry,
@@ -1193,9 +1235,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             repositories=repositories,
             cost_tracker=cost_tracker,
         )
-        if proposer is not None and repositories is not None:
+        if proposer is not None:
             app_state.set_chief_of_staff_proposer(proposer)
-            app_state.set_conversational_proposal_repo(repositories.proposal_repo)
 
     startup = [*startup, _wire_chief_of_staff_proposer]
 

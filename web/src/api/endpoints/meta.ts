@@ -5,9 +5,19 @@
  * A/B tests, configuration, and Chief of Staff chat.
  */
 
-import type { ConversationalProposeRequest } from '../types'
+import type {
+  ConversationalProposeRequest,
+  ProposeResult,
+  ProposedApprovalSummary as GeneratedProposedApprovalSummary,
+} from '../types'
 import type { ApiResponse } from '../types/http'
 import { apiClient, unwrap } from '../client'
+
+// Re-export the generated DTOs so call sites that previously imported
+// the hand-maintained interfaces keep working without changing every
+// site at once; the source of truth is the generated openapi.gen.ts.
+export type ConversationalProposeResponse = ProposeResult
+export type ProposedApprovalSummary = GeneratedProposedApprovalSummary
 
 // -- Types -------------------------------------------------------------------
 
@@ -68,22 +78,6 @@ export interface ChatResponse {
   answer: string
   sources: string[]
   confidence: number
-}
-
-export interface ProposedApprovalSummary {
-  approval_id: string
-  proposal_id: string
-  title: string
-  task_type: string
-  priority: string
-}
-
-export interface ConversationalProposeResponse {
-  conversation_id: string
-  status: 'needs_clarification' | 'proposed'
-  clarifying_question: string | null
-  conversation_closed: boolean
-  proposals: ProposedApprovalSummary[]
 }
 
 // -- API functions -----------------------------------------------------------

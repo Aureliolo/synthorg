@@ -639,11 +639,17 @@ class ConversationalProposalStatus(StrEnum):
 
     Attributes:
         PENDING: Awaiting the human approval decision.
+        EXECUTING: Approved and the pipeline run is in flight. Acquired
+            via PENDING -> EXECUTING CAS so only one concurrent decision
+            ever drives the pipeline for a given proposal; reverted back
+            to PENDING on pipeline failure (retryable) or advanced to
+            EXECUTED on success.
         EXECUTED: Approved; the work item ran through the pipeline.
         REJECTED: Declined; the work item never reached the pipeline.
     """
 
     PENDING = "pending"
+    EXECUTING = "executing"
     EXECUTED = "executed"
     REJECTED = "rejected"
 

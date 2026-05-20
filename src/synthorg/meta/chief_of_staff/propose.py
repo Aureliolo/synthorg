@@ -84,6 +84,11 @@ _CAP_MESSAGE: NotBlankStr = NotBlankStr(
     "actionable work. Closing this conversation -- please open a new "
     "one with a more specific request.",
 )
+# 1:1 conversational threads are short by design (max_clarification_turns
+# is bounded at 20 above). 1000 is a generous ceiling that gives every
+# turn-rendering caller the full history without forcing pagination; the
+# repo's own ``_MAX_PAGE_LIMIT`` (1000) clamps anything larger anyway.
+_MAX_TURNS_QUERY_LIMIT: int = 1000
 
 
 def _new_id() -> NotBlankStr:
@@ -237,7 +242,7 @@ class ChiefOfStaffProposer:
         """
         newest_first = await self._turn_repo.query(
             ConversationTurnFilterSpec(conversation_id=conversation_id),
-            limit=1000,
+            limit=_MAX_TURNS_QUERY_LIMIT,
         )
         return tuple(sorted(newest_first, key=lambda turn: turn.sequence))
 
@@ -268,6 +273,8 @@ class ChiefOfStaffProposer:
                     self._config.propose_model,
                     config=completion_config,
                 )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.error(
                 COS_PROPOSE_FAILED,

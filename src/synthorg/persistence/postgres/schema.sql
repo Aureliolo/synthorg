@@ -1230,7 +1230,7 @@ CREATE TABLE conversational_proposals (
     approval_id TEXT NOT NULL CHECK (length(trim(approval_id)) > 0),
     work_item_json TEXT NOT NULL CHECK (length(trim(work_item_json)) > 0),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (
-        status IN ('pending', 'executed', 'rejected')
+        status IN ('pending', 'executing', 'executed', 'rejected')
     ),
     created_at TIMESTAMPTZ NOT NULL
 );

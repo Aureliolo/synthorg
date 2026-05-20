@@ -5226,6 +5226,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[ProposeResult] */
+        readonly ApiResponse_ProposeResult_: {
+            readonly data: components["schemas"]["ProposeResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[ProviderHealthSummary] */
         readonly ApiResponse_ProviderHealthSummary_: {
             readonly data: components["schemas"]["ProviderHealthSummary"] | null;
@@ -9961,6 +9969,25 @@ export type components = {
          * @enum {string}
          */
         readonly ProposalAltitude: "config_tuning" | "architecture" | "prompt_tuning" | "code_modification";
+        /** ProposedApprovalSummary */
+        readonly ProposedApprovalSummary: {
+            readonly approval_id: string;
+            readonly priority: components["schemas"]["Priority"];
+            readonly proposal_id: string;
+            readonly task_type: components["schemas"]["TaskType"];
+            readonly title: string;
+        };
+        /** ProposeResult */
+        readonly ProposeResult: {
+            readonly clarifying_question: string | null;
+            /** @default false */
+            readonly conversation_closed: boolean;
+            readonly conversation_id: string;
+            /** @default [] */
+            readonly proposals: readonly components["schemas"]["ProposedApprovalSummary"][];
+            /** @enum {string} */
+            readonly status: "needs_clarification" | "proposed";
+        };
         /**
          * ProviderAuditActor
          * @description Actor performing the mutation
@@ -17476,7 +17503,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_dict_str_Any_"];
+                    readonly "application/json": components["schemas"]["ApiResponse_ProposeResult_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

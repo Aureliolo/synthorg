@@ -449,3 +449,34 @@ class ProposeResult(BaseModel):
     clarifying_question: NotBlankStr | None = None
     proposals: tuple[ProposedApprovalSummary, ...] = ()
     conversation_closed: bool = False
+
+    @model_validator(mode="after")
+    def _validate_status_payload(self) -> Self:
+        """Enforce branch invariants between ``status`` and payload.
+
+        ``needs_clarification``: ``clarifying_question`` is required and
+        ``proposals`` must be empty (the conversation stays open for
+        another turn). ``proposed``: ``proposals`` must be non-empty
+        and ``clarifying_question`` must be ``None`` (the turn parked
+        work, no follow-up question to ask). Catches caller mistakes
+        at construction instead of letting an ambiguous payload reach
+        the API response.
+        """
+        if self.status == "needs_clarification":
+            if self.clarifying_question is None:
+                msg = (
+                    "clarifying_question is required when "
+                    "status is 'needs_clarification'"
+                )
+                raise ValueError(msg)
+            if self.proposals:
+                msg = "proposals must be empty when status is 'needs_clarification'"
+                raise ValueError(msg)
+        else:
+            if not self.proposals:
+                msg = "proposals must be non-empty when status is 'proposed'"
+                raise ValueError(msg)
+            if self.clarifying_question is not None:
+                msg = "clarifying_question must be None when status is 'proposed'"
+                raise ValueError(msg)
+        return self

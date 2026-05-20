@@ -20,7 +20,8 @@ from synthorg.core.domain_errors import (
 from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.chief_of_staff.models import ChatQuery, ProposeArgs
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.meta.chief_of_staff.models import ChatQuery, ProposeArgs, ProposeResult
 from synthorg.meta.config import load_self_improvement_config
 from synthorg.meta.mcp.server import get_server_config
 from synthorg.meta.mcp.tools import get_tool_definitions
@@ -418,7 +419,7 @@ class MetaController(Controller):
         self,
         data: ConversationalProposeRequest,
         state: State,
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[ProposeResult]:
         """Clarify an underspecified request, or park work for approval.
 
         Routes to ``ChiefOfStaffProposer``. Either returns a clarifying
@@ -464,32 +465,18 @@ class MetaController(Controller):
             )
             raise ServiceUnavailableError(msg)
         actor = require_actor()
+        # Fence the human-supplied prompt content at the API boundary
+        # in a ``<task-data>`` envelope so the model treats it as data,
+        # not instructions, before it reaches domain orchestration.
         result = await proposer.converse(
             ProposeArgs(
-                message=data.message,
+                message=NotBlankStr(wrap_untrusted(TAG_TASK_DATA, data.message)),
                 created_by=NotBlankStr(actor.actor_id),
                 conversation_id=data.conversation_id,
                 project=data.project,
             )
         )
-        return ApiResponse[dict[str, Any]](
-            data={
-                "conversation_id": result.conversation_id,
-                "status": result.status,
-                "clarifying_question": result.clarifying_question,
-                "conversation_closed": result.conversation_closed,
-                "proposals": [
-                    {
-                        "approval_id": p.approval_id,
-                        "proposal_id": p.proposal_id,
-                        "title": p.title,
-                        "task_type": p.task_type.value,
-                        "priority": p.priority.value,
-                    }
-                    for p in result.proposals
-                ],
-            },
-        )
+        return ApiResponse[ProposeResult](data=result)
 
     @post(
         "/cycle",

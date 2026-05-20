@@ -227,7 +227,29 @@ class TestConversationalIntakeResume:
                 approved=True,
             )
 
-    async def test_pipeline_failure_leaves_proposal_pending(self) -> None:
+    async def test_missing_proposal_repo_raises(self) -> None:
+        # Hard misconfiguration: a conversational-intake approval lands
+        # on a deployment where the proposal repo was never wired. The
+        # gate cannot drive the decision either way, so it must raise
+        # rather than silently mark the approval handled.
+        store = ApprovalStore()
+        await store.add(_approval("a1"))
+        state = _FakeAppState(
+            approval_store=store,
+            proposal_repo=None,
+            pipeline=_FakePipeline(),
+        )
+        with pytest.raises(ServiceUnavailableError):
+            await try_conversational_intake_resume(
+                state,  # type: ignore[arg-type]
+                "a1",
+                approved=True,
+            )
+
+    async def test_pipeline_failure_reverts_executing_to_pending(self) -> None:
+        # On pipeline failure the proposal must revert from EXECUTING
+        # back to PENDING so a future approval-decision retry can run;
+        # leaving it stuck in EXECUTING would silently lock the row.
         pipeline = _FakePipeline(error=RuntimeError("boom"))
         state, repo = await _seed(pipeline=pipeline)
         handled = await try_conversational_intake_resume(
@@ -237,3 +259,25 @@ class TestConversationalIntakeResume:
         )
         assert handled is True
         assert repo.items["prop-a1"].status is ConversationalProposalStatus.PENDING
+
+    async def test_concurrent_acquire_only_one_runs_pipeline(self) -> None:
+        # Simulate the loser of the PENDING -> EXECUTING CAS: a second
+        # caller that arrives after a winner has acquired the proposal
+        # must see ``transitioned is False`` and return True without
+        # touching the pipeline.
+        pipeline = _FakePipeline()
+        state, repo = await _seed(pipeline=pipeline)
+        # Pre-acquire: simulate a concurrent winner already in EXECUTING.
+        repo.items["prop-a1"] = repo.items["prop-a1"].model_copy(
+            update={"status": ConversationalProposalStatus.EXECUTING}
+        )
+        handled = await try_conversational_intake_resume(
+            state,  # type: ignore[arg-type]
+            "a1",
+            approved=True,
+        )
+        assert handled is True
+        # Loser does not run the pipeline (winner owns it).
+        assert pipeline.calls == []
+        # Loser does not transition the state -- winner finishes it.
+        assert repo.items["prop-a1"].status is ConversationalProposalStatus.EXECUTING

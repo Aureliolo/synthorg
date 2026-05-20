@@ -11,17 +11,24 @@ from typing import cast
 import aiosqlite
 import pytest
 
-from synthorg.core.enums import ConversationalProposalStatus
+from synthorg.core.enums import ConversationalProposalStatus, ConversationStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.chief_of_staff.models import ConversationalProposal
+from synthorg.meta.chief_of_staff.models import Conversation, ConversationalProposal
+from synthorg.persistence.conversation_protocol import ConversationRepository
 from synthorg.persistence.conversational_proposal_protocol import (
     ConversationalProposalFilterSpec,
     ConversationalProposalRepository,
+)
+from synthorg.persistence.postgres.conversation_repo import (
+    PostgresConversationRepository,
 )
 from synthorg.persistence.postgres.conversational_proposal_repo import (
     PostgresConversationalProposalRepository,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.sqlite.conversation_repo import (
+    SQLiteConversationRepository,
+)
 from synthorg.persistence.sqlite.conversational_proposal_repo import (
     SQLiteConversationalProposalRepository,
 )
@@ -52,6 +59,47 @@ def _repo(
     raise ValueError(msg)
 
 
+def _conversation_repo(backend: PersistenceBackend) -> ConversationRepository:
+    """Return a concrete ``ConversationRepository`` bound to *backend*.
+
+    The proposal table has a ``conversation_id`` FK to ``conversations``;
+    every proposal-bearing test seeds its parent conversation row via
+    this repo first or save() raises a ``FOREIGN KEY constraint failed``
+    / ``foreign key violation``.
+    """
+    name = backend.backend_name
+    handle = backend.get_db()
+    if name == "sqlite":
+        return SQLiteConversationRepository(
+            cast("aiosqlite.Connection", handle),
+            write_context=backend.write_context,
+        )
+    if name == "postgres":
+        from psycopg_pool import AsyncConnectionPool
+
+        return PostgresConversationRepository(cast("AsyncConnectionPool", handle))
+    msg = f"Unknown backend: {name}"
+    raise ValueError(msg)
+
+
+def _make_conversation(*, conversation_id: str = "conv-001") -> Conversation:
+    return Conversation(
+        id=NotBlankStr(conversation_id),
+        created_by=NotBlankStr("user-001"),
+        created_at=_NOW,
+        updated_at=_NOW,
+        status=ConversationStatus.ACTIVE,
+    )
+
+
+async def _seed_conversation(
+    backend: PersistenceBackend, *, conversation_id: str = "conv-001"
+) -> None:
+    """Save the parent conversation row required by the proposal FK."""
+    conv_repo = _conversation_repo(backend)
+    await conv_repo.save(_make_conversation(conversation_id=conversation_id))
+
+
 def _make_proposal(
     *,
     proposal_id: str = "prop-001",
@@ -71,6 +119,7 @@ def _make_proposal(
 
 class TestConversationalProposalRepository:
     async def test_save_and_get(self, backend: PersistenceBackend) -> None:
+        await _seed_conversation(backend)
         repo = _repo(backend)
         proposal = _make_proposal()
         await repo.save(proposal)
@@ -92,6 +141,7 @@ class TestConversationalProposalRepository:
     async def test_save_commits_visible_to_fresh_repo(
         self, backend: PersistenceBackend
     ) -> None:
+        await _seed_conversation(backend)
         first = _repo(backend)
         proposal = _make_proposal(proposal_id="prop-commit")
         await first.save(proposal)
@@ -103,6 +153,7 @@ class TestConversationalProposalRepository:
     async def test_query_filter_by_approval_id(
         self, backend: PersistenceBackend
     ) -> None:
+        await _seed_conversation(backend)
         repo = _repo(backend)
         await repo.save(_make_proposal(proposal_id="p1", approval_id="appr-A"))
         await repo.save(_make_proposal(proposal_id="p2", approval_id="appr-B"))
@@ -115,6 +166,11 @@ class TestConversationalProposalRepository:
     async def test_query_filter_by_conversation_id(
         self, backend: PersistenceBackend
     ) -> None:
+        # Two parent conversations; one proposal each so the filter has
+        # something to discriminate against (the FK is per-row, not
+        # per-test, so both rows must exist before any proposal saves).
+        await _seed_conversation(backend, conversation_id="conv-X")
+        await _seed_conversation(backend, conversation_id="conv-Y")
         repo = _repo(backend)
         await repo.save(
             _make_proposal(
@@ -137,6 +193,7 @@ class TestConversationalProposalRepository:
         assert {r.id for r in rows} == {"pc1"}
 
     async def test_query_filter_by_status(self, backend: PersistenceBackend) -> None:
+        await _seed_conversation(backend)
         repo = _repo(backend)
         await repo.save(
             _make_proposal(
@@ -163,6 +220,7 @@ class TestConversationalProposalRepository:
         assert "ps-pending" not in ids
 
     async def test_count(self, backend: PersistenceBackend) -> None:
+        await _seed_conversation(backend)
         repo = _repo(backend)
         await repo.save(_make_proposal(proposal_id="c1", approval_id="a-c1"))
         await repo.save(_make_proposal(proposal_id="c2", approval_id="a-c2"))
@@ -171,6 +229,7 @@ class TestConversationalProposalRepository:
     async def test_transition_if_flips_state_atomically(
         self, backend: PersistenceBackend
     ) -> None:
+        await _seed_conversation(backend)
         repo = _repo(backend)
         proposal = _make_proposal(proposal_id="t-prop", approval_id="a-t")
         await repo.save(proposal)
@@ -188,6 +247,7 @@ class TestConversationalProposalRepository:
     async def test_transition_if_returns_false_on_mismatch(
         self, backend: PersistenceBackend
     ) -> None:
+        await _seed_conversation(backend)
         repo = _repo(backend)
         proposal = _make_proposal(
             proposal_id="t-mismatch",
@@ -206,6 +266,7 @@ class TestConversationalProposalRepository:
     async def test_delete_returns_true_then_false(
         self, backend: PersistenceBackend
     ) -> None:
+        await _seed_conversation(backend)
         repo = _repo(backend)
         proposal = _make_proposal(proposal_id="d-prop", approval_id="a-d")
         await repo.save(proposal)
