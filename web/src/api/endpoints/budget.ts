@@ -6,6 +6,7 @@ import type {
   DailySummary,
   PeriodSummary,
 } from '../types/budget'
+import type { ParetoFrontier } from '../types'
 import type { ErrorDetail } from '../types/errors'
 import type { ApiResponse, PaginationParams } from '../types/http'
 
@@ -64,4 +65,9 @@ export async function listCostRecords(
 export async function getAgentSpending(agentId: string): Promise<AgentSpending> {
   const response = await apiClient.get<ApiResponse<AgentSpending>>(`/budget/agents/${encodeURIComponent(agentId)}`)
   return unwrap(response)
+}
+
+export async function getParetoFrontier(): Promise<ParetoFrontier> {
+  const response = await apiClient.get<ParetoFrontier>('/budget/pareto')
+  return response.data
 }

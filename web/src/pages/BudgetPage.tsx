@@ -1,5 +1,8 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { getParetoFrontier } from '@/api/endpoints/budget'
 import { budgetConfigVersionsClient } from '@/api/endpoints/version-history'
+import type { ParetoFrontier } from '@/api/types'
+import { createLogger } from '@/lib/logger'
 import { MetricCard } from '@/components/ui/metric-card'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
@@ -33,8 +36,11 @@ const CostBreakdownChart = lazy(() =>
 import { CategoryBreakdown } from './budget/CategoryBreakdown'
 import { AgentSpendingTable } from './budget/AgentSpendingTable'
 import { CfoActivityFeed } from './budget/CfoActivityFeed'
+import { ParetoSection } from './budget/ParetoSection'
 import { PeriodSelector } from './budget/PeriodSelector'
 import { ThresholdAlerts } from './budget/ThresholdAlerts'
+
+const log = createLogger('budget-page')
 
 export default function BudgetPage() {
   const {
@@ -56,6 +62,26 @@ export default function BudgetPage() {
   } = useBudgetData()
 
   const [breakdownDimension, setBreakdownDimension] = useState<BreakdownDimension>('agent')
+  const [paretoFrontier, setParetoFrontier] = useState<ParetoFrontier | null>(null)
+  const [paretoLoading, setParetoLoading] = useState<boolean>(true)
+
+  useEffect(() => {
+    let cancelled = false
+    void getParetoFrontier()
+      .then((frontier) => {
+        if (!cancelled) setParetoFrontier(frontier)
+      })
+      .catch((err) => {
+        log.warn('failed to load pareto frontier', err)
+        if (!cancelled) setParetoFrontier(null)
+      })
+      .finally(() => {
+        if (!cancelled) setParetoLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const currency = overview?.currency ?? budgetConfig?.currency
 
@@ -170,6 +196,10 @@ export default function BudgetPage() {
           <CategoryBreakdown ratio={categoryRatio} currency={currency} />
         </ErrorBoundary>
       </div>
+
+      <ErrorBoundary level="section">
+        <ParetoSection frontier={paretoFrontier} loading={paretoLoading} />
+      </ErrorBoundary>
 
       <ErrorBoundary level="section">
         <AgentSpendingTable rows={agentSpendingRows} currency={currency} />
