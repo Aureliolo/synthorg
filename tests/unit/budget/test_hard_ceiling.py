@@ -161,10 +161,11 @@ async def test_zero_ceiling_means_disabled_no_raise() -> None:
     assert checker is not None
 
     # With hard-ceiling disabled (run_hard_ceiling=0, Task.hard_ceiling
-    # None) and accumulated cost below the monthly budget, the checker
-    # returns False: no limit is hit. Using a value under total_monthly
-    # keeps monthly exhaustion from masking the hard-ceiling disablement.
-    assert checker(_context(accumulated_cost=10.0)) is False
+    # None) and accumulated cost below every other limit (per-agent
+    # daily and monthly), the checker returns False: no limit is hit, so
+    # the result isolates hard-ceiling disablement rather than masking it
+    # behind a daily / monthly exhaustion.
+    assert checker(_context(accumulated_cost=1.0)) is False
 
 
 @pytest.mark.asyncio
