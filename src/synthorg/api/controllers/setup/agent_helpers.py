@@ -181,10 +181,12 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
         from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
             wire_real_intake_entry,
             wire_real_objective_entry,
+            wire_real_task_board_entry,
         )
 
         await wire_real_intake_entry(app_state, hot_swap=True)
         await wire_real_objective_entry(app_state, hot_swap=True)
+        await wire_real_task_board_entry(app_state, hot_swap=True)
     except MemoryError, RecursionError:
         raise
     except RuntimeServicesBuildError:

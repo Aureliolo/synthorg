@@ -28,12 +28,39 @@ from synthorg.engine.coordination.models import (
     CoordinationResult,
 )
 from synthorg.engine.errors import CoordinationPhaseError
+from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
     make_auth_headers,
 )
+
+_TEST_TASK_ID = "test-coord-task"
+
+
+def _insert_task(task_engine: TaskEngine, *, task_id: str = _TEST_TASK_ID) -> str:
+    """Insert a Task directly into the fake persistence layer.
+
+    ``POST /tasks`` returns 202 + a submission envelope (no task id);
+    task materialisation happens asynchronously inside the
+    (mocked-here) pipeline spine. Calling ``task_engine.create_task``
+    from the test body would cross event loops (the engine starts
+    inside the TestClient's ASGI loop and ``_running`` /
+    ``_admission_lock`` are bound to it), so we insert the task
+    directly into the in-memory repo instead. ``task_engine.get_task``
+    reads straight from persistence and therefore picks it up.
+    """
+    from tests.unit.api.conftest import make_task as _make_task
+
+    task = _make_task(task_id=task_id, project="proj-1", created_by="api")
+    persistence = task_engine._persistence
+    # ``_persistence.tasks`` returns the FakeTaskRepository; its
+    # internal ``_tasks`` dict is the in-memory store coordinator's
+    # ``get_task`` reads through.
+    repo = persistence.tasks
+    repo._tasks[task.id] = task  # type: ignore[attr-defined] -- fake repo
+    return task.id
 
 
 def _make_agent(name: str = "test-agent") -> AgentIdentity:
@@ -85,19 +112,25 @@ def local_agent_registry() -> AgentRegistryService:
 
 
 @pytest.fixture
-def coordination_client(
+def coordination_ctx(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     auth_service: AuthService,
     mock_coordinator: AsyncMock,
     local_agent_registry: AgentRegistryService,
-) -> Generator[TestClient[Any]]:
-    """Test client with coordinator and agent registry configured."""
+) -> Generator[SimpleNamespace]:
+    """Test client + the bound task engine for coordinator tests.
+
+    Returns a ``SimpleNamespace(client, task_engine)``: the client is
+    used for HTTP, the task engine for pre-creating coordinatable
+    tasks. The public ``POST /tasks`` is a 202 board handoff that
+    creates the task via the work pipeline spine, not the engine
+    directly, so coordinator tests bypass it via ``_insert_task``.
+    """
     from tests.unit.api.conftest import _seed_test_users
 
     _seed_test_users(fake_persistence, auth_service)
 
-    from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.task_engine_config import (
         TaskEngineConfig,
     )
@@ -124,8 +157,10 @@ def coordination_client(
         registry=get_registry(),
     )
 
-    # A scripted provider so the company is not empty-company: task
-    # creation is rejected (409) without an active provider.
+    # A scripted provider keeps ``has_active_provider`` true so runtime
+    # checks remain satisfied; these tests seed tasks via
+    # ``_insert_task`` rather than the public ``POST /tasks`` board
+    # handoff.
     from synthorg.config.provider_schema import ProviderConfig
     from synthorg.providers.registry import ProviderRegistry
 
@@ -145,36 +180,24 @@ def coordination_client(
     )
     with TestClient(app) as client:
         client.headers.update(make_auth_headers("ceo"))
-        yield client
+        yield SimpleNamespace(client=client, task_engine=task_engine)
 
 
 @pytest.mark.unit
 class TestCoordinationControllerHappyPath:
     async def test_coordinate_task_success(
         self,
-        coordination_client: TestClient[Any],
+        coordination_ctx: SimpleNamespace,
         mock_coordinator: AsyncMock,
         local_agent_registry: AgentRegistryService,
     ) -> None:
         agent = _make_agent()
         await local_agent_registry.register(agent)
 
-        resp = coordination_client.post(
-            "/api/v1/tasks",
-            json={
-                "title": "Test task",
-                "description": "A test task for coordination",
-                "type": "development",
-                "project": "proj-1",
-                "created_by": "api",
-            },
-        )
-        assert resp.status_code == 201
-        task_id = resp.json()["data"]["id"]
-
+        task_id = _insert_task(coordination_ctx.task_engine)
         mock_coordinator.coordinate.return_value = _make_coordination_result(task_id)
 
-        resp = coordination_client.post(
+        resp = coordination_ctx.client.post(
             f"/api/v1/tasks/{task_id}/coordinate",
             json={},
         )
@@ -189,27 +212,17 @@ class TestCoordinationControllerHappyPath:
 
     async def test_coordinate_with_specific_agents(
         self,
-        coordination_client: TestClient[Any],
+        coordination_ctx: SimpleNamespace,
         mock_coordinator: AsyncMock,
         local_agent_registry: AgentRegistryService,
     ) -> None:
         agent = _make_agent("alice")
         await local_agent_registry.register(agent)
 
-        resp = coordination_client.post(
-            "/api/v1/tasks",
-            json={
-                "title": "Test task",
-                "description": "Coordination test",
-                "type": "development",
-                "project": "proj-1",
-                "created_by": "api",
-            },
-        )
-        task_id = resp.json()["data"]["id"]
+        task_id = _insert_task(coordination_ctx.task_engine)
         mock_coordinator.coordinate.return_value = _make_coordination_result(task_id)
 
-        resp = coordination_client.post(
+        resp = coordination_ctx.client.post(
             f"/api/v1/tasks/{task_id}/coordinate",
             json={"agent_names": ["alice"]},
         )
@@ -224,7 +237,7 @@ class TestCoordinationControllerHappyPath:
 
     async def test_coordinate_with_failed_phases(
         self,
-        coordination_client: TestClient[Any],
+        coordination_ctx: SimpleNamespace,
         mock_coordinator: AsyncMock,
         local_agent_registry: AgentRegistryService,
     ) -> None:
@@ -232,22 +245,12 @@ class TestCoordinationControllerHappyPath:
         agent = _make_agent()
         await local_agent_registry.register(agent)
 
-        resp = coordination_client.post(
-            "/api/v1/tasks",
-            json={
-                "title": "Test task",
-                "description": "Test",
-                "type": "development",
-                "project": "proj-1",
-                "created_by": "api",
-            },
-        )
-        task_id = resp.json()["data"]["id"]
+        task_id = _insert_task(coordination_ctx.task_engine)
         mock_coordinator.coordinate.return_value = _make_coordination_result(
             task_id, is_success=False
         )
 
-        resp = coordination_client.post(
+        resp = coordination_ctx.client.post(
             f"/api/v1/tasks/{task_id}/coordinate",
             json={},
         )
@@ -261,9 +264,9 @@ class TestCoordinationControllerHappyPath:
 class TestCoordinationControllerErrors:
     def test_task_not_found(
         self,
-        coordination_client: TestClient[Any],
+        coordination_ctx: SimpleNamespace,
     ) -> None:
-        resp = coordination_client.post(
+        resp = coordination_ctx.client.post(
             "/api/v1/tasks/nonexistent/coordinate",
             json={},
         )
@@ -272,21 +275,10 @@ class TestCoordinationControllerErrors:
 
     async def test_unknown_agent_name(
         self,
-        coordination_client: TestClient[Any],
+        coordination_ctx: SimpleNamespace,
     ) -> None:
-        resp = coordination_client.post(
-            "/api/v1/tasks",
-            json={
-                "title": "Test task",
-                "description": "Test",
-                "type": "development",
-                "project": "proj-1",
-                "created_by": "api",
-            },
-        )
-        task_id = resp.json()["data"]["id"]
-
-        resp = coordination_client.post(
+        task_id = _insert_task(coordination_ctx.task_engine)
+        resp = coordination_ctx.client.post(
             f"/api/v1/tasks/{task_id}/coordinate",
             json={"agent_names": ["nonexistent-agent"]},
         )
@@ -295,21 +287,10 @@ class TestCoordinationControllerErrors:
 
     async def test_no_active_agents(
         self,
-        coordination_client: TestClient[Any],
+        coordination_ctx: SimpleNamespace,
     ) -> None:
-        resp = coordination_client.post(
-            "/api/v1/tasks",
-            json={
-                "title": "Test task",
-                "description": "Test",
-                "type": "development",
-                "project": "proj-1",
-                "created_by": "api",
-            },
-        )
-        task_id = resp.json()["data"]["id"]
-
-        resp = coordination_client.post(
+        task_id = _insert_task(coordination_ctx.task_engine)
+        resp = coordination_ctx.client.post(
             f"/api/v1/tasks/{task_id}/coordinate",
             json={},
         )
@@ -318,31 +299,20 @@ class TestCoordinationControllerErrors:
 
     async def test_coordination_phase_error(
         self,
-        coordination_client: TestClient[Any],
+        coordination_ctx: SimpleNamespace,
         mock_coordinator: AsyncMock,
         local_agent_registry: AgentRegistryService,
     ) -> None:
         agent = _make_agent()
         await local_agent_registry.register(agent)
 
-        resp = coordination_client.post(
-            "/api/v1/tasks",
-            json={
-                "title": "Test task",
-                "description": "Test",
-                "type": "development",
-                "project": "proj-1",
-                "created_by": "api",
-            },
-        )
-        task_id = resp.json()["data"]["id"]
-
+        task_id = _insert_task(coordination_ctx.task_engine)
         mock_coordinator.coordinate.side_effect = CoordinationPhaseError(
             "Decomposition failed: test error",
             phase="decompose",
         )
 
-        resp = coordination_client.post(
+        resp = coordination_ctx.client.post(
             f"/api/v1/tasks/{task_id}/coordinate",
             json={},
         )
@@ -354,10 +324,10 @@ class TestCoordinationControllerErrors:
 class TestCoordinationPathParamValidation:
     def test_oversized_task_id_rejected(
         self,
-        coordination_client: TestClient[Any],
+        coordination_ctx: SimpleNamespace,
     ) -> None:
         long_id = "x" * 129
-        resp = coordination_client.post(
+        resp = coordination_ctx.client.post(
             f"/api/v1/tasks/{long_id}/coordinate",
             json={},
         )

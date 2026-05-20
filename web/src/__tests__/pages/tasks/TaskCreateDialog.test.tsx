@@ -1,14 +1,23 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TaskCreateDialog } from '@/pages/tasks/TaskCreateDialog'
-import { makeTask } from '../../helpers/factories'
-import type { Task } from '@/api/types/tasks'
+import type { TaskBoardSubmissionResponse } from '@/api/types/tasks'
 
-// onCreate now returns ``Task | null`` per the sentinel-return
-// contract; this stub resolves to null which the dialog treats as
-// failure (keeps the dialog open). Tests that assert the call site
-// override with their own mock.
-const nullCreate = async (): Promise<Task | null> => null
+// onCreate returns ``TaskBoardSubmissionResponse | null`` per the
+// 202-Accepted sentinel-return contract; this stub resolves to null
+// which the dialog treats as failure (keeps the dialog open). Tests
+// that assert the call site override with their own mock.
+const nullCreate = async (): Promise<TaskBoardSubmissionResponse | null> => null
+
+const makeSubmission = (
+  overrides: Partial<TaskBoardSubmissionResponse> = {},
+): TaskBoardSubmissionResponse => ({
+  correlation_id: 'corr-test',
+  title: 'My task',
+  project: 'proj',
+  status: 'submitted',
+  ...overrides,
+})
 
 describe('TaskCreateDialog', () => {
   it('renders nothing when closed', () => {
@@ -41,7 +50,7 @@ describe('TaskCreateDialog', () => {
 
   it('calls onCreate with form data on valid submission', async () => {
     const user = userEvent.setup()
-    const onCreate = vi.fn().mockResolvedValue(makeTask('ok'))
+    const onCreate = vi.fn().mockResolvedValue(makeSubmission())
     render(<TaskCreateDialog open={true} onOpenChange={() => {}} onCreate={onCreate} />)
 
     await user.type(screen.getByPlaceholderText('Task title'), 'My task')
@@ -84,7 +93,7 @@ describe('TaskCreateDialog', () => {
   it('calls onOpenChange(false) on successful creation', async () => {
     const user = userEvent.setup()
     const onOpenChange = vi.fn()
-    const onCreate = vi.fn().mockResolvedValue(makeTask('ok'))
+    const onCreate = vi.fn().mockResolvedValue(makeSubmission())
     render(<TaskCreateDialog open={true} onOpenChange={onOpenChange} onCreate={onCreate} />)
 
     await user.type(screen.getByPlaceholderText('Task title'), 'My task')

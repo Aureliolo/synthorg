@@ -1,12 +1,23 @@
 """Boot wiring for the real work-entry paths.
 
-Once the work pipeline spine is online, the real ``/requests``
-approve path and the real ``/objectives`` POST path each need their
-configured default project to exist (so the pipeline's
-project-existence check passes) and their entry adapter attached to
-``AppState``. The two boot hooks below take this on. ``hot_swap``
-selects the once-only vs replace seam in both. They are logged
-no-ops for an empty company (no pipeline / no simulation runtime).
+Once the work pipeline spine is online:
+
+* :func:`wire_real_intake_entry` ensures the configured intake project
+  exists and attaches an :class:`IntakeEntryAdapter` to ``AppState``
+  (the ``POST /requests/{id}/approve`` path).
+* :func:`wire_real_objective_entry` ensures the configured objectives
+  default project exists and attaches an
+  :class:`ObjectiveEntryAdapter` to ``AppState`` (the ``POST
+  /objectives`` path).
+* :func:`wire_real_task_board_entry` attaches a
+  :class:`TaskBoardEntryAdapter` to ``AppState`` (the ``POST /tasks``
+  path). The board input carries its own project, so no project
+  bootstrap is performed.
+
+All three helpers are called by the boot hook and by the post-setup
+provider-reinit path; ``hot_swap`` selects the once-only vs replace
+seam. Each is a logged no-op for an empty company (no pipeline / no
+simulation runtime).
 """
 
 import os
@@ -194,3 +205,51 @@ async def _ensure_project(
         note="created default project",
         project=project_id,
     )
+
+
+async def wire_real_task_board_entry(
+    app_state: AppState,
+    *,
+    hot_swap: bool = False,
+) -> None:
+    """Attach the task-board work-entry adapter to ``AppState``.
+
+    Distinct from :func:`wire_real_intake_entry`: the board's project
+    is supplied per-filing by the user, so this helper does NOT
+    bootstrap a default project. The pipeline's project-existence
+    check runs against whatever ``project`` the filing carries; an
+    unknown project surfaces as ``WorkProjectNotFoundError`` from the
+    pipeline (the same shape the intake path uses for its own checks),
+    which the background coroutine in the controller logs.
+
+    Args:
+        app_state: Live application state (work pipeline, simulation
+            runtime).
+        hot_swap: When ``True`` replace an already-wired adapter
+            (provider-reinit path); otherwise install once at boot.
+    """
+    if not app_state.has_work_pipeline or not app_state.has_simulation_runtime:
+        logger.info(
+            CLIENT_SIMULATION_RUNTIME_WIRED,
+            service="task_board_entry_adapter",
+            mode="disabled",
+            note="no work pipeline / simulation runtime; task board offline",
+        )
+        return
+    # ``default_project`` is the factory's INTAKE-arm kwarg; the
+    # TASK_BOARD arm ignores it. Pass the same value the intake
+    # helper uses when present, or a placeholder constant otherwise:
+    # the factory contract requires a non-empty string here even
+    # though the TASK_BOARD branch discards it.
+    default_project = (
+        app_state.client_simulation_state.intake_default_project or "task-board"
+    )
+    adapter = build_work_entry_adapter(
+        WorkSource.TASK_BOARD,
+        work_pipeline=app_state.work_pipeline,
+        default_project=default_project,
+    )
+    if hot_swap:
+        app_state.swap_task_board_entry_adapter(adapter)
+    else:
+        app_state.set_task_board_entry_adapter_if_absent(adapter)

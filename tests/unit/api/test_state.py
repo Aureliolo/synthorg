@@ -10,6 +10,7 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
+from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine
@@ -760,3 +761,52 @@ class TestAppStateIntakeEntryAdapter:
         state = _make_state(intake_entry_adapter=first)
         state.swap_intake_entry_adapter(second)
         assert state.intake_entry_adapter is second
+
+
+@pytest.mark.unit
+class TestAppStateTaskBoardEntryAdapter:
+    """Tests for the task_board_entry_adapter seam (mirrors intake)."""
+
+    def test_raises_when_none(self) -> None:
+        state = _make_state(task_board_entry_adapter=None)
+        with pytest.raises(ServiceUnavailableError):
+            _ = state.task_board_entry_adapter
+
+    def test_returns_when_set(self) -> None:
+        adapter = mock_of[TaskBoardEntryAdapter]()
+        state = _make_state(task_board_entry_adapter=adapter)
+        assert state.task_board_entry_adapter is adapter
+
+    def test_has_false_when_none(self) -> None:
+        state = _make_state(task_board_entry_adapter=None)
+        assert state.has_task_board_entry_adapter is False
+
+    def test_has_true_when_set(self) -> None:
+        state = _make_state(task_board_entry_adapter=mock_of[TaskBoardEntryAdapter]())
+        assert state.has_task_board_entry_adapter is True
+
+    def test_set_is_once_only(self) -> None:
+        first = mock_of[TaskBoardEntryAdapter]()
+        state = _make_state(task_board_entry_adapter=first)
+        with pytest.raises(RuntimeError, match="already configured"):
+            state.set_task_board_entry_adapter(mock_of[TaskBoardEntryAdapter]())
+
+    def test_set_if_absent_installs_when_none(self) -> None:
+        adapter = mock_of[TaskBoardEntryAdapter]()
+        state = _make_state(task_board_entry_adapter=None)
+        assert state.set_task_board_entry_adapter_if_absent(adapter) is True
+        assert state.task_board_entry_adapter is adapter
+
+    def test_set_if_absent_keeps_injected(self) -> None:
+        injected = mock_of[TaskBoardEntryAdapter]()
+        autowired = mock_of[TaskBoardEntryAdapter]()
+        state = _make_state(task_board_entry_adapter=injected)
+        assert state.set_task_board_entry_adapter_if_absent(autowired) is False
+        assert state.task_board_entry_adapter is injected
+
+    def test_swap_replaces_existing(self) -> None:
+        first = mock_of[TaskBoardEntryAdapter]()
+        second = mock_of[TaskBoardEntryAdapter]()
+        state = _make_state(task_board_entry_adapter=first)
+        state.swap_task_board_entry_adapter(second)
+        assert state.task_board_entry_adapter is second

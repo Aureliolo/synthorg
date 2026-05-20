@@ -4,13 +4,18 @@ import { Loader2, X } from 'lucide-react'
 import { cn, FOCUS_RING } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import type { Complexity, Priority, TaskType } from '@/api/types/enums'
-import type { CreateTaskRequest, Task } from '@/api/types/tasks'
+import type { CreateTaskRequest, TaskBoardSubmissionResponse } from '@/api/types/tasks'
 
 export interface TaskCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Resolves to the created task on success, ``null`` on failure (sentinel). */
-  onCreate: (data: CreateTaskRequest) => Promise<Task | null>
+  /**
+   * Resolves to the submission envelope on success (HTTP 202; the
+   * spine creates the task in the background), ``null`` on failure
+   * (sentinel). The dialog closes on success and stays open on
+   * ``null`` so the user can correct invalid input.
+   */
+  onCreate: (data: CreateTaskRequest) => Promise<TaskBoardSubmissionResponse | null>
 }
 
 const TASK_TYPES: { value: TaskType; label: string }[] = [
@@ -140,9 +145,12 @@ export function TaskCreateDialog({ open, onOpenChange, onCreate }: TaskCreateDia
       }
       // Sentinel-return: the store owns the error UX (toast + log) on
       // failure, so we only null-check here. ``null`` keeps the dialog
-      // open so the user doesn't lose their filled-in form.
-      const created = await onCreate(data)
-      if (created === null) return
+      // open so the user doesn't lose their filled-in form. The
+      // success value is a ``TaskBoardSubmissionResponse`` (HTTP 202):
+      // the spine creates the actual task asynchronously and the board
+      // inserts it via the ``task.created`` WS event.
+      const submission = await onCreate(data)
+      if (submission === null) return
       setForm(INITIAL_FORM)
       onOpenChange(false)
     } finally {

@@ -231,7 +231,25 @@ the boot runtime-services hook and the post-setup provider reinit)
 and attached to the `AppState.intake_entry_adapter` seam. When no
 work pipeline is wired (empty company / no provider) approve returns
 `AgentRuntimeNotConfiguredError` rather than minting a task no agent
-will run. The `simulations.intake_default_project` setting (env >
+will run.
+
+The `task_board` source is the sibling work-entry path:
+`POST /tasks` routes a board filing through `TaskBoardEntryAdapter`
+(`WorkSource.TASK_BOARD`) which builds the `WorkItem` from the
+user-submitted title/description/project and drives the same spine.
+The endpoint returns `202 Accepted` with a
+`TaskBoardSubmissionResponse` envelope (correlation id + echo); the
+spine creates the task inside its intake phase and the
+spine-created task surfaces on the `tasks` WebSocket channel via
+`task.created`. Empty-company / no-adapter returns
+`AgentRuntimeNotConfiguredError`. The board's column moves remain
+pure status walks of the spine-created task. The adapter is wired
+by `engine.pipeline.entry.boot.wire_real_task_board_entry` (same
+boot + post-setup hot-swap shape as the intake helper, minus the
+project bootstrap since board filings carry their own project) and
+attached to the `AppState.task_board_entry_adapter` seam.
+
+The `simulations.intake_default_project` setting (env >
 registered default, baked in at startup) names the project the
 intake strategy files tasks into and the adapter stamps on the work
 item; that project is created at startup if absent so the pipeline's
@@ -315,7 +333,7 @@ discriminator rather than silently falling back to a default.
 | `ClientPoolConfig.selection_strategy` | `build_client_pool_strategy()` | `round_robin` → `RoundRobinStrategy`, `weighted_random` → `WeightedRandomStrategy`, `domain_matched` → `DomainMatchedStrategy` |
 | `adapter` arg (intake entry point) | `build_entry_point_strategy(adapter, *, project_id=None)` | `direct` → `DirectAdapter`, `project` → `ProjectAdapter`, `intake` → `IntakeAdapter` |
 | `IntakeConfig.strategy` | `build_intake_strategy(config, *, task_engine, default_project, provider=None, cost_tracker=None)` | `direct` → `DirectIntake`, `agent` → `AgentIntake` |
-| `WorkSource` (work-entry adapter) | `build_work_entry_adapter(source, *, work_pipeline, default_project)` | `intake` → `IntakeEntryAdapter` |
+| `WorkSource` (work-entry adapter) | `build_work_entry_adapter(source, *, work_pipeline, default_project)` | `intake` → `IntakeEntryAdapter`, `task_board` → `TaskBoardEntryAdapter` |
 
 The factories follow the project-wide pluggable-subsystems pattern
 (protocol + strategy + factory + config discriminator). No silent

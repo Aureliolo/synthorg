@@ -1,8 +1,8 @@
 """Work-entry adapters: thin seams that feed the pipeline spine.
 
-Every real work-entry path (client-request intake; human-stated
-goals/objectives; the task board and conversational interfaces in
-sibling work) maps its own domain input onto a
+Every real work-entry path (client-request intake; the task board;
+human-stated goals/objectives; conversational interfaces in sibling
+work) maps its own domain input onto a
 :class:`~synthorg.engine.pipeline.models.WorkItem` and calls
 :meth:`WorkPipeline.run`. Adapters own no pipeline logic and no
 source-entity reconciliation; the caller (controller / background
@@ -16,11 +16,17 @@ from synthorg.engine.pipeline.entry.objective_adapter import (
     ObjectiveSubmission,
 )
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
+from synthorg.engine.pipeline.entry.task_board_adapter import (
+    TaskBoardEntryAdapter,
+    TaskBoardFiling,
+)
 
 __all__ = [
     "IntakeEntryAdapter",
     "ObjectiveEntryAdapter",
     "ObjectiveSubmission",
+    "TaskBoardEntryAdapter",
+    "TaskBoardFiling",
     "WorkEntryAdapter",
     "build_work_entry_adapter",
 ]
