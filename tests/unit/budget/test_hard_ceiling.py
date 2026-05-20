@@ -17,6 +17,7 @@ path covered separately in
 
 from types import SimpleNamespace
 from typing import cast
+from uuid import uuid4
 
 import pytest
 
@@ -90,6 +91,27 @@ async def test_per_task_hard_ceiling_triggers_raise_at_threshold() -> None:
     assert info.value.accumulated_cost == pytest.approx(1.50)
     assert info.value.currency == "USD"
     assert info.value.task_id == "task-1"
+
+
+@pytest.mark.asyncio
+async def test_closure_propagates_task_forecast_id() -> None:
+    """The raised error carries ``task.forecast_id`` for halt stamping.
+
+    This is the seam the engine reads to stamp the forecast row so the
+    dashboard can surface the resume banner; if the closure dropped it,
+    the banner would never render in production.
+    """
+    forecast_id = uuid4()
+    tracker = CostTracker()
+    enforcer = BudgetEnforcer(budget_config=_config(), cost_tracker=tracker)
+    task = _task(hard_ceiling=1.50).model_copy(update={"forecast_id": forecast_id})
+    checker = await enforcer.make_budget_checker(task, "agent-1")
+    assert checker is not None
+
+    with pytest.raises(RunHardCeilingExceededError) as info:
+        checker(_context(accumulated_cost=1.60))
+
+    assert info.value.forecast_id == forecast_id
 
 
 @pytest.mark.asyncio
