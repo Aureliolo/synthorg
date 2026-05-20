@@ -260,6 +260,42 @@ def test_brief_result_judged_requires_calibration() -> None:
 
 
 @pytest.mark.unit
+def test_brief_result_honours_custom_score_floor() -> None:
+    """BriefResult accepts a non-default score_floor so a PenaltyTable.floor
+    can flow through aggregation into the serialised scorecard row without
+    tripping the score invariant."""
+    custom_floor = 50
+    result = BriefResult(
+        brief_id="BRIEF_F",
+        kind=BriefKind.EXECUTABLE,
+        grade=70,
+        deduction=80,
+        score=custom_floor,
+        score_floor=custom_floor,
+        process_facts=ProcessFactReport(),
+        termination_reason="COMPLETED",
+    )
+    assert result.score == custom_floor
+    assert result.score_floor == custom_floor
+
+
+@pytest.mark.unit
+def test_brief_result_rejects_score_below_custom_floor() -> None:
+    """BriefResult refuses score < score_floor; the floor must clamp."""
+    with pytest.raises(ValueError, match="does not match"):
+        BriefResult(
+            brief_id="BRIEF_F",
+            kind=BriefKind.EXECUTABLE,
+            grade=70,
+            deduction=80,
+            score=0,  # should be 50 with floor=50
+            score_floor=50,
+            process_facts=ProcessFactReport(),
+            termination_reason="COMPLETED",
+        )
+
+
+@pytest.mark.unit
 def test_brief_result_executable_must_not_carry_calibration() -> None:
     """BriefResult refuses kind=EXECUTABLE carrying a judge_calibration."""
     calibration = JudgeCalibrationReport(

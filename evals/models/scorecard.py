@@ -129,9 +129,12 @@ class ProcessFactReport(BaseModel):
 class BriefResult(BaseModel):
     """One row in the scorecard's per-brief table.
 
-    Invariant: ``score == max(grade - deduction, GRADE_FLOOR)``. The
+    Invariant: ``score == max(grade - deduction, score_floor)``. The
     validator below enforces it at construction time so a manually
     built ``BriefResult`` cannot ship an internally inconsistent row.
+    The floor flows from :class:`evals.scoring.aggregate.AggregationResult`
+    (which in turn comes from :attr:`PenaltyTable.floor`) so the
+    scorecard records the exact lower bound the aggregator applied.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -141,6 +144,7 @@ class BriefResult(BaseModel):
     grade: int = Field(ge=GRADE_FLOOR, le=GRADE_CEILING)
     deduction: int = Field(ge=0)
     score: int = Field(ge=GRADE_FLOOR, le=GRADE_CEILING)
+    score_floor: int = Field(default=GRADE_FLOOR, ge=GRADE_FLOOR, le=GRADE_CEILING)
     process_facts: ProcessFactReport
     termination_reason: NotBlankStr
     judge_calibration: JudgeCalibrationReport | None = None
@@ -165,13 +169,13 @@ class BriefResult(BaseModel):
     @model_validator(mode="after")
     def _score_matches_grade_minus_deduction(self) -> Self:
         """Enforce the floored score invariant at construction time."""
-        expected = max(self.grade - self.deduction, GRADE_FLOOR)
+        expected = max(self.grade - self.deduction, self.score_floor)
         if self.score != expected:
             msg = (
                 f"BriefResult {self.brief_id!r}: score={self.score} "
                 f"does not match expected {expected} "
                 f"(grade={self.grade} - deduction={self.deduction}, "
-                f"floored at {GRADE_FLOOR})"
+                f"floored at {self.score_floor})"
             )
             raise ValueError(msg)
         return self
