@@ -219,6 +219,14 @@ _DEFAULT_SCORE_MAP: Final[MappingProxyType[str, RiskScore]] = MappingProxyType(
         ActionType.COMMS_INTERNAL: _LOW_SCORE,
         ActionType.DB_QUERY: _LOW_SCORE,
         ActionType.MEMORY_READ: _LOW_SCORE,
+        # Browser tool capabilities. The browser runs sandboxed and only
+        # observes / probes the workspace's own deliverables (test data),
+        # so the tier is LOW.
+        ActionType.BROWSER_NAVIGATE: _LOW_SCORE,
+        ActionType.BROWSER_SCREENSHOT: _LOW_SCORE,
+        ActionType.BROWSER_DIFF: _LOW_SCORE,
+        ActionType.BROWSER_ACCESSIBILITY_SCAN: _LOW_SCORE,
+        ActionType.BROWSER_SPEC: _LOW_SCORE,
     }
 )
 

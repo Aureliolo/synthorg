@@ -11,7 +11,7 @@ from synthorg.security.action_types import ActionTypeCategory, ActionTypeRegistr
 @pytest.mark.unit
 class TestActionTypeCategory:
     def test_has_expected_member_count(self) -> None:
-        assert len(ActionTypeCategory) == 11
+        assert len(ActionTypeCategory) == 12
 
     @pytest.mark.parametrize(
         ("member", "value"),
@@ -27,6 +27,7 @@ class TestActionTypeCategory:
             (ActionTypeCategory.DB, "db"),
             (ActionTypeCategory.ARCH, "arch"),
             (ActionTypeCategory.MEMORY, "memory"),
+            (ActionTypeCategory.BROWSER, "browser"),
         ],
     )
     def test_member_values(self, member: ActionTypeCategory, value: str) -> None:
@@ -121,6 +122,7 @@ class TestRegistryExpandCategory:
             ("org", 3),
             ("db", 3),
             ("arch", 1),
+            ("browser", 5),
         ],
     )
     def test_builtin_category_expansion_counts(

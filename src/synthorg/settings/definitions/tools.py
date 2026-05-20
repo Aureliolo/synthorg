@@ -250,3 +250,101 @@ _r.register(
         max_value=3600.0,
     )
 )
+
+# ── Headless browser tool (Playwright) ───────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="browser_launch_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="30.0",
+        description=(
+            "Maximum wall-clock time the headless browser tool may wait"
+            " for Chromium to launch inside the sandbox before failing."
+        ),
+        group="Browser",
+        level=SettingLevel.ADVANCED,
+        min_value=5.0,
+        max_value=300.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="browser_viewport_width",
+        type=SettingType.INTEGER,
+        default="1280",
+        description="Default viewport width (pixels) for browser screenshots.",
+        group="Browser",
+        level=SettingLevel.BASIC,
+        min_value=320,
+        max_value=4096,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="browser_viewport_height",
+        type=SettingType.INTEGER,
+        default="720",
+        description="Default viewport height (pixels) for browser screenshots.",
+        group="Browser",
+        level=SettingLevel.BASIC,
+        min_value=320,
+        max_value=4096,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="browser_screenshot_ssim_tolerance",
+        type=SettingType.FLOAT,
+        default="0.98",
+        description=(
+            "Default SSIM pass threshold for screenshot diffs. Per-call"
+            " tolerance overrides this when set on the tool arguments."
+        ),
+        group="Browser",
+        level=SettingLevel.ADVANCED,
+        min_value=0.5,
+        max_value=1.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="browser_a11y_min_impact_default",
+        type=SettingType.STRING,
+        default="serious",
+        description=(
+            "Minimum axe-core impact level treated as a violation when"
+            " the tool call omits min_impact. One of: minor, moderate,"
+            " serious, critical."
+        ),
+        group="Browser",
+        level=SettingLevel.BASIC,
+        validator_pattern=r"^(minor|moderate|serious|critical)$",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="browser_image_pin",
+        type=SettingType.STRING,
+        default="mcr.microsoft.com/playwright/python:v1.60.0-jammy",
+        description=(
+            "Container image used by the browser sandbox backend. Must"
+            " contain Python 3, Playwright Python, and Chromium ready"
+            " to launch headless."
+        ),
+        group="Browser",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)

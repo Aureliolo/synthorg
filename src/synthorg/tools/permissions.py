@@ -93,6 +93,7 @@ class ToolPermissionChecker:
                         ToolCategory.TERMINAL,
                         ToolCategory.ANALYTICS,
                         ToolCategory.MEMORY,
+                        ToolCategory.BROWSER,
                     }
                 ),
                 # all categories -- new ToolCategory members are auto-included;

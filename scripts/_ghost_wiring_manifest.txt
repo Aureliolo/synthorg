@@ -51,3 +51,6 @@ ENFORCED EmbeddedGitBackend #1974 -- default GitBackend strategy built by engine
 ENFORCED LocalPathGitBackend #1974 -- GitBackend strategy built by engine/workspace/git_backend/factory.py::_build_local_path for the LOCAL_PATH discriminator
 ENFORCED ExternalRemoteGitBackend #1974 -- GitBackend strategy built by engine/workspace/git_backend/factory.py::_build_external_remote for the EXTERNAL_REMOTE discriminator
 ENFORCED PushQueueCoordinator #1974 -- constructed per-project by engine/workspace/service.py::WorkspaceIsolationService._get_or_create_queue; serialises merge+push to the backend
+ENFORCED BrowserTool #1992 -- constructed by tools/factory.py::_build_browser_tools behind the BROWSER sandbox category; EPIC #1987 hands-and-senses headless browser
+ENFORCED SSIMDiffer #1992 -- default ScreenshotDiffer constructed by tools/browser/browser_tool.py::BrowserTool.__init__
+ENFORCED WorkspaceBaselineStore #1992 -- constructed by tools/browser/browser_tool.py::BrowserTool.__init__; per-workspace baseline-screenshot resolver

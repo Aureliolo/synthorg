@@ -205,6 +205,11 @@ async def _build_tool_registry(
         _WEB_TIMEOUT_NS,
         _WEB_TIMEOUT_KEY,
     )
+    from synthorg.tools.browser._settings import (  # noqa: PLC0415
+        resolve_browser_settings,
+    )
+
+    browser_settings = await resolve_browser_settings(app_state.config_resolver)
     lifecycle_strategy = create_lifecycle_strategy(
         app_state.config.sandboxing.docker.lifecycle,
         clock=app_state.clock,
@@ -219,6 +224,7 @@ async def _build_tool_registry(
         config=app_state.config,
         sandbox_backends=sandbox_backends,
         web_request_timeout=web_request_timeout,
+        browser_settings=browser_settings,
     )
     return ToolRegistry(list(tools)), len(tools), sandbox_backends
 

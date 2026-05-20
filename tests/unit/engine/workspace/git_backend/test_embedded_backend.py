@@ -117,3 +117,51 @@ class TestEmbeddedGitBackend:
             branch=NotBlankStr("feature"),
         )
         assert fetched.updated_refs == (NotBlankStr("feature"),)
+
+    async def test_configure_identity_refuses_linked_worktree(
+        self, tmp_path: Path
+    ) -> None:
+        # Direct exercise of the assert_standalone_repo guard inside
+        # _configure_identity. Without the guard, ``git config
+        # user.email synthorg-bot@synthorg.local`` against a linked
+        # worktree mutates the SHARED config of the parent repo (the
+        # exact leak that rewrote the operator's identity across every
+        # sibling worktree). The public provision() path short-circuits
+        # via is_git_repo BEFORE reaching this method, so this is a
+        # defence-in-depth test against future callers that bypass that
+        # check or against an unforeseen path where is_git_repo would
+        # return false on a linked worktree.
+        from synthorg.engine.errors import GitBackendProvisionError
+
+        host_repo = tmp_path / "host"
+        host_repo.mkdir()
+        await _git(host_repo, "init", "--initial-branch=main")
+        await _git(host_repo, "config", "user.email", "host@example.invalid")
+        await _git(host_repo, "config", "user.name", "Host")
+        (host_repo / "seed.txt").write_text("seed\n")
+        await _git(host_repo, "add", "seed.txt")
+        await _git(host_repo, "commit", "-m", "seed")
+        # Carve a linked worktree off the host repo. Its `.git` is a
+        # FILE pointing at host_repo/.git/worktrees/<name>; `git
+        # config` writes there bubble up to host_repo/.git/config.
+        linked_tree = tmp_path / "linked"
+        await _git(host_repo, "worktree", "add", "-B", "wt-branch", str(linked_tree))
+        backend = _backend(tmp_path / "base")
+
+        with pytest.raises(GitBackendProvisionError) as exc_info:
+            await backend._configure_identity(linked_tree, "p1")
+        assert "shared" in str(exc_info.value).lower()
+        # The parent's user.email must still equal the value we set
+        # above; the bot identity must NOT have leaked into the host
+        # repo's shared config.
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "config",
+            "user.email",
+            cwd=str(host_repo),
+            env=_clean_env(),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        assert stdout.decode().strip() == "host@example.invalid"

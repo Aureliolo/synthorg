@@ -96,6 +96,14 @@ jobs:
           # but PyPI metadata is null. Verified manually. Test-only dependency
           # used by the Python perf-regression suite under tests/benchmarks/.
           #
+          # pillow: SPDX detector reports `MIT-CMU` (the historic MIT/X
+          # Consortium License variant), which is functionally identical to
+          # MIT in permissiveness but not in the action's allow-licenses
+          # list. pillow's upstream LICENSE.txt is the canonical PIL/Pillow
+          # text -- attribution-only, no copyleft. Required by
+          # synthorg.tools.browser._ssim_differ via scikit-image. Bumped
+          # 12.0.0 -> 12.2.0 to clear CVE-2026-25990 / 40192 / 42308-11.
+          #
           # Newly added in #1679 (deps bump after litellm override-dependencies):
           # hypothesis (MPL-2.0), litellm (MIT), openai (Apache-2.0),
           # pyngrok (MIT), tokenizers (Apache-2.0), typer (MIT). All have null
@@ -144,5 +152,6 @@ jobs:
             pkg:pypi/nvidia-nccl-cu13@2.28.9,
             pkg:pypi/nvidia-nvjitlink@13.0.88,
             pkg:pypi/nvidia-nvshmem-cu13@3.4.5,
-            pkg:pypi/nvidia-nvtx@13.0.85
+            pkg:pypi/nvidia-nvtx@13.0.85,
+            pkg:pypi/pillow@12.2.0
           comment-summary-in-pr: always

@@ -11645,7 +11645,7 @@ export type components = {
          * @description Category of a tool for access-level gating.
          * @enum {string}
          */
-        readonly ToolCategory: "file_system" | "code_execution" | "version_control" | "web" | "database" | "terminal" | "design" | "communication" | "analytics" | "deployment" | "memory" | "ontology" | "mcp" | "other";
+        readonly ToolCategory: "file_system" | "code_execution" | "version_control" | "web" | "database" | "terminal" | "design" | "communication" | "analytics" | "deployment" | "memory" | "ontology" | "mcp" | "browser" | "other";
         /**
          * ToolPermissions
          * @description Tool permissions

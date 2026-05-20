@@ -18,7 +18,11 @@ from synthorg.engine.errors import (
     GitBackendProvisionError,
     GitBackendPushError,
 )
-from synthorg.engine.workspace.git_backend._git_ops import git, is_git_repo
+from synthorg.engine.workspace.git_backend._git_ops import (
+    assert_standalone_repo,
+    git,
+    is_git_repo,
+)
 from synthorg.engine.workspace.git_backend.protocol import (
     FetchResult,
     ProvisionResult,
@@ -102,6 +106,16 @@ class EmbeddedGitBackend:
         raise GitBackendProvisionError(msg)
 
     async def _configure_identity(self, workspace_path: Path, pid: str) -> None:
+        # Refuse if the workspace shares its common-dir with a parent
+        # repo (linked worktree or aliased repo). user.{email,name}
+        # writes would otherwise rewrite the operator's identity across
+        # every other worktree of that shared repo.
+        await assert_standalone_repo(
+            workspace_path,
+            cmd_timeout=self._cmd_timeout,
+            fail_exc=GitBackendProvisionError,
+            project_id=pid,
+        )
         await git(
             workspace_path,
             "config",

@@ -33,6 +33,7 @@ class ActionTypeCategory(StrEnum):
     DB = "db"
     ARCH = "arch"
     MEMORY = "memory"
+    BROWSER = "browser"
 
 
 def _build_category_map() -> dict[str, frozenset[str]]:

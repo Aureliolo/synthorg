@@ -9,7 +9,7 @@ description: Tool categories, concurrent execution model, layered sandboxing, MC
 
     This page is the source of truth for the **designed** behaviour of this subsystem. Tool execution runs via the agent runtime, which is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
 
-Agents act on the world through tools. SynthOrg defines a pluggable tool system with 12+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication, design), layered sandboxing (subprocess for low-risk, Docker for high-risk, Kubernetes for future multi-tenant), MCP server integration, and a progressive-disclosure model that limits the surface an agent sees to what its role, seniority, and autonomy tier permit.
+Agents act on the world through tools. SynthOrg defines a pluggable tool system with 13+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication, design, headless browser), layered sandboxing (subprocess for low-risk, Docker for high-risk, Kubernetes for future multi-tenant), MCP server integration, and a progressive-disclosure model that limits the surface an agent sees to what its role, seniority, and autonomy tier permit.
 
 ## Tool Categories
 
@@ -26,6 +26,7 @@ Agents act on the world through tools. SynthOrg defines a pluggable tool system 
 | **Analytics** | Metrics, dashboards, reporting | Data analysts, CFO |
 | **Deployment** | CI/CD, container management | DevOps, SRE |
 | **Memory** | Search memory, recall by ID | All agents (tool-based strategy) |
+| **Browser** | Headless Playwright + Chromium: navigate, screenshot, SSIM diff, axe accessibility scan, full spec | QA, frontend devs, agents validating web deliverables |
 | **MCP Servers** | Any MCP-compatible tool | Configurable per agent |
 
 ## Tool Execution Model
@@ -72,6 +73,7 @@ isolation for high-risk tools.
         code_execution: "docker"           # high risk -- strong isolation required
         terminal: "docker"                 # high risk -- arbitrary commands
         database: "docker"                 # high risk -- data mutation
+        browser: "docker"                  # opt-in -- Playwright + Chromium image
       subprocess:
         timeout_seconds: 30
         workspace_only: true               # restrict filesystem access to project dir
@@ -118,9 +120,10 @@ individual tools additionally require a runtime dependency (e.g. image tools
 require an ``ImageProvider``, notification tools require a dispatcher, analytics
 query/metric tools require a provider or sink).
 
-Docker is optional; only required when code execution, terminal, web, or database tools are
-enabled. File system and git tools work out of the box with subprocess isolation. This keeps
-the local-first experience lightweight while providing strong isolation where it matters.
+Docker is optional; only required when code execution, terminal, web, database, or browser
+tools are enabled. File system and git tools work out of the box with subprocess isolation.
+This keeps the local-first experience lightweight while providing strong isolation where it
+matters.
 
 Docker MVP uses `aiodocker` (async-native) with a pre-built image
 (Python 3.14 + Node.js LTS + basic utils, <500MB). If Docker is unavailable, the framework
@@ -447,7 +450,7 @@ Action types classify agent actions for use by autonomy presets (see [Security &
 SecOps validation, tiered timeout policies, and progressive trust
 ([Decision Log](../architecture/decisions.md) D1).
 
-**Registry:** `StrEnum` for ~26 built-in action types (type safety, autocomplete, typos caught
+**Registry:** `StrEnum` for ~31 built-in action types (type safety, autocomplete, typos caught
 by static type checking and config-load-time validation) + `ActionTypeRegistry` for custom
 types via explicit registration. Unknown strings are rejected at config load time; a typo
 in `human_approval` list silently meaning "skip approval" is a critical safety concern.
@@ -456,7 +459,7 @@ in `human_approval` list silently meaning "skip approval" is a critical safety c
 actions in that category (e.g., `auto_approve: ["code"]` expands to all `code:*` actions).
 Fine-grained overrides are supported (e.g., `human_approval: ["code:create"]`).
 
-**Taxonomy (~26 leaf types):**
+**Taxonomy (~31 leaf types):**
 
 ```text
 code:read, code:write, code:create, code:delete, code:refactor
@@ -470,6 +473,7 @@ org:hire, org:fire, org:promote
 db:query, db:mutate, db:admin
 arch:decide
 memory:read
+browser:navigate, browser:screenshot, browser:diff, browser:accessibility_scan, browser:spec
 ```
 
 **Classification:** Static tool metadata. Each `BaseTool` declares its `action_type`. Default

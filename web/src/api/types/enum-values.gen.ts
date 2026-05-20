@@ -749,6 +749,7 @@ export const TOOL_CATEGORY_VALUES = [
     'memory',
     'ontology',
     'mcp',
+    'browser',
     'other',
 ] as const
 export type ToolCategory = (typeof TOOL_CATEGORY_VALUES)[number]

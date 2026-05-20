@@ -252,6 +252,14 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: no-raw-playwright-imports
+        name: Playwright stays bound to synthorg.tools.browser
+        entry: uv run python scripts/check_no_raw_playwright_imports.py
+        language: system
+        files: ^(src/synthorg/.*\.py|scripts/check_no_raw_playwright_imports\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: no-loop-bound-init
         name: block new asyncio primitives in __init__ of lifecycle-managed classes
         entry: uv

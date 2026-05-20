@@ -449,6 +449,7 @@ class ToolCategory(StrEnum):
     MEMORY = "memory"
     ONTOLOGY = "ontology"
     MCP = "mcp"
+    BROWSER = "browser"
     OTHER = "other"
 
 
@@ -551,6 +552,11 @@ class ActionType(StrEnum):
     DB_ADMIN = "db:admin"
     ARCH_DECIDE = "arch:decide"
     MEMORY_READ = "memory:read"
+    BROWSER_NAVIGATE = "browser:navigate"
+    BROWSER_SCREENSHOT = "browser:screenshot"
+    BROWSER_DIFF = "browser:diff"
+    BROWSER_ACCESSIBILITY_SCAN = "browser:accessibility_scan"
+    BROWSER_SPEC = "browser:spec"
 
 
 class MergeOrder(StrEnum):

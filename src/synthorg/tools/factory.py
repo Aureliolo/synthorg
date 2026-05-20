@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from synthorg.tools.analytics.data_aggregator import AnalyticsProvider
     from synthorg.tools.analytics.metric_collector import MetricSink
     from synthorg.tools.base import BaseTool
+    from synthorg.tools.browser._settings import BrowserSettings
     from synthorg.tools.communication.config import CommunicationToolsConfig
     from synthorg.tools.communication.notification_sender import (
         NotificationDispatcherProtocol,
@@ -67,6 +68,29 @@ if TYPE_CHECKING:
     from synthorg.tools.web.web_search import WebSearchProvider
 
 logger = get_logger(__name__)
+
+
+def _build_browser_tools(
+    *,
+    workspace: Path,
+    sandbox: SandboxBackend | None,
+    settings: BrowserSettings | None = None,
+) -> tuple[BaseTool, ...]:
+    """Instantiate the headless browser tool when a sandbox is available.
+
+    Returns an empty tuple when *sandbox* is ``None`` so agents at
+    deployments without a configured browser-capable sandbox simply
+    do not see the tool (opt-in by configuration).
+
+    When *settings* is omitted the tool falls back to the model
+    defaults that mirror the module constants (used by tests and by
+    deployments that wire the tool without ConfigResolver yet).
+    """
+    if sandbox is None:
+        return ()
+    from synthorg.tools.browser.browser_tool import BrowserTool  # noqa: PLC0415
+
+    return (BrowserTool(sandbox=sandbox, workspace=workspace, settings=settings),)
 
 
 def _build_file_system_tools(
@@ -406,6 +430,8 @@ def build_default_tools(  # noqa: PLR0913
     async_task_supervisor_id: str = "supervisor",
     async_task_supervisor_task_id: str = "default",
     code_execution_sandbox: SandboxBackend | None = None,
+    browser_sandbox: SandboxBackend | None = None,
+    browser_settings: BrowserSettings | None = None,
     org_memory_backend: OrgMemoryBackend | None = None,
     org_fact_store: OrgFactRepository | None = None,
     wiki_exporter: WikiExporter | None = None,
@@ -456,6 +482,12 @@ def build_default_tools(  # noqa: PLR0913
         code_execution_sandbox: Sandbox backend for the
             ``code_runner`` tool.  When ``None``, ``code_runner`` is
             not registered.
+        browser_sandbox: Sandbox backend for the headless browser
+            tool.  When ``None``, the ``browser`` tool is not
+            registered (opt-in via the BROWSER sandbox category).
+        browser_settings: Operator-resolved ``BrowserSettings``.  When
+            ``None`` the BrowserTool uses model defaults (mirroring
+            the constants in ``tools.browser._constants``).
         org_memory_backend: OrgMemoryBackend collaborator for the
             KnowledgeArchitect tools.  Must be wired together with
             ``org_fact_store`` and ``wiki_exporter`` to register the
@@ -563,6 +595,13 @@ def build_default_tools(  # noqa: PLR0913
         _build_code_execution_tools(sandbox=code_execution_sandbox),
     )
     all_tools.extend(
+        _build_browser_tools(
+            workspace=workspace,
+            sandbox=browser_sandbox,
+            settings=browser_settings,
+        ),
+    )
+    all_tools.extend(
         _build_knowledge_architect_tools(
             org_backend=org_memory_backend,
             fact_store=org_fact_store,
@@ -607,6 +646,7 @@ def build_default_tools_from_config(  # noqa: PLR0913
     architect_autonomy_level: AutonomyLevel = _DEFAULT_ARCHITECT_AUTONOMY,
     architect_writes_enabled: bool = False,
     web_request_timeout: float,
+    browser_settings: BrowserSettings | None = None,
 ) -> tuple[BaseTool, ...]:
     """Build default tools using parameters from a ``RootConfig``.
 
@@ -657,6 +697,9 @@ def build_default_tools_from_config(  # noqa: PLR0913
             ``settings.value.resolved`` audit log fire on the real
             read).  Overrides ``config.web.request_timeout`` when
             both are supplied.
+        browser_settings: Operator-resolved ``BrowserSettings``.  When
+            ``None`` the BrowserTool uses model defaults (mirroring
+            the constants in ``tools.browser._constants``).
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.
@@ -722,6 +765,27 @@ def build_default_tools_from_config(  # noqa: PLR0913
             ),
         )
 
+    # Resolve browser sandbox if configured. Opt-in: when the
+    # category resolves to subprocess (default), Chromium cannot
+    # launch reliably, so the operator must explicitly override
+    # ``sandboxing.overrides.browser = 'docker'`` to enable the tool.
+    browser_sandbox: SandboxBackend | None = None
+    if config.sandboxing.backend_for_category(ToolCategory.BROWSER.value) == "docker":
+        try:
+            browser_sandbox = resolve_sandbox_for_category(
+                config=config.sandboxing,
+                backends=resolved_backends,
+                category=ToolCategory.BROWSER,
+            )
+        except KeyError:
+            logger.warning(
+                TOOL_FACTORY_ERROR,
+                error=(
+                    "No sandbox backend for BROWSER category; "
+                    "headless browser tool will not be registered"
+                ),
+            )
+
     # Trust the resolved ``web_request_timeout`` the caller passed;
     # the registry resolution + ``settings.value.resolved`` audit log
     # already fired upstream at the ``ConfigResolver`` boundary.
@@ -752,6 +816,8 @@ def build_default_tools_from_config(  # noqa: PLR0913
         metric_sink=metric_sink,
         async_task_service=async_task_service,
         code_execution_sandbox=code_execution_sandbox,
+        browser_sandbox=browser_sandbox,
+        browser_settings=browser_settings,
         org_memory_backend=org_memory_backend,
         org_fact_store=org_fact_store,
         wiki_exporter=wiki_exporter,
