@@ -62,6 +62,21 @@ _TURN_INSERT_SQL = """
     VALUES (%s, %s, %s, %s, %s, %s)
 """
 
+_TURN_NEXT_SEQUENCE_SQL = """
+    SELECT COALESCE(MAX(sequence), -1) + 1 FROM conversation_turns
+    WHERE conversation_id = %s
+"""
+
+# Bounded retry on the (conversation_id, sequence) uniqueness race.
+# Two concurrent ``converse()`` calls can both compute the same
+# sequence from a stale read and the second insert will collide. We
+# re-query the live max sequence and retry the insert; with a small
+# bound any caller losing repeatedly is a sign of write-side
+# contention worth surfacing as a constraint violation.
+_TURN_APPEND_MAX_RETRIES: int = 3
+# Postgres exposes the named constraint via diag.constraint_name.
+_TURN_SEQUENCE_UNIQUE_CONSTRAINT: str = "uq_ct_conversation_sequence"
+
 
 def _row_to_conversation(row: dict[str, Any]) -> Conversation:
     """Convert a Postgres dict row into a :class:`Conversation`."""
@@ -335,54 +350,86 @@ class PostgresConversationTurnRepository:
     async def append(self, event: ConversationTurn) -> None:
         """Append one turn (immutable once written).
 
+        Sequence collisions on ``(conversation_id, sequence)`` are a
+        natural TOCTOU race when two concurrent callers compute the
+        next sequence from a stale snapshot; this method re-queries
+        the live max sequence and retries the insert up to
+        ``_TURN_APPEND_MAX_RETRIES`` times before surfacing the
+        violation. Other constraint failures (FK miss, CHECK on
+        content/role) are not retried and translate directly to
+        ``ConstraintViolationError``.
+
         Raises:
-            ConstraintViolationError: On constraint violations (e.g. a
-                duplicate ``(conversation_id, sequence)``).
+            ConstraintViolationError: On non-sequence constraint
+                violations, or a sequence collision that still
+                conflicts after the retry budget.
             QueryError: On other database errors.
         """
-        params = (
-            event.id,
-            event.conversation_id,
-            event.sequence,
-            event.role.value,
-            event.content,
-            event.created_at,
-        )
-        try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
-                await cur.execute(_TURN_INSERT_SQL, params)
-                await conn.commit()
-        except psycopg.errors.IntegrityError as exc:
-            constraint = (
-                getattr(getattr(exc, "diag", None), "constraint_name", None)
-                or "<unknown>"
+        current = event
+        for attempt in range(_TURN_APPEND_MAX_RETRIES + 1):
+            params = (
+                current.id,
+                current.conversation_id,
+                current.sequence,
+                current.role.value,
+                current.content,
+                current.created_at,
             )
-            msg = (
-                "Constraint violation appending turn "
-                f"{event.id!r} (conversation {event.conversation_id!r})"
-            )
-            logger.warning(
-                PERSISTENCE_CONVERSATION_TURN_FAILED,
-                operation="append",
-                conversation_id=event.conversation_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise ConstraintViolationError(msg, constraint=constraint) from exc
-        except psycopg.Error as exc:
-            msg = f"Failed to append turn {event.id!r}"
-            logger.warning(
-                PERSISTENCE_CONVERSATION_TURN_FAILED,
-                operation="append",
-                conversation_id=event.conversation_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+            try:
+                async with self._pool.connection() as conn, conn.cursor() as cur:
+                    await cur.execute(_TURN_INSERT_SQL, params)
+                    await conn.commit()
+                break
+            except psycopg.errors.IntegrityError as exc:
+                constraint = (
+                    getattr(getattr(exc, "diag", None), "constraint_name", None)
+                    or "<unknown>"
+                )
+                sequence_race = (
+                    constraint == _TURN_SEQUENCE_UNIQUE_CONSTRAINT
+                    and attempt < _TURN_APPEND_MAX_RETRIES
+                )
+                if sequence_race:
+                    async with (
+                        self._pool.connection() as conn,
+                        conn.cursor() as cur,
+                    ):
+                        await cur.execute(
+                            _TURN_NEXT_SEQUENCE_SQL,
+                            (current.conversation_id,),
+                        )
+                        row = await cur.fetchone()
+                        next_sequence = int(row[0]) if row is not None else 0
+                    current = current.model_copy(
+                        update={"sequence": next_sequence},
+                    )
+                    continue
+                msg = (
+                    "Constraint violation appending turn "
+                    f"{current.id!r} (conversation {current.conversation_id!r})"
+                )
+                logger.warning(
+                    PERSISTENCE_CONVERSATION_TURN_FAILED,
+                    operation="append",
+                    conversation_id=current.conversation_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise ConstraintViolationError(msg, constraint=constraint) from exc
+            except psycopg.Error as exc:
+                msg = f"Failed to append turn {current.id!r}"
+                logger.warning(
+                    PERSISTENCE_CONVERSATION_TURN_FAILED,
+                    operation="append",
+                    conversation_id=current.conversation_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
         logger.debug(
             PERSISTENCE_CONVERSATION_TURN_APPENDED,
-            conversation_id=event.conversation_id,
-            sequence=event.sequence,
+            conversation_id=current.conversation_id,
+            sequence=current.sequence,
         )
 
     async def query(

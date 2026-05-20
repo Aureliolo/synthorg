@@ -16,7 +16,6 @@ import aiosqlite
 import pytest
 
 from synthorg.core.enums import ConversationRole, ConversationStatus
-from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.persistence.conversation_protocol import (
@@ -248,23 +247,38 @@ class TestConversationTurnRepository:
         assert [r.sequence for r in rows] == [1, 0]
         assert rows[0].role is ConversationRole.ASSISTANT
 
-    async def test_append_duplicate_sequence_rejected(
+    async def test_append_duplicate_sequence_resequenced(
         self, backend: PersistenceBackend
     ) -> None:
+        # Race-safe append: when a caller passes a ``sequence`` that
+        # collides on the ``(conversation_id, sequence)`` uniqueness
+        # constraint, the repo re-queries the live max sequence and
+        # retries the insert. This is the TOCTOU defence for two
+        # concurrent ``converse()`` calls computing the same sequence
+        # from a stale snapshot; the second call lands at the next
+        # available sequence rather than 5xx-ing the request.
         conv_repo = _conversation_repo(backend)
         await conv_repo.save(_make_conversation(conversation_id="conv-dup"))
         repo = _turn_repo(backend)
         await repo.append(
             _make_turn(turn_id="d0", conversation_id="conv-dup", sequence=0)
         )
-        with pytest.raises(ConstraintViolationError):
-            await repo.append(
-                _make_turn(
-                    turn_id="d0-again",
-                    conversation_id="conv-dup",
-                    sequence=0,
-                )
+        await repo.append(
+            _make_turn(
+                turn_id="d0-again",
+                conversation_id="conv-dup",
+                sequence=0,
             )
+        )
+        rows = await repo.query(
+            ConversationTurnFilterSpec(conversation_id=NotBlankStr("conv-dup"))
+        )
+        # Newest-first ordering; both rows land with distinct
+        # sequences (the second was resequenced to 1).
+        sequences = sorted(t.sequence for t in rows)
+        assert sequences == [0, 1]
+        ids = {t.id for t in rows}
+        assert ids == {"d0", "d0-again"}
 
     async def test_query_scopes_to_conversation(
         self, backend: PersistenceBackend

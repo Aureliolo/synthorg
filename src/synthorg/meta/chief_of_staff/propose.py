@@ -227,6 +227,14 @@ class ChiefOfStaffProposer:
         existing = await self._conversation_repo.get(args.conversation_id)
         if existing is None:
             raise ConversationNotFoundError(conversation_id=args.conversation_id)
+        # Authorisation: only the original creator may resume a
+        # conversation. A caller who learns a foreign conversation_id
+        # would otherwise be able to append turns to it and have prior
+        # history fed back into the model -- a cross-tenant privacy
+        # break. Map ownership mismatch to NotFound so the response
+        # cannot be used to probe existence either.
+        if existing.created_by != args.created_by:
+            raise ConversationNotFoundError(conversation_id=args.conversation_id)
         if existing.status is ConversationStatus.CLOSED:
             raise ConversationClosedError(conversation_id=existing.id)
         return existing

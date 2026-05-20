@@ -120,15 +120,10 @@ class ApprovalStore:
     def has_persistent_repo(self) -> bool:
         """``True`` iff a durable :class:`ApprovalRepository` is wired.
 
-        Used by startup wiring to detect the configuration trap where
-        a persistent SQLite ``ApprovalRepository`` is paired with the
-        conversational interface: the v1 SQLite migration deliberately
-        keeps ``approvals.source`` narrow (``parked_context`` /
-        ``review_gate``) to avoid the Windows 8s-budget regression on
-        the conformance suite, so ``conversational_intake`` rows would
-        be rejected at write time. Callers that detect this
-        combination should refuse to wire the proposer (the only
-        sanctioned exit is Postgres for the production target).
+        Used by startup wiring to detect backend combinations where
+        conversational-intake approvals cannot be durably persisted.
+        Callers should refuse proposer wiring for unsupported
+        persistence modes.
         """
         return self._repo is not None
 

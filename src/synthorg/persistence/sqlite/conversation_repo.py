@@ -63,6 +63,28 @@ _TURN_INSERT_SQL = """
     ) VALUES (?, ?, ?, ?, ?, ?)
 """
 
+_TURN_NEXT_SEQUENCE_SQL = """
+    SELECT COALESCE(MAX(sequence), -1) + 1 FROM conversation_turns
+    WHERE conversation_id = ?
+"""
+
+# Bounded retry on the (conversation_id, sequence) uniqueness race.
+# Two concurrent ``converse()`` calls can both compute the same
+# sequence from a stale read and the second insert will collide. We
+# re-query the live max sequence and retry the insert; with a small
+# bound any caller losing repeatedly is a sign of write-side
+# contention worth surfacing as a constraint violation.
+_TURN_APPEND_MAX_RETRIES: int = 3
+# Substring that flags the (conversation_id, sequence) uniqueness
+# violation in SQLite's IntegrityError message ("UNIQUE constraint
+# failed: conversation_turns.conversation_id,
+# conversation_turns.sequence"). The constraint is named
+# ``uq_ct_conversation_sequence`` in the schema but SQLite reports
+# columns rather than the name; matching on the column-pair string
+# keeps this check tied to the specific constraint without coupling
+# to the named-constraint output format.
+_TURN_SEQUENCE_UNIQUE_HINT: str = "conversation_turns.sequence"
+
 
 async def _safe_rollback(
     db: aiosqlite.Connection,
@@ -404,62 +426,91 @@ class SQLiteConversationTurnRepository:
     async def append(self, event: ConversationTurn) -> None:
         """Append one turn (immutable once written).
 
+        Sequence collisions on ``(conversation_id, sequence)`` are a
+        natural TOCTOU race when two concurrent callers compute the
+        next sequence from a stale snapshot; this method re-queries
+        the live max sequence and retries the insert up to
+        ``_TURN_APPEND_MAX_RETRIES`` times before surfacing the
+        violation. Other constraint failures (FK miss, CHECK on
+        content/role/created_at) are not retried and translate
+        directly to ``ConstraintViolationError``.
+
         Raises:
-            ConstraintViolationError: On constraint violations (e.g. a
-                duplicate ``(conversation_id, sequence)``).
+            ConstraintViolationError: On non-sequence constraint
+                violations, or a sequence collision that still
+                conflicts after the retry budget.
             QueryError: On other database errors.
         """
-        params = (
-            event.id,
-            event.conversation_id,
-            event.sequence,
-            event.role.value,
-            event.content,
-            format_iso_utc(event.created_at),
-        )
+        current = event
         async with self._write_context():
-            try:
-                await self._db.execute(_TURN_INSERT_SQL, params)
-                await self._db.commit()
-            except sqlite3.IntegrityError as exc:
-                await _safe_rollback(
-                    self._db,
-                    event=PERSISTENCE_CONVERSATION_TURN_FAILED,
-                    operation="append",
-                    conversation_id=event.conversation_id,
+            for attempt in range(_TURN_APPEND_MAX_RETRIES + 1):
+                params = (
+                    current.id,
+                    current.conversation_id,
+                    current.sequence,
+                    current.role.value,
+                    current.content,
+                    format_iso_utc(current.created_at),
                 )
-                msg = (
-                    "Constraint violation appending turn "
-                    f"{event.id!r} (conversation {event.conversation_id!r})"
-                )
-                logger.warning(
-                    PERSISTENCE_CONVERSATION_TURN_FAILED,
-                    operation="append",
-                    conversation_id=event.conversation_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise ConstraintViolationError(msg, constraint=str(exc)) from exc
-            except (sqlite3.Error, aiosqlite.Error) as exc:
-                await _safe_rollback(
-                    self._db,
-                    event=PERSISTENCE_CONVERSATION_TURN_FAILED,
-                    operation="append",
-                    conversation_id=event.conversation_id,
-                )
-                msg = f"Failed to append turn {event.id!r}"
-                logger.warning(
-                    PERSISTENCE_CONVERSATION_TURN_FAILED,
-                    operation="append",
-                    conversation_id=event.conversation_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                raise QueryError(msg) from exc
+                try:
+                    await self._db.execute(_TURN_INSERT_SQL, params)
+                    await self._db.commit()
+                    break
+                except sqlite3.IntegrityError as exc:
+                    await _safe_rollback(
+                        self._db,
+                        event=PERSISTENCE_CONVERSATION_TURN_FAILED,
+                        operation="append",
+                        conversation_id=current.conversation_id,
+                    )
+                    sequence_race = (
+                        _TURN_SEQUENCE_UNIQUE_HINT in str(exc)
+                        and attempt < _TURN_APPEND_MAX_RETRIES
+                    )
+                    if sequence_race:
+                        cursor = await self._db.execute(
+                            _TURN_NEXT_SEQUENCE_SQL,
+                            (current.conversation_id,),
+                        )
+                        row = await cursor.fetchone()
+                        next_sequence = int(row[0]) if row is not None else 0
+                        current = current.model_copy(
+                            update={"sequence": next_sequence},
+                        )
+                        continue
+                    msg = (
+                        "Constraint violation appending turn "
+                        f"{current.id!r} "
+                        f"(conversation {current.conversation_id!r})"
+                    )
+                    logger.warning(
+                        PERSISTENCE_CONVERSATION_TURN_FAILED,
+                        operation="append",
+                        conversation_id=current.conversation_id,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    raise ConstraintViolationError(msg, constraint=str(exc)) from exc
+                except (sqlite3.Error, aiosqlite.Error) as exc:
+                    await _safe_rollback(
+                        self._db,
+                        event=PERSISTENCE_CONVERSATION_TURN_FAILED,
+                        operation="append",
+                        conversation_id=current.conversation_id,
+                    )
+                    msg = f"Failed to append turn {current.id!r}"
+                    logger.warning(
+                        PERSISTENCE_CONVERSATION_TURN_FAILED,
+                        operation="append",
+                        conversation_id=current.conversation_id,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    raise QueryError(msg) from exc
         logger.debug(
             PERSISTENCE_CONVERSATION_TURN_APPENDED,
-            conversation_id=event.conversation_id,
-            sequence=event.sequence,
+            conversation_id=current.conversation_id,
+            sequence=current.sequence,
         )
 
     async def query(

@@ -57,8 +57,12 @@ async def _reread_approval_item(
     """Re-read the just-decided approval, degrading to ``None`` on error.
 
     The decision is already persisted by the caller; a failed reread
-    must not 500 the request. Returning ``None`` routes the caller to
-    the parked-context probe fallback instead of a hard dependency.
+    must not 500 the request. ``None`` is treated per flow:
+    ``try_conversational_intake_resume`` (Flow 0) raises because that
+    flow owns the approval the moment it reads the source, so a
+    missing source read can't be safely fallen-through; later flows
+    (mid-execution-resume, review-gate) degrade gracefully because
+    they probe additional state to determine ownership.
     """
     try:
         return await app_state.approval_store.get(approval_id)
@@ -180,7 +184,212 @@ async def try_mid_execution_resume(
     return True
 
 
-async def try_conversational_intake_resume(  # noqa: C901, PLR0912 -- one function per source-discriminator branch + PENDING/EXECUTING/EXECUTED/REJECTED CAS checks
+async def _load_conversational_proposal(
+    app_state: AppState,
+    approval_id: str,
+) -> tuple[bool, object | None]:
+    """Resolve a conversational-intake proposal for *approval_id*.
+
+    Returns a (owns_decision, proposal_or_none) tuple:
+
+    * ``(False, None)``: the approval is NOT a conversational-intake
+      one; the caller falls through to other resume flows.
+    * ``(True, None)``: this flow owns the decision but there is no
+      proposal row to act on (a logged no-op); the caller returns
+      ``True`` without further work.
+    * ``(True, proposal)``: this flow owns the decision and has a
+      proposal to transition.
+
+    Raises:
+        ServiceUnavailableError: When the approval store read fails
+            (``item is None``) or the proposal repo is not wired.
+            Both are hard misconfigurations -- swallowing them would
+            silently strand a decided conversational approval.
+    """
+    from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
+    from synthorg.persistence.conversational_proposal_protocol import (  # noqa: PLC0415
+        ConversationalProposalFilterSpec,
+    )
+
+    item = await _reread_approval_item(app_state, approval_id)
+    if item is None:
+        logger.error(
+            APPROVAL_GATE_CONVERSATIONAL_FAILED,
+            approval_id=approval_id,
+            note="approval reread failed; cannot determine source",
+        )
+        msg = "Approval state unavailable"
+        raise ServiceUnavailableError(msg)
+    if item.source is not ApprovalSource.CONVERSATIONAL_INTAKE:
+        return False, None
+    # This flow now owns the decision regardless of outcome.
+    if not app_state.has_conversational_proposal_repo:
+        logger.error(
+            APPROVAL_GATE_CONVERSATIONAL_FAILED,
+            approval_id=approval_id,
+            note="conversational proposal repo not wired",
+        )
+        msg = "Conversational proposal repository unavailable"
+        raise ServiceUnavailableError(msg)
+    repo = app_state.conversational_proposal_repo
+    proposals = await repo.query(
+        ConversationalProposalFilterSpec(approval_id=approval_id),
+    )
+    if not proposals:
+        logger.error(
+            APPROVAL_GATE_CONVERSATIONAL_NO_PROPOSAL,
+            approval_id=approval_id,
+        )
+        return True, None
+    return True, proposals[0]
+
+
+async def _reject_conversational_proposal(
+    app_state: AppState,
+    approval_id: str,
+    proposal: object,
+) -> None:
+    """CAS the proposal from PENDING to REJECTED; pipeline never runs."""
+    from synthorg.core.enums import ConversationalProposalStatus  # noqa: PLC0415
+
+    repo = app_state.conversational_proposal_repo
+    proposal_id = proposal.id  # type: ignore[attr-defined]
+    transitioned = await repo.transition_if(
+        proposal_id,
+        ConversationalProposalStatus.PENDING,
+        ConversationalProposalStatus.REJECTED,
+    )
+    if transitioned:
+        logger.info(
+            APPROVAL_GATE_CONVERSATIONAL_REJECTED,
+            approval_id=approval_id,
+            proposal_id=proposal_id,
+        )
+        return
+    # Concurrent decision already transitioned this proposal (e.g.
+    # duplicate approval-decision request). Surface the no-op so the
+    # log doesn't claim a success we didn't make.
+    logger.warning(
+        APPROVAL_GATE_CONVERSATIONAL_FAILED,
+        approval_id=approval_id,
+        proposal_id=proposal_id,
+        note="proposal already transitioned (reject path)",
+    )
+
+
+async def _execute_conversational_proposal(
+    app_state: AppState,
+    approval_id: str,
+    proposal: object,
+) -> None:
+    """Acquire EXECUTING via CAS, run pipeline, finalize EXECUTED.
+
+    On pipeline failure the EXECUTING state reverts to PENDING so
+    the proposal stays retryable rather than locked in EXECUTING.
+
+    Raises:
+        ServiceUnavailableError: When the work pipeline is not wired
+            at all (cannot run approved work without it).
+    """
+    from synthorg.core.enums import ConversationalProposalStatus  # noqa: PLC0415
+    from synthorg.engine.pipeline.models import WorkItem  # noqa: PLC0415
+
+    repo = app_state.conversational_proposal_repo
+    proposal_id = proposal.id  # type: ignore[attr-defined]
+    work_item_json = proposal.work_item_json  # type: ignore[attr-defined]
+
+    if not app_state.has_work_pipeline:
+        # Approved work can never run without a pipeline. Surface it
+        # rather than marking the approval handled while the work is
+        # silently stranded.
+        logger.error(
+            APPROVAL_GATE_CONVERSATIONAL_FAILED,
+            approval_id=approval_id,
+            proposal_id=proposal_id,
+            note="work pipeline not configured",
+        )
+        msg = "Work pipeline unavailable"
+        raise ServiceUnavailableError(msg)
+
+    # PENDING -> EXECUTING CAS first, so concurrent decisions cannot
+    # both drive the pipeline for the same proposal. Only the winner
+    # of this transition runs the pipeline; the loser returns without
+    # side-effects.
+    acquired = await repo.transition_if(
+        proposal_id,
+        ConversationalProposalStatus.PENDING,
+        ConversationalProposalStatus.EXECUTING,
+    )
+    if not acquired:
+        logger.warning(
+            APPROVAL_GATE_CONVERSATIONAL_FAILED,
+            approval_id=approval_id,
+            proposal_id=proposal_id,
+            note="proposal already transitioned (execute-acquire path)",
+        )
+        return
+
+    try:
+        work_item = WorkItem.model_validate_json(work_item_json)
+        await app_state.work_pipeline.run(work_item)
+    except MemoryError, RecursionError:
+        raise
+    except ServiceUnavailableError:
+        raise
+    except Exception as exc:
+        # The approve decision is already persisted; a pipeline failure
+        # must not 5xx the response. Revert EXECUTING -> PENDING so the
+        # proposal is retryable rather than stuck in EXECUTING forever.
+        reverted = await repo.transition_if(
+            proposal_id,
+            ConversationalProposalStatus.EXECUTING,
+            ConversationalProposalStatus.PENDING,
+        )
+        logger.error(
+            APPROVAL_GATE_CONVERSATIONAL_FAILED,
+            approval_id=approval_id,
+            proposal_id=proposal_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note=(
+                "pipeline run failed; proposal reverted to pending"
+                if reverted
+                else (
+                    "pipeline run failed; proposal left in EXECUTING (revert lost race)"
+                )
+            ),
+        )
+        return
+
+    transitioned = await repo.transition_if(
+        proposal_id,
+        ConversationalProposalStatus.EXECUTING,
+        ConversationalProposalStatus.EXECUTED,
+    )
+    if transitioned:
+        logger.info(
+            APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
+            approval_id=approval_id,
+            proposal_id=proposal_id,
+        )
+        return
+    # The acquire CAS guarantees we are the only caller that ran the
+    # pipeline, so this only happens if a non-approval-gate writer
+    # mutated the proposal mid-flight (operator override, future
+    # admin endpoint). Surface the no-op so the log doesn't claim a
+    # CAS success we didn't make.
+    logger.warning(
+        APPROVAL_GATE_CONVERSATIONAL_FAILED,
+        approval_id=approval_id,
+        proposal_id=proposal_id,
+        note=(
+            "proposal mutated mid-execute (executing->executed CAS "
+            "failed); pipeline run still succeeded"
+        ),
+    )
+
+
+async def try_conversational_intake_resume(
     app_state: AppState,
     approval_id: str,
     *,
@@ -203,166 +412,22 @@ async def try_conversational_intake_resume(  # noqa: C901, PLR0912 -- one functi
     touched.
 
     Raises:
-        ServiceUnavailableError: When approved but the work pipeline is
-            not wired at all (a hard misconfiguration the operator must
-            fix, not a transient failure to swallow).
+        ServiceUnavailableError: When the approval store read fails,
+            the proposal repo is not wired, or the work pipeline is
+            missing on approve. All three are hard misconfigurations
+            the operator must fix.
     """
-    from synthorg.core.enums import (  # noqa: PLC0415
-        ApprovalSource,
-        ConversationalProposalStatus,
+    owns_decision, proposal = await _load_conversational_proposal(
+        app_state, approval_id
     )
-    from synthorg.engine.pipeline.models import WorkItem  # noqa: PLC0415
-    from synthorg.persistence.conversational_proposal_protocol import (  # noqa: PLC0415
-        ConversationalProposalFilterSpec,
-    )
-
-    item = await _reread_approval_item(app_state, approval_id)
-    if item is None or item.source is not ApprovalSource.CONVERSATIONAL_INTAKE:
+    if not owns_decision:
         return False
-    # This flow now owns the decision regardless of outcome.
-    if not app_state.has_conversational_proposal_repo:
-        # Hard misconfiguration: a conversational-intake approval is
-        # gated on a proposal row that the repo holds. Without the repo
-        # we cannot drive the decision either way. Swallowing this and
-        # returning True would strand the approval as "handled" while
-        # silently dropping it; raise so the caller surfaces a 503.
-        logger.error(
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            approval_id=approval_id,
-            note="conversational proposal repo not wired",
-        )
-        msg = "Conversational proposal repository unavailable"
-        raise ServiceUnavailableError(msg)
-    repo = app_state.conversational_proposal_repo
-    proposals = await repo.query(
-        ConversationalProposalFilterSpec(approval_id=approval_id),
-    )
-    if not proposals:
-        logger.error(
-            APPROVAL_GATE_CONVERSATIONAL_NO_PROPOSAL,
-            approval_id=approval_id,
-        )
+    if proposal is None:
         return True
-    proposal = proposals[0]
-
     if not approved:
-        transitioned = await repo.transition_if(
-            proposal.id,
-            ConversationalProposalStatus.PENDING,
-            ConversationalProposalStatus.REJECTED,
-        )
-        if transitioned:
-            logger.info(
-                APPROVAL_GATE_CONVERSATIONAL_REJECTED,
-                approval_id=approval_id,
-                proposal_id=proposal.id,
-            )
-        else:
-            # Concurrent decision already transitioned this proposal
-            # (e.g. duplicate approval-decision request). Don't claim
-            # success; surface the no-op so it's visible.
-            logger.warning(
-                APPROVAL_GATE_CONVERSATIONAL_FAILED,
-                approval_id=approval_id,
-                proposal_id=proposal.id,
-                note="proposal already transitioned (reject path)",
-            )
+        await _reject_conversational_proposal(app_state, approval_id, proposal)
         return True
-
-    if not app_state.has_work_pipeline:
-        # Hard misconfiguration: approved work can never run without a
-        # pipeline. Surface it rather than marking the approval handled
-        # while the work is silently stranded.
-        logger.error(
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            approval_id=approval_id,
-            proposal_id=proposal.id,
-            note="work pipeline not configured",
-        )
-        msg = "Work pipeline unavailable"
-        raise ServiceUnavailableError(msg)
-
-    # PENDING -> EXECUTING CAS first, so concurrent decisions cannot
-    # both drive the pipeline for the same proposal. Only the winner
-    # of this transition runs ``work_pipeline.run``; the loser sees
-    # ``transitioned is False`` and returns without side-effects.
-    acquired = await repo.transition_if(
-        proposal.id,
-        ConversationalProposalStatus.PENDING,
-        ConversationalProposalStatus.EXECUTING,
-    )
-    if not acquired:
-        # Another caller already owns this proposal (state is EXECUTING
-        # or already EXECUTED/REJECTED). Surface the no-op so the log
-        # doesn't claim a run we didn't make; the winner's side-effects
-        # are accounted for under its own approval_id log line.
-        logger.warning(
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            approval_id=approval_id,
-            proposal_id=proposal.id,
-            note="proposal already transitioned (execute-acquire path)",
-        )
-        return True
-
-    try:
-        work_item = WorkItem.model_validate_json(proposal.work_item_json)
-        await app_state.work_pipeline.run(work_item)
-    except MemoryError, RecursionError:
-        raise
-    except ServiceUnavailableError:
-        raise
-    except Exception as exc:
-        # The approve decision is already persisted; a pipeline failure
-        # must not 5xx the response. Revert EXECUTING -> PENDING so the
-        # proposal is retryable rather than stuck in EXECUTING forever.
-        reverted = await repo.transition_if(
-            proposal.id,
-            ConversationalProposalStatus.EXECUTING,
-            ConversationalProposalStatus.PENDING,
-        )
-        logger.error(
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            approval_id=approval_id,
-            proposal_id=proposal.id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note=(
-                "pipeline run failed; proposal reverted to pending"
-                if reverted
-                else (
-                    "pipeline run failed; proposal left in EXECUTING (revert lost race)"
-                )
-            ),
-        )
-        return True
-
-    transitioned = await repo.transition_if(
-        proposal.id,
-        ConversationalProposalStatus.EXECUTING,
-        ConversationalProposalStatus.EXECUTED,
-    )
-    if transitioned:
-        logger.info(
-            APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
-            approval_id=approval_id,
-            proposal_id=proposal.id,
-        )
-    else:
-        # Pipeline ran but the EXECUTING -> EXECUTED CAS failed. The
-        # acquire CAS guarantees we are the only caller that ran the
-        # pipeline, so this only happens if a non-approval-gate writer
-        # mutated the proposal mid-flight (operator override, future
-        # admin endpoint). Surface the no-op so the log doesn't claim
-        # a CAS success we didn't make.
-        logger.warning(
-            APPROVAL_GATE_CONVERSATIONAL_FAILED,
-            approval_id=approval_id,
-            proposal_id=proposal.id,
-            note=(
-                "proposal mutated mid-execute (executing->executed CAS "
-                "failed); pipeline run still succeeded"
-            ),
-        )
+    await _execute_conversational_proposal(app_state, approval_id, proposal)
     return True
 
 

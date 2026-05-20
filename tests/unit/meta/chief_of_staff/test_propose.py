@@ -348,6 +348,29 @@ class TestConversationResolution:
                 )
             )
 
+    async def test_other_user_resume_blocked(self) -> None:
+        # Cross-tenant privacy: a caller who learns another user's
+        # conversation_id must not be able to append turns to it or
+        # have prior history fed back through the model. The lookup
+        # collapses to NotFound so existence cannot be probed either.
+        provider = ScriptedProvider(responses=[make_text_response(_CLARIFY_JSON)])
+        proposer, conv_repo, *_ = _build(provider=provider)
+        conv_repo.items["c1"] = Conversation(
+            id=NotBlankStr("c1"),
+            created_by=NotBlankStr("user-A"),
+            created_at=_START,
+            updated_at=_START,
+            status=ConversationStatus.ACTIVE,
+        )
+        with pytest.raises(ConversationNotFoundError):
+            await proposer.converse(
+                ProposeArgs(
+                    message=NotBlankStr("hi"),
+                    created_by=NotBlankStr("user-B"),
+                    conversation_id=NotBlankStr("c1"),
+                )
+            )
+
     async def test_continue_existing_conversation(self) -> None:
         provider = ScriptedProvider(responses=[make_text_response(_PROPOSE_JSON)])
         proposer, conv_repo, turn_repo, _, _ = _build(provider=provider)

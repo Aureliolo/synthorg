@@ -15,15 +15,15 @@ from synthorg.meta.models import RuleSeverity
 
 # Sampling temperature stays low (0.3) so the clarify/propose path
 # emits deterministic JSON structure rather than discursive text; the
-# 0.0/2.0 bounds mirror the OpenAI sampler range every Claude/LiteLLM
-# provider passes through.
+# 0.0/2.0 bounds mirror the provider-agnostic sampler range every
+# runtime integration passes through.
 _PROPOSE_TEMPERATURE_DEFAULT: float = 0.3
 _PROPOSE_TEMPERATURE_MIN: float = 0.0
 _PROPOSE_TEMPERATURE_MAX: float = 2.0
 # 2000 tokens fits a JSON payload of up to ~5 clarify+propose items
-# (the per-turn fan-out cap below) without truncation on Claude/GPT-4o
-# class models; 100 is the floor below which even a minimal clarifying
-# question would not fit.
+# (the per-turn fan-out cap below) without truncation on typical
+# large-capability models; 100 is the floor below which even a minimal
+# clarifying question would not fit.
 _PROPOSE_MAX_TOKENS_DEFAULT: int = 2000
 _PROPOSE_MAX_TOKENS_MIN: int = 100
 # Five proposals per turn bounds the approval-queue fan-out a single

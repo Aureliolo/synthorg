@@ -260,6 +260,27 @@ class TestConversationalIntakeResume:
         assert handled is True
         assert repo.items["prop-a1"].status is ConversationalProposalStatus.PENDING
 
+    async def test_unreadable_approval_item_raises(self) -> None:
+        # The approval-store reread raised (or returned ``None``) on
+        # this conversational approval. Flow 0 owns the source the
+        # moment it reads it, so a missing read cannot fall through
+        # to other resume flows without stranding a decided approval.
+        store = ApprovalStore()
+        # Deliberately do NOT add the approval to the store, so
+        # ``_reread_approval_item`` returns ``None``.
+        repo = _FakeProposalRepo()
+        state = _FakeAppState(
+            approval_store=store,
+            proposal_repo=repo,
+            pipeline=_FakePipeline(),
+        )
+        with pytest.raises(ServiceUnavailableError):
+            await try_conversational_intake_resume(
+                state,  # type: ignore[arg-type]
+                "a1",
+                approved=True,
+            )
+
     async def test_concurrent_acquire_only_one_runs_pipeline(self) -> None:
         # Simulate the loser of the PENDING -> EXECUTING CAS: a second
         # caller that arrives after a winner has acquired the proposal

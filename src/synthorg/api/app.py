@@ -1174,8 +1174,6 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # Idempotent for re-entered lifespans (shared-app test fixtures).
         if app_state.has_chief_of_staff_proposer:
             return
-        if provider_registry is None:
-            return
         from synthorg.meta.config import (  # noqa: PLC0415
             load_self_improvement_config,
         )
@@ -1183,22 +1181,23 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             build_conversational_repositories,
         )
 
+        # Repo wiring must run before the provider-missing early return:
+        # a conversational-intake approval that exists from a previous
+        # boot still needs the repo to route approve/reject decisions,
+        # even on boots without an LLM provider (proposer absent).
+        repositories = build_conversational_repositories(persistence)
+        if repositories is not None:
+            app_state.set_conversational_proposal_repo(repositories.proposal_repo)
+        if provider_registry is None:
+            return
         meta_self_improvement = await load_self_improvement_config(
             app_state.settings_service if app_state.has_settings_service else None,
         )
-        # Hard-block the SQLite + persistent-ApprovalRepository +
-        # propose_enabled combination at startup. The v1
-        # 20260519000001_conversational_intake SQLite migration
-        # deliberately keeps the ``approvals.source`` CHECK narrow
-        # (``parked_context``/``review_gate`` only) to dodge the
-        # ``approvals`` table rebuild's Windows 8s-budget regression on
-        # the conformance suite; a persistent ApprovalRepository on
-        # SQLite would reject every ``conversational_intake`` row at
-        # write time. Postgres has no such narrowing (the sibling
-        # migration widens the CHECK), so the only sanctioned exits
-        # are Postgres for production or keeping ApprovalStore
-        # in-memory on SQLite. Failing loud at startup beats failing
-        # late on the first ``/meta/chat/propose`` call.
+        # Hard-block the unsupported SQLite + persistent ApprovalStore
+        # combination at startup: this schema does not admit
+        # ``conversational_intake`` approval rows, so proposal writes
+        # would fail at runtime. Supported configurations are Postgres
+        # or an in-memory ApprovalStore on SQLite.
         store_has_persistent_repo = (
             isinstance(effective_approval_store, ApprovalStore)
             and effective_approval_store.has_persistent_repo
@@ -1211,23 +1210,12 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         ):
             msg = (
                 "Chief of Staff propose is enabled with a persistent "
-                "SQLite ApprovalRepository wired into ApprovalStore, "
-                "but the v1 SQLite migration keeps "
-                "``approvals.source`` narrow ('parked_context', "
-                "'review_gate') -- 'conversational_intake' rows would "
-                "be rejected at write time. Switch the backend to "
-                "Postgres or keep ApprovalStore in-memory on SQLite."
+                "SQLite ApprovalStore. This combination cannot durably "
+                "persist conversational-intake approvals. Switch the "
+                "backend to Postgres, or keep ApprovalStore in-memory "
+                "on SQLite."
             )
             raise ServiceUnavailableError(msg)
-        repositories = build_conversational_repositories(persistence)
-        # Wire the proposal repo independently of the proposer: a
-        # conversational-intake approval that exists from a previous
-        # boot must still route through the repo even if the proposer
-        # itself is currently unavailable (e.g. provider absent this
-        # boot), or its decision would silently fail in
-        # ``try_conversational_intake_resume``.
-        if repositories is not None:
-            app_state.set_conversational_proposal_repo(repositories.proposal_repo)
         proposer = build_chief_of_staff_proposer(
             meta_self_improvement.chief_of_staff,
             provider_registry=provider_registry,
