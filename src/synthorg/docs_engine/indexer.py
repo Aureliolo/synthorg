@@ -99,17 +99,17 @@ class DocIndexer:
                 raise
             if group.subgroup((MemoryError, RecursionError)) is not None:
                 raise
-            exc = group.exceptions[0]
+            cause = group.exceptions[0]
             msg = f"Failed to store chunks for {project_id!r}/{slug!r}"
             logger.warning(
                 DOC_INDEX_FAILED,
                 project_id=project_id,
                 slug=slug,
                 phase="store",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error_type=type(cause).__name__,
+                error=safe_error_description(cause),
             )
-            raise DocIndexError(msg) from exc
+            raise DocIndexError(msg) from cause
         logger.info(
             DOC_INDEXED,
             project_id=project_id,
