@@ -3,12 +3,18 @@
 Resolves (and lazily provisions, once) the 1:1 persistent git-backed
 workspace for a project.  ``GitBackendConfig.kind`` is authoritative:
 if a persisted row was provisioned under a different backend than the
-live config, the workspace is re-provisioned under the new backend and
-the row updated (the on-disk working tree path is preserved).
+live config, the workspace is re-provisioned under the new backend.
+On a kind switch the prior backend's ``.git`` directory at the prior
+on-disk path is removed before the new backend provisions, so each
+backend's ``is_git_repo`` short-circuit cannot keep the old layout
+alive after the row claims the new kind; the new backend then decides
+its own on-disk location (the persisted row reflects whatever path
+the new backend reports).
 """
 
 import asyncio
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
@@ -16,11 +22,13 @@ from synthorg.core.enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import GitBackendConfigError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     PROJECT_WORKSPACE_PROVISIONED,
     PROJECT_WORKSPACE_REUSED,
     WORKSPACE_BACKEND_KIND_CHANGED,
+    WORKSPACE_GIT_DIR_CLEARED,
+    WORKSPACE_PATH_TRAVERSAL_REJECTED,
 )
 
 if TYPE_CHECKING:
@@ -89,12 +97,60 @@ class ProjectWorkspaceService:
         # an attacker-controlled value (no traversal out of the projects
         # subdir, no absolute-path takeover of the base root).
         if "/" in project_id or "\\" in project_id or ".." in project_id:
+            # Log before raising so blocked traversal attempts surface
+            # in production audit logs, not just on the caller's stack.
+            logger.warning(
+                WORKSPACE_PATH_TRAVERSAL_REJECTED,
+                project_id=project_id,
+                base_root=str(self._base_root),
+                projects_subdir=_PROJECTS_SUBDIR,
+            )
             msg = (
                 f"refusing path-separator-bearing project_id "
                 f"{project_id!r}: workspace path traversal blocked"
             )
             raise GitBackendConfigError(msg)
         return self._base_root / _PROJECTS_SUBDIR / project_id
+
+    async def _clear_prior_git_dir(
+        self,
+        *,
+        project_id: str,
+        prior_path: Path,
+    ) -> None:
+        """Remove the prior backend's ``.git`` directory before a kind switch.
+
+        Every backend short-circuits ``provision()`` when
+        ``is_git_repo(path)`` is true; without clearing the prior
+        ``.git`` metadata on a kind change, the new backend (EMBEDDED ->
+        EXTERNAL_REMOTE, etc.) would never re-initialise the on-disk
+        layout despite the row claiming the new kind. Only the ``.git``
+        subdirectory is removed; any user-owned files at ``prior_path``
+        (e.g. a BYO LOCAL_PATH tree) are left untouched.
+        """
+        git_dir = prior_path / ".git"
+        if not await asyncio.to_thread(git_dir.exists):
+            return
+        try:
+            await asyncio.to_thread(shutil.rmtree, git_dir)
+        except OSError as exc:
+            # Best-effort: surface the failure but let the new
+            # backend's provision report whatever it sees on disk.
+            logger.warning(
+                WORKSPACE_GIT_DIR_CLEARED,
+                project_id=project_id,
+                git_dir=str(git_dir),
+                success=False,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        logger.info(
+            WORKSPACE_GIT_DIR_CLEARED,
+            project_id=project_id,
+            git_dir=str(git_dir),
+            success=True,
+        )
 
     async def _lock_for(self, project_id: str) -> asyncio.Lock:
         """Return the per-project provisioning lock (created once)."""
@@ -144,8 +200,26 @@ class ProjectWorkspaceService:
         kind: GitBackendType,
     ) -> ProjectWorkspace:
         """Provision (or re-provision) and persist the workspace row."""
-        workspace_path = self._workspace_path(project_id)
+        # Reuse the persisted on-disk location across re-provisions: this
+        # avoids relocating the tree if ``_workspace_path()`` ever moves
+        # in a future refactor, and on a same-kind re-provision keeps the
+        # path deterministically equal to the prior one.
+        workspace_path = (
+            Path(prior.workspace_path)
+            if prior is not None
+            else self._workspace_path(project_id)
+        )
         await asyncio.to_thread(workspace_path.mkdir, parents=True, exist_ok=True)
+        if prior is not None and prior.git_backend_kind != kind:
+            # Kind switch: remove the prior backend's ``.git`` metadata
+            # so the new backend's ``is_git_repo`` short-circuit cannot
+            # keep the old layout alive (otherwise EMBEDDED -> EXTERNAL_REMOTE
+            # would never clone, EMBEDDED -> LOCAL_PATH would never reinit,
+            # etc., and acceptance #3 stays dead on disk).
+            await self._clear_prior_git_dir(
+                project_id=project_id,
+                prior_path=Path(prior.workspace_path),
+            )
         default_branch = prior.default_branch if prior is not None else _DEFAULT_BRANCH
         result = await self._git_backend.provision(
             project_id=project_id,

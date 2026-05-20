@@ -454,6 +454,7 @@ CREATE INDEX idx_projects_lead ON projects(lead);
 CREATE TABLE project_workspaces (
     project_id TEXT NOT NULL PRIMARY KEY,
     workspace_path TEXT NOT NULL,
+    UNIQUE (workspace_path),
     git_backend_kind TEXT NOT NULL
         CHECK (git_backend_kind IN ('embedded', 'external_remote', 'local_path')),
     remote_ref TEXT,

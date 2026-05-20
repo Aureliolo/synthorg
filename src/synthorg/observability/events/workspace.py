@@ -52,6 +52,10 @@ GIT_BACKEND_FETCH_FAILED: Final[str] = "git_backend.fetch.failed"
 PROJECT_WORKSPACE_PROVISIONED: Final[str] = "project_workspace.provisioned"
 PROJECT_WORKSPACE_REUSED: Final[str] = "project_workspace.reused"
 WORKSPACE_BACKEND_KIND_CHANGED: Final[str] = "workspace.backend_kind.changed"
+WORKSPACE_PATH_TRAVERSAL_REJECTED: Final[str] = (
+    "project_workspace.path.traversal.rejected"
+)
+WORKSPACE_GIT_DIR_CLEARED: Final[str] = "project_workspace.git_dir.cleared"
 
 # ── Coordinator push-queue events ────────────────────────────────
 WORKSPACE_PUSH_QUEUE_ENQUEUED: Final[str] = "workspace.push_queue.enqueued"

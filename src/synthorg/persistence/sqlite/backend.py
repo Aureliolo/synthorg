@@ -274,6 +274,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._db = None
         self._artifacts = None
         self._projects = None
+        self._project_workspaces = None
         self._tasks = None
         self._cost_records = None
         self._messages = None

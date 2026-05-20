@@ -11,7 +11,7 @@ switching the git backend is a config change only.
 import asyncio
 from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
 from typing import TYPE_CHECKING, Final
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import GitBackendType
@@ -77,6 +77,12 @@ class ExternalRemoteGitBackend:
             )
             raise GitBackendConfigError(msg)
         credentials = await self._catalog.get_credentials(self._connection_name)
+        if credentials is None:
+            msg = (
+                f"external git connection {self._connection_name!r} has no "
+                "stored credentials"
+            )
+            raise GitBackendConfigError(msg)
         token = credentials.get("token")
         if not token:
             msg = (
@@ -88,7 +94,20 @@ class ExternalRemoteGitBackend:
         if split.scheme != "https":
             msg = "external git remote must be an https URL"
             raise GitBackendConfigError(msg)
-        netloc = f"{_TOKEN_USER}:{token}@{split.netloc}"
+        # Use hostname/port instead of raw netloc so any pre-existing
+        # userinfo on the configured base_url cannot collide with the
+        # token we inject; percent-encode the token so reserved
+        # characters (``@``, ``:``, ``/`` ...) survive URL parsing
+        # rather than breaking the netloc.
+        host = split.hostname
+        if not host:
+            msg = (
+                f"external git connection {self._connection_name!r} has "
+                "invalid base_url (no host component)"
+            )
+            raise GitBackendConfigError(msg)
+        host_with_port = f"{host}:{split.port}" if split.port is not None else host
+        netloc = f"{_TOKEN_USER}:{quote(token, safe='')}@{host_with_port}"
         path = f"{split.path}/{project_id}.git"
         return urlunsplit((split.scheme, netloc, path, "", ""))
 

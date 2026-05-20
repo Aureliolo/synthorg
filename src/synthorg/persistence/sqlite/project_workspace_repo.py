@@ -72,13 +72,19 @@ class SQLiteProjectWorkspaceRepository:
             format_iso_utc(workspace.updated_at),
         )
 
-    async def _safe_rollback(self) -> None:
-        """Best-effort rollback on the shared connection."""
+    async def _safe_rollback(self, *, event: str) -> None:
+        """Best-effort rollback on the shared connection.
+
+        The ``event`` parameter identifies the originating call site
+        (save vs delete) so rollback failures log the right event;
+        without it, delete-path rollback failures would mislabel as
+        save failures.
+        """
         try:
             await self._db.rollback()
         except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
             logger.warning(
-                PERSISTENCE_PROJECT_WORKSPACE_SAVE_FAILED,
+                event,
                 error_type=type(rollback_exc).__name__,
                 error=safe_error_description(rollback_exc),
                 rollback_failed=True,
@@ -105,7 +111,9 @@ ON CONFLICT(project_id) DO UPDATE SET
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._safe_rollback()
+                await self._safe_rollback(
+                    event=PERSISTENCE_PROJECT_WORKSPACE_SAVE_FAILED
+                )
                 msg = f"Failed to save project workspace {entity.project_id!r}"
                 logger.warning(
                     PERSISTENCE_PROJECT_WORKSPACE_SAVE_FAILED,
@@ -205,7 +213,9 @@ ON CONFLICT(project_id) DO UPDATE SET
                 )
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._safe_rollback()
+                await self._safe_rollback(
+                    event=PERSISTENCE_PROJECT_WORKSPACE_DELETE_FAILED
+                )
                 msg = f"Failed to delete project workspace {entity_id!r}"
                 logger.warning(
                     PERSISTENCE_PROJECT_WORKSPACE_DELETE_FAILED,

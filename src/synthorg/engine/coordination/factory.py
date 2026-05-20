@@ -125,7 +125,12 @@ def _build_workspace_service(
 
     Raises:
         ValueError: If exactly one of *workspace_strategy* /
-            *workspace_config* is supplied -- both or neither must be given.
+            *workspace_config* is supplied -- both or neither must be
+            given. Also raised when *git_backend* is supplied without
+            *workspace_strategy* AND *workspace_config*: routing pushes
+            through the coordinator-owned push queue is only possible
+            when a workspace service exists, so accepting the backend
+            silently disables it (the queueing feature ships dead).
     """
     if workspace_strategy is not None and workspace_config is not None:
         from synthorg.engine.workspace.service import (  # noqa: PLC0415
@@ -157,6 +162,22 @@ def _build_workspace_service(
             note="Mismatched workspace dependencies",
             given=given,
             missing=missing,
+        )
+        raise ValueError(msg)
+    if git_backend is not None:
+        # Neither workspace dep is set, but a git backend was supplied:
+        # the push-queue routing feature can only fire through a
+        # workspace service, so silently accepting the backend would
+        # ship the queueing path disabled while pretending it works.
+        msg = (
+            "git_backend was supplied without workspace_strategy and "
+            "workspace_config; routing pushes through the coordinator "
+            "requires a workspace service. Provide both workspace deps "
+            "or omit git_backend."
+        )
+        logger.warning(
+            COORDINATION_FACTORY_BUILT,
+            note="git_backend without workspace deps",
         )
         raise ValueError(msg)
     return None

@@ -64,6 +64,7 @@ class WorkspaceIsolationService:
         "_merge_orchestrator",
         "_push_queues",
         "_push_queues_lock",
+        "_shutting_down",
         "_strategy",
     )
 
@@ -83,6 +84,13 @@ class WorkspaceIsolationService:
         self._default_branch = default_branch
         self._push_queues: dict[str, PushQueueCoordinator] = {}
         self._push_queues_lock = asyncio.Lock()
+        # Set by ``shutdown()`` under ``_push_queues_lock`` so
+        # ``_get_or_create_queue()`` cannot resurrect a coordinator
+        # after the service has begun tearing down. Without this flag
+        # a queue created mid-shutdown would survive the teardown loop
+        # and keep accepting merge+push work against a service that
+        # claims to have stopped.
+        self._shutting_down = False
         pw = config.planner_worktrees
         self._merge_orchestrator = MergeOrchestrator(
             strategy=strategy,
@@ -221,6 +229,15 @@ class WorkspaceIsolationService:
             existing = self._push_queues.get(project_id)
             if existing is not None:
                 return existing
+            if self._shutting_down:
+                # Shutdown started before this caller acquired the lock;
+                # a new queue would survive the teardown loop's snapshot
+                # and keep accepting work against a stopped service.
+                msg = (
+                    f"WorkspaceIsolationService for project "
+                    f"{project_id!r} is shutting down; refusing new queue"
+                )
+                raise WorkspaceCleanupError(msg)
             if self._git_backend is None:  # pragma: no cover - guarded by caller
                 msg = "push queue requires a git backend"
                 raise WorkspaceCleanupError(msg)
@@ -272,6 +289,10 @@ class WorkspaceIsolationService:
     async def shutdown(self) -> None:
         """Stop every per-project push queue (best-effort, all attempted)."""
         async with self._push_queues_lock:
+            # Flip ``_shutting_down`` under the same lock that
+            # ``_get_or_create_queue`` takes so a concurrent first-touch
+            # cannot slip a freshly-created coordinator in behind us.
+            self._shutting_down = True
             queues = tuple(self._push_queues.values())
             self._push_queues.clear()
         for queue in queues:

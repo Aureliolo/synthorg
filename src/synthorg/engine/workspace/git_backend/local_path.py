@@ -1,9 +1,13 @@
-"""Local-path git backend: bring-your-own repository on disk.
+"""Local-path git backend: bring-your-own repository base on disk.
 
-The configured ``local_repo_path`` is authoritative and IS the project
-working tree.  There is no separate remote: the on-disk repo is the
-durable store, so ``push``/``fetch`` resolve against the repo itself
-(the coordinator merge queue still serialises merges upstream).
+The configured ``local_repo_path`` is treated as a BASE directory under
+which one repository per project is provisioned at
+``<local_repo_path>/<project_id>``; this is what guarantees per-project
+isolation when the local-path backend is paired with the multi-project
+:class:`~synthorg.engine.workspace.project_workspace_service.ProjectWorkspaceService`.
+There is no separate remote: the on-disk repo is the durable store, so
+``push``/``fetch`` resolve against the repo itself (the coordinator
+merge queue still serialises merges upstream).
 """
 
 import asyncio
@@ -38,7 +42,12 @@ _BOT_EMAIL = "synthorg-bot@synthorg.local"
 
 
 class LocalPathGitBackend:
-    """Caller-supplied local git repository backend."""
+    """Caller-supplied local git repository backend.
+
+    Each project gets its own repository at ``<local_repo_path>/<project_id>``;
+    the configured ``local_repo_path`` is the BASE under which those
+    per-project repos live, NOT a single shared working tree.
+    """
 
     def __init__(
         self,
@@ -47,7 +56,7 @@ class LocalPathGitBackend:
         cmd_timeout: float,
         clock: Clock | None = None,
     ) -> None:
-        self._repo_path = Path(local_repo_path)
+        self._repo_base = Path(local_repo_path)
         self._cmd_timeout = cmd_timeout
         self._clock: Clock = clock if clock is not None else SystemClock()
 
@@ -55,9 +64,23 @@ class LocalPathGitBackend:
         """Return the ``LOCAL_PATH`` discriminator."""
         return GitBackendType.LOCAL_PATH
 
-    def _non_empty_non_repo_dir(self) -> bool:
-        """True if the path exists with content (sync; run off-loop)."""
-        return self._repo_path.exists() and any(self._repo_path.iterdir())
+    def _repo_path_for_project(self, project_id: str) -> Path:
+        """Derive the per-project repository path under the base."""
+        return self._repo_base / project_id
+
+    def _non_empty_non_repo_dir(self, repo_path: Path) -> bool:
+        """True if *repo_path* exists with content (sync; run off-loop).
+
+        A path that exists as a file (not a directory) also counts as
+        "non-empty" -- ``iterdir()`` on a file raises ``NotADirectoryError``,
+        and the caller's intent is to refuse provisioning over a
+        non-empty location regardless of whether it is a file or a dir.
+        """
+        if not repo_path.exists():
+            return False
+        if not repo_path.is_dir():
+            return True
+        return any(repo_path.iterdir())
 
     async def _reject_if_nested_in_parent_worktree(self, path: Path, pid: str) -> None:
         """Refuse if *path* is inside an existing parent working tree.
@@ -88,7 +111,7 @@ class LocalPathGitBackend:
         if toplevel == await asyncio.to_thread(path.resolve):
             return
         msg = (
-            f"refusing to provision project {pid!r}: local_repo_path "
+            f"refusing to provision project {pid!r}: local repo path "
             f"{path!s} is nested inside an existing parent working tree "
             f"at {toplevel!s}"
         )
@@ -98,30 +121,31 @@ class LocalPathGitBackend:
         self,
         *,
         project_id: NotBlankStr,
-        workspace_path: Path,  # noqa: ARG002 -- local repo path is authoritative
+        workspace_path: Path,  # noqa: ARG002 -- per-project base path derived from config
         default_branch: NotBlankStr,
     ) -> ProvisionResult:
-        """Validate / initialise the caller-supplied local repo."""
+        """Validate / initialise the per-project local repository."""
         pid = str(project_id)
+        repo_path = self._repo_path_for_project(pid)
         logger.info(
             GIT_BACKEND_PROVISION_START,
             project_id=pid,
             backend=GitBackendType.LOCAL_PATH.value,
         )
-        if await is_git_repo(self._repo_path, cmd_timeout=self._cmd_timeout):
+        if await is_git_repo(repo_path, cmd_timeout=self._cmd_timeout):
             return ProvisionResult(
-                repo_root=NotBlankStr(str(self._repo_path)),
+                repo_root=NotBlankStr(str(repo_path)),
                 default_branch=default_branch,
                 newly_created=False,
             )
-        if await asyncio.to_thread(self._non_empty_non_repo_dir):
+        if await asyncio.to_thread(self._non_empty_non_repo_dir, repo_path):
             msg = (
-                f"local_repo_path {self._repo_path!s} exists but is not a "
+                f"local repo path {repo_path!s} exists but is not a "
                 "git repository and is not empty"
             )
             raise GitBackendConfigError(msg)
         try:
-            await asyncio.to_thread(self._repo_path.mkdir, parents=True, exist_ok=True)
+            await asyncio.to_thread(repo_path.mkdir, parents=True, exist_ok=True)
         except OSError as exc:
             msg = f"failed to create local repo dir for {pid!r}"
             raise GitBackendProvisionError(msg) from exc
@@ -130,9 +154,9 @@ class LocalPathGitBackend:
         # accidentally pointing at a subdir of the synthorg repo). Without
         # this guard the subsequent commands would mutate that outer repo's
         # config + add stray empty commits to it.
-        await self._reject_if_nested_in_parent_worktree(self._repo_path, pid)
+        await self._reject_if_nested_in_parent_worktree(repo_path, pid)
         await git(
-            self._repo_path,
+            repo_path,
             "init",
             "--initial-branch",
             str(default_branch),
@@ -141,7 +165,7 @@ class LocalPathGitBackend:
             project_id=pid,
         )
         await git(
-            self._repo_path,
+            repo_path,
             "config",
             "user.email",
             _BOT_EMAIL,
@@ -150,7 +174,7 @@ class LocalPathGitBackend:
             project_id=pid,
         )
         await git(
-            self._repo_path,
+            repo_path,
             "config",
             "user.name",
             _BOT_NAME,
@@ -159,7 +183,7 @@ class LocalPathGitBackend:
             project_id=pid,
         )
         await git(
-            self._repo_path,
+            repo_path,
             "commit",
             "--allow-empty",
             "-m",
@@ -174,7 +198,7 @@ class LocalPathGitBackend:
             backend=GitBackendType.LOCAL_PATH.value,
         )
         return ProvisionResult(
-            repo_root=NotBlankStr(str(self._repo_path)),
+            repo_root=NotBlankStr(str(repo_path)),
             default_branch=default_branch,
             newly_created=True,
         )

@@ -38,6 +38,9 @@ from synthorg.persistence.principle_override_protocol import (
     PrincipleOverrideRepository,
 )
 from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.project_workspace_protocol import (
+    ProjectWorkspaceRepository,
+)
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.persistence.settings_protocol import SettingsRepository
@@ -1300,6 +1303,19 @@ class TestProtocolCompliance:
 
     def test_fake_project_repo_is_project_repository(self) -> None:
         assert isinstance(_FakeProjectRepository(), ProjectRepository)
+
+    def test_fake_project_workspace_repo_is_project_workspace_repository(
+        self,
+    ) -> None:
+        # Route through the backend property AND construct the fake
+        # directly, mirroring the pattern used for other repositories
+        # so a future drift in either path is caught.
+        backend = _FakeBackend()
+        assert isinstance(backend.project_workspaces, ProjectWorkspaceRepository)
+        assert isinstance(
+            _FakeProjectWorkspaceRepository(),
+            ProjectWorkspaceRepository,
+        )
 
     def test_fake_ssrf_violation_repo_is_ssrf_violation_repository(self) -> None:
         # Route through the backend property so the test exercises the

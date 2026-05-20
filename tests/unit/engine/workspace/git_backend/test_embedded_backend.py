@@ -95,6 +95,11 @@ class TestEmbeddedGitBackend:
         await _git(ws, "checkout", "-b", "feature")
         (ws / "file.txt").write_text("hello\n")
         await _git(ws, "add", "file.txt")
+        # Set a repo-local identity so ``git commit`` succeeds on CI /
+        # dev hosts where no global ``user.name`` / ``user.email`` is
+        # configured; the values are arbitrary but must be set.
+        await _git(ws, "config", "user.email", "synthorg-tests@example.invalid")
+        await _git(ws, "config", "user.name", "SynthOrg Test")
         await _git(ws, "commit", "-m", "work")
 
         push = await backend.push(

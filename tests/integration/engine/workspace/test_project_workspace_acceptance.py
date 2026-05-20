@@ -155,17 +155,37 @@ class TestConcurrentAgentsNoCollision:
         repo_root = Path(ws_row.workspace_path)
 
         push_order: list[str] = []
+        active_pushes = 0
+        max_concurrent_pushes = 0
+        first_push_entered = asyncio.Event()
+        release_first_push = asyncio.Event()
 
         async def _merge(*, workspace: Workspace) -> MergeResult:
             await asyncio.sleep(0)
             return _ok_merge(workspace.workspace_id, workspace.branch_name)
 
         async def _push(**kwargs: object) -> PushResult:
-            push_order.append(f"push:{kwargs['branch']}")
-            return PushResult(
-                branch=NotBlankStr("main"),
-                head_sha=NotBlankStr("deadbee"),
-            )
+            # Track concurrent push invocations: if the queue ever lets
+            # two pushes run side-by-side, ``max_concurrent_pushes``
+            # will exceed 1 and the assertion at the end will fail.
+            # The event-pair pins the first push inside this critical
+            # section so the second push has time to attempt entry --
+            # a queue regression that loses serialisation would let it
+            # in here and bump ``active_pushes`` above 1.
+            nonlocal active_pushes, max_concurrent_pushes
+            active_pushes += 1
+            max_concurrent_pushes = max(max_concurrent_pushes, active_pushes)
+            if not first_push_entered.is_set():
+                first_push_entered.set()
+                await release_first_push.wait()
+            try:
+                push_order.append(f"push:{kwargs['branch']}")
+                return PushResult(
+                    branch=NotBlankStr("main"),
+                    head_sha=NotBlankStr("deadbee"),
+                )
+            finally:
+                active_pushes -= 1
 
         strategy = mock_of[WorkspaceIsolationStrategy]()
         strategy.merge_workspace.side_effect = _merge
@@ -184,14 +204,25 @@ class TestConcurrentAgentsNoCollision:
         )
         await coord.start()
         try:
-            r1, r2 = await asyncio.gather(
-                coord.enqueue_merge_push(
-                    workspace=_workspace("w1", "feature-a", repo_root)
-                ),
-                coord.enqueue_merge_push(
-                    workspace=_workspace("w2", "feature-b", repo_root)
+            both = asyncio.create_task(
+                asyncio.gather(
+                    coord.enqueue_merge_push(
+                        workspace=_workspace("w1", "feature-a", repo_root)
+                    ),
+                    coord.enqueue_merge_push(
+                        workspace=_workspace("w2", "feature-b", repo_root)
+                    ),
                 ),
             )
+            # Wait until the first push is parked inside ``_push``; if
+            # the queue serialises correctly the second enqueued item
+            # is still parked on the queue, NOT inside ``_push``.
+            await first_push_entered.wait()
+            # Yield so the second task has a chance to attempt push
+            # entry if a regression broke serialisation.
+            await asyncio.sleep(0)
+            release_first_push.set()
+            r1, r2 = await both
         finally:
             await coord.stop()
             backend.push = real_push  # type: ignore[method-assign]
@@ -202,6 +233,10 @@ class TestConcurrentAgentsNoCollision:
         # Pushes were serialised through the queue (one push per merge,
         # exactly two, no overlap / no lost pushes).
         assert len(push_order) == 2
+        # Hard serialisation invariant: at no point did two pushes run
+        # concurrently. ``len(push_order) == 2`` alone would pass even
+        # if the queue ran both pushes in parallel.
+        assert max_concurrent_pushes == 1
         # Branch names distinct (no collision): the workspace branches
         # are independent; the queue pushes the default branch once per
         # merge.
@@ -213,7 +248,12 @@ class TestConfigOnlyBackendSwitch:
 
     async def test_embedded_to_local_path_preserves_row(self, tmp_path: Path) -> None:
         repo = _InMemoryWorkspaceRepo()
-        await _build_service(tmp_path, repo).get_or_provision(NotBlankStr("proj-1"))
+        first = await _build_service(tmp_path, repo).get_or_provision(
+            NotBlankStr("proj-1"),
+        )
+        # Sanity: EMBEDDED initialised an on-disk repo at its workspace_path.
+        prior_path = Path(first.workspace_path)
+        assert (prior_path / ".git").exists()
 
         # Operator switches the backend kind in config. Rebuild the
         # service against the same persisted row + a fresh local path.
@@ -232,6 +272,18 @@ class TestConfigOnlyBackendSwitch:
         row = await repo.get(NotBlankStr("proj-1"))
         assert row is not None
         assert row.git_backend_kind is GitBackendType.LOCAL_PATH
+
+        # On-disk: the new LOCAL_PATH backend actually initialised a
+        # repo at its per-project subdir (newly_created path), and the
+        # prior EMBEDDED ``.git`` metadata at the old location was
+        # cleared so the new backend's ``is_git_repo`` short-circuit
+        # could not silently retain the old layout. Without these two
+        # assertions a regression that flipped only the row's kind
+        # (acceptance #3 dead on disk) would still pass.
+        new_path = Path(ws.workspace_path)
+        assert new_path == byo_path / "proj-1"
+        assert (new_path / ".git").exists()
+        assert not (prior_path / ".git").exists()
 
 
 class TestCrossProjectIsolation:

@@ -74,6 +74,29 @@ class TestGiteaForgejoAuthenticators:
         with pytest.raises(InvalidConnectionAuthError, match="token"):
             auth.validate_credentials({})
 
+    @pytest.mark.parametrize(
+        ("ct", "token"),
+        [
+            (ConnectionType.GITEA, ""),
+            (ConnectionType.GITEA, "   "),
+            (ConnectionType.FORGEJO, ""),
+            (ConnectionType.FORGEJO, "   "),
+        ],
+    )
+    def test_empty_or_whitespace_token_rejected(
+        self, ct: ConnectionType, token: str
+    ) -> None:
+        """Empty / whitespace-only tokens must reject just like missing ones.
+
+        Keeps token-validation parity with the GitHub and GitLab
+        authenticators, where the shared validator already rejects
+        blank strings; the Gitea/Forgejo subclasses share the same
+        base but the test suite covered only the missing-key case.
+        """
+        auth = get_authenticator(ct)
+        with pytest.raises(InvalidConnectionAuthError, match="token"):
+            auth.validate_credentials({"token": token})
+
     def test_distinct_connection_type_identity(self) -> None:
         gitea = get_authenticator(ConnectionType.GITEA)
         forgejo = get_authenticator(ConnectionType.FORGEJO)

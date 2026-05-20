@@ -58,6 +58,7 @@ class PushQueueCoordinator:
 
     __slots__ = (
         "_clock",
+        "_closing",
         "_default_branch",
         "_git_backend",
         "_project_id",
@@ -88,11 +89,17 @@ class PushQueueCoordinator:
         # event loop (pytest-asyncio per-test loops, lifecycle restart).
         self._queue: asyncio.Queue[_QueuedMerge | None] | None = None
         self._worker: asyncio.Task[None] | None = None
+        # ``stop()`` sets this BEFORE enqueuing the sentinel so a late
+        # ``enqueue_merge_push()`` racing the shutdown path refuses the
+        # request instead of appending behind the sentinel (where it
+        # would hang the caller forever).
+        self._closing = False
 
     async def start(self) -> None:
         """Start the background queue worker (idempotent)."""
         if self._worker is None or self._worker.done():
             self._queue = asyncio.Queue()
+            self._closing = False
             self._worker = asyncio.create_task(self._worker_loop())
 
     async def stop(self) -> None:
@@ -100,6 +107,10 @@ class PushQueueCoordinator:
         worker = self._worker
         if worker is None:
             return
+        # Refuse any further enqueues BEFORE the sentinel goes in: a
+        # request that wins the race after the sentinel is enqueued
+        # would sit forever behind it.
+        self._closing = True
         queue = self._queue
         if queue is not None:
             await queue.put(None)
@@ -121,9 +132,13 @@ class PushQueueCoordinator:
             merge is returned WITHOUT pushing.
 
         Raises:
+            WorkspaceError: ``stop()`` has started; no new work is accepted.
             WorkspaceMergeError: The strategy merge failed fatally.
             WorkspacePushError: The backend push failed.
         """
+        if self._closing:
+            msg = "PushQueueCoordinator is stopping; new pushes refused"
+            raise WorkspaceError(msg)
         queue = self._queue
         if queue is None:
             msg = "PushQueueCoordinator: enqueue called before start()"
@@ -143,27 +158,92 @@ class PushQueueCoordinator:
         queue = self._queue
         if queue is None:  # pragma: no cover - start() always assigns
             return
-        # lint-allow: long-running-loop-kill-switch -- stop() puts a None sentinel
-        while True:
-            item = await queue.get()
-            if item is None:
-                return
-            try:
-                await self._process(item)
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                # A bug in _process must not kill the worker and strand
-                # every later caller; surface it to this caller and
-                # keep draining.
-                logger.error(
-                    WORKSPACE_PUSH_QUEUE_WORKER_FAILED,
-                    project_id=self._project_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+        try:
+            # lint-allow: long-running-loop-kill-switch -- stop() puts a None sentinel
+            while True:
+                item = await queue.get()
+                if item is None:
+                    return
+                try:
+                    await self._process(item)
+                except MemoryError, RecursionError:
+                    raise
+                except Exception as exc:
+                    # A bug in _process must not kill the worker and strand
+                    # every later caller; surface it to this caller and
+                    # keep draining.
+                    logger.error(
+                        WORKSPACE_PUSH_QUEUE_WORKER_FAILED,
+                        project_id=self._project_id,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    if not item.future.done():
+                        item.future.set_exception(exc)
+        finally:
+            # Worker is exiting (sentinel drain OR a re-raised
+            # MemoryError/RecursionError). Fail every still-pending
+            # item so their callers do not hang waiting on a future
+            # the dead worker would never complete.
+            while not queue.empty():
+                pending = queue.get_nowait()
+                if pending is None:
+                    continue
+                if not pending.future.done():
+                    pending.future.set_exception(
+                        WorkspaceError(
+                            f"PushQueueCoordinator for project "
+                            f"{self._project_id!r} stopped with pending work",
+                        ),
+                    )
+
+    async def _push_default_branch(self, item: _QueuedMerge) -> bool:
+        """Run the backend push; return ``True`` iff the push succeeded.
+
+        Resolves ``item.future`` on every failure path (preserving any
+        existing ``WorkspacePushError`` subtype). ``MemoryError`` and
+        ``RecursionError`` propagate so the worker loop's outer
+        ``finally`` can fail every remaining pending item.
+        """
+        try:
+            await self._git_backend.push(
+                project_id=self._project_id,
+                repo_root=self._repo_root,
+                branch=self._default_branch,
+                base_branch=self._default_branch,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except WorkspacePushError as exc:
+            # Preserve forge-specific push error subtypes (rejection,
+            # auth failure ...) so callers can discriminate; wrapping
+            # in a fresh ``WorkspacePushError`` would erase the subclass.
+            logger.warning(
+                WORKSPACE_PUSH_QUEUE_FAILED,
+                project_id=self._project_id,
+                workspace_id=item.workspace.workspace_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            if not item.future.done():
+                item.future.set_exception(exc)
+            return False
+        except Exception as exc:
+            logger.warning(
+                WORKSPACE_PUSH_QUEUE_FAILED,
+                project_id=self._project_id,
+                workspace_id=item.workspace.workspace_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            if not item.future.done():
+                msg = (
+                    f"Failed to push merged default branch for project "
+                    f"{self._project_id!r}"
                 )
-                if not item.future.done():
-                    item.future.set_exception(exc)
+                item.future.set_exception(WorkspacePushError(msg))
+            return False
+        return True
 
     async def _process(self, item: _QueuedMerge) -> None:
         """Merge then (on success) push; resolve the caller future."""
@@ -182,29 +262,7 @@ class PushQueueCoordinator:
             if not item.future.done():
                 item.future.set_result(merge_result)
             return
-        try:
-            await self._git_backend.push(
-                project_id=self._project_id,
-                repo_root=self._repo_root,
-                branch=self._default_branch,
-                base_branch=self._default_branch,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                WORKSPACE_PUSH_QUEUE_FAILED,
-                project_id=self._project_id,
-                workspace_id=item.workspace.workspace_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            if not item.future.done():
-                msg = (
-                    f"Failed to push merged default branch for project "
-                    f"{self._project_id!r}"
-                )
-                item.future.set_exception(WorkspacePushError(msg))
+        if not await self._push_default_branch(item):
             return
         logger.info(
             WORKSPACE_PUSH_QUEUE_MERGED,
