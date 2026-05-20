@@ -215,6 +215,9 @@ export type ConnectionStatus = (typeof CONNECTION_STATUS_VALUES)[number]
 
 export const CONNECTION_TYPE_VALUES = [
     'github',
+    'gitlab',
+    'gitea',
+    'forgejo',
     'slack',
     'smtp',
     'database',

@@ -36,6 +36,9 @@ class ConnectionType(StrEnum):
     """Supported external service connection types."""
 
     GITHUB = "github"
+    GITLAB = "gitlab"
+    GITEA = "gitea"
+    FORGEJO = "forgejo"
     SLACK = "slack"
     SMTP = "smtp"
     DATABASE = "database"

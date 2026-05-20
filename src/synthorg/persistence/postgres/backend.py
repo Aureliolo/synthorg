@@ -118,6 +118,9 @@ from synthorg.persistence.postgres.project_cost_aggregate_repo import (
     PostgresProjectCostAggregateRepository,
 )
 from synthorg.persistence.postgres.project_repo import PostgresProjectRepository
+from synthorg.persistence.postgres.project_workspace_repo import (
+    PostgresProjectWorkspaceRepository,
+)
 from synthorg.persistence.postgres.provider_audit_repo import (
     PostgresProviderAuditRepo,
 )
@@ -231,6 +234,9 @@ if TYPE_CHECKING:
         ProjectCostAggregateRepository,
     )
     from synthorg.persistence.project_protocol import ProjectRepository
+    from synthorg.persistence.project_workspace_protocol import (
+        ProjectWorkspaceRepository,
+    )
     from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
     from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
     from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
@@ -282,6 +288,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         # Repository attributes -- instantiated lazily on connect.
         self._artifacts: ArtifactRepository | None = None
         self._projects: ProjectRepository | None = None
+        self._project_workspaces: ProjectWorkspaceRepository | None = None
         self._tasks: TaskRepository | None = None
         self._cost_records: CostRecordRepository | None = None
         self._messages: MessageRepository | None = None
@@ -344,6 +351,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._pool = None
         self._artifacts = None
         self._projects = None
+        self._project_workspaces = None
         self._tasks = None
         self._cost_records = None
         self._messages = None
@@ -405,6 +413,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         # Core domain repositories.
         self._artifacts = PostgresArtifactRepository(pool)
         self._projects = PostgresProjectRepository(pool)
+        self._project_workspaces = PostgresProjectWorkspaceRepository(pool)
         self._tasks = PostgresTaskRepository(pool)
         self._cost_records = PostgresCostRecordRepository(pool)
         self._messages = PostgresMessageRepository(pool)
@@ -661,6 +670,11 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
     def projects(self) -> ProjectRepository:
         """Repository for Project persistence."""
         return self._require_connected(self._projects, "projects")
+
+    @property
+    def project_workspaces(self) -> ProjectWorkspaceRepository:
+        """Repository for persistent per-project workspace mappings."""
+        return self._require_connected(self._project_workspaces, "project_workspaces")
 
     @property
     def custom_presets(self) -> PersonalityPresetRepository:

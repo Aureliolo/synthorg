@@ -104,6 +104,9 @@ from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,  # noqa: TC001
 )
 from synthorg.persistence.project_protocol import ProjectRepository  # noqa: TC001
+from synthorg.persistence.project_workspace_protocol import (  # noqa: TC001
+    ProjectWorkspaceRepository,
+)
 from synthorg.persistence.provider_audit_protocol import (  # noqa: TC001
     ProviderAuditRepo,
 )
@@ -404,6 +407,11 @@ class PersistenceBackend(Protocol):
     @property
     def projects(self) -> ProjectRepository:
         """Repository for Project persistence."""
+        ...
+
+    @property
+    def project_workspaces(self) -> ProjectWorkspaceRepository:
+        """Repository for persistent per-project workspace mappings."""
         ...
 
     @property

@@ -38,6 +38,9 @@ from synthorg.persistence.principle_override_protocol import (
     PrincipleOverrideRepository,
 )
 from synthorg.persistence.project_protocol import ProjectRepository
+from synthorg.persistence.project_workspace_protocol import (
+    ProjectWorkspaceRepository,
+)
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.persistence.settings_protocol import SettingsRepository
@@ -69,6 +72,7 @@ if TYPE_CHECKING:
     from synthorg.core.artifact import Artifact
     from synthorg.core.auth.models import ApiKey, User
     from synthorg.core.project import Project
+    from synthorg.core.project_workspace import ProjectWorkspace
     from synthorg.core.task import Task
     from synthorg.engine.agent_state import AgentRuntimeState
     from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
@@ -580,6 +584,28 @@ class _FakeArtifactRepository:
         return False
 
 
+class _FakeProjectWorkspaceRepository:
+    async def save(self, entity: ProjectWorkspace) -> None:
+        del entity
+
+    async def get(self, entity_id: NotBlankStr) -> ProjectWorkspace | None:
+        del entity_id
+        return None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[ProjectWorkspace, ...]:
+        del limit, offset
+        return ()
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
+        return False
+
+
 class _FakeProjectRepository:
     async def create(self, project: Project) -> None:
         pass
@@ -997,6 +1023,10 @@ class _FakeBackend:
         return _FakeProjectRepository()
 
     @property
+    def project_workspaces(self) -> _FakeProjectWorkspaceRepository:
+        return _FakeProjectWorkspaceRepository()
+
+    @property
     def custom_presets(self) -> _FakePersonalityPresetRepository:
         return _FakePersonalityPresetRepository()
 
@@ -1274,6 +1304,19 @@ class TestProtocolCompliance:
 
     def test_fake_project_repo_is_project_repository(self) -> None:
         assert isinstance(_FakeProjectRepository(), ProjectRepository)
+
+    def test_fake_project_workspace_repo_is_project_workspace_repository(
+        self,
+    ) -> None:
+        # Route through the backend property AND construct the fake
+        # directly, mirroring the pattern used for other repositories
+        # so a future drift in either path is caught.
+        backend = _FakeBackend()
+        assert isinstance(backend.project_workspaces, ProjectWorkspaceRepository)
+        assert isinstance(
+            _FakeProjectWorkspaceRepository(),
+            ProjectWorkspaceRepository,
+        )
 
     def test_fake_ssrf_violation_repo_is_ssrf_violation_repository(self) -> None:
         # Route through the backend property so the test exercises the

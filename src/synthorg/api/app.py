@@ -1052,6 +1052,47 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         if env_workspace_root is not None:
             app_state.set_agent_workspace_root(env_workspace_root)
 
+        # Per-project persistent workspace substrate. The git backend is
+        # config-selected (embedded default, no external dep);
+        # ProjectWorkspaceService provisions one persistent git-backed
+        # tree per project under the workspace base. Persistence-less
+        # boots (test fixtures, dev apps with no DB) skip wiring -- the
+        # service is optional and gates on ``has_project_workspace_service``.
+        if app_state.has_persistence and app_state.project_workspace_service is None:
+            # Guard against partial-startup retry: this hook fires once
+            # the persistence layer is connected, but ``build_runtime_services``
+            # below is fallible and a re-entry after its failure would
+            # otherwise hit the ``_set_once`` guard inside
+            # ``set_project_workspace_service`` and fail with
+            # "already configured" instead of cleanly retrying the
+            # runtime-services build.
+            from synthorg.engine.workspace.git_backend import (  # noqa: PLC0415
+                GitBackendConfig,
+                GitBackendDeps,
+                build_git_backend,
+            )
+            from synthorg.engine.workspace.project_workspace_service import (  # noqa: PLC0415
+                ProjectWorkspaceService,
+            )
+
+            git_backend_config = GitBackendConfig()
+            git_backend = build_git_backend(
+                git_backend_config,
+                GitBackendDeps(
+                    workspace_base_root=app_state.agent_workspace_root,
+                    clock=app_state.clock,
+                ),
+            )
+            app_state.set_project_workspace_service(
+                ProjectWorkspaceService(
+                    base_root=app_state.agent_workspace_root,
+                    repo=app_state.persistence.project_workspaces,
+                    git_backend=git_backend,
+                    config=git_backend_config,
+                    clock=app_state.clock,
+                ),
+            )
+
         try:
             services = await build_runtime_services(
                 app_state,

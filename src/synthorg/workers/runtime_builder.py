@@ -378,6 +378,15 @@ async def _build_runtime_coordinator(
         scorer = AgentTaskScorer(min_score=app_state.config.task_assignment.min_score)
     else:
         scorer = AgentTaskScorer(config=routing_scorer_config)
+    project_workspace_service = app_state.project_workspace_service
+    git_backend = (
+        project_workspace_service.git_backend
+        if project_workspace_service is not None
+        else None
+    )
+    # ``AgentEngineExecutionService`` provisions the per-project workspace
+    # lazily on first task; bare construction (no service) keeps the
+    # persistence-less dev paths working as before.
     coordinator = build_coordinator(
         config=app_state.config.coordination,
         engine=engine,
@@ -387,6 +396,7 @@ async def _build_runtime_coordinator(
         task_engine=app_state.task_engine,
         workspace_strategy=workspace_strategy,
         workspace_config=workspace_config,
+        git_backend=git_backend,
         performance_tracker=performance_tracker,
         routing_scorer_config=routing_scorer_config,
         coordination_metrics_collector=coordination_metrics_collector,
@@ -533,6 +543,7 @@ async def build_runtime_services(
         autonomy_resolver=autonomy_resolver,
         sandbox_backend=sandbox_backends.get("docker"),
         lifecycle_strategy_kind=(app_state.config.sandboxing.docker.lifecycle.strategy),
+        project_workspace_service=app_state.project_workspace_service,
     )
     work_pipeline = await _build_runtime_work_pipeline(
         app_state,

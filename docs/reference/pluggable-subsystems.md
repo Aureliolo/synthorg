@@ -167,6 +167,15 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `backup/registry.py::PERSISTENCE_BACKUP_HANDLER_REGISTRY`: `StrategyRegistry` keyed on `config.persistence.backend` ("sqlite" / "postgres").
 - `backup/factory.py::build_backup_handlers()`: dispatches per `BackupComponent` and uses the registry for the persistence handler.
 
+### Git backend storage strategy
+
+- `engine/workspace/git_backend/protocol.py`: `GitBackend` `@runtime_checkable` Protocol, with `ProvisionResult`/`PushResult`/`FetchResult` frozen result models.
+- `engine/workspace/git_backend/config.py`: `GitBackendConfig` (frozen) with `kind: GitBackendType` discriminator and `GitBackendDeps` (collaborators not safe in frozen config: `workspace_base_root`, `connection_catalog`, `secret_backend`, `clock`).
+- `engine/workspace/git_backend/embedded.py::EmbeddedGitBackend` (safe default: bare repo self-hosted on the persistent volume, no external dependency).
+- `engine/workspace/git_backend/local_path.py::LocalPathGitBackend` (bring-your-own on-disk git repository, push/fetch are no-ops because the on-disk repo is the durable store).
+- `engine/workspace/git_backend/external_remote.py::ExternalRemoteGitBackend` (GitHub / GitLab / Gitea / Forgejo resolved via the connection catalog; ships protocol + thin clone/push/fetch glue; deep OAuth hardening is a tracked follow-up).
+- `engine/workspace/git_backend/factory.py::build_git_backend()`: `StrategyRegistry[GitBackend]` keyed on `GitBackendType`. Missing required deps fail fast at construction with `GitBackendConfigError`. Wired at boot in `api/app.py::_install_runtime_services` under the `has_persistence` gate, alongside `ProjectWorkspaceService`.
+
 ## Services are a distinct pattern (not pluggable subsystems)
 
 A **service** wraps one or more repositories to keep controllers thin and centralise audit logging, and MAY orchestrate multiple repositories (e.g. `WorkflowService` spans `workflow_definitions` + `workflow_versions`; `MemoryService` spans fine-tune checkpoints + runs + settings).

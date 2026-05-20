@@ -45,6 +45,76 @@ export const CONNECTION_TYPE_FIELDS: Record<ConnectionType, ConnectionTypeSpec> 
       },
     ],
   },
+  gitlab: {
+    label: 'GitLab',
+    description: 'Access GitLab repositories, issues, and merge requests.',
+    defaultAuthMethod: 'bearer_token',
+    topLevelFields: [
+      {
+        key: 'base_url',
+        label: 'API URL',
+        type: 'url',
+        placeholder: 'https://gitlab.com',
+        required: false,
+        hint: 'Leave blank for gitlab.com; set for self-hosted',
+      },
+    ],
+    credentialFields: [
+      {
+        key: 'token',
+        label: 'Personal Access Token',
+        type: 'password',
+        required: true,
+        placeholder: 'glpat-...',
+      },
+    ],
+  },
+  gitea: {
+    label: 'Gitea',
+    description: 'Access Gitea repositories, issues, and pull requests.',
+    defaultAuthMethod: 'bearer_token',
+    topLevelFields: [
+      {
+        key: 'base_url',
+        label: 'API URL',
+        type: 'url',
+        placeholder: 'https://gitea.example.com',
+        required: true,
+        hint: 'Self-hosted Gitea instance URL',
+      },
+    ],
+    credentialFields: [
+      {
+        key: 'token',
+        label: 'Personal Access Token',
+        type: 'password',
+        required: true,
+      },
+    ],
+  },
+  forgejo: {
+    label: 'Forgejo',
+    description: 'Access Forgejo repositories, issues, and pull requests.',
+    defaultAuthMethod: 'bearer_token',
+    topLevelFields: [
+      {
+        key: 'base_url',
+        label: 'API URL',
+        type: 'url',
+        placeholder: 'https://forgejo.example.com',
+        required: true,
+        hint: 'Self-hosted Forgejo instance URL (e.g. codeberg.org)',
+      },
+    ],
+    credentialFields: [
+      {
+        key: 'token',
+        label: 'Personal Access Token',
+        type: 'password',
+        required: true,
+      },
+    ],
+  },
   slack: {
     label: 'Slack',
     description: 'Send messages and manage channels via Slack.',
