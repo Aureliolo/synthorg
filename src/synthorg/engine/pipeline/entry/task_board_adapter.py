@@ -17,14 +17,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.core.enums import Complexity, Priority, TaskType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
-from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_TASK_BOARD_SUBMITTED
 
 if TYPE_CHECKING:
     from synthorg.engine.pipeline.models import WorkPipelineResult
     from synthorg.engine.pipeline.protocol import WorkPipeline
-
-logger = get_logger(__name__)
 
 _ORIGIN_ADAPTER_ID = "task-board-entry-adapter"
 
@@ -109,12 +105,5 @@ class TaskBoardEntryAdapter:
             task_type=filing.task_type,
             estimated_complexity=filing.estimated_complexity,
             correlation_id=filing.correlation_id,
-        )
-        logger.info(
-            API_TASK_BOARD_SUBMITTED,
-            correlation_id=filing.correlation_id,
-            project=filing.project,
-            requested_by=filing.requested_by,
-            title=filing.title,
         )
         return await self._work_pipeline.run(work_item)

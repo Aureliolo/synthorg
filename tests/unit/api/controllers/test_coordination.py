@@ -42,16 +42,14 @@ _TEST_TASK_ID = "test-coord-task"
 def _insert_task(task_engine: TaskEngine, *, task_id: str = _TEST_TASK_ID) -> str:
     """Insert a Task directly into the fake persistence layer.
 
-    The coordination tests historically created the task via
-    ``POST /tasks``; after the board-entry switch that endpoint returns
-    202 + a submission envelope (no task id) and the actual task is
-    created inside the (mocked-here) pipeline spine. Going through
-    ``task_engine.create_task`` from the test body would also cross
-    event loops (the engine is started inside the TestClient's ASGI
-    loop and ``_running``/``_admission_lock`` are bound to it), so
-    we insert the task directly into the in-memory repo instead.
-    ``task_engine.get_task`` reads straight from persistence and
-    therefore picks it up.
+    ``POST /tasks`` returns 202 + a submission envelope (no task id);
+    task materialisation happens asynchronously inside the
+    (mocked-here) pipeline spine. Calling ``task_engine.create_task``
+    from the test body would cross event loops (the engine starts
+    inside the TestClient's ASGI loop and ``_running`` /
+    ``_admission_lock`` are bound to it), so we insert the task
+    directly into the in-memory repo instead. ``task_engine.get_task``
+    reads straight from persistence and therefore picks it up.
     """
     from tests.unit.api.conftest import make_task as _make_task
 
@@ -125,9 +123,9 @@ def coordination_ctx(
 
     Returns a ``SimpleNamespace(client, task_engine)``: the client is
     used for HTTP, the task engine for pre-creating coordinatable
-    tasks (the public ``POST /tasks`` is now a 202 board handoff that
+    tasks. The public ``POST /tasks`` is a 202 board handoff that
     creates the task via the work pipeline spine, not the engine
-    directly).
+    directly, so coordinator tests bypass it via ``_insert_task``.
     """
     from tests.unit.api.conftest import _seed_test_users
 
@@ -159,9 +157,10 @@ def coordination_ctx(
         registry=get_registry(),
     )
 
-    # A scripted provider keeps ``has_active_provider`` True so the
-    # other end-to-end checks downstream of the runtime services pass;
-    # POST /tasks itself is not used by these tests (see ``_create_task``).
+    # A scripted provider keeps ``has_active_provider`` true so runtime
+    # checks remain satisfied; these tests seed tasks via
+    # ``_insert_task`` rather than the public ``POST /tasks`` board
+    # handoff.
     from synthorg.config.provider_schema import ProviderConfig
     from synthorg.providers.registry import ProviderRegistry
 

@@ -7,6 +7,7 @@ import pytest
 from litestar.testing import TestClient
 
 from synthorg.api.state import AppState
+from synthorg.core.error_taxonomy import ErrorCode
 from tests.unit.api.conftest import FakePersistenceBackend, make_auth_headers, make_task
 
 
@@ -92,7 +93,7 @@ class TestTaskController:
         )
         assert resp.status_code == 409, resp.text
         detail = resp.json()["error_detail"]
-        assert detail["error_code"] == 4014
+        assert detail["error_code"] == ErrorCode.AGENT_RUNTIME_NOT_CONFIGURED.value
 
     def test_create_task(self, test_client: TestClient[Any]) -> None:
         """``POST /tasks`` now hands the filing to the board entry adapter.

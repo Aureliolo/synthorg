@@ -1,9 +1,9 @@
 """Task controller: CRUD + board entry into the live pipeline spine."""
 
 import asyncio
-from typing import Annotated, Any, Final
+from typing import Annotated, Final
 
-from litestar import Controller, Request, delete, get, patch, post
+from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.params import Parameter
 from litestar.status_codes import (
@@ -38,6 +38,7 @@ from synthorg.engine.pipeline.entry.task_board_adapter import (
     TaskBoardFiling,
 )
 from synthorg.engine.pipeline.errors import WorkIntakeRejectedError
+from synthorg.engine.pipeline.models import WorkSource
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.api import (
@@ -179,7 +180,19 @@ class TaskController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[Task]:
-        """List tasks with optional filters."""
+        """List tasks with optional filters.
+
+        Args:
+            state: Application state.
+            status: Filter by status.
+            assigned_to: Filter by assignee.
+            project: Filter by project.
+            cursor: Opaque pagination cursor from the previous page.
+            limit: Page size.
+
+        Returns:
+            Paginated task list.
+        """
         app_state: AppState = state.app_state
         tasks, total = await app_state.task_engine.list_tasks(
             status=status,
@@ -201,7 +214,18 @@ class TaskController(Controller):
         state: State,
         task_id: PathId,
     ) -> ApiResponse[Task]:
-        """Get a task by ID."""
+        """Get a task by ID.
+
+        Args:
+            state: Application state.
+            task_id: Task identifier.
+
+        Returns:
+            Task envelope.
+
+        Raises:
+            NotFoundError: If the task is not found.
+        """
         app_state: AppState = state.app_state
         task = await app_state.task_engine.get_task(task_id)
         task = require_resource_or_404(
@@ -223,7 +247,6 @@ class TaskController(Controller):
     )
     async def create_task(
         self,
-        request: Request[Any, Any, Any],
         state: State,
         data: CreateTaskRequest,
     ) -> ApiResponse[TaskBoardSubmissionResponse]:
@@ -243,11 +266,10 @@ class TaskController(Controller):
 
         Raises:
             AgentRuntimeNotConfiguredError: When no board entry adapter
-                is wired (empty company / no provider). The error code
-                (4014, ``provider_required_for_task_execution``) makes
-                the "needs a provider" signal explicit.
+                is wired (empty company / no provider). The
+                ``AGENT_RUNTIME_NOT_CONFIGURED`` error code makes the
+                "needs a provider" signal explicit.
         """
-        del request  # reserved for future WS publish from the controller
         app_state: AppState = state.app_state
         requester = _extract_requester(state)
         if not app_state.has_task_board_entry_adapter:
@@ -283,8 +305,8 @@ class TaskController(Controller):
             API_TASK_BOARD_SUBMITTED,
             correlation_id=filing.correlation_id,
             project=filing.project,
-            title=filing.title,
-            requester=requester,
+            task_type=filing.task_type.value,
+            source=WorkSource.TASK_BOARD.value,
         )
         return ApiResponse(
             data=TaskBoardSubmissionResponse(
@@ -307,7 +329,19 @@ class TaskController(Controller):
         task_id: PathId,
         data: UpdateTaskRequest,
     ) -> ApiResponse[Task]:
-        """Update task fields."""
+        """Update task fields.
+
+        Args:
+            state: Application state.
+            task_id: Task identifier.
+            data: Fields to update.
+
+        Returns:
+            Updated task envelope.
+
+        Raises:
+            NotFoundError: If the task is not found.
+        """
         app_state: AppState = state.app_state
         updates = data.model_dump(
             exclude_none=True,
@@ -378,7 +412,15 @@ class TaskController(Controller):
         state: State,
         task_id: PathId,
     ) -> None:
-        """Delete a task."""
+        """Delete a task.
+
+        Args:
+            state: Application state.
+            task_id: Task identifier.
+
+        Raises:
+            NotFoundError: If the task is not found.
+        """
         app_state: AppState = state.app_state
         await app_state.task_engine.delete_task(
             task_id,
@@ -442,7 +484,19 @@ class TaskController(Controller):
         task_id: PathId,
         data: CancelTaskRequest,
     ) -> ApiResponse[Task]:
-        """Cancel a task."""
+        """Cancel a task.
+
+        Args:
+            state: Application state.
+            task_id: Task identifier.
+            data: Cancellation payload with reason.
+
+        Returns:
+            Cancelled task envelope.
+
+        Raises:
+            NotFoundError: If the task is not found.
+        """
         app_state: AppState = state.app_state
         task, _prior_status = await app_state.task_engine.cancel_task(
             task_id,
