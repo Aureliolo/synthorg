@@ -366,6 +366,23 @@ extension point.
 
 ---
 
+## Built-in Roles
+
+`BUILTIN_ROLES` in `src/synthorg/core/role_catalog.py` carries the
+shipped role catalog. Most entries (CEO, Backend Developer, QA
+Engineer, etc.) are role definitions only; instantiation as a real
+`AgentIdentity` happens when operators configure their company. One
+role is special:
+
+- **Red Team** (`name="Red Team"`, department: Quality Assurance,
+  seniority: Senior). The built-in adversarial skeptic. Instantiated
+  at boot when `CompanyConfig.security.red_team.enabled` is true; the
+  framework runs it as the last gate before IN_REVIEW -> COMPLETED.
+  See [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate)
+  for the full design.
+
+---
+
 ## See Also
 
 - [HR & Agent Lifecycle](hr-lifecycle.md): seniority, hiring, firing, performance, evaluation, promotions, evolution, five-pillar framework, client agents

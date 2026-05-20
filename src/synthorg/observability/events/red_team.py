@@ -21,8 +21,16 @@ RED_TEAM_AGENT_FAILED: Final[str] = "red_team.agent.failed"
 RED_TEAM_REPORT_RECEIVED: Final[str] = "red_team.report.received"
 """Agent filed a report via the ``submit_red_team_report`` tool."""
 
+RED_TEAM_REPORT_EXECUTION_ID_MISMATCH: Final[str] = (
+    "red_team.report.execution_id_mismatch"
+)
+"""Stored report's execution_id differs from the gate's input; corrected on the fly."""
+
 RED_TEAM_REPORT_MISSING: Final[str] = "red_team.report.missing"
 """Agent did not file a report; gate synthesises an INFO-severity finding."""
+
+RED_TEAM_REPORT_VALIDATION_FAILED: Final[str] = "red_team.report.validation_failed"
+"""submit_red_team_report payload failed schema validation."""
 
 RED_TEAM_FINDING_FILED: Final[str] = "red_team.finding.filed"
 """One finding from a report (emitted per finding for fan-out logs)."""

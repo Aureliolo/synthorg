@@ -136,7 +136,20 @@ class HeuristicGroundingChecker:
         return tuple(claims)
 
     def _evaluate_sentence(self, sentence: str) -> UngroundedClaim | None:
-        """Return an :class:`UngroundedClaim` for ``sentence`` or ``None``."""
+        """Return an :class:`UngroundedClaim` for ``sentence`` or ``None``.
+
+        Decision order (guards first, then signal rules):
+
+        1. Skip questions, hedged claims, or sentences that already
+           carry a citation marker (the agent already provided the
+           grounding evidence; we trust the citation).
+        2. Numeric assertion (number/percentage/time-unit) is the
+           canonical hallucination signature: a statistic without a
+           source. Always flagged.
+        3. Otherwise no flag. Pure declarative prose without numerics
+           is too noisy for the heuristic; only the agent or a
+           substrate-backed checker may flag it.
+        """
         if _QUESTION_RE.search(sentence):
             return None
         if _HEDGE_RE.search(sentence):

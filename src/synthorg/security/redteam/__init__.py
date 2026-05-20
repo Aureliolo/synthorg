@@ -25,6 +25,12 @@ from synthorg.security.redteam.agent import (
     RED_TEAM_AGENT_NAME,
     build_red_team_agent_identity,
 )
+from synthorg.security.redteam.builder import (
+    RedTeamRuntime,
+    RedTeamToolSeed,
+    build_red_team_runtime,
+    build_red_team_tool_seed,
+)
 from synthorg.security.redteam.errors import (
     RedTeamDispatchError,
     RedTeamError,
@@ -82,12 +88,16 @@ __all__ = [
     "RedTeamReportRepository",
     "RedTeamReportValidationError",
     "RedTeamReviewInput",
+    "RedTeamRuntime",
     "RedTeamSeverity",
+    "RedTeamToolSeed",
     "RedTeamVerdict",
     "UngroundedClaim",
     "build_grounding_checker",
     "build_red_team_agent_identity",
+    "build_red_team_runtime",
     "build_red_team_system_prompt",
+    "build_red_team_tool_seed",
     "compute_red_team_verdict",
     "severity_rank",
     "should_block",

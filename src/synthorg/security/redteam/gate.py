@@ -19,6 +19,7 @@ Drives one evaluation cycle for one deliverable:
 5. Return a structured :class:`RedTeamGateResult`.
 """
 
+import asyncio
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
@@ -32,10 +33,14 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_GROUNDING_CHECK_COMPLETED,
     RED_TEAM_GROUNDING_CHECK_FAILED,
     RED_TEAM_GROUNDING_CHECK_STARTED,
+    RED_TEAM_REPORT_EXECUTION_ID_MISMATCH,
     RED_TEAM_REPORT_MISSING,
     RED_TEAM_REPORT_RECEIVED,
 )
-from synthorg.security.redteam.errors import RedTeamReportNotFoundError
+from synthorg.security.redteam.errors import (
+    RedTeamDispatchError,
+    RedTeamReportNotFoundError,
+)
 from synthorg.security.redteam.grounding.protocol import GroundingChecker  # noqa: TC001
 from synthorg.security.redteam.models import (
     RedTeamAttackSurface,
@@ -203,7 +208,15 @@ class RedTeamGateService:
         self,
         review_input: RedTeamReviewInput,
     ) -> RedTeamReport:
-        """Dispatch the agent and fetch its report, with fail-OPEN fallback."""
+        """Dispatch the agent and fetch its report, with fail-OPEN fallback.
+
+        Cancellation propagates: an ``asyncio.CancelledError`` from the
+        agent run must NOT be converted to a fail-OPEN finding, because
+        the cancelling parent task needs to observe the cancellation.
+        Only :class:`RedTeamDispatchError` from the runner (and the
+        engine's own non-cancellation faults wrapped by it) trigger the
+        fail-OPEN policy.
+        """
         logger.info(
             RED_TEAM_AGENT_INVOKED,
             execution_id=review_input.execution_id,
@@ -211,13 +224,14 @@ class RedTeamGateService:
         )
         try:
             await self._agent_runner.run(review_input=review_input)
-        except Exception as exc:
+        except RedTeamDispatchError as exc:
+            original = exc.__cause__ if exc.__cause__ is not None else exc
             logger.warning(
                 RED_TEAM_AGENT_FAILED,
                 execution_id=review_input.execution_id,
                 task_id=review_input.task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                error_type=type(original).__name__,
+                error=safe_error_description(original),
             )
             return self._fail_open_report(review_input)
 
@@ -235,6 +249,16 @@ class RedTeamGateService:
             )
             return self._fail_open_report(review_input)
 
+        if report.execution_id != review_input.execution_id:
+            logger.warning(
+                RED_TEAM_REPORT_EXECUTION_ID_MISMATCH,
+                stored_execution_id=report.execution_id,
+                expected_execution_id=review_input.execution_id,
+                task_id=review_input.task_id,
+            )
+            report = report.model_copy(
+                update={"execution_id": review_input.execution_id},
+            )
         logger.info(
             RED_TEAM_REPORT_RECEIVED,
             execution_id=review_input.execution_id,
@@ -247,7 +271,14 @@ class RedTeamGateService:
         self,
         review_input: RedTeamReviewInput,
     ) -> tuple[UngroundedClaim, ...]:
-        """Run the grounding checker; return empty tuple on failure."""
+        """Run the grounding checker; return empty tuple on non-cancellation failure.
+
+        Cancellation propagates: ``asyncio.CancelledError`` is re-raised so
+        the awaiting parent task observes it. All other exceptions are
+        treated as fail-OPEN (heuristic stub is best-effort, substrate
+        implementations should not block the gate on transient corpus
+        failures).
+        """
         logger.info(
             RED_TEAM_GROUNDING_CHECK_STARTED,
             execution_id=review_input.execution_id,
@@ -258,6 +289,8 @@ class RedTeamGateService:
                 deliverable_content=review_input.deliverable_content,
                 execution_id=review_input.execution_id,
             )
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.warning(
                 RED_TEAM_GROUNDING_CHECK_FAILED,
@@ -265,6 +298,7 @@ class RedTeamGateService:
                 task_id=review_input.task_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+                policy="fail_open",
             )
             return ()
         logger.info(

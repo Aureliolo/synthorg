@@ -19,6 +19,10 @@ from synthorg.core.enums import DepartmentName, SeniorityLevel
 from synthorg.core.role import Skill
 from synthorg.core.role_catalog import RED_TEAM_ROLE_NAME, get_builtin_role
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.red_team import RED_TEAM_GATE_SKIPPED
+
+logger = get_logger(__name__)
 
 RED_TEAM_AGENT_NAME: Final[str] = "Red Team Skeptic"
 """Canonical display name for the built-in red-team agent."""
@@ -93,6 +97,15 @@ def build_red_team_agent_identity(
     """
     role = get_builtin_role(RED_TEAM_ROLE_NAME)
     if role is None:
+        logger.warning(
+            RED_TEAM_GATE_SKIPPED,
+            reason="role_missing_from_catalog",
+            role_name=RED_TEAM_ROLE_NAME,
+            note=(
+                "Built-in role missing; operators must check the "
+                "BUILTIN_ROLES tuple in core/role_catalog.py."
+            ),
+        )
         msg = (
             f"Built-in role {RED_TEAM_ROLE_NAME!r} not found in catalog. "
             "Check core/role_catalog.py BUILTIN_ROLES tuple."

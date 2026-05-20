@@ -28,6 +28,7 @@ from synthorg.observability.events.red_team import (
     RED_TEAM_REPORT_MISSING,
     RED_TEAM_REPORT_RECEIVED,
 )
+from synthorg.security.redteam.errors import RedTeamDispatchError
 from synthorg.security.redteam.gate import RedTeamGateService
 from synthorg.security.redteam.grounding.heuristic import HeuristicGroundingChecker
 from synthorg.security.redteam.models import (
@@ -66,15 +67,27 @@ class _ScriptedRunner:
 
 
 class _RaisingRunner:
-    """``AgentRunner`` that raises on every call (tests fail-OPEN)."""
+    """``AgentRunner`` that raises ``RedTeamDispatchError`` on every call.
 
-    def __init__(self, *, exc: Exception) -> None:
-        self._exc = exc
+    Mirrors the production :class:`AgentEngineRunner` contract: it
+    wraps the underlying engine fault in :class:`RedTeamDispatchError`
+    with ``__cause__`` set to the original exception. The gate
+    distinguishes this from :class:`asyncio.CancelledError` so
+    cancellation propagates while infrastructure faults trigger the
+    fail-OPEN policy.
+    """
+
+    def __init__(self, *, cause: Exception) -> None:
+        self._cause = cause
         self.invocations: int = 0
 
     async def run(self, *, review_input: RedTeamReviewInput) -> None:
         self.invocations += 1
-        raise self._exc
+        try:
+            raise self._cause  # noqa: TRY301 -- mirrors production runner's wrap-and-raise
+        except Exception as exc:
+            msg = f"Red-team agent run failed for {review_input.execution_id!r}"
+            raise RedTeamDispatchError(msg) from exc
 
 
 def _clean_input(deliverable: str = "Backend service done.") -> RedTeamReviewInput:
@@ -253,9 +266,7 @@ class TestFailOpen:
         repo: InMemoryRedTeamReportRepository,
         grounding: HeuristicGroundingChecker,
     ) -> None:
-        runner: AgentRunner = _RaisingRunner(
-            exc=RuntimeError("provider down"),
-        )
+        runner: AgentRunner = _RaisingRunner(cause=RuntimeError("provider down"))
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,
@@ -287,6 +298,35 @@ class TestFailOpen:
             f for f in result.report.findings if f.severity is RedTeamSeverity.INFO
         ]
         assert len(info_findings) == 1
+
+
+@pytest.mark.unit
+class TestGroundingErrorPath:
+    """Grounding checker exception falls back to empty tuple."""
+
+    @pytest.mark.asyncio
+    async def test_grounding_exception_does_not_crash_gate(
+        self,
+        repo: InMemoryRedTeamReportRepository,
+    ) -> None:
+        class _FailingChecker:
+            async def check(self, **kwargs: object) -> tuple[object, ...]:
+                del kwargs
+                msg = "grounding subsystem down"
+                raise ValueError(msg)
+
+        runner: AgentRunner = _ScriptedRunner(repo=repo, report=_empty_report())
+        gate = RedTeamGateService(
+            agent_runner=runner,
+            report_repo=repo,
+            grounding_checker=_FailingChecker(),  # type: ignore[arg-type]
+            clock=FakeClock(),
+        )
+        result = await gate.evaluate(_clean_input())
+        assert result.grounding_claims == ()
+        # Verdict is PASS because the empty report has no agent findings
+        # and the grounding stub failed open with no claims.
+        assert result.verdict is RedTeamVerdict.PASS
 
 
 @pytest.mark.unit
@@ -358,7 +398,7 @@ class TestObservability:
         repo: InMemoryRedTeamReportRepository,
         grounding: HeuristicGroundingChecker,
     ) -> None:
-        runner: AgentRunner = _RaisingRunner(exc=RuntimeError("boom"))
+        runner: AgentRunner = _RaisingRunner(cause=RuntimeError("boom"))
         gate = RedTeamGateService(
             agent_runner=runner,
             report_repo=repo,

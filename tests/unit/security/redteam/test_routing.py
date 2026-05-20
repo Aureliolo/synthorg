@@ -96,24 +96,28 @@ class TestComputeRedTeamVerdict:
         )
         assert verdict is RedTeamVerdict.PASS_WITH_FINDINGS
 
-    def test_high_finding_blocks_regardless_of_autonomy(self) -> None:
-        for autonomy in _ALL_AUTONOMY:
-            verdict = compute_red_team_verdict(
-                (
-                    _finding(RedTeamSeverity.HIGH),
-                    _finding(RedTeamSeverity.LOW),
-                ),
-                autonomy,
-            )
-            assert verdict is RedTeamVerdict.BLOCK
+    @pytest.mark.parametrize("autonomy", _ALL_AUTONOMY)
+    def test_high_finding_blocks_regardless_of_autonomy(
+        self, autonomy: AutonomyLevel
+    ) -> None:
+        verdict = compute_red_team_verdict(
+            (
+                _finding(RedTeamSeverity.HIGH),
+                _finding(RedTeamSeverity.LOW),
+            ),
+            autonomy,
+        )
+        assert verdict is RedTeamVerdict.BLOCK
 
-    def test_critical_finding_blocks_regardless_of_autonomy(self) -> None:
-        for autonomy in _ALL_AUTONOMY:
-            verdict = compute_red_team_verdict(
-                (_finding(RedTeamSeverity.CRITICAL),),
-                autonomy,
-            )
-            assert verdict is RedTeamVerdict.BLOCK
+    @pytest.mark.parametrize("autonomy", _ALL_AUTONOMY)
+    def test_critical_finding_blocks_regardless_of_autonomy(
+        self, autonomy: AutonomyLevel
+    ) -> None:
+        verdict = compute_red_team_verdict(
+            (_finding(RedTeamSeverity.CRITICAL),),
+            autonomy,
+        )
+        assert verdict is RedTeamVerdict.BLOCK
 
     def test_medium_blocks_under_supervised(self) -> None:
         verdict = compute_red_team_verdict(

@@ -59,3 +59,24 @@ class TestSingleShot:
         r2 = await repo.get(execution_id="exec-2")
         assert r1.execution_id == "exec-1"
         assert r2.execution_id == "exec-2"
+
+    @pytest.mark.asyncio
+    async def test_concurrent_puts_same_execution_id_serialize(self) -> None:
+        """asyncio.Lock guarantees single-shot under concurrent writers."""
+        import asyncio
+
+        repo = InMemoryRedTeamReportRepository()
+
+        async def attempt_put(i: int) -> bool:
+            try:
+                await repo.put(
+                    execution_id="exec-race",
+                    report=_report("exec-race", task_id=f"task-{i}"),
+                )
+            except RedTeamReportAlreadyExistsError:
+                return False
+            else:
+                return True
+
+        results = await asyncio.gather(*[attempt_put(i) for i in range(5)])
+        assert sum(results) == 1, f"Expected exactly 1 success, got {sum(results)}"

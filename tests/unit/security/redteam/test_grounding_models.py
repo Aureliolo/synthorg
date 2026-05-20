@@ -75,3 +75,48 @@ class TestUngroundedClaim:
             expected_source_kind="finance_report",
         )
         assert claim.expected_source_kind == "finance_report"
+
+    def test_heuristic_source_confidence_above_ceiling_rejected(self) -> None:
+        """Heuristic-source claims cannot exceed the ceiling (0.7)."""
+        from synthorg.security.redteam.grounding.models import (
+            HEURISTIC_CONFIDENCE_CEILING,
+        )
+
+        with pytest.raises(ValidationError, match="confidence"):
+            UngroundedClaim(
+                excerpt="x",
+                reason="r",
+                confidence=HEURISTIC_CONFIDENCE_CEILING + 0.1,
+                source="heuristic",
+            )
+
+    def test_heuristic_source_confidence_below_floor_rejected(self) -> None:
+        """Heuristic-source claims cannot drop below the floor (0.4)."""
+        from synthorg.security.redteam.grounding.models import (
+            HEURISTIC_CONFIDENCE_FLOOR,
+        )
+
+        with pytest.raises(ValidationError, match="confidence"):
+            UngroundedClaim(
+                excerpt="x",
+                reason="r",
+                confidence=HEURISTIC_CONFIDENCE_FLOOR - 0.1,
+                source="heuristic",
+            )
+
+    def test_substrate_source_allows_full_confidence_range(self) -> None:
+        """Substrate-source claims may use the full ``[0.0, 1.0]`` range."""
+        UngroundedClaim(
+            excerpt="x",
+            reason="r",
+            confidence=0.99,
+            source="knowledge_substrate",
+            expected_source_kind="finance_report",
+        )
+        UngroundedClaim(
+            excerpt="y",
+            reason="r",
+            confidence=0.05,
+            source="knowledge_substrate",
+            expected_source_kind="finance_report",
+        )

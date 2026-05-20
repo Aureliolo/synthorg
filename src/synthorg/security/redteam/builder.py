@@ -26,6 +26,7 @@ from synthorg.security.redteam.grounding.factory import build_grounding_checker
 from synthorg.security.redteam.report_repo import InMemoryRedTeamReportRepository
 from synthorg.security.redteam.runner import AgentEngineRunner
 from synthorg.security.redteam.tools.submit_report import SubmitRedTeamReportTool
+from synthorg.tools.base import BaseTool  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.core.agent import ModelConfig
@@ -33,6 +34,48 @@ if TYPE_CHECKING:
     from synthorg.security.config import RedTeamConfig
 
 logger = get_logger(__name__)
+
+
+class RedTeamToolSeed(NamedTuple):
+    """Boot-phase-1 bundle: tool + repo to register on the engine.
+
+    Built BEFORE the agent engine is constructed (so the
+    :class:`SubmitRedTeamReportTool` lands on the engine's tool
+    registry at construction time, not after). Phase 2
+    (:func:`build_red_team_runtime`) consumes the same instances to
+    build the gate, ensuring the tool the agent calls and the repo
+    the gate reads are the SAME objects.
+
+    When the gate is disabled, ``report_repo`` and ``submit_tool``
+    are ``None`` and ``extra_tools`` is an empty tuple.
+    """
+
+    report_repo: InMemoryRedTeamReportRepository | None
+    submit_tool: SubmitRedTeamReportTool | None
+    extra_tools: tuple[BaseTool, ...]
+
+
+def build_red_team_tool_seed(*, config: RedTeamConfig) -> RedTeamToolSeed:
+    """Build the boot-phase-1 seed for the red-team tool + repo.
+
+    Returns a seed with empty ``extra_tools`` (and ``None`` for repo /
+    tool) when the gate is disabled. The runtime-builder appends
+    ``extra_tools`` to its config-driven tool list before constructing
+    the agent engine, so the seed must be built first.
+    """
+    if not config.enabled:
+        return RedTeamToolSeed(
+            report_repo=None,
+            submit_tool=None,
+            extra_tools=(),
+        )
+    report_repo = InMemoryRedTeamReportRepository()
+    submit_tool = SubmitRedTeamReportTool(report_repo=report_repo)
+    return RedTeamToolSeed(
+        report_repo=report_repo,
+        submit_tool=submit_tool,
+        extra_tools=(submit_tool,),
+    )
 
 
 class RedTeamRuntime(NamedTuple):
@@ -62,6 +105,7 @@ def build_red_team_runtime(
     config: RedTeamConfig,
     engine: AgentEngine,
     model: ModelConfig,
+    seed: RedTeamToolSeed,
     clock: Clock | None = None,
 ) -> RedTeamRuntime | None:
     """Build the red-team runtime if the feature is enabled.
@@ -75,6 +119,12 @@ def build_red_team_runtime(
         model: :class:`ModelConfig` for the red-team agent identity.
             Operators pin the same provider / model the rest of the
             company uses, unless they want a separate red-team budget.
+        seed: The boot-phase-1 :class:`RedTeamToolSeed` returned by
+            :func:`build_red_team_tool_seed`. Its ``report_repo`` and
+            ``submit_tool`` (built BEFORE the engine, so they land on
+            the engine's tool registry at construction time) are reused
+            here; the gate writes through the same repo the tool wrote
+            to.
         clock: Clock seam. Defaults to :class:`SystemClock` inside the
             gate when ``None``.
 
@@ -87,24 +137,31 @@ def build_red_team_runtime(
         logger.info(
             RED_TEAM_GATE_SKIPPED,
             reason="config.disabled",
-            note="red_team.enabled is False -- gate not constructed",
+            note="red_team.enabled is False; gate not constructed",
         )
         return None
 
-    report_repo = InMemoryRedTeamReportRepository()
-    submit_tool = SubmitRedTeamReportTool(report_repo=report_repo)
+    if seed.report_repo is None or seed.submit_tool is None:
+        msg = (
+            "build_red_team_runtime called with config.enabled=True but a "
+            "seed missing report_repo / submit_tool. Build the seed via "
+            "build_red_team_tool_seed(config=...) before the engine so the "
+            "tool is registered on the engine's tool registry."
+        )
+        raise RuntimeError(msg)
+
     grounding = build_grounding_checker(config.grounding_checker_kind)
     identity = build_red_team_agent_identity(model=model, clock=clock)
     runner = AgentEngineRunner(engine=engine, identity=identity)
     gate = RedTeamGateService(
         agent_runner=runner,
-        report_repo=report_repo,
+        report_repo=seed.report_repo,
         grounding_checker=grounding,
         clock=clock,
     )
     return RedTeamRuntime(
-        submit_tool=submit_tool,
+        submit_tool=seed.submit_tool,
         gate=gate,
-        report_repo=report_repo,
+        report_repo=seed.report_repo,
         runner=runner,
     )

@@ -113,7 +113,10 @@ class RedTeamGate(Protocol):
     ) -> RedTeamGateResult:
         """Evaluate ``review_input`` and return the gate's verdict.
 
-        Raises:
-            RedTeamDispatchError: The agent runner could not be invoked.
+        Concrete implementations apply a fail-OPEN policy: an agent
+        dispatch failure or grounding-checker exception is converted
+        to a synthetic INFO-severity finding, never propagated. Only
+        :class:`asyncio.CancelledError` (and unexpected programming
+        errors) propagate to the caller.
         """
         ...

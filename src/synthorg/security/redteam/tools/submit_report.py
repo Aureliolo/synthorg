@@ -4,9 +4,13 @@ The single side effect of running the red-team agent: the agent files
 exactly one :class:`RedTeamReport` via this tool, which writes it to
 the gate's :class:`RedTeamReportRepository` keyed by ``execution_id``.
 
-Instances are per-evaluation: the gate constructs one tool bound to
-``(report_repo, execution_id, task_id)`` and registers it on the
-agent's tool registry for the duration of the run.
+The tool is constructed ONCE at boot in
+:func:`synthorg.security.redteam.builder.build_red_team_runtime` with
+only ``report_repo`` bound to it, then registered on the agent engine's
+shared tool registry. ``execution_id`` and ``task_id`` flow through
+the tool arguments payload (echoed by the agent from the system
+prompt's brief block), so the same tool instance serves every red-team
+evaluation without per-evaluation construction overhead.
 """
 
 from typing import Any, ClassVar, Final
@@ -18,6 +22,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_FINDING_FILED,
     RED_TEAM_REPORT_RECEIVED,
+    RED_TEAM_REPORT_VALIDATION_FAILED,
 )
 from synthorg.security.redteam.errors import (
     RedTeamReportAlreadyExistsError,
@@ -89,6 +94,12 @@ class SubmitRedTeamReportTool(BaseTool):
         try:
             args = SubmitRedTeamReportArgs.model_validate(arguments)
         except ValidationError as exc:
+            logger.warning(
+                RED_TEAM_REPORT_VALIDATION_FAILED,
+                provided_keys=sorted(arguments.keys()),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             msg = "submit_red_team_report payload failed validation"
             raise RedTeamReportValidationError(msg) from exc
 

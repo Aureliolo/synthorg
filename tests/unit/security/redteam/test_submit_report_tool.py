@@ -109,6 +109,28 @@ class TestToolExecute:
             )
 
     @pytest.mark.asyncio
+    async def test_high_severity_finding_without_evidence_rejected(
+        self,
+        tool: SubmitRedTeamReportTool,
+    ) -> None:
+        """HIGH-severity findings without evidence fail model validation."""
+        high_no_evidence = {
+            "attack_surface": "security",
+            "severity": "high",
+            "description": "Missing input validation",
+            "evidence": (),
+        }
+        with pytest.raises(RedTeamReportValidationError):
+            await tool.execute(
+                arguments={
+                    "execution_id": "exec-1",
+                    "task_id": "task-1",
+                    "findings": (high_no_evidence,),
+                    "summary": "HIGH defect without evidence.",
+                },
+            )
+
+    @pytest.mark.asyncio
     async def test_unknown_field_raises_validation_error(
         self,
         tool: SubmitRedTeamReportTool,

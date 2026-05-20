@@ -8,9 +8,9 @@ can layer source-resolution data on top without breaking existing
 callers.
 """
 
-from typing import Final, Literal
+from typing import Final, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -59,3 +59,26 @@ class UngroundedClaim(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     source: Literal["heuristic", "knowledge_substrate"]
     expected_source_kind: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _check_heuristic_confidence_bounds(self) -> Self:
+        """Heuristic-source claims are bounded by floor / ceiling.
+
+        Substrate-backed claims may use the full ``[0.0, 1.0]`` range
+        because they are authoritative; heuristic claims are stub-grade
+        and the gate's routing layer caps their severity, but enforcing
+        the bound at construction prevents a buggy heuristic from
+        accidentally smuggling a high-confidence flag past the cap.
+        """
+        if self.source == "heuristic" and not (
+            HEURISTIC_CONFIDENCE_FLOOR
+            <= self.confidence
+            <= HEURISTIC_CONFIDENCE_CEILING
+        ):
+            msg = (
+                f"Heuristic-source claim confidence must be in "
+                f"[{HEURISTIC_CONFIDENCE_FLOOR}, {HEURISTIC_CONFIDENCE_CEILING}]; "
+                f"got {self.confidence}."
+            )
+            raise ValueError(msg)
+        return self
