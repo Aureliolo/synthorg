@@ -22,12 +22,12 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 from synthorg.client.factory import UnknownStrategyError
 from synthorg.engine.pipeline.entry.intake_adapter import IntakeEntryAdapter
 from synthorg.engine.pipeline.entry.objective_adapter import ObjectiveEntryAdapter
-from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
 from synthorg.engine.pipeline.entry.task_board_adapter import TaskBoardEntryAdapter
 from synthorg.engine.pipeline.models import WorkSource
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
+    from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
     from synthorg.engine.pipeline.protocol import WorkPipeline
 
 
