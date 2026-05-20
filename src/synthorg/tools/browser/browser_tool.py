@@ -98,9 +98,9 @@ class BrowserTool(BaseTool):
             sandbox: Pluggable backend that runs the in-container
                 executor (typically a DockerSandbox with the
                 Playwright image).
-            workspace: Persistent project workspace (#1974). Used to
-                stage the executor + axe-core bundle and to read /
-                write screenshot baselines.
+            workspace: Persistent project workspace. Used to stage
+                the executor + axe-core bundle and to read / write
+                screenshot baselines.
             screenshot_differ: Optional override; defaults to
                 :class:`SSIMDiffer`.
             owner_id: Sandbox lifecycle owner id (per-task scope).

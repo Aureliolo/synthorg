@@ -50,14 +50,14 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
-_DEFAULT_VIEWPORT_WIDTH = 1280
-_DEFAULT_VIEWPORT_HEIGHT = 720
-_DEFAULT_NAV_TIMEOUT_SECONDS = 60.0
-_DEFAULT_SCREENSHOT_TIMEOUT_SECONDS = 30.0
-_DEFAULT_A11Y_TIMEOUT_SECONDS = 45.0
-_MS_PER_SECOND = 1000
+_DEFAULT_VIEWPORT_WIDTH: Final[int] = 1280
+_DEFAULT_VIEWPORT_HEIGHT: Final[int] = 720
+_DEFAULT_NAV_TIMEOUT_SECONDS: Final[float] = 60.0
+_DEFAULT_SCREENSHOT_TIMEOUT_SECONDS: Final[float] = 30.0
+_DEFAULT_A11Y_TIMEOUT_SECONDS: Final[float] = 45.0
+_MS_PER_SECOND: Final[int] = 1000
 
 _A11Y_RANK = {
     "minor": 0,
