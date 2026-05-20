@@ -1,0 +1,179 @@
+"""Tests for ``evals.loader.briefs``: YAML loader, dedup, validation."""
+
+from pathlib import Path
+
+import pytest
+import yaml
+from pydantic import ValidationError
+
+from evals.errors import (
+    BriefSuiteDuplicateIdError,
+    BriefSuiteEmptyError,
+    BriefSuitePathTraversalError,
+)
+from evals.loader.briefs import load_brief_suite
+from evals.models.brief import BriefKind
+from tests.evals_spine.conftest import BriefYamlWriter
+
+
+@pytest.mark.unit
+def test_loads_one_executable_brief(
+    tmp_path: Path, write_brief_yaml: BriefYamlWriter
+) -> None:
+    write_brief_yaml("BRIEF_001.yaml", "executable")
+    briefs = load_brief_suite(tmp_path)
+    assert len(briefs) == 1
+    assert briefs[0].kind is BriefKind.EXECUTABLE
+    assert briefs[0].checks is not None
+    assert briefs[0].rubric is None
+
+
+@pytest.mark.unit
+def test_loads_one_judged_brief(
+    tmp_path: Path, write_brief_yaml: BriefYamlWriter
+) -> None:
+    write_brief_yaml("BRIEF_002.yaml", "judged", brief_id="BRIEF_002")
+    briefs = load_brief_suite(tmp_path)
+    assert briefs[0].kind is BriefKind.JUDGED
+    assert briefs[0].rubric is not None
+    assert briefs[0].checks is None
+
+
+@pytest.mark.unit
+def test_briefs_are_sorted_by_id(
+    tmp_path: Path, write_brief_yaml: BriefYamlWriter
+) -> None:
+    write_brief_yaml("zzz.yaml", "executable", brief_id="BRIEF_ZZZ")
+    write_brief_yaml("aaa.yaml", "executable", brief_id="BRIEF_AAA")
+    briefs = load_brief_suite(tmp_path)
+    assert [b.brief_id for b in briefs] == ["BRIEF_AAA", "BRIEF_ZZZ"]
+
+
+@pytest.mark.unit
+def test_underscore_files_are_skipped(
+    tmp_path: Path,
+    write_brief_yaml: BriefYamlWriter,
+) -> None:
+    write_brief_yaml("_draft.yaml", "executable", brief_id="BRIEF_DRAFT")
+    write_brief_yaml("BRIEF_001.yaml", "executable")
+    briefs = load_brief_suite(tmp_path)
+    assert [b.brief_id for b in briefs] == ["BRIEF_TEST_001"]
+
+
+@pytest.mark.unit
+def test_empty_directory_raises(tmp_path: Path) -> None:
+    with pytest.raises(BriefSuiteEmptyError):
+        load_brief_suite(tmp_path)
+
+
+@pytest.mark.unit
+def test_duplicate_brief_id_raises(
+    tmp_path: Path, write_brief_yaml: BriefYamlWriter
+) -> None:
+    write_brief_yaml("a.yaml", "executable", brief_id="DUPE")
+    write_brief_yaml("b.yaml", "executable", brief_id="DUPE")
+    with pytest.raises(BriefSuiteDuplicateIdError):
+        load_brief_suite(tmp_path)
+
+
+@pytest.mark.unit
+def test_kind_mismatch_executable_with_rubric_raises(
+    tmp_path: Path,
+    write_brief_yaml: BriefYamlWriter,
+) -> None:
+    write_brief_yaml(
+        "bad.yaml",
+        "executable",
+        rubric={
+            "rubric_id": "x",
+            "dimensions": [
+                {"name": "a", "weight": 1.0, "grade_type": "binary"},
+            ],
+            "reference_answer_path": "x.md",
+        },
+        checks=None,
+    )
+    with pytest.raises(ValidationError):
+        load_brief_suite(tmp_path)
+
+
+@pytest.mark.unit
+def test_rubric_weights_must_sum_to_one(
+    tmp_path: Path,
+    write_brief_yaml: BriefYamlWriter,
+) -> None:
+    write_brief_yaml(
+        "judged.yaml",
+        "judged",
+        rubric={
+            "rubric_id": "x",
+            "dimensions": [
+                {"name": "a", "weight": 0.4, "grade_type": "ternary"},
+                {"name": "b", "weight": 0.4, "grade_type": "ternary"},
+            ],
+            "reference_answer_path": "x.md",
+        },
+    )
+    with pytest.raises(ValidationError):
+        load_brief_suite(tmp_path)
+
+
+@pytest.mark.unit
+def test_non_dict_top_level_yaml_raises_type_error(tmp_path: Path) -> None:
+    """A YAML file whose top level is a list (or any non-mapping) is rejected
+    with TypeError, not the semantically wrong BriefSuiteEmptyError."""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(yaml.safe_dump(["not", "a", "mapping"]), encoding="utf-8")
+    with pytest.raises(TypeError, match="must be a mapping"):
+        load_brief_suite(tmp_path)
+
+
+@pytest.mark.unit
+def test_directory_entry_with_yaml_suffix_rejected(tmp_path: Path) -> None:
+    """A directory named ``foo.yaml`` is matched by glob but is not a regular
+    file; the loader refuses it instead of attempting to read it as YAML."""
+    (tmp_path / "fake.yaml").mkdir()
+    with pytest.raises(BriefSuitePathTraversalError, match="not a regular file"):
+        load_brief_suite(tmp_path)
+
+
+@pytest.mark.unit
+def test_symlink_escaping_briefs_dir_rejected(
+    tmp_path: Path,
+    write_brief_yaml: BriefYamlWriter,
+) -> None:
+    """A YAML symlink whose target resolves outside *briefs_dir* must be
+    refused so that path-traversal via the file-system boundary is blocked."""
+    outside = tmp_path.parent / "outside.yaml"
+    write_brief_yaml("real.yaml", "executable", brief_id="BRIEF_REAL")
+    outside.write_text("{}", encoding="utf-8")
+    link = tmp_path / "escape.yaml"
+    try:
+        link.symlink_to(outside)
+    except OSError, NotImplementedError:
+        pytest.skip("symlink creation requires elevated privileges on this OS")
+    try:
+        with pytest.raises(BriefSuitePathTraversalError, match="escapes"):
+            load_brief_suite(tmp_path)
+    finally:
+        link.unlink(missing_ok=True)
+        outside.unlink(missing_ok=True)
+
+
+@pytest.mark.unit
+def test_shell_metacharacter_in_cmd_rejected(
+    tmp_path: Path,
+    write_brief_yaml: BriefYamlWriter,
+) -> None:
+    """HiddenCheckSpec rejects shell metacharacters in cmd[0] at load time."""
+    write_brief_yaml(
+        "bad.yaml",
+        "executable",
+        checks={
+            "hidden_tests": [
+                {"cmd": ["echo ok; rm -rf /"], "timeout_seconds": 5},
+            ],
+        },
+    )
+    with pytest.raises(ValidationError, match="shell metacharacter"):
+        load_brief_suite(tmp_path)
