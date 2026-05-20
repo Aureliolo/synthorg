@@ -437,6 +437,7 @@ class DocsService:
         spec = DocsFilterSpec(project_id=project_id, doc_type=doc_type)
         existing_slugs: set[NotBlankStr] = set()
         offset = 0
+        # lint-allow: long-running-loop-kill-switch -- bounded pagination drain
         while True:
             page = await self._repo.query(
                 spec, limit=_EXISTING_SLUGS_PAGE_SIZE, offset=offset
