@@ -659,21 +659,51 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
+      - name: Assert ignored advisories remain non-actionable
+        # pip-audit --ignore-vuln suppresses an advisory by ID
+        # unconditionally; if the conditions justifying the suppression
+        # stop holding (markdown downgraded below the patched line,
+        # MIN_SECRET_LENGTH guard removed, ...) the ignore would
+        # silently hide a real regression. These pre-flight assertions
+        # fail the job before pip-audit runs if either condition
+        # changes, so the ignore list cannot rot into a security gap.
+        run: |
+          uv run python - <<'PY'
+          from importlib.metadata import version
+
+          markdown_version = tuple(int(p) for p in version("Markdown").split(".")[:3])
+          assert markdown_version >= (3, 8, 1), (
+              "PYSEC-2026-89 ignore is only safe at Markdown >= 3.8.1; "
+              f"installed Markdown is {version('Markdown')}"
+          )
+
+          from synthorg.core.auth.config import MIN_SECRET_LENGTH
+
+          assert MIN_SECRET_LENGTH >= 32, (
+              "PYSEC-2025-183 ignore relies on MIN_SECRET_LENGTH >= 32 as the "
+              f"compensating control; current value is {MIN_SECRET_LENGTH}"
+          )
+          PY
+
       - name: pip-audit
         # Ignored vulnerabilities (revisit whenever upstream publishes a fix):
         # - GHSA-xqmj-j6mv-4862: litellm 1.83.0 is pinned by project decision;
         #   fix is in 1.83.7 but the pin is load-bearing for this repo.
         # - CVE-2026-3219: pip 26.0.1 vulnerability with no upstream fix
         #   version available yet. pip is a transitive of uv in this repo.
-        # - PYSEC-2026-89 (CVE-2025-69534): markdown 3.10.2 (latest)
-        #   HTMLParser AssertionError on malformed input. markdown is a
-        #   mkdocs transitive dep used only at docs-build time on our own
-        #   trusted documentation; the framework runtime never processes
-        #   attacker-controlled Markdown, so the exposure surface is nil.
-        # - PYSEC-2025-183 (CVE-2025-45768): pyjwt 2.12.1 (latest) weak
-        #   encryption advisory is DISPUTED by the supplier because the
-        #   key length is chosen by the caller; we provide strong keys
-        #   at every JWT site, so the advisory is inapplicable here.
+        # - PYSEC-2026-89: markdown DoS via malformed HTML; affected versions
+        #   are <= 3.8 with fix in 3.8.1 per the OSV record. The project is on
+        #   markdown 3.10.2, which is past the patched line; pip-audit is
+        #   misreporting the version range. The pre-flight assertion above
+        #   keeps this ignore safe by failing if markdown is ever downgraded
+        #   below 3.8.1.
+        # - PYSEC-2025-183: pyjwt weak-encryption advisory disputed by the
+        #   maintainer (key length is the application's responsibility). This
+        #   project enforces MIN_SECRET_LENGTH via
+        #   src/synthorg/core/auth/config.py::_require_valid_secret, which
+        #   addresses the disputed concern. The pre-flight assertion above
+        #   keeps this ignore safe by failing if MIN_SECRET_LENGTH drops
+        #   below 32 (the project's enforced minimum).
         run: |
           uv run pip-audit \
             --ignore-vuln GHSA-xqmj-j6mv-4862 \

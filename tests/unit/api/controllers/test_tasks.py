@@ -1,10 +1,13 @@
 """Tests for task controller."""
 
+import uuid
 from typing import Any
 
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.api.state import AppState
+from synthorg.core.error_taxonomy import ErrorCode
 from tests.unit.api.conftest import FakePersistenceBackend, make_auth_headers, make_task
 
 
@@ -64,7 +67,42 @@ class TestTaskController:
         assert resp.status_code == 404
         assert resp.json()["success"] is False
 
+    def test_create_task_raises_agent_runtime_not_configured_without_adapter(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """No adapter wired -> ``AgentRuntimeNotConfiguredError`` (409).
+
+        Removes the seam temporarily so the empty-company path is
+        exercised by the same controller stack as the success case.
+        The shared-app fixture saves + restores the adapter slot for
+        us, so the swap is local to this test.
+        """
+        app_state: AppState = test_client.app.state.app_state
+        app_state._task_board_entry_adapter = None
+        resp = test_client.post(
+            "/api/v1/tasks",
+            json={
+                "title": "Filed against an empty company",
+                "description": "Nothing should run.",
+                "type": "development",
+                "project": "proj-1",
+                "created_by": "alice",
+            },
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 409, resp.text
+        detail = resp.json()["error_detail"]
+        assert detail["error_code"] == ErrorCode.AGENT_RUNTIME_NOT_CONFIGURED.value
+
     def test_create_task(self, test_client: TestClient[Any]) -> None:
+        """``POST /tasks`` now hands the filing to the board entry adapter.
+
+        The spine creates the task in its background intake phase; the
+        HTTP response is a 202 + submission envelope carrying the
+        correlation id the board UI uses to match the eventual
+        ``task.created`` WS event.
+        """
         resp = test_client.post(
             "/api/v1/tasks",
             json={
@@ -76,10 +114,19 @@ class TestTaskController:
             },
             headers=make_auth_headers("ceo"),
         )
-        assert resp.status_code == 201
+        assert resp.status_code == 202
         body = resp.json()
         assert body["success"] is True
-        assert body["data"]["title"] == "New task"
+        data = body["data"]
+        assert data["title"] == "New task"
+        assert data["project"] == "proj-1"
+        assert data["status"] == "submitted"
+        # correlation_id is the UUID4 stamped onto the WorkItem by
+        # ``TaskBoardFiling``'s default factory; validate the format so
+        # a regression that swaps it for a random string surfaces here.
+        assert isinstance(data["correlation_id"], str)
+        parsed = uuid.UUID(data["correlation_id"])
+        assert parsed.version == 4
 
     def test_delete_task(
         self,

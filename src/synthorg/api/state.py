@@ -64,6 +64,9 @@ from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter  # noqa: TC001
+from synthorg.engine.pipeline.entry.task_board_adapter import (  # noqa: TC001
+    TaskBoardEntryAdapter,
+)
 from synthorg.engine.pipeline.protocol import WorkPipeline  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService  # noqa: TC001
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
@@ -299,6 +302,7 @@ class AppState(AppStateServicesMixin):
         "_signals_service",
         "_simulation_facade_service",
         "_subworkflow_service",
+        "_task_board_entry_adapter",
         "_task_engine",
         "_team_service",
         "_telemetry_collector",
@@ -347,6 +351,7 @@ class AppState(AppStateServicesMixin):
         work_pipeline: WorkPipeline | None = None,
         intake_entry_adapter: WorkEntryAdapter[Any] | None = None,
         objective_entry_adapter: WorkEntryAdapter[Any] | None = None,
+        task_board_entry_adapter: TaskBoardEntryAdapter | None = None,
         agent_registry: AgentRegistryService | None = None,
         performance_tracker: PerformanceTracker | None = None,
         meeting_orchestrator: MeetingOrchestrator | None = None,
@@ -407,6 +412,7 @@ class AppState(AppStateServicesMixin):
         self._intake_entry_adapter = intake_entry_adapter
         self._objective_entry_adapter = objective_entry_adapter
         self._objective_background_tasks: set[asyncio.Task[None]] = set()
+        self._task_board_entry_adapter = task_board_entry_adapter
         self._agent_registry = agent_registry
         self._performance_tracker = performance_tracker
         self._trust_service = trust_service
@@ -1634,6 +1640,107 @@ class AppState(AppStateServicesMixin):
             logger.info(
                 API_APP_STARTUP,
                 service="objective_entry_adapter",
+                transition=transition,
+            )
+
+    @property
+    def task_board_entry_adapter(self) -> TaskBoardEntryAdapter:
+        """Return the task-board work-entry adapter or raise 503."""
+        return self._require_service(
+            self._task_board_entry_adapter,
+            "task_board_entry_adapter",
+        )
+
+    @property
+    def has_task_board_entry_adapter(self) -> bool:
+        """Check whether the task-board work-entry adapter is configured.
+
+        Unsynchronised by design, identical to
+        :meth:`has_intake_entry_adapter`: a single reference read is
+        atomic under CPython and ``swap_task_board_entry_adapter`` only
+        reassigns one already-set adapter for another. The only
+        ``None -> set`` flip happens once at boot before HTTP traffic.
+        """
+        return self._task_board_entry_adapter is not None
+
+    def set_task_board_entry_adapter(
+        self,
+        task_board_entry_adapter: TaskBoardEntryAdapter,
+    ) -> None:
+        """Attach the task-board work-entry adapter (once-only, boot only).
+
+        Once-only: a second set raises, matching the
+        ``intake_entry_adapter`` seam. The boot runtime-services hook
+        uses :meth:`set_task_board_entry_adapter_if_absent` so an
+        explicitly injected adapter wins; hot-reload after setup uses
+        :meth:`swap_task_board_entry_adapter`.
+        """
+        self._set_once(
+            "_task_board_entry_adapter",
+            task_board_entry_adapter,
+            "Task-board entry adapter",
+        )
+
+    def set_task_board_entry_adapter_if_absent(
+        self,
+        task_board_entry_adapter: TaskBoardEntryAdapter,
+    ) -> bool:
+        """Attach the task-board adapter only if none is configured (atomic).
+
+        The boot runtime-services hook calls this unconditionally once
+        the work pipeline is online so the real ``POST /tasks`` entry
+        path comes up with it. An explicitly injected adapter
+        (constructor ``task_board_entry_adapter=``) is already set and
+        wins: this is a logged no-op then. The check-and-set is atomic
+        under ``_lazy_service_lock`` so the boot install cannot race a
+        concurrent ``swap_task_board_entry_adapter`` or property read.
+
+        Returns:
+            ``True`` if this call installed the adapter, ``False`` if
+            one was already configured (injected) and kept.
+        """
+        with self._lazy_service_lock:
+            if self._task_board_entry_adapter is not None:
+                logger.info(
+                    API_APP_STARTUP,
+                    service="task_board_entry_adapter",
+                    transition="skipped_injected",
+                )
+                return False
+            self._task_board_entry_adapter = task_board_entry_adapter
+            logger.info(
+                API_APP_STARTUP,
+                service="task_board_entry_adapter",
+                transition="attached",
+            )
+            return True
+
+    def swap_task_board_entry_adapter(
+        self,
+        task_board_entry_adapter: TaskBoardEntryAdapter,
+    ) -> None:
+        """Replace the task-board work-entry adapter (hot-reload).
+
+        Distinct from :meth:`set_task_board_entry_adapter`, which is
+        once-only: this replaces an already-wired adapter so a provider
+        configured against an empty-company start brings the real board
+        entry path online without a restart (``post_setup_reinit``).
+        Holds ``_lazy_service_lock`` so the write is synchronised
+        against concurrent property reads, mirroring
+        :meth:`swap_intake_entry_adapter`.
+        """
+        with self._lazy_service_lock:
+            previous = self._task_board_entry_adapter
+            if previous is task_board_entry_adapter:
+                transition = "noop"
+            elif previous is None:
+                transition = "attached"
+            else:
+                transition = "replaced"
+            self._task_board_entry_adapter = task_board_entry_adapter
+            logger.info(
+                API_APP_STARTUP,
+                service="task_board_entry_adapter",
                 transition=transition,
             )
 

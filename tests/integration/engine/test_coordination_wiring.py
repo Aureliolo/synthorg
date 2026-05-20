@@ -44,6 +44,7 @@ from tests.unit.api.conftest import (
     FakeMessageBus,
     FakePersistenceBackend,
     make_auth_headers,
+    make_task,
 )
 from tests.unit.engine.task_engine_helpers import (
     FakeMessageBus as EngineMessageBus,
@@ -306,19 +307,20 @@ class TestCoordinationWiring:
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
 
-            # Create a task
-            resp = client.post(
-                "/api/v1/tasks",
-                json={
-                    "title": "Integration test task",
-                    "description": "A task for coordination testing",
-                    "type": "development",
-                    "project": "test-project",
-                    "created_by": "api",
-                },
+            # ``POST /tasks`` is a 202 board handoff (no task id in the
+            # response); task materialisation runs asynchronously in the
+            # pipeline spine. Seed the task directly into the engine's
+            # in-memory repository so the coordinate call below has a
+            # concrete task id to operate on (same pattern as
+            # ``tests/unit/api/controllers/test_coordination.py::_insert_task``).
+            seeded = make_task(
+                task_id="integration-coordination-task",
+                title="Integration test task",
+                project="test-project",
+                created_by="api",
             )
-            assert resp.status_code == 201, resp.json()
-            task_id = resp.json()["data"]["id"]
+            engine_persistence.tasks._tasks[seeded.id] = seeded
+            task_id = seeded.id
 
             # Coordinate
             resp = client.post(

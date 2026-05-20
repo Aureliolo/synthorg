@@ -6,7 +6,7 @@ models because they omit server-generated fields).
 """
 
 from datetime import datetime
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -483,6 +483,37 @@ class ExecuteTaskRequest(BaseModel):
     )
 
 
+class TaskBoardSubmissionResponse(BaseModel):
+    """Acknowledgement envelope for ``POST /tasks`` (HTTP 202 Accepted).
+
+    The board hands the filing to the work-entry adapter; the adapter
+    drives the pipeline spine in a detached background coroutine. The
+    spine creates the task during its intake phase, so this response
+    carries the correlation id rather than a task id: the board UI
+    correlates the eventual ``task.created`` WS event by this id.
+
+    Attributes:
+        correlation_id: End-to-end trace id stamped onto the work item.
+        title: Title submitted by the user (echoed for UX confirmation).
+        project: Project the task was filed into.
+        status: Always ``"submitted"`` at this point; included so the
+            UI can switch off a single enum field rather than inferring
+            from HTTP status.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    correlation_id: NotBlankStr = Field(
+        description="End-to-end trace id stamped onto the work item",
+    )
+    title: NotBlankStr = Field(description="Title submitted by the user")
+    project: NotBlankStr = Field(description="Project the task was filed into")
+    status: Literal["submitted"] = Field(
+        default="submitted",
+        description="Always 'submitted' for the 202 ack",
+    )
+
+
 class CancelTaskRequest(BaseModel):
     """Payload for cancelling a task.
 
@@ -758,6 +789,7 @@ __all__ = [
     "RegisterExperimentVariantRequest",
     "RejectRequest",
     "RollbackAgentIdentityRequest",
+    "TaskBoardSubmissionResponse",
     "TransitionTaskRequest",
     "UpdateTaskRequest",
 ]

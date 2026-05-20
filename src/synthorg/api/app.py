@@ -94,6 +94,9 @@ from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter  # noqa: TC001
+from synthorg.engine.pipeline.entry.task_board_adapter import (  # noqa: TC001
+    TaskBoardEntryAdapter,
+)
 from synthorg.engine.pipeline.protocol import WorkPipeline  # noqa: TC001
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
@@ -259,6 +262,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     coordinator: MultiAgentCoordinator | None = None,
     work_pipeline: WorkPipeline | None = None,
     intake_entry_adapter: WorkEntryAdapter[Any] | None = None,
+    task_board_entry_adapter: TaskBoardEntryAdapter | None = None,
     agent_registry: AgentRegistryService | None = None,
     meeting_orchestrator: MeetingOrchestrator | None = None,
     meeting_scheduler: MeetingScheduler | None = None,
@@ -297,6 +301,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             the boot-autowired one).
         intake_entry_adapter: Real work-entry adapter (injected double
             wins over the boot-autowired one).
+        task_board_entry_adapter: Real task-board work-entry adapter
+            (injected double wins over the boot-autowired one).
         agent_registry: Agent registry service.
         meeting_orchestrator: Meeting orchestrator.
         meeting_scheduler: Meeting scheduler.
@@ -558,6 +564,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         coordinator=coordinator,
         work_pipeline=work_pipeline,
         intake_entry_adapter=intake_entry_adapter,
+        task_board_entry_adapter=task_board_entry_adapter,
         agent_registry=agent_registry,
         meeting_orchestrator=meeting_orchestrator,
         meeting_scheduler=meeting_scheduler,
@@ -1120,17 +1127,21 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # one is a logged no-op then.
         if services.work_pipeline is not None:
             app_state.set_work_pipeline_if_absent(services.work_pipeline)
-        # Bring the real client-request and goal/objective work-entry
-        # paths online: ensure the configured default projects exist
-        # and attach the entry adapters. No-op for an empty company
-        # (no pipeline).
+        # Bring the real client-request, goal/objective, and
+        # task-board work-entry paths online: ensure the configured
+        # default projects exist and attach the entry adapters. No-op
+        # for an empty company (no pipeline). The task-board adapter
+        # follows the same gate but skips the project bootstrap (board
+        # filings carry their own project).
         from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
             wire_real_intake_entry,
             wire_real_objective_entry,
+            wire_real_task_board_entry,
         )
 
         await wire_real_intake_entry(app_state)
         await wire_real_objective_entry(app_state)
+        await wire_real_task_board_entry(app_state)
         _runtime_services_installed = True
 
     startup = [*startup, _install_runtime_services]

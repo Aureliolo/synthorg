@@ -66,18 +66,13 @@ export const tasksHandlers = [
       })
     }
     return HttpResponse.json(
-      successFor<typeof createTask>(
-        buildTask({
-          id: `task-${body.title.toLowerCase().replace(/\s+/g, '-')}`,
-          title: body.title,
-          description: body.description ?? '',
-          type: body.type,
-          priority: body.priority ?? 'medium',
-          project: body.project,
-          created_by: body.created_by,
-        }),
-      ),
-      { status: 201 },
+      successFor<typeof createTask>({
+        correlation_id: crypto.randomUUID(),
+        title: body.title,
+        project: body.project,
+        status: 'submitted',
+      }),
+      { status: 202 },
     )
   }),
   http.patch('/api/v1/tasks/:id', async ({ params, request }) => {

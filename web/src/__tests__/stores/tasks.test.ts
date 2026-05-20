@@ -181,13 +181,24 @@ describe('useTasksStore', () => {
   })
 
   describe('createTask', () => {
-    it('prepends task to list and increments total', async () => {
+    it('returns submission envelope and leaves task list untouched', async () => {
+      // POST /tasks is now a 202 board-filing handoff: the spine
+      // creates the task in the background and the board UI inserts
+      // it on the matching ``task.created`` WS event. The store
+      // therefore MUST NOT optimistically prepend a stub task; it
+      // returns the submission envelope and waits for the WS event.
       useTasksStore.setState({ tasks: [mockTask2], total: 1 })
       let capturedBody: unknown = null
+      const submission = {
+        correlation_id: 'corr-test-1',
+        title: 'Test task',
+        project: 'test-project',
+        status: 'submitted',
+      }
       server.use(
         http.post('/api/v1/tasks', async ({ request }) => {
           capturedBody = await request.json()
-          return HttpResponse.json(apiSuccess(mockTask))
+          return HttpResponse.json(apiSuccess(submission), { status: 202 })
         }),
       )
       const payload = {
@@ -199,11 +210,12 @@ describe('useTasksStore', () => {
         budget_limit: 0,
       }
       const result = await useTasksStore.getState().createTask(payload)
-      expect(result).toEqual(mockTask)
+      expect(result).toEqual(submission)
       expect(capturedBody).toEqual(payload)
-      expect(useTasksStore.getState().tasks).toHaveLength(2)
-      expect(useTasksStore.getState().tasks[0]!.id).toBe('task-1')
-      expect(useTasksStore.getState().total).toBe(2)
+      // No optimistic insertion; the WS event handler owns inserts.
+      expect(useTasksStore.getState().tasks).toHaveLength(1)
+      expect(useTasksStore.getState().tasks[0]!.id).toBe(mockTask2.id)
+      expect(useTasksStore.getState().total).toBe(1)
     })
 
     it('returns null sentinel + emits error toast on failure', async () => {
@@ -228,7 +240,7 @@ describe('useTasksStore', () => {
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
-      expect(toasts[0]!.title).toBe('Failed to create task')
+      expect(toasts[0]!.title).toBe('Failed to submit task')
       expect(toasts[0]!.description).toContain('Validation failed')
     })
   })

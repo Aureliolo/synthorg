@@ -22,6 +22,7 @@ import type {
   CancelTaskRequest,
   CreateTaskRequest,
   DashboardTask,
+  TaskBoardSubmissionResponse,
   TaskFilters,
   TransitionTaskRequest,
   UpdateTaskRequest,
@@ -146,7 +147,7 @@ interface TasksState {
   // NOT wrap these in try/catch; check the sentinel and branch on it.
   fetchTasks: (filters?: TaskFilters) => Promise<void>
   fetchTask: (taskId: string) => Promise<void>
-  createTask: (data: CreateTaskRequest) => Promise<DashboardTask | null>
+  createTask: (data: CreateTaskRequest) => Promise<TaskBoardSubmissionResponse | null>
   updateTask: (taskId: string, data: UpdateTaskRequest) => Promise<DashboardTask | null>
   transitionTask: (taskId: string, data: TransitionTaskRequest) => Promise<DashboardTask | null>
   cancelTask: (taskId: string, data: CancelTaskRequest) => Promise<DashboardTask | null>
@@ -486,18 +487,22 @@ export const useTasksStore = create<TasksState>()((set, get) => ({
 
   createTask: async (data) => {
     try {
-      const task = await tasksApi.createTask(data)
-      set((s) => ({ tasks: [task, ...s.tasks], total: s.total + 1 }))
+      const submission = await tasksApi.createTask(data)
+      // The spine creates the task in its background intake phase; the
+      // board UI inserts the real task on the matching ``task.created``
+      // WS event. The 202 envelope carries only correlation metadata,
+      // not a ``Task``, so we do NOT mutate ``tasks``/``total`` here.
       useToastStore.getState().add({
         variant: 'success',
-        title: `Task ${task.title} created`,
+        title: `Task ${submission.title} submitted`,
+        description: 'The work pipeline is starting; the card will appear shortly.',
       })
-      return task
+      return submission
     } catch (err) {
-      log.error('Create task failed:', sanitizeForLog(err))
+      log.error('Submit task failed:', sanitizeForLog(err))
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Failed to create task',
+        title: 'Failed to submit task',
         description: getErrorMessage(err),
       })
       return null
