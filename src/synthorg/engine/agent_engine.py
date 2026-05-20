@@ -498,7 +498,7 @@ class AgentEngine(
             except ProjectNotFoundError, ProjectAgentNotMemberError:
                 raise
             except BudgetExhaustedError as exc:
-                return self._handle_budget_error(
+                return await self._handle_budget_error(
                     exc=exc,
                     identity=identity,
                     task=task,

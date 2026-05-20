@@ -161,7 +161,7 @@ class AgentEngineErrorsMixin:
         )
         return new_provider, new_identity
 
-    def _handle_budget_error(  # noqa: PLR0913
+    async def _handle_budget_error(  # noqa: PLR0913
         self,
         *,
         exc: BudgetExhaustedError,
@@ -177,8 +177,13 @@ class AgentEngineErrorsMixin:
 
         Hard-ceiling crossings route to a parked termination when the
         approval gate is wired so the operator can raise the ceiling
-        and resume; the existing BUDGET_EXHAUSTED path covers all
-        other subclasses (monthly / daily / project / quota).
+        and resume; the engine awaits ``ApprovalGate.park_context()``
+        to persist the parked state. A persistence failure degrades
+        gracefully to BUDGET_EXHAUSTED (the existing controlled-stop
+        path) so a missing parked_context_repo never escalates to
+        engine crash. All other ``BudgetExhaustedError`` subclasses
+        (monthly / daily / project / quota) keep the original
+        controlled-stop path.
         """
         logger.warning(
             EXECUTION_ENGINE_BUDGET_STOPPED,
@@ -189,11 +194,21 @@ class AgentEngineErrorsMixin:
         )
         is_ceiling = isinstance(exc, RunHardCeilingExceededError)
         has_gate = getattr(self, "_approval_gate", None) is not None
+        parked_ok = False
+        if isinstance(exc, RunHardCeilingExceededError) and has_gate:
+            parked_ok = await self._park_hard_ceiling(
+                exc=exc,
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                ctx=ctx,
+            )
         try:
             error_ctx = ctx or AgentContext.from_identity(identity, task=task)
             termination = (
                 TerminationReason.PARKED
-                if is_ceiling and has_gate
+                if is_ceiling and has_gate and parked_ok
                 else TerminationReason.BUDGET_EXHAUSTED
             )
             budget_result = ExecutionResult(
@@ -238,6 +253,71 @@ class AgentEngineErrorsMixin:
                 f"{safe_error_description(build_exc)}",
             )
             raise exc from None
+
+    async def _park_hard_ceiling(  # noqa: PLR0913
+        self,
+        *,
+        exc: RunHardCeilingExceededError,
+        identity: AgentIdentity,
+        task: Task,
+        agent_id: str,
+        task_id: str,
+        ctx: AgentContext | None,
+    ) -> bool:
+        """Persist a parked context for a hard-ceiling crossing.
+
+        Returns ``True`` when ``ApprovalGate.park_context()`` succeeds.
+        On failure (no parked-context repo, serialization error,
+        persistence error) returns ``False`` so the caller degrades
+        to the BUDGET_EXHAUSTED controlled-stop path. The failure is
+        logged but never re-raised: a ceiling halt must not crash the
+        engine even if the persistence layer is in a bad state.
+        """
+        from synthorg.approval.models import (  # noqa: PLC0415
+            EscalationInfo,
+        )
+        from synthorg.core.enums import ApprovalRiskLevel  # noqa: PLC0415
+
+        gate: Any = getattr(self, "_approval_gate", None)
+        if gate is None:
+            return False
+        try:
+            forecast_id_str = (
+                str(exc.forecast_id) if exc.forecast_id is not None else "no-forecast"
+            )
+            reason = (
+                f"Run hard ceiling exceeded: accumulated"
+                f" {exc.accumulated_cost:.4f} {exc.currency}"
+                f" >= ceiling {exc.ceiling_amount:.4f} {exc.currency}"
+            )
+            escalation = EscalationInfo(
+                approval_id=f"hard-ceiling-{task_id}-{forecast_id_str}",
+                tool_call_id=f"budget-checker-{task_id}",
+                tool_name="budget_checker",
+                action_type="budget:hard_ceiling_exceeded",
+                risk_level=ApprovalRiskLevel.HIGH,
+                reason=reason,
+            )
+            park_ctx = ctx or AgentContext.from_identity(identity, task=task)
+            await gate.park_context(
+                escalation=escalation,
+                context=park_ctx,
+                agent_id=agent_id,
+                task_id=task_id,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as park_exc:
+            logger.warning(
+                EXECUTION_ENGINE_BUDGET_STOPPED,
+                agent_id=agent_id,
+                task_id=task_id,
+                note="park_context failed; falling back to BUDGET_EXHAUSTED",
+                error_type=type(park_exc).__name__,
+                error=safe_error_description(park_exc),
+            )
+            return False
+        return True
 
     async def _handle_fatal_error(  # noqa: PLR0913
         self,
