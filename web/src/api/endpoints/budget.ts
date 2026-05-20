@@ -6,7 +6,14 @@ import type {
   DailySummary,
   PeriodSummary,
 } from '../types/budget'
-import type { ParetoFrontier } from '../types'
+import type {
+  Forecast,
+  ForecastRequest,
+  ForecastApproveRequest,
+  ForecastRejectRequest,
+  ParetoFrontier,
+  RaiseCeilingRequest,
+} from '../types'
 import type { ErrorDetail } from '../types/errors'
 import type { ApiResponse, PaginationParams } from '../types/http'
 
@@ -69,5 +76,50 @@ export async function getAgentSpending(agentId: string): Promise<AgentSpending> 
 
 export async function getParetoFrontier(): Promise<ParetoFrontier> {
   const response = await apiClient.get<ParetoFrontier>('/budget/pareto')
+  return response.data
+}
+
+export async function createForecast(data: ForecastRequest): Promise<Forecast> {
+  const response = await apiClient.post<Forecast>('/budget/forecast', data)
+  return response.data
+}
+
+export async function getForecast(forecastId: string): Promise<Forecast> {
+  const response = await apiClient.get<Forecast>(
+    `/budget/forecasts/${encodeURIComponent(forecastId)}`,
+  )
+  return response.data
+}
+
+export async function approveForecast(
+  forecastId: string,
+  data: ForecastApproveRequest,
+): Promise<Forecast> {
+  const response = await apiClient.post<Forecast>(
+    `/budget/forecasts/${encodeURIComponent(forecastId)}/approve`,
+    data,
+  )
+  return response.data
+}
+
+export async function rejectForecast(
+  forecastId: string,
+  data: ForecastRejectRequest,
+): Promise<Forecast> {
+  const response = await apiClient.post<Forecast>(
+    `/budget/forecasts/${encodeURIComponent(forecastId)}/reject`,
+    data,
+  )
+  return response.data
+}
+
+export async function raiseCeiling(
+  forecastId: string,
+  data: RaiseCeilingRequest,
+): Promise<Forecast> {
+  const response = await apiClient.post<Forecast>(
+    `/budget/forecasts/${encodeURIComponent(forecastId)}/raise_ceiling`,
+    data,
+  )
   return response.data
 }

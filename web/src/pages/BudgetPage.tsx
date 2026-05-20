@@ -33,12 +33,15 @@ const SpendBurnChart = lazy(() =>
 const CostBreakdownChart = lazy(() =>
   import('./budget/CostBreakdownChart').then((m) => ({ default: m.CostBreakdownChart })),
 )
+import { CostForecastApprovalCard } from '@/components/approvals/CostForecastApprovalCard'
 import { CategoryBreakdown } from './budget/CategoryBreakdown'
 import { AgentSpendingTable } from './budget/AgentSpendingTable'
+import { BudgetForecastDialog } from './budget/BudgetForecastDialog'
 import { CfoActivityFeed } from './budget/CfoActivityFeed'
 import { ParetoSection } from './budget/ParetoSection'
 import { PeriodSelector } from './budget/PeriodSelector'
 import { ThresholdAlerts } from './budget/ThresholdAlerts'
+import { useBudgetForecastStore } from '@/stores/budgetForecast'
 
 const log = createLogger('budget-page')
 
@@ -64,6 +67,11 @@ export default function BudgetPage() {
   const [breakdownDimension, setBreakdownDimension] = useState<BreakdownDimension>('agent')
   const [paretoFrontier, setParetoFrontier] = useState<ParetoFrontier | null>(null)
   const [paretoLoading, setParetoLoading] = useState<boolean>(true)
+  const [forecastDialogOpen, setForecastDialogOpen] = useState(false)
+  const currentForecast = useBudgetForecastStore((s) => s.current)
+  const forecastMutating = useBudgetForecastStore((s) => s.mutating)
+  const approveForecast = useBudgetForecastStore((s) => s.approveForecast)
+  const rejectForecast = useBudgetForecastStore((s) => s.rejectForecast)
 
   useEffect(() => {
     let cancelled = false
@@ -147,6 +155,25 @@ export default function BudgetPage() {
 
       <ThresholdAlerts zone={thresholdZone} budgetConfig={budgetConfig} overview={overview} />
 
+      {currentForecast !== null && currentForecast.decision === 'pending' ? (
+        <CostForecastApprovalCard
+          forecast={currentForecast}
+          mutating={forecastMutating}
+          onApprove={(ceiling) => {
+            void approveForecast(currentForecast.forecast_id, {
+              decided_by: 'operator',
+              ceiling_amount: ceiling,
+            })
+          }}
+          onReject={() => {
+            void rejectForecast(currentForecast.forecast_id, {
+              decided_by: 'operator',
+            })
+          }}
+          onOpenDetail={() => setForecastDialogOpen(true)}
+        />
+      ) : null}
+
       <StaggerGroup className="grid grid-cols-4 gap-grid-gap max-[1279px]:grid-cols-3 max-[1023px]:grid-cols-2">
         {metricCards.map((card) => (
           <StaggerItem key={card.label}>
@@ -208,6 +235,30 @@ export default function BudgetPage() {
       <ErrorBoundary level="section">
         <CfoActivityFeed events={cfoEvents} />
       </ErrorBoundary>
+
+      <BudgetForecastDialog
+        open={forecastDialogOpen && currentForecast !== null}
+        onOpenChange={setForecastDialogOpen}
+        forecast={currentForecast}
+        mutating={forecastMutating}
+        onApprove={(ceiling) => {
+          if (currentForecast !== null) {
+            void approveForecast(currentForecast.forecast_id, {
+              decided_by: 'operator',
+              ceiling_amount: ceiling,
+            })
+            setForecastDialogOpen(false)
+          }
+        }}
+        onReject={() => {
+          if (currentForecast !== null) {
+            void rejectForecast(currentForecast.forecast_id, {
+              decided_by: 'operator',
+            })
+            setForecastDialogOpen(false)
+          }
+        }}
+      />
 
       <ErrorBoundary level="section">
         <VersionHistorySection

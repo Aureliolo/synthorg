@@ -5,8 +5,36 @@ import type {
   getBudgetConfig,
 } from '@/api/endpoints/budget'
 import type { AgentSpending, BudgetConfig } from '@/api/types/budget'
+import type { Forecast, ParetoFrontier } from '@/api/types'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { successFor } from './helpers'
+
+function buildForecast(overrides: Partial<Forecast> = {}): Forecast {
+  return {
+    forecast_id: '00000000-0000-0000-0000-000000000001',
+    brief_hash: 'a'.repeat(64),
+    estimated_cost: 0.85,
+    lower_bound: 0.55,
+    upper_bound: 1.15,
+    currency: DEFAULT_CURRENCY,
+    decision: 'pending',
+    decided_at: null,
+    decided_by: null,
+    ceiling_amount: null,
+    created_at: '2026-05-20T12:00:00Z',
+    updated_at: '2026-05-20T12:00:00Z',
+    ...overrides,
+  }
+}
+
+function buildParetoFrontier(): ParetoFrontier {
+  return {
+    points: [],
+    source: 'stub:calibrated-v1',
+    generated_at: '2026-05-20T12:00:00Z',
+    baseline_window_size: 0,
+  }
+}
 
 export function buildBudgetConfig(
   overrides: Partial<BudgetConfig> = {},
@@ -85,6 +113,44 @@ export const budgetHandlers = [
         total_cost: 0,
         currency: DEFAULT_CURRENCY,
       } satisfies AgentSpending),
+    ),
+  ),
+  http.get('/api/v1/budget/pareto', () =>
+    HttpResponse.json(buildParetoFrontier()),
+  ),
+  http.post('/api/v1/budget/forecast', () =>
+    HttpResponse.json(buildForecast()),
+  ),
+  http.get('/api/v1/budget/forecasts/:forecastId', ({ params }) =>
+    HttpResponse.json(buildForecast({ forecast_id: String(params.forecastId) })),
+  ),
+  http.post('/api/v1/budget/forecasts/:forecastId/approve', ({ params }) =>
+    HttpResponse.json(
+      buildForecast({
+        forecast_id: String(params.forecastId),
+        decision: 'approved',
+        decided_at: '2026-05-20T12:30:00Z',
+        decided_by: 'operator',
+      }),
+    ),
+  ),
+  http.post('/api/v1/budget/forecasts/:forecastId/reject', ({ params }) =>
+    HttpResponse.json(
+      buildForecast({
+        forecast_id: String(params.forecastId),
+        decision: 'rejected',
+        decided_at: '2026-05-20T12:30:00Z',
+        decided_by: 'operator',
+      }),
+    ),
+  ),
+  http.post('/api/v1/budget/forecasts/:forecastId/raise_ceiling', ({ params }) =>
+    HttpResponse.json(
+      buildForecast({
+        forecast_id: String(params.forecastId),
+        decision: 'approved',
+        ceiling_amount: 2.5,
+      }),
     ),
   ),
 ]
