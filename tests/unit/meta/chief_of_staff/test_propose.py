@@ -543,6 +543,74 @@ class TestConcurrentConverse:
         assert lock_a is not lock_b
         assert lock_a is lock_a_again
 
+    async def test_record_proposals_unwinds_on_partial_park_failure(self) -> None:
+        # Multi-proposal parking must be atomic: if the Nth park
+        # fails, every prior park in the same batch must be unwound
+        # so a client retry cannot double-park the earlier items.
+        # Two-proposal scripted response + a proposal_repo.save that
+        # raises on its 2nd call simulates the partial-commit window.
+        provider = ScriptedProvider(
+            responses=[
+                make_text_response(
+                    '{"needs_clarification": false, "clarifying_question": null, '
+                    '"proposals": ['
+                    '{"title": "First piece of work", '
+                    '"raw_intent": "Build A", "project": "marketing", '
+                    '"priority": "medium", "task_type": "development", '
+                    '"estimated_complexity": "simple", "acceptance_criteria": []}, '
+                    '{"title": "Second piece of work", '
+                    '"raw_intent": "Build B", "project": "marketing", '
+                    '"priority": "medium", "task_type": "development", '
+                    '"estimated_complexity": "simple", "acceptance_criteria": []}'
+                    "]}"
+                ),
+            ],
+        )
+        proposer, conv_repo, _, proposal_repo, approval_store = _build(
+            provider=provider,
+        )
+        conv_repo.items["c-fail"] = Conversation(
+            id=NotBlankStr("c-fail"),
+            created_by=NotBlankStr("user-1"),
+            created_at=_START,
+            updated_at=_START,
+            status=ConversationStatus.ACTIVE,
+        )
+
+        # Patch the proposal repo's save to raise on its second call;
+        # the first park lands, the second raises, compensation must
+        # unwind the first.
+        original_save = proposal_repo.save
+        save_calls = {"count": 0}
+
+        async def staged_save(entity: ConversationalProposal) -> None:
+            save_calls["count"] += 1
+            if save_calls["count"] >= 2:
+                msg = "synthetic transient db failure"
+                raise RuntimeError(msg)
+            await original_save(entity)
+
+        proposal_repo.save = staged_save  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="synthetic transient db failure"):
+            await proposer.converse(
+                ProposeArgs(
+                    message=NotBlankStr("build both"),
+                    created_by=NotBlankStr("user-1"),
+                    conversation_id=NotBlankStr("c-fail"),
+                )
+            )
+
+        # First proposal's row was deleted by the compensation
+        # unwind, so the repo is empty.
+        assert proposal_repo.items == {}
+        # First proposal's approval was deleted from the store too;
+        # no parked approvals should remain.
+        assert await approval_store.list_items() == ()
+        # Conversation stays ACTIVE -- the transition only runs after
+        # every park lands.
+        assert conv_repo.items["c-fail"].status is ConversationStatus.ACTIVE
+
     async def test_run_turn_aborts_if_conversation_terminal_under_lock(
         self,
     ) -> None:

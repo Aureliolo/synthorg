@@ -41,6 +41,15 @@ class ApprovalStoreProtocol(Protocol):
         """
         ...
 
+    async def delete(self, approval_id: NotBlankStr) -> bool:
+        """Remove a single approval item by id.
+
+        Returns ``True`` iff a row was removed. Used by callers that
+        need to compensate a partial write (e.g. multi-proposal
+        parking) without restarting the whole store.
+        """
+        ...
+
     async def get(self, approval_id: NotBlankStr) -> ApprovalItem | None:
         """Get an approval item by ID, applying lazy expiration."""
         ...

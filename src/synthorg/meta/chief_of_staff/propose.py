@@ -243,6 +243,14 @@ class ChiefOfStaffProposer:
         """
         current = await self._conversation_repo.get(conversation.id)
         if current is None or current.status is not ConversationStatus.ACTIVE:
+            logger.warning(
+                COS_PROPOSE_FAILED,
+                detail="conversation_terminal_under_lock",
+                conversation_id=conversation.id,
+                current_status=(
+                    current.status.value if current is not None else "missing"
+                ),
+            )
             raise ConversationClosedError(conversation_id=conversation.id)
         conversation = current
         prior_turns = await self._ordered_turns(conversation.id)
@@ -420,8 +428,23 @@ class ChiefOfStaffProposer:
         sequence: int,
         now: datetime,
     ) -> ProposeResult:
-        """Park each proposed work item behind one approval-queue item."""
-        summaries: list[ProposedApprovalSummary] = []
+        """Park each proposed work item behind one approval-queue item.
+
+        Multi-proposal compensation: every successful ``_park_proposal``
+        is tracked, and any later failure in the batch unwinds the
+        earlier writes before re-raising. Without compensation, a
+        partial commit leaves earlier approvals visible in the queue
+        with no assistant summary turn, no conversation transition,
+        and no proposal_id for the retry to dedupe against -- a
+        client retry would then double-park those items.
+        """
+        # Pre-validate every proposal's project BEFORE any park lands
+        # so an invalid model output raises without committing any
+        # state. Pairing each proposal with its resolved project here
+        # also means the park loop below cannot encounter ``None``
+        # mid-flight, keeping the try/except scoped to genuine
+        # persistence failures.
+        resolved: list[tuple[ProposedWork, NotBlankStr]] = []
         for proposed in decision.proposals:
             project = proposed.project or args.project
             if project is None:
@@ -431,9 +454,26 @@ class ChiefOfStaffProposer:
                     conversation_id=conversation.id,
                 )
                 raise ConversationalProposeResponseInvalidError
-            summaries.append(
-                await self._park_proposal(conversation, args, proposed, project, now)
-            )
+            resolved.append((proposed, project))
+
+        summaries: list[ProposedApprovalSummary] = []
+        try:
+            for proposed, project in resolved:
+                summaries.append(
+                    await self._park_proposal(
+                        conversation, args, proposed, project, now
+                    )
+                )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            for parked in summaries:
+                await self._unwind_parked_proposal(
+                    conversation_id=conversation.id,
+                    proposal_id=parked.proposal_id,
+                    approval_id=parked.approval_id,
+                )
+            raise
 
         await self._turn_repo.append(
             ConversationTurn(
@@ -542,11 +582,18 @@ class ChiefOfStaffProposer:
     ) -> ProposedApprovalSummary:
         """Persist the proposal, then publish the gating approval.
 
-        Order matters: the proposal row is written FIRST so an
-        ``approval_store.add`` failure leaves at most an invisible
-        orphan proposal (the dispatcher gracefully skips a missing
-        approval). The reverse order would surface as a visible
-        dangling queue item with no backing WorkItem.
+        Order matters: the proposal row is written FIRST so the
+        dispatcher's "approval without backing proposal" failure
+        mode -- a visible dangling queue item with no work_item --
+        is unreachable. The reverse order would surface as a
+        dangling approval on every approval-store failure.
+
+        Self-atomic: if the approval-store ``add`` fails after the
+        proposal row was committed, the proposal row is removed
+        before re-raising so the caller's compensation loop only
+        needs to unwind fully-successful parks. The cleanup is
+        best-effort -- the original exception is preserved even if
+        the proposal delete itself fails.
         """
         approval_id = _new_id()
         proposal_id = _new_id()
@@ -561,16 +608,34 @@ class ChiefOfStaffProposer:
                 created_at=now,
             )
         )
-        await self._approval_store.add(
-            self._build_approval_item(
-                approval_id=approval_id,
-                proposal_id=proposal_id,
-                conversation=conversation,
-                args=args,
-                proposed=proposed,
-                now=now,
+        try:
+            await self._approval_store.add(
+                self._build_approval_item(
+                    approval_id=approval_id,
+                    proposal_id=proposal_id,
+                    conversation=conversation,
+                    args=args,
+                    proposed=proposed,
+                    now=now,
+                )
             )
-        )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            try:
+                await self._proposal_repo.delete(proposal_id)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as cleanup_exc:
+                logger.warning(
+                    COS_PROPOSE_FAILED,
+                    detail="park_proposal_cleanup_failed",
+                    conversation_id=conversation.id,
+                    proposal_id=proposal_id,
+                    error_type=type(cleanup_exc).__name__,
+                    error=safe_error_description(cleanup_exc),
+                )
+            raise
         return ProposedApprovalSummary(
             approval_id=approval_id,
             proposal_id=proposal_id,
@@ -578,6 +643,48 @@ class ChiefOfStaffProposer:
             task_type=proposed.task_type,
             priority=proposed.priority,
         )
+
+    async def _unwind_parked_proposal(
+        self,
+        conversation_id: NotBlankStr,
+        proposal_id: NotBlankStr,
+        approval_id: NotBlankStr,
+    ) -> None:
+        """Remove a previously-parked proposal + approval pair.
+
+        Called by ``_record_proposals`` compensation when a later
+        proposal in the batch fails. Unwinds in reverse order of
+        ``_park_proposal``: approval first (so no caller can see a
+        dangling approval pointing at a deleted proposal), then the
+        proposal row. Each step is logged but never re-raises -- the
+        caller's original exception is the one operators need to see.
+        """
+        try:
+            await self._approval_store.delete(approval_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COS_PROPOSE_FAILED,
+                detail="unwind_approval_failed",
+                conversation_id=conversation_id,
+                approval_id=approval_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        try:
+            await self._proposal_repo.delete(proposal_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                COS_PROPOSE_FAILED,
+                detail="unwind_proposal_failed",
+                conversation_id=conversation_id,
+                proposal_id=proposal_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     async def _cap_conversation(
         self,
