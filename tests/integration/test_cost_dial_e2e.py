@@ -277,10 +277,13 @@ async def test_cost_dial_full_lifecycle() -> None:
     # 5. With an ApprovalGate wired, the engine's error handler routes
     #    the ceiling crossing to TerminationReason.PARKED so the
     #    operator can raise the ceiling and resume.
-    engine = _EngineHost(approval_gate=SimpleNamespace(park_context=lambda **_: None))
+    async def _park_ok(**_: object) -> None:
+        return None
+
+    engine = _EngineHost(approval_gate=SimpleNamespace(park_context=_park_ok))
     run_result = cast(
         "Any",
-        engine._handle_budget_error(
+        await engine._handle_budget_error(
             exc=ceiling_info.value,
             identity=_identity(),
             task=task_with_ceiling,
