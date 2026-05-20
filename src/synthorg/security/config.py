@@ -6,7 +6,7 @@ Defines ``SecurityConfig`` (the top-level security configuration),
 """
 
 from enum import StrEnum
-from typing import Any, ClassVar, Self
+from typing import Any, ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -314,6 +314,31 @@ class McpSelfConsumerMode(StrEnum):
     TRUST_SCOPED = "trust_scoped"
 
 
+class RedTeamConfig(BaseModel):
+    """Adversarial red-team gate configuration (opt-in subsystem).
+
+    The red-team gate is OFF by default. When ``enabled``, the gate
+    fires as the LAST adversarial check after ``ReviewPipeline`` PASS,
+    before the deliverable transitions IN_REVIEW -> COMPLETED.
+
+    Attributes:
+        enabled: Master switch. When ``False`` (default), no red-team
+            gate is constructed at boot and the ReviewGateService
+            short-circuits as if the gate were absent.
+        grounding_checker_kind: Discriminator for the grounding
+            sub-system implementation. Today only ``"heuristic"`` is
+            supported; EPIC E #1988 lands ``"knowledge_substrate"``.
+        timeout_seconds: Per-evaluation cap on the inline AgentEngine
+            invocation. Bounds inline latency at the completion edge.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    enabled: bool = False
+    grounding_checker_kind: Literal["heuristic"] = "heuristic"
+    timeout_seconds: float = Field(default=60.0, gt=0.0, le=600.0)
+
+
 class McpSelfConsumerConfig(BaseModel):
     """Agent -> SynthOrg-MCP self-consumer bridge configuration.
 
@@ -444,6 +469,10 @@ class SecurityConfig(BaseModel):
     mcp_self_consumer: McpSelfConsumerConfig = Field(
         default_factory=McpSelfConsumerConfig,
         description="Agent -> SynthOrg-MCP self-consumer bridge config",
+    )
+    red_team: RedTeamConfig = Field(
+        default_factory=RedTeamConfig,
+        description=("Adversarial red-team gate config (off by default; opt-in)."),
     )
     audit_retention_days: int = Field(
         default=730,

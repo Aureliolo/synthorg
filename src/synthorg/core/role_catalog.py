@@ -321,6 +321,30 @@ _SECURITY_OPERATIONS = Role(
     description="Request validation, safety checks, approval workflows",
 )
 
+_RED_TEAM = Role(
+    name="Red Team",
+    department=DepartmentName.QUALITY_ASSURANCE,
+    required_skills=(
+        "adversarial-analysis",
+        "claim-grounding",
+        "security-review",
+        "requirements-verification",
+    ),
+    authority_level=SeniorityLevel.SENIOR,
+    description=(
+        "Built-in adversarial skeptic. Attacks every approved deliverable "
+        "for correctness, security, unmet requirements, and ungrounded "
+        "claims before the org marks the work complete."
+    ),
+)
+
+RED_TEAM_ROLE_NAME: str = _RED_TEAM.name
+"""Canonical name of the built-in Red Team role.
+
+Exposed so other modules (the red-team subsystem, tests) reference a
+single string constant instead of duplicating the literal.
+"""
+
 # ── Creative & Marketing ──────────────────────────────────────────
 
 _CONTENT_WRITER = Role(
@@ -405,6 +429,7 @@ BUILTIN_ROLES: tuple[Role, ...] = (
     _SCRUM_MASTER,
     _HR_MANAGER,
     _SECURITY_OPERATIONS,
+    _RED_TEAM,
     # Creative & Marketing
     _CONTENT_WRITER,
     _BRAND_STRATEGIST,

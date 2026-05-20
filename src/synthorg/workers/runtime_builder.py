@@ -39,6 +39,10 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.resolver import AutonomyResolver
+from synthorg.security.redteam.builder import (
+    RedTeamRuntime,
+    build_red_team_runtime,
+)
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import resolve_init_int
 from synthorg.tools.factory import build_default_tools_from_config
@@ -134,11 +138,14 @@ class RuntimeServices(NamedTuple):
     empty-company (no-provider) case, where ``worker_execution_service``
     is a :class:`NoProviderExecutionService`; ``work_pipeline`` is also
     ``None`` when no intake runtime is wired (no work entry path).
+    ``red_team_runtime`` is ``None`` when the adversarial gate is
+    disabled (default) OR when no provider is configured.
     """
 
     worker_execution_service: WorkerExecutionService
     coordinator: MultiAgentCoordinator | None
     work_pipeline: WorkPipeline | None
+    red_team_runtime: RedTeamRuntime | None = None
 
 
 def _select_active_provider(
@@ -559,8 +566,41 @@ async def build_runtime_services(
         provider=provider,
         decomposition_model=decomposition_model,
     )
+    red_team_runtime = _build_red_team_runtime_or_none(
+        app_state=app_state,
+        engine=engine,
+        provider_name=names[0],
+    )
     return RuntimeServices(
         worker_execution_service=worker_execution_service,
         coordinator=coordinator,
         work_pipeline=work_pipeline,
+        red_team_runtime=red_team_runtime,
+    )
+
+
+def _build_red_team_runtime_or_none(
+    *,
+    app_state: AppState,
+    engine: AgentEngine,
+    provider_name: str,
+) -> RedTeamRuntime | None:
+    """Construct the red-team runtime when the gate is enabled.
+
+    Pulls :class:`RedTeamConfig` from ``app_state.config.security.red_team``
+    and pins the red-team agent's :class:`ModelConfig` to the company's
+    active provider with the vendor-agnostic ``example-medium-001``
+    model id; operators can override via post-init swap once the
+    review-gate integration ships in a follow-up PR.
+    """
+    from synthorg.core.agent import ModelConfig  # noqa: PLC0415
+
+    return build_red_team_runtime(
+        config=app_state.config.security.red_team,
+        engine=engine,
+        model=ModelConfig(
+            provider=provider_name,
+            model_id="example-medium-001",
+        ),
+        clock=app_state.clock,
     )
