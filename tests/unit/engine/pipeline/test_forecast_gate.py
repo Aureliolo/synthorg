@@ -196,6 +196,35 @@ class TestForecastGate:
         with pytest.raises(CostForecastApprovalRequiredError):
             await gate.run(_work_item(forecast_id=existing.forecast_id))
 
+    async def test_pending_forecast_covering_brief_is_reused(self) -> None:
+        """A pending forecast covering the brief is reused, not re-minted.
+
+        Minting a fresh pending row for the same brief_hash would trip the
+        partial-unique index; the gate must re-raise approval-required
+        against the existing row instead.
+        """
+        repo = _FakeForecastRepo()
+        existing = Forecast(
+            forecast_id=uuid4(),
+            brief_hash=_BRIEF_HASH,
+            estimated_cost=0.5,
+            lower_bound=0.3,
+            upper_bound=0.7,
+            currency="USD",
+            decision=ForecastDecision.PENDING,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+        repo.rows[existing.forecast_id] = existing
+        gate, _, work_pipeline = _gate(repo=repo)
+
+        with pytest.raises(CostForecastApprovalRequiredError) as info:
+            await gate.run(_work_item(forecast_id=existing.forecast_id))
+        assert info.value.forecast_id == existing.forecast_id
+        # No fresh row minted, no dispatch.
+        assert repo.saves == []
+        assert work_pipeline.calls == []
+
     async def test_approved_forecast_dispatches(self) -> None:
         repo = _FakeForecastRepo()
         approved = Forecast(

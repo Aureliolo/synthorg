@@ -140,6 +140,26 @@ class ForecastGate:
                     forecast_id=existing.forecast_id,
                     brief_hash=existing.brief_hash,
                 )
+            if existing.decision is ForecastDecision.PENDING:
+                # A pending forecast already covers this brief; reuse it
+                # rather than minting a duplicate, which would trip the
+                # partial-unique index on (brief_hash) WHERE
+                # decision='pending'. Re-raise approval-required against
+                # the existing row so the operator decides on one stable
+                # forecast id.
+                self._log_approval_required(existing)
+                msg = (
+                    f"Pre-flight cost forecast required: "
+                    f"estimated {existing.estimated_cost:.4f} {existing.currency} "
+                    f"awaiting operator approval"
+                )
+                raise CostForecastApprovalRequiredError(
+                    msg,
+                    forecast_id=existing.forecast_id,
+                    brief_hash=existing.brief_hash,
+                    estimated_cost=existing.estimated_cost,
+                    currency=existing.currency,
+                )
 
         fresh = await self._issue_fresh_forecast(work_item)
         self._log_approval_required(fresh)
