@@ -1,5 +1,6 @@
 """Root test configuration and shared fixtures."""
 
+import asyncio
 import faulthandler
 import logging
 import os
@@ -542,26 +543,55 @@ def _reset_prometheus_label_snapshot() -> Iterator[None]:
 
 
 _TEMPLATE_DB: Path | None = None
-"""Session-wide migrated template DB.  Created once, copied per test."""
+"""Worker-local cache of the session-wide migrated template DB path."""
 
 
 async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Return path to the session-wide migrated template database.
 
-    Migrates a fresh SQLite file via yoyo on first call, then reuses
-    the same file for all subsequent calls.  Each test copies this
-    file instead of running migrations again.
+    Migrates a fresh SQLite file via yoyo ONCE per pytest session,
+    shared across all pytest-xdist workers via a ``FileLock`` on a
+    directory under ``tmp_path_factory.getbasetemp().parent`` (the
+    directory xdist allocates for the whole run -- shared across
+    workers, unlike ``mktemp`` which is worker-local). Without the
+    cross-worker lock every worker would re-run yoyo migrations on
+    its first persistence test (8x cost under ``-n 8``), and the
+    per-test wall-clock guard would fire on the first persistence
+    test in each worker once the migration chain grows past ~7 steps.
+
+    Pattern mirrors ``tests/conformance/persistence/conftest.py``'s
+    Postgres testcontainer coordination.
     """
     global _TEMPLATE_DB  # noqa: PLW0603
-    if _TEMPLATE_DB is not None:
+    if _TEMPLATE_DB is not None and await asyncio.to_thread(_TEMPLATE_DB.exists):
         return _TEMPLATE_DB
-    base = tmp_path_factory.mktemp("yoyo_template")
-    db_path = base / "template.db"
-    rev_path = migrations.copy_revisions(base / "revisions")
-    await migrations.migrate_apply(
-        migrations.to_sqlite_url(str(db_path)),
-        revisions_path=rev_path,
-    )
+    # ``getbasetemp().parent`` is the xdist run-wide base; ``getbasetemp()``
+    # itself is the worker-local ``popen-gw0`` etc. subdir.
+    shared_dir = tmp_path_factory.getbasetemp().parent / "yoyo_template_shared"
+    await asyncio.to_thread(shared_dir.mkdir, parents=True, exist_ok=True)
+    db_path = shared_dir / "template.db"
+    lock_path = shared_dir / "template.lock"
+    from filelock import FileLock
+
+    # ``FileLock`` is sync; ``asyncio.to_thread`` keeps the event loop
+    # responsive while waiting for the cross-worker lock. Generation
+    # itself only happens once per session; subsequent workers find
+    # the file already present and skip the migrate_apply call.
+    def _acquire() -> FileLock:
+        lock = FileLock(str(lock_path))
+        lock.acquire()
+        return lock
+
+    lock = await asyncio.to_thread(_acquire)
+    try:
+        if not await asyncio.to_thread(db_path.exists):
+            rev_path = migrations.copy_revisions(shared_dir / "revisions")
+            await migrations.migrate_apply(
+                migrations.to_sqlite_url(str(db_path)),
+                revisions_path=rev_path,
+            )
+    finally:
+        await asyncio.to_thread(lock.release)
     _TEMPLATE_DB = db_path
     return _TEMPLATE_DB
 
