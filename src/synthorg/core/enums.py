@@ -405,7 +405,7 @@ class GitBackendType(StrEnum):
     on the persistent volume, with no external dependency.  ``LOCAL_PATH``
     targets a caller-supplied repository on disk.  ``EXTERNAL_REMOTE``
     delegates to an external forge remote resolved via the connection
-    catalog.
+    catalogue.
     """
 
     EMBEDDED = "embedded"

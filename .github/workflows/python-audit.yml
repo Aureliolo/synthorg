@@ -25,10 +25,21 @@ jobs:
         #   fix is in 1.83.7 but the pin is load-bearing for this repo.
         # - CVE-2026-3219: pip 26.0.1 vulnerability with no upstream fix
         #   version available yet. pip is a transitive of uv in this repo.
+        # - PYSEC-2026-89 (CVE-2025-69534): markdown 3.10.2 (latest)
+        #   HTMLParser AssertionError on malformed input. markdown is a
+        #   mkdocs transitive dep used only at docs-build time on our own
+        #   trusted documentation; the framework runtime never processes
+        #   attacker-controlled Markdown, so the exposure surface is nil.
+        # - PYSEC-2025-183 (CVE-2025-45768): pyjwt 2.12.1 (latest) weak
+        #   encryption advisory is DISPUTED by the supplier because the
+        #   key length is chosen by the caller; we provide strong keys
+        #   at every JWT site, so the advisory is inapplicable here.
         run: |
           uv run pip-audit \
             --ignore-vuln GHSA-xqmj-j6mv-4862 \
-            --ignore-vuln CVE-2026-3219
+            --ignore-vuln CVE-2026-3219 \
+            --ignore-vuln PYSEC-2026-89 \
+            --ignore-vuln PYSEC-2025-183
 
   report-failure:
     name: Open / update tracking issue on schedule failure

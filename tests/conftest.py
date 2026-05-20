@@ -10,7 +10,7 @@ import sys
 import time
 from collections.abc import AsyncGenerator, Iterable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 # Boot-time guard parity (see synthorg.api.app create_app): every backend
 # boot -- dev, pre-release, prod -- refuses to start with an ephemeral
@@ -553,6 +553,12 @@ def _reset_prometheus_label_snapshot() -> Iterator[None]:
 _TEMPLATE_DB: Path | None = None
 """Worker-local cache of the session-wide migrated template DB path."""
 
+# 180s matches ``tests/conformance/persistence/conftest.py``'s
+# postgres-container coordinator. Bounds a worker that dies mid-acquire
+# so peers don't sit forever on a stuck lockfile; covers the yoyo
+# migration chain on cold caches with generous headroom.
+_FILE_LOCK_TIMEOUT_SECONDS: Final[int] = 180
+
 
 async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Return path to the session-wide migrated template database.
@@ -585,12 +591,8 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     # responsive while waiting for the cross-worker lock. Generation
     # itself only happens once per session; subsequent workers find
     # the file already present and skip the migrate_apply call.
-    # 180s matches ``tests/conformance/persistence/conftest.py``'s
-    # postgres-container coordinator. Bounds a worker that dies mid-
-    # acquire so peers don't sit forever on a stuck lockfile; covers
-    # the yoyo migration chain on cold caches with generous headroom.
     def _acquire() -> FileLock:
-        lock = FileLock(str(lock_path), timeout=180)
+        lock = FileLock(str(lock_path), timeout=_FILE_LOCK_TIMEOUT_SECONDS)
         lock.acquire()
         return lock
 
