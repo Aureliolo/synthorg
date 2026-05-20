@@ -28,7 +28,11 @@ import aiosqlite
 import pytest
 
 from synthorg.budget.errors import MixedCurrencyAggregationError
-from synthorg.budget.forecast_models import Forecast, ForecastDecision
+from synthorg.budget.forecast_models import (
+    Forecast,
+    ForecastDecision,
+    HaltContext,
+)
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.persistence.cost_forecast_protocol import (
     CostForecastFilterSpec,
@@ -90,6 +94,7 @@ def _make_forecast(  # noqa: PLR0913 -- test helper carries every Forecast field
     decided_by: str | None = None,
     decided_at: datetime | None = None,
     ceiling_amount: float | None = None,
+    halt_context: HaltContext | None = None,
 ) -> Forecast:
     return Forecast(
         forecast_id=uuid4() if forecast_id is None else _uuid(forecast_id),
@@ -102,6 +107,7 @@ def _make_forecast(  # noqa: PLR0913 -- test helper carries every Forecast field
         decided_at=decided_at,
         decided_by=decided_by,
         ceiling_amount=ceiling_amount,
+        halt_context=halt_context,
         created_at=_NOW,
         updated_at=_NOW,
     )
@@ -127,6 +133,39 @@ class TestCostForecastRepository:
     ) -> None:
         repo = _repo(backend)
         assert await repo.get(uuid4()) is None
+
+    async def test_halt_context_round_trip(self, backend: PersistenceBackend) -> None:
+        """Halt context survives a save / get cycle and clears to None."""
+        repo = _repo(backend)
+        halted = _make_forecast(
+            forecast_id="h1",
+            brief_hash="h" * 64,
+            decision=ForecastDecision.APPROVED,
+            decided_by="op-1",
+            decided_at=_NOW,
+            ceiling_amount=1.50,
+            halt_context=HaltContext(
+                accumulated_cost=1.80,
+                ceiling_amount=1.50,
+                currency=_CURRENCY,
+                halted_at=_NOW,
+            ),
+        )
+        await repo.save(halted)
+
+        fetched = await repo.get(halted.forecast_id)
+        assert fetched is not None
+        assert fetched.halt_context is not None
+        assert fetched.halt_context.accumulated_cost == pytest.approx(1.80)
+        assert fetched.halt_context.ceiling_amount == pytest.approx(1.50)
+        assert fetched.halt_context.currency == _CURRENCY
+        assert fetched.halt_context.halted_at.tzinfo is not None
+
+        cleared = fetched.model_copy(update={"halt_context": None})
+        await repo.save(cleared)
+        refetched = await repo.get(halted.forecast_id)
+        assert refetched is not None
+        assert refetched.halt_context is None
 
     async def test_save_rejects_currency_mismatch(
         self, backend: PersistenceBackend

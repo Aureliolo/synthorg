@@ -7,15 +7,16 @@ existing ``except BudgetExhaustedError`` handler and routes to
 ``BUDGET_EXHAUSTED``) when an ``ApprovalGate`` is wired. This unit
 test exercises the routing directly against ``_handle_budget_error``.
 
-The actual ``ApprovalGate.park_context()`` integration (persistent
-state for the operator-resume flow) is a follow-up; this test
-verifies the in-process termination shape that the resume path
-needs.
+On a successful park the engine also stamps the halt context onto the
+forecast row (via ``CostForecastRepository``) so the dashboard can
+surface a "run halted: ceiling exceeded" banner with the accumulated
+cost and the ceiling that was crossed. The stamp is best-effort: a
+missing repo or a missing forecast id degrades silently.
 """
 
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -23,6 +24,7 @@ from synthorg.budget.errors import (
     BudgetExhaustedError,
     RunHardCeilingExceededError,
 )
+from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
@@ -61,12 +63,51 @@ class _FakeApprovalGate:
         return None
 
 
+class _FakeForecastRepo:
+    """Async CostForecastRepository double for halt-stamp assertions."""
+
+    def __init__(self, forecast: Forecast | None) -> None:
+        self._forecast = forecast
+        self.saved: list[Forecast] = []
+
+    async def get(self, entity_id: UUID) -> Forecast | None:
+        if self._forecast is not None and self._forecast.forecast_id == entity_id:
+            return self._forecast
+        return None
+
+    async def save(self, entity: Forecast) -> None:
+        self.saved.append(entity)
+
+
 class _MockEngine(AgentEngineErrorsMixin):
     """Minimal mixin host providing the attributes the mixin reads."""
 
-    def __init__(self, *, approval_gate: object | None) -> None:
+    def __init__(
+        self,
+        *,
+        approval_gate: object | None,
+        cost_forecast_repo: object | None = None,
+    ) -> None:
         self._approval_gate = approval_gate
         self._cost_tracker = None
+        self._cost_forecast_repo = cost_forecast_repo
+
+
+def _forecast(forecast_id: UUID) -> Forecast:
+    return Forecast(
+        forecast_id=forecast_id,
+        brief_hash="a" * 64,
+        estimated_cost=0.85,
+        lower_bound=0.55,
+        upper_bound=1.15,
+        currency="USD",
+        decision=ForecastDecision.APPROVED,
+        decided_at=datetime(2026, 5, 20, 12, 30, tzinfo=UTC),
+        decided_by="operator",
+        ceiling_amount=1.5,
+        created_at=datetime(2026, 5, 20, 12, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 20, 12, 30, tzinfo=UTC),
+    )
 
 
 def _identity() -> AgentIdentity:
@@ -128,6 +169,69 @@ async def test_hard_ceiling_with_approval_gate_routes_to_parked() -> None:
     assert parked_call["agent_id"] == "agent-1"
     assert parked_call["task_id"] == "task-x"
     assert parked_call["escalation"].action_type == "budget:hard_ceiling_exceeded"
+
+
+@pytest.mark.asyncio
+async def test_park_stamps_forecast_halt_context() -> None:
+    """Successful park stamps halt context onto the forecast row."""
+    forecast_id = uuid4()
+    repo = _FakeForecastRepo(_forecast(forecast_id))
+    gate = _FakeApprovalGate()
+    engine = _MockEngine(approval_gate=gate, cost_forecast_repo=repo)
+    exc = RunHardCeilingExceededError(
+        "crossed",
+        ceiling_amount=1.5,
+        accumulated_cost=1.8,
+        currency="USD",
+        task_id="task-x",
+        forecast_id=forecast_id,
+    )
+
+    await engine._handle_budget_error(
+        exc=exc,
+        identity=_identity(),
+        task=_task(),
+        agent_id="agent-1",
+        task_id="task-x",
+        duration_seconds=0.1,
+    )
+
+    assert len(repo.saved) == 1
+    halt = repo.saved[0].halt_context
+    assert halt is not None
+    assert halt.accumulated_cost == 1.8
+    assert halt.ceiling_amount == 1.5
+    assert halt.currency == "USD"
+
+
+@pytest.mark.asyncio
+async def test_park_without_forecast_id_skips_stamp() -> None:
+    """No forecast id -> no halt stamp, park still routes to PARKED."""
+    repo = _FakeForecastRepo(_forecast(uuid4()))
+    gate = _FakeApprovalGate()
+    engine = _MockEngine(approval_gate=gate, cost_forecast_repo=repo)
+    exc = RunHardCeilingExceededError(
+        "crossed",
+        ceiling_amount=1.5,
+        accumulated_cost=1.8,
+        currency="USD",
+        task_id="task-x",
+    )
+
+    result = cast(
+        "Any",
+        await engine._handle_budget_error(
+            exc=exc,
+            identity=_identity(),
+            task=_task(),
+            agent_id="agent-1",
+            task_id="task-x",
+            duration_seconds=0.1,
+        ),
+    )
+
+    assert result.execution_result.termination_reason is TerminationReason.PARKED
+    assert repo.saved == []
 
 
 @pytest.mark.asyncio

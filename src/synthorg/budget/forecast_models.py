@@ -46,6 +46,39 @@ class ForecastDecision(StrEnum):
     SUPERSEDED = "superseded"
 
 
+class HaltContext(BaseModel):
+    """Hard-ceiling halt context attached to a forecast.
+
+    Populated when the in-loop ``BudgetChecker`` crosses a run's hard
+    ceiling and the engine parks the context; cleared when the operator
+    raises the ceiling so the run can resume. Surfaced on the forecast
+    read path so the dashboard can render a "run halted: ceiling
+    exceeded" banner without consulting the parked-context store (which
+    is keyed by approval id, not forecast id).
+
+    Attributes:
+        accumulated_cost: Cost accrued when the ceiling was crossed.
+        ceiling_amount: The hard ceiling that was crossed.
+        currency: ISO 4217 code stamped on both amounts.
+        halted_at: When the halt was recorded.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    accumulated_cost: float = Field(
+        ge=0.0,
+        description="Cost accrued when the ceiling was crossed",
+    )
+    ceiling_amount: float = Field(
+        ge=0.0,
+        description="The hard ceiling that was crossed",
+    )
+    currency: CurrencyCode = Field(
+        description="ISO 4217 code stamped on both amounts",
+    )
+    halted_at: datetime = Field(description="When the halt was recorded")
+
+
 class Forecast(BaseModel):
     """A pre-flight cost forecast row.
 
@@ -118,6 +151,13 @@ class Forecast(BaseModel):
         default=None,
         ge=0.0,
         description="Per-run hard ceiling the operator approved",
+    )
+    halt_context: HaltContext | None = Field(
+        default=None,
+        description=(
+            "Hard-ceiling halt context; set when the run is parked on a"
+            " ceiling crossing, cleared when the operator raises the ceiling"
+        ),
     )
     created_at: datetime = Field(description="Row creation timestamp")
     updated_at: datetime = Field(description="Last decision-state mutation timestamp")

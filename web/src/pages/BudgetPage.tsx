@@ -35,6 +35,7 @@ const CostBreakdownChart = lazy(() =>
 )
 import { CostForecastApprovalCard } from '@/components/approvals/CostForecastApprovalCard'
 import { CategoryBreakdown } from './budget/CategoryBreakdown'
+import { HardCeilingHaltedBanner } from './budget/HardCeilingHaltedBanner'
 import { AgentSpendingTable } from './budget/AgentSpendingTable'
 import { BudgetForecastDialog } from './budget/BudgetForecastDialog'
 import { CfoActivityFeed } from './budget/CfoActivityFeed'
@@ -72,6 +73,7 @@ export default function BudgetPage() {
   const forecastMutating = useBudgetForecastStore((s) => s.mutating)
   const approveForecast = useBudgetForecastStore((s) => s.approveForecast)
   const rejectForecast = useBudgetForecastStore((s) => s.rejectForecast)
+  const raiseCeiling = useBudgetForecastStore((s) => s.raiseCeiling)
 
   useEffect(() => {
     let cancelled = false
@@ -155,7 +157,27 @@ export default function BudgetPage() {
 
       <ThresholdAlerts zone={thresholdZone} budgetConfig={budgetConfig} overview={overview} />
 
-      {currentForecast !== null && currentForecast.decision === 'pending' ? (
+      {currentForecast !== null && currentForecast.halt_context !== null ? (
+        <HardCeilingHaltedBanner
+          accumulatedCost={currentForecast.halt_context.accumulated_cost}
+          ceilingAmount={currentForecast.halt_context.ceiling_amount}
+          currency={currentForecast.halt_context.currency}
+          forecastId={currentForecast.forecast_id}
+          mutating={forecastMutating}
+          onRaiseCeiling={(newCeiling) => {
+            if (currentForecast.halt_context !== null) {
+              void raiseCeiling(currentForecast.forecast_id, {
+                new_ceiling: newCeiling,
+                accumulated_cost: currentForecast.halt_context.accumulated_cost,
+              })
+            }
+          }}
+        />
+      ) : null}
+
+      {currentForecast !== null
+      && currentForecast.halt_context === null
+      && currentForecast.decision === 'pending' ? (
         <CostForecastApprovalCard
           forecast={currentForecast}
           mutating={forecastMutating}

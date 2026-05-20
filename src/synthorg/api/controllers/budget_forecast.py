@@ -267,6 +267,7 @@ class ForecastBudgetController(Controller):
         updated = forecast.model_copy(
             update={
                 "ceiling_amount": data.new_ceiling,
+                "halt_context": None,
                 "updated_at": datetime.now(UTC),
             },
         )

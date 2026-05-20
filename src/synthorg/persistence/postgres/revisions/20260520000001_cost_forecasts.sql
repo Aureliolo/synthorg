@@ -28,6 +28,19 @@ CREATE TABLE cost_forecasts (
         CHECK(decided_by IS NULL OR char_length(trim(decided_by)) > 0),
     ceiling_amount DOUBLE PRECISION
         CHECK(ceiling_amount IS NULL OR ceiling_amount >= 0),
+    -- Hard-ceiling halt context (see the sqlite revision for design notes).
+    halt_accumulated_cost DOUBLE PRECISION
+        CHECK(halt_accumulated_cost IS NULL OR halt_accumulated_cost >= 0),
+    halt_ceiling_amount DOUBLE PRECISION
+        CHECK(halt_ceiling_amount IS NULL OR halt_ceiling_amount >= 0),
+    halt_currency TEXT
+        CHECK(halt_currency IS NULL OR char_length(halt_currency) = 3),
+    halted_at TEXT
+        CHECK(
+            halted_at IS NULL
+            OR halted_at LIKE '%+00:00'
+            OR halted_at LIKE '%Z'
+        ),
     created_at TEXT NOT NULL CHECK(
         created_at LIKE '%+00:00' OR created_at LIKE '%Z'
     ),
@@ -37,6 +50,12 @@ CREATE TABLE cost_forecasts (
     CONSTRAINT chk_cf_lower_le_upper CHECK(lower_bound <= upper_bound),
     CONSTRAINT chk_cf_estimate_within_band CHECK(
         estimated_cost >= lower_bound AND estimated_cost <= upper_bound
+    ),
+    CONSTRAINT chk_cf_halt_all_or_none CHECK(
+        (halt_accumulated_cost IS NULL AND halt_ceiling_amount IS NULL
+            AND halt_currency IS NULL AND halted_at IS NULL)
+        OR (halt_accumulated_cost IS NOT NULL AND halt_ceiling_amount IS NOT NULL
+            AND halt_currency IS NOT NULL AND halted_at IS NOT NULL)
     ),
     CONSTRAINT chk_cf_decision_timestamp CHECK(
         (decision = 'pending' AND decided_at IS NULL AND decided_by IS NULL)

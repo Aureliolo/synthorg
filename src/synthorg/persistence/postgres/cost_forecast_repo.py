@@ -18,7 +18,11 @@ from psycopg.rows import dict_row
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import MixedCurrencyAggregationError
-from synthorg.budget.forecast_models import Forecast, ForecastDecision
+from synthorg.budget.forecast_models import (
+    Forecast,
+    ForecastDecision,
+    HaltContext,
+)
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -49,12 +53,13 @@ _MAX_PAGE_LIMIT: int = 1_000
 _SELECT_COLS = (
     "forecast_id, brief_hash, estimated_cost, lower_bound, upper_bound, "
     "currency, decision, decided_at, decided_by, ceiling_amount, "
+    "halt_accumulated_cost, halt_ceiling_amount, halt_currency, halted_at, "
     "created_at, updated_at"
 )
 
 _UPSERT_SQL = f"""
     INSERT INTO cost_forecasts ({_SELECT_COLS})
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON CONFLICT (forecast_id) DO UPDATE SET
         brief_hash = EXCLUDED.brief_hash,
         estimated_cost = EXCLUDED.estimated_cost,
@@ -65,6 +70,10 @@ _UPSERT_SQL = f"""
         decided_at = EXCLUDED.decided_at,
         decided_by = EXCLUDED.decided_by,
         ceiling_amount = EXCLUDED.ceiling_amount,
+        halt_accumulated_cost = EXCLUDED.halt_accumulated_cost,
+        halt_ceiling_amount = EXCLUDED.halt_ceiling_amount,
+        halt_currency = EXCLUDED.halt_currency,
+        halted_at = EXCLUDED.halted_at,
         updated_at = EXCLUDED.updated_at
 """  # noqa: S608 -- column list is a compile-time constant
 
@@ -73,6 +82,17 @@ def _row_to_forecast(row: dict[str, Any]) -> Forecast:
     """Convert a Postgres dict row into a :class:`Forecast`."""
     try:
         decided_at_raw = row["decided_at"]
+        halted_at_raw = row["halted_at"]
+        halt_context = (
+            HaltContext(
+                accumulated_cost=float(row["halt_accumulated_cost"]),
+                ceiling_amount=float(row["halt_ceiling_amount"]),
+                currency=str(row["halt_currency"]),
+                halted_at=coerce_row_timestamp(halted_at_raw),
+            )
+            if halted_at_raw is not None
+            else None
+        )
         return Forecast(
             forecast_id=(
                 row["forecast_id"]
@@ -98,6 +118,7 @@ def _row_to_forecast(row: dict[str, Any]) -> Forecast:
                 if row["ceiling_amount"] is not None
                 else None
             ),
+            halt_context=halt_context,
             created_at=coerce_row_timestamp(row["created_at"]),
             updated_at=coerce_row_timestamp(row["updated_at"]),
         )
@@ -215,6 +236,22 @@ class PostgresCostForecastRepository:
             (
                 float(entity.ceiling_amount)
                 if entity.ceiling_amount is not None
+                else None
+            ),
+            (
+                float(entity.halt_context.accumulated_cost)
+                if entity.halt_context is not None
+                else None
+            ),
+            (
+                float(entity.halt_context.ceiling_amount)
+                if entity.halt_context is not None
+                else None
+            ),
+            (entity.halt_context.currency if entity.halt_context is not None else None),
+            (
+                format_iso_utc(entity.halt_context.halted_at)
+                if entity.halt_context is not None
                 else None
             ),
             format_iso_utc(entity.created_at),

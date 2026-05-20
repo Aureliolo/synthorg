@@ -254,6 +254,7 @@ export type GenerateReportRequest = components['schemas']['GenerateReportRequest
 export type GovernanceConfig = components['schemas']['GovernanceConfig']
 export type GrantOrgRoleRequest = components['schemas']['GrantOrgRoleRequest']
 export type HRRegistry = components['schemas']['HRRegistry']
+export type HaltContext = components['schemas']['HaltContext']
 export type HealthReport = components['schemas']['HealthReport']
 export type IdentityFieldChange = components['schemas']['IdentityFieldChange']
 export type InitiateOAuthFlowRequest = components['schemas']['InitiateOAuthFlowRequest']

@@ -8227,6 +8227,8 @@ export type components = {
              * @description Stable UUID primary key
              */
             readonly forecast_id: string;
+            /** @description Hard-ceiling halt context; set when the run is parked on a ceiling crossing, cleared when the operator raises the ceiling */
+            readonly halt_context: components["schemas"]["HaltContext"] | null;
             /** @description Lower bound of the cost estimate */
             readonly lower_bound: number;
             /**
@@ -8339,6 +8341,20 @@ export type components = {
             readonly role: components["schemas"]["OrgRole"];
             /** @default [] */
             readonly scoped_departments: readonly string[];
+        };
+        /** HaltContext */
+        readonly HaltContext: {
+            /** @description Cost accrued when the ceiling was crossed */
+            readonly accumulated_cost: number;
+            /** @description The hard ceiling that was crossed */
+            readonly ceiling_amount: number;
+            /** @description ISO 4217 code stamped on both amounts */
+            readonly currency: string;
+            /**
+             * Format: date-time
+             * @description When the halt was recorded
+             */
+            readonly halted_at: string;
         };
         /** HealthReport */
         readonly HealthReport: {

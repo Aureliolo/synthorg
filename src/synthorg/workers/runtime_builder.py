@@ -271,6 +271,7 @@ def _construct_agent_engine(
         cost_tracker=(app_state.cost_tracker if app_state.has_cost_tracker else None),
         task_engine=app_state.task_engine,
         approval_store=app_state.approval_store,
+        cost_forecast_repo=app_state.cost_forecast_repo,
         approval_gate=app_state.approval_gate,
         trust_service=(
             app_state.trust_service if app_state.has_trust_service else None

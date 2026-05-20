@@ -4,6 +4,7 @@ Extracts completion logging, provider degradation, and fatal-error
 handling into a mixin so the main module stays under the size limit.
 """
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from synthorg.budget.errors import (
@@ -53,6 +54,7 @@ class AgentEngineErrorsMixin:
     _provider_registry: ProviderRegistry | None
     _task_engine: Any
     _apply_recovery: Any
+    _cost_forecast_repo: Any
 
     def _log_completion(
         self,
@@ -317,7 +319,53 @@ class AgentEngineErrorsMixin:
                 error=safe_error_description(park_exc),
             )
             return False
+        await self._stamp_forecast_halt(exc, task_id=task_id)
         return True
+
+    async def _stamp_forecast_halt(
+        self,
+        exc: RunHardCeilingExceededError,
+        *,
+        task_id: str,
+    ) -> None:
+        """Record halt context on the forecast row so the UI can resume.
+
+        Best-effort: a missing repo, a missing forecast id, or any repo
+        error degrades silently. The park itself already succeeded; a
+        failure to stamp the read-side halt marker must never turn a
+        clean ceiling halt into a crash.
+        """
+        from synthorg.budget.forecast_models import HaltContext  # noqa: PLC0415
+
+        repo = getattr(self, "_cost_forecast_repo", None)
+        if repo is None or exc.forecast_id is None:
+            return
+        try:
+            forecast = await repo.get(exc.forecast_id)
+            if forecast is None:
+                return
+            updated = forecast.model_copy(
+                update={
+                    "halt_context": HaltContext(
+                        accumulated_cost=exc.accumulated_cost,
+                        ceiling_amount=exc.ceiling_amount,
+                        currency=exc.currency,
+                        halted_at=datetime.now(UTC),
+                    ),
+                    "updated_at": datetime.now(UTC),
+                },
+            )
+            await repo.save(updated)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as stamp_exc:
+            logger.warning(
+                EXECUTION_ENGINE_BUDGET_STOPPED,
+                task_id=task_id,
+                note="forecast halt stamp failed; banner will not surface",
+                error_type=type(stamp_exc).__name__,
+                error=safe_error_description(stamp_exc),
+            )
 
     async def _handle_fatal_error(  # noqa: PLR0913
         self,
