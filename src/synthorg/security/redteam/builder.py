@@ -37,12 +37,12 @@ logger = get_logger(__name__)
 
 
 class RedTeamToolSeed(NamedTuple):
-    """Boot-phase-1 bundle: tool + repo to register on the engine.
+    """Early-boot bundle: tool + repo to register on the engine.
 
-    Built BEFORE the agent engine is constructed (so the
+    Built BEFORE the agent engine so the
     :class:`SubmitRedTeamReportTool` lands on the engine's tool
-    registry at construction time, not after). Phase 2
-    (:func:`build_red_team_runtime`) consumes the same instances to
+    registry at engine construction time. After the engine exists,
+    :func:`build_red_team_runtime` consumes the same instances to
     build the gate, ensuring the tool the agent calls and the repo
     the gate reads are the SAME objects.
 
