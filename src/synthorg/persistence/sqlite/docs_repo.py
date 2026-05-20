@@ -308,6 +308,16 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         return metadata
 
 
+def _escape_like(value: str) -> str:
+    r"""Escape LIKE metacharacters so a tag matches literally.
+
+    Without this a tag containing ``%`` or ``_`` would behave as a
+    wildcard. Backslash is escaped first, then the wildcards; the query
+    pairs this with ``ESCAPE '\'``.
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _build_query_sql(filter_spec: DocsFilterSpec) -> tuple[str, tuple[object, ...]]:
     """Compose the WHERE clause for ``query`` / ``count``.
 
@@ -322,8 +332,8 @@ def _build_query_sql(filter_spec: DocsFilterSpec) -> tuple[str, tuple[object, ..
         sql += " AND doc_type = ?"
         params.append(filter_spec.doc_type.value)
     if filter_spec.tag is not None:
-        sql += " AND tags LIKE ?"
-        params.append(f'%"{filter_spec.tag}"%')
+        sql += " AND tags LIKE ? ESCAPE '\\'"
+        params.append(f'%"{_escape_like(filter_spec.tag)}"%')
     if filter_spec.updated_since is not None:
         sql += " AND updated_at >= ?"
         params.append(format_iso_utc(filter_spec.updated_since))

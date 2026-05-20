@@ -17,15 +17,19 @@ import { DocViewer } from './project-docs/DocViewer'
 
 const log = createLogger('project-docs-page')
 
+interface DocFetchResult {
+  slug: string
+  doc: LivingDocument | null
+  error: string | null
+}
+
 export default function ProjectDocsPage() {
   const { projectId, slug } = useParams<{ projectId: string; slug?: string }>()
   const navigate = useNavigate()
   const [docs, setDocs] = useState<readonly DocSummary[]>([])
-  const [doc, setDoc] = useState<LivingDocument | null>(null)
+  const [docResult, setDocResult] = useState<DocFetchResult | null>(null)
   const [filter, setFilter] = useState<DocType | null>(null)
   const [listError, setListError] = useState<string | null>(null)
-  const [docError, setDocError] = useState<string | null>(null)
-  const [docLoading, setDocLoading] = useState<boolean>(false)
 
   useEffect(() => {
     if (!projectId) return
@@ -52,20 +56,24 @@ export default function ProjectDocsPage() {
     getProjectDoc(projectId, slug)
       .then((value) => {
         if (cancelled) return
-        setDoc(value)
-        setDocError(null)
-        setDocLoading(false)
+        setDocResult({ slug, doc: value, error: null })
       })
       .catch((err: unknown) => {
         if (cancelled) return
         log.warn('get doc failed', err)
-        setDocError('Could not load this document.')
-        setDocLoading(false)
+        setDocResult({ slug, doc: null, error: 'Could not load this document.' })
       })
     return () => {
       cancelled = true
     }
   }, [projectId, slug])
+
+  // A result is only current when it matches the requested slug; a
+  // stale result from a previous slug reads as "still loading".
+  const resolved = slug && docResult?.slug === slug ? docResult : null
+  const doc = resolved?.doc ?? null
+  const docError = resolved?.error ?? null
+  const docLoading = Boolean(slug) && resolved === null
 
 
   const handleSelect = useCallback(
@@ -123,11 +131,7 @@ export default function ProjectDocsPage() {
             onSelect={handleSelect}
             onFilterChange={setFilter}
           />
-          <DocViewer
-            doc={slug ? doc : null}
-            loading={Boolean(slug) && docLoading}
-            error={slug ? docError : null}
-          />
+          <DocViewer doc={doc} loading={docLoading} error={docError} />
         </div>
       </ErrorBoundary>
     </div>

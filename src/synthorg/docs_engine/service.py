@@ -8,6 +8,7 @@ endpoints call it directly for read-only operations.
 """
 
 import asyncio
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -32,6 +33,7 @@ from synthorg.docs_engine.errors import (
     DocCommitError,
     DocIndexError,
     DocNotFoundError,
+    DocValidationError,
 )
 from synthorg.docs_engine.models import (
     DocBlock,
@@ -70,6 +72,9 @@ logger = get_logger(__name__)
 
 _GIT_CMD_TIMEOUT_SECONDS: float = 30.0
 _HISTORY_FIELDS_PER_LINE: int = 3
+_MIN_SHA_LENGTH: int = 7
+_MAX_SHA_LENGTH: int = 40
+_COMMIT_SHA_RE = re.compile(rf"^[0-9a-fA-F]{{{_MIN_SHA_LENGTH},{_MAX_SHA_LENGTH}}}$")
 
 
 class DocsService:
@@ -80,8 +85,10 @@ class DocsService:
         "_chunker",
         "_clock",
         "_indexer",
+        "_locks_guard",
         "_repo",
         "_workspace_service",
+        "_write_locks",
         "_writer",
     )
 
@@ -103,6 +110,22 @@ class DocsService:
         self._writer = writer
         self._backend = backend
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._write_locks: dict[str, asyncio.Lock] = {}
+        self._locks_guard = asyncio.Lock()
+
+    async def _write_lock_for(self, project_id: NotBlankStr) -> asyncio.Lock:
+        """Return the per-project write lock, creating it on first use.
+
+        Slug derivation must be serialised with the write so two
+        concurrent same-title writes cannot derive the same slug and
+        silently overwrite one another.
+        """
+        async with self._locks_guard:
+            lock = self._write_locks.get(project_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._write_locks[project_id] = lock
+            return lock
 
     async def write_doc(  # noqa: PLR0913 -- doc fields are intentionally explicit
         self,
@@ -143,32 +166,52 @@ class DocsService:
                 commit lands on disk; ``last_indexed_commit_sha`` stays
                 behind for replay).
         """
-        resolved_slug, prior = await self._resolve_slug(
-            project_id=project_id, title=title, doc_type=doc_type, supplied_slug=slug
-        )
-        now = self._clock.now()
-        created_at = prior.created_at if prior is not None else now
-        doc = LivingDocument(
-            slug=resolved_slug,
-            title=title,
-            doc_type=doc_type,
-            tags=tags,
-            related_task_ids=related_task_ids,
-            author_agent_id=author_agent_id,
-            body=body,
-            created_at=created_at,
-            updated_at=now,
-        )
-        write_result = await self._writer.write(project_id=project_id, doc=doc)
-        chunks = self._chunker.chunk(project_id=project_id, doc=doc)
-        last_indexed: NotBlankStr | None
-        try:
-            await self._indexer.index(
-                project_id=project_id, slug=resolved_slug, chunks=chunks
+        write_lock = await self._write_lock_for(project_id)
+        async with write_lock:
+            resolved_slug, prior = await self._resolve_slug(
+                project_id=project_id,
+                title=title,
+                doc_type=doc_type,
+                supplied_slug=slug,
             )
-            last_indexed = write_result.commit_sha
-        except DocIndexError:
-            last_indexed = prior.last_indexed_commit_sha if prior is not None else None
+            now = self._clock.now()
+            created_at = prior.created_at if prior is not None else now
+            doc = LivingDocument(
+                slug=resolved_slug,
+                title=title,
+                doc_type=doc_type,
+                tags=tags,
+                related_task_ids=related_task_ids,
+                author_agent_id=author_agent_id,
+                body=body,
+                created_at=created_at,
+                updated_at=now,
+            )
+            write_result = await self._writer.write(project_id=project_id, doc=doc)
+            chunks = self._chunker.chunk(project_id=project_id, doc=doc)
+            last_indexed: NotBlankStr | None
+            try:
+                await self._indexer.index(
+                    project_id=project_id, slug=resolved_slug, chunks=chunks
+                )
+                last_indexed = write_result.commit_sha
+            except DocIndexError:
+                last_indexed = (
+                    prior.last_indexed_commit_sha if prior is not None else None
+                )
+                metadata = DocMetadata(
+                    project_id=project_id,
+                    slug=resolved_slug,
+                    doc_type=doc_type,
+                    title=title,
+                    tags=tags,
+                    head_commit_sha=write_result.commit_sha,
+                    last_indexed_commit_sha=last_indexed,
+                    created_at=created_at,
+                    updated_at=now,
+                )
+                await self._repo.save(metadata)
+                raise
             metadata = DocMetadata(
                 project_id=project_id,
                 slug=resolved_slug,
@@ -181,20 +224,7 @@ class DocsService:
                 updated_at=now,
             )
             await self._repo.save(metadata)
-            raise
-        metadata = DocMetadata(
-            project_id=project_id,
-            slug=resolved_slug,
-            doc_type=doc_type,
-            title=title,
-            tags=tags,
-            head_commit_sha=write_result.commit_sha,
-            last_indexed_commit_sha=last_indexed,
-            created_at=created_at,
-            updated_at=now,
-        )
-        await self._repo.save(metadata)
-        return metadata
+            return metadata
 
     async def read_doc(
         self,
@@ -217,8 +247,15 @@ class DocsService:
             The deserialised document.
 
         Raises:
+            DocValidationError: ``version`` is not a valid commit SHA.
             DocNotFoundError: Slug or version not found.
         """
+        if version is not None and _COMMIT_SHA_RE.match(version) is None:
+            msg = (
+                f"version {version!r} is not a valid commit SHA "
+                f"(expected {_MIN_SHA_LENGTH}-{_MAX_SHA_LENGTH} hex chars)"
+            )
+            raise DocValidationError(msg)
         metadata = await self._repo.get((project_id, slug))
         if metadata is None:
             logger.info(DOC_NOT_FOUND, project_id=project_id, slug=slug)

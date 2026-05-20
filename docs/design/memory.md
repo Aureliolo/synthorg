@@ -25,6 +25,7 @@ consolidation / retention pipeline.
 * [Shared Organizational Memory](memory-organizational.md): company-wide knowledge (policies, ADRs, procedures) behind `OrgMemoryBackend`.
 * [Operational Data Persistence](memory-operational.md): `PersistenceBackend` protocol, per-entity repositories, SQLite + Postgres backends, schema strategy, multi-tenancy, database-enforced invariants.
 * [Memory Learning and Injection](memory-learning.md): procedural memory auto-generation (failure + success capture), cross-agent skill pool, injection strategies (context / tool-based / self-editing), `MemoryService` REST + MCP entry point.
+* [Living Documentation](living-documentation.md): per-project documentation as a dual-purpose wiki + RAG namespace, integrated via the `PROJECT_DOC` memory category and `ProjectAwareMemoryFacade`.
 
 ---
 
@@ -89,7 +90,7 @@ config.
 
 | Enum | Values | Purpose |
 |------|--------|---------|
-| `MemoryCategory` | WORKING, EPISODIC, SEMANTIC, PROCEDURAL, SOCIAL | Memory type categories |
+| `MemoryCategory` | WORKING, EPISODIC, SEMANTIC, PROCEDURAL, SOCIAL, PROJECT_DOC | Memory type categories |
 | `MemoryLevel` | PERSISTENT, PROJECT, SESSION, NONE | Persistence level per agent |
 | `ConsolidationInterval` | HOURLY, DAILY, WEEKLY, NEVER | How often old memories are compressed |
 

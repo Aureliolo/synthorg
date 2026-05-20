@@ -16,7 +16,6 @@ from typing import Any
 import pytest
 
 from synthorg.core.enums import DocType, GitBackendType
-from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.factory import build_docs_service
 from synthorg.docs_engine.tool_factory import DocsToolFactory
@@ -31,29 +30,10 @@ from synthorg.engine.workspace.project_workspace_service import (
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.tools.docs import SearchLivingDocsTool, WriteLivingDocTool
 from tests._shared import FakeClock
+from tests.integration.docs_engine._workspace import InMemoryWorkspaceRepo
 from tests.unit.api.fakes import FakeDocsRepository
 
 pytestmark = pytest.mark.integration
-
-
-class _InMemoryWorkspaceRepo:
-    def __init__(self) -> None:
-        self._rows: dict[str, ProjectWorkspace] = {}
-
-    async def save(self, entity: ProjectWorkspace) -> None:
-        self._rows[entity.project_id] = entity
-
-    async def get(self, entity_id: NotBlankStr) -> ProjectWorkspace | None:
-        return self._rows.get(entity_id)
-
-    async def list_items(
-        self, *, limit: int = 100, offset: int = 0
-    ) -> tuple[ProjectWorkspace, ...]:
-        rows = sorted(self._rows.values(), key=lambda r: r.project_id)
-        return tuple(rows[offset : offset + limit])
-
-    async def delete(self, entity_id: NotBlankStr) -> bool:
-        return self._rows.pop(entity_id, None) is not None
 
 
 async def _build_tools(tmp_path: Path) -> tuple[tuple[Any, ...], InMemoryBackend]:
@@ -64,7 +44,7 @@ async def _build_tools(tmp_path: Path) -> tuple[tuple[Any, ...], InMemoryBackend
     )
     workspace_service = ProjectWorkspaceService(
         base_root=tmp_path,
-        repo=_InMemoryWorkspaceRepo(),
+        repo=InMemoryWorkspaceRepo(),
         git_backend=git_backend,
         config=config,
         clock=FakeClock(),

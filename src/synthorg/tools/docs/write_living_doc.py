@@ -14,16 +14,6 @@ from synthorg.core.enums import (
     ActionType,
     ToolCategory,
 )
-from synthorg.docs_engine.models import (
-    BulletListBlock,
-    CodeBlock,
-    DecisionBlock,
-    DocBlock,
-    HeadingBlock,
-    LinkBlock,
-    MetricBlock,
-    ProseBlock,
-)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docs import (
     DOC_WRITE_FAILED,
@@ -37,6 +27,7 @@ from synthorg.tools.docs._args import (
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
+    from synthorg.docs_engine.models import DocBlock
     from synthorg.docs_engine.service import DocsService
 
 logger = get_logger(__name__)
@@ -148,51 +139,7 @@ def _materialise_body(
     blocks: tuple[WriteLivingDocBlockArg, ...],
 ) -> tuple[DocBlock, ...]:
     """Convert agent-facing block args to typed :data:`DocBlock` instances."""
-    materialised: list[DocBlock] = [_one_block(block) for block in blocks]
-    return tuple(materialised)
-
-
-def _one_block(  # noqa: PLR0911, PLR0912, C901 -- one branch per block kind
-    block: WriteLivingDocBlockArg,
-) -> DocBlock:
-    kind = block.block_kind
-    if kind == "heading":
-        if block.level is None or block.text is None:
-            msg = "heading blocks require level and text"
-            raise ValueError(msg)
-        return HeadingBlock(level=block.level, text=block.text)
-    if kind == "prose":
-        if block.text is None:
-            msg = "prose blocks require text"
-            raise ValueError(msg)
-        return ProseBlock(text=block.text)
-    if kind == "bullet_list":
-        if not block.items:
-            msg = "bullet_list blocks require items"
-            raise ValueError(msg)
-        return BulletListBlock(items=block.items)
-    if kind == "code":
-        if block.code is None:
-            msg = "code blocks require code"
-            raise ValueError(msg)
-        return CodeBlock(language=block.language, code=block.code)
-    if kind == "decision":
-        if block.decision is None or block.rationale is None:
-            msg = "decision blocks require decision and rationale"
-            raise ValueError(msg)
-        return DecisionBlock(decision=block.decision, rationale=block.rationale)
-    if kind == "metric":
-        if block.name is None or block.value is None:
-            msg = "metric blocks require name and value"
-            raise ValueError(msg)
-        return MetricBlock(name=block.name, value=block.value, unit=block.unit)
-    if kind == "link":
-        if block.label is None or block.url is None:
-            msg = "link blocks require label and url"
-            raise ValueError(msg)
-        return LinkBlock(label=block.label, url=block.url)
-    msg = f"unknown block_kind {kind!r}"
-    raise ValueError(msg)
+    return tuple(block.to_block() for block in blocks)
 
 
 __all__ = ["WriteLivingDocTool"]

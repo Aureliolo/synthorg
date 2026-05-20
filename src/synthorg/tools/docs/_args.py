@@ -1,71 +1,154 @@
-"""Typed args models for the living-doc agent tools."""
+"""Typed args models for the living-doc agent tools.
 
-from pydantic import BaseModel, ConfigDict, Field
+The body of a write invocation is a discriminated union of one arg
+model per block kind (mirroring :data:`DocBlock`). Each arg model owns
+its :meth:`to_block` conversion, so the write path needs no central
+branch-per-kind validator and the type checker enforces exhaustiveness.
+"""
+
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from synthorg.core.enums import DocType  # noqa: TC001 -- Pydantic field annotation
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field annotation
+from synthorg.docs_engine.models import (
+    BulletListBlock,
+    CodeBlock,
+    DecisionBlock,
+    DocBlock,
+    HeadingBlock,
+    LinkBlock,
+    MetricBlock,
+    ProseBlock,
+)
+
+_MIN_HEADING_LEVEL: int = 1
+_MAX_HEADING_LEVEL: int = 6
+
+_BLOCK_CONFIG = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
 
-class WriteLivingDocBlockArg(BaseModel):
-    """One body block in a doc-write tool invocation.
+class HeadingBlockArg(BaseModel):
+    """Heading block in a doc-write invocation."""
 
-    Kept loose (free dict body) at the agent boundary; the service
-    re-validates against :data:`DocBlock` discriminated union before
-    persistence. This keeps the agent-facing schema small while still
-    routing through the strict Pydantic validation downstream.
-    """
+    model_config = _BLOCK_CONFIG
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    block_kind: NotBlankStr = Field(description="Block discriminator")
-    text: NotBlankStr | None = Field(
-        default=None,
-        description="Text payload for heading / prose blocks",
+    block_kind: Literal["heading"] = "heading"
+    level: int = Field(
+        ge=_MIN_HEADING_LEVEL,
+        le=_MAX_HEADING_LEVEL,
+        description="Heading level (1..6)",
     )
-    level: int | None = Field(
-        default=None,
-        description="Heading level (1..6) for heading blocks",
+    text: NotBlankStr = Field(description="Heading text")
+
+    def to_block(self) -> DocBlock:
+        return HeadingBlock(level=self.level, text=self.text)
+
+
+class ProseBlockArg(BaseModel):
+    """Prose paragraph block."""
+
+    model_config = _BLOCK_CONFIG
+
+    block_kind: Literal["prose"] = "prose"
+    text: NotBlankStr = Field(description="Prose body")
+
+    def to_block(self) -> DocBlock:
+        return ProseBlock(text=self.text)
+
+
+class BulletListBlockArg(BaseModel):
+    """Bulleted-list block."""
+
+    model_config = _BLOCK_CONFIG
+
+    block_kind: Literal["bullet_list"] = "bullet_list"
+    items: tuple[NotBlankStr, ...] = Field(
+        min_length=1,
+        description="Non-empty tuple of bullet entries",
     )
-    items: tuple[NotBlankStr, ...] | None = Field(
-        default=None,
-        description="Bullet items for bullet_list blocks",
-    )
+
+    def to_block(self) -> DocBlock:
+        return BulletListBlock(items=self.items)
+
+
+class CodeBlockArg(BaseModel):
+    """Code block."""
+
+    model_config = _BLOCK_CONFIG
+
+    block_kind: Literal["code"] = "code"
+    code: str = Field(description="Code body")
     language: NotBlankStr | None = Field(
         default=None,
-        description="Code language hint for code blocks",
+        description="Renderer language hint",
     )
-    code: str | None = Field(
-        default=None,
-        description="Code body for code blocks",
-    )
-    decision: NotBlankStr | None = Field(
-        default=None,
-        description="Decision summary for decision blocks",
-    )
-    rationale: NotBlankStr | None = Field(
-        default=None,
-        description="Decision rationale for decision blocks",
-    )
-    name: NotBlankStr | None = Field(
-        default=None,
-        description="Metric label for metric blocks",
-    )
-    value: NotBlankStr | None = Field(
-        default=None,
-        description="Metric value for metric blocks",
-    )
-    unit: NotBlankStr | None = Field(
-        default=None,
-        description="Metric unit for metric blocks",
-    )
-    label: NotBlankStr | None = Field(
-        default=None,
-        description="Link label for link blocks",
-    )
-    url: NotBlankStr | None = Field(
-        default=None,
-        description="Link target for link blocks",
-    )
+
+    def to_block(self) -> DocBlock:
+        return CodeBlock(code=self.code, language=self.language)
+
+
+class DecisionBlockArg(BaseModel):
+    """Decision + rationale block."""
+
+    model_config = _BLOCK_CONFIG
+
+    block_kind: Literal["decision"] = "decision"
+    decision: NotBlankStr = Field(description="What was decided")
+    rationale: NotBlankStr = Field(description="Why this decision")
+
+    def to_block(self) -> DocBlock:
+        return DecisionBlock(decision=self.decision, rationale=self.rationale)
+
+
+class MetricBlockArg(BaseModel):
+    """Single-metric block."""
+
+    model_config = _BLOCK_CONFIG
+
+    block_kind: Literal["metric"] = "metric"
+    name: NotBlankStr = Field(description="Metric label")
+    value: NotBlankStr = Field(description="Metric value (as string)")
+    unit: NotBlankStr | None = Field(default=None, description="Optional unit suffix")
+
+    def to_block(self) -> DocBlock:
+        return MetricBlock(name=self.name, value=self.value, unit=self.unit)
+
+
+class LinkBlockArg(BaseModel):
+    """Link block."""
+
+    model_config = _BLOCK_CONFIG
+
+    block_kind: Literal["link"] = "link"
+    label: NotBlankStr = Field(description="Link display label")
+    url: NotBlankStr = Field(description="Link target URL")
+
+    def to_block(self) -> DocBlock:
+        return LinkBlock(label=self.label, url=self.url)
+
+
+WriteLivingDocBlockArg = Annotated[
+    HeadingBlockArg
+    | ProseBlockArg
+    | BulletListBlockArg
+    | CodeBlockArg
+    | DecisionBlockArg
+    | MetricBlockArg
+    | LinkBlockArg,
+    Field(discriminator="block_kind"),
+]
+"""Discriminated union over every concrete doc-write block arg."""
+
+_BLOCK_ARG_ADAPTER: TypeAdapter[WriteLivingDocBlockArg] = TypeAdapter(
+    WriteLivingDocBlockArg
+)
+
+
+def parse_block_arg(value: object) -> WriteLivingDocBlockArg:
+    """Validate one raw block dict against the discriminated union."""
+    return _BLOCK_ARG_ADAPTER.validate_python(value)
 
 
 class WriteLivingDocArgs(BaseModel):

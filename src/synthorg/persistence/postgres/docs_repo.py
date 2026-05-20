@@ -71,10 +71,23 @@ class PostgresDocsRepository:
             entity.updated_at,
         )
 
+    async def _safe_rollback(
+        self, conn: psycopg.AsyncConnection[Any], *, event: str
+    ) -> None:
+        try:
+            await conn.rollback()
+        except psycopg.Error as rollback_exc:
+            logger.warning(
+                event,
+                error_type=type(rollback_exc).__name__,
+                error=safe_error_description(rollback_exc),
+                rollback_failed=True,
+            )
+
     async def save(self, entity: DocMetadata) -> None:
         """Persist doc metadata via upsert."""
-        try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            try:
                 await cur.execute(
                     """
                     INSERT INTO project_docs (
@@ -95,16 +108,19 @@ class PostgresDocsRepository:
                     self._row_params(entity),
                 )
                 await conn.commit()
-        except psycopg.Error as exc:
-            msg = f"Failed to save living doc {entity.project_id!r}/{entity.slug!r}"
-            logger.warning(
-                PERSISTENCE_PROJECT_DOC_SAVE_FAILED,
-                project_id=entity.project_id,
-                slug=entity.slug,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
+            except psycopg.Error as exc:
+                await self._safe_rollback(
+                    conn, event=PERSISTENCE_PROJECT_DOC_SAVE_FAILED
+                )
+                msg = f"Failed to save living doc {entity.project_id!r}/{entity.slug!r}"
+                logger.warning(
+                    PERSISTENCE_PROJECT_DOC_SAVE_FAILED,
+                    project_id=entity.project_id,
+                    slug=entity.slug,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
 
     async def get(self, entity_id: DocsRepositoryKey) -> DocMetadata | None:
         """Retrieve doc metadata by ``(project_id, slug)``."""
@@ -194,8 +210,8 @@ class PostgresDocsRepository:
     async def delete(self, entity_id: DocsRepositoryKey) -> bool:
         """Delete doc metadata by ``(project_id, slug)``."""
         project_id, slug = entity_id
-        try:
-            async with self._pool.connection() as conn, conn.cursor() as cur:
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            try:
                 await cur.execute(
                     """DELETE FROM project_docs
                        WHERE project_id = %s AND slug = %s""",
@@ -203,17 +219,20 @@ class PostgresDocsRepository:
                 )
                 deleted = cur.rowcount > 0
                 await conn.commit()
-        except psycopg.Error as exc:
-            msg = f"Failed to delete living doc {project_id!r}/{slug!r}"
-            logger.warning(
-                PERSISTENCE_PROJECT_DOC_DELETE_FAILED,
-                project_id=project_id,
-                slug=slug,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
-        return deleted
+            except psycopg.Error as exc:
+                await self._safe_rollback(
+                    conn, event=PERSISTENCE_PROJECT_DOC_DELETE_FAILED
+                )
+                msg = f"Failed to delete living doc {project_id!r}/{slug!r}"
+                logger.warning(
+                    PERSISTENCE_PROJECT_DOC_DELETE_FAILED,
+                    project_id=project_id,
+                    slug=slug,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+            return deleted
 
     async def query(
         self,
@@ -302,6 +321,16 @@ class PostgresDocsRepository:
         return metadata
 
 
+def _escape_like(value: str) -> str:
+    r"""Escape LIKE metacharacters so a tag matches literally.
+
+    Without this a tag containing ``%`` or ``_`` would behave as a
+    wildcard. Backslash is escaped first, then the wildcards; the query
+    pairs this with ``ESCAPE '\'``.
+    """
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _build_query_sql(filter_spec: DocsFilterSpec) -> tuple[str, tuple[object, ...]]:
     """Compose the WHERE clause for ``query`` / ``count``."""
     sql = "SELECT * FROM project_docs WHERE project_id = %s"
@@ -310,8 +339,8 @@ def _build_query_sql(filter_spec: DocsFilterSpec) -> tuple[str, tuple[object, ..
         sql += " AND doc_type = %s"
         params.append(filter_spec.doc_type.value)
     if filter_spec.tag is not None:
-        sql += " AND tags LIKE %s"
-        params.append(f'%"{filter_spec.tag}"%')
+        sql += " AND tags LIKE %s ESCAPE '\\'"
+        params.append(f'%"{_escape_like(filter_spec.tag)}"%')
     if filter_spec.updated_since is not None:
         sql += " AND updated_at >= %s"
         params.append(filter_spec.updated_since)

@@ -83,6 +83,8 @@ class ProjectAwareMemoryFacade:
                     )
                 )
         except builtins.BaseExceptionGroup as group:
+            if group.subgroup(asyncio.CancelledError) is not None:
+                raise
             logger.warning(
                 DOC_FACADE_FANOUT_FAILED,
                 agent_id=agent_id,

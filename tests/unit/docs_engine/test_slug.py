@@ -9,29 +9,31 @@ pytestmark = pytest.mark.unit
 
 
 class TestDeriveSlug:
-    def test_kebab_case_default(self) -> None:
-        assert (
-            derive_slug("Q2 Status Report", existing_slugs=set()) == "q2-status-report"
-        )
-
-    def test_collision_appends_suffix(self) -> None:
-        existing = {"q2-status"}
-        assert derive_slug("Q2 Status", existing_slugs=existing) == "q2-status-2"
-
-    def test_repeated_collisions_increment(self) -> None:
-        existing = {"q2", "q2-2", "q2-3"}
-        assert derive_slug("Q2", existing_slugs=existing) == "q2-4"
-
-    def test_unicode_falls_back(self) -> None:
-        assert derive_slug("日本語", existing_slugs=set()) == "doc"
+    @pytest.mark.parametrize(
+        ("title", "existing", "expected"),
+        [
+            ("Q2 Status Report", set(), "q2-status-report"),
+            ("Q2 Status", {"q2-status"}, "q2-status-2"),
+            ("Q2", {"q2", "q2-2", "q2-3"}, "q2-4"),
+            ("日本語", set(), "doc"),
+            ("Foo / Bar - Baz", set(), "foo-bar-baz"),
+            ("---", set(), "doc"),
+        ],
+        ids=[
+            "kebab_case_default",
+            "collision_appends_suffix",
+            "repeated_collisions_increment",
+            "unicode_falls_back",
+            "punctuation_collapses",
+            "pure_punctuation_falls_back",
+        ],
+    )
+    def test_derives_expected_slug(
+        self, title: str, existing: set[str], expected: str
+    ) -> None:
+        assert derive_slug(title, existing_slugs=existing) == expected
 
     def test_long_title_truncates(self) -> None:
         title = "a" * (DOCS_SLUG_MAX_LENGTH + 50)
         slug = derive_slug(title, existing_slugs=set())
         assert len(slug) <= DOCS_SLUG_MAX_LENGTH
-
-    def test_punctuation_collapses_to_single_dash(self) -> None:
-        assert derive_slug("Foo / Bar - Baz", existing_slugs=set()) == "foo-bar-baz"
-
-    def test_pure_punctuation_falls_back(self) -> None:
-        assert derive_slug("---", existing_slugs=set()) == "doc"

@@ -28,7 +28,7 @@ export function DocViewer({ doc, loading, error }: DocViewerProps) {
     )
   }
   return (
-    <article className="flex flex-col gap-4">
+    <article className="flex flex-col gap-section-gap">
       <header className="border-border flex flex-col gap-1 border-b pb-3">
         <h1 className="text-2xl font-semibold">{doc.title}</h1>
         <p className="text-muted-foreground text-sm">
@@ -48,7 +48,7 @@ export function DocViewer({ doc, loading, error }: DocViewerProps) {
           </ul>
         )}
       </header>
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-section-gap">
         {doc.body.map((block) => (
           <DocBlockRenderer key={block.block_id} block={block} />
         ))}

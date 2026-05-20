@@ -12,11 +12,62 @@ export interface DocSummary {
   updated_at: string
 }
 
-export interface DocBlock {
-  block_kind: string
+export interface HeadingBlock {
+  block_kind: 'heading'
   block_id: string
-  [key: string]: unknown
+  level: number
+  text: string
 }
+
+export interface ProseBlock {
+  block_kind: 'prose'
+  block_id: string
+  text: string
+}
+
+export interface BulletListBlock {
+  block_kind: 'bullet_list'
+  block_id: string
+  items: readonly string[]
+}
+
+export interface CodeBlock {
+  block_kind: 'code'
+  block_id: string
+  code: string
+  language?: string | null
+}
+
+export interface DecisionBlock {
+  block_kind: 'decision'
+  block_id: string
+  decision: string
+  rationale: string
+}
+
+export interface MetricBlock {
+  block_kind: 'metric'
+  block_id: string
+  name: string
+  value: string
+  unit?: string | null
+}
+
+export interface LinkBlock {
+  block_kind: 'link'
+  block_id: string
+  label: string
+  url: string
+}
+
+export type DocBlock =
+  | HeadingBlock
+  | ProseBlock
+  | BulletListBlock
+  | CodeBlock
+  | DecisionBlock
+  | MetricBlock
+  | LinkBlock
 
 export interface LivingDocument {
   slug: string

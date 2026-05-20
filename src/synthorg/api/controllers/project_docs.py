@@ -22,7 +22,6 @@ from synthorg.docs_engine.constants import (
     DOCS_SEARCH_DEFAULT_LIMIT,
     DOCS_SEARCH_MAX_LIMIT,
 )
-from synthorg.docs_engine.errors import DocNotFoundError
 from synthorg.docs_engine.models import (
     DocSearchHit,
     DocSummary,
@@ -155,15 +154,15 @@ class ProjectDocsController(Controller):
         project_id: PathId,
         slug: PathId,
     ) -> Response[ApiResponse[LivingDocument]]:
-        """Fetch one living doc by slug."""
-        try:
-            doc = await _docs_service(state).read_doc(
-                project_id=NotBlankStr(project_id),
-                slug=NotBlankStr(slug),
-            )
-        except DocNotFoundError as exc:
-            msg = f"Living doc {project_id!r}/{slug!r} not found"
-            raise NotFoundError(msg) from exc
+        """Fetch one living doc by slug.
+
+        ``DocNotFoundError`` propagates to the global RFC 9457 handler,
+        which maps it to 404 with the ``LIVING_DOC_NOT_FOUND`` code.
+        """
+        doc = await _docs_service(state).read_doc(
+            project_id=NotBlankStr(project_id),
+            slug=NotBlankStr(slug),
+        )
         return Response(
             content=ApiResponse[LivingDocument](data=doc),
             status_code=200,
@@ -177,14 +176,10 @@ class ProjectDocsController(Controller):
         slug: PathId,
     ) -> Response[ApiResponse[tuple[DocVersion, ...]]]:
         """Return the git commit history for one doc."""
-        try:
-            versions = await _docs_service(state).history(
-                project_id=NotBlankStr(project_id),
-                slug=NotBlankStr(slug),
-            )
-        except DocNotFoundError as exc:
-            msg = f"Living doc {project_id!r}/{slug!r} not found"
-            raise NotFoundError(msg) from exc
+        versions = await _docs_service(state).history(
+            project_id=NotBlankStr(project_id),
+            slug=NotBlankStr(slug),
+        )
         return Response(
             content=ApiResponse[tuple[DocVersion, ...]](data=versions),
             status_code=200,

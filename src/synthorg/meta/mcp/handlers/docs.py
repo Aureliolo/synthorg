@@ -9,6 +9,7 @@ write handler is admin-gated at the registry layer (``docs:write`` uses
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.errors import (
@@ -29,7 +30,10 @@ from synthorg.meta.mcp.handlers.common_logging import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.mcp import MCP_HANDLER_INVOKE_SUCCESS
-from synthorg.tools.docs._args import WriteLivingDocBlockArg
+from synthorg.tools.docs._args import (
+    WriteLivingDocBlockArg,
+    parse_block_arg,
+)
 from synthorg.tools.docs.write_living_doc import _materialise_body
 
 if TYPE_CHECKING:
@@ -69,8 +73,8 @@ _TY_POS_INT = "positive int"
 def _require_docs_service(app_state: Any) -> Any:
     svc = getattr(app_state, "docs_service", None)
     if svc is None:
-        msg = "docs service is not wired in this deployment"
-        raise DocCommitError(msg)
+        msg = "docs service is not wired on app_state in this deployment"
+        raise ServiceUnavailableError(msg)
     return svc
 
 
@@ -121,7 +125,7 @@ def _parse_block_list(
         if not isinstance(block, dict):
             raise invalid_argument(_ARG_BODY, _TY_BLOCK_LIST)
         try:
-            parsed.append(WriteLivingDocBlockArg.model_validate(block))
+            parsed.append(parse_block_arg(block))
         except ValueError as exc:
             raise invalid_argument(_ARG_BODY, _TY_BLOCK_LIST) from exc
     return tuple(parsed)

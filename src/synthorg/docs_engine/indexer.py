@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _INDEX_PAGE_SIZE: int = 100
+_MAX_DELETE_ITERATIONS: int = 10_000
 
 
 class DocIndexer:
@@ -118,8 +119,7 @@ class DocIndexer:
         """
         project_tag = NotBlankStr(f"{DOCS_PROJECT_TAG_PREFIX}{project_id}")
         slug_tag = NotBlankStr(f"{DOCS_SLUG_TAG_PREFIX}{slug}")
-        # lint-allow: long-running-loop-kill-switch -- bounded drain
-        while True:
+        for _ in range(_MAX_DELETE_ITERATIONS):
             existing = await self._backend.retrieve(
                 SYSTEM_DOCS_AGENT_ID,
                 MemoryQuery(
@@ -134,6 +134,11 @@ class DocIndexer:
                 return
             for entry in existing:
                 await self._backend.delete(SYSTEM_DOCS_AGENT_ID, entry.id)
+        msg = (
+            f"delete-prior for {project_id!r}/{slug!r} did not converge after "
+            f"{_MAX_DELETE_ITERATIONS} pages (backend not removing entries?)"
+        )
+        raise DocIndexError(msg)
 
 
 def _chunk_to_request(chunk: DocChunk) -> MemoryStoreRequest:

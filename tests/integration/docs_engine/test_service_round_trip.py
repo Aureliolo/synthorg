@@ -10,6 +10,7 @@ branch, indexes chunks under PROJECT_DOC, and the same doc is later
 retrievable via the dashboard read path AND via the search path.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -17,13 +18,12 @@ from typing import Any
 import pytest
 
 from synthorg.core.enums import DocType, GitBackendType
-from synthorg.core.project_workspace import ProjectWorkspace
 from synthorg.core.types import NotBlankStr
 from synthorg.docs_engine.constants import (
     DOCS_BRANCH_NAME,
     DOCS_WORKSPACE_SUBDIR,
 )
-from synthorg.docs_engine.errors import DocNotFoundError
+from synthorg.docs_engine.errors import DocIndexError, DocNotFoundError
 from synthorg.docs_engine.factory import build_docs_service
 from synthorg.docs_engine.models import (
     DecisionBlock,
@@ -40,41 +40,35 @@ from synthorg.engine.workspace.project_workspace_service import (
     ProjectWorkspaceService,
 )
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
+from synthorg.memory.models import MemoryStoreRequest
 from tests._shared import FakeClock
+from tests.integration.docs_engine._workspace import InMemoryWorkspaceRepo
 from tests.unit.api.fakes import FakeDocsRepository
 
 pytestmark = pytest.mark.integration
 
 
-class _InMemoryWorkspaceRepo:
-    def __init__(self) -> None:
-        self._rows: dict[str, ProjectWorkspace] = {}
+class _FailingStoreBackend(InMemoryBackend):
+    """InMemoryBackend whose ``store`` always raises (drives index failure)."""
 
-    async def save(self, entity: ProjectWorkspace) -> None:
-        self._rows[entity.project_id] = entity
-
-    async def get(self, entity_id: NotBlankStr) -> ProjectWorkspace | None:
-        return self._rows.get(entity_id)
-
-    async def list_items(
-        self, *, limit: int = 100, offset: int = 0
-    ) -> tuple[ProjectWorkspace, ...]:
-        rows = sorted(self._rows.values(), key=lambda r: r.project_id)
-        return tuple(rows[offset : offset + limit])
-
-    async def delete(self, entity_id: NotBlankStr) -> bool:
-        return self._rows.pop(entity_id, None) is not None
+    async def store(
+        self, agent_id: NotBlankStr, request: MemoryStoreRequest
+    ) -> NotBlankStr:
+        msg = "forced store failure"
+        raise RuntimeError(msg)
 
 
 async def _build_runtime(
     tmp_path: Path,
+    *,
+    memory_backend: InMemoryBackend | None = None,
 ) -> tuple[Any, ProjectWorkspaceService, InMemoryBackend, FakeDocsRepository, Any]:
     config = GitBackendConfig(kind=GitBackendType.EMBEDDED)
     git_backend = build_git_backend(
         config,
         GitBackendDeps(workspace_base_root=tmp_path, clock=FakeClock()),
     )
-    workspace_repo = _InMemoryWorkspaceRepo()
+    workspace_repo = InMemoryWorkspaceRepo()
     workspace_service = ProjectWorkspaceService(
         base_root=tmp_path,
         repo=workspace_repo,
@@ -82,17 +76,17 @@ async def _build_runtime(
         config=config,
         clock=FakeClock(),
     )
-    memory_backend = InMemoryBackend()
-    await memory_backend.connect()
+    backend = memory_backend if memory_backend is not None else InMemoryBackend()
+    await backend.connect()
     docs_repo = FakeDocsRepository()
     runtime = build_docs_service(
         repo=docs_repo,
         workspace_service=workspace_service,
         git_backend=git_backend,
-        memory_backend=memory_backend,
+        memory_backend=backend,
         clock=FakeClock(start=datetime(2026, 5, 20, tzinfo=UTC)),
     )
-    return runtime, workspace_service, memory_backend, docs_repo, git_backend
+    return runtime, workspace_service, backend, docs_repo, git_backend
 
 
 def _sample_body() -> tuple[Any, ...]:
@@ -288,5 +282,56 @@ class TestServiceRoundTrip:
                 isinstance(b, ProseBlock) and "version one" in b.text
                 for b in restored_v1.body
             )
+        finally:
+            await backend.disconnect()
+
+    async def test_index_failure_keeps_metadata_behind_head(
+        self, tmp_path: Path
+    ) -> None:
+        """Commit lands but indexing fails: metadata persists with the
+        head SHA while ``last_indexed_commit_sha`` stays ``None`` for replay."""
+        failing = _FailingStoreBackend()
+        runtime, _, backend, docs_repo, _ = await _build_runtime(
+            tmp_path, memory_backend=failing
+        )
+        try:
+            with pytest.raises(DocIndexError):
+                await runtime.docs_service.write_doc(
+                    project_id=NotBlankStr("proj-1"),
+                    title=NotBlankStr("Partial"),
+                    doc_type=DocType.STATUS_REPORT,
+                    author_agent_id=NotBlankStr("agent_alice"),
+                    body=(ProseBlock(text="body that fails to index"),),
+                )
+            meta = await docs_repo.get((NotBlankStr("proj-1"), NotBlankStr("partial")))
+            assert meta is not None
+            assert meta.head_commit_sha
+            assert meta.last_indexed_commit_sha is None
+        finally:
+            await backend.disconnect()
+
+    async def test_concurrent_same_title_distinct_slugs(self, tmp_path: Path) -> None:
+        """Two concurrent same-title creates serialise under the per-project
+        write lock and resolve to distinct slugs (no silent overwrite)."""
+        runtime, _, backend, docs_repo, _ = await _build_runtime(tmp_path)
+        try:
+
+            async def write() -> Any:
+                return await runtime.docs_service.write_doc(
+                    project_id=NotBlankStr("proj-1"),
+                    title=NotBlankStr("Q2 Status"),
+                    doc_type=DocType.STATUS_REPORT,
+                    author_agent_id=NotBlankStr("agent_alice"),
+                    body=(ProseBlock(text="concurrent body"),),
+                )
+
+            first, second = await asyncio.gather(write(), write())
+            assert first.slug != second.slug
+            assert {first.slug, second.slug} == {"q2-status", "q2-status-2"}
+            for slug in (first.slug, second.slug):
+                assert (
+                    await docs_repo.get((NotBlankStr("proj-1"), NotBlankStr(slug)))
+                    is not None
+                )
         finally:
             await backend.disconnect()

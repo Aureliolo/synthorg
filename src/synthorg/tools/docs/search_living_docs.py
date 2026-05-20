@@ -18,6 +18,7 @@ from synthorg.core.enums import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docs import (
     DOC_SEARCH_COMPLETE,
+    DOC_SEARCH_FAILED,
     DOC_SEARCH_START,
 )
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -76,6 +77,12 @@ class SearchLivingDocsTool(BaseTool):
                 limit=parsed.limit,
             )
         except (ValueError, TypeError) as exc:
+            logger.warning(
+                DOC_SEARCH_FAILED,
+                project_id=self._project_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ToolExecutionResult(
                 content=(
                     f"Search failed: invalid argument shape "
@@ -84,6 +91,12 @@ class SearchLivingDocsTool(BaseTool):
                 is_error=True,
             )
         except Exception as exc:
+            logger.error(
+                DOC_SEARCH_FAILED,
+                project_id=self._project_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return ToolExecutionResult(
                 content=(
                     f"Search failed: {type(exc).__name__} "

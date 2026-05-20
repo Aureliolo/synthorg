@@ -4,6 +4,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import DocType  # noqa: TC001 -- Pydantic field annotation
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field annotation
+from synthorg.tools.docs._args import (
+    WriteLivingDocBlockArg,  # noqa: TC001 -- Pydantic field annotation
+)
 
 
 class DocsWriteArgs(BaseModel):
@@ -19,9 +22,9 @@ class DocsWriteArgs(BaseModel):
     project_id: NotBlankStr = Field(description="Owning project")
     title: NotBlankStr = Field(description="Document title")
     doc_type: DocType = Field(description="Doc taxonomy bucket")
-    body: tuple[dict, ...] = Field(  # type: ignore[type-arg] -- block dict shape
+    body: tuple[WriteLivingDocBlockArg, ...] = Field(
         min_length=1,
-        description="Ordered tuple of body block dicts",
+        description="Ordered tuple of typed body blocks",
     )
     tags: tuple[NotBlankStr, ...] = Field(default=())
     related_task_ids: tuple[NotBlankStr, ...] = Field(default=())

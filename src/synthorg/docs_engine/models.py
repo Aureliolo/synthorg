@@ -15,6 +15,7 @@ merged adjacent prose blocks) that the indexer stores under
 ``namespace=f"project:{project_id}"`` and ``tags=("doc_slug:<slug>",)``.
 """
 
+import re
 from typing import Annotated, Literal
 from uuid import uuid4
 
@@ -24,6 +25,7 @@ from pydantic import (
     ConfigDict,
     Field,
     StringConstraints,
+    field_validator,
 )
 
 from synthorg.core.enums import DocType  # noqa: TC001 -- Pydantic field annotation
@@ -33,6 +35,15 @@ from synthorg.core.types import NotBlankStr
 
 _MIN_HEADING_LEVEL: int = 1
 _MAX_HEADING_LEVEL: int = 6
+
+_ALLOWED_LINK_SCHEMES: frozenset[str] = frozenset({"http", "https", "mailto"})
+_URL_SCHEME_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):")
+
+
+def _url_scheme(value: str) -> str | None:
+    """Return the lower-cased URI scheme, or ``None`` for a relative URL."""
+    match = _URL_SCHEME_RE.match(value)
+    return match.group(1).lower() if match is not None else None
 
 
 HeadingText = Annotated[str, StringConstraints(min_length=1, max_length=512)]
@@ -199,6 +210,21 @@ class LinkBlock(BaseModel):
     block_id: NotBlankStr = Field(default_factory=_new_block_id)
     label: LinkText = Field(description="Link display label")
     url: LinkText = Field(description="Link target URL")
+
+    @field_validator("url")
+    @classmethod
+    def _reject_unsafe_scheme(cls, value: str) -> str:
+        """Block ``javascript:`` / ``data:`` / ``file:`` (stored-XSS sinks).
+
+        Relative URLs (no scheme) and ``http`` / ``https`` / ``mailto``
+        are permitted; any other explicit scheme is rejected because the
+        wiki renders the value as an anchor ``href``.
+        """
+        scheme = _url_scheme(value)
+        if scheme is not None and scheme not in _ALLOWED_LINK_SCHEMES:
+            msg = f"link url scheme {scheme!r} is not permitted"
+            raise ValueError(msg)
+        return value
 
 
 # ── Discriminated union ─────────────────────────────────────────────

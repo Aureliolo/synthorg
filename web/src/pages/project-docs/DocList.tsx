@@ -7,6 +7,12 @@ const DOC_TYPE_LABEL: Record<DocType, string> = {
   knowledge_note: 'Note',
 }
 
+const DOC_TYPES: readonly DocType[] = [
+  'status_report',
+  'deliverable',
+  'knowledge_note',
+]
+
 export interface DocListProps {
   docs: readonly DocSummary[]
   selectedSlug: string | null
@@ -36,7 +42,7 @@ export function DocList({
           active={filter === null}
           onClick={() => onFilterChange(null)}
         />
-        {(Object.keys(DOC_TYPE_LABEL) as DocType[]).map((kind) => (
+        {DOC_TYPES.map((kind) => (
           <FilterChip
             key={kind}
             label={DOC_TYPE_LABEL[kind]}
@@ -77,7 +83,7 @@ export function DocList({
   )
 }
 
-interface FilterChipProps {
+export interface FilterChipProps {
   label: string
   active: boolean
   onClick: () => void
