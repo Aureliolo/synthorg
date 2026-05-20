@@ -26,10 +26,16 @@ _SENTENCE_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"(?<=[.!?])\s+")
 
 _NUMERIC_CLAIM_RE: Final[re.Pattern[str]] = re.compile(
     r"\b\d+(?:[.,]\d+)?\s*%|\b\d+(?:[.,]\d+)?\s*(?:million|billion|thousand|"
-    r"users|customers|requests|seconds|minutes|hours|days|years)\b",
+    r"users|customers|requests|nanoseconds|microseconds|milliseconds|"
+    r"seconds|minutes|hours|days|years)\b",
     re.IGNORECASE,
 )
 """Numeric assertions: percentages, large units, time spans.
+
+Time-unit alternation runs from subsecond to year so latency claims
+(``250 milliseconds``) are caught alongside calendar-scale durations.
+Order matters because the alternation is greedy: ``milliseconds``
+must come BEFORE ``seconds`` so the longer match wins.
 
 These are the highest-value targets for heuristic grounding: a number
 without a source is the canonical hallucination signature.
