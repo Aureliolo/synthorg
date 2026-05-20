@@ -67,7 +67,7 @@ export const tasksHandlers = [
     }
     return HttpResponse.json(
       successFor<typeof createTask>({
-        correlation_id: `corr-${body.title.toLowerCase().replace(/\s+/g, '-')}`,
+        correlation_id: crypto.randomUUID(),
         title: body.title,
         project: body.project,
         status: 'submitted',

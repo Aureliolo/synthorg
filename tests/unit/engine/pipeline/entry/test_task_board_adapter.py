@@ -8,6 +8,7 @@ background task drives reconciliation (the pipeline creates the task
 inside its intake phase).
 """
 
+import uuid
 from typing import Any
 
 import pytest
@@ -69,7 +70,8 @@ def test_source_is_task_board() -> None:
 
 def test_filing_auto_correlation_id_is_set() -> None:
     filing = _filing()
-    assert filing.correlation_id  # default-factory populated
+    parsed = uuid.UUID(filing.correlation_id)
+    assert parsed.version == 4
 
 
 def test_filing_explicit_correlation_id_preserved() -> None:
