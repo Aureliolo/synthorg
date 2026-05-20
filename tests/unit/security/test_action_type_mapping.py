@@ -62,6 +62,7 @@ class TestMappingSpotChecks:
             (ToolCategory.DEPLOYMENT, ActionType.DEPLOY_STAGING),
             (ToolCategory.MEMORY, ActionType.MEMORY_READ),
             (ToolCategory.MCP, ActionType.CODE_WRITE),
+            (ToolCategory.BROWSER, ActionType.BROWSER_NAVIGATE),
             (ToolCategory.OTHER, ActionType.CODE_READ),
         ],
     )

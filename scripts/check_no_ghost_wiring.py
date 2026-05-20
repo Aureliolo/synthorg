@@ -71,6 +71,12 @@ RUNTIME_PREFIXES: Final[tuple[str, ...]] = (
     "src/synthorg/meta/",
     "src/synthorg/client/",
     "src/synthorg/settings/",
+    # tools/ is reached at boot via the
+    # ``build_default_tools_from_config`` chain called from
+    # ``workers/runtime_builder._build_tool_registry``; counting tool
+    # factory + tool-class construction lets the manifest track tool
+    # wiring (e.g. EPIC #1987 children that add new tool classes).
+    "src/synthorg/tools/",
 )
 
 

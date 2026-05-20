@@ -38,6 +38,10 @@ dependencies = [
     "opentelemetry-api==1.40.0",
     "opentelemetry-sdk==1.40.0",
     "opentelemetry-exporter-otlp-proto-http==1.40.0",
+    "playwright==1.60.0",
+    "scikit-image==0.26.0",
+    "pillow==12.0.0",
+    "numpy==2.3.4",
     "yoyo-migrations==9.0.0",
 ]
 
@@ -278,6 +282,20 @@ convention = "google"
     "S603",    # subprocess calls expected in hook scripts
     "S607",    # partial executable paths (git, pytest, mypy)
 ]
+"src/synthorg/tools/browser/**/*.py" = [
+    # The BrowserTool catches its own BrowserDomainError chain at the
+    # execute() boundary and emits a structured ToolExecutionResult.
+    # The error site needs concrete messages with per-call context, so
+    # the "extract message to variable" / "use default_message"
+    # patterns produce more noise than signal.
+    "TRY003",  # long messages outside exception class
+    "TRY301",  # raise inside try block
+    "EM101",   # raw string literal in exception
+    "EM102",   # raw f-string in exception
+    # The host-side baseline path operations are O(1) stat calls that
+    # do not benefit from anyio.Path indirection.
+    "ASYNC240",
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["synthorg"]
@@ -341,6 +359,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "lxml.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "skimage.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

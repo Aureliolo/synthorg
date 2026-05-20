@@ -70,9 +70,12 @@ class TestAccessLevelCategories:
             (ToolAccessLevel.STANDARD, ToolCategory.TERMINAL, True),
             (ToolAccessLevel.STANDARD, ToolCategory.ANALYTICS, True),
             (ToolAccessLevel.STANDARD, ToolCategory.MEMORY, True),
+            (ToolAccessLevel.STANDARD, ToolCategory.BROWSER, True),
             (ToolAccessLevel.STANDARD, ToolCategory.DEPLOYMENT, False),
             (ToolAccessLevel.STANDARD, ToolCategory.DATABASE, False),
             (ToolAccessLevel.STANDARD, ToolCategory.OTHER, False),
+            (ToolAccessLevel.SANDBOXED, ToolCategory.BROWSER, False),
+            (ToolAccessLevel.RESTRICTED, ToolCategory.BROWSER, False),
         ],
         ids=lambda p: p.value if hasattr(p, "value") else str(p),
     )

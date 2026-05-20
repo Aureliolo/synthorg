@@ -68,6 +68,10 @@ _WHITELIST_FILES: Final[frozenset[str]] = frozenset(
         "src/synthorg/communication/loop_prevention/dedup.py",
         "src/synthorg/communication/loop_prevention/rate_limit.py",
         "src/synthorg/communication/meeting/scheduler.py",
+        # Browser executor is a standalone Python script staged into
+        # the DockerSandbox container; it imports nothing from synthorg
+        # and so cannot reach the Clock seam. Issue #1992 / EPIC #1987.
+        "src/synthorg/tools/browser/_executor.py",
     }
 )
 _WHITELIST_PREFIXES: Final[tuple[str, ...]] = ("src/synthorg/observability/",)
