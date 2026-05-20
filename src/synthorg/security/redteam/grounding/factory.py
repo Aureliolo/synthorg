@@ -37,5 +37,7 @@ def build_grounding_checker(kind: GroundingCheckerKind) -> GroundingChecker:
     """
     if kind == "heuristic":
         return HeuristicGroundingChecker()
-    msg = f"Unknown grounding checker kind: {kind!r}"
+    # Runtime guard: untyped config payloads (YAML / env) reach this
+    # branch even though the Literal narrows it away at type-check time.
+    msg = f"Unknown grounding checker kind: {kind!r}"  # type: ignore[unreachable]
     raise ValueError(msg)

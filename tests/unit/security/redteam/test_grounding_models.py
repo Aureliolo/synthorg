@@ -36,7 +36,7 @@ class TestUngroundedClaim:
                 reason="r",
                 confidence=0.5,
                 source="heuristic",
-                extra_unknown="boom",
+                extra_unknown="boom",  # type: ignore[call-arg]
             )
 
     def test_confidence_below_zero_rejected(self) -> None:

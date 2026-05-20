@@ -71,13 +71,13 @@ class TestRedTeamVerdict:
 class TestRedTeamFinding:
     """Finding model: frozen, extra='forbid', evidence-required-on-HIGH."""
 
-    def _ok_kwargs(self) -> dict[str, object]:
-        return {
-            "attack_surface": RedTeamAttackSurface.SECURITY,
-            "severity": RedTeamSeverity.LOW,
-            "description": "Missing input length check",
-            "evidence": ("L42: read input without length cap",),
-        }
+    def _ok_finding(self) -> RedTeamFinding:
+        return RedTeamFinding(
+            attack_surface=RedTeamAttackSurface.SECURITY,
+            severity=RedTeamSeverity.LOW,
+            description="Missing input length check",
+            evidence=("L42: read input without length cap",),
+        )
 
     def test_creation_with_minimal_fields(self) -> None:
         finding = RedTeamFinding(
@@ -91,13 +91,19 @@ class TestRedTeamFinding:
         assert finding.suggested_fix is None
 
     def test_frozen(self) -> None:
-        finding = RedTeamFinding(**self._ok_kwargs())
+        finding = self._ok_finding()
         with pytest.raises(ValidationError):
             finding.severity = RedTeamSeverity.HIGH  # type: ignore[misc]
 
     def test_extra_forbidden(self) -> None:
         with pytest.raises(ValidationError):
-            RedTeamFinding(**self._ok_kwargs(), unexpected="x")
+            RedTeamFinding(
+                attack_surface=RedTeamAttackSurface.SECURITY,
+                severity=RedTeamSeverity.LOW,
+                description="Missing input length check",
+                evidence=("L42",),
+                unexpected="x",  # type: ignore[call-arg]
+            )
 
     def test_high_severity_requires_evidence(self) -> None:
         with pytest.raises(ValidationError) as exc_info:
@@ -172,7 +178,7 @@ class TestRedTeamReport:
                 execution_id="exec-1",
                 task_id="task-1",
                 summary="x",
-                unexpected_field="boom",
+                unexpected_field="boom",  # type: ignore[call-arg]
             )
 
     def test_findings_bounded(self) -> None:
