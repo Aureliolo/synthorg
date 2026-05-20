@@ -7,6 +7,7 @@ import type {
   CancelTaskRequest,
   CreateTaskRequest,
   Task,
+  TaskBoardSubmissionResponse,
   TransitionTaskRequest,
   UpdateTaskRequest,
 } from '@/api/types/tasks'
@@ -27,7 +28,7 @@ export interface UseTaskBoardDataReturn {
   fetchTask: (taskId: string) => Promise<void>
   // Mirror the canonical store contract: failure resolves to `null` /
   // `false`. Callers must null-check the sentinel rather than try/catch.
-  createTask: (data: CreateTaskRequest) => Promise<Task | null>
+  createTask: (data: CreateTaskRequest) => Promise<TaskBoardSubmissionResponse | null>
   updateTask: (taskId: string, data: UpdateTaskRequest) => Promise<Task | null>
   transitionTask: (taskId: string, data: TransitionTaskRequest) => Promise<Task | null>
   cancelTask: (taskId: string, data: CancelTaskRequest) => Promise<Task | null>

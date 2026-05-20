@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react'
 import { action } from 'storybook/actions'
 import { TaskCreateDialog } from './TaskCreateDialog'
-import type { Task } from '@/api/types/tasks'
+import type { TaskBoardSubmissionResponse } from '@/api/types/tasks'
 
 const meta = {
   title: 'Tasks/TaskCreateDialog',
@@ -13,8 +13,10 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-// Sentinel-return stub: onCreate now resolves to ``Task | null``.
-const nullCreate = async (): Promise<Task | null> => null
+// Sentinel-return stub: onCreate now resolves to the 202
+// ``TaskBoardSubmissionResponse`` envelope on success or ``null`` on
+// failure (the spine creates the task in the background).
+const nullCreate = async (): Promise<TaskBoardSubmissionResponse | null> => null
 
 export const Open: Story = {
   args: {

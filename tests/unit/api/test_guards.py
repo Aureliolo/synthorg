@@ -39,7 +39,7 @@ class TestWriteGuard:
             json=_TASK_PAYLOAD,
             headers=make_auth_headers("ceo"),
         )
-        assert response.status_code == 201
+        assert response.status_code == 202
 
     def test_allows_manager(self, test_client: TestClient[Any]) -> None:
         response = test_client.post(
@@ -47,7 +47,7 @@ class TestWriteGuard:
             json=_TASK_PAYLOAD,
             headers=make_auth_headers("manager"),
         )
-        assert response.status_code == 201
+        assert response.status_code == 202
 
     def test_blocks_board_member(self, test_client: TestClient[Any]) -> None:
         response = test_client.post(
@@ -63,7 +63,7 @@ class TestWriteGuard:
             json=_TASK_PAYLOAD,
             headers=make_auth_headers("pair_programmer"),
         )
-        assert response.status_code == 201
+        assert response.status_code == 202
 
     def test_blocks_observer(self, test_client: TestClient[Any]) -> None:
         response = test_client.post(

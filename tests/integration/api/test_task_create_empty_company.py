@@ -109,5 +109,21 @@ class TestEmptyCompanyRejectsTaskCreation:
         self,
         provider_company_client: TestClient[Any],
     ) -> None:
+        """``POST /tasks`` now returns 202 + a submission envelope.
+
+        The runtime app boots with a provider + auto-wired simulation
+        runtime + work pipeline, so the boot hook attaches the
+        ``TaskBoardEntryAdapter``. The board controller hands the
+        filing to it and returns 202; the spine creates the task in a
+        detached background coroutine.
+        """
         resp = provider_company_client.post("/api/v1/tasks", json=_task_payload())
-        assert resp.status_code == 201, resp.text
+        assert resp.status_code == 202, resp.text
+        body = resp.json()
+        assert body["success"] is True
+        data = body["data"]
+        assert data["title"] == "Build the thing"
+        assert data["project"] == "proj-1"
+        assert data["status"] == "submitted"
+        assert isinstance(data["correlation_id"], str)
+        assert data["correlation_id"]
