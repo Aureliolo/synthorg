@@ -320,6 +320,21 @@ class SelfImprovementConfig(BaseModel):
     analysis_max_tokens: int = Field(default=4000, ge=100)
 
     @model_validator(mode="after")
+    def _validate_tool_creation_flags(self) -> Self:
+        """Keep the two tool-creation switches coherent.
+
+        ``tool_creation_enabled`` gates the boot wiring and scope guard,
+        while ``toolsmith.enabled`` gates the toolsmith's own
+        allowlist-consistency check. They must agree, otherwise an
+        operator can enable one and silently leave the subsystem off (or
+        configure an allowlist that never runs).
+        """
+        if self.tool_creation_enabled != self.toolsmith.enabled:
+            msg = "tool_creation_enabled and toolsmith.enabled must match"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _validate_code_modification_requirements(self) -> Self:
         """Require GitHub settings when code modification is enabled."""
         if not self.code_modification_enabled:

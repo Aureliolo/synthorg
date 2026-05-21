@@ -58,7 +58,16 @@ _PROBE_VALUES: Mapping[str, Any] = {
 
 
 def _synthesize_probe(parameters_schema: dict[str, Any]) -> dict[str, Any]:
-    """Build a minimal valid argument payload from required schema fields."""
+    """Build a minimal valid argument payload from required schema fields.
+
+    Honours the schema keywords that fully determine a valid value --
+    ``const``, ``default``, and ``enum`` (first allowed) -- in that
+    priority order, falling back to a type-based placeholder. Deeper
+    constraint satisfaction (numeric bounds, ``minLength``, recursive
+    container shapes) is intentionally out of scope: the probe is a
+    best-effort smoke test and a probe that misses a bound merely fails
+    the brief gracefully via ``_BRIEF_FAIL_SCORE`` rather than crashing.
+    """
     properties = parameters_schema.get("properties")
     required = parameters_schema.get("required") or ()
     probe: dict[str, Any] = {}
@@ -68,12 +77,30 @@ def _synthesize_probe(parameters_schema: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(name, str):
             continue
         prop = properties.get(name)
-        raw_type = prop.get("type") if isinstance(prop, dict) else None
-        json_type = raw_type if isinstance(raw_type, str) else ""
         # deepcopy so a script that mutates list/dict probes cannot leak
         # state into a subsequent invocation reusing the same singleton.
-        probe[name] = deepcopy(_PROBE_VALUES.get(json_type, "probe"))
+        probe[name] = deepcopy(_probe_value_for(prop))
     return probe
+
+
+def _probe_value_for(prop: object) -> Any:
+    """Pick a probe value for a single property schema.
+
+    ``const`` / ``default`` / ``enum`` pin an exact valid value when
+    present; otherwise fall back to a type-based placeholder.
+    """
+    if not isinstance(prop, dict):
+        return "probe"
+    if "const" in prop:
+        return prop["const"]
+    if "default" in prop:
+        return prop["default"]
+    enum = prop.get("enum")
+    if isinstance(enum, (list, tuple)) and enum:
+        return enum[0]
+    raw_type = prop.get("type")
+    json_type = raw_type if isinstance(raw_type, str) else ""
+    return _PROBE_VALUES.get(json_type, "probe")
 
 
 class SandboxBriefRunner:
