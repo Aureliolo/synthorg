@@ -1,4 +1,4 @@
-"""Acceptance tests for the reproducible per-project environment (#1994).
+"""Acceptance tests for the reproducible per-project environment.
 
 Validates the locked acceptance criterion under the simulation harness:
 a deliverable repo, freshly cloned into a clean environment from its
