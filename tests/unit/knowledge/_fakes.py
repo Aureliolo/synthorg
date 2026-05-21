@@ -15,19 +15,42 @@ from synthorg.persistence.knowledge_protocol import (
 )
 
 
-class FakeKnowledgeSourceRepository:
-    """In-memory ``KnowledgeSourceRepository`` for unit tests."""
+class FakeRepositoryError(RuntimeError):
+    """Raised by error-injecting fakes to simulate backend failure."""
 
-    def __init__(self) -> None:
+
+class FakeKnowledgeSourceRepository:
+    """In-memory ``KnowledgeSourceRepository`` for unit tests.
+
+    Pass ``fail_on_save=True`` (or ``fail_on_delete=True``) to make the
+    mutating method raise :class:`FakeRepositoryError`, so tests can
+    exercise the service's error-handling and lifecycle-status paths
+    without a live backend.
+    """
+
+    def __init__(
+        self,
+        *,
+        fail_on_save: bool = False,
+        fail_on_delete: bool = False,
+    ) -> None:
         self._rows: dict[str, KnowledgeSource] = {}
+        self._fail_on_save = fail_on_save
+        self._fail_on_delete = fail_on_delete
 
     async def save(self, entity: KnowledgeSource) -> None:
+        if self._fail_on_save:
+            msg = f"injected save failure for source {entity.source_id!r}"
+            raise FakeRepositoryError(msg)
         self._rows[entity.source_id] = entity
 
     async def get(self, entity_id: NotBlankStr) -> KnowledgeSource | None:
         return self._rows.get(entity_id)
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
+        if self._fail_on_delete:
+            msg = f"injected delete failure for source {entity_id!r}"
+            raise FakeRepositoryError(msg)
         return self._rows.pop(entity_id, None) is not None
 
     async def list_items(
@@ -73,18 +96,38 @@ class FakeKnowledgeSourceRepository:
 
 
 class FakeChunkProvenanceRepository:
-    """In-memory ``ChunkProvenanceRepository`` for unit tests."""
+    """In-memory ``ChunkProvenanceRepository`` for unit tests.
 
-    def __init__(self) -> None:
+    Set ``fail_on_save`` / ``fail_on_delete`` to make the mutators
+    raise :class:`FakeRepositoryError` so the indexer's two-phase
+    ordering (V8: provenance-first, memory-second) can be observed
+    directly: a failing provenance save must leave the memory backend
+    untouched and the source row in ``FAILED``.
+    """
+
+    def __init__(
+        self,
+        *,
+        fail_on_save: bool = False,
+        fail_on_delete: bool = False,
+    ) -> None:
         self._rows: dict[str, ChunkProvenanceRow] = {}
+        self._fail_on_save = fail_on_save
+        self._fail_on_delete = fail_on_delete
 
     async def save(self, entity: ChunkProvenanceRow) -> None:
+        if self._fail_on_save:
+            msg = f"injected provenance save failure for chunk {entity.chunk_id!r}"
+            raise FakeRepositoryError(msg)
         self._rows[entity.chunk_id] = entity
 
     async def get(self, entity_id: NotBlankStr) -> ChunkProvenanceRow | None:
         return self._rows.get(entity_id)
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
+        if self._fail_on_delete:
+            msg = f"injected provenance delete failure for chunk {entity_id!r}"
+            raise FakeRepositoryError(msg)
         return self._rows.pop(entity_id, None) is not None
 
     async def get_many(

@@ -21,7 +21,11 @@ from synthorg.knowledge.errors import (
 from synthorg.knowledge.loaders.factory import build_source_loader
 from synthorg.knowledge.loaders.pdf import PdfLoader
 from synthorg.knowledge.loaders.repo import RepoLoader
-from synthorg.knowledge.loaders.ticket import TicketLoader
+from synthorg.knowledge.loaders.ticket import (
+    TicketComment,
+    TicketLoader,
+    TicketThread,
+)
 from synthorg.knowledge.loaders.web import WebLoader
 from synthorg.knowledge.models import CodeLocator, KnowledgeSource, PdfLocator
 
@@ -146,10 +150,33 @@ class TestWebLoader:
             await loader.load(_source(SourceType.WEB, "https://x.test"))
 
 
+class _StubTicketFetcher:
+    async def fetch(self, ticket_uri: str) -> TicketThread:
+        return TicketThread(
+            ticket_id=NotBlankStr(ticket_uri),
+            comments=(
+                TicketComment(comment_id=NotBlankStr("c1"), body="ticket body content"),
+            ),
+        )
+
+
+class _FailingTicketFetcher:
+    async def fetch(self, _ticket_uri: str) -> TicketThread:
+        msg = "transport error"
+        raise ConnectionError(msg)
+
+
 class TestTicketLoader:
-    async def test_rejects_until_wired(self) -> None:
+    async def test_loads_thread_through_injected_fetcher(self) -> None:
+        loader = TicketLoader(fetcher=_StubTicketFetcher())
+        doc = await loader.load(_source(SourceType.TICKET, "TICKET-1"))
+        assert len(doc.units) == 1
+        assert doc.units[0].text == "ticket body content"
+
+    async def test_fetch_failure_raises_unavailable(self) -> None:
+        loader = TicketLoader(fetcher=_FailingTicketFetcher())
         with pytest.raises(KnowledgeSourceUnavailableError):
-            await TicketLoader().load(_source(SourceType.TICKET, "ticket://1"))
+            await loader.load(_source(SourceType.TICKET, "TICKET-2"))
 
 
 class TestBuildSourceLoader:
@@ -157,11 +184,18 @@ class TestBuildSourceLoader:
         assert isinstance(build_source_loader(SourceType.PDF), PdfLoader)
         assert isinstance(build_source_loader(SourceType.DESIGN_DOC), PdfLoader)
         assert isinstance(build_source_loader(SourceType.REPO), RepoLoader)
-        assert isinstance(build_source_loader(SourceType.TICKET), TicketLoader)
+        assert isinstance(
+            build_source_loader(SourceType.TICKET, ticket_fetcher=_StubTicketFetcher()),
+            TicketLoader,
+        )
 
     def test_web_requires_fetcher(self) -> None:
         with pytest.raises(KnowledgeValidationError):
             build_source_loader(SourceType.WEB)
+
+    def test_ticket_requires_fetcher(self) -> None:
+        with pytest.raises(KnowledgeValidationError):
+            build_source_loader(SourceType.TICKET)
 
     def test_web_with_fetcher(self) -> None:
         loader = build_source_loader(SourceType.WEB, html_fetcher=_FakeFetcher())

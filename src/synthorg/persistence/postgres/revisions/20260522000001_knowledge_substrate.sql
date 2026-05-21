@@ -1,6 +1,6 @@
 -- depends: 20260521000001_external_api_governed_access 20260520000001_cost_forecasts 20260520000001_project_docs
 
--- Knowledge + provenance substrate (#1988): source registry + per-chunk
+-- Knowledge + provenance substrate: source registry + per-chunk
 -- provenance. One revision per backend (single-migration-per-PR policy).
 --
 -- knowledge_sources: one row per ingested corpus source (PDF / web /

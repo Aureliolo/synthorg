@@ -48,6 +48,7 @@ def _source(project_id: str | None = "proj-1") -> KnowledgeSource:
         status=SourceStatus.INDEXED,
         created_at=ts,
         updated_at=ts,
+        last_indexed_at=ts,
     )
 
 

@@ -42,6 +42,7 @@ def _source(source_id: str = "src-1") -> KnowledgeSource:
         chunk_count=1,
         created_at=ts,
         updated_at=ts,
+        last_indexed_at=ts,
     )
 
 

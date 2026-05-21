@@ -23,7 +23,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.core.enums import (  # noqa: TC001 -- Pydantic field annotations
+from synthorg.core.enums import (
     ContentKind,
     SourceStatus,
     SourceType,
@@ -274,6 +274,19 @@ class KnowledgeSource(BaseModel):
     def is_global(self) -> bool:
         """Whether the source is global (not scoped to a project)."""
         return self.project_id is None
+
+    @model_validator(mode="after")
+    def _validate_lifecycle(self) -> Self:
+        """Reject lifecycle states that contradict the timestamp fields.
+
+        A row claiming ``INDEXED`` must carry a ``last_indexed_at``; an
+        adversarial or partially-migrated backend row that violates this
+        would otherwise propagate inconsistency into citation resolution.
+        """
+        if self.status is SourceStatus.INDEXED and self.last_indexed_at is None:
+            msg = "status=INDEXED requires last_indexed_at to be set"
+            raise ValueError(msg)
+        return self
 
 
 class ChunkProvenanceRow(BaseModel):

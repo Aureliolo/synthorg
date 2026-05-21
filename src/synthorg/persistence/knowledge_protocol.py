@@ -14,11 +14,11 @@ bespoke methods on the provenance repo are justified under ADR-0001 D7
 (see their docstrings).
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.enums import (  # noqa: TC001 -- Pydantic field annotations
+from synthorg.core.enums import (
     SourceStatus,
     SourceType,
 )
@@ -72,6 +72,27 @@ class KnowledgeSourceFilter(BaseModel):
         default=False,
         description="Only sources whose status is STALE",
     )
+
+    @model_validator(mode="after")
+    def _validate_status_combination(self) -> Self:
+        """Reject ``stale_only=True`` combined with a non-STALE status filter.
+
+        ``stale_only`` is a shortcut for the most common stale-listing
+        path; pairing it with an explicit ``status`` other than ``STALE``
+        produces a query no row can satisfy, which is almost always a
+        caller bug rather than the intended empty result.
+        """
+        if (
+            self.stale_only
+            and self.status is not None
+            and self.status is not SourceStatus.STALE
+        ):
+            msg = (
+                f"stale_only=True is incompatible with status={self.status.value!r};"
+                " drop one of the two filters"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ChunkProvenanceFilter(BaseModel):

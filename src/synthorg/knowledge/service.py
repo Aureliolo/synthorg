@@ -8,6 +8,7 @@ chunks the source, short-circuits when the content hash is unchanged, and
 records lifecycle status on the source row.
 """
 
+import asyncio
 import builtins
 from typing import TYPE_CHECKING
 
@@ -28,8 +29,12 @@ from synthorg.knowledge.models import KnowledgeHit, KnowledgeSource
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_INGEST_FAILED,
+    KNOWLEDGE_LIST_REQUESTED,
     KNOWLEDGE_REINDEX_COMPLETED,
+    KNOWLEDGE_REINDEX_STARTED,
+    KNOWLEDGE_SOURCE_DELETED,
     KNOWLEDGE_SOURCE_INGESTED,
+    KNOWLEDGE_SOURCE_NOT_FOUND,
     KNOWLEDGE_SOURCE_UNCHANGED,
 )
 from synthorg.persistence.knowledge_protocol import KnowledgeSourceFilter
@@ -38,6 +43,7 @@ from synthorg.versioning.hashing import compute_text_hash
 if TYPE_CHECKING:
     from synthorg.knowledge.config import KnowledgeConfig
     from synthorg.knowledge.indexer import KnowledgeIndexer
+    from synthorg.knowledge.loaders.ticket import TicketFetcher
     from synthorg.knowledge.loaders.web import HtmlFetcher
     from synthorg.knowledge.retrieval import KnowledgeRetriever
     from synthorg.persistence.knowledge_protocol import KnowledgeSourceRepository
@@ -69,6 +75,7 @@ class KnowledgeService:
         retriever: KnowledgeRetriever,
         config: KnowledgeConfig,
         html_fetcher: HtmlFetcher | None = None,
+        ticket_fetcher: TicketFetcher | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._sources = sources
@@ -76,7 +83,25 @@ class KnowledgeService:
         self._retriever = retriever
         self._config = config
         self._html_fetcher = html_fetcher
+        self._ticket_fetcher = ticket_fetcher
         self._clock = clock if clock is not None else SystemClock()
+        # Per-source serialisation: concurrent ingest/reindex/delete of
+        # the same source_id would otherwise race on the read-modify-
+        # write sequence (status clobber, delete-during-index orphans,
+        # duplicate embeddings). A registry of locks keyed by source_id
+        # guarantees one writer per source at a time; reads (search /
+        # list / get) remain unsynchronised.
+        self._source_locks: dict[NotBlankStr, asyncio.Lock] = {}
+        self._source_locks_mutex = asyncio.Lock()
+
+    async def _lock_for(self, source_id: NotBlankStr) -> asyncio.Lock:
+        """Return the per-source mutator lock, creating it on first use."""
+        async with self._source_locks_mutex:
+            lock = self._source_locks.get(source_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._source_locks[source_id] = lock
+            return lock
 
     async def ingest(
         self,
@@ -90,29 +115,32 @@ class KnowledgeService:
         source_id = derive_source_id(
             project_id=project_id, source_type=source_type, uri=uri
         )
-        existing = await self._sources.get(source_id)
-        return await self._run_ingest(
-            source_id=source_id,
-            source_type=source_type,
-            uri=uri,
-            title=title,
-            project_id=project_id,
-            existing=existing,
-            force=False,
-        )
+        async with await self._lock_for(source_id):
+            existing = await self._sources.get(source_id)
+            return await self._run_ingest(
+                source_id=source_id,
+                source_type=source_type,
+                uri=uri,
+                title=title,
+                project_id=project_id,
+                existing=existing,
+                force=False,
+            )
 
     async def reindex(self, source_id: NotBlankStr) -> KnowledgeSource:
         """Force a re-load + re-index of an existing source."""
-        existing = await self._require_source(source_id)
-        return await self._run_ingest(
-            source_id=source_id,
-            source_type=existing.source_type,
-            uri=existing.uri,
-            title=NotBlankStr(existing.title),
-            project_id=existing.project_id,
-            existing=existing,
-            force=True,
-        )
+        async with await self._lock_for(source_id):
+            logger.debug(KNOWLEDGE_REINDEX_STARTED, source_id=source_id)
+            existing = await self._require_source(source_id)
+            return await self._run_ingest(
+                source_id=source_id,
+                source_type=existing.source_type,
+                uri=existing.uri,
+                title=NotBlankStr(existing.title),
+                project_id=existing.project_id,
+                existing=existing,
+                force=True,
+            )
 
     async def search(
         self,
@@ -136,6 +164,14 @@ class KnowledgeService:
         offset: int = 0,
     ) -> tuple[KnowledgeSource, ...]:
         """List registered sources matching the scope / staleness filter."""
+        logger.debug(
+            KNOWLEDGE_LIST_REQUESTED,
+            project_id=project_id,
+            include_global=include_global,
+            stale_only=stale_only,
+            limit=limit,
+            offset=offset,
+        )
         return await self._sources.query(
             KnowledgeSourceFilter(
                 project_id=project_id,
@@ -151,10 +187,18 @@ class KnowledgeService:
         return await self._require_source(source_id)
 
     async def delete_source(self, source_id: NotBlankStr) -> bool:
-        """Delete a source and purge its memory entries + provenance."""
-        await self._require_source(source_id)
-        await self._indexer.purge_source(source_id)
-        return await self._sources.delete(source_id)
+        """Delete a source and purge its memory entries + provenance.
+
+        Held under the per-source lock so a concurrent ingest/reindex
+        cannot leave orphaned memory entries (delete waits for the
+        in-flight index, or vice versa).
+        """
+        async with await self._lock_for(source_id):
+            await self._require_source(source_id)
+            await self._indexer.purge_source(source_id)
+            deleted = await self._sources.delete(source_id)
+        logger.info(KNOWLEDGE_SOURCE_DELETED, source_id=source_id, deleted=deleted)
+        return deleted
 
     async def _run_ingest(  # noqa: PLR0913 -- cohesive ingest inputs
         self,
@@ -167,7 +211,11 @@ class KnowledgeService:
         existing: KnowledgeSource | None,
         force: bool,
     ) -> KnowledgeSource:
-        loader = build_source_loader(source_type, html_fetcher=self._html_fetcher)
+        loader = build_source_loader(
+            source_type,
+            html_fetcher=self._html_fetcher,
+            ticket_fetcher=self._ticket_fetcher,
+        )
         provisional = self._provisional(
             source_id=source_id,
             source_type=source_type,
@@ -265,6 +313,7 @@ class KnowledgeService:
     async def _require_source(self, source_id: NotBlankStr) -> KnowledgeSource:
         source = await self._sources.get(source_id)
         if source is None:
+            logger.warning(KNOWLEDGE_SOURCE_NOT_FOUND, source_id=source_id)
             msg = f"Knowledge source not found: {source_id!r}"
             raise KnowledgeSourceNotFoundError(msg)
         return source

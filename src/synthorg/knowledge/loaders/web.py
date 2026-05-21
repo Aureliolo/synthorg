@@ -8,6 +8,7 @@ with a :class:`WebLocator`. Decoupling the fetcher keeps the loader
 unit-testable without real network egress.
 """
 
+import asyncio
 import builtins
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -76,7 +77,7 @@ class WebLoader:
             )
             raise KnowledgeSourceUnavailableError(msg) from exc
         try:
-            cleaned = self._guard.sanitize(html).cleaned
+            cleaned = (await asyncio.to_thread(self._guard.sanitize, html)).cleaned
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:

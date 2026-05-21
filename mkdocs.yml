@@ -151,6 +151,7 @@ nav:
       - Memory Organizational: design/memory-organizational.md
       - Memory Operational: design/memory-operational.md
       - Memory Learning: design/memory-learning.md
+      - Living Documentation: design/living-documentation.md
       - Knowledge and Provenance: design/knowledge-substrate.md
       - Providers: design/providers.md
       - Budget & Cost: design/budget.md

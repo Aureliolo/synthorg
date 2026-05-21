@@ -51,3 +51,29 @@ KNOWLEDGE_SOURCE_LOADED: Final[str] = "knowledge.source.loaded"
 
 KNOWLEDGE_LOAD_FAILED: Final[str] = "knowledge.load.failed"
 """Emitted at WARNING when a loader cannot produce a RawDocument."""
+
+KNOWLEDGE_SOURCE_FILE_SKIPPED: Final[str] = "knowledge.source.file_skipped"
+"""Emitted at DEBUG when the repo loader skips a file (binary/decode/OS error)
+so operators can see why files are missing from an ingested corpus."""
+
+# -- Service-layer state transitions ------------------------------------------
+
+KNOWLEDGE_SOURCE_NOT_FOUND: Final[str] = "knowledge.source.not_found"
+"""Emitted at WARNING when a lookup by source id misses (before raise)."""
+
+KNOWLEDGE_SOURCE_DELETED: Final[str] = "knowledge.source.deleted"
+"""Emitted at INFO after a source row and its provenance are purged."""
+
+KNOWLEDGE_SOURCE_PURGED: Final[str] = "knowledge.source.purged"
+"""Emitted at INFO after :meth:`KnowledgeIndexer.purge_source` finishes, with
+the count of provenance rows removed."""
+
+KNOWLEDGE_REINDEX_STARTED: Final[str] = "knowledge.reindex.started"
+"""Emitted at DEBUG when a force-reindex is requested."""
+
+KNOWLEDGE_LIST_REQUESTED: Final[str] = "knowledge.list.requested"
+"""Emitted at DEBUG when the list endpoint is called, with filter params."""
+
+KNOWLEDGE_SUBSTRATE_UNAVAILABLE: Final[str] = "knowledge.substrate.unavailable"
+"""Emitted at WARNING when :func:`_wire_knowledge_engine` cannot wire the
+knowledge service (missing persistence / memory backend / dependency)."""

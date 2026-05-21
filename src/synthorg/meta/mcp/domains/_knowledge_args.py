@@ -47,7 +47,13 @@ class KnowledgeReindexArgs(BaseModel):
 
 
 class KnowledgeListArgs(BaseModel):
-    """Args for ``knowledge:list``."""
+    """Args for ``knowledge:list``.
+
+    The list limit (``<= 500``) is larger than the search limit
+    (``<= KNOWLEDGE_SEARCH_MAX_LIMIT``, currently 64) because listing
+    returns only :class:`KnowledgeSource` summary rows, whereas search
+    returns embedded chunk text + citation which is far heavier per row.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 

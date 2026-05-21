@@ -49,6 +49,7 @@ def _source(  # noqa: PLR0913 -- test helper takes one kwarg per field
         chunk_count=chunk_count,
         created_at=timestamp,
         updated_at=timestamp,
+        last_indexed_at=timestamp if status is SourceStatus.INDEXED else None,
     )
 
 

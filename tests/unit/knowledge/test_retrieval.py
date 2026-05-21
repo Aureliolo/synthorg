@@ -60,6 +60,7 @@ class _Harness:
             status=SourceStatus.INDEXED,
             created_at=ts,
             updated_at=ts,
+            last_indexed_at=ts,
         )
         await self.sources.save(source)
         chunk = KnowledgeChunk(

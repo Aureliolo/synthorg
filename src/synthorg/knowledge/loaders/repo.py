@@ -15,8 +15,11 @@ from synthorg.core.enums import ContentKind
 from synthorg.core.types import NotBlankStr
 from synthorg.knowledge.errors import KnowledgeSourceUnavailableError
 from synthorg.knowledge.models import CodeLocator, RawDocument, RawUnit
-from synthorg.observability import get_logger
-from synthorg.observability.events.knowledge import KNOWLEDGE_SOURCE_LOADED
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.knowledge import (
+    KNOWLEDGE_SOURCE_FILE_SKIPPED,
+    KNOWLEDGE_SOURCE_LOADED,
+)
 from synthorg.versioning.hashing import compute_text_hash
 
 if TYPE_CHECKING:
@@ -115,7 +118,17 @@ class RepoLoader:
                 continue
             try:
                 text = path.read_text(encoding="utf-8")
-            except UnicodeDecodeError, OSError:
+            except (UnicodeDecodeError, OSError) as exc:
+                # Emit a trail so operators can see why files are
+                # absent from a corpus instead of silently dropping them.
+                logger.debug(
+                    KNOWLEDGE_SOURCE_FILE_SKIPPED,
+                    source_id=source.source_id,
+                    file_path=str(path),
+                    reason="read_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
                 continue
             rel = path.relative_to(root).as_posix()
             units.append(
@@ -140,6 +153,11 @@ class RepoLoader:
         )
 
     def _is_eligible(self, path: Path) -> bool:
+        # Symlinks are skipped before any file probe: a symlink that
+        # resolves outside ``source.uri`` would otherwise let a hostile
+        # repo coerce the loader into reading arbitrary host files.
+        if path.is_symlink():
+            return False
         if not path.is_file():
             return False
         if any(part in _IGNORED_DIRS for part in path.parts):

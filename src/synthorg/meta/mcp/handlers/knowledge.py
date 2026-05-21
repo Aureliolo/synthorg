@@ -7,6 +7,7 @@ chunk text is wrapped via ``wrap_untrusted`` because corpus content may
 carry injected instructions.
 """
 
+import builtins
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -143,7 +144,7 @@ async def _knowledge_search(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_SEARCH, exc)
         return err(exc)
-    except MemoryError, RecursionError:
+    except builtins.MemoryError, RecursionError:
         raise
     except Exception as exc:
         log_handler_invoke_failed(_TOOL_SEARCH, exc)
@@ -174,7 +175,7 @@ async def _knowledge_ingest(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_INGEST, exc)
         return err(exc)
-    except MemoryError, RecursionError:
+    except builtins.MemoryError, RecursionError:
         raise
     except Exception as exc:
         log_handler_invoke_failed(_TOOL_INGEST, exc)
@@ -200,7 +201,7 @@ async def _knowledge_reindex(
     except KnowledgeSourceNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_REINDEX, exc)
         return err(exc)
-    except MemoryError, RecursionError:
+    except builtins.MemoryError, RecursionError:
         raise
     except Exception as exc:
         log_handler_invoke_failed(_TOOL_REINDEX, exc)
@@ -234,7 +235,7 @@ async def _knowledge_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_LIST, exc)
         return err(exc)
-    except MemoryError, RecursionError:
+    except builtins.MemoryError, RecursionError:
         raise
     except Exception as exc:
         log_handler_invoke_failed(_TOOL_LIST, exc)
@@ -259,7 +260,7 @@ async def _knowledge_get(
     except KnowledgeSourceNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_GET, exc)
         return err(exc)
-    except MemoryError, RecursionError:
+    except builtins.MemoryError, RecursionError:
         raise
     except Exception as exc:
         log_handler_invoke_failed(_TOOL_GET, exc)
@@ -285,7 +286,7 @@ async def _knowledge_delete(
     except KnowledgeSourceNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_DELETE, exc)
         return err(exc)
-    except MemoryError, RecursionError:
+    except builtins.MemoryError, RecursionError:
         raise
     except Exception as exc:
         log_handler_invoke_failed(_TOOL_DELETE, exc)

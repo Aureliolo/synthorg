@@ -13,12 +13,15 @@ from pydantic import BaseModel, ConfigDict, Field
 PdfLoaderKind = Literal["pdfplumber"]
 """Discriminator for the PDF loader strategy. ``pdfplumber`` (MIT) is the
 only shipped implementation; new strategies extend the union and the
-loader factory in lockstep."""
+loader factory in lockstep (any ``PdfLoaderKind`` value must have a
+matching branch in :func:`synthorg.knowledge.loaders.factory.build_source_loader`,
+otherwise the wiring fails at startup, not at first ingest)."""
 
 CodeChunkerKind = Literal["tree_sitter"]
 """Discriminator for the code-chunking strategy. ``tree_sitter`` is the
 default AST-aware chunker; a future stdlib-``ast`` strategy would extend
-this union and the chunker factory."""
+this union AND :func:`synthorg.knowledge.chunking.factory.build_code_chunker`
+in the same change."""
 
 
 class KnowledgeConfig(BaseModel):

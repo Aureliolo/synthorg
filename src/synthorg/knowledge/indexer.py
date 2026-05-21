@@ -39,6 +39,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_CHUNKS_INDEX_FAILED,
     KNOWLEDGE_CHUNKS_INDEXED,
+    KNOWLEDGE_SOURCE_PURGED,
 )
 from synthorg.persistence.knowledge_protocol import ChunkProvenanceFilter
 
@@ -157,7 +158,14 @@ class KnowledgeIndexer:
             source_id=source_id,
             chunk_ids=tuple(NotBlankStr(cid) for cid in existing),
         )
-        return await self._provenance.delete_by_source(source_id)
+        removed = await self._provenance.delete_by_source(source_id)
+        logger.info(
+            KNOWLEDGE_SOURCE_PURGED,
+            source_id=source_id,
+            provenance_rows_removed=removed,
+            chunks_purged=len(existing),
+        )
+        return removed
 
     async def _existing_hashes(self, source_id: NotBlankStr) -> dict[str, str]:
         """Return ``chunk_id -> content_hash`` for a source's provenance."""
@@ -184,16 +192,28 @@ class KnowledgeIndexer:
         source: KnowledgeSource,
         chunks: tuple[KnowledgeChunk, ...],
     ) -> None:
-        """Store memory entries and provenance rows for *chunks*."""
+        """Store provenance rows and memory entries for *chunks*.
+
+        Ordering matters under partial failure. Provenance is written
+        BEFORE the memory backend on purpose:
+
+        * If the provenance group fails, no memory entries exist yet, so
+          there is nothing to orphan; a retry recomputes hashes against
+          a now-empty :meth:`_existing_hashes` and reattempts cleanly.
+        * If the memory group fails after provenance succeeded, the
+          orphaned provenance rows are inert (citation resolution drops
+          unresolved hits, and a retry sees them in
+          :meth:`_existing_hashes`, classifies the chunks as "unchanged",
+          and reattempts only the missing memory writes via the
+          subsequent re-index path).
+
+        The opposite order (memory first) would leave memory entries
+        without a provenance row on failure; on retry, ``_existing_hashes``
+        returns nothing, so the diff classifies every chunk as new and
+        re-embeds them, producing duplicate memory entries for the same
+        ``chunk_id``.
+        """
         now = self._clock.now()
-        async with asyncio.TaskGroup() as tg:
-            for chunk in chunks:
-                tg.create_task(
-                    self._backend.store(
-                        SYSTEM_KNOWLEDGE_AGENT_ID,
-                        _chunk_to_request(source=source, chunk=chunk),
-                    )
-                )
         async with asyncio.TaskGroup() as tg:
             for chunk in chunks:
                 tg.create_task(
@@ -207,6 +227,14 @@ class KnowledgeIndexer:
                             locator=chunk.locator,
                             created_at=now,
                         )
+                    )
+                )
+        async with asyncio.TaskGroup() as tg:
+            for chunk in chunks:
+                tg.create_task(
+                    self._backend.store(
+                        SYSTEM_KNOWLEDGE_AGENT_ID,
+                        _chunk_to_request(source=source, chunk=chunk),
                     )
                 )
 

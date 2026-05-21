@@ -138,3 +138,39 @@ class ProjectKnowledgeController(Controller):
             content=ApiResponse[KnowledgeSource](data=source),
             status_code=200,
         )
+
+
+class GlobalKnowledgeController(Controller):
+    """Read-only global (project-unscoped) knowledge endpoints.
+
+    Documented in the design spec as the cross-project corpus listing:
+    the project-scoped controller above can union global sources via
+    ``include_global=true``, but admin UIs and operator tooling that
+    only want to see globals (without a project context) read here.
+    """
+
+    path = "/knowledge"
+    tags = ("knowledge",)
+
+    @get(guards=[require_read_access])
+    async def list_global_sources(
+        self,
+        state: State,
+        cursor: CursorParam = None,
+        limit: CursorLimit = _DEFAULT_LIST_LIMIT,
+        stale_only: StaleOnly = False,  # noqa: FBT002 -- HTTP query flag
+    ) -> PaginatedResponse[KnowledgeSource]:
+        """List every global (project-less) source, most-recent first."""
+        sources = await _knowledge_service(state).list_sources(
+            project_id=None,
+            include_global=True,
+            stale_only=stale_only,
+            limit=limit + 1,
+        )
+        page, meta = paginate_cursor(
+            sources,
+            limit=limit,
+            cursor=cursor,
+            secret=state.app_state.cursor_secret,
+        )
+        return PaginatedResponse[KnowledgeSource](data=page, pagination=meta)
