@@ -24,12 +24,13 @@ from synthorg.meta.toolsmith.validation_gate import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.budget.tracker import CostTracker
     from synthorg.core.types import NotBlankStr
     from synthorg.meta.config import SelfImprovementConfig
+    from synthorg.meta.signal_models import OrgSignalSnapshot
     from synthorg.meta.toolsmith.models import ToolBlueprint
     from synthorg.meta.toolsmith.protocol import (
         GoldenScorecardProvider,
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
     from synthorg.tools.sandbox.protocol import SandboxBackend
 
     SandboxResolver = Callable[[ToolBlueprint], SandboxBackend]
+    SnapshotProvider = Callable[[], Awaitable[OrgSignalSnapshot]]
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,7 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
     scorecard_provider: GoldenScorecardProvider | None = None,
     approval_store: ApprovalStoreProtocol | None = None,
     overflow_handler: ToolCreationOverflowHandler | None = None,
+    snapshot_provider: SnapshotProvider | None = None,
     existing_capabilities: tuple[NotBlankStr, ...] = (),
     cost_tracker: CostTracker | None = None,
     clock: Clock | None = None,
@@ -81,7 +84,11 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
         scorecard_provider: Golden-scorecard provider for the gate;
             required when ``toolsmith.validation.require_golden_delta``.
         approval_store: Approval store routed into the approval gate.
-        overflow_handler: Handler for service-access capability gaps.
+        overflow_handler: Handler for service-access capability gaps;
+            when ``None`` a code-modification overflow handler is built
+            automatically if ``code_modification_enabled``.
+        snapshot_provider: Optional live snapshot source for the
+            code-modification overflow (defaults to a neutral baseline).
         existing_capabilities: Current capability surface (dedup hint).
         cost_tracker: Optional cost tracker for the authoring call.
         clock: Time source.
@@ -119,17 +126,60 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
         clock=resolved_clock,
     )
     guards = build_guards(si_config, approval_store=approval_store)
+    resolved_overflow = overflow_handler or _build_overflow_handler(
+        si_config=si_config,
+        provider=provider,
+        cost_tracker=cost_tracker,
+        snapshot_provider=snapshot_provider,
+    )
     service = ToolsmithService(
         config=tsc,
         gap_store=gap_store,
         generator=generator,
         applier=applier,
         guards=guards,
-        overflow_handler=overflow_handler,
+        overflow_handler=resolved_overflow,
         existing_capabilities=existing_capabilities,
         clock=resolved_clock,
     )
     return ToolsmithRuntime(service=service, dynamic_registry=dynamic_registry)
+
+
+def _build_overflow_handler(
+    *,
+    si_config: SelfImprovementConfig,
+    provider: BaseCompletionProvider,
+    cost_tracker: CostTracker | None,
+    snapshot_provider: SnapshotProvider | None,
+) -> ToolCreationOverflowHandler | None:
+    """Build the code-modification overflow handler when that altitude is on.
+
+    Returns ``None`` when ``code_modification_enabled`` is unset, so
+    service-access gaps simply log an unhandled-overflow notice.
+    """
+    if not si_config.code_modification_enabled:
+        return None
+    from synthorg.meta.strategies.code_modification import (  # noqa: PLC0415
+        CodeModificationStrategy,
+    )
+    from synthorg.meta.toolsmith.overflow import (  # noqa: PLC0415
+        CodeModificationOverflowHandler,
+    )
+    from synthorg.meta.validation.scope_validator import ScopeValidator  # noqa: PLC0415
+
+    scope_validator = ScopeValidator(
+        allowed_paths=tuple(si_config.code_modification.allowed_paths),
+        forbidden_paths=tuple(si_config.code_modification.forbidden_paths),
+    )
+    strategy = CodeModificationStrategy(
+        config=si_config,
+        provider=provider,
+        scope_validator=scope_validator,
+        cost_tracker=cost_tracker,
+    )
+    return CodeModificationOverflowHandler(
+        strategy, snapshot_provider=snapshot_provider
+    )
 
 
 __all__ = ["ToolsmithRuntime", "build_toolsmith"]

@@ -13,6 +13,13 @@ The sandbox here runs the authored Python synchronously via
 ``subprocess.run`` so the script genuinely executes cross-platform
 without an event-loop-policy dance; the Docker/subprocess backends are
 unit-tested separately.
+
+Deviation from the literal "validated under the simulation harness"
+wording: the toolsmith operates on MCP capability gaps, not client
+briefs, so driving it through ``SimulationRunner`` (clients -> intake ->
+review) would be artificial. This test instead exercises the full loop
+deterministically through the production ``MCPToolInvoker`` and the real
+service/factory wiring, which is the meaningful end-to-end check.
 """
 
 import json
