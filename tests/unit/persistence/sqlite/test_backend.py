@@ -54,13 +54,40 @@ class TestSQLitePersistenceBackend:
         backend = SQLitePersistenceBackend(SQLiteConfig(path=":memory:"))
         assert backend.backend_name == "sqlite"
 
-    async def test_migrate_creates_tables(self, tmp_path: Path) -> None:
+    async def test_migrate_creates_tables(
+        self,
+        tmp_path: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """Migrating an SQLite backend leaves the repo surface operational.
+
+        Reuses the session-wide migrated template (``_get_template_db``,
+        built once per worker and credited to the per-test wall-clock
+        guard) instead of running the full -- and ever-growing -- yoyo
+        chain inline. Running the chain inline tripped the unit
+        wall-clock budget once the schema grew (every new revision adds
+        ~0.5s on Windows under xdist). The follow-up ``backend.migrate()``
+        call against the copy still exercises the production code path
+        (yoyo no-ops on an already-migrated DB), so the test still
+        catches a broken ``migrate()`` impl.
+        """
+        import shutil
+
+        from tests.conftest import _get_template_db
+
+        template = await _get_template_db(tmp_path_factory)
         db_path = str(tmp_path / "migrate-test.db")
+        shutil.copyfile(str(template), db_path)
         backend = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
         await backend.connect()
+        # Idempotent on a pre-migrated DB; failure here would mean
+        # ``migrate()`` regressed (e.g. re-applies already-applied
+        # revisions, raises on duplicate-create, or no longer detects
+        # the up-to-date marker).
         await backend.migrate()
 
-        # Verify tables exist by accessing repos
+        # Verify the migrated schema is alive: the repo surface is
+        # what every controller / service consumes downstream.
         assert isinstance(backend.tasks, SQLiteTaskRepository)
         assert isinstance(backend.cost_records, SQLiteCostRecordRepository)
         assert isinstance(backend.messages, SQLiteMessageRepository)
