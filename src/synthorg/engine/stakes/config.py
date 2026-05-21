@@ -79,7 +79,7 @@ DEFAULT_HIGH_STAKES_KEYWORDS: tuple[NotBlankStr, ...] = (
 DEFAULT_CRITICAL_STAKES_KEYWORDS: tuple[NotBlankStr, ...] = (
     "irreversible",
     "data loss",
-    "drop table",
+    "drop table",  # lint-allow: persistence-boundary -- detection keyword
     "delete production",
     "production deployment",
     "destructive",

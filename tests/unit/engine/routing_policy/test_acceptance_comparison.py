@@ -1,6 +1,6 @@
 """Acceptance: stakes-aware routing beats flat on a mixed brief.
 
-Encodes issue #1998's acceptance criterion as a deterministic
+Encodes the acceptance criterion as a deterministic
 simulation: a mixed brief is decomposed (so each subtask carries an
 assessed stakes level), then routed under both the flat control arm and
 the stakes-aware arm. With a conservative flat baseline (every subtask
@@ -162,7 +162,7 @@ def _floor_for(task: Task, floors: QualityFloors) -> float:
 
 @pytest.mark.unit
 class TestStakesAwareBeatsFlatOnMixedBrief:
-    """The core acceptance comparison for issue #1998."""
+    """The core acceptance comparison for stakes-aware routing."""
 
     async def test_cost_drops_at_equal_or_better_quality(self) -> None:
         tasks = await _decomposed_tasks()
