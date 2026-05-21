@@ -58,5 +58,4 @@ class TestEnvironmentErrors:
     def test_does_not_shadow_builtin_environment_error(self) -> None:
         # The base is named ProjectEnvironmentError precisely so the
         # built-in EnvironmentError (OSError alias) is not shadowed.
-        assert ProjectEnvironmentError is not OSError
         assert not issubclass(ProjectEnvironmentError, OSError)
