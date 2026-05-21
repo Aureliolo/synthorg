@@ -87,12 +87,8 @@ def _load_parser(language: str) -> Any | None:
     fast-binding, whose ``Tree`` / ``Node`` surface differs.
     """
     try:
-        from tree_sitter import (  # noqa: PLC0415
-            Parser,  # type: ignore[import-not-found]
-        )
-        from tree_sitter_language_pack import (  # noqa: PLC0415
-            get_language,  # type: ignore[import-not-found]
-        )
+        from tree_sitter import Parser  # noqa: PLC0415
+        from tree_sitter_language_pack import get_language  # noqa: PLC0415
     except ImportError as exc:
         msg = (
             "Code chunking needs the 'tree-sitter' extras. Install with "
