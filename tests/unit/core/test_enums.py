@@ -90,7 +90,7 @@ class TestEnumMemberCounts:
         assert len(ConflictApproach) == 5
 
     def test_memory_category_has_7_members(self) -> None:
-        # 5 agent categories + PROJECT_DOC (#1976) + KNOWLEDGE (#1988).
+        # 5 agent categories + PROJECT_DOC + KNOWLEDGE.
         assert len(MemoryCategory) == 7
         assert MemoryCategory.PROJECT_DOC in set(MemoryCategory)
         assert MemoryCategory.PROJECT_DOC.value == "project_doc"

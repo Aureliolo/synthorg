@@ -1277,7 +1277,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     _knowledge_engine_installed = False
 
     async def _wire_knowledge_engine() -> None:
-        # Knowledge + provenance substrate (#1988). Constructs the
+        # Knowledge + provenance substrate. Constructs the
         # KnowledgeService over the connected persistence repos and the
         # memory backend (the pluggable vector store), behind the same
         # persistence + memory gate as the docs engine. Web ingestion

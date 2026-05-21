@@ -83,7 +83,7 @@ def build_docs_service(
         clock=clock,
     )
     # knowledge_enabled lets the same facade transparently surface the
-    # knowledge corpus (#1988) alongside project docs; harmless when no
+    # knowledge corpus alongside project docs; harmless when no
     # knowledge has been ingested (the extra branch returns empty).
     facade = ProjectAwareMemoryFacade(backend=memory_backend, knowledge_enabled=True)
     return DocsRuntime(docs_service=service, memory_facade=facade)

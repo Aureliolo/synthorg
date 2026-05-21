@@ -1,6 +1,6 @@
 """Unit tests for the knowledge agent tools + tool factory.
 
-Validates the SEC-1 chunk wrapping and citation rendering on
+Validates the untrusted-content chunk wrapping and citation rendering on
 ``search_knowledge``, the ingest tool's status output, the action-type
 classifications, and the per-task factory binding.
 """

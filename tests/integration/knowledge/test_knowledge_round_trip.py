@@ -1,4 +1,4 @@
-"""End-to-end acceptance round-trip for the knowledge substrate (#1988).
+"""End-to-end acceptance round-trip for the knowledge substrate.
 
 Wires the real :class:`KnowledgeService` against a real, migrated SQLite
 persistence backend (so citations resolve from durable provenance rows)

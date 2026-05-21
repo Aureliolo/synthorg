@@ -3,8 +3,8 @@
 Delegates to :class:`KnowledgeService` via ``app_state.knowledge_service``.
 Search / list / get are read-only; ingest / reindex / delete are admin
 (call ``require_admin_guardrails`` as the first body statement). Search
-chunk text is wrapped via ``wrap_untrusted`` (SEC-1) because corpus
-content may carry injected instructions.
+chunk text is wrapped via ``wrap_untrusted`` because corpus content may
+carry injected instructions.
 """
 
 from types import MappingProxyType
@@ -116,7 +116,7 @@ def _flag(arguments: dict[str, Any], key: str) -> bool:
 
 
 def _hit_dict(hit: KnowledgeHit) -> dict[str, Any]:
-    """Serialise a hit, wrapping the untrusted chunk text (SEC-1)."""
+    """Serialise a hit, wrapping the untrusted chunk text."""
     return {
         "chunk_text": wrap_untrusted(TAG_MEMORY_ENTRY, hit.chunk_text),
         "relevance_score": hit.relevance_score,

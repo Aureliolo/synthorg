@@ -429,12 +429,12 @@ class PersistenceBackend(Protocol):
 
     @property
     def knowledge_sources(self) -> KnowledgeSourceRepository:
-        """Repository for the knowledge-source registry (#1988)."""
+        """Repository for the knowledge-source registry."""
         ...
 
     @property
     def knowledge_provenance(self) -> ChunkProvenanceRepository:
-        """Repository for per-chunk knowledge provenance (#1988)."""
+        """Repository for per-chunk knowledge provenance."""
         ...
 
     @property

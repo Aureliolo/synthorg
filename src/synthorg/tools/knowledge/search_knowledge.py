@@ -2,8 +2,8 @@
 
 Returns knowledge hits whose citations resolve to the exact source
 chunk (PDF page, code line span, web offset). Each chunk's text is
-wrapped via ``wrap_untrusted`` (SEC-1) because ingested corpus content
--- from any source type -- may carry injected instructions.
+wrapped via ``wrap_untrusted`` because ingested corpus content -- from
+any source type -- may carry injected instructions.
 """
 
 import builtins
@@ -132,7 +132,7 @@ def _citation_dict(citation: Citation) -> dict[str, Any]:
 
 
 def _format_hits(hits: tuple[KnowledgeHit, ...]) -> str:
-    """Render hits with citations; wrap each chunk's text (SEC-1)."""
+    """Render hits with citations; wrap each chunk's untrusted text."""
     if not hits:
         return "No matching knowledge for this query."
     blocks: list[str] = []

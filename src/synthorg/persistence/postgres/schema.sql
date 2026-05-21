@@ -496,7 +496,7 @@ CREATE INDEX idx_project_docs_reindex
     WHERE last_indexed_commit_sha IS NULL
        OR last_indexed_commit_sha <> head_commit_sha;
 
--- ── Knowledge + provenance substrate (#1988) ─────────────────
+-- ── Knowledge + provenance substrate ─────────────────────────
 -- Registry of ingested corpus sources (PDF / web / repo / ticket /
 -- design doc). project_id is nullable: NULL means a global source
 -- shared across projects. ON DELETE CASCADE drops a project's scoped

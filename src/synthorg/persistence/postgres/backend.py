@@ -704,12 +704,12 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
 
     @property
     def knowledge_sources(self) -> KnowledgeSourceRepository:
-        """Repository for the knowledge-source registry (#1988)."""
+        """Repository for the knowledge-source registry."""
         return self._require_connected(self._knowledge_sources, "knowledge_sources")
 
     @property
     def knowledge_provenance(self) -> ChunkProvenanceRepository:
-        """Repository for per-chunk knowledge provenance (#1988)."""
+        """Repository for per-chunk knowledge provenance."""
         return self._require_connected(
             self._knowledge_provenance, "knowledge_provenance"
         )

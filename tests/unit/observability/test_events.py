@@ -345,7 +345,7 @@ class TestEventConstants:
             # Virtual desktop tool and its vision verifier gate.
             "desktop",
             "vision_verify",
-            # Knowledge + provenance substrate (#1988) ingestion / retrieval.
+            # Knowledge + provenance substrate ingestion / retrieval.
             "knowledge",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
