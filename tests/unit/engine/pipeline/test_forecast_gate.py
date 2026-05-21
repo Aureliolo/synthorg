@@ -222,7 +222,13 @@ class TestForecastGate:
         assert len(repo.saves) == 1
         assert repo.saves[0].decision is ForecastDecision.PENDING
 
-    async def test_pending_forecast_raises_approval_required(self) -> None:
+    async def test_stale_linked_forecast_falls_through_to_fresh(self) -> None:
+        """A linked forecast whose brief no longer matches is ignored.
+
+        The existing row's brief_hash differs from the work item's, so
+        ``_forecast_covers_brief`` returns False and the gate mints a
+        fresh pending forecast (the PENDING-reuse path is covered by
+        ``test_pending_forecast_covering_brief_is_reused``)."""
         repo = _FakeForecastRepo()
         existing = Forecast(
             forecast_id=uuid4(),
@@ -238,8 +244,12 @@ class TestForecastGate:
         repo.rows[existing.forecast_id] = existing
         gate, _, _ = _gate(repo=repo)
 
-        with pytest.raises(CostForecastApprovalRequiredError):
+        with pytest.raises(CostForecastApprovalRequiredError) as info:
             await gate.run(_work_item(forecast_id=existing.forecast_id))
+        # A fresh row was minted (not the stale linked one reused).
+        assert info.value.forecast_id != existing.forecast_id
+        assert len(repo.saves) == 1
+        assert repo.saves[0].brief_hash == _BRIEF_HASH
 
     async def test_pending_forecast_covering_brief_is_reused(self) -> None:
         """A pending forecast covering the brief is reused, not re-minted.
