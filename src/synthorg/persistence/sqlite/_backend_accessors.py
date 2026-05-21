@@ -61,6 +61,10 @@ if TYPE_CHECKING:
         FineTuneRunRepository,
     )
     from synthorg.persistence.idempotency_protocol import IdempotencyRepository
+    from synthorg.persistence.knowledge_protocol import (
+        ChunkProvenanceRepository,
+        KnowledgeSourceRepository,
+    )
     from synthorg.persistence.mcp_protocol import McpInstallationRepository
     from synthorg.persistence.meeting_cooldown_protocol import (
         MeetingCooldownRepository,
@@ -146,6 +150,8 @@ class _BackendRepositoryAccessors:
     _projects: ProjectRepository | None
     _project_workspaces: ProjectWorkspaceRepository | None
     _project_docs: DocsRepository | None
+    _knowledge_sources: KnowledgeSourceRepository | None
+    _knowledge_provenance: ChunkProvenanceRepository | None
     _project_cost_aggregates: ProjectCostAggregateRepository | None
     _fine_tune_checkpoints: FineTuneCheckpointRepository | None
     _fine_tune_runs: FineTuneRunRepository | None
@@ -315,6 +321,18 @@ class _BackendRepositoryAccessors:
     def project_docs(self) -> DocsRepository:
         """Repository for living-documentation metadata persistence."""
         return self._require_connected(self._project_docs, "project_docs")
+
+    @property
+    def knowledge_sources(self) -> KnowledgeSourceRepository:
+        """Repository for the knowledge-source registry (#1988)."""
+        return self._require_connected(self._knowledge_sources, "knowledge_sources")
+
+    @property
+    def knowledge_provenance(self) -> ChunkProvenanceRepository:
+        """Repository for per-chunk knowledge provenance (#1988)."""
+        return self._require_connected(
+            self._knowledge_provenance, "knowledge_provenance"
+        )
 
     @property
     def project_cost_aggregates(self) -> ProjectCostAggregateRepository:

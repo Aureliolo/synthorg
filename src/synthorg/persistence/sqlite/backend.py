@@ -81,6 +81,12 @@ from synthorg.persistence.sqlite.hr_repositories import (
 from synthorg.persistence.sqlite.idempotency_repo import (
     SQLiteIdempotencyRepository,
 )
+from synthorg.persistence.sqlite.knowledge_provenance_repo import (
+    SQLiteChunkProvenanceRepository,
+)
+from synthorg.persistence.sqlite.knowledge_source_repo import (
+    SQLiteKnowledgeSourceRepository,
+)
 from synthorg.persistence.sqlite.lockout_repo import (
     SQLiteLockoutRepository,
 )
@@ -208,6 +214,8 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._projects: SQLiteProjectRepository | None = None
         self._project_workspaces: SQLiteProjectWorkspaceRepository | None = None
         self._project_docs: SQLiteDocsRepository | None = None
+        self._knowledge_sources: SQLiteKnowledgeSourceRepository | None = None
+        self._knowledge_provenance: SQLiteChunkProvenanceRepository | None = None
         self._tasks: SQLiteTaskRepository | None = None
         self._cost_records: SQLiteCostRecordRepository | None = None
         self._messages: SQLiteMessageRepository | None = None
@@ -278,6 +286,8 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._projects = None
         self._project_workspaces = None
         self._project_docs = None
+        self._knowledge_sources = None
+        self._knowledge_provenance = None
         self._tasks = None
         self._cost_records = None
         self._messages = None
@@ -438,6 +448,14 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._project_docs = SQLiteDocsRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._knowledge_sources = SQLiteKnowledgeSourceRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._knowledge_provenance = SQLiteChunkProvenanceRepository(
             self._db,
             write_context=self.write_context,
         )

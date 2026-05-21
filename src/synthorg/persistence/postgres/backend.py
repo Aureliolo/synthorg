@@ -82,6 +82,12 @@ from synthorg.persistence.postgres.hr_repositories import (
 from synthorg.persistence.postgres.idempotency_repo import (
     PostgresIdempotencyRepository,
 )
+from synthorg.persistence.postgres.knowledge_provenance_repo import (
+    PostgresChunkProvenanceRepository,
+)
+from synthorg.persistence.postgres.knowledge_source_repo import (
+    PostgresKnowledgeSourceRepository,
+)
 from synthorg.persistence.postgres.lockout_repo import (
     PostgresLockoutRepository,
 )
@@ -214,6 +220,10 @@ if TYPE_CHECKING:
     from synthorg.persistence.docs_protocol import DocsRepository
     from synthorg.persistence.escalation_protocol import EscalationQueueRepository
     from synthorg.persistence.idempotency_protocol import IdempotencyRepository
+    from synthorg.persistence.knowledge_protocol import (
+        ChunkProvenanceRepository,
+        KnowledgeSourceRepository,
+    )
     from synthorg.persistence.mcp_protocol import McpInstallationRepository
     from synthorg.persistence.meeting_cooldown_protocol import (
         MeetingCooldownRepository,
@@ -292,6 +302,8 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._projects: ProjectRepository | None = None
         self._project_workspaces: ProjectWorkspaceRepository | None = None
         self._project_docs: DocsRepository | None = None
+        self._knowledge_sources: KnowledgeSourceRepository | None = None
+        self._knowledge_provenance: ChunkProvenanceRepository | None = None
         self._tasks: TaskRepository | None = None
         self._cost_records: CostRecordRepository | None = None
         self._messages: MessageRepository | None = None
@@ -355,6 +367,8 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._artifacts = None
         self._projects = None
         self._project_workspaces = None
+        self._knowledge_sources = None
+        self._knowledge_provenance = None
         self._project_docs = None
         self._tasks = None
         self._cost_records = None
@@ -418,6 +432,8 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._artifacts = PostgresArtifactRepository(pool)
         self._projects = PostgresProjectRepository(pool)
         self._project_workspaces = PostgresProjectWorkspaceRepository(pool)
+        self._knowledge_sources = PostgresKnowledgeSourceRepository(pool)
+        self._knowledge_provenance = PostgresChunkProvenanceRepository(pool)
         self._project_docs = PostgresDocsRepository(pool)
         self._tasks = PostgresTaskRepository(pool)
         self._cost_records = PostgresCostRecordRepository(pool)
@@ -685,6 +701,18 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
     def project_docs(self) -> DocsRepository:
         """Repository for living-documentation metadata persistence."""
         return self._require_connected(self._project_docs, "project_docs")
+
+    @property
+    def knowledge_sources(self) -> KnowledgeSourceRepository:
+        """Repository for the knowledge-source registry (#1988)."""
+        return self._require_connected(self._knowledge_sources, "knowledge_sources")
+
+    @property
+    def knowledge_provenance(self) -> ChunkProvenanceRepository:
+        """Repository for per-chunk knowledge provenance (#1988)."""
+        return self._require_connected(
+            self._knowledge_provenance, "knowledge_provenance"
+        )
 
     @property
     def custom_presets(self) -> PersonalityPresetRepository:

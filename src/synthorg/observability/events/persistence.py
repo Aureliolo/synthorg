@@ -348,6 +348,76 @@ PERSISTENCE_PROJECT_DOC_DESERIALIZE_FAILED: Final[str] = (
     "persistence.project_doc.deserialize_failed"
 )
 
+# -- Knowledge source registry events -----------------------------------------
+
+PERSISTENCE_KNOWLEDGE_SOURCE_SAVE_FAILED: Final[str] = (
+    "persistence.knowledge_source.save_failed"
+)
+PERSISTENCE_KNOWLEDGE_SOURCE_FETCHED: Final[str] = (
+    "persistence.knowledge_source.fetched"
+)
+PERSISTENCE_KNOWLEDGE_SOURCE_FETCH_FAILED: Final[str] = (
+    "persistence.knowledge_source.fetch_failed"
+)
+PERSISTENCE_KNOWLEDGE_SOURCE_LISTED: Final[str] = "persistence.knowledge_source.listed"
+PERSISTENCE_KNOWLEDGE_SOURCE_LIST_FAILED: Final[str] = (
+    "persistence.knowledge_source.list_failed"
+)
+PERSISTENCE_KNOWLEDGE_SOURCE_QUERIED: Final[str] = (
+    "persistence.knowledge_source.queried"
+)
+PERSISTENCE_KNOWLEDGE_SOURCE_QUERY_FAILED: Final[str] = (
+    "persistence.knowledge_source.query_failed"
+)
+PERSISTENCE_KNOWLEDGE_SOURCE_COUNTED: Final[str] = (
+    "persistence.knowledge_source.counted"
+)
+PERSISTENCE_KNOWLEDGE_SOURCE_COUNT_FAILED: Final[str] = (
+    "persistence.knowledge_source.count_failed"
+)
+PERSISTENCE_KNOWLEDGE_SOURCE_DELETE_FAILED: Final[str] = (
+    "persistence.knowledge_source.delete_failed"
+)
+PERSISTENCE_KNOWLEDGE_SOURCE_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.knowledge_source.deserialize_failed"
+)
+
+# -- Knowledge chunk provenance events ----------------------------------------
+
+PERSISTENCE_KNOWLEDGE_PROVENANCE_SAVE_FAILED: Final[str] = (
+    "persistence.knowledge_provenance.save_failed"
+)
+PERSISTENCE_KNOWLEDGE_PROVENANCE_FETCHED: Final[str] = (
+    "persistence.knowledge_provenance.fetched"
+)
+PERSISTENCE_KNOWLEDGE_PROVENANCE_FETCH_FAILED: Final[str] = (
+    "persistence.knowledge_provenance.fetch_failed"
+)
+PERSISTENCE_KNOWLEDGE_PROVENANCE_LISTED: Final[str] = (
+    "persistence.knowledge_provenance.listed"
+)
+PERSISTENCE_KNOWLEDGE_PROVENANCE_LIST_FAILED: Final[str] = (
+    "persistence.knowledge_provenance.list_failed"
+)
+PERSISTENCE_KNOWLEDGE_PROVENANCE_QUERIED: Final[str] = (
+    "persistence.knowledge_provenance.queried"
+)
+PERSISTENCE_KNOWLEDGE_PROVENANCE_QUERY_FAILED: Final[str] = (
+    "persistence.knowledge_provenance.query_failed"
+)
+PERSISTENCE_KNOWLEDGE_PROVENANCE_COUNTED: Final[str] = (
+    "persistence.knowledge_provenance.counted"
+)
+PERSISTENCE_KNOWLEDGE_PROVENANCE_COUNT_FAILED: Final[str] = (
+    "persistence.knowledge_provenance.count_failed"
+)
+PERSISTENCE_KNOWLEDGE_PROVENANCE_DELETE_FAILED: Final[str] = (
+    "persistence.knowledge_provenance.delete_failed"
+)
+PERSISTENCE_KNOWLEDGE_PROVENANCE_DESERIALIZE_FAILED: Final[str] = (
+    "persistence.knowledge_provenance.deserialize_failed"
+)
+
 # -- Project cost aggregate events --------------------------------------------
 
 PERSISTENCE_PROJECT_COST_AGG_INCREMENTED: Final[str] = (

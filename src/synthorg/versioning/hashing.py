@@ -37,3 +37,19 @@ def compute_content_hash(model: BaseModel) -> str:
         default=str,
     )
     return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def compute_text_hash(text: str) -> str:
+    """Compute the SHA-256 hex digest of a unicode string.
+
+    Used by the knowledge substrate to hash raw source bytes and
+    per-chunk text so re-ingestion can short-circuit unchanged sources
+    and re-embed only changed chunks.
+
+    Args:
+        text: Arbitrary unicode text.
+
+    Returns:
+        A 64-character lowercase hexadecimal SHA-256 digest string.
+    """
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
