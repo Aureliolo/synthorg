@@ -65,11 +65,24 @@ def _blueprint(
     *,
     blueprint_id: str = "bp-001",
     name: str = "synthorg_textkit_slugify",
-    capability: str = "textkit:slugify",
+    capability: str | None = None,
     state: ToolBlueprintState = ToolBlueprintState.PENDING,
     sandbox_backend: ToolSandboxBackend = ToolSandboxBackend.DOCKER,
 ) -> ToolBlueprint:
-    """Build a ``ToolBlueprint`` with sensible defaults."""
+    """Build a ``ToolBlueprint`` with sensible defaults.
+
+    When ``capability`` is omitted, it is derived from ``name`` (stripping
+    the ``synthorg_`` prefix and replacing the inner ``_`` with ``:``) so
+    the model invariant ``name <=> capability`` is satisfied by default.
+    Callers that want to test name/capability mismatch pass an explicit
+    capability that disagrees with the name.
+    """
+    if capability is None:
+        # ``name`` always starts with ``synthorg_`` and the regex enforces
+        # one underscore between domain and action, so a 2-split that
+        # drops the prefix recovers the matching capability tag.
+        parts = name.split("_", 2)
+        capability = f"{parts[1]}:{parts[2]}"
     validated_at = None
     activated_at = None
     retired_at = None

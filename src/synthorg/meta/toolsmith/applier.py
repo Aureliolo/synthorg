@@ -152,18 +152,32 @@ class ToolCreationApplier:
     async def _apply_one(self, blueprint: ToolBlueprint) -> bool:
         """Persist, validate, and (on pass) register + activate one tool.
 
+        Lifecycle normalisation: the applier OWNS the lifecycle. Any
+        caller-supplied ``validated_at`` / ``activated_at`` / ``retired_at``
+        / ``validation`` is cleared on the persisted candidate so a caller
+        cannot launder fake gate evidence into durable state. The trusted
+        record only forms after this applier's own gate run.
+
         Register-then-persist: a registration failure leaves nothing
         durably ACTIVE, and a persistence failure after a successful
         registration is rolled back by unregistering the live handler. The
         success log only fires once both sides land.
         """
         logger.info(TOOLSMITH_APPLY_STARTED, tool_name=blueprint.name)
-        pending = blueprint.model_copy(update={"state": ToolBlueprintState.PENDING})
-        await self._repo.save(pending)
+        candidate = blueprint.model_copy(
+            update={
+                "state": ToolBlueprintState.PENDING,
+                "validated_at": None,
+                "activated_at": None,
+                "retired_at": None,
+                "validation": None,
+            }
+        )
+        await self._repo.save(candidate)
 
-        result = await self._gate.validate(blueprint)
+        result = await self._gate.validate(candidate)
         if not result.passed:
-            await self._repo.save(blueprint.model_copy(update={"validation": result}))
+            await self._repo.save(candidate.model_copy(update={"validation": result}))
             logger.info(
                 TOOLSMITH_APPLY_REJECTED,
                 tool_name=blueprint.name,
@@ -172,7 +186,7 @@ class ToolCreationApplier:
             return False
 
         now = self._clock.now()
-        active = blueprint.model_copy(
+        active = candidate.model_copy(
             update={
                 "state": ToolBlueprintState.ACTIVE,
                 "validated_at": now,

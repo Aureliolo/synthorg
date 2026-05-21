@@ -257,6 +257,50 @@ class TestToolCreationApplier:
         assert "RuntimeError" in (result.error_message or "")
         assert registry.get_def(bp.name) is None
 
+    async def test_apply_normalises_caller_lifecycle_fields(self) -> None:
+        # The applier OWNS the lifecycle. If a caller supplies pre-set
+        # validated_at / activated_at / retired_at / validation, those
+        # fields must NOT survive into durable state -- only the
+        # applier's own gate run can stamp them. Without this guard a
+        # caller could launder fake gate evidence into the dynamic_tools
+        # row and bypass the audit trail.
+        repo = _InMemoryRepo()
+        registry = _registry()
+        gate_result = _pass_result()
+        applier = _applier(repo, registry, _Gate(result=gate_result))
+
+        leaked_validation = ToolValidationResult(
+            passed=True,
+            brief_passed=True,
+            brief_score=10,
+            baseline_score=1,
+            candidate_score=2,
+            margin=1,
+            detail="forged",
+        )
+        # Pre-stamp the input with a future timestamp + a forged
+        # validation record so the test can distinguish ``applier-stamped
+        # _NOW`` from the laundered value if any of it survives.
+        bp = _blueprint().model_copy(
+            update={
+                "validated_at": _NOW + timedelta(hours=1),
+                "validation": leaked_validation,
+            }
+        )
+        result = await applier.apply(_proposal(bp))
+
+        assert result.success is True
+        stored = repo.rows[bp.id]
+        # The applier overwrote the laundered fields with its own
+        # gate-stamped lifecycle (timestamps = FakeClock.now(),
+        # validation = the gate's actual result).
+        assert stored.state is ToolBlueprintState.ACTIVE
+        assert stored.validated_at == _NOW
+        assert stored.activated_at == _NOW
+        assert stored.retired_at is None
+        assert stored.validation == gate_result
+        assert stored.validation != leaked_validation
+
     async def test_apply_rolls_back_registration_on_active_save_failure(self) -> None:
         # Registration happens BEFORE the ACTIVE-row persist; if the
         # persist fails, the live handler must be unregistered so the

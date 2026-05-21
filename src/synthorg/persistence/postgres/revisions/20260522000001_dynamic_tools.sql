@@ -42,15 +42,18 @@ CREATE TABLE dynamic_tools (
         OR (state = 'validated'
             AND validated_at IS NOT NULL
             AND activated_at IS NULL
-            AND retired_at IS NULL)
+            AND retired_at IS NULL
+            AND validation IS NOT NULL)
         OR (state = 'active'
             AND validated_at IS NOT NULL
             AND activated_at IS NOT NULL
-            AND retired_at IS NULL)
+            AND retired_at IS NULL
+            AND validation IS NOT NULL)
         OR (state = 'retired'
             AND validated_at IS NOT NULL
             AND activated_at IS NOT NULL
-            AND retired_at IS NOT NULL)
+            AND retired_at IS NOT NULL
+            AND validation IS NOT NULL)
     )
 );
 
