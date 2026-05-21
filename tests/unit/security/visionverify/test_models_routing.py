@@ -101,19 +101,50 @@ class TestRouting:
     def test_empty_findings_pass(self) -> None:
         assert compute_vision_verdict((), AutonomyLevel.LOCKED) is VisionVerdict.PASS
 
-    def test_high_always_blocks(self) -> None:
-        for autonomy in AutonomyLevel:
-            assert should_block(VisionSeverity.HIGH, autonomy)
+    @pytest.mark.parametrize("autonomy", list(AutonomyLevel))
+    def test_high_always_blocks(self, autonomy: AutonomyLevel) -> None:
+        assert should_block(VisionSeverity.HIGH, autonomy)
 
-    def test_medium_blocks_only_low_autonomy(self) -> None:
-        assert should_block(VisionSeverity.MEDIUM, AutonomyLevel.LOCKED)
-        assert should_block(VisionSeverity.MEDIUM, AutonomyLevel.SUPERVISED)
-        assert not should_block(VisionSeverity.MEDIUM, AutonomyLevel.SEMI)
-        assert not should_block(VisionSeverity.MEDIUM, AutonomyLevel.FULL)
+    @pytest.mark.parametrize(
+        ("autonomy", "blocks"),
+        [
+            (AutonomyLevel.LOCKED, True),
+            (AutonomyLevel.SUPERVISED, True),
+            (AutonomyLevel.SEMI, False),
+            (AutonomyLevel.FULL, False),
+        ],
+    )
+    def test_medium_blocks_only_low_autonomy(
+        self,
+        autonomy: AutonomyLevel,
+        blocks: bool,
+    ) -> None:
+        assert should_block(VisionSeverity.MEDIUM, autonomy) is blocks
 
-    def test_low_never_blocks(self) -> None:
-        for autonomy in AutonomyLevel:
-            assert not should_block(VisionSeverity.LOW, autonomy)
+    @pytest.mark.parametrize(
+        ("autonomy", "expected"),
+        [
+            (AutonomyLevel.LOCKED, VisionVerdict.BLOCK),
+            (AutonomyLevel.SUPERVISED, VisionVerdict.BLOCK),
+            (AutonomyLevel.SEMI, VisionVerdict.PASS_WITH_FINDINGS),
+            (AutonomyLevel.FULL, VisionVerdict.PASS_WITH_FINDINGS),
+        ],
+    )
+    def test_medium_verdict_aggregation_by_autonomy(
+        self,
+        autonomy: AutonomyLevel,
+        expected: VisionVerdict,
+    ) -> None:
+        finding = VisionFinding(
+            category=VisionFindingCategory.REQUIREMENTS_MISMATCH,
+            severity=VisionSeverity.MEDIUM,
+            description="medium mismatch",
+        )
+        assert compute_vision_verdict((finding,), autonomy) is expected
+
+    @pytest.mark.parametrize("autonomy", list(AutonomyLevel))
+    def test_low_never_blocks(self, autonomy: AutonomyLevel) -> None:
+        assert not should_block(VisionSeverity.LOW, autonomy)
 
     def test_block_verdict_on_high_finding(self) -> None:
         finding = VisionFinding(

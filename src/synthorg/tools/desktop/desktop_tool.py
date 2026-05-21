@@ -424,11 +424,23 @@ def _map_executor_error(
     message: str,
     operation: str,
 ) -> DesktopDomainError:
-    """Map an executor error_type string to a host domain error."""
+    """Map an executor error_type string to a host domain error.
+
+    A recognised executor ``error_type`` maps to its specific domain
+    error; an unrecognised one is logged so executor / host drift is
+    visible, then mapped by operation.
+    """
     if err_type == "DesktopAppNotRunningError":
         return DesktopAppNotRunningError(message)
     if err_type == "DesktopArgumentError":
         return DesktopArgumentError(message)
+    if err_type != "DesktopDomainError":
+        logger.warning(
+            DESKTOP_EXECUTOR_FAILED,
+            operation=operation,
+            reason="unmapped_error_type",
+            error_type=err_type,
+        )
     match operation:
         case "launch":
             return DesktopLaunchError(message, context={"operation": operation})

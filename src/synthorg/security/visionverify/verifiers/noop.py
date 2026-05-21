@@ -4,14 +4,18 @@ Returns a clean report with no findings. Used when the subsystem is
 constructed but the operator has not selected an active verifier.
 """
 
+from typing import Final
+
 from synthorg.security.visionverify.config import VisionVerifierKind
 from synthorg.security.visionverify.models import (
     VisionReviewInput,
     VisionVerificationReport,
 )
 
-_NOOP_CONFIDENCE: float = 1.0
-_NOOP_SUMMARY: str = "Vision verification is disabled (noop verifier); no checks run."
+_NOOP_CONFIDENCE: Final[float] = 1.0
+_NOOP_SUMMARY: Final[str] = (
+    "Vision verification is disabled (noop verifier); no checks run."
+)
 
 
 class NoOpVisionVerifier:

@@ -17,6 +17,8 @@ from synthorg.providers.drivers.mappers import messages_to_dicts
 from synthorg.providers.enums import ImageDetail, ImageMediaType, MessageRole
 from synthorg.providers.models import ChatMessage, ImagePart
 
+pytestmark = pytest.mark.unit
+
 # A tiny valid base64 payload (the literal string "PNGDATA").
 _B64 = "UE5HREFUQQ=="
 
@@ -24,7 +26,6 @@ _B64 = "UE5HREFUQQ=="
 # ── ImagePart ─────────────────────────────────────────────────────
 
 
-@pytest.mark.unit
 class TestImagePart:
     def test_defaults_detail_auto(self) -> None:
         part = ImagePart(media_type=ImageMediaType.PNG, base64_data=_B64)
@@ -55,7 +56,6 @@ class TestImagePart:
 # ── ChatMessage.image_parts validation ───────────────────────────
 
 
-@pytest.mark.unit
 class TestChatMessageImageParts:
     def _img(self) -> ImagePart:
         return ImagePart(media_type=ImageMediaType.PNG, base64_data=_B64)
@@ -107,7 +107,6 @@ class TestChatMessageImageParts:
 # ── mapper multimodal emission ────────────────────────────────────
 
 
-@pytest.mark.unit
 class TestMultimodalMapping:
     def _img(self) -> ImagePart:
         return ImagePart(media_type=ImageMediaType.PNG, base64_data=_B64)
@@ -155,7 +154,6 @@ class TestMultimodalMapping:
 # ── cassette redaction of image bytes ─────────────────────────────
 
 
-@pytest.mark.unit
 class TestImageRedaction:
     def test_pattern_redactor_elides_image_bytes(self) -> None:
         payload = {
@@ -189,7 +187,6 @@ class TestImageRedaction:
 # ── cassette replay keying covers image_parts ─────────────────────
 
 
-@pytest.mark.unit
 class TestImageReplayKey:
     def _msg(self, data: str) -> ChatMessage:
         return ChatMessage(

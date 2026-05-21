@@ -484,7 +484,7 @@ in `human_approval` list silently meaning "skip approval" is a critical safety c
 actions in that category (e.g., `auto_approve: ["code"]` expands to all `code:*` actions).
 Fine-grained overrides are supported (e.g., `human_approval: ["code:create"]`).
 
-**Taxonomy (~32 leaf types):**
+**Taxonomy (38 leaf types):**
 
 ```text
 code:read, code:write, code:create, code:delete, code:refactor

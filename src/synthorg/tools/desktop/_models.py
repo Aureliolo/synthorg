@@ -49,7 +49,7 @@ class ScreenshotResult(BaseModel):
 
     model_config = _RESPONSE_CONFIG
 
-    saved_path: str = Field(description="Path relative to the workspace root.")
+    saved_path: NotBlankStr = Field(description="Path relative to the workspace root.")
     width: int = Field(ge=1, description="Image width in pixels.")
     height: int = Field(ge=1, description="Image height in pixels.")
     file_size_bytes: int = Field(ge=0, description="On-disk size in bytes.")

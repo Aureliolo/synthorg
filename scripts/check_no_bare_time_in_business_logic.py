@@ -75,7 +75,6 @@ _WHITELIST_FILES: Final[frozenset[str]] = frozenset(
         # Desktop executor is the same shape: a standalone in-container
         # script (Xvfb session bring-up + xdotool/scrot) that imports
         # nothing from synthorg, so it cannot reach the Clock seam.
-        # Issue #1993 / EPIC #1987.
         "src/synthorg/tools/desktop/_executor.py",
     }
 )

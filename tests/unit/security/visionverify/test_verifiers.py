@@ -7,7 +7,10 @@ from PIL import Image
 
 from synthorg.core.enums import AutonomyLevel
 from synthorg.security.config import VisionVerifierKind, VisionVerifyConfig
-from synthorg.security.visionverify.errors import VisionVerifyConfigError
+from synthorg.security.visionverify.errors import (
+    VisionScreenshotError,
+    VisionVerifyConfigError,
+)
 from synthorg.security.visionverify.factory import build_vision_verifier
 from synthorg.security.visionverify.models import (
     VisionReviewInput,
@@ -20,6 +23,10 @@ from synthorg.security.visionverify.verifiers import (
     HeuristicVisionVerifier,
     LLMVisionVerifier,
     NoOpVisionVerifier,
+)
+from synthorg.security.visionverify.verifiers._image import (
+    mean_rgb,
+    resolve_screenshot,
 )
 
 pytestmark = pytest.mark.unit
@@ -172,3 +179,30 @@ class TestFactory:
             tier_resolver=lambda _tier: "example-medium-001",
         )
         assert isinstance(verifier, LLMVisionVerifier)
+
+
+class TestImageHelpers:
+    def test_resolve_missing_file_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(VisionScreenshotError, match="does not exist"):
+            resolve_screenshot(tmp_path, "absent.png")
+
+    def test_resolve_rejects_traversal(self, tmp_path: Path) -> None:
+        with pytest.raises(VisionScreenshotError, match="must not contain"):
+            resolve_screenshot(tmp_path, "../escape.png")
+
+    def test_resolve_rejects_escape_outside_workspace(self, tmp_path: Path) -> None:
+        # An absolute path that resolves outside the workspace is rejected.
+        outside = tmp_path.parent / "outside.png"
+        with pytest.raises(VisionScreenshotError, match="under the workspace"):
+            resolve_screenshot(tmp_path, str(outside))
+
+    def test_mean_rgb_rejects_non_image(self, tmp_path: Path) -> None:
+        bogus = tmp_path / "not-an-image.png"
+        bogus.write_bytes(b"this is not a PNG")
+        with pytest.raises(VisionScreenshotError, match="could not be decoded"):
+            mean_rgb(bogus)
+
+    def test_mean_rgb_solid_colour(self, tmp_path: Path) -> None:
+        path = tmp_path / "solid.png"
+        Image.new("RGB", (8, 8), (10, 20, 30)).save(path)
+        assert mean_rgb(path) == (10, 20, 30)
