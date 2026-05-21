@@ -14,6 +14,7 @@ if __package__ in {None, ""}:
     from _schema_drift_models import (  # type: ignore[import-not-found]
         BASELINE_MIGRATION_NAME,
         MIGRATION_FILENAME_RE,
+        NATIVE_BACKEND_FALLBACKS,
         SIDE_POSTGRES_ONLY,
         SIDE_SQLITE_ONLY,
         TYPE_FAMILIES,
@@ -26,6 +27,7 @@ else:
     from ._schema_drift_models import (
         BASELINE_MIGRATION_NAME,
         MIGRATION_FILENAME_RE,
+        NATIVE_BACKEND_FALLBACKS,
         SIDE_POSTGRES_ONLY,
         SIDE_SQLITE_ONLY,
         TYPE_FAMILIES,
@@ -192,10 +194,18 @@ def _diff_index_attrs(
 
 
 def _types_equivalent(a: Any, b: Any) -> bool:
-    """Return True iff *a* and *b* live in the same default-equivalence family."""
+    """Return True iff *a* and *b* are the same logical type.
+
+    Equivalent when identical, when both live in one ``TYPE_FAMILIES``
+    family, or when the unordered pair is a sanctioned cross-backend
+    native fallback (SQLite's limited type vs Postgres's richer native
+    type). Any other mismatch is genuine drift.
+    """
     if a == b:
         return True
-    return any(a in family and b in family for family in TYPE_FAMILIES)
+    if any(a in family and b in family for family in TYPE_FAMILIES):
+        return True
+    return frozenset({a, b}) in NATIVE_BACKEND_FALLBACKS
 
 
 def diff_migrations(

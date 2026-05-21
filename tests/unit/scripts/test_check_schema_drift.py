@@ -151,9 +151,13 @@ def test_baselined_drift_passes(tmp_path: Path) -> None:
 
 
 def test_new_drift_without_baseline_entry_fails(tmp_path: Path) -> None:
-    """A finding absent from the baseline trips the gate (exit 1)."""
+    """A finding absent from the baseline trips the gate (exit 1).
+
+    Uses a genuine type confusion (TEXT vs INTEGER) -- not a sanctioned
+    native fallback -- so the gate still flags real divergence.
+    """
     sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload TEXT);"
-    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload JSONB);"
+    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload INTEGER);"
     sqlite_path = tmp_path / "sqlite.sql"
     postgres_path = tmp_path / "postgres.sql"
     sqlite_path.write_text(sqlite_sql, encoding="utf-8")
@@ -173,23 +177,39 @@ def test_new_drift_without_baseline_entry_fails(tmp_path: Path) -> None:
     assert rc == 1
 
 
-# ── 7. JSONB-vs-TEXT diff is detected as drift (gated by baseline) ─
+# ── 7. Native cross-backend fallbacks are auto-accepted (no baseline) ─
 
 
-def test_jsonb_vs_text_is_flagged_as_drift() -> None:
-    """``TEXT`` ↔ ``JSONB`` is a baseline-only equivalence, not default."""
+def test_jsonb_vs_text_is_native_fallback_not_drift() -> None:
+    """``TEXT`` (SQLite) ↔ ``JSONB`` (Postgres) is the native fallback."""
     sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload TEXT);"
     postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload JSONB);"
     findings = _diff(sqlite_sql, postgres_sql)
-    assert "column:t:payload:TEXT:JSONB" in findings
+    assert "column:t:payload:TEXT:JSONB" not in findings
 
 
-def test_text_vs_timestamptz_is_flagged_as_drift() -> None:
-    """``TEXT`` ↔ ``TIMESTAMPTZ`` is also baseline-only."""
+def test_text_vs_timestamptz_is_native_fallback_not_drift() -> None:
+    """``TEXT`` (SQLite) ↔ ``TIMESTAMPTZ`` (Postgres) is the native fallback."""
     sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, created_at TEXT);"
     postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, created_at TIMESTAMPTZ);"
     findings = _diff(sqlite_sql, postgres_sql)
-    assert "column:t:created_at:TEXT:TIMESTAMPTZ" in findings
+    assert "column:t:created_at:TEXT:TIMESTAMPTZ" not in findings
+
+
+def test_text_vs_integer_is_genuine_drift() -> None:
+    """A non-fallback type pair (TEXT vs INTEGER) is still real drift."""
+    sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload TEXT);"
+    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload INTEGER);"
+    findings = _diff(sqlite_sql, postgres_sql)
+    assert "column:t:payload:TEXT:INT" in findings
+
+
+def test_column_missing_in_one_backend_is_drift() -> None:
+    """A column present in one backend but absent in the other is drift."""
+    sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, only_sqlite TEXT);"
+    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY);"
+    findings = _diff(sqlite_sql, postgres_sql)
+    assert any(f.startswith("column:t:only_sqlite:") for f in findings)
 
 
 def test_integer_with_check_zero_one_matches_postgres_boolean() -> None:
@@ -694,7 +714,7 @@ def test_index_columns_drift_is_flagged() -> None:
 def test_update_baseline_writes_round_trippable_format(tmp_path: Path) -> None:
     """``--update-baseline`` writes a file that ``load_baseline`` can read back."""
     sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload TEXT);"
-    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload JSONB);"
+    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload INTEGER);"
     sqlite_path = tmp_path / "sqlite.sql"
     postgres_path = tmp_path / "postgres.sql"
     sqlite_path.write_text(sqlite_sql, encoding="utf-8")
@@ -717,7 +737,7 @@ def test_update_baseline_writes_round_trippable_format(tmp_path: Path) -> None:
     content = baseline_path.read_text(encoding="utf-8")
     assert content.startswith("# Frozen baseline")
     keys = _MODULE.load_baseline(baseline_path)
-    assert "column:t:payload:TEXT:JSONB" in keys
+    assert "column:t:payload:TEXT:INT" in keys
 
 
 def test_update_baseline_fails_when_parent_dir_missing(tmp_path: Path) -> None:

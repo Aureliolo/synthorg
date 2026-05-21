@@ -40,9 +40,13 @@ Type-equivalence table (SQLite <-> Postgres):
   check expression that references the column.
 - REAL <-> DOUBLE PRECISION, FLOAT, NUMERIC (default).
 - BLOB <-> BYTEA (default).
-- TEXT <-> JSONB (allowed via baseline only).
-- TEXT <-> TIMESTAMPTZ (allowed via baseline only).
-- TEXT <-> UUID (allowed via baseline only).
+- TEXT <-> JSONB / JSON / TIMESTAMPTZ / UUID (sanctioned native fallback:
+  SQLite has no such type, so TEXT is the only possible representation;
+  auto-accepted, no baseline entry needed).
+- INTEGER <-> BOOLEAN (sanctioned native fallback; auto-accepted).
+
+Any other type pair (e.g. TEXT vs INTEGER) and any column/table present
+in one backend but absent in the other are still genuine drift findings.
 
 Postgres-only artefacts that the gate intentionally ignores:
 
