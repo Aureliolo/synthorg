@@ -1274,7 +1274,56 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         )
         _docs_engine_installed = True
 
-    startup = [*startup, _install_runtime_services, _wire_docs_engine]
+    _knowledge_engine_installed = False
+
+    async def _wire_knowledge_engine() -> None:
+        # Knowledge + provenance substrate (#1988). Constructs the
+        # KnowledgeService over the connected persistence repos and the
+        # memory backend (the pluggable vector store), behind the same
+        # persistence + memory gate as the docs engine. Web ingestion
+        # needs a governed HTTP fetcher injected here; until that transport
+        # is wired the service ingests PDF + repo sources and rejects WEB.
+        nonlocal _knowledge_engine_installed
+        if _knowledge_engine_installed:
+            return
+        if not app_state.has_persistence:
+            return
+        if app_state.knowledge_service is not None:
+            _knowledge_engine_installed = True
+            return
+        if not app_state.has_memory_backend:
+            logger.info(
+                API_APP_STARTUP,
+                service="knowledge_engine",
+                note="memory backend not wired; knowledge engine wiring skipped",
+            )
+            return
+        from synthorg.knowledge.config import KnowledgeConfig  # noqa: PLC0415
+        from synthorg.knowledge.factory import (  # noqa: PLC0415
+            build_knowledge_service,
+        )
+        from synthorg.knowledge.tool_factory import (  # noqa: PLC0415
+            build_knowledge_tool_factory,
+        )
+
+        service = build_knowledge_service(
+            memory_backend=app_state.memory_backend,
+            persistence=app_state.persistence,
+            config=KnowledgeConfig(enabled=True),
+            clock=app_state.clock,
+        )
+        app_state.set_knowledge_service(service)
+        app_state.set_knowledge_tool_factory(
+            build_knowledge_tool_factory(service=service)
+        )
+        _knowledge_engine_installed = True
+
+    startup = [
+        *startup,
+        _install_runtime_services,
+        _wire_docs_engine,
+        _wire_knowledge_engine,
+    ]
 
     # Project telemetry: build collector (reads SYNTHORG_TELEMETRY_ENABLED env for
     # opt-in, defaults to disabled). Attach to app_state so the health

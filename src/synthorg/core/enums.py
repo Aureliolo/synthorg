@@ -624,6 +624,8 @@ class ActionType(StrEnum):
     DB_ADMIN = "db:admin"
     ARCH_DECIDE = "arch:decide"
     MEMORY_READ = "memory:read"
+    KNOWLEDGE_INGEST = "knowledge:ingest"
+    KNOWLEDGE_REINDEX = "knowledge:reindex"
     BROWSER_NAVIGATE = "browser:navigate"
     BROWSER_SCREENSHOT = "browser:screenshot"
     BROWSER_DIFF = "browser:diff"

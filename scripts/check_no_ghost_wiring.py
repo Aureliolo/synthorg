@@ -78,6 +78,11 @@ RUNTIME_PREFIXES: Final[tuple[str, ...]] = (
     # wiring (e.g. EPIC #1987 children that add new tool classes).
     "src/synthorg/tools/",
     "src/synthorg/docs_engine/",
+    # knowledge/ is reached at boot via api/app.py::_wire_knowledge_engine
+    # (build_knowledge_service / build_knowledge_tool_factory); counting its
+    # factory + tool-factory construction lets the manifest track the
+    # knowledge substrate's wiring (#1988).
+    "src/synthorg/knowledge/",
 )
 
 

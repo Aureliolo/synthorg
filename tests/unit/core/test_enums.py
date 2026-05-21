@@ -89,11 +89,12 @@ class TestEnumMemberCounts:
     def test_conflict_approach_has_5_members(self) -> None:
         assert len(ConflictApproach) == 5
 
-    def test_memory_category_has_6_members(self) -> None:
-        # 5 agent categories + PROJECT_DOC (project-scoped, #1976).
-        assert len(MemoryCategory) == 6
+    def test_memory_category_has_7_members(self) -> None:
+        # 5 agent categories + PROJECT_DOC (#1976) + KNOWLEDGE (#1988).
+        assert len(MemoryCategory) == 7
         assert MemoryCategory.PROJECT_DOC in set(MemoryCategory)
         assert MemoryCategory.PROJECT_DOC.value == "project_doc"
+        assert MemoryCategory.KNOWLEDGE.value == "knowledge"
 
     def test_consolidation_interval_has_4_members(self) -> None:
         assert len(ConsolidationInterval) == 4
@@ -117,9 +118,11 @@ class TestEnumMemberCounts:
     def test_workflow_edge_type_has_7_members(self) -> None:
         assert len(WorkflowEdgeType) == 7
 
-    def test_action_type_has_38_members(self) -> None:
-        assert len(ActionType) == 38
+    def test_action_type_has_40_members(self) -> None:
+        assert len(ActionType) == 40
         assert ActionType.MEMORY_READ.value == "memory:read"
+        assert ActionType.KNOWLEDGE_INGEST.value == "knowledge:ingest"
+        assert ActionType.KNOWLEDGE_REINDEX.value == "knowledge:reindex"
         assert ActionType.BROWSER_NAVIGATE.value == "browser:navigate"
         assert ActionType.EXTERNAL_DATA_REQUEST.value == "external_data:request"
         assert ActionType.DESKTOP_LAUNCH.value == "desktop:launch"

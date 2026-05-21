@@ -33,6 +33,7 @@ class ActionTypeCategory(StrEnum):
     DB = "db"
     ARCH = "arch"
     MEMORY = "memory"
+    KNOWLEDGE = "knowledge"
     BROWSER = "browser"
     EXTERNAL_DATA = "external_data"
     DESKTOP = "desktop"
