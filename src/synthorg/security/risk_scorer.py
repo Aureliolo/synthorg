@@ -199,6 +199,9 @@ _DEFAULT_SCORE_MAP: Final[MappingProxyType[str, RiskScore]] = MappingProxyType(
         ActionType.CODE_DELETE: _HIGH_SCORE,
         ActionType.VCS_PUSH: _HIGH_SCORE,
         ActionType.COMMS_EXTERNAL: _HIGH_SCORE,
+        # External API/data access reaches a third party with brokered
+        # credentials; same tier as outbound external comms.
+        ActionType.EXTERNAL_DATA_REQUEST: _HIGH_SCORE,
         ActionType.BUDGET_EXCEED: _HIGH_SCORE,
         # MEDIUM
         ActionType.CODE_CREATE: _MEDIUM_SCORE,

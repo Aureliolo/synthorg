@@ -240,6 +240,57 @@ class TestSaveIfPending:
 
 
 @pytest.mark.unit
+class TestConsumeIfApproved:
+    """consume_if_approved() one-shot atomic consumption guard."""
+
+    async def test_consumes_approved_item_once(self) -> None:
+        store = ApprovalStore()
+        now = _now()
+        item = _make_item(
+            status=ApprovalStatus.APPROVED,
+            decided_at=now,
+            decided_by="admin",
+        )
+        await store.add(item)
+
+        consumed = await store.consume_if_approved("approval-001")
+        assert consumed is not None
+        assert consumed.consumed_at is not None
+        # Consumption is orthogonal to the decision lifecycle.
+        assert consumed.status is ApprovalStatus.APPROVED
+
+        fetched = await store.get("approval-001")
+        assert fetched is not None
+        assert fetched.consumed_at is not None
+
+    async def test_replay_returns_none(self) -> None:
+        store = ApprovalStore()
+        now = _now()
+        await store.add(
+            _make_item(
+                status=ApprovalStatus.APPROVED,
+                decided_at=now,
+                decided_by="admin",
+            ),
+        )
+        first = await store.consume_if_approved("approval-001")
+        assert first is not None
+        second = await store.consume_if_approved("approval-001")
+        assert second is None
+
+    async def test_returns_none_when_pending(self) -> None:
+        store = ApprovalStore()
+        await store.add(_make_item(status=ApprovalStatus.PENDING))
+        result = await store.consume_if_approved("approval-001")
+        assert result is None
+
+    async def test_returns_none_when_missing(self) -> None:
+        store = ApprovalStore()
+        result = await store.consume_if_approved("nonexistent")
+        assert result is None
+
+
+@pytest.mark.unit
 class TestApprovalStoreFilters:
     """Combined filter tests."""
 

@@ -49,6 +49,12 @@ class ApprovalItem(BaseModel):
             Defaults to ``REVIEW_GATE``; the two park producers (SecOps
             escalation and the ``request_human_approval`` tool) set
             ``PARKED_CONTEXT``.
+        consumed_at: When an APPROVED one-shot grant was spent. ``None``
+            until consumed. The governed external-access tool sets this
+            via an atomic compare-and-set (``consume_if_approved``)
+            before egress so the same approval cannot authorise a second
+            call; the approval keeps ``status == APPROVED`` because
+            consumption is orthogonal to the decision lifecycle.
         metadata: Additional key-value metadata.
     """
 
@@ -68,6 +74,7 @@ class ApprovalItem(BaseModel):
     decided_by: NotBlankStr | None = None
     decision_reason: NotBlankStr | None = None
     task_id: NotBlankStr | None = None
+    consumed_at: AwareDatetime | None = None
     evidence_package: EvidencePackage | None = Field(
         default=None,
         description="Structured evidence for HITL approval",
@@ -114,5 +121,22 @@ class ApprovalItem(BaseModel):
         """Ensure ``expires_at`` is after ``created_at`` when set."""
         if self.expires_at is not None and self.expires_at <= self.created_at:
             msg = "expires_at must be after created_at"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_consumption(self) -> Self:
+        """Enforce that ``consumed_at`` is only set on an APPROVED grant.
+
+        Consumption is a spent APPROVED grant (orthogonal to the decision
+        lifecycle), so a consumed approval can never be PENDING, REJECTED,
+        or EXPIRED. Enforcing this at construction keeps the one-shot
+        invariant a type guarantee, not just a store-side convention.
+        """
+        if self.consumed_at is not None and self.status is not ApprovalStatus.APPROVED:
+            msg = (
+                f"consumed_at may only be set when status is approved "
+                f"(got {self.status.value})"
+            )
             raise ValueError(msg)
         return self

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 from synthorg.engine._security_factory import (
     make_security_interceptor,
     registry_with_approval_tool,
+    registry_with_external_api_tool,
 )
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.loop_selector import (
@@ -40,6 +41,7 @@ class AgentEngineFactoriesMixin:
     """Mixin providing approval-gate, loop, and tool-invoker factories."""
 
     _approval_store: Any
+    _external_api_runtime: Any
     _parked_context_repo: Any
     _event_stream_hub: Any
     _interrupt_store: Any
@@ -242,6 +244,14 @@ class AgentEngineFactoriesMixin:
             self._approval_store,
             identity,
             task_id=task_id,
+        )
+        registry = registry_with_external_api_tool(
+            registry,
+            self._external_api_runtime,
+            self._approval_store,
+            identity,
+            task_id=task_id,
+            effective_autonomy=effective_autonomy,
         )
         if self._memory_injection_strategy is not None:
             from synthorg.memory.tools import (  # noqa: PLC0415

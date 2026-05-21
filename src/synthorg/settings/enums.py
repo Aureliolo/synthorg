@@ -33,6 +33,7 @@ class SettingNamespace(StrEnum):
     HR = "hr"
     WORKERS = "workers"
     TELEMETRY = "telemetry"
+    EXTERNAL_API = "external_api"
 
 
 class SettingType(StrEnum):

@@ -29,6 +29,7 @@ export function buildApproval(
     created_at: '2026-04-19T00:00:00Z',
     decided_at: null,
     expires_at: null,
+    consumed_at: null,
     evidence_package: null,
     seconds_remaining: null,
     urgency_level: 'normal',

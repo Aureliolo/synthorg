@@ -83,6 +83,9 @@ class _RecordingApprovalStore:
     ) -> ApprovalItem | None:
         return None
 
+    async def consume_if_approved(self, approval_id: Any) -> ApprovalItem | None:
+        return None
+
 
 class TestUpdateAutonomy:
     """update_autonomy() requests promotions through the approval queue."""

@@ -104,6 +104,9 @@ class CreateConnectionRequest(BaseModel):
     # ``None`` falls back to the global ``integrations.webhook_receipt_retention_days``
     # setting; ``0`` opts this connection out of the sweep entirely.
     webhook_receipt_retention_days: int | None = Field(default=None, ge=0)
+    # Marks the connection sensitive so the governed external-access
+    # tool routes every call against it (read or write) to approval.
+    sensitive: bool = False
 
     @field_validator("name")
     @classmethod
@@ -137,6 +140,25 @@ class UpdateConnectionRequest(BaseModel):
     # an int sets the override, omitting the field keeps the existing
     # stored value (handled via ``model_fields_set`` below).
     webhook_receipt_retention_days: int | None = Field(default=None, ge=0)
+    # Omitting keeps the stored value; setting true/false toggles whether
+    # external-access calls against this connection require approval.
+    # Explicit ``null`` is rejected (see ``_reject_null_sensitive``) so a
+    # malformed PATCH cannot be silently ACKed as an omission.
+    sensitive: bool | None = None
+
+    @field_validator("sensitive")
+    @classmethod
+    def _reject_null_sensitive(
+        cls,
+        v: bool | None,  # noqa: FBT001 -- Pydantic validator value is positional
+    ) -> bool | None:
+        # The default (omission) skips validation, so this only fires on an
+        # explicit JSON ``null``; the supported states are omit / true /
+        # false, and a null body is a client error, not a no-op.
+        if v is None:
+            msg = "sensitive must be true or false, not null"
+            raise ValueError(msg)
+        return v
 
 
 class ConnectionsController(Controller):
@@ -242,6 +264,7 @@ class ConnectionsController(Controller):
                 metadata=metadata_copy,
                 health_check_enabled=data.health_check_enabled,
                 webhook_receipt_retention_days=data.webhook_receipt_retention_days,
+                sensitive=data.sensitive,
             )
         except DuplicateConnectionError as exc:
             logger.warning(
@@ -329,6 +352,11 @@ class ConnectionsController(Controller):
             if "webhook_receipt_retention_days" in data.model_fields_set
             else _UNSET
         )
+        # ``_reject_null_sensitive`` guarantees a set value is never None, so
+        # ``bool(...)`` is just type narrowing for the catalog signature.
+        sensitive: bool | _UnsetType = (
+            bool(data.sensitive) if "sensitive" in data.model_fields_set else _UNSET
+        )
         catalog = state["app_state"].connection_catalog
         try:
             conn = await catalog.update(
@@ -337,6 +365,7 @@ class ConnectionsController(Controller):
                 metadata=metadata,
                 health_check_enabled=health_check_enabled,
                 webhook_receipt_retention_days=webhook_receipt_retention_days,
+                sensitive=sensitive,
             )
         except ConnectionNotFoundError as exc:
             logger.warning(

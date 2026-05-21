@@ -340,6 +340,8 @@ class TestEventConstants:
             # outcomes); distinct from "eval_loop"/"evaluation" which
             # serve the legacy eval-loop subsystem.
             "evals",
+            # Governed external API/data access tool lifecycle events.
+            "external_api",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

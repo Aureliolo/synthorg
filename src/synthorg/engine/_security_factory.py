@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from synthorg.providers.routing.resolver import ModelResolver
     from synthorg.security.autonomy.models import EffectiveAutonomy
     from synthorg.security.protocol import SecurityInterceptionStrategy
+    from synthorg.tools.external_api._runtime import ExternalApiRuntime
     from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
@@ -279,3 +280,46 @@ def registry_with_approval_tool(
     )
     existing = list(tool_registry.all_tools())
     return _ToolRegistry([*existing, approval_tool])
+
+
+def registry_with_external_api_tool(  # noqa: PLR0913 -- run-scoped wiring inputs
+    tool_registry: ToolRegistry,
+    runtime: ExternalApiRuntime | None,
+    approval_store: ApprovalStoreProtocol | None,
+    identity: AgentIdentity,
+    task_id: str | None = None,
+    effective_autonomy: EffectiveAutonomy | None = None,
+) -> ToolRegistry:
+    """Add the governed external-access tool when its runtime is wired.
+
+    Returns the registry unchanged when no runtime bundle is present (the
+    feature is disabled or no connection catalog is configured) or when no
+    approval store is available (sensitive calls could not be gated). The
+    tool is run-scoped: it binds the run's identity, task, and effective
+    autonomy alongside the boot-scoped catalog / provider / policy.
+    """
+    if runtime is None or approval_store is None:
+        return tool_registry
+
+    from synthorg.tools.external_api.external_api_tool import (  # noqa: PLC0415
+        ExternalApiTool,
+    )
+    from synthorg.tools.registry import (  # noqa: PLC0415
+        ToolRegistry as _ToolRegistry,
+    )
+
+    external_api_tool = ExternalApiTool(
+        connection_catalog=runtime.connection_catalog,
+        approval_store=approval_store,
+        provider=runtime.provider,
+        agent_id=str(identity.id),
+        task_id=task_id,
+        network_policy=runtime.network_policy,
+        effective_autonomy=effective_autonomy,
+        risk_classifier=DefaultRiskTierClassifier(),
+        max_response_bytes=runtime.max_response_bytes,
+        timeout_seconds=runtime.timeout_seconds,
+        default_max_rpm=runtime.default_max_rpm,
+    )
+    existing = list(tool_registry.all_tools())
+    return _ToolRegistry([*existing, external_api_tool])

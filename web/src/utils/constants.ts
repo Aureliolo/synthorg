@@ -151,6 +151,7 @@ export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'notifications',
   'simulations',
   'tools',
+  'external_api',
   'hr',
   'workers',
   'client',
@@ -181,6 +182,7 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   hr: 'HR',
   workers: 'Workers',
   telemetry: 'Telemetry',
+  external_api: 'External API',
 }
 
 /** sessionStorage key for the advanced-mode first-toggle warning. */

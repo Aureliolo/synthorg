@@ -245,6 +245,7 @@ export function makeApproval(id: string, overrides?: Partial<ApprovalResponse>):
     created_at: new Date(Date.now() - 3600_000).toISOString(), // 1 hour ago
     decided_at: null,
     expires_at: null,
+    consumed_at: null,
     evidence_package: null,
     seconds_remaining: null,
     urgency_level: 'no_expiry',

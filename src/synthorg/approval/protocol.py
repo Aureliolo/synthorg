@@ -75,6 +75,21 @@ class ApprovalStoreProtocol(Protocol):
         """Conditionally update an approval item if it is still pending."""
         ...
 
+    async def consume_if_approved(
+        self,
+        approval_id: NotBlankStr,
+    ) -> ApprovalItem | None:
+        """Atomically mark an APPROVED one-shot grant as consumed.
+
+        Stamps ``consumed_at`` iff the approval is currently APPROVED and
+        not already consumed, so a single grant authorises exactly one
+        action (the governed external-access tool calls this before
+        egress). Returns the consumed item on success, or ``None`` when
+        the approval is missing, not APPROVED, already consumed, or a
+        concurrent consume won the race.
+        """
+        ...
+
 
 @runtime_checkable
 class SyncResettableApprovalStore(Protocol):

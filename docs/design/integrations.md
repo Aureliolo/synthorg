@@ -24,7 +24,10 @@ providers, notification sinks, tools) and provides:
 
 Central registry for external service connections.  Each connection has a
 unique name, a typed connection type, encrypted credentials (via `SecretRef`),
-and optional rate limiting and health check configuration.
+optional rate limiting and health check configuration, and a `sensitive`
+flag.  When `sensitive` is set, the governed external-access tool routes every
+call against the connection (read or write) to human approval, not only write
+methods.
 
 ### Connection Types
 

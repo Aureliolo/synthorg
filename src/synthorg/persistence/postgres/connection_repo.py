@@ -52,7 +52,7 @@ _SELECT_COLS = (
     "name, connection_type, auth_method, base_url, secret_refs_json, "
     "rate_limit_rpm, rate_limit_concurrent, health_check_enabled, "
     "health_status, last_health_check_at, metadata_json, "
-    "webhook_receipt_retention_days, created_at, updated_at"
+    "webhook_receipt_retention_days, sensitive, created_at, updated_at"
 )
 
 
@@ -73,6 +73,7 @@ def _row_to_connection(row: dict[str, Any]) -> Connection:
     )
     last_health_check_at = row.get("last_health_check_at")
     retention = row.get("webhook_receipt_retention_days")
+    sensitive = bool(row.get("sensitive", False))
     return Connection(
         name=NotBlankStr(row["name"]),
         connection_type=ConnectionType(row["connection_type"]),
@@ -87,6 +88,7 @@ def _row_to_connection(row: dict[str, Any]) -> Connection:
         ),
         metadata=metadata,
         webhook_receipt_retention_days=safe_int(retention, default=None),
+        sensitive=sensitive,
         created_at=coerce_row_timestamp(row["created_at"]),
         updated_at=coerce_row_timestamp(row["updated_at"]),
     )
@@ -131,6 +133,7 @@ class PostgresConnectionRepository:
             ),
             Jsonb(connection.metadata),
             connection.webhook_receipt_retention_days,
+            connection.sensitive,
             normalize_utc(connection.created_at),
             normalize_utc(connection.updated_at),
         )
@@ -143,10 +146,10 @@ class PostgresConnectionRepository:
                         secret_refs_json, rate_limit_rpm, rate_limit_concurrent,
                         health_check_enabled, health_status,
                         last_health_check_at, metadata_json,
-                        webhook_receipt_retention_days,
+                        webhook_receipt_retention_days, sensitive,
                         created_at, updated_at
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     ON CONFLICT (name) DO UPDATE SET
                         connection_type = EXCLUDED.connection_type,
@@ -161,6 +164,7 @@ class PostgresConnectionRepository:
                         metadata_json = EXCLUDED.metadata_json,
                         webhook_receipt_retention_days =
                             EXCLUDED.webhook_receipt_retention_days,
+                        sensitive = EXCLUDED.sensitive,
                         updated_at = EXCLUDED.updated_at
                     """,
                     params,

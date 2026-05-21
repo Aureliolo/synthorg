@@ -31,7 +31,8 @@ _CREATE_TABLE = """
         decision_reason TEXT,
         task_id TEXT,
         evidence_package TEXT,
-        metadata TEXT NOT NULL DEFAULT '{}'
+        metadata TEXT NOT NULL DEFAULT '{}',
+        consumed_at TEXT
     )
 """
 

@@ -28,6 +28,7 @@ DEFAULT_CATEGORY_ACTION_MAP: Final[MappingProxyType[ToolCategory, ActionType]] =
             ToolCategory.ONTOLOGY: ActionType.MEMORY_READ,
             ToolCategory.MCP: ActionType.CODE_WRITE,
             ToolCategory.BROWSER: ActionType.BROWSER_NAVIGATE,
+            ToolCategory.EXTERNAL_DATA: ActionType.EXTERNAL_DATA_REQUEST,
             ToolCategory.OTHER: ActionType.CODE_READ,
         }
     )

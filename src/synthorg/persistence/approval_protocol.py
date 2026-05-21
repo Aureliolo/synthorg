@@ -26,6 +26,7 @@ from synthorg.persistence._generics import (
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from datetime import datetime
 
     from typing_extensions import TypedDict
 
@@ -59,7 +60,8 @@ class ApprovalRepository(
     Composes :class:`StatefulRepository` + :class:`FilteredQueryRepository`
     (ADR-0001). Bespoke per D7: :meth:`save_many` and :meth:`expire_if_pending`
     are performance optimisations for bulk operations; :meth:`get_many` is a
-    batch-fetch optimisation.
+    batch-fetch optimisation; :meth:`consume_if_approved` enforces the one-shot
+    domain invariant for governed external-access grants.
 
     All methods are async; non-recoverable errors (``MemoryError``,
     ``RecursionError``) propagate to callers.  Constraint violations
@@ -122,6 +124,33 @@ class ApprovalRepository(
         Returns:
             ``True`` iff the state transition succeeded, ``False`` on
             state mismatch or when no row exists.
+
+        Raises:
+            QueryError: On database errors.
+        """
+        ...
+
+    async def consume_if_approved(
+        self,
+        approval_id: NotBlankStr,
+        *,
+        consumed_at: datetime,
+    ) -> bool:
+        """Atomic CAS: mark an APPROVED grant as consumed (D7 bespoke).
+
+        Sets ``consumed_at`` iff the row is currently ``approved`` and not
+        already consumed, enforcing the one-shot domain invariant for
+        governed external-access approvals: a single grant authorises
+        exactly one egress. Returns ``True`` iff this call won the race;
+        ``False`` on replay (already consumed), state mismatch (not
+        approved), or missing row.
+
+        Args:
+            approval_id: The approval id to consume.
+            consumed_at: Aware UTC timestamp to stamp on success.
+
+        Returns:
+            ``True`` iff the grant was consumed by this call.
 
         Raises:
             QueryError: On database errors.

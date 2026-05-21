@@ -195,3 +195,4 @@ index_attr:idx_ftc_single_active:where:is_active = 1:is_active = TRUE:Partial-un
 nullable:cost_records:rowid:N:Y:SQLite uses INTEGER PRIMARY KEY AUTOINCREMENT (NOT NULL); Postgres uses BIGINT GENERATED ALWAYS AS IDENTITY which can be NULL until insert assigns the sequence value (composite PK with timestamp enforces non-null at write time)
 pk:audit_entries:id:id,timestamp:Postgres composite PK includes the timestamp partitioning column for TimescaleDB hypertable conversion; SQLite has no hypertable concept and uses the simpler PK on id alone (see schema header)
 pk:cost_records:rowid:rowid,timestamp:Postgres composite PK includes the timestamp partitioning column for TimescaleDB hypertable conversion; SQLite has no hypertable concept (see schema header)
+column:approvals:consumed_at:TEXT:TIMESTAMPTZ:SQLite has no TIMESTAMPTZ; column stores TEXT carrying ISO-8601 with explicit +00:00/Z suffix, normalised to UTC at write time

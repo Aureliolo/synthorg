@@ -644,6 +644,7 @@ export const SETTING_NAMESPACE_VALUES = [
     'hr',
     'workers',
     'telemetry',
+    'external_api',
 ] as const
 export type SettingNamespace = (typeof SETTING_NAMESPACE_VALUES)[number]
 
@@ -766,6 +767,7 @@ export const TOOL_CATEGORY_VALUES = [
     'ontology',
     'mcp',
     'browser',
+    'external_data',
     'other',
 ] as const
 export type ToolCategory = (typeof TOOL_CATEGORY_VALUES)[number]
