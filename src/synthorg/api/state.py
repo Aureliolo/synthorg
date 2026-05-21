@@ -162,6 +162,7 @@ if TYPE_CHECKING:
     from synthorg.docs_engine.service import DocsService
     from synthorg.docs_engine.tool_factory import DocsToolFactory
     from synthorg.engine.workflow.webhook_bridge import WebhookEventBridge
+    from synthorg.engine.workspace.environment.service import EnvironmentService
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,
     )
@@ -249,6 +250,7 @@ class AppState(AppStateServicesMixin):
         "_docs_tool_factory",
         "_drift_detection_service",
         "_drift_report_store",
+        "_environment_service",
         "_escalation_notify_subscriber",
         "_escalation_processor",
         "_escalation_registry",
@@ -499,6 +501,7 @@ class AppState(AppStateServicesMixin):
         # at boot behind the provider switch; ``None`` for empty-company
         # / dev apps with no runtime services installed.
         self._project_workspace_service: ProjectWorkspaceService | None = None
+        self._environment_service: EnvironmentService | None = None
         # Cost-dial services (forecaster + repo + Pareto analyzer +
         # benchmark provider). Wired at boot in lifecycle_helpers; the
         # forecast gate, controllers, and dashboard read these through
@@ -1052,6 +1055,23 @@ class AppState(AppStateServicesMixin):
             "_project_workspace_service",
             service,
             "Project workspace service",
+        )
+
+    @property
+    def environment_service(self) -> EnvironmentService | None:
+        """Per-project reproducible-environment provisioner, or ``None``.
+
+        Wired at boot after ``project_workspace_service`` and persistence
+        are connected; ``None`` for dev / empty-company runs.
+        """
+        return self._environment_service
+
+    def set_environment_service(self, service: EnvironmentService) -> None:
+        """Attach the environment service (once-only, startup)."""
+        self._set_once(
+            "_environment_service",
+            service,
+            "Environment service",
         )
 
     @property
