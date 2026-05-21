@@ -6,6 +6,7 @@ from synthorg.core.enums import SourceType  # noqa: TC001 -- Pydantic field anno
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field annotation
 from synthorg.knowledge.constants import (
     KNOWLEDGE_LIST_DEFAULT_LIMIT,
+    KNOWLEDGE_LIST_MAX_LIMIT,
     KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
     KNOWLEDGE_SEARCH_MAX_LIMIT,
 )
@@ -49,10 +50,10 @@ class KnowledgeReindexArgs(BaseModel):
 class KnowledgeListArgs(BaseModel):
     """Args for ``knowledge:list``.
 
-    The list limit (``<= 500``) is larger than the search limit
-    (``<= KNOWLEDGE_SEARCH_MAX_LIMIT``, currently 64) because listing
-    returns only :class:`KnowledgeSource` summary rows, whereas search
-    returns embedded chunk text + citation which is far heavier per row.
+    The list cap (``KNOWLEDGE_LIST_MAX_LIMIT``) is larger than the search
+    cap (``KNOWLEDGE_SEARCH_MAX_LIMIT``) because listing returns only
+    :class:`KnowledgeSource` summary rows, whereas search returns
+    embedded chunk text + citation which is far heavier per row.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -60,7 +61,9 @@ class KnowledgeListArgs(BaseModel):
     project_id: NotBlankStr | None = Field(default=None)
     include_global: bool = Field(default=False)
     stale_only: bool = Field(default=False)
-    limit: int = Field(default=KNOWLEDGE_LIST_DEFAULT_LIMIT, ge=1, le=500)
+    limit: int = Field(
+        default=KNOWLEDGE_LIST_DEFAULT_LIMIT, ge=1, le=KNOWLEDGE_LIST_MAX_LIMIT
+    )
     offset: int = Field(default=0, ge=0)
 
 

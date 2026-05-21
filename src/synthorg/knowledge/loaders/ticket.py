@@ -12,6 +12,7 @@ Each ticket comment becomes one :class:`RawUnit` with a
 comment (and char range) the matching chunk came from.
 """
 
+import builtins
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -100,6 +101,8 @@ class TicketLoader:
         """Fetch ``source.uri`` and emit one unit per ticket comment."""
         try:
             thread = await self._fetcher.fetch(source.uri)
+        except builtins.MemoryError, RecursionError:
+            raise
         except Exception as exc:
             msg = f"Failed to fetch ticket source {source.source_id!r}"
             logger.warning(

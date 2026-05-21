@@ -229,14 +229,30 @@ class KnowledgeIndexer:
                         )
                     )
                 )
-        async with asyncio.TaskGroup() as tg:
-            for chunk in chunks:
-                tg.create_task(
-                    self._backend.store(
-                        SYSTEM_KNOWLEDGE_AGENT_ID,
-                        _chunk_to_request(source=source, chunk=chunk),
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for chunk in chunks:
+                    tg.create_task(
+                        self._backend.store(
+                            SYSTEM_KNOWLEDGE_AGENT_ID,
+                            _chunk_to_request(source=source, chunk=chunk),
+                        )
                     )
-                )
+        except builtins.BaseExceptionGroup as group:
+            if (
+                group.subgroup(builtins.MemoryError) is not None
+                or group.subgroup(builtins.RecursionError) is not None
+            ):
+                raise
+            # Roll the just-written provenance rows back so a retry sees
+            # the chunks as new (not "unchanged" via stable hashes) and
+            # re-embeds the missing memory entries. Without this rollback
+            # subsequent runs would hit ``diff.is_noop`` and skip the
+            # source forever, leaving orphaned provenance with no memory.
+            async with asyncio.TaskGroup() as rollback_tg:
+                for chunk in chunks:
+                    rollback_tg.create_task(self._provenance.delete(chunk.chunk_id))
+            raise
 
     async def _purge_chunks(
         self,
@@ -244,22 +260,45 @@ class KnowledgeIndexer:
         source_id: NotBlankStr,
         chunk_ids: tuple[NotBlankStr, ...],
     ) -> None:
-        """Delete the memory entries for the given chunk ids."""
+        """Delete the memory entries for the given chunk ids in parallel.
+
+        Sequential retrieve+delete becomes ``O(N)`` network round-trips
+        on a large source; a parallel fan-out over a :class:`TaskGroup`
+        keeps re-index latency proportional to the slowest call, not the
+        slowest sum.
+        """
+        if not chunk_ids:
+            return
         source_tag = NotBlankStr(f"{KNOWLEDGE_SOURCE_TAG_PREFIX}{source_id}")
-        for chunk_id in chunk_ids:
-            chunk_tag = NotBlankStr(f"{KNOWLEDGE_CHUNK_TAG_PREFIX}{chunk_id}")
-            hits = await self._backend.retrieve(
-                SYSTEM_KNOWLEDGE_AGENT_ID,
-                MemoryQuery(
-                    text=None,
-                    categories=frozenset({MemoryCategory.KNOWLEDGE}),
-                    namespaces=frozenset({KNOWLEDGE_MEMORY_NAMESPACE}),
-                    tags=(source_tag, chunk_tag),
-                    limit=KNOWLEDGE_REINDEX_PAGE_SIZE,
-                ),
-            )
+        async with asyncio.TaskGroup() as tg:
+            for chunk_id in chunk_ids:
+                tg.create_task(
+                    self._purge_chunk_entries(source_tag=source_tag, chunk_id=chunk_id)
+                )
+
+    async def _purge_chunk_entries(
+        self,
+        *,
+        source_tag: NotBlankStr,
+        chunk_id: NotBlankStr,
+    ) -> None:
+        """Retrieve and delete every memory entry tagged with *chunk_id*."""
+        chunk_tag = NotBlankStr(f"{KNOWLEDGE_CHUNK_TAG_PREFIX}{chunk_id}")
+        hits = await self._backend.retrieve(
+            SYSTEM_KNOWLEDGE_AGENT_ID,
+            MemoryQuery(
+                text=None,
+                categories=frozenset({MemoryCategory.KNOWLEDGE}),
+                namespaces=frozenset({KNOWLEDGE_MEMORY_NAMESPACE}),
+                tags=(source_tag, chunk_tag),
+                limit=KNOWLEDGE_REINDEX_PAGE_SIZE,
+            ),
+        )
+        if not hits:
+            return
+        async with asyncio.TaskGroup() as tg:
             for hit in hits:
-                await self._backend.delete(SYSTEM_KNOWLEDGE_AGENT_ID, hit.id)
+                tg.create_task(self._backend.delete(SYSTEM_KNOWLEDGE_AGENT_ID, hit.id))
 
 
 def _chunk_tags(

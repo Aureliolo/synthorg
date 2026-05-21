@@ -29,6 +29,10 @@ from synthorg.persistence.idempotency_protocol import (
     IdempotencyRecord,
     IdempotencyRepository,
 )
+from synthorg.persistence.knowledge_protocol import (
+    ChunkProvenanceRepository,
+    KnowledgeSourceRepository,
+)
 from synthorg.persistence.message_protocol import MessageRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.preset_protocol import (
@@ -726,6 +730,86 @@ class _FakePersonalityPresetRepository:
         return False
 
 
+class _FakeKnowledgeSourceRepository:
+    async def save(self, entity: Any) -> None:
+        del entity
+
+    async def get(self, entity_id: NotBlankStr) -> Any | None:
+        del entity_id
+        return None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del limit, offset
+        return ()
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def count(self, filter_spec: Any) -> int:
+        del filter_spec
+        return 0
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
+        return False
+
+
+class _FakeChunkProvenanceRepository:
+    async def save(self, entity: Any) -> None:
+        del entity
+
+    async def get(self, entity_id: NotBlankStr) -> Any | None:
+        del entity_id
+        return None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del limit, offset
+        return ()
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        del filter_spec, limit, offset
+        return ()
+
+    async def count(self, filter_spec: Any) -> int:
+        del filter_spec
+        return 0
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
+        return False
+
+    async def get_many(self, chunk_ids: tuple[NotBlankStr, ...]) -> tuple[Any, ...]:
+        del chunk_ids
+        return ()
+
+    async def delete_by_source(self, source_id: NotBlankStr) -> int:
+        del source_id
+        return 0
+
+
 class _FakeWorkflowDefinitionRepository:
     async def save(self, definition: WorkflowDefinition) -> None:
         pass
@@ -1034,12 +1118,18 @@ class _FakeBackend:
         return object()
 
     @property
-    def knowledge_sources(self) -> object:
-        return object()
+    def knowledge_sources(self) -> _FakeKnowledgeSourceRepository:
+        # Concrete fake (not ``object()``) so backend-routed type checks
+        # actually exercise the protocol contract and catch drift between
+        # ``KnowledgeSourceRepository`` and the backend's exposure path.
+        return _FakeKnowledgeSourceRepository()
 
     @property
-    def knowledge_provenance(self) -> object:
-        return object()
+    def knowledge_provenance(self) -> _FakeChunkProvenanceRepository:
+        # Concrete fake so the protocol-conformance suite catches drift
+        # between the bespoke ADR-0001 D7 methods (``get_many``,
+        # ``delete_by_source``) and the backend's exposure path.
+        return _FakeChunkProvenanceRepository()
 
     @property
     def custom_presets(self) -> _FakePersonalityPresetRepository:
@@ -1340,6 +1430,20 @@ class TestProtocolCompliance:
         # ``_FakeBackend.ssrf_violations`` drifts back to ``object()``.
         backend = _FakeBackend()
         assert isinstance(backend.ssrf_violations, SsrfViolationRepository)
+
+    def test_fake_knowledge_sources_repo_is_knowledge_source_repository(
+        self,
+    ) -> None:
+        # Route through the backend property so a regression that drifts
+        # ``knowledge_sources`` back to ``object()`` surfaces here.
+        backend = _FakeBackend()
+        assert isinstance(backend.knowledge_sources, KnowledgeSourceRepository)
+
+    def test_fake_knowledge_provenance_repo_is_chunk_provenance_repository(
+        self,
+    ) -> None:
+        backend = _FakeBackend()
+        assert isinstance(backend.knowledge_provenance, ChunkProvenanceRepository)
 
     def test_fake_preset_repo_is_personality_preset_repository(self) -> None:
         assert isinstance(

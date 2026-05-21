@@ -18,7 +18,11 @@ from typing import TYPE_CHECKING, Any
 
 from synthorg.core.enums import ContentKind
 from synthorg.core.types import NotBlankStr
-from synthorg.knowledge.errors import KnowledgeDependencyError, KnowledgeIngestError
+from synthorg.knowledge.errors import (
+    KnowledgeDependencyError,
+    KnowledgeIngestError,
+    KnowledgeSourceUnavailableError,
+)
 from synthorg.knowledge.models import PdfLocator, RawDocument, RawUnit
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
@@ -51,7 +55,10 @@ def _default_opener(path: str) -> AbstractContextManager[Any]:
             "`pip install synthorg[knowledge]`."
         )
         raise KnowledgeDependencyError(msg) from exc
-    return pdfplumber.open(path)
+    # pdfplumber ships no type stubs, so the open() result is typed Any;
+    # the context manager interface is well-documented and stable.
+    opened: AbstractContextManager[Any] = pdfplumber.open(path)
+    return opened
 
 
 class PdfLoader:
@@ -97,6 +104,15 @@ class PdfLoader:
             raise
         except builtins.MemoryError, RecursionError:
             raise
+        except (FileNotFoundError, PermissionError, IsADirectoryError) as exc:
+            msg = f"Failed to access PDF source {source.source_id!r}"
+            logger.warning(
+                KNOWLEDGE_LOAD_FAILED,
+                source_id=source.source_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise KnowledgeSourceUnavailableError(msg) from exc
         except Exception as exc:
             msg = f"Failed to parse PDF source {source.source_id!r}"
             logger.warning(

@@ -109,7 +109,8 @@ class KnowledgeRetriever:
                 error=safe_error_description(exc),
             )
             raise KnowledgeRetrievalError(msg) from exc
-        hits = await self._resolve_citations(entries[:effective_limit])
+        resolved = await self._resolve_citations(entries)
+        hits = resolved[:effective_limit]
         logger.debug(
             KNOWLEDGE_SEARCHED,
             project_id=project_id,

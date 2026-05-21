@@ -3636,6 +3636,7 @@ dev = [
     { name = "mkdocstrings", extra = ["python"] },
     { name = "mypy" },
     { name = "nats-py" },
+    { name = "pdfplumber" },
     { name = "pip-audit" },
     { name = "polyfactory" },
     { name = "pre-commit" },
@@ -3655,6 +3656,8 @@ dev = [
     { name = "ruff" },
     { name = "sqlglot" },
     { name = "testcontainers" },
+    { name = "tree-sitter" },
+    { name = "tree-sitter-language-pack" },
     { name = "types-defusedxml" },
     { name = "types-pyyaml" },
     { name = "zensical" },
@@ -3681,6 +3684,7 @@ fine-tune-gpu = [
 test = [
     { name = "hypothesis" },
     { name = "nats-py" },
+    { name = "pdfplumber" },
     { name = "polyfactory" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
@@ -3694,6 +3698,8 @@ test = [
     { name = "pytest-xdist" },
     { name = "respx" },
     { name = "testcontainers" },
+    { name = "tree-sitter" },
+    { name = "tree-sitter-language-pack" },
 ]
 
 [package.metadata]
@@ -3754,6 +3760,7 @@ dev = [
     { name = "mkdocstrings", extras = ["python"], specifier = "==1.0.4" },
     { name = "mypy", specifier = "==2.1.0" },
     { name = "nats-py", specifier = "==2.14.0" },
+    { name = "pdfplumber", specifier = "==0.11.9" },
     { name = "pip-audit", specifier = "==2.10.0" },
     { name = "polyfactory", specifier = "==3.3.0" },
     { name = "pre-commit", specifier = "==4.6.0" },
@@ -3773,6 +3780,8 @@ dev = [
     { name = "ruff", specifier = "==0.15.13" },
     { name = "sqlglot", specifier = "==30.8.0" },
     { name = "testcontainers", extras = ["postgres"], specifier = "==4.14.2" },
+    { name = "tree-sitter", specifier = "==0.25.2" },
+    { name = "tree-sitter-language-pack", specifier = "==1.8.1" },
     { name = "types-defusedxml", specifier = "==0.7.0.20260504" },
     { name = "types-pyyaml", specifier = "==6.0.12.20260518" },
     { name = "zensical", specifier = "==0.0.43" },
@@ -3796,6 +3805,7 @@ fine-tune-gpu = [
 test = [
     { name = "hypothesis", specifier = "==6.152.9" },
     { name = "nats-py", specifier = "==2.14.0" },
+    { name = "pdfplumber", specifier = "==0.11.9" },
     { name = "polyfactory", specifier = "==3.3.0" },
     { name = "psycopg", extras = ["binary"], specifier = "==3.3.4" },
     { name = "psycopg-pool", specifier = "==3.3.1" },
@@ -3809,6 +3819,8 @@ test = [
     { name = "pytest-xdist", specifier = "==3.8.0" },
     { name = "respx", specifier = "==0.23.1" },
     { name = "testcontainers", extras = ["postgres"], specifier = "==4.14.2" },
+    { name = "tree-sitter", specifier = "==0.25.2" },
+    { name = "tree-sitter-language-pack", specifier = "==1.8.1" },
 ]
 
 [[package]]

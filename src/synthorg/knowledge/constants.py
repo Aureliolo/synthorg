@@ -64,6 +64,11 @@ KNOWLEDGE_SEARCH_MAX_LIMIT: Final[int] = 64
 KNOWLEDGE_LIST_DEFAULT_LIMIT: Final[int] = 100
 """Default page size for listing knowledge sources."""
 
+KNOWLEDGE_LIST_MAX_LIMIT: Final[int] = 500
+"""Maximum page size accepted when listing knowledge sources. The hard
+cap bounds list-controller latency and keeps the MCP schema in lockstep
+with the args-model :class:`Field` validator."""
+
 KNOWLEDGE_REINDEX_PAGE_SIZE: Final[int] = 100
 """Page size when deleting prior chunks for a source during re-index."""
 

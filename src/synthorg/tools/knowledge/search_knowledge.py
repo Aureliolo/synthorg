@@ -137,7 +137,9 @@ def _format_hits(hits: tuple[KnowledgeHit, ...]) -> str:
         return "No matching knowledge for this query."
     blocks: list[str] = []
     for hit in hits:
-        citation = _format_citation(hit.citation)
+        # Citation text (title + locator) is third-party-derived just
+        # like the chunk text; wrap both so neither can carry an injection.
+        citation = wrap_untrusted(TAG_MEMORY_ENTRY, _format_citation(hit.citation))
         wrapped = wrap_untrusted(TAG_MEMORY_ENTRY, hit.chunk_text)
         blocks.append(f"[{citation}] (score={hit.relevance_score:.2f})\n{wrapped}")
     return "\n\n".join(blocks)

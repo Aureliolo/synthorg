@@ -92,5 +92,5 @@ class KnowledgeSourceUnavailableError(KnowledgeError):
     default_message: ClassVar[str] = "Knowledge source unavailable"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
     error_code: ClassVar[ErrorCode] = ErrorCode.KNOWLEDGE_SOURCE_UNAVAILABLE
-    retryable: ClassVar[bool] = True
+    retryable: ClassVar[bool] = False
     status_code: ClassVar[int] = 503

@@ -10,7 +10,7 @@ them by descending ``relevance_score``:
 3. When ``knowledge_enabled`` (set at the boot path), the
    :attr:`MemoryCategory.KNOWLEDGE` namespace under
    :data:`SYSTEM_KNOWLEDGE_AGENT_ID` scoped to project P *and* the global
-   corpus (the knowledge + provenance substrate, #1988).
+   corpus (the knowledge + provenance substrate).
 
 This makes both project docs and the ingested knowledge corpus
 first-class RAG members without special-casing in agent code: callers
@@ -124,6 +124,11 @@ class ProjectAwareMemoryFacade:
                 ]
         except builtins.BaseExceptionGroup as group:
             if group.subgroup(asyncio.CancelledError) is not None:
+                raise
+            if (
+                group.subgroup(builtins.MemoryError) is not None
+                or group.subgroup(builtins.RecursionError) is not None
+            ):
                 raise
             logger.warning(
                 DOC_FACADE_FANOUT_FAILED,

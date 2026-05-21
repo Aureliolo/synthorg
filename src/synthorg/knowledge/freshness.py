@@ -79,7 +79,9 @@ def diff_chunks(
         if existing_hashes.get(chunk.chunk_id) == chunk.content_hash
     )
     removed_ids = tuple(
-        NotBlankStr(chunk_id) for chunk_id in existing_hashes if chunk_id not in new_ids
+        NotBlankStr(chunk_id)
+        for chunk_id in sorted(existing_hashes)
+        if chunk_id not in new_ids
     )
     return ChunkDiff(
         to_embed=to_embed,

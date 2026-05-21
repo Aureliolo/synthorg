@@ -119,9 +119,16 @@ def test_incompatible_column_type_is_flagged() -> None:
 
 
 def test_baselined_drift_passes(tmp_path: Path) -> None:
-    """A finding listed in the baseline is suppressed; ``main`` exits 0."""
+    """A finding listed in the baseline is suppressed; ``main`` exits 0.
+
+    Uses a genuine drift pair (``TEXT`` vs ``INTEGER``) because the
+    historical ``TEXT`` vs ``JSONB`` pair is now a native cross-backend
+    fallback (covered by :func:`test_jsonb_vs_text_is_native_fallback_not_drift`)
+    and would render this baseline-suppression test vacuous: every
+    sqlite/postgres pair would pass irrespective of the baseline.
+    """
     sqlite_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload TEXT);"
-    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload JSONB);"
+    postgres_sql = "CREATE TABLE t (id TEXT PRIMARY KEY, payload INTEGER);"
     sqlite_path = tmp_path / "sqlite.sql"
     postgres_path = tmp_path / "postgres.sql"
     sqlite_path.write_text(sqlite_sql, encoding="utf-8")
@@ -130,7 +137,7 @@ def test_baselined_drift_passes(tmp_path: Path) -> None:
         tmp_path,
         [
             "# header",
-            "column:t:payload:TEXT:JSONB:test reason",
+            "column:t:payload:TEXT:INT:test reason",
         ],
     )
     rc = _MODULE.main(

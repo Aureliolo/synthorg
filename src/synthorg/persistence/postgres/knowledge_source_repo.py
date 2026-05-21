@@ -108,7 +108,6 @@ class PostgresKnowledgeSourceRepository:
                         content_hash=EXCLUDED.content_hash,
                         status=EXCLUDED.status,
                         chunk_count=EXCLUDED.chunk_count,
-                        created_at=EXCLUDED.created_at,
                         updated_at=EXCLUDED.updated_at,
                         last_indexed_at=EXCLUDED.last_indexed_at,
                         last_error=EXCLUDED.last_error

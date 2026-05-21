@@ -105,10 +105,14 @@ async def service(
         revisions_path=rev_path,
     )
     persistence = SQLitePersistenceBackend(SQLiteConfig(path=str(db_path)))
-    await persistence.connect()
     memory = InMemoryBackend()
-    await memory.connect()
+    persistence_connected = False
+    memory_connected = False
     try:
+        await persistence.connect()
+        persistence_connected = True
+        await memory.connect()
+        memory_connected = True
         await persistence.projects.save(
             Project(id=NotBlankStr("proj-1"), name=NotBlankStr("Demo"))
         )
@@ -121,7 +125,10 @@ async def service(
             clock=FakeClock(start=datetime(2026, 5, 21, tzinfo=UTC)),
         )
     finally:
-        await persistence.disconnect()
+        if memory_connected:
+            await memory.disconnect()
+        if persistence_connected:
+            await persistence.disconnect()
 
 
 def _write_repo(root: Path) -> None:

@@ -10,6 +10,7 @@ records lifecycle status on the source row.
 
 import asyncio
 import builtins
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
@@ -41,6 +42,8 @@ from synthorg.persistence.knowledge_protocol import KnowledgeSourceFilter
 from synthorg.versioning.hashing import compute_text_hash
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from synthorg.knowledge.config import KnowledgeConfig
     from synthorg.knowledge.indexer import KnowledgeIndexer
     from synthorg.knowledge.loaders.ticket import TicketFetcher
@@ -90,18 +93,36 @@ class KnowledgeService:
         # write sequence (status clobber, delete-during-index orphans,
         # duplicate embeddings). A registry of locks keyed by source_id
         # guarantees one writer per source at a time; reads (search /
-        # list / get) remain unsynchronised.
+        # list / get) remain unsynchronised. Refcounts let the registry
+        # evict an entry once no waiter holds it, so the lock dict does
+        # not grow unboundedly across a long-running process's history
+        # of unique source ids.
         self._source_locks: dict[NotBlankStr, asyncio.Lock] = {}
+        self._source_lock_refcounts: dict[NotBlankStr, int] = {}
         self._source_locks_mutex = asyncio.Lock()
 
-    async def _lock_for(self, source_id: NotBlankStr) -> asyncio.Lock:
-        """Return the per-source mutator lock, creating it on first use."""
+    @asynccontextmanager
+    async def _source_lock(self, source_id: NotBlankStr) -> AsyncIterator[None]:
+        """Serialise writers for *source_id*; evict the lock when idle."""
         async with self._source_locks_mutex:
             lock = self._source_locks.get(source_id)
             if lock is None:
                 lock = asyncio.Lock()
                 self._source_locks[source_id] = lock
-            return lock
+            self._source_lock_refcounts[source_id] = (
+                self._source_lock_refcounts.get(source_id, 0) + 1
+            )
+        try:
+            async with lock:
+                yield
+        finally:
+            async with self._source_locks_mutex:
+                remaining = self._source_lock_refcounts[source_id] - 1
+                if remaining == 0:
+                    del self._source_lock_refcounts[source_id]
+                    del self._source_locks[source_id]
+                else:
+                    self._source_lock_refcounts[source_id] = remaining
 
     async def ingest(
         self,
@@ -115,7 +136,7 @@ class KnowledgeService:
         source_id = derive_source_id(
             project_id=project_id, source_type=source_type, uri=uri
         )
-        async with await self._lock_for(source_id):
+        async with self._source_lock(source_id):
             existing = await self._sources.get(source_id)
             return await self._run_ingest(
                 source_id=source_id,
@@ -129,7 +150,7 @@ class KnowledgeService:
 
     async def reindex(self, source_id: NotBlankStr) -> KnowledgeSource:
         """Force a re-load + re-index of an existing source."""
-        async with await self._lock_for(source_id):
+        async with self._source_lock(source_id):
             logger.debug(KNOWLEDGE_REINDEX_STARTED, source_id=source_id)
             existing = await self._require_source(source_id)
             return await self._run_ingest(
@@ -193,7 +214,7 @@ class KnowledgeService:
         cannot leave orphaned memory entries (delete waits for the
         in-flight index, or vice versa).
         """
-        async with await self._lock_for(source_id):
+        async with self._source_lock(source_id):
             await self._require_source(source_id)
             await self._indexer.purge_source(source_id)
             deleted = await self._sources.delete(source_id)
@@ -265,13 +286,38 @@ class KnowledgeService:
                 error=safe_error_description(exc),
             )
             raise
+        except Exception as exc:
+            # Unexpected errors that escape the indexer must still
+            # demote the row out of PENDING; a stuck PENDING row hides
+            # the failure from operators because the polling /list
+            # filter treats it as "still in flight".
+            await self._sources.save(
+                pending.model_copy(
+                    update={
+                        "status": SourceStatus.FAILED,
+                        "last_error": NotBlankStr(safe_error_description(exc)),
+                        "updated_at": self._clock.now(),
+                    }
+                )
+            )
+            logger.warning(
+                KNOWLEDGE_INGEST_FAILED,
+                source_id=source_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        # ``last_indexed_at`` must reflect when indexing completed, not
+        # when ingest started, so observers can tell at a glance that
+        # the row is fresh after a long load.
+        completed_at = self._clock.now()
         indexed = pending.model_copy(
             update={
                 "status": SourceStatus.INDEXED,
                 "chunk_count": outcome.total_chunks,
-                "last_indexed_at": now,
+                "last_indexed_at": completed_at,
                 "last_error": None,
-                "updated_at": now,
+                "updated_at": completed_at,
             }
         )
         await self._sources.save(indexed)

@@ -20,7 +20,7 @@ otherwise the wiring fails at startup, not at first ingest)."""
 CodeChunkerKind = Literal["tree_sitter"]
 """Discriminator for the code-chunking strategy. ``tree_sitter`` is the
 default AST-aware chunker; a future stdlib-``ast`` strategy would extend
-this union AND :func:`synthorg.knowledge.chunking.factory.build_code_chunker`
+this union AND :func:`synthorg.knowledge.chunking.factory.build_chunker`
 in the same change."""
 
 

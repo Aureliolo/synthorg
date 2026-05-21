@@ -13,6 +13,7 @@ from pydantic import BaseModel  # noqa: TC002 -- ClassVar runtime ref
 from synthorg.api.boundary import parse_typed
 from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.knowledge.errors import KnowledgeError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.knowledge import (
@@ -70,10 +71,9 @@ class IngestKnowledgeTool(BaseTool):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            safe_err = wrap_untrusted(TAG_TASK_DATA, safe_error_description(exc))
             return ToolExecutionResult(
-                content=(
-                    f"Ingest failed: invalid arguments ({safe_error_description(exc)})"
-                ),
+                content=f"Ingest failed: invalid arguments ({safe_err})",
                 is_error=True,
             )
         except builtins.MemoryError, RecursionError:
@@ -85,8 +85,9 @@ class IngestKnowledgeTool(BaseTool):
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            safe_err = wrap_untrusted(TAG_TASK_DATA, safe_error_description(exc))
             return ToolExecutionResult(
-                content=f"Ingest failed: {safe_error_description(exc)}",
+                content=f"Ingest failed: {safe_err}",
                 is_error=True,
             )
         logger.info(
@@ -94,9 +95,12 @@ class IngestKnowledgeTool(BaseTool):
             source_id=source.source_id,
             chunk_count=source.chunk_count,
         )
+        # source.title is user-supplied input that may carry an injection;
+        # wrap it before placing it in model-facing tool content.
+        safe_title = wrap_untrusted(TAG_TASK_DATA, source.title)
         return ToolExecutionResult(
             content=(
-                f"Ingested {source.source_type.value} source {source.title!r}: "
+                f"Ingested {source.source_type.value} source {safe_title!r}: "
                 f"{source.chunk_count} chunks indexed (status {source.status.value})."
             ),
             metadata={

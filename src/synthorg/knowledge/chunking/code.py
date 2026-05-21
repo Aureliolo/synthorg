@@ -87,8 +87,12 @@ def _load_parser(language: str) -> Any | None:
     fast-binding, whose ``Tree`` / ``Node`` surface differs.
     """
     try:
-        from tree_sitter import Parser  # noqa: PLC0415
-        from tree_sitter_language_pack import get_language  # noqa: PLC0415
+        from tree_sitter import (  # noqa: PLC0415
+            Parser,  # type: ignore[import-not-found]
+        )
+        from tree_sitter_language_pack import (  # noqa: PLC0415
+            get_language,  # type: ignore[import-not-found]
+        )
     except ImportError as exc:
         msg = (
             "Code chunking needs the 'tree-sitter' extras. Install with "
@@ -176,7 +180,15 @@ class CodeChunker:
         end: int,
         symbol: str | None = None,
     ) -> None:
-        """Emit one or more chunk pieces for the inclusive line range."""
+        """Emit one or more chunk pieces for the inclusive line range.
+
+        Single chunks at or under ``_MAX_CHARS`` are emitted as one
+        piece; otherwise lines are packed greedily into successive
+        chunks so each chunk is as large as possible without exceeding
+        the hard character budget. (An average-line-length window would
+        overflow on non-uniform line widths, e.g. a generated file with
+        one very long line, and silently truncate downstream embeddings.)
+        """
         text = "\n".join(lines[start : end + 1])
         if not text.strip():
             return
@@ -191,33 +203,63 @@ class CodeChunker:
                 )
             )
             return
-        window = max(1, _MAX_CHARS // (_avg_line_len(lines, start, end) or 1))
-        for win_start in range(start, end + 1, window):
-            win_end = min(win_start + window - 1, end)
-            chunk_text = "\n".join(lines[win_start : win_end + 1])
-            if not chunk_text.strip():
-                continue
-            pieces.append(
-                _code_piece(
-                    text=chunk_text,
+        win_start = start
+        win_chars = 0
+        for i in range(start, end + 1):
+            # Add 1 for the newline that ``\n``.join inserts between lines.
+            line_len = len(lines[i]) + 1
+            if win_chars > 0 and win_chars + line_len > _MAX_CHARS:
+                self._flush_window(
+                    pieces,
                     path=path,
-                    line_start=win_start + 1,
-                    line_end=win_end + 1,
+                    lines=lines,
+                    win_start=win_start,
+                    win_end=i - 1,
                     symbol=symbol,
                 )
+                win_start = i
+                win_chars = line_len
+            else:
+                win_chars += line_len
+        if win_start <= end:
+            self._flush_window(
+                pieces,
+                path=path,
+                lines=lines,
+                win_start=win_start,
+                win_end=end,
+                symbol=symbol,
             )
+
+    def _flush_window(  # noqa: PLR0913 -- cohesive window-flush params
+        self,
+        pieces: list[ChunkPiece],
+        *,
+        path: str,
+        lines: list[str],
+        win_start: int,
+        win_end: int,
+        symbol: str | None,
+    ) -> None:
+        """Append a single piece for the inclusive line window if non-empty."""
+        chunk_text = "\n".join(lines[win_start : win_end + 1])
+        if not chunk_text.strip():
+            return
+        pieces.append(
+            _code_piece(
+                text=chunk_text,
+                path=path,
+                line_start=win_start + 1,
+                line_end=win_end + 1,
+                symbol=symbol,
+            )
+        )
 
     def _line_windows(self, *, path: str, lines: list[str]) -> tuple[ChunkPiece, ...]:
         """Fallback: split into fixed line windows under the char budget."""
         pieces: list[ChunkPiece] = []
         self._emit_lines(pieces, path=path, lines=lines, start=0, end=len(lines) - 1)
         return tuple(pieces)
-
-
-def _avg_line_len(lines: list[str], start: int, end: int) -> int:
-    span = lines[start : end + 1]
-    total = sum(len(line) + 1 for line in span)
-    return total // max(1, len(span))
 
 
 def _is_definition(node_type: str) -> bool:

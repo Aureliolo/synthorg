@@ -8,6 +8,10 @@ ingest / reindex / delete are admin (their handlers call
 
 from typing import TYPE_CHECKING
 
+from synthorg.knowledge.constants import (
+    KNOWLEDGE_LIST_MAX_LIMIT,
+    KNOWLEDGE_SEARCH_MAX_LIMIT,
+)
 from synthorg.meta.mcp.domains._knowledge_args import (
     KnowledgeDeleteArgs,
     KnowledgeGetArgs,
@@ -37,7 +41,11 @@ KNOWLEDGE_TOOLS: tuple[MCPToolDef, ...] = (
                 "minLength": 1,
             },
             "query": {"type": "string", "minLength": 1},
-            "limit": {"type": "integer", "minimum": 1, "maximum": 64},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": KNOWLEDGE_SEARCH_MAX_LIMIT,
+            },
         },
         required=("query",),
         args_model=KnowledgeSearchArgs,
@@ -76,7 +84,11 @@ KNOWLEDGE_TOOLS: tuple[MCPToolDef, ...] = (
             "project_id": {"type": ["string", "null"], "minLength": 1},
             "include_global": {"type": "boolean"},
             "stale_only": {"type": "boolean"},
-            "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": KNOWLEDGE_LIST_MAX_LIMIT,
+            },
             "offset": {"type": "integer", "minimum": 0},
         },
         args_model=KnowledgeListArgs,

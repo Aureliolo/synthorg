@@ -8,6 +8,7 @@ corpus stays meaningful and chunk ids stay stable across re-ingests.
 """
 
 import asyncio
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -113,36 +114,43 @@ class RepoLoader:
             raise KnowledgeSourceUnavailableError(msg)
         units: list[RawUnit] = []
         hash_parts: list[str] = []
-        for path in sorted(root.rglob("*"), key=lambda p: p.as_posix()):
-            if not self._is_eligible(path):
-                continue
-            try:
-                text = path.read_text(encoding="utf-8")
-            except (UnicodeDecodeError, OSError) as exc:
-                # Emit a trail so operators can see why files are
-                # absent from a corpus instead of silently dropping them.
-                logger.debug(
-                    KNOWLEDGE_SOURCE_FILE_SKIPPED,
-                    source_id=source.source_id,
-                    file_path=str(path),
-                    reason="read_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+        # os.walk with in-place ``dirnames`` pruning skips entire
+        # ignored subtrees (.git, node_modules, .venv, ...) without
+        # stat-ing every descendant; rglob("*") otherwise traverses the
+        # full tree before the per-path filter runs.
+        for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+            dirnames[:] = sorted(d for d in dirnames if d not in _IGNORED_DIRS)
+            for filename in sorted(filenames):
+                path = Path(dirpath) / filename
+                if not self._is_eligible(path, root=root):
+                    continue
+                try:
+                    text = path.read_text(encoding="utf-8")
+                except (UnicodeDecodeError, OSError) as exc:
+                    # Emit a trail so operators can see why files are
+                    # absent from a corpus instead of silently dropping them.
+                    logger.debug(
+                        KNOWLEDGE_SOURCE_FILE_SKIPPED,
+                        source_id=source.source_id,
+                        file_path=str(path),
+                        reason="read_failed",
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    continue
+                rel = path.relative_to(root).as_posix()
+                units.append(
+                    RawUnit(
+                        text=text,
+                        locator=CodeLocator(
+                            path=NotBlankStr(rel),
+                            line_start=1,
+                            line_end=max(1, text.count("\n") + 1),
+                        ),
+                        content_kind=ContentKind.CODE,
+                    )
                 )
-                continue
-            rel = path.relative_to(root).as_posix()
-            units.append(
-                RawUnit(
-                    text=text,
-                    locator=CodeLocator(
-                        path=NotBlankStr(rel),
-                        line_start=1,
-                        line_end=max(1, text.count("\n") + 1),
-                    ),
-                    content_kind=ContentKind.CODE,
-                )
-            )
-            hash_parts.append(f"{rel}\n{text}")
+                hash_parts.append(f"{rel}\n{text}")
         return RawDocument(
             source_id=source.source_id,
             source_type=source.source_type,
@@ -152,7 +160,7 @@ class RepoLoader:
             units=tuple(units),
         )
 
-    def _is_eligible(self, path: Path) -> bool:
+    def _is_eligible(self, path: Path, *, root: Path) -> bool:
         # Symlinks are skipped before any file probe: a symlink that
         # resolves outside ``source.uri`` would otherwise let a hostile
         # repo coerce the loader into reading arbitrary host files.
@@ -160,7 +168,13 @@ class RepoLoader:
             return False
         if not path.is_file():
             return False
-        if any(part in _IGNORED_DIRS for part in path.parts):
+        # Filter on path components RELATIVE to the repository root: an
+        # absolute ``path.parts`` would include ancestor segments above
+        # the root and could accidentally drop valid files when the
+        # caller's parent dir happens to share a name with an ignored
+        # directory (e.g. a project living under ``.../vendor/``).
+        rel_parts = path.relative_to(root).parts
+        if any(part in _IGNORED_DIRS for part in rel_parts):
             return False
         if path.suffix.lower() not in _TEXT_EXTENSIONS:
             return False
