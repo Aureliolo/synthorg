@@ -15,6 +15,7 @@ from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import DomainToolRegistry
+    from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
 
 logger = get_logger(__name__)
 
@@ -36,6 +37,11 @@ TOOL_PREFIX = "synthorg"
 _registry: DomainToolRegistry | None = None
 _scoper: MCPToolScoper | None = None
 _invoker: MCPToolInvoker | None = None
+# Set by the toolsmith boot hook (install_dynamic_tool_layer). When
+# present, the invoker dispatches over the static surface layered with
+# the live authored-tool registry, so runtime-authored tools become
+# reachable without unfreezing the static registry.
+_dynamic_registry: DynamicToolRegistry | None = None
 
 
 def get_registry() -> DomainToolRegistry:
@@ -70,8 +76,32 @@ def get_invoker() -> MCPToolInvoker:
     """
     global _invoker  # noqa: PLW0603
     if _invoker is None:
-        _invoker = MCPToolInvoker(get_registry(), build_handler_map())
+        if _dynamic_registry is not None:
+            from synthorg.meta.toolsmith.dynamic_registry import (  # noqa: PLC0415
+                LayeredHandlerMap,
+                LayeredToolRegistry,
+            )
+
+            _invoker = MCPToolInvoker(
+                LayeredToolRegistry(get_registry(), _dynamic_registry),
+                LayeredHandlerMap(build_handler_map(), _dynamic_registry),
+            )
+        else:
+            _invoker = MCPToolInvoker(get_registry(), build_handler_map())
     return _invoker
+
+
+def install_dynamic_tool_layer(dynamic_registry: DynamicToolRegistry) -> None:
+    """Install the live authored-tool registry behind the static surface.
+
+    Called once by the toolsmith boot hook. Resets the cached invoker so
+    the next :func:`get_invoker` rebuilds over the layered registry; the
+    invoker then sees authored tools as they are registered into
+    ``dynamic_registry`` because the layered reader consults it live.
+    """
+    global _dynamic_registry, _invoker  # noqa: PLW0603
+    _dynamic_registry = dynamic_registry
+    _invoker = None
 
 
 def get_server_config() -> dict[str, object]:
@@ -99,7 +129,8 @@ def reset_singletons() -> None:
     This allows tests to rebuild the registry, scoper, and invoker
     without polluting other test runs.
     """
-    global _registry, _scoper, _invoker  # noqa: PLW0603
+    global _registry, _scoper, _invoker, _dynamic_registry  # noqa: PLW0603
     _registry = None
     _scoper = None
     _invoker = None
+    _dynamic_registry = None

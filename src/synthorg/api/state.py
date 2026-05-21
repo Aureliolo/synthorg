@@ -176,6 +176,7 @@ if TYPE_CHECKING:
     from synthorg.integrations.tunnel.protocol import TunnelProvider
     from synthorg.knowledge.service import KnowledgeService
     from synthorg.knowledge.tool_factory import KnowledgeToolFactory
+    from synthorg.meta.toolsmith.service import ToolsmithService
 
     # Imported under TYPE_CHECKING so the optional ``synthorg[distributed]``
     # extra is not required at runtime for deployments that do not use the
@@ -335,6 +336,7 @@ class AppState(AppStateServicesMixin):
         "_template_pack_facade_service",
         "_ticket_store",
         "_tool_invocation_tracker",
+        "_toolsmith_service",
         "_trace_handler",
         "_training_plan_service",
         "_training_service",
@@ -628,6 +630,7 @@ class AppState(AppStateServicesMixin):
         )
         self._review_gate_service: ReviewGateService | None = None
         self._scaling_service: ScalingService | None = None
+        self._toolsmith_service: ToolsmithService | None = None
         self._init_facade_service_slots()
         self._client_simulation_state: ClientSimulationState | None = None
         self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
@@ -1294,6 +1297,15 @@ class AppState(AppStateServicesMixin):
     def set_review_gate_service(self, service: ReviewGateService) -> None:
         """Attach the review gate service (once-only)."""
         self._set_once("_review_gate_service", service, "Review gate service")
+
+    @property
+    def toolsmith_service(self) -> ToolsmithService | None:
+        """Return the self-extending-toolkit service, or None if not wired."""
+        return self._toolsmith_service
+
+    def set_toolsmith_service(self, service: ToolsmithService) -> None:
+        """Attach the toolsmith service (once-only)."""
+        self._set_once("_toolsmith_service", service, "Toolsmith service")
 
     @property
     def scaling_service(self) -> ScalingService | None:

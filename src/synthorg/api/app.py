@@ -150,7 +150,12 @@ if TYPE_CHECKING:
     from litestar.channels import ChannelsPlugin
 
     from synthorg.client.simulation_state import ClientSimulationState
+    from synthorg.meta.config import SelfImprovementConfig
+    from synthorg.meta.toolsmith.factory import ToolsmithRuntime
+    from synthorg.meta.toolsmith.models import ToolBlueprint
+    from synthorg.persistence.tool_blueprint_protocol import DynamicToolRepository
     from synthorg.settings.service import SettingsService
+    from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 
@@ -290,6 +295,79 @@ def _try_wire_cost_dial(app_state: AppState) -> None:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
+
+
+def _build_dynamic_tool_repo(
+    persistence: PersistenceBackend,
+) -> DynamicToolRepository:
+    """Build the backend-specific authored-tool blueprint repository."""
+    if persistence.backend_name == "sqlite":
+        from synthorg.persistence.sqlite.tool_blueprint_repo import (  # noqa: PLC0415
+            SQLiteDynamicToolRepository,
+        )
+
+        return SQLiteDynamicToolRepository(
+            persistence.get_db(),
+            write_context=persistence.write_context,
+        )
+    from synthorg.persistence.postgres.tool_blueprint_repo import (  # noqa: PLC0415
+        PostgresDynamicToolRepository,
+    )
+
+    return PostgresDynamicToolRepository(persistence.get_db())
+
+
+def _build_toolsmith_runtime(
+    *,
+    si_config: SelfImprovementConfig,
+    provider_registry: ProviderRegistry,
+    persistence: PersistenceBackend,
+    approval_store: ApprovalStoreProtocol | None,
+    cost_tracker: CostTracker | None,
+) -> ToolsmithRuntime | None:
+    """Resolve dependencies and build the toolsmith runtime, or None.
+
+    Returns ``None`` when no provider is registered (nothing to author
+    with). The sandbox resolver maps each blueprint's declared backend to
+    a concrete sandbox built from the default sandboxing config, so a
+    Docker-declared authored tool runs under Docker and a subprocess one
+    under subprocess. The golden-scorecard provider is intentionally
+    absent here: until #1980 exposes a runnable score-with-candidate API,
+    the validation gate fails closed (a missing provider rejects the
+    apply) rather than trusting an unvalidated tool.
+    """
+    from pathlib import Path  # noqa: PLC0415
+
+    from synthorg.meta.toolsmith.factory import build_toolsmith  # noqa: PLC0415
+    from synthorg.tools.sandbox.factory import (  # noqa: PLC0415
+        build_sandbox_backends,
+    )
+    from synthorg.tools.sandbox.sandboxing_config import (  # noqa: PLC0415
+        SandboxingConfig,
+    )
+
+    provider_names = provider_registry.list_providers()
+    if not provider_names:
+        return None
+    provider = provider_registry.get(provider_names[0])
+    repo = _build_dynamic_tool_repo(persistence)
+
+    sandboxing = SandboxingConfig()
+    backends = build_sandbox_backends(config=sandboxing, workspace=Path.cwd())
+
+    def _resolve_sandbox(blueprint: ToolBlueprint) -> SandboxBackend:
+        return backends.get(
+            blueprint.sandbox_backend.value, backends[sandboxing.default_backend]
+        )
+
+    return build_toolsmith(
+        si_config=si_config,
+        provider=provider,
+        repo=repo,
+        sandbox_resolver=_resolve_sandbox,
+        approval_store=approval_store,
+        cost_tracker=cost_tracker,
+    )
 
 
 def _build_default_approval_timeout_scheduler(
@@ -1461,6 +1539,54 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             app_state.set_chief_of_staff_proposer(proposer)
 
     startup = [*startup, _wire_chief_of_staff_proposer]
+
+    async def _wire_toolsmith() -> None:
+        # Self-extending toolkit (#1995). Wired only when
+        # ``tool_creation_enabled`` is set AND a provider is registered
+        # AND persistence is connected (authored blueprints are durable).
+        # Disabled by default, so a normal boot skips this entirely.
+        # Idempotent for re-entered lifespans (shared-app fixtures).
+        if app_state.toolsmith_service is not None or provider_registry is None:
+            return
+        if persistence is None or not app_state.has_persistence:
+            return
+        from synthorg.meta.config import load_self_improvement_config  # noqa: PLC0415
+
+        si_config = await load_self_improvement_config(
+            app_state.settings_service if app_state.has_settings_service else None,
+        )
+        if not si_config.tool_creation_enabled:
+            return
+        try:
+            runtime = _build_toolsmith_runtime(
+                si_config=si_config,
+                provider_registry=provider_registry,
+                persistence=persistence,
+                approval_store=effective_approval_store,
+                cost_tracker=cost_tracker,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_APP_STARTUP,
+                service="toolsmith",
+                note="toolsmith wiring failed; self-extending toolkit disabled",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        if runtime is None:
+            return
+        app_state.set_toolsmith_service(runtime.service)
+        from synthorg.meta.mcp.server import (  # noqa: PLC0415
+            install_dynamic_tool_layer,
+        )
+
+        install_dynamic_tool_layer(runtime.dynamic_registry)
+        logger.info(API_APP_STARTUP, service="toolsmith", note="wired")
+
+    startup = [*startup, _wire_toolsmith]
 
     # Bring up the notification dispatcher's HTTP-bearing sinks
     # (slack/ntfy ``httpx.AsyncClient``) lazily under their lifecycle

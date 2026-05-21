@@ -97,14 +97,14 @@ class TestSandboxBriefRunner:
         sandbox = _FakeSandbox(
             SandboxResult(stdout='{"slug": "x"}', stderr="", returncode=0)
         )
-        runner = SandboxBriefRunner(sandbox)  # type: ignore[arg-type]
+        runner = SandboxBriefRunner(lambda _bp: sandbox)  # type: ignore[arg-type,return-value]
         passed, score = await runner.run(_blueprint())
         assert passed is True
         assert score == 100
 
     async def test_failure_envelope_fails(self) -> None:
         sandbox = _FakeSandbox(SandboxResult(stdout="", stderr="boom", returncode=1))
-        runner = SandboxBriefRunner(sandbox)  # type: ignore[arg-type]
+        runner = SandboxBriefRunner(lambda _bp: sandbox)  # type: ignore[arg-type,return-value]
         passed, score = await runner.run(_blueprint())
         assert passed is False
         assert score == 0

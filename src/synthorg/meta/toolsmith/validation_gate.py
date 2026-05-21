@@ -32,9 +32,11 @@ from synthorg.observability.events.toolsmith import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
 
     from synthorg.tools.sandbox.protocol import SandboxBackend
+
+    SandboxResolver = Callable[[ToolBlueprint], SandboxBackend]
 
 logger = get_logger(__name__)
 
@@ -72,20 +74,22 @@ class SandboxBriefRunner:
     """Runs an authored tool in the sandbox against a synthesized probe.
 
     Passes iff the tool exits cleanly and returns a structured (``ok``)
-    envelope for a representative input.
+    envelope for a representative input. The sandbox backend is resolved
+    per blueprint so a Docker-declared tool is probed under Docker, not a
+    weaker default.
 
     Args:
-        sandbox: Sandbox backend the probe runs in.
+        sandbox_resolver: Resolves the sandbox backend for a blueprint.
         timeout_seconds: Per-probe wall-clock budget.
     """
 
     def __init__(
         self,
-        sandbox: SandboxBackend,
+        sandbox_resolver: SandboxResolver,
         *,
         timeout_seconds: float = 30.0,
     ) -> None:
-        self._sandbox = sandbox
+        self._sandbox_resolver = sandbox_resolver
         self._timeout_seconds = timeout_seconds
 
     async def run(self, blueprint: ToolBlueprint) -> tuple[bool, int]:
@@ -93,7 +97,9 @@ class SandboxBriefRunner:
         import json as _json  # noqa: PLC0415
 
         handler = make_dynamic_tool_handler(
-            blueprint, self._sandbox, timeout_seconds=self._timeout_seconds
+            blueprint,
+            self._sandbox_resolver(blueprint),
+            timeout_seconds=self._timeout_seconds,
         )
         probe = _synthesize_probe(blueprint.parameters_schema)
         raw = await handler(app_state=None, arguments=probe)

@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from datetime import datetime, timedelta
 
     from synthorg.core.types import NotBlankStr
+    from synthorg.meta.models import ImprovementProposal
     from synthorg.meta.toolsmith.models import (
         CapabilityGap,
         ToolBlueprint,
@@ -145,6 +146,22 @@ class ToolValidationGate(Protocol):
             when the brief passes and the golden scorecard does not
             regress.
         """
+        ...
+
+
+@runtime_checkable
+class ToolCreationOverflowHandler(Protocol):
+    """Handles capability gaps that need service-layer access.
+
+    A sandbox script cannot reach the internal service layer, so gaps
+    whose capability is in ``service_access_capabilities`` are routed
+    here instead of being authored as sandbox tools. The default
+    implementation delegates to the self-improvement ``CODE_MODIFICATION``
+    altitude (which yields a draft PR, not a same-run tool).
+    """
+
+    async def handle(self, gap: CapabilityGap) -> tuple[ImprovementProposal, ...]:
+        """Produce proposals addressing a service-access capability gap."""
         ...
 
 
