@@ -51,11 +51,12 @@ from synthorg.engine.workspace.git_backend.protocol import (
     ProvisionResult,
     PushResult,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
     GIT_BACKEND_FETCH_COMPLETE,
     GIT_BACKEND_FETCH_FAILED,
     GIT_BACKEND_PROVISION_COMPLETE,
+    GIT_BACKEND_PROVISION_FAILED,
     GIT_BACKEND_PROVISION_START,
     GIT_BACKEND_PUSH_COMPLETE,
     GIT_BACKEND_PUSH_FAILED,
@@ -202,7 +203,8 @@ class ExternalRemoteGitBackend:
         # token; percent-encode the token so reserved characters survive
         # URL parsing rather than breaking the netloc.
         netloc = f"{_TOKEN_USER}:{quote(token, safe='')}@{host_with_port}"
-        return urlunsplit((scheme, netloc, f"{path}/{project_id}.git", "", ""))
+        repo_segment = quote(project_id, safe="")
+        return urlunsplit((scheme, netloc, f"{path}/{repo_segment}.git", "", ""))
 
     async def provision(
         self,
@@ -274,7 +276,7 @@ class ExternalRemoteGitBackend:
         lowered = stderr.lower()
         if _matches(lowered, _AUTH_MARKERS):
             logger.warning(
-                GIT_BACKEND_PROVISION_START,
+                GIT_BACKEND_PROVISION_FAILED,
                 project_id=pid,
                 reason="clone_auth_failed",
             )
@@ -290,6 +292,11 @@ class ExternalRemoteGitBackend:
                 project_id=pid,
             )
             return
+        logger.warning(
+            GIT_BACKEND_PROVISION_FAILED,
+            project_id=pid,
+            reason="clone_failed",
+        )
         msg = f"failed to clone forge remote for project {pid!r}"
         raise GitBackendProvisionError(msg)
 
@@ -403,6 +410,17 @@ class ExternalRemoteGitBackend:
                 owner=NotBlankStr(owner),
                 repo=NotBlankStr(pid),
             )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                GIT_BACKEND_PROVISION_FAILED,
+                project_id=pid,
+                action="forge_repo_exists",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         finally:
             await client.aclose()
 
@@ -412,6 +430,12 @@ class ExternalRemoteGitBackend:
         token = await self._token()
         _scheme, _host, _path, owner = self._split_base(connection)
         if not owner:
+            logger.warning(
+                GIT_BACKEND_PROVISION_FAILED,
+                project_id=pid,
+                action="forge_create_repo",
+                reason="base_url_missing_owner",
+            )
             msg = (
                 f"cannot provision forge repo for project {pid!r}: base_url "
                 "has no owner/namespace path component"
@@ -429,6 +453,17 @@ class ExternalRemoteGitBackend:
                 repo=NotBlankStr(pid),
                 private=self._forge_repo_private,
             )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                GIT_BACKEND_PROVISION_FAILED,
+                project_id=pid,
+                action="forge_create_repo",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
         finally:
             await client.aclose()
         logger.info(

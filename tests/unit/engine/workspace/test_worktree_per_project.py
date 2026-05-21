@@ -134,3 +134,35 @@ class TestMergeRoutesToProjectRoot:
         assert result.success
         assert recorder.cwds
         assert all(cwd == expected for cwd in recorder.cwds)
+
+
+class TestTeardownRoutesToProjectRoot:
+    async def test_teardown_runs_git_in_project_repo(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        recorder = _GitRecorder()
+        monkeypatch.setattr(
+            "synthorg.engine.workspace.git_worktree.run_git_subprocess",
+            recorder,
+        )
+        strategy = _strategy()
+        workspace = Workspace(
+            workspace_id="w1",
+            task_id="task-1",
+            agent_id="agent-1",
+            branch_name="workspace/task-1/w1",
+            worktree_path="/srv/agent-workspace/projects/.worktrees/w1",
+            base_branch="main",
+            created_at=datetime.now(UTC),
+            project_id="proj-a",
+        )
+        # Register the workspace so teardown finds it.
+        strategy._active_workspaces[workspace.workspace_id] = workspace
+
+        await strategy.teardown_workspace(workspace=workspace)
+
+        expected = _ROOT / "projects" / "proj-a"
+        # worktree-remove + branch-delete both ran in the project repo.
+        assert recorder.cwds
+        assert all(cwd == expected for cwd in recorder.cwds)

@@ -1152,6 +1152,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 git_backend_config,
                 GitBackendDeps(
                     workspace_base_root=app_state.agent_workspace_root,
+                    connection_catalog=connection_catalog,
                     clock=app_state.clock,
                 ),
             )

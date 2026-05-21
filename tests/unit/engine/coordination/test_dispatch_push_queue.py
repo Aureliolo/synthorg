@@ -92,6 +92,40 @@ class TestMergeRoutingDecision:
         service.merge_group.assert_awaited_once()
         service.merge_workspace_with_push.assert_not_called()
 
+    @pytest.mark.parametrize(
+        ("project_id", "repo_root"),
+        [
+            (NotBlankStr("proj-1"), None),
+            (None, Path("/repo/proj-1")),
+        ],
+        ids=["project-only", "repo-root-only"],
+    )
+    async def test_partial_context_falls_back_to_merge_group(
+        self,
+        project_id: NotBlankStr | None,
+        repo_root: Path | None,
+    ) -> None:
+        # Push-queue routing requires BOTH project_id and repo_root; if
+        # only one is present the merge falls back to in-memory merge_group.
+        service = mock_of[WorkspaceIsolationService]()
+        service.merge_group.return_value = WorkspaceGroupResult(
+            group_id=NotBlankStr("g1"),
+            merge_results=(_ok_merge("w1"),),
+            duration_seconds=0.0,
+        )
+
+        _result, phase = await merge_workspaces(
+            service,
+            (_workspace("w1"),),
+            clock=FakeClock(),
+            project_id=project_id,
+            repo_root=repo_root,
+        )
+
+        assert phase.success
+        service.merge_group.assert_awaited_once()
+        service.merge_workspace_with_push.assert_not_called()
+
 
 class TestTwoWorkspaceWaveRoutesThroughQueue:
     async def test_wave_increments_push_queue_counter(self) -> None:

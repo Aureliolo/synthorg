@@ -14,6 +14,7 @@ The canonical helper for transient-I/O backoff is `synthorg.core.resilience.Gene
 
 - `src/synthorg/workers/dispatcher.py`: NATS publish. The canonical "default" example.
 - `src/synthorg/telemetry/collector.py`: peer-ID file read on local-disk paths. The retry covers the brief window where the file is being atomically replaced by a sibling process.
+- `src/synthorg/engine/workspace/git_backend/external_remote.py`: git push/fetch against a forge remote. The `retryable` predicate retries transient transport failures, forge rate-limits (`GitBackendRateLimitError`), and transient forge-API errors; it never retries auth failures or a confirmed-missing remote (the latter triggers lazy forge-repo creation, not backoff).
 
 **Anti-pattern**: tuning `base=0` to bypass backoff so you can shoehorn semantic self-correction (Pattern B) through the same helper. The retry would observe the same error every attempt because nothing about the request changed; that is what Pattern B exists to address.
 

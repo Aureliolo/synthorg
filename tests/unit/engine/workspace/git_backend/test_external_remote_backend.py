@@ -18,6 +18,7 @@ from synthorg.engine.errors import (
     GitBackendConfigError,
     GitBackendForgeAuthError,
     GitBackendPushError,
+    GitBackendRateLimitError,
 )
 from synthorg.engine.workspace.git_backend import ExternalRemoteGitBackend
 from synthorg.engine.workspace.git_backend.config import GitBackendResilienceConfig
@@ -202,6 +203,28 @@ class TestExternalRemotePushHardening:
         )
         assert fake.push_count == 2
         assert str(result.head_sha) == "deadbeefcafe"
+
+    async def test_rate_limit_marker_classified_and_retried_then_raised(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        # A push stderr carrying a rate-limit marker is classified as a
+        # retryable GitBackendRateLimitError; when every attempt is rate
+        # limited the handler exhausts and re-raises that typed error.
+        fake = _FakeGit([(1, "429: too many requests")] * 3)
+        _patch_git(monkeypatch, fake)
+        _patch_forge(monkeypatch, _fake_forge(exists=True))
+        backend = _hardened_backend(_catalog_github())
+
+        with pytest.raises(GitBackendRateLimitError):
+            await backend.push(
+                project_id=NotBlankStr("p1"),
+                repo_root=tmp_path,
+                branch=NotBlankStr("main"),
+                base_branch=NotBlankStr("main"),
+            )
+        assert fake.push_count == 3
 
     async def test_missing_remote_creates_repo_then_retries(
         self,

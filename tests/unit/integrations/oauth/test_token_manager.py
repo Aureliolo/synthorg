@@ -93,3 +93,56 @@ class TestOAuthTokenManagerRefresh:
         await manager._check_and_refresh()
 
         catalog.get_credentials.assert_not_called()
+
+    async def test_missing_refresh_token_flips_degraded_without_refresh(self) -> None:
+        # A near-expiry connection whose stored credentials lack a
+        # refresh_token cannot be refreshed: flip DEGRADED, never call
+        # the flow.
+        now = datetime.now(UTC)
+        conn = _forge_oauth_connection(now + timedelta(seconds=60))
+        catalog = mock_of[ConnectionCatalog]()
+        catalog.list_all.return_value = (conn,)
+        catalog.get_credentials.return_value = {
+            "token_url": "https://github.com/login/oauth/access_token",
+            "client_id": "cid",
+            "client_secret": "csecret",
+        }
+        flow = mock_of[AuthorizationCodeFlow]()
+        manager = OAuthTokenManager(catalog, refresh_threshold_seconds=300)
+        manager._flow = flow
+
+        await manager._check_and_refresh()
+
+        flow.refresh_token.assert_not_awaited()
+        catalog.update_health.assert_awaited_once()
+        assert (
+            catalog.update_health.await_args.kwargs["status"]
+            == ConnectionStatus.DEGRADED
+        )
+
+    @pytest.mark.parametrize(
+        "expiry_meta",
+        [{"token_expires_at": "not-an-iso-timestamp"}, {"token_expires_at": ""}, {}],
+        ids=["malformed-iso", "empty-string", "absent"],
+    )
+    async def test_malformed_or_absent_expiry_is_skipped(
+        self,
+        expiry_meta: dict[str, str],
+    ) -> None:
+        # Externally-editable metadata must never abort the sweep: a
+        # bad/absent token_expires_at is skipped, not refreshed.
+        conn = Connection(
+            name=NotBlankStr("github-oauth"),
+            connection_type=ConnectionType.GITHUB,
+            auth_method=AuthMethod.OAUTH2,
+            base_url=NotBlankStr("https://github.com/acme"),
+            metadata=expiry_meta,
+        )
+        catalog = mock_of[ConnectionCatalog]()
+        catalog.list_all.return_value = (conn,)
+        manager = OAuthTokenManager(catalog, refresh_threshold_seconds=300)
+
+        await manager._check_and_refresh()
+
+        catalog.get_credentials.assert_not_called()
+        catalog.update_health.assert_not_called()

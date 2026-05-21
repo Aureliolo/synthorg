@@ -126,6 +126,26 @@ class TestGitHubForgeClient:
                 await client.repo_exists(owner=_OWNER, repo=_REPO)
 
     @respx.mock
+    async def test_auth_401_maps_to_auth_error(self) -> None:
+        respx.get("https://api.github.com/repos/acme/proj-1").mock(
+            return_value=httpx.Response(401, json={"message": "Requires auth"}),
+        )
+        async with _github() as client:
+            with pytest.raises(GitBackendForgeAuthError):
+                await client.repo_exists(owner=_OWNER, repo=_REPO)
+
+    @respx.mock
+    async def test_403_without_ratelimit_header_maps_to_auth_error(self) -> None:
+        # A 403 that is NOT a primary rate-limit (no X-RateLimit-Remaining: 0)
+        # is an authorization failure, not a retryable rate-limit.
+        respx.get("https://api.github.com/repos/acme/proj-1").mock(
+            return_value=httpx.Response(403, json={"message": "Forbidden"}),
+        )
+        async with _github() as client:
+            with pytest.raises(GitBackendForgeAuthError):
+                await client.repo_exists(owner=_OWNER, repo=_REPO)
+
+    @respx.mock
     async def test_transport_error_maps_to_forge_api_error(self) -> None:
         respx.get("https://api.github.com/repos/acme/proj-1").mock(
             side_effect=httpx.ConnectError("boom"),
@@ -237,6 +257,13 @@ class TestFactoryApiBaseDerivation:
                 "https://code.example.com/acme",
                 "https://code.example.com/api/v1",
             ),
+        ],
+        ids=[
+            "github-public",
+            "github-enterprise",
+            "gitlab-com",
+            "gitea-self-hosted",
+            "forgejo-self-hosted",
         ],
     )
     def test_api_base_derivation(

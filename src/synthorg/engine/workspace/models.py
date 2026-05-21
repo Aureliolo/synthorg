@@ -184,7 +184,7 @@ class WorkspaceGroupResult(BaseModel):
         duration_seconds: Total time for the group merge operation.
     """
 
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     group_id: NotBlankStr = Field(description="Merge group identifier")
     merge_results: tuple[MergeResult, ...] = Field(
