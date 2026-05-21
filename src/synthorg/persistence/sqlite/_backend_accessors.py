@@ -86,6 +86,9 @@ if TYPE_CHECKING:
     from synthorg.persistence.project_cost_aggregate_protocol import (
         ProjectCostAggregateRepository,
     )
+    from synthorg.persistence.project_environment_protocol import (
+        ProjectEnvironmentRepository,
+    )
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.persistence.project_workspace_protocol import (
         ProjectWorkspaceRepository,
@@ -149,6 +152,7 @@ class _BackendRepositoryAccessors:
     _artifacts: ArtifactRepository | None
     _projects: ProjectRepository | None
     _project_workspaces: ProjectWorkspaceRepository | None
+    _project_environments: ProjectEnvironmentRepository | None
     _project_docs: DocsRepository | None
     _knowledge_sources: KnowledgeSourceRepository | None
     _knowledge_provenance: ChunkProvenanceRepository | None
@@ -316,6 +320,13 @@ class _BackendRepositoryAccessors:
     def project_workspaces(self) -> ProjectWorkspaceRepository:
         """Repository for persistent per-project workspace mappings."""
         return self._require_connected(self._project_workspaces, "project_workspaces")
+
+    @property
+    def project_environments(self) -> ProjectEnvironmentRepository:
+        """Repository for persistent per-project environment mappings."""
+        return self._require_connected(
+            self._project_environments, "project_environments"
+        )
 
     @property
     def project_docs(self) -> DocsRepository:

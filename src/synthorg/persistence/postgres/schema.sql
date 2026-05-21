@@ -466,6 +466,21 @@ CREATE TABLE project_workspaces (
 CREATE INDEX idx_project_workspaces_created_at
     ON project_workspaces(created_at);
 
+-- ── Persistent per-project reproducible environment (1:1) ────
+CREATE TABLE project_environments (
+    project_id TEXT NOT NULL PRIMARY KEY,
+    environment_type TEXT NOT NULL
+        CHECK (environment_type IN ('manifest', 'devcontainer', 'nix')),
+    declaration_hash TEXT NOT NULL,
+    image_ref TEXT,
+    provisioned_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_project_environments_declaration_hash
+    ON project_environments(declaration_hash);
+
 -- ── Living-documentation metadata ────────────────────────────
 CREATE TABLE project_docs (
     project_id TEXT NOT NULL,

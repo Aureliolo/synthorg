@@ -124,6 +124,9 @@ from synthorg.persistence.postgres.principle_override_repo import (
 from synthorg.persistence.postgres.project_cost_aggregate_repo import (
     PostgresProjectCostAggregateRepository,
 )
+from synthorg.persistence.postgres.project_environment_repo import (
+    PostgresProjectEnvironmentRepository,
+)
 from synthorg.persistence.postgres.project_repo import PostgresProjectRepository
 from synthorg.persistence.postgres.project_workspace_repo import (
     PostgresProjectWorkspaceRepository,
@@ -245,6 +248,9 @@ if TYPE_CHECKING:
     from synthorg.persistence.project_cost_aggregate_protocol import (
         ProjectCostAggregateRepository,
     )
+    from synthorg.persistence.project_environment_protocol import (
+        ProjectEnvironmentRepository,
+    )
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.persistence.project_workspace_protocol import (
         ProjectWorkspaceRepository,
@@ -301,6 +307,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._artifacts: ArtifactRepository | None = None
         self._projects: ProjectRepository | None = None
         self._project_workspaces: ProjectWorkspaceRepository | None = None
+        self._project_environments: ProjectEnvironmentRepository | None = None
         self._project_docs: DocsRepository | None = None
         self._knowledge_sources: KnowledgeSourceRepository | None = None
         self._knowledge_provenance: ChunkProvenanceRepository | None = None
@@ -369,6 +376,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._project_workspaces = None
         self._knowledge_sources = None
         self._knowledge_provenance = None
+        self._project_environments = None
         self._project_docs = None
         self._tasks = None
         self._cost_records = None
@@ -434,6 +442,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._project_workspaces = PostgresProjectWorkspaceRepository(pool)
         self._knowledge_sources = PostgresKnowledgeSourceRepository(pool)
         self._knowledge_provenance = PostgresChunkProvenanceRepository(pool)
+        self._project_environments = PostgresProjectEnvironmentRepository(pool)
         self._project_docs = PostgresDocsRepository(pool)
         self._tasks = PostgresTaskRepository(pool)
         self._cost_records = PostgresCostRecordRepository(pool)
@@ -696,6 +705,13 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
     def project_workspaces(self) -> ProjectWorkspaceRepository:
         """Repository for persistent per-project workspace mappings."""
         return self._require_connected(self._project_workspaces, "project_workspaces")
+
+    @property
+    def project_environments(self) -> ProjectEnvironmentRepository:
+        """Repository for persistent per-project environment mappings."""
+        return self._require_connected(
+            self._project_environments, "project_environments"
+        )
 
     @property
     def project_docs(self) -> DocsRepository:

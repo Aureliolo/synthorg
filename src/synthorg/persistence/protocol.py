@@ -108,6 +108,9 @@ from synthorg.persistence.principle_override_protocol import (
 from synthorg.persistence.project_cost_aggregate_protocol import (
     ProjectCostAggregateRepository,  # noqa: TC001
 )
+from synthorg.persistence.project_environment_protocol import (  # noqa: TC001
+    ProjectEnvironmentRepository,
+)
 from synthorg.persistence.project_protocol import ProjectRepository  # noqa: TC001
 from synthorg.persistence.project_workspace_protocol import (  # noqa: TC001
     ProjectWorkspaceRepository,
@@ -420,6 +423,11 @@ class PersistenceBackend(Protocol):
     @property
     def project_workspaces(self) -> ProjectWorkspaceRepository:
         """Repository for persistent per-project workspace mappings."""
+        ...
+
+    @property
+    def project_environments(self) -> ProjectEnvironmentRepository:
+        """Repository for persistent per-project environment mappings."""
         ...
 
     @property
