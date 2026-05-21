@@ -334,14 +334,29 @@ class DockerSandbox(
         projects_root = await asyncio.to_thread(
             (self._workspace / _PROJECTS_SUBDIR).resolve
         )
-        root = await asyncio.to_thread((projects_root / pid).resolve)
+        try:
+            root = await asyncio.to_thread((projects_root / pid).resolve)
+            exists = await asyncio.to_thread(root.is_dir)
+        except OSError as exc:
+            # An oversized / invalid project_id can make resolve()/is_dir()
+            # raise (e.g. ENAMETOOLONG) instead of returning; surface it as
+            # a sandbox error rather than leaking a raw OSError.
+            msg = f"project workspace does not exist for project {pid!r}"
+            logger.warning(
+                DOCKER_EXECUTE_FAILED,
+                error=msg,
+                project_id=pid,
+                error_type=type(exc).__name__,
+                error_detail=safe_error_description(exc),
+            )
+            raise SandboxError(msg) from exc
         try:
             root.relative_to(projects_root)
         except ValueError as exc:
             msg = f"project workspace escapes projects root for project {pid!r}: {root}"
             logger.warning(DOCKER_EXECUTE_FAILED, error=msg, project_id=pid)
             raise SandboxError(msg) from exc
-        if not await asyncio.to_thread(root.is_dir):
+        if not exists:
             msg = f"project workspace does not exist for project {pid!r}: {root}"
             logger.warning(DOCKER_EXECUTE_FAILED, error=msg, project_id=pid)
             raise SandboxError(msg)

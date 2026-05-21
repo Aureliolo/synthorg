@@ -196,7 +196,7 @@ async def reject_if_nested_in_parent_worktree(
     )
     if rc != 0:
         return
-    toplevel = await asyncio.to_thread(Path(stdout).resolve)
+    toplevel = await asyncio.to_thread(Path(stdout.strip()).resolve)
     if toplevel == await asyncio.to_thread(path.resolve):
         return
     logger.warning(

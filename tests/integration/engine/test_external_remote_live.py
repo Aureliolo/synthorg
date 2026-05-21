@@ -104,6 +104,14 @@ def _make_handler(server_root: Path) -> type[http.server.BaseHTTPRequestHandler]
     """Build a handler that proxies smart-HTTP requests to git http-backend."""
 
     class _Handler(http.server.BaseHTTPRequestHandler):
+        # HTTP/1.1 + an explicit Content-Length below give git's TLS
+        # client a length-delimited response so it never relies on
+        # connection-close framing. Close-delimited framing over Python's
+        # ssl socket surfaces as "GnuTLS recv error (-110): the TLS
+        # connection was non-properly terminated" because the socket
+        # closes without a TLS close_notify.
+        protocol_version = "HTTP/1.1"
+
         def log_message(self, *_args: object) -> None:
             pass
 
@@ -135,11 +143,20 @@ def _make_handler(server_root: Path) -> type[http.server.BaseHTTPRequestHandler]
                 value = value.strip()
                 if key.lower() == "status":
                     status = int(value.split()[0])
+                elif key.lower() in (
+                    "content-length",
+                    "transfer-encoding",
+                    "connection",
+                ):
+                    # Drop git http-backend's own framing; we set our own
+                    # Content-Length so the response is length-delimited.
+                    continue
                 else:
                     out_headers.append((key, value))
             self.send_response(status)
             for key, value in out_headers:
                 self.send_header(key, value)
+            self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
 
@@ -231,6 +248,10 @@ class TestExternalRemoteLive:
         _init_bare_with_commit(server_root / _OWNER / "proj-1.git")
         cert, key = _self_signed_cert(tmp_path)
         ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        # Pin the floor to TLS 1.2 explicitly: ``create_default_context``
+        # already does this at runtime, but the static analyser models it
+        # as still permitting TLS 1.0/1.1, so make the constraint explicit.
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
         # Bind to port 0 and read back the assigned port so there is no
         # TOCTOU window between picking a free port and binding it.
@@ -290,6 +311,10 @@ class TestExternalRemoteLive:
         server_root.mkdir()
         cert, key = _self_signed_cert(tmp_path)
         ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        # Pin the floor to TLS 1.2 explicitly: ``create_default_context``
+        # already does this at runtime, but the static analyser models it
+        # as still permitting TLS 1.0/1.1, so make the constraint explicit.
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
         # Bind to port 0 and read back the assigned port so there is no
         # TOCTOU window between picking a free port and binding it.

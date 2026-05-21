@@ -262,6 +262,16 @@ class TestWorkspaceBoundary:
         proj.mkdir(parents=True)
         assert subprocess_sandbox._project_root("proj-a") == proj
 
+    def test_project_root_oversized_id_rejected(
+        self,
+        subprocess_sandbox: SubprocessSandbox,
+    ) -> None:
+        # An oversized project_id makes the existence probe raise OSError
+        # on most filesystems; either way it must surface as SandboxError,
+        # never a leaked OSError.
+        with pytest.raises(SandboxError):
+            subprocess_sandbox._project_root("a" * 5000)
+
     def test_workspace_only_disabled(
         self,
         sandbox_workspace: Path,

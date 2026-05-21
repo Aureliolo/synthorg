@@ -386,7 +386,23 @@ class SubprocessSandbox:
             logger.warning(SANDBOX_WORKSPACE_VIOLATION, cwd=pid)
             raise SandboxError(msg)
         root = self._workspace / _PROJECTS_SUBDIR / pid
-        if not root.is_dir():
+        try:
+            exists = root.is_dir()
+        except OSError as exc:
+            # An oversized / otherwise-invalid project_id can make the
+            # stat raise (e.g. ENAMETOOLONG) rather than return False;
+            # surface it as the same sandbox error instead of leaking a
+            # raw OSError.
+            logger.warning(
+                SANDBOX_WORKSPACE_VIOLATION,
+                cwd=str(root),
+                workspace=str(self._workspace),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            msg = f"project workspace does not exist: {root}"
+            raise SandboxError(msg) from exc
+        if not exists:
             logger.warning(
                 SANDBOX_WORKSPACE_VIOLATION,
                 cwd=str(root),

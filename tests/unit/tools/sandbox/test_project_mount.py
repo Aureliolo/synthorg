@@ -53,6 +53,14 @@ class TestProjectRoot:
         with pytest.raises(SandboxError, match="does not exist"):
             await sandbox._project_root("never-provisioned")
 
+    async def test_oversized_project_id_rejected(self, tmp_path: Path) -> None:
+        # An oversized project_id makes resolve()/is_dir() raise OSError on
+        # most filesystems; either way it must surface as SandboxError,
+        # never a leaked OSError.
+        sandbox = _sandbox(tmp_path)
+        with pytest.raises(SandboxError):
+            await sandbox._project_root("a" * 5000)
+
     async def test_symlinked_project_escaping_root_rejected(
         self, tmp_path: Path
     ) -> None:
