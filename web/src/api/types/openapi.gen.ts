@@ -2842,6 +2842,57 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/projects/{project_id}/knowledge": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListSources */
+        readonly get: operations["ApiV1ProjectsProjectIdKnowledgeListSources"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/projects/{project_id}/knowledge/{source_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetSource */
+        readonly get: operations["ApiV1ProjectsProjectIdKnowledgeSourceIdGetSource"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/projects/{project_id}/knowledge/search": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Search */
+        readonly get: operations["ApiV1ProjectsProjectIdKnowledgeSearchSearch"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers": {
         readonly parameters: {
             readonly query?: never;
@@ -5300,6 +5351,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[KnowledgeSource] */
+        readonly ApiResponse_KnowledgeSource_: {
+            readonly data: components["schemas"]["KnowledgeSource"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[list[SessionResponse]] */
         readonly ApiResponse_list_SessionResponse_: {
             readonly data: readonly components["schemas"]["SessionResponse"][] | null;
@@ -5727,6 +5786,14 @@ export type components = {
         /** ApiResponse[tuple[InterruptResponse, ...]] */
         readonly "ApiResponse_tuple_InterruptResponse_..._": {
             readonly data: readonly components["schemas"]["InterruptResponse"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[tuple[KnowledgeHit, ...]] */
+        readonly "ApiResponse_tuple_KnowledgeHit_..._": {
+            readonly data: readonly components["schemas"]["KnowledgeHit"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -6632,6 +6699,25 @@ export type components = {
             readonly size_bytes: number;
         };
         /**
+         * Citation
+         * @description Resolvable provenance handle
+         */
+        readonly Citation: {
+            /** @description Resolved chunk identifier */
+            readonly chunk_id: string;
+            /** @description Chunk content hash at index time */
+            readonly content_hash: string;
+            /** @description Exact source region */
+            readonly locator: components["schemas"]["PdfLocator"] | components["schemas"]["WebLocator"] | components["schemas"]["CodeLocator"] | components["schemas"]["TicketLocator"];
+            /** @description Owning source identifier */
+            readonly source_id: string;
+            readonly source_type: components["schemas"]["SourceType"];
+            /** @description Source title */
+            readonly title: string;
+            /** @description Source URI */
+            readonly uri: string;
+        };
+        /**
          * ClarificationGateConfig
          * @description ClarificationGate settings
          */
@@ -6746,6 +6832,24 @@ export type components = {
          * @enum {string}
          */
         readonly CodeExecutionIsolation: "containerized" | "process";
+        /** CodeLocator */
+        readonly CodeLocator: {
+            /** @description Dotted AST node path, e.g. module.ClassName.method */
+            readonly ast_path: string | null;
+            /** @description 1-indexed last line (inclusive) */
+            readonly line_end: number;
+            /** @description 1-indexed first line */
+            readonly line_start: number;
+            /**
+             * @default code
+             * @constant
+             */
+            readonly locator_kind: "code";
+            /** @description Repo-relative file path */
+            readonly path: string;
+            /** @description Enclosing symbol name (function / class / method) */
+            readonly symbol: string | null;
+        };
         /**
          * CollaborationPreference
          * @description Preferred collaboration mode for an agent.
@@ -8694,6 +8798,53 @@ export type components = {
          * @enum {string}
          */
         readonly InterruptType: "tool_approval" | "info_request";
+        /** KnowledgeHit */
+        readonly KnowledgeHit: {
+            /** @description Matching chunk content */
+            readonly chunk_text: string;
+            readonly citation: components["schemas"]["Citation"];
+            /** @description Backend-assigned relevance */
+            readonly relevance_score: number;
+        };
+        /** KnowledgeSource */
+        readonly KnowledgeSource: {
+            /**
+             * @description Indexed chunk count
+             * @default 0
+             */
+            readonly chunk_count: number;
+            /** @description Hash of source bytes */
+            readonly content_hash: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
+            /** @description Whether the source is global (not scoped to a project). */
+            readonly is_global: boolean;
+            /** @description Safe error description on the last failure */
+            readonly last_error: string | null;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly last_indexed_at: string | null;
+            /** @description Owning project; None means global (cross-project) */
+            readonly project_id: string | null;
+            /** @description Primary key */
+            readonly source_id: string;
+            readonly source_type: components["schemas"]["SourceType"];
+            readonly status: components["schemas"]["SourceStatus"];
+            /** @description Human-readable title */
+            readonly title: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly updated_at: string;
+            /** @description Source URI (path / url / repo@ref / id) */
+            readonly uri: string;
+        };
         /**
          * LifecycleEventType
          * @description Type of agent lifecycle event.
@@ -9713,6 +9864,21 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** PaginatedResponse[KnowledgeSource] */
+        readonly PaginatedResponse_KnowledgeSource_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["KnowledgeSource"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[MeetingResponse] */
         readonly PaginatedResponse_MeetingResponse_: {
             /** @default [] */
@@ -10211,6 +10377,27 @@ export type components = {
             readonly role_label: string;
             /** @description Benchmark-score provenance identifier */
             readonly source: string;
+        };
+        /** PdfLocator */
+        readonly PdfLocator: {
+            /** @description Optional (x0, top, x1, bottom) region in PDF points */
+            readonly bbox: readonly [
+                number,
+                number,
+                number,
+                number
+            ] | null;
+            /** @description End offset within the page text */
+            readonly char_end: number;
+            /** @description Start offset within the page text */
+            readonly char_start: number;
+            /**
+             * @default pdf
+             * @constant
+             */
+            readonly locator_kind: "pdf";
+            /** @description 1-indexed page number */
+            readonly page: number;
         };
         /** PerformanceSummary */
         readonly PerformanceSummary: {
@@ -11773,6 +11960,23 @@ export type components = {
              */
             readonly secondary: readonly components["schemas"]["Skill"][];
         };
+        /**
+         * SourceStatus
+         * @description Ingestion lifecycle state of a knowledge source.
+         * @enum {string}
+         */
+        readonly SourceStatus: "pending" | "indexed" | "stale" | "failed";
+        /**
+         * SourceType
+         * @description Origin of an ingested knowledge source.
+         *
+         *     Drives ``SourceLoader`` selection in the knowledge substrate. A
+         *     ``REPO`` source is a code tree, ``PDF`` / ``WEB`` / ``DESIGN_DOC`` are
+         *     documents, and ``TICKET`` is an issue thread fetched through the
+         *     governed external-API access tool.
+         * @enum {string}
+         */
+        readonly SourceType: "pdf" | "web" | "repo" | "ticket" | "design_doc";
         /** StageDecisionPayload */
         readonly StageDecisionPayload: {
             /** @description Rationale for the decision */
@@ -12173,6 +12377,22 @@ export type components = {
             readonly rationale: string;
             readonly recommended_value: number;
             readonly rule_name: string;
+        };
+        /** TicketLocator */
+        readonly TicketLocator: {
+            /** @description End offset within the comment text */
+            readonly char_end: number;
+            /** @description Start offset within the comment text */
+            readonly char_start: number;
+            /** @description Originating comment identifier, if any */
+            readonly comment_id: string | null;
+            /**
+             * @default ticket
+             * @constant
+             */
+            readonly locator_kind: "ticket";
+            /** @description Ticket identifier */
+            readonly ticket_id: string;
         };
         /** TierConfig */
         readonly TierConfig: {
@@ -12831,6 +13051,22 @@ export type components = {
             readonly received_at: string;
             /** @default received */
             readonly status: string;
+        };
+        /** WebLocator */
+        readonly WebLocator: {
+            /** @description End offset within extracted text */
+            readonly char_end: number;
+            /** @description Start offset within extracted text */
+            readonly char_start: number;
+            /** @description Optional CSS path of the containing element */
+            readonly css_path: string | null;
+            /**
+             * @default web
+             * @constant
+             */
+            readonly locator_kind: "web";
+            /** @description Source page URL */
+            readonly url: string;
         };
         /** WindowMetrics */
         readonly WindowMetrics: {
@@ -19669,6 +19905,109 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_tuple_DocSearchHit_..._"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdKnowledgeListSources: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Include global (project-unscoped) sources in the listing */
+                readonly include_global?: boolean;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+                /** @description Only sources needing a refresh */
+                readonly stale_only?: boolean;
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_KnowledgeSource_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdKnowledgeSourceIdGetSource: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+                /** @description Resource identifier */
+                readonly source_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_KnowledgeSource_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdKnowledgeSearchSearch: {
+        readonly parameters: {
+            readonly query: {
+                /** @description Maximum cited hits to return */
+                readonly limit?: number;
+                /** @description Search text */
+                readonly q: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_KnowledgeHit_..._"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

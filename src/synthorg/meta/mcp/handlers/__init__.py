@@ -16,6 +16,7 @@ from synthorg.meta.mcp.handlers.coordination import COORDINATION_HANDLERS
 from synthorg.meta.mcp.handlers.docs import DOCS_HANDLERS
 from synthorg.meta.mcp.handlers.infrastructure import INFRASTRUCTURE_HANDLERS
 from synthorg.meta.mcp.handlers.integrations import INTEGRATION_HANDLERS
+from synthorg.meta.mcp.handlers.knowledge import KNOWLEDGE_HANDLERS
 from synthorg.meta.mcp.handlers.memory import MEMORY_HANDLERS
 from synthorg.meta.mcp.handlers.meta import META_HANDLERS
 from synthorg.meta.mcp.handlers.organization import ORGANIZATION_HANDLERS
@@ -50,6 +51,7 @@ _ALL_HANDLER_MAPS: tuple[Mapping[str, ToolHandler], ...] = (
     INTEGRATION_HANDLERS,
     INFRASTRUCTURE_HANDLERS,
     DOCS_HANDLERS,
+    KNOWLEDGE_HANDLERS,
 )
 
 
