@@ -342,6 +342,9 @@ class TestEventConstants:
             "evals",
             # Governed external API/data access tool lifecycle events.
             "external_api",
+            # Virtual desktop tool and its vision verifier gate.
+            "desktop",
+            "vision_verify",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

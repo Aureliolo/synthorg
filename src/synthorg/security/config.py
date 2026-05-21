@@ -6,12 +6,12 @@ Defines ``SecurityConfig`` (the top-level security configuration),
 """
 
 from enum import StrEnum
-from typing import Any, ClassVar, Literal, Self
+from typing import Any, ClassVar, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import ActionType, ApprovalRiskLevel
-from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.core.types import ModelTier, NotBlankStr  # noqa: TC001
 from synthorg.security.models import SecurityVerdictType
 from synthorg.security.policy_engine.config import SecurityPolicyConfig
 from synthorg.settings.definitions.security import (
@@ -347,6 +347,56 @@ class RedTeamConfig(BaseModel):
     )
 
 
+VISION_TIMEOUT_DEFAULT_SECONDS: Final[float] = 60.0
+VISION_TIMEOUT_MAX_SECONDS: Final[float] = 600.0
+VISION_DEFAULT_COLOUR_TOLERANCE: Final[float] = 0.15
+
+
+class VisionVerifierKind(StrEnum):
+    """Discriminator selecting a concrete vision verifier strategy."""
+
+    NOOP = "noop"
+    HEURISTIC = "heuristic"
+    LLM_VISION = "llm_vision"
+
+
+class VisionVerifyConfig(BaseModel):
+    """Vision verifier gate configuration (opt-in subsystem).
+
+    The vision gate is OFF by default. When ``enabled``, it fires as an
+    adversarial check after ``ReviewPipeline`` PASS and the red-team
+    gate, before the deliverable transitions IN_REVIEW -> COMPLETED.
+
+    Attributes:
+        enabled: Master switch. When ``False`` (default), no vision gate
+            is constructed at boot and the ReviewGateService
+            short-circuits as if the gate were absent.
+        verifier_kind: Strategy discriminator. ``noop`` is inert,
+            ``heuristic`` runs deterministic colour / rule checks,
+            ``llm_vision`` calls a multimodal model.
+        model_tier: Provider tier resolved for the ``llm_vision`` verifier.
+        timeout_seconds: Per-evaluation cap on the verifier call.
+        colour_tolerance: Default normalised RGB distance tolerance the
+            heuristic applies when an expectation omits its own.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    enabled: bool = False
+    verifier_kind: VisionVerifierKind = VisionVerifierKind.NOOP
+    model_tier: ModelTier = "medium"
+    timeout_seconds: float = Field(
+        default=VISION_TIMEOUT_DEFAULT_SECONDS,
+        gt=0.0,
+        le=VISION_TIMEOUT_MAX_SECONDS,
+    )
+    colour_tolerance: float = Field(
+        default=VISION_DEFAULT_COLOUR_TOLERANCE,
+        ge=0.0,
+        le=1.0,
+    )
+
+
 class McpSelfConsumerConfig(BaseModel):
     """Agent -> SynthOrg-MCP self-consumer bridge configuration.
 
@@ -481,6 +531,10 @@ class SecurityConfig(BaseModel):
     red_team: RedTeamConfig = Field(
         default_factory=RedTeamConfig,
         description=("Adversarial red-team gate config (off by default; opt-in)."),
+    )
+    vision_verify: VisionVerifyConfig = Field(
+        default_factory=VisionVerifyConfig,
+        description=("Vision verifier gate config (off by default; opt-in)."),
     )
     audit_retention_days: int = Field(
         default=730,

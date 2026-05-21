@@ -348,3 +348,68 @@ _r.register(
         restart_required=True,
     )
 )
+
+# ── Virtual desktop tool (Xvfb + xdotool + scrot) ────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="desktop_driver",
+        type=SettingType.STRING,
+        default="xvfb",
+        description=(
+            "Virtual desktop driver strategy. 'xvfb' is the deterministic"
+            " headless default; 'vnc' additionally exposes an x11vnc"
+            " observation channel."
+        ),
+        group="Desktop",
+        level=SettingLevel.ADVANCED,
+        validator_pattern=r"^(xvfb|vnc)$",
+        restart_required=True,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="desktop_screen_width",
+        type=SettingType.INTEGER,
+        default="1280",
+        description="Virtual screen width (pixels) for the desktop session.",
+        group="Desktop",
+        level=SettingLevel.BASIC,
+        min_value=320,
+        max_value=4096,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="desktop_screen_height",
+        type=SettingType.INTEGER,
+        default="800",
+        description="Virtual screen height (pixels) for the desktop session.",
+        group="Desktop",
+        level=SettingLevel.BASIC,
+        min_value=320,
+        max_value=4096,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="desktop_image_pin",
+        type=SettingType.STRING,
+        default="ghcr.io/aureliolo/synthorg-desktop:latest",
+        description=(
+            "Container image used by the desktop sandbox backend. Must"
+            " contain Xvfb, xdotool, scrot, and the GUI toolkits the"
+            " agent's applications require."
+        ),
+        group="Desktop",
+        level=SettingLevel.ADVANCED,
+        restart_required=True,
+    )
+)

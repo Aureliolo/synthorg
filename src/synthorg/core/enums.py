@@ -475,6 +475,7 @@ class ToolCategory(StrEnum):
     MCP = "mcp"
     BROWSER = "browser"
     EXTERNAL_DATA = "external_data"
+    DESKTOP = "desktop"
     OTHER = "other"
 
 
@@ -583,6 +584,12 @@ class ActionType(StrEnum):
     BROWSER_ACCESSIBILITY_SCAN = "browser:accessibility_scan"
     BROWSER_SPEC = "browser:spec"
     EXTERNAL_DATA_REQUEST = "external_data:request"
+    DESKTOP_LAUNCH = "desktop:launch"
+    DESKTOP_CLICK = "desktop:click"
+    DESKTOP_TYPE = "desktop:type"
+    DESKTOP_KEY = "desktop:key"
+    DESKTOP_SCREENSHOT = "desktop:screenshot"
+    DESKTOP_SCROLL = "desktop:scroll"
 
 
 class MergeOrder(StrEnum):

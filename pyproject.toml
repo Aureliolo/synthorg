@@ -296,6 +296,19 @@ convention = "google"
     # do not benefit from anyio.Path indirection.
     "ASYNC240",
 ]
+"src/synthorg/tools/desktop/**/*.py" = [
+    # Same rationale as the browser tool: the DesktopTool catches its own
+    # DesktopDomainError chain at the execute() boundary and emits a
+    # structured ToolExecutionResult, so concrete per-call exception
+    # messages read better than extracted-variable / default_message forms.
+    "TRY003",  # long messages outside exception class
+    "TRY301",  # raise inside try block
+    "EM101",   # raw string literal in exception
+    "EM102",   # raw f-string in exception
+    # The host-side screenshot path operations are O(1) stat calls that
+    # do not benefit from anyio.Path indirection.
+    "ASYNC240",
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["synthorg", "evals"]

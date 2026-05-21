@@ -141,6 +141,34 @@ intake strategy contracts, and the real work-entry path.
 
 ---
 
+## Vision Verifier Gate
+
+The vision verifier is the UI cousin of the adversarial red-team gate: where the
+red-team gate attacks a text deliverable, the vision gate judges whether a running
+GUI deliverable matches its brief. It is opt-in
+(`CompanyConfig.security.vision_verify.enabled`, off by default) and fires after the
+red-team gate, before the `IN_REVIEW -> COMPLETED` transition.
+
+A pluggable `VisionVerifier` (`security/visionverify/`) follows the standard
+protocol + strategy + factory + config discriminator pattern:
+
+- **`noop`** (default): inert; returns a clean report.
+- **`heuristic`**: deterministic, no LLM. Checks structured `VisualExpectation`
+  entries (e.g. dominant colour) against the captured screenshots. Used by the
+  acceptance test so a brief-mismatch BLOCK is reproducible.
+- **`llm_vision`**: sends the screenshots (as multimodal `image_parts`) plus the
+  fenced brief to a vision-capable model and parses a structured verdict from a
+  tool call. Gated on `ModelCapabilities.supports_vision`.
+
+The `VisionVerifierGate` maps the report's findings to a verdict
+(`PASS` / `PASS_WITH_FINDINGS` / `BLOCK`) via the same severity x autonomy routing
+matrix as the red-team gate. Self-evaluation is rejected (the verifier identity
+must differ from the deliverable's generator). A verifier fault fails OPEN (a
+synthetic INFO finding) so a fault never blocks completion. SEC-1: the untrusted
+brief / criteria are wrapped with `wrap_untrusted` before reaching the model;
+screenshot bytes travel as structured `image_parts`, not as prompt text, and are
+elided from the cassette's human-readable copy.
+
 ## Order of Operations
 
 Five quality and approval surfaces (verification stage, review
@@ -154,6 +182,7 @@ points in the task lifecycle.
 | Agent done | Verification stage | Workflow blueprint has a `VERIFICATION` control-flow node. Runs as a separate evaluator agent with its own context. | `IN_PROGRESS` (engine-internal) | Pass: continue to next node. Fail: regenerate. Refer: hand to human via `VERIFICATION_REFER` edge. | This page, [Workflow Node and Edge Types](#workflow-node-and-edge-types) |
 | Agent done | Review pipeline | Task transitions `IN_PROGRESS` to `IN_REVIEW`. Chain of `ReviewStage` instances runs. | `IN_REVIEW` | First-failing stage returns the task to `IN_PROGRESS`; all-pass moves to `COMPLETED`. | This page, [Review Pipeline](#review-pipeline) |
 | Review pipeline PASS | Red-team gate | Opt-in (`CompanyConfig.security.red_team.enabled`). Fires when the review pipeline returns its COMPLETED verdict, BEFORE the task-engine transition lands. | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the red-team summary as the rework reason. PASS / PASS_WITH_FINDINGS: pipeline's verdict stands. | [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate) |
+| Red-team gate PASS | Vision verifier gate | Opt-in (`CompanyConfig.security.vision_verify.enabled`). The UI cousin of the red-team gate: fires after the red-team gate for GUI deliverables that carry screenshots (`vision_input`). Pluggable `VisionVerifier` (`noop` / `heuristic` / `llm_vision`) judges whether the running app matches the brief. | `IN_REVIEW` | BLOCK: routes back to `IN_PROGRESS` with the vision summary as the rework reason. PASS / PASS_WITH_FINDINGS: prior verdict stands. Absent screenshots: SKIP (non-GUI deliverable). | This page, [Vision Verifier Gate](#vision-verifier-gate) |
 
 Key invariants:
 

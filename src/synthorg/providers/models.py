@@ -11,7 +11,13 @@ from synthorg.core.tool_disclosure import (  # noqa: TC001
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
-from .enums import FinishReason, MessageRole, StreamEventType
+from .enums import (
+    FinishReason,
+    ImageDetail,
+    ImageMediaType,
+    MessageRole,
+    StreamEventType,
+)
 
 
 class TokenUsage(BaseModel):
@@ -191,6 +197,37 @@ class ToolResult(BaseModel):
         return self
 
 
+class ImagePart(BaseModel):
+    """An image attached to a user message for multimodal models.
+
+    Carries base64-encoded image bytes (no ``data:`` prefix) plus the
+    MIME type and an optional vision-detail hint. The ``data_uri``
+    computed field renders the chat-completion ``image_url.url`` value.
+
+    Attributes:
+        media_type: Image MIME type.
+        base64_data: Base64-encoded image bytes (no ``data:`` prefix).
+        detail: Vision-detail hint (``auto`` by default).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    media_type: ImageMediaType = Field(description="Image MIME type")
+    base64_data: NotBlankStr = Field(
+        description="Base64-encoded image bytes (no data: prefix)",
+    )
+    detail: ImageDetail = Field(
+        default=ImageDetail.AUTO,
+        description="Vision-detail hint passed to the provider",
+    )
+
+    @computed_field(description="Chat-completion image_url data URI")  # type: ignore[prop-decorator]  # mypy doesn't support stacked decorators on @property
+    @property
+    def data_uri(self) -> str:
+        """Render the ``data:<media_type>;base64,<data>`` URI."""
+        return f"data:{self.media_type.value};base64,{self.base64_data}"
+
+
 class ChatMessage(BaseModel):
     """A single message in a chat completion conversation.
 
@@ -199,6 +236,8 @@ class ChatMessage(BaseModel):
         content: Text content of the message.
         tool_calls: Tool calls requested by the assistant (assistant only).
         tool_result: Result of a tool execution (tool role only).
+        image_parts: Images attached to a user message (multimodal);
+            user role only, requires a vision-capable model.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -212,6 +251,10 @@ class ChatMessage(BaseModel):
     tool_result: ToolResult | None = Field(
         default=None,
         description="Tool result (tool messages only)",
+    )
+    image_parts: tuple[ImagePart, ...] = Field(
+        default=(),
+        description="Attached images (user messages only)",
     )
 
     @model_validator(mode="after")
@@ -259,10 +302,25 @@ class ChatMessage(BaseModel):
             self.role != MessageRole.TOOL
             and self.content is None
             and not self.tool_calls
+            and not self.image_parts
         ):
             msg = f"{self.role} messages must have content or tool_calls"
             raise ValueError(msg)
 
+        return self
+
+    @model_validator(mode="after")
+    def _validate_image_parts_user_only(self) -> Self:
+        """Reject ``image_parts`` on any role other than user.
+
+        Images attach only to user turns in the chat-completion
+        multimodal shape; a non-user message carrying ``image_parts``
+        would be silently dropped at the mapper boundary, so reject it
+        at construction instead.
+        """
+        if self.image_parts and self.role is not MessageRole.USER:
+            msg = f"{self.role} messages must not include image_parts"
+            raise ValueError(msg)
         return self
 
 

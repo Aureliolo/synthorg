@@ -61,6 +61,7 @@ if TYPE_CHECKING:
     from synthorg.tools.database.config import DatabaseConfig, DatabaseConnectionConfig
     from synthorg.tools.design.config import DesignToolsConfig
     from synthorg.tools.design.image_generator import ImageProvider
+    from synthorg.tools.desktop._settings import DesktopSettings
     from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
     from synthorg.tools.network_validator import NetworkPolicy
     from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -91,6 +92,28 @@ def _build_browser_tools(
     from synthorg.tools.browser.browser_tool import BrowserTool  # noqa: PLC0415
 
     return (BrowserTool(sandbox=sandbox, workspace=workspace, settings=settings),)
+
+
+def _build_desktop_tools(
+    *,
+    workspace: Path,
+    sandbox: SandboxBackend | None,
+    settings: DesktopSettings | None = None,
+) -> tuple[BaseTool, ...]:
+    """Instantiate the virtual desktop tool when a sandbox is available.
+
+    Returns an empty tuple when *sandbox* is ``None`` so deployments
+    without a configured desktop-capable sandbox simply do not see the
+    tool (opt-in by configuration).
+
+    When *settings* is omitted the tool falls back to the model defaults
+    that mirror the module constants (the deterministic ``xvfb`` driver).
+    """
+    if sandbox is None:
+        return ()
+    from synthorg.tools.desktop.desktop_tool import DesktopTool  # noqa: PLC0415
+
+    return (DesktopTool(sandbox=sandbox, workspace=workspace, settings=settings),)
 
 
 def _build_file_system_tools(
@@ -432,6 +455,8 @@ def build_default_tools(  # noqa: PLR0913
     code_execution_sandbox: SandboxBackend | None = None,
     browser_sandbox: SandboxBackend | None = None,
     browser_settings: BrowserSettings | None = None,
+    desktop_sandbox: SandboxBackend | None = None,
+    desktop_settings: DesktopSettings | None = None,
     org_memory_backend: OrgMemoryBackend | None = None,
     org_fact_store: OrgFactRepository | None = None,
     wiki_exporter: WikiExporter | None = None,
@@ -488,6 +513,12 @@ def build_default_tools(  # noqa: PLR0913
         browser_settings: Operator-resolved ``BrowserSettings``.  When
             ``None`` the BrowserTool uses model defaults (mirroring
             the constants in ``tools.browser._constants``).
+        desktop_sandbox: Sandbox backend for the virtual desktop tool.
+            When ``None``, the ``desktop`` tool is not registered
+            (opt-in via the DESKTOP sandbox category).
+        desktop_settings: Operator-resolved ``DesktopSettings``.  When
+            ``None`` the DesktopTool uses model defaults (the
+            deterministic ``xvfb`` driver).
         org_memory_backend: OrgMemoryBackend collaborator for the
             KnowledgeArchitect tools.  Must be wired together with
             ``org_fact_store`` and ``wiki_exporter`` to register the
@@ -602,6 +633,13 @@ def build_default_tools(  # noqa: PLR0913
         ),
     )
     all_tools.extend(
+        _build_desktop_tools(
+            workspace=workspace,
+            sandbox=desktop_sandbox,
+            settings=desktop_settings,
+        ),
+    )
+    all_tools.extend(
         _build_knowledge_architect_tools(
             org_backend=org_memory_backend,
             fact_store=org_fact_store,
@@ -647,6 +685,7 @@ def build_default_tools_from_config(  # noqa: PLR0913
     architect_writes_enabled: bool = False,
     web_request_timeout: float,
     browser_settings: BrowserSettings | None = None,
+    desktop_settings: DesktopSettings | None = None,
 ) -> tuple[BaseTool, ...]:
     """Build default tools using parameters from a ``RootConfig``.
 
@@ -700,6 +739,9 @@ def build_default_tools_from_config(  # noqa: PLR0913
         browser_settings: Operator-resolved ``BrowserSettings``.  When
             ``None`` the BrowserTool uses model defaults (mirroring
             the constants in ``tools.browser._constants``).
+        desktop_settings: Operator-resolved ``DesktopSettings``.  When
+            ``None`` the DesktopTool uses model defaults (the
+            deterministic ``xvfb`` driver).
 
     Returns:
         Sorted tuple of ``BaseTool`` instances.
@@ -786,6 +828,26 @@ def build_default_tools_from_config(  # noqa: PLR0913
                 ),
             )
 
+    # Resolve desktop sandbox if configured. Opt-in: the GUI session
+    # needs Xvfb + xdotool, so the operator must explicitly override
+    # ``sandboxing.overrides.desktop = 'docker'`` to enable the tool.
+    desktop_sandbox: SandboxBackend | None = None
+    if config.sandboxing.backend_for_category(ToolCategory.DESKTOP.value) == "docker":
+        try:
+            desktop_sandbox = resolve_sandbox_for_category(
+                config=config.sandboxing,
+                backends=resolved_backends,
+                category=ToolCategory.DESKTOP,
+            )
+        except KeyError:
+            logger.warning(
+                TOOL_FACTORY_ERROR,
+                error=(
+                    "No sandbox backend for DESKTOP category; "
+                    "virtual desktop tool will not be registered"
+                ),
+            )
+
     # Trust the resolved ``web_request_timeout`` the caller passed;
     # the registry resolution + ``settings.value.resolved`` audit log
     # already fired upstream at the ``ConfigResolver`` boundary.
@@ -818,6 +880,8 @@ def build_default_tools_from_config(  # noqa: PLR0913
         code_execution_sandbox=code_execution_sandbox,
         browser_sandbox=browser_sandbox,
         browser_settings=browser_settings,
+        desktop_sandbox=desktop_sandbox,
+        desktop_settings=desktop_settings,
         org_memory_backend=org_memory_backend,
         org_fact_store=org_fact_store,
         wiki_exporter=wiki_exporter,

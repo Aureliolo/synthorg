@@ -72,6 +72,10 @@ _WHITELIST_FILES: Final[frozenset[str]] = frozenset(
         # the DockerSandbox container; it imports nothing from synthorg
         # and so cannot reach the Clock seam. Issue #1992 / EPIC #1987.
         "src/synthorg/tools/browser/_executor.py",
+        # Desktop executor is the same shape: a standalone in-container
+        # script (Xvfb session bring-up + xdotool/scrot) that imports
+        # nothing from synthorg, so it cannot reach the Clock seam.
+        "src/synthorg/tools/desktop/_executor.py",
     }
 )
 _WHITELIST_PREFIXES: Final[tuple[str, ...]] = ("src/synthorg/observability/",)

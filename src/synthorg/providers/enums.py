@@ -22,6 +22,28 @@ class MessageRole(StrEnum):
     TOOL = "tool"
 
 
+class ImageMediaType(StrEnum):
+    """MIME type of an image attached to a multimodal message."""
+
+    PNG = "image/png"
+    JPEG = "image/jpeg"
+    WEBP = "image/webp"
+    GIF = "image/gif"
+
+
+class ImageDetail(StrEnum):
+    """Vision-detail hint passed to multimodal models.
+
+    Mirrors the chat-completion ``image_url.detail`` field. ``AUTO``
+    lets the provider choose; ``LOW`` / ``HIGH`` trade tokens for
+    fidelity.
+    """
+
+    AUTO = "auto"
+    LOW = "low"
+    HIGH = "high"
+
+
 class FinishReason(StrEnum):
     """Reason the model stopped generating tokens."""
 

@@ -45,6 +45,10 @@ from synthorg.observability.events.security import (
     SECURITY_APPROVAL_SELF_REVIEW_PREVENTED,
 )
 from synthorg.observability.events.versioning import VERSION_FETCH_FAILED
+from synthorg.observability.events.vision_verify import (
+    VISION_GATE_SKIPPED,
+    VISION_REWORK_ROUTED,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.task import Task
@@ -53,6 +57,8 @@ if TYPE_CHECKING:
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.security.redteam.models import RedTeamReviewInput
     from synthorg.security.redteam.protocol import RedTeamGate
+    from synthorg.security.visionverify.models import VisionReviewInput
+    from synthorg.security.visionverify.protocol import VisionVerifierGate
 
 logger = get_logger(__name__)
 
@@ -84,10 +90,22 @@ class ReviewGateService:
         task_engine: TaskEngine,
         persistence: PersistenceBackend | None = None,
         red_team_gate: RedTeamGate | None = None,
+        vision_gate: VisionVerifierGate | None = None,
     ) -> None:
         self._task_engine = task_engine
         self._persistence = persistence
         self._red_team_gate = red_team_gate
+        self._vision_gate = vision_gate
+
+    def set_vision_gate(self, vision_gate: VisionVerifierGate) -> None:
+        """Attach the vision gate after construction (boot wiring seam).
+
+        The service is built during app construction (before a provider
+        is connected), while the vision gate is built in on-startup
+        runtime wiring once the workspace and provider are available, so
+        the gate is injected post-construction rather than at __init__.
+        """
+        self._vision_gate = vision_gate
 
     async def check_can_decide(
         self,
@@ -198,6 +216,7 @@ class ReviewGateService:
         requested_by: str,
         approval_id: str | None = None,
         red_team_input: RedTeamReviewInput | None = None,
+        vision_input: VisionReviewInput | None = None,
     ) -> PipelineResult:
         """Drive a review pipeline and apply its final verdict.
 
@@ -222,6 +241,12 @@ class ReviewGateService:
                 the task-engine transition; a BLOCK verdict overrides
                 the pipeline's COMPLETED target and routes the task
                 back to IN_PROGRESS as rework.
+            vision_input: Optional GUI-deliverable review payload
+                (screenshots + brief). When this and ``vision_gate`` are
+                both wired, a still-approved verdict is offered to the
+                vision gate after the red-team gate; a BLOCK verdict
+                routes the task back to IN_PROGRESS as rework. Absent
+                input SKIPS the gate (non-GUI deliverable).
 
         Returns:
             The :class:`PipelineResult` produced by the pipeline
@@ -252,6 +277,20 @@ class ReviewGateService:
                 event=event,
                 approved=approved,
                 red_team_input=red_team_input,
+            )
+        if approved:
+            (
+                target,
+                transition_reason,
+                event,
+                approved,
+            ) = await self._apply_vision_gate(
+                task_id=task_id,
+                target=target,
+                transition_reason=transition_reason,
+                event=event,
+                approved=approved,
+                vision_input=vision_input,
             )
         await self._apply_decision(
             task=task,
@@ -326,6 +365,64 @@ class ReviewGateService:
             verdict=result.verdict.value,
         )
         rework_reason = f"Red-team review blocked completion: {result.report.summary}"
+        return (
+            TaskStatus.IN_PROGRESS,
+            rework_reason,
+            APPROVAL_GATE_REVIEW_REWORK,
+            False,
+        )
+
+    async def _apply_vision_gate(  # noqa: PLR0913
+        self,
+        *,
+        task_id: str,
+        target: TaskStatus,
+        transition_reason: str,
+        event: str,
+        approved: bool,
+        vision_input: VisionReviewInput | None,
+    ) -> tuple[TaskStatus, str, str, bool]:
+        """Invoke the vision gate; override target on a BLOCK verdict.
+
+        Chained after the red-team gate. The vision gate applies only to
+        GUI deliverables, signalled by the caller supplying
+        ``vision_input`` (with screenshots). When the gate is configured
+        but no ``vision_input`` is provided the gate SKIPS (leaves the
+        target unchanged): unlike the red-team gate it must not fail
+        closed, since most deliverables are not GUI apps and would
+        otherwise be blocked wholesale. A BLOCK verdict reroutes the task
+        to ``IN_PROGRESS`` (rework) with the vision summary as the reason.
+        """
+        gate = self._vision_gate
+        if gate is None:
+            return target, transition_reason, event, approved
+        if vision_input is None:
+            logger.debug(
+                VISION_GATE_SKIPPED,
+                task_id=task_id,
+                reason="no_vision_input",
+                note=(
+                    "Vision gate is configured but the deliverable carried "
+                    "no screenshots; skipping (non-GUI deliverable)."
+                ),
+            )
+            return target, transition_reason, event, approved
+
+        from synthorg.security.visionverify.models import (  # noqa: PLC0415
+            VisionVerdict,
+        )
+
+        result = await gate.evaluate(vision_input)
+        if result.verdict is not VisionVerdict.BLOCK:
+            return target, transition_reason, event, approved
+        logger.warning(
+            VISION_REWORK_ROUTED,
+            task_id=task_id,
+            execution_id=vision_input.execution_id,
+            findings=len(result.report.findings),
+            verdict=result.verdict.value,
+        )
+        rework_reason = f"Vision review blocked completion: {result.report.summary}"
         return (
             TaskStatus.IN_PROGRESS,
             rework_reason,

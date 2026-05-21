@@ -1199,6 +1199,15 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # one is a logged no-op then.
         if services.work_pipeline is not None:
             app_state.set_work_pipeline_if_absent(services.work_pipeline)
+        # Attach the vision verifier gate to the review gate service when
+        # the subsystem is enabled. The service was built during app
+        # construction (before a provider connected); the gate is built
+        # here once the workspace + provider are available.
+        if (
+            services.vision_gate is not None
+            and app_state.review_gate_service is not None
+        ):
+            app_state.review_gate_service.set_vision_gate(services.vision_gate)
         # Bring the real client-request, goal/objective, and
         # task-board work-entry paths online: ensure the configured
         # default projects exist and attach the entry adapters. No-op

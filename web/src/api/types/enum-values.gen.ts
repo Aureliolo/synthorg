@@ -768,6 +768,7 @@ export const TOOL_CATEGORY_VALUES = [
     'mcp',
     'browser',
     'external_data',
+    'desktop',
     'other',
 ] as const
 export type ToolCategory = (typeof TOOL_CATEGORY_VALUES)[number]

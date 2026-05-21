@@ -60,9 +60,35 @@ def _message_to_dict(message: ChatMessage) -> dict[str, object]:
                     for tc in message.tool_calls
                 ]
         case _:
-            result["content"] = message.content or ""
+            if message.image_parts:
+                result["content"] = _multimodal_content(message)
+            else:
+                result["content"] = message.content or ""
 
     return result
+
+
+def _multimodal_content(message: ChatMessage) -> list[dict[str, object]]:
+    """Build the litellm multimodal content list for a user message.
+
+    Emits a leading ``text`` part only when ``content`` is non-empty,
+    followed by one ``image_url`` part per attached image (order
+    preserved).
+    """
+    parts: list[dict[str, object]] = []
+    if message.content:
+        parts.append({"type": "text", "text": message.content})
+    parts.extend(
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": image.data_uri,
+                "detail": image.detail.value,
+            },
+        }
+        for image in message.image_parts
+    )
+    return parts
 
 
 def tools_to_dicts(tools: list[ToolDefinition]) -> list[dict[str, object]]:

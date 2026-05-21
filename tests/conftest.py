@@ -239,6 +239,17 @@ _start_key = pytest.StashKey[float]()
 _unit_elapsed_secs: float = 0.0
 _WORKEROUTPUT_KEY = "_unit_elapsed_secs"
 
+# Wall-clock seconds spent generating the session-wide migration template
+# inside a test's fixture setup. The unlucky test on the worker that wins
+# the cross-worker lock pays the full ``migrate_apply`` cost; that one-time,
+# session-amortised cost must not count against its per-test wall-clock
+# budget, otherwise a growing yoyo migration chain trips the guard on an
+# arbitrary persistence test. Recorded by ``_get_template_db``, subtracted
+# from the guard comparison in ``pytest_runtest_teardown``, reset once
+# consumed. Worker-local (each xdist worker imports its own conftest), which
+# is correct because the build and its triggering test share a worker.
+_template_build_secs: float = 0.0
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_setup(item: pytest.Item) -> None:
@@ -249,21 +260,31 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 @pytest.hookimpl(trylast=True)
 def pytest_runtest_teardown(item: pytest.Item) -> None:
     """Fail unit tests that exceed the wall-clock limit + tally per-test elapsed."""
-    global _unit_elapsed_secs  # noqa: PLW0603
+    global _unit_elapsed_secs, _template_build_secs  # noqa: PLW0603
     start = item.stash.get(_start_key, None)
     if start is None:
         return
     elapsed = time.monotonic() - start
     if item.get_closest_marker("unit"):
         _unit_elapsed_secs += elapsed
+    # The one-time session-template migration build (amortised across the
+    # whole suite) lands in whichever test's fixture setup wins the
+    # cross-worker lock. Exclude it from the per-test guard comparison so a
+    # growing migration chain never trips the limit on an arbitrary
+    # persistence test; the suite-timing accumulator above keeps the full
+    # elapsed so total-runtime accounting is unaffected.
+    guard_elapsed = elapsed
+    if _template_build_secs > 0.0:
+        guard_elapsed = max(0.0, elapsed - _template_build_secs)
+        _template_build_secs = 0.0
     if (
         not _FUZZ_PROFILE_ACTIVE
         and item.get_closest_marker("unit")
-        and elapsed > _UNIT_TEST_WALL_CLOCK_LIMIT
+        and guard_elapsed > _UNIT_TEST_WALL_CLOCK_LIMIT
     ):
         pytest.fail(
             f"Unit test exceeded {_UNIT_TEST_WALL_CLOCK_LIMIT}s "
-            f"wall-clock limit ({elapsed:.1f}s). This usually means "
+            f"wall-clock limit ({guard_elapsed:.1f}s). This usually means "
             f"a fixture is doing heavy I/O -- check setup/teardown.",
             pytrace=False,
         )
@@ -596,14 +617,19 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
         lock.acquire()
         return lock
 
+    global _template_build_secs  # noqa: PLW0603
     lock = await asyncio.to_thread(_acquire)
     try:
         if not await asyncio.to_thread(db_path.exists):
+            build_start = time.monotonic()
             rev_path = migrations.copy_revisions(shared_dir / "revisions")
             await migrations.migrate_apply(
                 migrations.to_sqlite_url(str(db_path)),
                 revisions_path=rev_path,
             )
+            # Credit the one-time build so the triggering test's per-test
+            # wall-clock guard does not count it (see _template_build_secs).
+            _template_build_secs += time.monotonic() - build_start
     finally:
         await asyncio.to_thread(lock.release)
     _TEMPLATE_DB = db_path
