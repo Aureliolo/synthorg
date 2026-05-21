@@ -79,6 +79,8 @@ def _build_tool(  # noqa: PLR0913 -- test helper mirrors the tool's collaborator
     network_policy: NetworkPolicy | None = None,
     approval_store: ApprovalStore | None = None,
     credentials_error: Exception | None = None,
+    agent_id: str = "agent-1",
+    task_id: str | None = "task-1",
 ) -> ExternalApiTool:
     get_credentials = AsyncMock(spec=ConnectionCatalog.get_credentials)
     if credentials_error is not None:
@@ -93,8 +95,8 @@ def _build_tool(  # noqa: PLR0913 -- test helper mirrors the tool's collaborator
         connection_catalog=catalog,
         approval_store=approval_store or ApprovalStore(),
         provider=provider or StubProvider(),
-        agent_id="agent-1",
-        task_id="task-1",
+        agent_id=agent_id,
+        task_id=task_id,
         network_policy=network_policy or NetworkPolicy(block_private_ips=False),
         effective_autonomy=autonomy,
         max_response_bytes=1_048_576,
@@ -190,6 +192,33 @@ class TestExternalApiToolCredentials:
         await tool.execute(arguments={"connection": "crm-api", "path": "/data"})
         # base64("u:p") == "dTpw"
         assert provider.requests[0].headers["Authorization"] == "Basic dTpw"
+
+    async def test_agent_headers_cannot_override_or_inject_restricted(self) -> None:
+        # Restricted headers (Host / framing) supplied by the agent are
+        # dropped, and a case-variant of a brokered header cannot shadow or
+        # duplicate it: the brokered credential wins, the agent extra rides.
+        provider = StubProvider()
+        tool = _build_tool(
+            conn=_connection(auth_method=AuthMethod.BEARER_TOKEN),
+            credentials={"token": "sekret-token"},
+            provider=provider,
+        )
+        await tool.execute(
+            arguments={
+                "connection": "crm-api",
+                "path": "/data",
+                "headers": {
+                    "Host": "evil.example.net",
+                    "authorization": "Bearer agent-forged",
+                    "X-Extra": "ok",
+                },
+            },
+        )
+        sent = provider.requests[0].headers
+        assert "Host" not in sent
+        assert sent["Authorization"] == "Bearer sekret-token"
+        assert "authorization" not in sent
+        assert sent["X-Extra"] == "ok"
 
     async def test_credential_retrieval_failure_errors_without_egress(self) -> None:
         provider = StubProvider()
@@ -373,6 +402,70 @@ class TestExternalApiToolApprovalGating:
         )
         assert result.is_error is True
         assert provider.requests == []
+
+    async def test_other_principal_cannot_consume_grant(self) -> None:
+        # A grant parked + approved for agent-1/task-1 must not be consumed
+        # by a second agent issuing the same call: the scan skips it and the
+        # second caller parks its own approval instead of egressing.
+        store = ApprovalStore()
+        args = {"connection": "crm-api", "path": "/data"}
+        owner = _build_tool(
+            conn=_connection(sensitive=True),
+            approval_store=store,
+            agent_id="agent-1",
+            task_id="task-1",
+        )
+        parked = await owner.execute(arguments=args)
+        item = await store.get(parked.metadata["approval_id"])
+        assert item is not None
+        await store.save(
+            item.model_copy(update={"status": ApprovalStatus.APPROVED}),
+        )
+
+        intruder_provider = StubProvider()
+        intruder = _build_tool(
+            conn=_connection(sensitive=True),
+            provider=intruder_provider,
+            approval_store=store,
+            agent_id="agent-2",
+            task_id="task-2",
+        )
+        result = await intruder.execute(arguments=args)
+        assert result.metadata.get("requires_parking") is True
+        assert intruder_provider.requests == []
+
+    async def test_other_principal_explicit_approval_id_errors(self) -> None:
+        # A leaked approval_id from another principal's grant is rejected,
+        # not silently honoured.
+        store = ApprovalStore()
+        args: dict[str, Any] = {"connection": "crm-api", "path": "/data"}
+        owner = _build_tool(
+            conn=_connection(sensitive=True),
+            approval_store=store,
+            agent_id="agent-1",
+            task_id="task-1",
+        )
+        parked = await owner.execute(arguments=args)
+        approval_id = parked.metadata["approval_id"]
+        item = await store.get(approval_id)
+        assert item is not None
+        await store.save(
+            item.model_copy(update={"status": ApprovalStatus.APPROVED}),
+        )
+
+        intruder_provider = StubProvider()
+        intruder = _build_tool(
+            conn=_connection(sensitive=True),
+            provider=intruder_provider,
+            approval_store=store,
+            agent_id="agent-2",
+            task_id="task-2",
+        )
+        result = await intruder.execute(
+            arguments={**args, "approval_id": approval_id},
+        )
+        assert result.is_error is True
+        assert intruder_provider.requests == []
 
 
 @pytest.mark.unit

@@ -10,7 +10,7 @@ pluggable :class:`ExternalAccessProvider`.
 
 from datetime import UTC
 from typing import TYPE_CHECKING, Any, ClassVar
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -76,6 +76,13 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _ACTION_TYPE = ActionType.EXTERNAL_DATA_REQUEST.value
+
+# Hop-by-hop / framing headers an agent must never set: ``Host`` would allow
+# virtual-host injection past the egress host check, and the framing headers
+# let an agent desync the request body from the transport.
+_RESTRICTED_REQUEST_HEADERS: frozenset[str] = frozenset(
+    {"host", "content-length", "transfer-encoding"},
+)
 
 
 class ExternalApiTool(BaseTool):
@@ -175,7 +182,7 @@ class ExternalApiTool(BaseTool):
                 return gate
 
         merged_headers = self._broker_headers(conn, await self._credentials(conn))
-        merged_headers = {**args.headers, **merged_headers}
+        merged_headers = self._merge_agent_headers(args.headers, merged_headers)
 
         pinned_ip = validation.resolved_ips[0] if validation.resolved_ips else None
         pinned_hostname = validation.hostname if validation.resolved_ips else None
@@ -200,10 +207,12 @@ class ExternalApiTool(BaseTool):
     def _resolve_url(self, conn: Connection, args: ExternalApiArgs) -> str:
         """Build the target URL and confirm its host matches the connection.
 
-        The agent may narrow within the connection (relative path, or an
-        absolute url on the same host) but never widen to another host, and
-        cannot use ``..`` traversal to reach paths outside the connection's
-        base-URL prefix.
+        The egress boundary is host-level (per the design spec): the agent
+        may target any path on the connection's host, via a relative path or
+        an absolute url on the same host, but never widen to another host.
+        ``.`` / ``..`` traversal segments are rejected outright; the
+        connection's base-URL path is a default prefix for relative paths,
+        not a containment boundary for absolute same-host urls.
         """
         if not conn.base_url:
             logger.warning(
@@ -248,8 +257,13 @@ class ExternalApiTool(BaseTool):
 
     @staticmethod
     def _has_dot_segment(url: str) -> bool:
-        """Whether the URL path contains a ``.`` or ``..`` traversal segment."""
-        path = urlsplit(url).path
+        """Whether the URL path contains a ``.`` or ``..`` traversal segment.
+
+        The path is percent-decoded first so encoded traversal sequences
+        (``%2e`` / ``%2e%2e``) that an upstream server would normalise back
+        into ``.`` / ``..`` are detected here rather than slipping past.
+        """
+        path = unquote(urlsplit(url).path)
         return any(segment in {".", ".."} for segment in path.split("/"))
 
     async def _credentials(self, conn: Connection) -> dict[str, str]:
@@ -274,6 +288,28 @@ class ExternalApiTool(BaseTool):
     ) -> dict[str, str]:
         """Map credentials to auth headers (never logged)."""
         return build_auth_headers(conn.auth_method, credentials)
+
+    @staticmethod
+    def _merge_agent_headers(
+        agent_headers: dict[str, str],
+        brokered_headers: dict[str, str],
+    ) -> dict[str, str]:
+        """Layer agent headers under brokered ones, case-insensitively.
+
+        Agent-supplied headers are dropped when they are restricted
+        (``Host`` / framing headers) or collide case-insensitively with a
+        brokered header, so an agent can neither inject a forged ``Host``
+        nor shadow a brokered credential with a differently-cased
+        duplicate. Brokered headers always win.
+        """
+        brokered_keys = {k.lower() for k in brokered_headers}
+        safe_agent_headers = {
+            k: v
+            for k, v in agent_headers.items()
+            if k.lower() not in _RESTRICTED_REQUEST_HEADERS
+            and k.lower() not in brokered_keys
+        }
+        return {**safe_agent_headers, **brokered_headers}
 
     async def _egress(
         self,
@@ -371,6 +407,7 @@ class ExternalApiTool(BaseTool):
                 item is None
                 or item.status is not ApprovalStatus.APPROVED
                 or item.consumed_at is not None
+                or not self._approval_bound_to_caller(item)
                 or not signature.matches(
                     ApprovalSignature.from_metadata(item.metadata),
                 )
@@ -389,11 +426,26 @@ class ExternalApiTool(BaseTool):
             action_type=_ACTION_TYPE,
         )
         for item in candidates:
-            if item.consumed_at is None and signature.matches(
-                ApprovalSignature.from_metadata(item.metadata),
+            if (
+                item.consumed_at is None
+                and self._approval_bound_to_caller(item)
+                and signature.matches(
+                    ApprovalSignature.from_metadata(item.metadata),
+                )
             ):
                 return str(item.id)
         return None
+
+    def _approval_bound_to_caller(self, item: ApprovalItem) -> bool:
+        """Whether *item* was parked by this same agent and task.
+
+        A content signature alone is not enough: two agents (or tasks)
+        issuing the same call must not be able to consume each other's
+        grant, and a leaked ``approval_id`` must not let an unrelated
+        caller proceed. The grant is bound to the ``requested_by`` /
+        ``task_id`` stamped at park time.
+        """
+        return item.requested_by == self._agent_id and item.task_id == self._task_id
 
     async def _park_for_approval(
         self,

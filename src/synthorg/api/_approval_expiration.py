@@ -120,64 +120,84 @@ class ApprovalExpirationMixin:
         hold ``self._lock``; the method performs cache + repo mutations
         without re-acquiring it.
 
+        When a repository is wired the flip goes through the
+        ``expire_if_pending`` compare-and-set rather than a blind
+        ``save``: the store lock is process-local, so another worker
+        can decide the same row (APPROVED / REJECTED) between this
+        instance's read and write. The CAS only transitions rows still
+        in PENDING, so a concurrent terminal decision wins the race and
+        this path reloads committed truth instead of clobbering it with
+        EXPIRED.
+
         Args:
             item: The item to check.
 
         Returns:
-            The original or expired item.
+            The original, expired, or repo-reloaded item.
         """
-        if (
+        if not (
             item.status == ApprovalStatus.PENDING
             and item.expires_at is not None
             and self._clock.now() >= item.expires_at
         ):
-            expired = item.model_copy(
-                update={"status": ApprovalStatus.EXPIRED},
-            )
-            if self._repo is not None:
-                await self._repo.save(expired)
-            self._items[item.id] = expired
-            # State-transition log fires AFTER persistence + cache
-            # update succeed so the audit stream only records hops
-            # that actually landed. Pairs with the
-            # APPROVAL_STATUS_TRANSITIONED emissions on PENDING ->
-            # APPROVED / REJECTED in ``api/controllers/approvals.py``;
-            # ``API_APPROVAL_EXPIRED`` below is the terminal-state
-            # summary event that subscribers can use as a single
-            # signal that an approval has expired.
-            logger.info(
-                APPROVAL_STATUS_TRANSITIONED,
-                approval_id=item.id,
-                from_status=ApprovalStatus.PENDING.value,
-                to_status=ApprovalStatus.EXPIRED.value,
-            )
-            logger.info(
-                API_APPROVAL_EXPIRED,
-                approval_id=item.id,
-            )
-            record_approval_decision(outcome="expired")
-            if self._on_expire is not None:
-                try:
-                    self._on_expire(expired)
-                except MemoryError, RecursionError:
-                    raise
-                except Exception as exc:
-                    # ERROR (matching ``_fire_expire_callback``): the
-                    # approval is already EXPIRED in cache + repo, so
-                    # the callback failure can't unwind the expiration,
-                    # but a dropped downstream side effect (webhook,
-                    # audit dispatch, workflow resume) is operationally
-                    # meaningful and operators must be able to alert
-                    # on it. Both paths emit at ERROR so alerting is
-                    # not sensitive to which expiration path fired.
-                    logger.error(
-                        API_APPROVAL_EXPIRE_CALLBACK_FAILED,
-                        approval_id=item.id,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
-                    )
-            return expired
-        return item
+            return item
+        expired = item.model_copy(
+            update={"status": ApprovalStatus.EXPIRED},
+        )
+        if self._repo is not None:
+            transitioned = await self._repo.expire_if_pending((item.id,))
+            if item.id not in transitioned:
+                # CAS lost: a concurrent APPROVED / REJECTED decision
+                # landed first. Reload committed state so the cache and
+                # the returned item reflect the decision that actually
+                # won, never a stale EXPIRED overwrite.
+                current = await self._repo.get(item.id)
+                if current is not None:
+                    self._items[item.id] = current
+                    return current
+                self._items.pop(item.id, None)
+                return item
+        self._items[item.id] = expired
+        # State-transition log fires AFTER persistence + cache
+        # update succeed so the audit stream only records hops
+        # that actually landed. Pairs with the
+        # APPROVAL_STATUS_TRANSITIONED emissions on PENDING ->
+        # APPROVED / REJECTED in ``api/controllers/approvals.py``;
+        # ``API_APPROVAL_EXPIRED`` below is the terminal-state
+        # summary event that subscribers can use as a single
+        # signal that an approval has expired.
+        logger.info(
+            APPROVAL_STATUS_TRANSITIONED,
+            approval_id=item.id,
+            from_status=ApprovalStatus.PENDING.value,
+            to_status=ApprovalStatus.EXPIRED.value,
+        )
+        logger.info(
+            API_APPROVAL_EXPIRED,
+            approval_id=item.id,
+        )
+        record_approval_decision(outcome="expired")
+        if self._on_expire is not None:
+            try:
+                self._on_expire(expired)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                # ERROR (matching ``_fire_expire_callback``): the
+                # approval is already EXPIRED in cache + repo, so
+                # the callback failure can't unwind the expiration,
+                # but a dropped downstream side effect (webhook,
+                # audit dispatch, workflow resume) is operationally
+                # meaningful and operators must be able to alert
+                # on it. Both paths emit at ERROR so alerting is
+                # not sensitive to which expiration path fired.
+                logger.error(
+                    API_APPROVAL_EXPIRE_CALLBACK_FAILED,
+                    approval_id=item.id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        return expired
 
     def _compute_expiration(self, item: ApprovalItem) -> ApprovalItem:
         """Pure: return the (possibly-EXPIRED) item without I/O.

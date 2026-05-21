@@ -142,7 +142,23 @@ class UpdateConnectionRequest(BaseModel):
     webhook_receipt_retention_days: int | None = Field(default=None, ge=0)
     # Omitting keeps the stored value; setting true/false toggles whether
     # external-access calls against this connection require approval.
+    # Explicit ``null`` is rejected (see ``_reject_null_sensitive``) so a
+    # malformed PATCH cannot be silently ACKed as an omission.
     sensitive: bool | None = None
+
+    @field_validator("sensitive")
+    @classmethod
+    def _reject_null_sensitive(
+        cls,
+        v: bool | None,  # noqa: FBT001 -- Pydantic validator value is positional
+    ) -> bool | None:
+        # The default (omission) skips validation, so this only fires on an
+        # explicit JSON ``null``; the supported states are omit / true /
+        # false, and a null body is a client error, not a no-op.
+        if v is None:
+            msg = "sensitive must be true or false, not null"
+            raise ValueError(msg)
+        return v
 
 
 class ConnectionsController(Controller):
@@ -336,10 +352,10 @@ class ConnectionsController(Controller):
             if "webhook_receipt_retention_days" in data.model_fields_set
             else _UNSET
         )
+        # ``_reject_null_sensitive`` guarantees a set value is never None, so
+        # ``bool(...)`` is just type narrowing for the catalog signature.
         sensitive: bool | _UnsetType = (
-            bool(data.sensitive)
-            if "sensitive" in data.model_fields_set and data.sensitive is not None
-            else _UNSET
+            bool(data.sensitive) if "sensitive" in data.model_fields_set else _UNSET
         )
         catalog = state["app_state"].connection_catalog
         try:

@@ -47,6 +47,13 @@ class HttpxExternalAccessProvider:
             )
         budget = req.max_response_bytes + 1
         try:
+            # A fresh client per request is deliberate, not an oversight:
+            # the request-scoped ``PinnedDnsTransport`` pins this call to the
+            # exact IP the SSRF validator resolved and approved. Pooling a
+            # client across calls would either reuse a connection opened to a
+            # since-rebound IP (defeating the DNS-pin guarantee) or require a
+            # bespoke pooling transport that re-validates per request. The
+            # per-call TLS handshake is an accepted cost of that guarantee.
             async with (
                 httpx.AsyncClient(
                     transport=transport,

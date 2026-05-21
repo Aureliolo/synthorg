@@ -91,6 +91,15 @@ class TestConnectionRepository:
         assert fetched is not None
         assert fetched.sensitive is True
 
+        # A second save of the same id (upsert) must preserve the flag,
+        # even when an unrelated field changes.
+        await backend.connections.save(
+            sensitive.model_copy(update={"metadata": {"owner": "secops"}}),
+        )
+        refetched = await backend.connections.get(NotBlankStr("conn-secret"))
+        assert refetched is not None
+        assert refetched.sensitive is True
+
     async def test_save_is_idempotent_upsert(self, backend: PersistenceBackend) -> None:
         await backend.connections.save(_connection(metadata={"team": "a"}))
         await backend.connections.save(_connection(metadata={"team": "b"}))

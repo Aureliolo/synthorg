@@ -58,7 +58,7 @@ _APPROVALS_UPSERT_SQL = """
         task_id = excluded.task_id,
         evidence_package = excluded.evidence_package,
         metadata = excluded.metadata,
-        consumed_at = excluded.consumed_at
+        consumed_at = COALESCE(approvals.consumed_at, excluded.consumed_at)
 """
 
 

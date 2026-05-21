@@ -67,7 +67,7 @@ _APPROVALS_UPSERT_SQL = f"""
         task_id = EXCLUDED.task_id,
         evidence_package = EXCLUDED.evidence_package,
         metadata = EXCLUDED.metadata,
-        consumed_at = EXCLUDED.consumed_at
+        consumed_at = COALESCE(approvals.consumed_at, EXCLUDED.consumed_at)
 """  # noqa: S608 -- column list is compile-time constant
 
 
