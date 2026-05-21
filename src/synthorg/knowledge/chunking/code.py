@@ -237,19 +237,45 @@ class CodeChunker:
         win_end: int,
         symbol: str | None,
     ) -> None:
-        """Append a single piece for the inclusive line window if non-empty."""
+        """Append one or more pieces for the inclusive line window.
+
+        A line longer than ``_MAX_CHARS`` (generated code, minified
+        bundle, single-line config) can land in the window with
+        ``win_chars == 0`` and slip past the loop's overflow check, so
+        the hard cap is enforced HERE: text under the cap is emitted as
+        a single piece; text over the cap is character-split into
+        ``_MAX_CHARS``-sized segments. Splitting at character granularity
+        is a deliberate tradeoff -- the alternative (refusing to chunk
+        oversized content) would silently drop the source from the
+        corpus, which is worse than a coarse line-locator citation.
+        """
         chunk_text = "\n".join(lines[win_start : win_end + 1])
         if not chunk_text.strip():
             return
-        pieces.append(
-            _code_piece(
-                text=chunk_text,
-                path=path,
-                line_start=win_start + 1,
-                line_end=win_end + 1,
-                symbol=symbol,
+        if len(chunk_text) <= _MAX_CHARS:
+            pieces.append(
+                _code_piece(
+                    text=chunk_text,
+                    path=path,
+                    line_start=win_start + 1,
+                    line_end=win_end + 1,
+                    symbol=symbol,
+                )
             )
-        )
+            return
+        for offset in range(0, len(chunk_text), _MAX_CHARS):
+            segment = chunk_text[offset : offset + _MAX_CHARS]
+            if not segment.strip():
+                continue
+            pieces.append(
+                _code_piece(
+                    text=segment,
+                    path=path,
+                    line_start=win_start + 1,
+                    line_end=win_end + 1,
+                    symbol=symbol,
+                )
+            )
 
     def _line_windows(self, *, path: str, lines: list[str]) -> tuple[ChunkPiece, ...]:
         """Fallback: split into fixed line windows under the char budget."""

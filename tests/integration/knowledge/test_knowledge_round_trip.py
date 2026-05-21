@@ -207,8 +207,10 @@ class TestKnowledgeRoundTrip:
             title=NotBlankStr("Export timeout"),
             project_id=NotBlankStr("proj-1"),
         )
+        # InMemoryBackend matches whole-substring (not tokenised), so the
+        # query must appear verbatim in the ticket comment.
         ticket_hits = await service.search(
-            query=NotBlankStr("stale cursor exporter"),
+            query=NotBlankStr("stale cursor in the exporter"),
             project_id=NotBlankStr("proj-1"),
         )
         ticket_hit = next(
