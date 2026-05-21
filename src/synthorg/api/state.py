@@ -28,9 +28,15 @@ from synthorg.backup.service import BackupService  # noqa: TC001
 from synthorg.budget.automated_reports import (
     AutomatedReportService,  # noqa: TC001
 )
+from synthorg.budget.benchmark_protocol import (
+    BenchmarkScoreProvider,  # noqa: TC001
+)
+from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.budget.coordination_store import (
     CoordinationMetricsStore,  # noqa: TC001
 )
+from synthorg.budget.forecaster import CostForecaster  # noqa: TC001
+from synthorg.budget.pareto import ParetoAnalyzer  # noqa: TC001
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.client.simulation_state import ClientSimulationState  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
@@ -109,6 +115,9 @@ from synthorg.persistence.auth_protocol import (
 )
 from synthorg.persistence.auth_protocol import (
     SessionRepository as SessionStore,  # noqa: TC001
+)
+from synthorg.persistence.cost_forecast_protocol import (  # noqa: TC001
+    CostForecastRepository,
 )
 from synthorg.persistence.ontology_protocol import (  # noqa: TC001
     OntologyDriftReportRepository,
@@ -203,7 +212,9 @@ class AppState(AppStateServicesMixin):
         "_autonomy_change_strategy",
         "_backup_facade_service",
         "_backup_service",
+        "_benchmark_provider",
         "_bridge_config_applied",
+        "_budget_config",
         "_ceremony_policy_service",
         "_ceremony_scheduler",
         "_chief_of_staff_chat",
@@ -218,6 +229,8 @@ class AppState(AppStateServicesMixin):
         "_coordination_metrics_store",
         "_coordination_service",
         "_coordinator",
+        "_cost_forecast_repo",
+        "_cost_forecaster",
         "_cost_tracker",
         "_cursor_secret",
         "_delegation_record_store",
@@ -266,6 +279,7 @@ class AppState(AppStateServicesMixin):
         "_ontology_service",
         "_ontology_sync_service",
         "_org_mutation_service",
+        "_pareto_analyzer",
         "_per_op_concurrency_config",
         "_per_op_rate_limit_config",
         "_performance_tracker",
@@ -471,6 +485,16 @@ class AppState(AppStateServicesMixin):
         # at boot behind the provider switch; ``None`` for empty-company
         # / dev apps with no runtime services installed.
         self._project_workspace_service: ProjectWorkspaceService | None = None
+        # Cost-dial services (forecaster + repo + Pareto analyzer +
+        # benchmark provider). Wired at boot in lifecycle_helpers; the
+        # forecast gate, controllers, and dashboard read these through
+        # AppState. Lock-protected so the post_setup_reinit rebuild can
+        # hot-swap them without racing in-flight controller reads.
+        self._cost_forecaster: CostForecaster | None = None
+        self._cost_forecast_repo: CostForecastRepository | None = None
+        self._pareto_analyzer: ParetoAnalyzer | None = None
+        self._benchmark_provider: BenchmarkScoreProvider | None = None
+        self._budget_config: BudgetConfig | None = None
         # Guards the double-checked locking on first-access lazy wiring
         # of worker_execution_service / experiment_service. Both
         # properties may be invoked from concurrent request handlers
@@ -1338,6 +1362,89 @@ class AppState(AppStateServicesMixin):
                 API_APP_STARTUP,
                 service="coordinator",
                 transition=transition,
+            )
+
+    # ── Cost-dial services ──────────────────────────────────────────
+
+    @property
+    def cost_forecaster(self) -> CostForecaster | None:
+        """Pre-flight cost forecaster, or ``None`` when unwired."""
+        return self._cost_forecaster
+
+    @property
+    def cost_forecast_repo(self) -> CostForecastRepository | None:
+        """Durable forecast row store, or ``None`` when unwired."""
+        return self._cost_forecast_repo
+
+    @property
+    def pareto_analyzer(self) -> ParetoAnalyzer | None:
+        """Cost / quality Pareto analyzer, or ``None`` when unwired."""
+        return self._pareto_analyzer
+
+    @property
+    def benchmark_provider(self) -> BenchmarkScoreProvider | None:
+        """Benchmark score provider used by the Pareto analyzer."""
+        return self._benchmark_provider
+
+    @property
+    def budget_config(self) -> BudgetConfig | None:
+        """Live BudgetConfig snapshot, or ``None`` when unwired."""
+        return self._budget_config
+
+    def swap_cost_forecaster(self, forecaster: CostForecaster | None) -> None:
+        """Replace the cost forecaster (hot-reload). Lock-protected."""
+        with self._lazy_service_lock:
+            self._cost_forecaster = forecaster
+            logger.info(
+                API_APP_STARTUP,
+                service="cost_forecaster",
+                transition="attached" if forecaster is not None else "detached",
+            )
+
+    def swap_cost_forecast_repo(
+        self,
+        repo: CostForecastRepository | None,
+    ) -> None:
+        """Replace the cost forecast repo (hot-reload). Lock-protected."""
+        with self._lazy_service_lock:
+            self._cost_forecast_repo = repo
+            logger.info(
+                API_APP_STARTUP,
+                service="cost_forecast_repo",
+                transition="attached" if repo is not None else "detached",
+            )
+
+    def swap_pareto_analyzer(self, analyzer: ParetoAnalyzer | None) -> None:
+        """Replace the Pareto analyzer (hot-reload). Lock-protected."""
+        with self._lazy_service_lock:
+            self._pareto_analyzer = analyzer
+            logger.info(
+                API_APP_STARTUP,
+                service="pareto_analyzer",
+                transition="attached" if analyzer is not None else "detached",
+            )
+
+    def swap_benchmark_provider(
+        self,
+        provider: BenchmarkScoreProvider | None,
+    ) -> None:
+        """Replace the benchmark provider (hot-reload). Lock-protected."""
+        with self._lazy_service_lock:
+            self._benchmark_provider = provider
+            logger.info(
+                API_APP_STARTUP,
+                service="benchmark_provider",
+                transition="attached" if provider is not None else "detached",
+            )
+
+    def swap_budget_config(self, config: BudgetConfig | None) -> None:
+        """Replace the BudgetConfig snapshot (hot-reload). Lock-protected."""
+        with self._lazy_service_lock:
+            self._budget_config = config
+            logger.info(
+                API_APP_STARTUP,
+                service="budget_config",
+                transition="attached" if config is not None else "detached",
             )
 
     @property

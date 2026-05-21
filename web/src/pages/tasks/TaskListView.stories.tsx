@@ -29,6 +29,8 @@ function makeTask(id: string, title: string, overrides: Partial<DashboardTask> =
     middleware_override: null,
     source: null,
     metadata: {},
+    hard_ceiling: null,
+    forecast_id: null,
     ...overrides,
   }
 }

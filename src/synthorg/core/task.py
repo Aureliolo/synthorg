@@ -4,6 +4,7 @@ import copy
 from collections import Counter
 from datetime import datetime
 from typing import Any, Self
+from uuid import UUID  # noqa: TC003
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -172,6 +173,29 @@ class Task(BaseModel):
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description="Arbitrary key-value metadata for pipeline tracking and labels",
+    )
+    hard_ceiling: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Per-run hard real-money ceiling in the configured currency."
+            " When the in-loop BudgetChecker observes accumulated_cost >="
+            " hard_ceiling it raises RunHardCeilingExceededError and the"
+            " engine parks the context via ApprovalGate so the operator"
+            " can raise the ceiling and resume. None falls back to the"
+            " global budget.run_hard_ceiling setting."
+        ),
+    )
+    forecast_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Identifier of the pre-flight cost Forecast row this task"
+            " was dispatched against. The work-entry adapter sets this"
+            " after the operator approves the forecast; the engine"
+            " plumbs it onto the parked-context payload when a ceiling"
+            " halt occurs so the resume UI can show the original"
+            " estimate alongside the accumulated cost."
+        ),
     )
 
     @model_validator(mode="after")

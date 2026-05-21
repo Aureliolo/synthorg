@@ -7,8 +7,11 @@ pure helpers (or closure builders) consumed only by ``BudgetEnforcer``.
 
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, get_args
+from uuid import UUID  # noqa: TC003 -- runtime annotation
 
+from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.enums import BudgetAlertLevel
+from synthorg.budget.errors import RunHardCeilingExceededError
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.types import ModelTier
 from synthorg.observability import get_logger
@@ -17,6 +20,7 @@ from synthorg.observability.events.budget import (
     BUDGET_DAILY_LIMIT_HIT,
     BUDGET_DOWNGRADE_APPLIED,
     BUDGET_DOWNGRADE_SKIPPED,
+    BUDGET_HARD_CEILING_EXCEEDED,
     BUDGET_HARD_STOP_TRIGGERED,
     BUDGET_PROJECT_BUDGET_EXCEEDED,
     BUDGET_TASK_LIMIT_HIT,
@@ -260,6 +264,10 @@ def _build_checker_closure(  # noqa: PLR0913
     project_budget: float = 0.0,
     project_baseline: float = 0.0,
     project_id: str | None = None,
+    hard_ceiling: float = 0.0,
+    hard_ceiling_currency: str | None = None,
+    task_id: str | None = None,
+    forecast_id: UUID | None = None,
 ) -> BudgetChecker:
     """Build the sync budget checker closure.
 
@@ -275,14 +283,37 @@ def _build_checker_closure(  # noqa: PLR0913
         project_baseline: Pre-computed project spend at task start.
         project_id: Project identifier for logging (None when
             project budget is disabled).
+        hard_ceiling: Per-run absolute hard ceiling (0 = disabled);
+            the closure raises :class:`RunHardCeilingExceededError`
+            when the running task cost meets or exceeds this value.
+        hard_ceiling_currency: ISO 4217 code stamped on the raised
+            error (matches the ``budget.currency`` setting).
+        task_id: Task identifier carried on the ceiling error so the
+            engine can route the parked context correctly.
+        forecast_id: Linked forecast row identifier carried on the
+            ceiling error so the dashboard can show the original
+            estimate next to the accumulated cost.
 
     Returns:
         Sync callable returning ``True`` when budget is exhausted.
+
+    Raises:
+        RunHardCeilingExceededError: When ``hard_ceiling > 0`` and
+            ``ctx.accumulated_cost.cost >= hard_ceiling``.
     """
     last_alert: list[BudgetAlertLevel] = [BudgetAlertLevel.NORMAL]
 
     def _check(ctx: AgentContext) -> bool:
         running_cost = ctx.accumulated_cost.cost
+        if hard_ceiling > 0 and running_cost >= hard_ceiling:
+            _raise_hard_ceiling(
+                running_cost=running_cost,
+                hard_ceiling=hard_ceiling,
+                currency=hard_ceiling_currency or DEFAULT_CURRENCY,
+                agent_id=agent_id,
+                task_id=task_id,
+                forecast_id=forecast_id,
+            )
         return (
             _check_task_limit(running_cost, task_limit, agent_id)
             or _check_project_limit(
@@ -309,6 +340,39 @@ def _build_checker_closure(  # noqa: PLR0913
         )
 
     return _check
+
+
+def _raise_hard_ceiling(  # noqa: PLR0913 -- error carries every payload field
+    *,
+    running_cost: float,
+    hard_ceiling: float,
+    currency: str,
+    agent_id: str,
+    task_id: str | None,
+    forecast_id: UUID | None,
+) -> None:
+    """Emit the ceiling-exceeded log + raise the typed error."""
+    logger.error(
+        BUDGET_HARD_CEILING_EXCEEDED,
+        agent_id=agent_id,
+        task_id=task_id,
+        forecast_id=str(forecast_id) if forecast_id is not None else None,
+        accumulated_cost=running_cost,
+        hard_ceiling=hard_ceiling,
+        currency=currency,
+    )
+    msg = (
+        f"Run hard ceiling exceeded: accumulated {running_cost:.4f} "
+        f"{currency} >= ceiling {hard_ceiling:.4f} {currency}"
+    )
+    raise RunHardCeilingExceededError(
+        msg,
+        ceiling_amount=hard_ceiling,
+        accumulated_cost=running_cost,
+        currency=currency,
+        task_id=task_id,
+        forecast_id=forecast_id,
+    )
 
 
 def _check_task_limit(

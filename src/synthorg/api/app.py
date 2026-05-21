@@ -120,6 +120,9 @@ from synthorg.persistence.config_factory import (
     build_sqlite_persistence_config,
     normalize_ssl_mode_value,
 )
+from synthorg.persistence.cost_forecast_protocol import (
+    CostForecastRepository,  # noqa: TC001 -- runtime annotation in helper
+)
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 from synthorg.providers.health import ProviderHealthTracker  # noqa: TC001
@@ -220,6 +223,73 @@ def _resolve_budget_int(key: str) -> int:
     requires a restart -- the consumer is a fixed-length ring buffer).
     """
     return resolve_init_int(SettingNamespace.BUDGET, key)
+
+
+def _wire_cost_dial_services(app_state: AppState) -> None:
+    """Wire the cost-dial services onto AppState behind a persistence guard.
+
+    Builds the BudgetConfig, StubBenchmarkScoreProvider, the per-backend
+    CostForecastRepository, the CostForecaster, and the ParetoAnalyzer
+    then hot-swaps them onto AppState through the lock-protected
+    ``swap_*`` methods so an in-flight controller read cannot race the
+    boot wiring.
+    """
+    from synthorg.budget.benchmark_stub import (  # noqa: PLC0415
+        StubBenchmarkScoreProvider,
+    )
+    from synthorg.budget.config import BudgetConfig  # noqa: PLC0415
+    from synthorg.budget.forecaster import CostForecaster  # noqa: PLC0415
+    from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
+    from synthorg.persistence.sqlite.cost_forecast_repo import (  # noqa: PLC0415
+        SQLiteCostForecastRepository,
+    )
+
+    budget_config = BudgetConfig()
+    benchmark_provider = StubBenchmarkScoreProvider()
+    backend_name = app_state.persistence.backend_name
+    if backend_name == "sqlite":
+        forecast_repo: CostForecastRepository = SQLiteCostForecastRepository(
+            app_state.persistence.get_db(),
+            write_context=app_state.persistence.write_context,
+            currency_getter=lambda: budget_config.currency,
+        )
+    else:
+        from synthorg.persistence.postgres.cost_forecast_repo import (  # noqa: PLC0415
+            PostgresCostForecastRepository,
+        )
+
+        forecast_repo = PostgresCostForecastRepository(
+            app_state.persistence.get_db(),
+            currency_getter=lambda: budget_config.currency,
+        )
+    forecaster = CostForecaster(budget_config=budget_config)
+    analyzer = ParetoAnalyzer(
+        benchmark_provider=benchmark_provider,
+        budget_config=budget_config,
+    )
+    app_state.swap_budget_config(budget_config)
+    app_state.swap_benchmark_provider(benchmark_provider)
+    app_state.swap_cost_forecast_repo(forecast_repo)
+    app_state.swap_cost_forecaster(forecaster)
+    app_state.swap_pareto_analyzer(analyzer)
+
+
+def _try_wire_cost_dial(app_state: AppState) -> None:
+    """Wire the cost-dial services best-effort; never poison startup."""
+    if not app_state.has_persistence or app_state.cost_forecaster is not None:
+        return
+    try:
+        _wire_cost_dial_services(app_state)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            service="cost_dial",
+            note="cost-dial wiring failed; controllers will 503",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
 
 def _build_default_approval_timeout_scheduler(
@@ -1057,6 +1127,8 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # ProjectWorkspaceService provisions one persistent git-backed
         # tree per project under the workspace base. Persistence-less
         # boots (test fixtures, dev apps with no DB) skip wiring -- the
+        _try_wire_cost_dial(app_state)
+
         # service is optional and gates on ``has_project_workspace_service``.
         if app_state.has_persistence and app_state.project_workspace_service is None:
             # Guard against partial-startup retry: this hook fires once

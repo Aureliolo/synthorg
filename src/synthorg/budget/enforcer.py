@@ -668,10 +668,11 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
     ) -> BudgetChecker | None:
         """Create a sync BudgetChecker with pre-computed baselines.
 
-        Checks task limit, monthly total, agent daily limit, and
-        optionally project budget.  Baselines are snapshot-in-time
-        (TOCTOU acceptable).  Returns ``None`` when all limits are
-        disabled.
+        Checks task limit, monthly total, agent daily limit, optional
+        project budget, and the per-run hard ceiling (``Task.hard_ceiling``
+        with fallback to ``budget.run_hard_ceiling``). Baselines are
+        snapshot-in-time (TOCTOU acceptable).  Returns ``None`` when all
+        limits are disabled.
 
         Args:
             task: The task being executed.
@@ -683,6 +684,9 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         task_limit = task.budget_limit
         monthly_budget = cfg.total_monthly
         daily_limit = cfg.per_agent_daily_limit
+        hard_ceiling = (
+            task.hard_ceiling if task.hard_ceiling is not None else cfg.run_hard_ceiling
+        )
 
         # All enforcement disabled.
         if (
@@ -690,6 +694,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             and task_limit <= 0
             and daily_limit <= 0
             and project_budget <= 0
+            and hard_ceiling <= 0
         ):
             return None
 
@@ -722,6 +727,10 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             project_budget=project_budget,
             project_baseline=project_baseline,
             project_id=project_id or None,
+            hard_ceiling=hard_ceiling,
+            hard_ceiling_currency=cfg.currency,
+            task_id=task.id,
+            forecast_id=task.forecast_id,
         )
 
     # ── Private helpers ──────────────────────────────────────────

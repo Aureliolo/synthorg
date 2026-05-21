@@ -38,6 +38,18 @@ BUDGET_RECORDS_QUERIED: Final[str] = "budget.records.queried"
 BUDGET_QUERY_OUTCOME: Final[LiteralString] = "budget.query.outcome"
 
 BUDGET_UTILIZATION_QUERIED: Final[str] = "budget.utilization.queried"
+
+BUDGET_FORECAST_GENERATED: Final[str] = "budget.forecast.generated"
+BUDGET_FORECAST_APPROVED: Final[str] = "budget.forecast.approved"
+BUDGET_FORECAST_REJECTED: Final[str] = "budget.forecast.rejected"
+BUDGET_FORECAST_SUPERSEDED: Final[str] = "budget.forecast.superseded"
+BUDGET_FORECAST_APPROVAL_REQUIRED: Final[str] = "budget.forecast.approval_required"
+
+BUDGET_HARD_CEILING_CONFIGURED: Final[str] = "budget.hard_ceiling.configured"
+BUDGET_HARD_CEILING_EXCEEDED: Final[str] = "budget.hard_ceiling.exceeded"
+BUDGET_HARD_CEILING_RAISED: Final[str] = "budget.hard_ceiling.raised"
+BUDGET_HARD_CEILING_HALT_STAMPED: Final[str] = "budget.hard_ceiling.halt_stamped"
+BUDGET_FORECAST_UNAVAILABLE: Final[str] = "budget.forecast.unavailable"
 BUDGET_UTILIZATION_ERROR: Final[str] = "budget.utilization.error"
 
 # Cost tracker eviction events

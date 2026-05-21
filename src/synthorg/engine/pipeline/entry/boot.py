@@ -23,10 +23,12 @@ simulation runtime).
 import os
 from typing import TYPE_CHECKING
 
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
 from synthorg.engine.pipeline.entry.factory import build_work_entry_adapter
+from synthorg.engine.pipeline.forecast_gate import ForecastGate
 from synthorg.engine.pipeline.models import WorkSource
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
@@ -43,6 +45,45 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _OBJECTIVES_DEFAULT_PROJECT_KEY = "default_project"
+
+
+def _forecast_gate_for(app_state: AppState) -> ForecastGate | None:
+    """Build a :class:`ForecastGate` from AppState when its deps are wired.
+
+    Returns ``None`` when the cost-dial services are absent (empty
+    company / boot order race) so the adapter falls back to a direct
+    pipeline dispatch. Once the cost-dial wiring lands the gate is
+    constructed against the live work pipeline + persisted repo +
+    forecaster + budget config.
+    """
+    forecaster = app_state.cost_forecaster
+    repo = app_state.cost_forecast_repo
+    budget_config = app_state.budget_config
+    if forecaster is None or repo is None or budget_config is None:
+        # With persistence up the cost-dial set wires atomically before
+        # this seam, so a missing forecaster/repo while forecasts are
+        # REQUIRED is a genuine partial-wire failure -- fail fast rather
+        # than silently dispatch work past a gate the operator mandated.
+        # The no-persistence / empty-company path stays tolerated (no
+        # work pipeline reaches here, and the gate is legitimately None).
+        if (
+            app_state.has_persistence
+            and budget_config is not None
+            and budget_config.forecast_required
+        ):
+            msg = (
+                "budget.forecast_required is enabled but the cost-dial"
+                " forecaster/repository did not wire; refusing to dispatch"
+                " work past a required pre-flight forecast gate"
+            )
+            raise ServiceUnavailableError(msg)
+        return None
+    return ForecastGate(
+        work_pipeline=app_state.work_pipeline,
+        forecaster=forecaster,
+        forecast_repo=repo,
+        budget_config=budget_config,
+    )
 
 
 async def wire_real_intake_entry(
@@ -86,6 +127,7 @@ async def wire_real_intake_entry(
         WorkSource.INTAKE,
         work_pipeline=app_state.work_pipeline,
         default_project=default_project,
+        forecast_gate=_forecast_gate_for(app_state),
     )
     if hot_swap:
         app_state.swap_intake_entry_adapter(adapter)
@@ -148,6 +190,7 @@ async def wire_real_objective_entry(
         WorkSource.OBJECTIVE,
         work_pipeline=app_state.work_pipeline,
         default_project=default_project,
+        forecast_gate=_forecast_gate_for(app_state),
     )
     if hot_swap:
         app_state.swap_objective_entry_adapter(adapter)
@@ -248,6 +291,7 @@ async def wire_real_task_board_entry(
         WorkSource.TASK_BOARD,
         work_pipeline=app_state.work_pipeline,
         default_project=default_project,
+        forecast_gate=_forecast_gate_for(app_state),
     )
     if hot_swap:
         app_state.swap_task_board_entry_adapter(adapter)

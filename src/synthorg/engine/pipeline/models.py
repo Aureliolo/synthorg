@@ -11,7 +11,7 @@ from the existing stores (single source of truth).
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Self
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -117,6 +117,25 @@ class WorkItem(BaseModel):
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         description="Construction timestamp (tz-aware UTC)",
+    )
+    forecast_id: UUID | None = Field(
+        default=None,
+        description=(
+            "Identifier of the approved pre-flight cost forecast that"
+            " released this work item into the pipeline (None when"
+            " budget.forecast_required is disabled or when the gate"
+            " has not yet attached one)"
+        ),
+    )
+    hard_ceiling: float | None = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Per-run hard ceiling carried from the approved forecast's"
+            " ceiling_amount. The intake phase stamps this onto the Task"
+            " so the in-loop BudgetChecker enforces the operator-approved"
+            " ceiling (None falls back to the global budget.run_hard_ceiling)"
+        ),
     )
 
 

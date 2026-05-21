@@ -61,3 +61,7 @@ ENFORCED SubmitRedTeamReportTool #1986 -- constructed by security/redteam/builde
 ENFORCED InMemoryRedTeamReportRepository #1986 -- constructed by security/redteam/builder.build_red_team_runtime; single-shot per-execution storage for RedTeamReport entries (persistent backends land in a follow-up)
 ENFORCED HeuristicGroundingChecker #1986 -- constructed by security/redteam/grounding/factory.build_grounding_checker when RedTeamConfig.grounding_checker_kind=="heuristic"; deterministic regex-based ungrounded-claim flag, swappable for a substrate-backed checker
 ENFORCED build_red_team_agent_identity #1986 -- called by security/redteam/builder.build_red_team_runtime; constructs the built-in Red Team AgentIdentity from the BUILTIN_ROLES catalog
+ENFORCED CostForecaster #1982 -- constructed in api/app.py::_wire_cost_dial_services and swapped onto AppState; consumed by ForecastBudgetController.create_forecast
+ENFORCED ForecastGate #1982 -- constructed in engine/pipeline/entry/boot.py::_forecast_gate_for and passed through build_work_entry_adapter as the work_pipeline seam; consulted on every brief submission before the work pipeline dispatches
+ENFORCED ParetoAnalyzer #1982 -- constructed in api/app.py::_wire_cost_dial_services; consumed by ForecastBudgetController.get_pareto
+ENFORCED StubBenchmarkScoreProvider #1982 -- constructed in api/app.py::_wire_cost_dial_services; powers ParetoAnalyzer's quality axis; swap to real benchmark provider when #1980 lands

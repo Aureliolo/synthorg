@@ -1253,6 +1253,73 @@ CREATE TABLE conversational_proposals (
 CREATE UNIQUE INDEX idx_cp_approval_id
     ON conversational_proposals(approval_id);
 
+-- Pre-flight cost forecasts.
+CREATE TABLE cost_forecasts (
+    forecast_id TEXT NOT NULL PRIMARY KEY
+        CHECK (char_length(trim(forecast_id)) > 0),
+    brief_hash TEXT NOT NULL
+        CHECK (char_length(trim(brief_hash)) > 0),
+    estimated_cost DOUBLE PRECISION NOT NULL CHECK (estimated_cost >= 0),
+    lower_bound DOUBLE PRECISION NOT NULL CHECK (lower_bound >= 0),
+    upper_bound DOUBLE PRECISION NOT NULL CHECK (upper_bound >= 0),
+    currency TEXT NOT NULL CHECK (char_length(currency) = 3),
+    decision TEXT NOT NULL DEFAULT 'pending' CHECK (
+        decision IN ('pending', 'approved', 'rejected', 'superseded')
+    ),
+    decided_at TEXT
+        CHECK (
+            decided_at IS NULL
+            OR decided_at LIKE '%+00:00'
+            OR decided_at LIKE '%Z'
+        ),
+    decided_by TEXT
+        CHECK (decided_by IS NULL OR char_length(trim(decided_by)) > 0),
+    ceiling_amount DOUBLE PRECISION
+        CHECK (ceiling_amount IS NULL OR ceiling_amount >= 0),
+    halt_accumulated_cost DOUBLE PRECISION
+        CHECK (halt_accumulated_cost IS NULL OR halt_accumulated_cost >= 0),
+    halt_ceiling_amount DOUBLE PRECISION
+        CHECK (halt_ceiling_amount IS NULL OR halt_ceiling_amount >= 0),
+    halt_currency TEXT
+        CHECK (halt_currency IS NULL OR char_length(halt_currency) = 3),
+    halted_at TEXT
+        CHECK (
+            halted_at IS NULL
+            OR halted_at LIKE '%+00:00'
+            OR halted_at LIKE '%Z'
+        ),
+    created_at TEXT NOT NULL CHECK (
+        created_at LIKE '%+00:00' OR created_at LIKE '%Z'
+    ),
+    updated_at TEXT NOT NULL CHECK (
+        updated_at LIKE '%+00:00' OR updated_at LIKE '%Z'
+    ),
+    CONSTRAINT chk_cf_lower_le_upper CHECK (lower_bound <= upper_bound),
+    CONSTRAINT chk_cf_estimate_within_band CHECK (
+        estimated_cost >= lower_bound AND estimated_cost <= upper_bound
+    ),
+    CONSTRAINT chk_cf_halt_all_or_none CHECK (
+        (halt_accumulated_cost IS NULL AND halt_ceiling_amount IS NULL
+            AND halt_currency IS NULL AND halted_at IS NULL)
+        OR (halt_accumulated_cost IS NOT NULL AND halt_ceiling_amount IS NOT NULL
+            AND halt_currency IS NOT NULL AND halted_at IS NOT NULL)
+    ),
+    CONSTRAINT chk_cf_decision_timestamp CHECK (
+        (decision = 'pending' AND decided_at IS NULL AND decided_by IS NULL)
+        OR (decision = 'superseded' AND decided_at IS NOT NULL AND decided_by IS NULL)
+        OR (decision IN ('approved', 'rejected')
+            AND decided_at IS NOT NULL
+            AND decided_by IS NOT NULL)
+    )
+);
+CREATE UNIQUE INDEX idx_cost_forecasts_unique_pending
+    ON cost_forecasts(brief_hash)
+    WHERE decision = 'pending';
+CREATE INDEX idx_cost_forecasts_brief_hash
+    ON cost_forecasts(brief_hash);
+CREATE INDEX idx_cost_forecasts_decision
+    ON cost_forecasts(decision);
+
 -- Org memory: MVCC operation log + materialized snapshot.
 -- Tags are TEXT JSON to match the SQLite backend's serialization;
 -- cross-backend parity wins over Postgres-native JSONB idiom here.

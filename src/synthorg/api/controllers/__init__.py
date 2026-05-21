@@ -18,6 +18,7 @@ from synthorg.api.controllers.budget import BudgetController
 from synthorg.api.controllers.budget_config_versions import (
     BudgetConfigVersionController,
 )
+from synthorg.api.controllers.budget_forecast import ForecastBudgetController
 from synthorg.api.controllers.capabilities import CapabilitiesController
 from synthorg.api.controllers.ceremony_policy import (
     CeremonyPolicyController,
@@ -118,6 +119,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     MeetingController,
     ArtifactController,
     BudgetController,
+    ForecastBudgetController,
     AnalyticsController,
     ProviderController,
     ApprovalsController,
@@ -227,6 +229,7 @@ __all__ = [
     "EvaluationConfigVersionController",
     "EventStreamController",
     "ExperimentsController",
+    "ForecastBudgetController",
     "IntegrationHealthController",
     "InterruptController",
     "LivenessController",

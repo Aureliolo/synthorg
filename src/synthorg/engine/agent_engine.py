@@ -95,6 +95,9 @@ if TYPE_CHECKING:
         CheckpointRepository,
         HeartbeatRepository,
     )
+    from synthorg.persistence.cost_forecast_protocol import (
+        CostForecastRepository,
+    )
     from synthorg.persistence.parked_context_protocol import (
         ParkedContextRepository,
     )
@@ -162,6 +165,7 @@ class AgentEngine(
         security_config: SecurityConfig | None = None,
         approval_store: ApprovalStoreProtocol | None = None,
         parked_context_repo: ParkedContextRepository | None = None,
+        cost_forecast_repo: CostForecastRepository | None = None,
         approval_gate: ApprovalGate | None = None,
         trust_service: TrustService | None = None,
         mcp_self_consumer: MCPSelfConsumerProvider | None = None,
@@ -214,6 +218,7 @@ class AgentEngine(
         self._model_resolver = model_resolver
         self._approval_store = approval_store
         self._parked_context_repo = parked_context_repo
+        self._cost_forecast_repo = cost_forecast_repo
         # The boot path constructs one ApprovalGate (backed by the
         # persistence ParkedContextRepository) and injects it so the
         # engine parks and the /approvals controller resumes on the
@@ -498,7 +503,7 @@ class AgentEngine(
             except ProjectNotFoundError, ProjectAgentNotMemberError:
                 raise
             except BudgetExhaustedError as exc:
-                return self._handle_budget_error(
+                return await self._handle_budget_error(
                     exc=exc,
                     identity=identity,
                     task=task,

@@ -205,6 +205,71 @@ budget:
       total_monthly: 100.00
     ```
 
+## Cost as a First-Class Dial
+
+Beyond the passive ledger and the soft-warning ladder, cost is a prospective,
+operator-facing control with three capabilities.
+
+### Pre-flight forecast gate
+
+`CostForecaster` produces a forecast for a brief before any spend commits: a
+mid-point `estimated_cost` plus a `[lower_bound, upper_bound]` uncertainty band.
+The estimate is a hybrid of a per-tier static prior and a Bayesian-shrinkage blend
+with historical per-role observations, so a cold start collapses to the prior and
+a warm history pulls toward the observed mean.
+
+`ForecastGate` sits at the work-entry seam between the entry adapters and the work
+pipeline. When `forecast_required` is set it refuses to dispatch a brief unless a
+persisted `Forecast` row with `decision = approved` covers it; a missing or pending
+forecast yields a fresh `pending` row and raises `CostForecastApprovalRequiredError`
+(HTTP 402) so the operator decides via the dashboard. The decision state machine is
+`pending -> approved | rejected | superseded`; `approved` and `rejected` are terminal.
+
+```yaml
+budget:
+  forecast_required: true
+  forecast_default_ceiling_multiplier: 1.5   # UI suggests ceiling = upper_bound * this
+  forecast_shrinkage_prior_weight: 5.0        # Bayesian prior pseudo-count
+  forecast_static_prior_per_turn_large: 0.10
+  forecast_static_prior_per_turn_medium: 0.03
+  forecast_static_prior_per_turn_small: 0.005
+  forecast_static_prior_per_turn_local_small: 0.0
+```
+
+On approval the work-entry intake phase stamps the forecast's `forecast_id` and
+the operator-approved `ceiling_amount` onto the `Task` so the in-loop checker and
+the engine can act on them.
+
+### Hard real-money ceiling
+
+Independent of the monthly soft-warning ladder, a per-run hard ceiling halts the org
+cleanly mid-run. The in-loop `BudgetChecker` raises `RunHardCeilingExceededError` (a
+subclass of `BudgetExhaustedError`) the moment accumulated cost meets or exceeds the
+task's `hard_ceiling` (falling back to the global `run_hard_ceiling` setting when the
+per-task value is unset; `0.0` disables the global fallback). The engine routes the
+crossing to `TerminationReason.PARKED` via `ApprovalGate.park_context` so execution
+state is preserved, and stamps a `HaltContext` (accumulated cost, ceiling, currency,
+timestamp) onto the forecast row. The operator raises the ceiling via
+`POST /budget/forecasts/{id}/raise_ceiling` (rejected with `RunHardCeilingTooLowError`
+if the new ceiling does not clear the accumulated cost), which clears the halt context
+so the run can resume.
+
+```yaml
+budget:
+  run_hard_ceiling: 0.00   # absolute amount in budget.currency; 0 disables the global fallback
+```
+
+### Cost / quality Pareto view
+
+`ParetoAnalyzer` answers "90% of the quality at 40% of the cost if you downgrade these
+roles". It walks the current per-role model assignments and observed costs, looks up a
+downgrade candidate per role, and pairs the `cost_saving_pct` with the `quality_delta_pct`
+drawn from a `BenchmarkScoreProvider`. The `StubBenchmarkScoreProvider` supplies
+calibrated per-tier constants pending a measured benchmark integration; every
+`ParetoPoint` and the frontier carry a `source` field that the dashboard surfaces
+verbatim so stub data is never mistaken for measured data. The frontier is advisory:
+downgrade callouts link to the agent settings surface rather than mutating models inline.
+
 ## Quota Degradation
 
 When a provider's quota is exhausted, the framework applies the configured degradation

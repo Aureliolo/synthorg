@@ -48,6 +48,11 @@ PERSISTENCE_COST_RECORD_QUERY_FAILED: Final[str] = (
     "persistence.cost_record.query_failed"
 )
 PERSISTENCE_COST_RECORD_AGGREGATED: Final[str] = "persistence.cost_record.aggregated"
+
+PERSISTENCE_COST_FORECAST_SAVED: Final[str] = "persistence.cost_forecast.saved"
+PERSISTENCE_COST_FORECAST_FETCHED: Final[str] = "persistence.cost_forecast.fetched"
+PERSISTENCE_COST_FORECAST_LISTED: Final[str] = "persistence.cost_forecast.listed"
+PERSISTENCE_COST_FORECAST_FAILED: Final[str] = "persistence.cost_forecast.failed"
 PERSISTENCE_COST_RECORD_AGGREGATE_FAILED: Final[str] = (
     "persistence.cost_record.aggregate_failed"
 )

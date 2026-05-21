@@ -32,6 +32,8 @@ const mockTask: DashboardTask = {
   middleware_override: null,
   source: null,
   metadata: {},
+  hard_ceiling: null,
+  forecast_id: null,
   version: 3,
   created_at: '2026-03-25T10:00:00.000Z',
   updated_at: '2026-03-27T14:30:00.000Z',

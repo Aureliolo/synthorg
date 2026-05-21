@@ -6,6 +6,14 @@ import type {
   DailySummary,
   PeriodSummary,
 } from '../types/budget'
+import type {
+  Forecast,
+  ForecastRequest,
+  ForecastApproveRequest,
+  ForecastRejectRequest,
+  ParetoFrontier,
+  RaiseCeilingRequest,
+} from '../types'
 import type { ErrorDetail } from '../types/errors'
 import type { ApiResponse, PaginationParams } from '../types/http'
 
@@ -63,5 +71,55 @@ export async function listCostRecords(
 
 export async function getAgentSpending(agentId: string): Promise<AgentSpending> {
   const response = await apiClient.get<ApiResponse<AgentSpending>>(`/budget/agents/${encodeURIComponent(agentId)}`)
+  return unwrap(response)
+}
+
+export async function getParetoFrontier(): Promise<ParetoFrontier> {
+  const response = await apiClient.get<ApiResponse<ParetoFrontier>>('/budget/pareto')
+  return unwrap(response)
+}
+
+export async function createForecast(data: ForecastRequest): Promise<Forecast> {
+  const response = await apiClient.post<ApiResponse<Forecast>>('/budget/forecast', data)
+  return unwrap(response)
+}
+
+export async function getForecast(forecastId: string): Promise<Forecast> {
+  const response = await apiClient.get<ApiResponse<Forecast>>(
+    `/budget/forecasts/${encodeURIComponent(forecastId)}`,
+  )
+  return unwrap(response)
+}
+
+export async function approveForecast(
+  forecastId: string,
+  data: ForecastApproveRequest,
+): Promise<Forecast> {
+  const response = await apiClient.post<ApiResponse<Forecast>>(
+    `/budget/forecasts/${encodeURIComponent(forecastId)}/approve`,
+    data,
+  )
+  return unwrap(response)
+}
+
+export async function rejectForecast(
+  forecastId: string,
+  data: ForecastRejectRequest,
+): Promise<Forecast> {
+  const response = await apiClient.post<ApiResponse<Forecast>>(
+    `/budget/forecasts/${encodeURIComponent(forecastId)}/reject`,
+    data,
+  )
+  return unwrap(response)
+}
+
+export async function raiseCeiling(
+  forecastId: string,
+  data: RaiseCeilingRequest,
+): Promise<Forecast> {
+  const response = await apiClient.post<ApiResponse<Forecast>>(
+    `/budget/forecasts/${encodeURIComponent(forecastId)}/raise_ceiling`,
+    data,
+  )
   return unwrap(response)
 }
