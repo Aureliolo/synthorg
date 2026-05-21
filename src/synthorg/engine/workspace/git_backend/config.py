@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 _DEFAULT_EMBEDDED_SUBDIR: Final[str] = "git-repos"
 _DEFAULT_GIT_CMD_TIMEOUT_SECONDS: Final[float] = 60.0
 _DEFAULT_RETRY_MAX_ATTEMPTS: Final[int] = 3
+_RETRY_MAX_ATTEMPTS_CEILING: Final[int] = 10
 _DEFAULT_RETRY_BASE_DELAY_SECONDS: Final[float] = 1.0
 _DEFAULT_RETRY_CAP_DELAY_SECONDS: Final[float] = 30.0
 _DEFAULT_FORGE_API_TIMEOUT_SECONDS: Final[float] = 30.0
@@ -42,7 +43,9 @@ class GitBackendResilienceConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    max_attempts: int = Field(default=_DEFAULT_RETRY_MAX_ATTEMPTS, ge=1, le=10)
+    max_attempts: int = Field(
+        default=_DEFAULT_RETRY_MAX_ATTEMPTS, ge=1, le=_RETRY_MAX_ATTEMPTS_CEILING
+    )
     base_delay_seconds: float = Field(
         default=_DEFAULT_RETRY_BASE_DELAY_SECONDS,
         ge=0.0,

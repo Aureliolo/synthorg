@@ -209,9 +209,17 @@ def _init_bare_with_commit(repo: Path) -> None:
         check=True,
         capture_output=True,
     )
-    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t.invalid"}
-    env["GIT_COMMITTER_NAME"] = "t"
-    env["GIT_COMMITTER_EMAIL"] = "t@t.invalid"
+    # Strip inherited GIT_* discovery vars (same hermeticity as the
+    # http-backend handler) before setting the seed identity.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@t.invalid",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@t.invalid",
+        }
+    )
     (seed / "README.md").write_text("seed\n", encoding="utf-8")
     for args in (
         ["git", "-C", str(seed), "add", "."],

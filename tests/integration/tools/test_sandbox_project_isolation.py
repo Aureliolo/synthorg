@@ -21,6 +21,8 @@ from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 if TYPE_CHECKING:
     from pathlib import Path
 
+# 120s (not the 30s global) covers real Docker container lifecycle:
+# image pull on a cold runner plus container create/exec/teardown per test.
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(120)]
 
 _TEST_IMAGE = "python:3.12-slim"

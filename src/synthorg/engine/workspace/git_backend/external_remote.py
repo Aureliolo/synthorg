@@ -210,7 +210,14 @@ class ExternalRemoteGitBackend:
         """Resolve ``<base_url>/<project_id>.git`` with a token injected."""
         connection = await self._connection()
         token = await self._token()
-        scheme, host_with_port, path, _owner = self._split_base(connection)
+        scheme, host_with_port, path, owner = self._split_base(connection)
+        if not owner:
+            msg = (
+                f"external git connection {self._connection_name!r} has a "
+                "base_url with no owner/namespace path component; cannot "
+                f"build a remote URL for project {project_id!r}"
+            )
+            raise GitBackendConfigError(msg)
         # Use hostname/port instead of raw netloc so any pre-existing
         # userinfo on the configured base_url cannot collide with the
         # token; percent-encode the token so reserved characters survive

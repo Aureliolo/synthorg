@@ -781,14 +781,15 @@ class MultiAgentCoordinator:
                 partial_phases=tuple(phases),
             )
 
-    async def _resolve_repo_root(self, project_id: NotBlankStr) -> Path | None:
+    async def _resolve_repo_root(self, project_id: NotBlankStr | None) -> Path | None:
         """Resolve the project's on-disk repo root for push-queue merges.
 
-        Returns ``None`` when no project-workspace service is wired (the
-        empty-company / no-durable-backing path), which makes the
-        dispatch merge fall back to the in-memory ``merge_group``.
+        Returns ``None`` when there is no project context or no
+        project-workspace service is wired (the empty-company /
+        no-durable-backing path), which makes the dispatch merge fall
+        back to the in-memory ``merge_group``.
         """
-        if self._project_workspace_service is None:
+        if project_id is None or self._project_workspace_service is None:
             return None
         workspace = await self._project_workspace_service.get_or_provision(project_id)
         return Path(workspace.workspace_path)

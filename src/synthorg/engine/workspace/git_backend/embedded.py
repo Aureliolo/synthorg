@@ -7,7 +7,7 @@ repo.  No external dependency; pushes/fetches are pure-local.
 """
 
 import asyncio
-from typing import TYPE_CHECKING
+from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import GitBackendType
@@ -38,9 +38,6 @@ from synthorg.observability.events.workspace import (
     GIT_BACKEND_PUSH_COMPLETE,
     GIT_BACKEND_PUSH_FAILED,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = get_logger(__name__)
 
