@@ -31,6 +31,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_WORKSPACE_VIOLATION,
 )
 from synthorg.tools._process_cleanup import close_subprocess_transport
+from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.config import SubprocessSandboxConfig
 from synthorg.tools.sandbox.errors import (
     SandboxError,
@@ -607,7 +608,18 @@ class SubprocessSandbox:
         effective_timeout = (
             timeout if timeout is not None else self._config.timeout_seconds
         )
-        env = self._build_filtered_env(env_overrides)
+        # Per-task reproducible environment (ambient, set by the worker):
+        # toolchain / PATH additions for this run. They merge as trusted
+        # internal overrides (declaration-sourced, not LLM-supplied), so
+        # they bypass the denylist like other internal overrides while an
+        # injected PATH is still re-filtered through the restricted-path
+        # guard in ``_build_filtered_env``. Explicit ``env_overrides`` win
+        # on conflict. ``image_override`` has no meaning for subprocess.
+        active_env = get_active_sandbox_environment()
+        effective_overrides: Mapping[str, str] | None = env_overrides
+        if active_env is not None and active_env.env_additions:
+            effective_overrides = {**active_env.env_additions, **(env_overrides or {})}
+        env = self._build_filtered_env(effective_overrides)
 
         logger.debug(
             SANDBOX_EXECUTE_START,

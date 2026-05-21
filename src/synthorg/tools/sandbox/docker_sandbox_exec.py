@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     import aiodocker
 
     from synthorg.core.clock import Clock
+    from synthorg.core.types import NotBlankStr
     from synthorg.observability.config import ContainerLogShippingConfig
     from synthorg.tools.sandbox.credential_manager import (
         SandboxCredentialManager,
@@ -110,6 +111,7 @@ class DockerSandboxExecMixin:
             category: str = "",
             network_mode: str | None = None,
             owner_id: str | None = None,
+            image_override: NotBlankStr | None = None,
         ) -> dict[str, Any]: ...
 
         def _needs_sidecar(self) -> bool: ...
@@ -473,6 +475,7 @@ class DockerSandboxExecMixin:
         effective_root: Path,
         category: str,
         owner_label: str,
+        image_override: NotBlankStr | None = None,
     ) -> ContainerHandle:
         """Create and start a long-lived idle sandbox container.
 
@@ -489,6 +492,8 @@ class DockerSandboxExecMixin:
                 subtree or the whole workspace root).
             category: Tool category for runtime resolution.
             owner_label: Lifecycle owner recorded as a container label.
+            image_override: Per-project devcontainer image to run in
+                place of the configured sandbox image; ``None`` keeps it.
 
         Returns:
             A ``ContainerHandle`` for a started, idle container.
@@ -512,6 +517,7 @@ class DockerSandboxExecMixin:
             category=category,
             network_mode=network_mode,
             owner_id=owner_label,
+            image_override=image_override,
         )
         container_id = await self._create_started_container(
             docker,

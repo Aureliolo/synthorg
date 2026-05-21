@@ -28,6 +28,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_CONTAINER_UNTRACK_FAILED,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
 )
+from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
@@ -444,6 +445,7 @@ class DockerSandbox(
         category: str = "",
         network_mode: str | None = None,
         owner_id: str | None = None,
+        image_override: NotBlankStr | None = None,
     ) -> dict[str, Any]:
         """Build the Docker container creation config.
 
@@ -459,6 +461,11 @@ class DockerSandbox(
                 set ``container:<sidecar_id>`` when sidecar
                 enforcement is active.
             owner_id: Lifecycle owner for container labeling.
+            image_override: Per-project devcontainer image to run in
+                place of the configured sandbox image; ``None`` keeps the
+                configured image.  The hardened host config (read-only
+                root, ``CapDrop: ALL``, ``no-new-privileges``) still
+                applies, so the override image must run under it.
 
         Returns:
             A dict suitable for ``aiodocker`` container creation.
@@ -480,7 +487,7 @@ class DockerSandbox(
         if owner_id is not None:
             labels["synthorg.sandbox.owner_id"] = owner_id
         return {
-            "Image": self._config.image,
+            "Image": str(image_override) if image_override else self._config.image,
             "Cmd": [command, *args],
             "WorkingDir": container_cwd,
             "Env": env_list,
@@ -700,9 +707,20 @@ class DockerSandbox(
             self._config.timeout_seconds,
         )
         container_cwd = self._resolve_cwd_in_container(cwd, effective_root)
+        # Per-task reproducible environment (ambient, set by the worker):
+        # the devcontainer image to run in, plus toolchain / PATH
+        # additions. Additions are the base; explicit ``env_overrides``
+        # win on conflict. They flow through ``_resolve_exec_env`` like
+        # any other override, so the credential-sanitise + reserved-var
+        # checks still apply.
+        active_env = get_active_sandbox_environment()
+        image_override = active_env.image_override if active_env is not None else None
+        effective_overrides: Mapping[str, str] | None = env_overrides
+        if active_env is not None and active_env.env_additions:
+            effective_overrides = {**active_env.env_additions, **(env_overrides or {})}
         # Validate / resolve the per-command env BEFORE any container
         # work so a reserved-variable rejection never leaks a container.
-        exec_env = self._resolve_exec_env(env_overrides)
+        exec_env = self._resolve_exec_env(effective_overrides)
         owner_key, strategy_owns = self._resolve_lifecycle(owner_id, project_id=pid)
         logger.debug(
             DOCKER_EXECUTE_START,
@@ -710,7 +728,7 @@ class DockerSandbox(
             args=args,
             cwd=container_cwd,
             timeout=effective_timeout,
-            image=self._config.image,
+            image=str(image_override) if image_override else self._config.image,
             owner_id=owner_key,
         )
         docker = await self._ensure_docker()
@@ -719,10 +737,11 @@ class DockerSandbox(
             return await self._create_keepalive_handle(
                 docker=docker,
                 container_cwd=container_cwd,
-                env_overrides=env_overrides,
+                env_overrides=effective_overrides,
                 effective_root=effective_root,
                 category=category,
                 owner_label=owner_key,
+                image_override=image_override,
             )
 
         handle = await self._acquire_owner_handle(
