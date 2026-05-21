@@ -357,8 +357,11 @@ class SQLiteDynamicToolRepository:
 
         ``**updates`` may carry ``validated_at`` / ``activated_at`` /
         ``retired_at`` / ``validation``; unknown keys raise ``QueryError``.
-        ``validation`` is serialised via ``model_dump_json()`` so the row
-        stamps gate evidence atomically with the timestamp.
+        Each kwarg is keyed off presence: omit it to leave the column
+        unchanged, pass a value to update it. ``validation`` is serialised
+        via ``model_dump_json()`` when a :class:`ToolValidationResult` is
+        passed; passing ``None`` explicitly clears the column to ``NULL``
+        (callers who want to preserve existing evidence must omit the key).
         """
         unknown = set(updates) - _TRANSITION_UPDATE_KEYS
         if unknown:

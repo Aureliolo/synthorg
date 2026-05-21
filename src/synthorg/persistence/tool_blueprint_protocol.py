@@ -34,10 +34,20 @@ if TYPE_CHECKING:
     class TransitionKwargs(TypedDict, total=False):
         """Typed kwargs for :meth:`DynamicToolRepository.transition_if`.
 
-        ``validation`` accepts a :class:`ToolValidationResult` (serialised
-        to the column's native JSON shape by the backend implementation),
-        or ``None`` to leave the column untouched. Required when the
-        target state implies ``validation IS NOT NULL`` at the DB layer.
+        ``validation`` is keyed off **presence**, not value, like every
+        other field here:
+
+        * **Omit** the key entirely to leave the ``validation`` column
+          untouched (the row keeps whatever evidence it already carries).
+        * Pass a :class:`ToolValidationResult` to stamp gate evidence
+          atomically with the timestamp; backends serialise it to the
+          column's native JSON shape. This is required when the target
+          state implies ``validation IS NOT NULL`` at the DB layer
+          (validated / active / retired), otherwise the lifecycle CHECK
+          rejects the transition.
+        * Pass ``None`` to **explicitly clear** the column to ``NULL``.
+          Callers wanting to preserve existing evidence must omit the
+          key, NOT pass ``None``.
         """
 
         validated_at: object

@@ -284,6 +284,38 @@ class TestDynamicToolRepository:
         # The CAS stamped the gate evidence atomically with the timestamp.
         assert fetched.validation == validation
 
+    async def test_transition_if_requires_validation_for_validated_state(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # PENDING -> VALIDATED without a validation kwarg leaves the
+        # validation column NULL, which the lifecycle CHECK rejects on
+        # both backends. This pins the invariant that gate-graduated
+        # states MUST carry their audit evidence at the DB layer.
+        from synthorg.core.persistence_errors import QueryError
+
+        repo = _repo(backend)
+        bp = _blueprint(
+            blueprint_id="bp-no-val",
+            name="synthorg_textkit_no_val",
+        )
+        await repo.save(bp)
+
+        with pytest.raises(QueryError):
+            await repo.transition_if(
+                bp.id,
+                from_state=ToolBlueprintState.PENDING,
+                to_state=ToolBlueprintState.VALIDATED,
+                validated_at=_NOW + timedelta(minutes=1),
+            )
+
+        # The row must still be PENDING; the failed CAS does not advance
+        # state and the underlying row's lifecycle fields stay clean.
+        fetched = await repo.get(bp.id)
+        assert fetched is not None
+        assert fetched.state is ToolBlueprintState.PENDING
+        assert fetched.validated_at is None
+        assert fetched.validation is None
+
     async def test_transition_if_mismatch_returns_false(
         self, backend: PersistenceBackend
     ) -> None:
