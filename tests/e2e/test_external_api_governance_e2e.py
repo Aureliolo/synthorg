@@ -1,4 +1,4 @@
-"""End-to-end governance test for the external_api tool (#1991).
+"""End-to-end governance test for the external_api tool.
 
 Drives the tool through the real ``ToolInvoker`` escalation path, a real
 ``ConnectionCatalog`` (in-memory repository + stub secret backend, so

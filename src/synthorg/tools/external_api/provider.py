@@ -7,7 +7,7 @@ makes DNS-pinned requests directly; a future strategy (e.g. a sidecar proxy)
 can register under its own config discriminator without touching the tool.
 
 Credentials live in ``ExternalAccessRequest.headers`` and MUST NOT be logged
-by any provider implementation (SEC-1).
+by any provider implementation.
 """
 
 from typing import Protocol, runtime_checkable

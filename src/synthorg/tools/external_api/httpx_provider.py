@@ -37,7 +37,7 @@ class HttpxExternalAccessProvider:
         """Stream *req* via httpx with optional DNS pinning.
 
         Reads at most ``max_response_bytes + 1`` to detect truncation without
-        buffering an unbounded body. Never logs headers or body (SEC-1).
+        buffering an unbounded body. Never logs headers or body.
         """
         transport: httpx.AsyncBaseTransport | None = None
         if req.pinned_ip is not None and req.pinned_hostname is not None:

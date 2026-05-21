@@ -1,8 +1,8 @@
 """Map brokered connection credentials to request auth headers.
 
 Runs in-process inside the tool; the returned headers carry secrets and MUST
-NOT be logged (SEC-1). Credential field names follow the generic-HTTP
-connection convention (``token``, ``api_key``, ``username``, ``password``,
+NOT be logged. Credential field names follow the generic-HTTP connection
+convention (``token``, ``api_key``, ``username``, ``password``,
 ``header_name``, ``header_value``).
 """
 
