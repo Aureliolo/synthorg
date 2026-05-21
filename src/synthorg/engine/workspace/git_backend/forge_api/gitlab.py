@@ -27,41 +27,38 @@ logger = get_logger(__name__)
 _HTTP_NOT_FOUND: Final[int] = 404
 
 
-class _GitLabUser(BaseModel):
-    """Typed view of the ``GET /user`` fields the client consumes."""
+class _GitLabUser(BaseModel):  # lint-allow: frozen-extra-forbid -- forge extras
+    """Typed view of the ``GET /user`` fields the client consumes.
 
-    model_config = ConfigDict(
-        frozen=True,
-        # lint-allow: frozen-extra-forbid -- forge /user returns many fields
-        # beyond the username we model; ignore the rest.
-        extra="ignore",
-    )
+    ``extra="ignore"`` because the forge response carries many fields
+    beyond the username we model.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
     username: NotBlankStr
 
 
-class _GitLabNamespace(BaseModel):
-    """Typed view of the ``GET /namespaces/<owner>`` id field."""
+class _GitLabNamespace(BaseModel):  # lint-allow: frozen-extra-forbid -- forge extras
+    """Typed view of the ``GET /namespaces/<owner>`` id field.
 
-    model_config = ConfigDict(
-        frozen=True,
-        # lint-allow: frozen-extra-forbid -- the namespace payload carries
-        # many fields beyond the id we model; ignore the rest.
-        extra="ignore",
-    )
+    ``extra="ignore"`` because the namespace payload carries many fields
+    beyond the id we model.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
     id: int
 
 
-class _GitLabProject(BaseModel):
-    """Typed view of the project-creation response fields the client uses."""
+class _GitLabProject(BaseModel):  # lint-allow: frozen-extra-forbid -- forge extras
+    """Typed view of the project-creation response fields the client uses.
 
-    model_config = ConfigDict(
-        frozen=True,
-        # lint-allow: frozen-extra-forbid -- project payloads carry many
-        # fields beyond the four we model; ignore the rest.
-        extra="ignore",
-    )
+    ``extra="ignore"`` because the forge payload carries many fields
+    beyond the four we model.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
     path_with_namespace: NotBlankStr
     http_url_to_repo: NotBlankStr

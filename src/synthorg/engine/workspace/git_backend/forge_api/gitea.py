@@ -32,28 +32,26 @@ logger = get_logger(__name__)
 _HTTP_NOT_FOUND: Final[int] = 404
 
 
-class _GiteaUser(BaseModel):
-    """Typed view of the ``GET /user`` fields the client consumes."""
+class _GiteaUser(BaseModel):  # lint-allow: frozen-extra-forbid -- forge extras
+    """Typed view of the ``GET /user`` fields the client consumes.
 
-    model_config = ConfigDict(
-        frozen=True,
-        # lint-allow: frozen-extra-forbid -- forge /user returns many fields
-        # beyond the login we model; ignore the rest.
-        extra="ignore",
-    )
+    ``extra="ignore"`` because the forge response carries many fields
+    beyond the login we model.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
     login: NotBlankStr
 
 
-class _GiteaRepo(BaseModel):
-    """Typed view of the repository response fields the client uses."""
+class _GiteaRepo(BaseModel):  # lint-allow: frozen-extra-forbid -- forge extras
+    """Typed view of the repository response fields the client uses.
 
-    model_config = ConfigDict(
-        frozen=True,
-        # lint-allow: frozen-extra-forbid -- forge repo payloads carry many
-        # fields beyond the four we model; ignore the rest.
-        extra="ignore",
-    )
+    ``extra="ignore"`` because the forge payload carries many fields
+    beyond the four we model.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
     full_name: NotBlankStr
     clone_url: NotBlankStr

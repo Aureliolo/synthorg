@@ -118,7 +118,8 @@ def _matches(haystack: str, markers: tuple[str, ...]) -> bool:
 
 # git echoes the failing remote URL in clone/push stderr, and that URL
 # carries the percent-encoded token as HTTPS userinfo. Mask the
-# userinfo before any stderr text reaches a log line (SEC-1).
+# userinfo before any stderr text reaches a log line so the token is
+# never persisted.
 _URL_USERINFO: Final[re.Pattern[str]] = re.compile(r"(\w+://)[^/@\s]+@")
 
 
