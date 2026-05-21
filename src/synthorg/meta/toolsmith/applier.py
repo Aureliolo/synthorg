@@ -2,14 +2,17 @@
 
 The applier is the trust boundary: a candidate blueprint is persisted as
 ``PENDING``, run through the benchmark gate, and only on a passing result
-promoted to ``VALIDATED``/``ACTIVE``, persisted, and live-registered in the
-dynamic registry. A failing gate leaves nothing registered (the blueprint
-keeps its validation record for audit but never goes ``ACTIVE``).
+promoted to ``VALIDATED``/``ACTIVE``, live-registered in the dynamic
+registry, and persisted (registration-then-persist so a registration
+failure cannot leave a durable ACTIVE row without a live handler). A
+failing gate leaves nothing registered (the blueprint keeps its
+validation record for audit but never goes ``ACTIVE``).
 
 Rollback retires an active tool: it transitions the row to ``RETIRED`` and
 unregisters the live handler.
 """
 
+import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
@@ -63,35 +66,33 @@ class ToolCreationApplier:
         return ProposalAltitude.TOOL_CREATION
 
     async def apply(self, proposal: ImprovementProposal) -> ApplyResult:
-        """Validate then live-register each blueprint in the proposal."""
+        """Validate then live-register each blueprint in the proposal.
+
+        Per-blueprint failures are isolated inside the task wrapper: a
+        single tool failing the gate or its persistence cannot abort the
+        others. Provider-wide and system-critical exceptions still
+        propagate out of the TaskGroup so the caller can fail the whole
+        proposal cleanly.
+        """
         if not proposal.tool_changes:
             return ApplyResult(
                 success=False,
                 error_message=NotBlankStr("proposal carries no tool_changes"),
                 changes_applied=0,
             )
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(self._apply_one_safely(blueprint))
+                for blueprint in proposal.tool_changes
+            ]
         applied = 0
         failures: list[str] = []
-        for blueprint in proposal.tool_changes:
-            try:
-                ok = await self._apply_one(blueprint)
-            except ProviderError:
-                raise
-            except MemoryError, RecursionError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    TOOLSMITH_APPLY_FAILED,
-                    tool_name=blueprint.name,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                failures.append(f"{blueprint.name}: {type(exc).__name__}")
-                continue
-            if ok:
+        for task in tasks:
+            success, error = task.result()
+            if success:
                 applied += 1
-            else:
-                failures.append(f"{blueprint.name}: rejected by benchmark gate")
+            elif error is not None:
+                failures.append(error)
         if failures:
             return ApplyResult(
                 success=False,
@@ -99,6 +100,33 @@ class ToolCreationApplier:
                 changes_applied=applied,
             )
         return ApplyResult(success=True, changes_applied=applied)
+
+    async def _apply_one_safely(
+        self, blueprint: ToolBlueprint
+    ) -> tuple[bool, str | None]:
+        """Run ``_apply_one`` with per-blueprint error isolation.
+
+        Returns ``(True, None)`` on a passing apply, ``(False, reason)`` on
+        a gate rejection or per-blueprint exception. ``ProviderError`` and
+        system-critical errors propagate so the TaskGroup surfaces them.
+        """
+        try:
+            ok = await self._apply_one(blueprint)
+        except ProviderError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                TOOLSMITH_APPLY_FAILED,
+                tool_name=blueprint.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False, f"{blueprint.name}: {type(exc).__name__}"
+        if ok:
+            return True, None
+        return False, f"{blueprint.name}: rejected by benchmark gate"
 
     async def dry_run(self, proposal: ImprovementProposal) -> ApplyResult:
         """Validate every blueprint without persisting or registering."""
@@ -122,7 +150,13 @@ class ToolCreationApplier:
         return ApplyResult(success=True, changes_applied=len(proposal.tool_changes))
 
     async def _apply_one(self, blueprint: ToolBlueprint) -> bool:
-        """Persist, validate, and (on pass) activate + register one tool."""
+        """Persist, validate, and (on pass) register + activate one tool.
+
+        Register-then-persist: a registration failure leaves nothing
+        durably ACTIVE, and a persistence failure after a successful
+        registration is rolled back by unregistering the live handler. The
+        success log only fires once both sides land.
+        """
         logger.info(TOOLSMITH_APPLY_STARTED, tool_name=blueprint.name)
         pending = blueprint.model_copy(update={"state": ToolBlueprintState.PENDING})
         await self._repo.save(pending)
@@ -146,8 +180,18 @@ class ToolCreationApplier:
                 "validation": result,
             }
         )
-        await self._repo.save(active)
         await self._registry.register(active)
+        try:
+            await self._repo.save(active)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            # Persisting an ACTIVE row failed: unregister the live handler
+            # so the durable state ("not in DB") matches the runtime state
+            # ("not registered"). Without rollback the layered tool surface
+            # would expose a tool with no audit trail.
+            await self._registry.unregister(active.name)
+            raise
         logger.info(TOOLSMITH_APPLY_COMPLETED, tool_name=blueprint.name)
         return True
 

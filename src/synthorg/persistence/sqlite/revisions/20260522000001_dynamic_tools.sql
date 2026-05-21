@@ -10,14 +10,21 @@
 -- back). The state-correlated timestamps are stamped on transition.
 -- parameters_schema and validation are stored as JSON text (TEXT here,
 -- JSONB on Postgres); a real Pydantic args_model is materialised from
--- parameters_schema at registration time.
+-- parameters_schema at registration time. JSON columns reject non-object
+-- payloads at write time so a malformed blueprint cannot persist and
+-- crash the materialiser at register-time. The table-level lifecycle
+-- CHECK enforces the state-machine: timestamps must match the state.
 
 CREATE TABLE dynamic_tools (
     id TEXT NOT NULL PRIMARY KEY CHECK (length(trim(id)) > 0),
     name TEXT NOT NULL UNIQUE CHECK (length(trim(name)) > 0),
     description TEXT NOT NULL CHECK (length(trim(description)) > 0),
     capability TEXT NOT NULL CHECK (length(trim(capability)) > 0),
-    parameters_schema TEXT NOT NULL,
+    parameters_schema TEXT NOT NULL
+        CHECK (
+            json_valid(parameters_schema)
+            AND json_type(parameters_schema) = 'object'
+        ),
     script_body TEXT NOT NULL CHECK (length(trim(script_body)) > 0),
     sandbox_backend TEXT NOT NULL
         CHECK (sandbox_backend IN ('docker', 'subprocess')),
@@ -38,6 +45,28 @@ CREATE TABLE dynamic_tools (
         CHECK (retired_at IS NULL
             OR retired_at LIKE '%+00:00' OR retired_at LIKE '%Z'),
     validation TEXT
+        CHECK (
+            validation IS NULL
+            OR (json_valid(validation) AND json_type(validation) = 'object')
+        ),
+    CHECK (
+        (state = 'pending'
+            AND validated_at IS NULL
+            AND activated_at IS NULL
+            AND retired_at IS NULL)
+        OR (state = 'validated'
+            AND validated_at IS NOT NULL
+            AND activated_at IS NULL
+            AND retired_at IS NULL)
+        OR (state = 'active'
+            AND validated_at IS NOT NULL
+            AND activated_at IS NOT NULL
+            AND retired_at IS NULL)
+        OR (state = 'retired'
+            AND validated_at IS NOT NULL
+            AND activated_at IS NOT NULL
+            AND retired_at IS NOT NULL)
+    )
 );
 
 CREATE INDEX idx_dynamic_tools_state ON dynamic_tools(state);

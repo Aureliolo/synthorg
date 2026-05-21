@@ -116,11 +116,24 @@ def build_args_model(blueprint: ToolBlueprint) -> type[BaseModel]:
             field_defs[prop_name] = (py_type, ...)
         else:
             field_defs[prop_name] = (py_type | None, None)
-    return create_model(
-        _model_class_name(blueprint.name),
-        __config__=ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False),
-        **field_defs,
-    )
+    # ``create_model`` raises a variety of exceptions (TypeError on bad
+    # field defs, ValueError from Pydantic's own validation, etc.); wrap
+    # them in the domain-specific ToolRegistrationError so callers receive
+    # the contract the docstring documents.
+    try:
+        return create_model(
+            _model_class_name(blueprint.name),
+            __config__=ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False),
+            **field_defs,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        msg = (
+            f"blueprint {blueprint.name!r} args model materialization failed: "
+            f"{type(exc).__name__}"
+        )
+        raise ToolRegistrationError(msg) from exc
 
 
 def blueprint_to_mcp_def(blueprint: ToolBlueprint) -> MCPToolDef:
@@ -216,6 +229,18 @@ class DynamicToolRegistry:
     def names(self) -> tuple[NotBlankStr, ...]:
         """Return the currently-registered dynamic tool names (sorted)."""
         return tuple(NotBlankStr(n) for n in sorted(self._snapshot))
+
+    def capabilities(self) -> tuple[NotBlankStr, ...]:
+        """Return the capability tags of currently-registered dynamic tools.
+
+        The toolsmith generator consumes this as a dedup hint so authored
+        tools never duplicate a capability already live in the dynamic
+        layer of the same process.
+        """
+        return tuple(
+            NotBlankStr(entry.definition.capability)
+            for entry in (self._snapshot[n] for n in sorted(self._snapshot))
+        )
 
     def get_def(self, name: str) -> MCPToolDef | None:
         """Return the definition for ``name``, or ``None`` if absent."""

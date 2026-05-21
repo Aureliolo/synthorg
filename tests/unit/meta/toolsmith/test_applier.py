@@ -248,11 +248,44 @@ class TestToolCreationApplier:
         bp = _blueprint()
         result = await applier.apply(_proposal(bp))
 
-        # The per-blueprint try/except catches the persistence failure,
-        # surfaces it in the ApplyResult, and never reaches registration.
+        # The pending-save failure is caught per-blueprint and surfaced in
+        # the ApplyResult. Because save() raised on the very first call
+        # (the PENDING write), registration is never reached and the
+        # registry stays empty.
         assert result.success is False
         assert result.changes_applied == 0
         assert "RuntimeError" in (result.error_message or "")
+        assert registry.get_def(bp.name) is None
+
+    async def test_apply_rolls_back_registration_on_active_save_failure(self) -> None:
+        # Registration happens BEFORE the ACTIVE-row persist; if the
+        # persist fails, the live handler must be unregistered so the
+        # durable state ("not in DB") matches the runtime state ("not
+        # registered"). Without rollback the layered tool surface would
+        # expose a tool with no audit trail.
+        class _RaiseOnActiveSave(_InMemoryRepo):
+            def __init__(self) -> None:
+                super().__init__()
+                self._saves = 0
+
+            async def save(self, entity: ToolBlueprint) -> None:
+                self._saves += 1
+                if entity.state is ToolBlueprintState.ACTIVE:
+                    msg = "simulated DB outage on ACTIVE save"
+                    raise RuntimeError(msg)
+                self.rows[entity.id] = entity
+
+        repo = _RaiseOnActiveSave()
+        registry = _registry()
+        applier = _applier(repo, registry, _Gate(result=_pass_result()))
+
+        bp = _blueprint()
+        result = await applier.apply(_proposal(bp))
+
+        assert result.success is False
+        assert result.changes_applied == 0
+        assert "RuntimeError" in (result.error_message or "")
+        # Registration ran but was rolled back; durable state matches.
         assert registry.get_def(bp.name) is None
 
     async def test_retire_non_active_returns_false(self) -> None:

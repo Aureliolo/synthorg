@@ -74,7 +74,14 @@ def _blueprint(
     activated_at = None
     retired_at = None
     validation = None
-    if state in {ToolBlueprintState.VALIDATED, ToolBlueprintState.ACTIVE}:
+    # Every post-PENDING state carries the gate's validation record, so
+    # the audit trail survives the lifecycle (the runtime model rejects a
+    # validated/active/retired row without it).
+    if state in {
+        ToolBlueprintState.VALIDATED,
+        ToolBlueprintState.ACTIVE,
+        ToolBlueprintState.RETIRED,
+    }:
         validated_at = _NOW + timedelta(minutes=1)
         validation = ToolValidationResult(
             passed=True,
@@ -88,7 +95,6 @@ def _blueprint(
     if state is ToolBlueprintState.ACTIVE:
         activated_at = _NOW + timedelta(minutes=2)
     if state is ToolBlueprintState.RETIRED:
-        validated_at = _NOW + timedelta(minutes=1)
         activated_at = _NOW + timedelta(minutes=2)
         retired_at = _NOW + timedelta(minutes=3)
     return ToolBlueprint(

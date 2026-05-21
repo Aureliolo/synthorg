@@ -14,6 +14,7 @@ The expensive golden run is gated behind the cheap brief: it only runs
 when the brief passes and ``require_golden_delta`` is set.
 """
 
+from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.types import NotBlankStr
@@ -69,7 +70,9 @@ def _synthesize_probe(parameters_schema: dict[str, Any]) -> dict[str, Any]:
         prop = properties.get(name)
         raw_type = prop.get("type") if isinstance(prop, dict) else None
         json_type = raw_type if isinstance(raw_type, str) else ""
-        probe[name] = _PROBE_VALUES.get(json_type, "probe")
+        # deepcopy so a script that mutates list/dict probes cannot leak
+        # state into a subsequent invocation reusing the same singleton.
+        probe[name] = deepcopy(_PROBE_VALUES.get(json_type, "probe"))
     return probe
 
 
@@ -114,6 +117,16 @@ class SandboxBriefRunner:
                 tool_name=blueprint.name,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
+            )
+            return False, _BRIEF_FAIL_SCORE
+        # A tool that returns a JSON list/string/number is parseable but
+        # not a valid envelope; reject without an AttributeError on .get.
+        if not isinstance(envelope, dict):
+            logger.warning(
+                TOOLSMITH_BRIEF_PARSE_FAILED,
+                tool_name=blueprint.name,
+                error_type="EnvelopeTypeError",
+                error="tool output must be a JSON object envelope",
             )
             return False, _BRIEF_FAIL_SCORE
         passed = envelope.get("status") == "ok"

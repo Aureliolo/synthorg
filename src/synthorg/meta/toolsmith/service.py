@@ -16,8 +16,9 @@ Approved proposals are applied via :meth:`apply`, which validates against
 the benchmark gate and live-registers the tool on pass.
 """
 
+import asyncio
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
@@ -49,6 +50,7 @@ if TYPE_CHECKING:
     from synthorg.meta.protocol import ProposalGuard
     from synthorg.meta.toolsmith.applier import ToolCreationApplier
     from synthorg.meta.toolsmith.config import ToolsmithConfig
+    from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
     from synthorg.meta.toolsmith.models import CapabilityGap, ToolBlueprint
     from synthorg.meta.toolsmith.protocol import (
         CapabilityGapStore,
@@ -57,6 +59,12 @@ if TYPE_CHECKING:
     )
 
 logger = get_logger(__name__)
+
+# Recurring capability gaps that reach the threshold are real demand
+# signals, but a single observation could still be noise; mid-confidence
+# is the right starting prior until the gate-then-guards chain has
+# additional evidence.
+_TOOL_CREATION_CONFIDENCE: Final[float] = 0.5
 
 
 class ToolsmithService:
@@ -69,8 +77,13 @@ class ToolsmithService:
         applier: Validates and live-registers approved blueprints.
         guards: Sequential guard chain (scope, rollback, rate, approval).
         overflow_handler: Handles service-access gaps (optional).
-        existing_capabilities: Callable returning the current capability
-            surface, so the generator avoids duplicates.
+        existing_capabilities: Static capability surface (dedup hint).
+            The dynamic-registry capabilities are merged at gap-handling
+            time via ``dynamic_registry`` (if provided), so the generator
+            also avoids duplicating tools registered earlier in this run.
+        dynamic_registry: Live dynamic-tool registry whose capabilities
+            extend the dedup hint at call time. Optional so the service
+            still works in tests that exercise authoring in isolation.
         clock: Time source.
     """
 
@@ -84,6 +97,7 @@ class ToolsmithService:
         guards: tuple[ProposalGuard, ...],
         overflow_handler: ToolCreationOverflowHandler | None = None,
         existing_capabilities: tuple[NotBlankStr, ...] = (),
+        dynamic_registry: DynamicToolRegistry | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._config = config
@@ -93,6 +107,7 @@ class ToolsmithService:
         self._guards = guards
         self._overflow_handler = overflow_handler
         self._existing_capabilities = existing_capabilities
+        self._dynamic_registry = dynamic_registry
         self._clock = clock or SystemClock()
 
     async def record_gap(
@@ -109,7 +124,14 @@ class ToolsmithService:
     async def run_cycle(
         self, *, now: datetime | None = None
     ) -> tuple[ImprovementProposal, ...]:
-        """Detect recurring gaps, author proposals, and guard them."""
+        """Detect recurring gaps, author proposals, and guard them.
+
+        Per-gap authoring is parallelised via TaskGroup so the LLM round
+        trip and guard chain run concurrently across gaps; each gap's
+        per-call ``ToolCapabilityNotAllowedError`` / ``ToolAuthoringError``
+        is caught inside ``_handle_gap`` so a single bad gap cannot abort
+        the whole batch.
+        """
         moment = now or self._clock.now()
         logger.info(TOOLSMITH_CYCLE_STARTED)
         gaps = await self._gap_store.recurring(
@@ -118,8 +140,11 @@ class ToolsmithService:
             now=moment,
         )
         proposals: list[ImprovementProposal] = []
-        for gap in gaps:
-            proposals.extend(await self._handle_gap(gap))
+        if gaps:
+            async with asyncio.TaskGroup() as tg:
+                tasks = [tg.create_task(self._handle_gap(gap)) for gap in gaps]
+            for task in tasks:
+                proposals.extend(task.result())
         logger.info(
             TOOLSMITH_CYCLE_COMPLETED,
             gaps=len(gaps),
@@ -135,9 +160,16 @@ class ToolsmithService:
         """Author or overflow a single gap, then guard the result."""
         if gap.signature in self._config.service_access_capabilities:
             return await self._handle_overflow(gap)
+        # Dedup hint = static surface known at boot + dynamic-registry
+        # capabilities the applier registered earlier in this run. The
+        # latter prevents the LLM from authoring a duplicate of a tool
+        # added in the same cycle (it cannot see live state otherwise).
+        existing = self._existing_capabilities
+        if self._dynamic_registry is not None:
+            existing = (*existing, *self._dynamic_registry.capabilities())
         try:
             blueprint = await self._generator.author(
-                gap, existing_capabilities=self._existing_capabilities
+                gap, existing_capabilities=existing
             )
         except (ToolCapabilityNotAllowedError, ToolAuthoringError) as exc:
             logger.warning(
@@ -213,7 +245,7 @@ def _build_proposal(
         ),
         tool_changes=(blueprint,),
         rollback_plan=rollback,
-        confidence=0.5,
+        confidence=_TOOL_CREATION_CONFIDENCE,
         source_rule=NotBlankStr("capability_gap"),
     )
 

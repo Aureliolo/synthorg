@@ -69,6 +69,8 @@ class _DynamicToolHandler:
         name = self._blueprint.name
         try:
             payload = await self._run(arguments)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 TOOLSMITH_TOOL_INVOKE_FAILED,

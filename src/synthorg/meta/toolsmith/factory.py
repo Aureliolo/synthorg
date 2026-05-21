@@ -141,6 +141,7 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
         guards=guards,
         overflow_handler=resolved_overflow,
         existing_capabilities=existing_capabilities,
+        dynamic_registry=dynamic_registry,
         clock=resolved_clock,
     )
     return ToolsmithRuntime(service=service, dynamic_registry=dynamic_registry)

@@ -176,7 +176,17 @@ class CodeModificationStrategy:
 
         try:
             response = await self._call_llm(prompt)
-        except ProviderError:
+        except ProviderError as exc:
+            # Surface provider-wide failures with the same WARN shape as
+            # the local-error branch before propagating, so the loss path
+            # is observable end-to-end (provider tier + rule tier).
+            logger.warning(
+                META_CODE_GEN_FAILED,
+                rule=rule_match.rule_name,
+                reason="provider_error",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise
         except MemoryError, RecursionError:
             raise

@@ -224,3 +224,57 @@ class TestLayeredHandlerMap:
             _ = mapping["missing"]
         assert set(mapping) == {"static_key", "synthorg_textkit_slugify"}
         assert len(mapping) == 2
+
+
+class TestLayeredCollisionPrecedence:
+    """Pin the static-wins-on-collision rule for both layered surfaces.
+
+    A regression that flips precedence to dynamic-first would let an
+    authored tool shadow a built-in one with the same name, which the
+    layered surfaces deliberately forbid; these tests guard that.
+    """
+
+    async def test_layered_tool_registry_static_wins_on_name_collision(self) -> None:
+        static_def = blueprint_to_mcp_def(
+            _blueprint(
+                name="synthorg_textkit_slugify",
+                capability="textkit:slugify",
+            )
+        )
+        # The dynamic blueprint shares the static name but maps to a
+        # different ID so registration is uniquely keyed.
+        dynamic = DynamicToolRegistry(handler_factory=_handler_factory)
+        dynamic_blueprint = _blueprint(
+            name="synthorg_textkit_slugify",
+            capability="textkit:slugify",
+        ).model_copy(update={"id": "bp-dynamic-shadow"})
+        await dynamic.register(dynamic_blueprint)
+        layered = LayeredToolRegistry(
+            _FakeStatic({static_def.name: static_def}), dynamic
+        )
+
+        resolved = layered.get("synthorg_textkit_slugify")
+        # Static wins: ``LayeredToolRegistry.get`` returns the static
+        # def's identity (same object) instead of the dynamic one.
+        assert resolved is static_def
+
+    async def test_layered_handler_map_static_wins_on_key_collision(self) -> None:
+        async def static_handler(
+            *, app_state: Any, arguments: dict[str, Any], actor: Any = None
+        ) -> str:
+            del app_state, arguments, actor
+            return "static"
+
+        dynamic = DynamicToolRegistry(handler_factory=_handler_factory)
+        await dynamic.register(_blueprint())
+        # The static handler shadows the same name as the dynamic tool.
+        mapping = LayeredHandlerMap(
+            {"synthorg_textkit_slugify": static_handler},
+            dynamic,
+        )
+
+        assert mapping["synthorg_textkit_slugify"] is static_handler
+        # Membership and length collapse the duplicate key.
+        assert "synthorg_textkit_slugify" in mapping
+        assert len(mapping) == 1
+        assert set(mapping) == {"synthorg_textkit_slugify"}

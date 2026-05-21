@@ -192,7 +192,14 @@ class ToolBlueprint(BaseModel):
 
     @model_validator(mode="after")
     def _validate_name_capability_action(self) -> Self:
-        """Enforce the MCP naming + capability + action-type contracts."""
+        """Enforce the MCP naming + capability + action-type contracts.
+
+        Beyond per-field format, the ``synthorg_{domain}_{action}`` name
+        must denote the same ``{domain}/{action}`` as the ``{domain}:{action}``
+        capability tag. A drift here would mean routing and governance see
+        different identifiers for the same tool, which the LayeredHandlerMap
+        cannot reconcile.
+        """
         if not _TOOL_NAME_RE.match(self.name):
             msg = f"name must match 'synthorg_{{domain}}_{{action}}': {self.name!r}"
             raise ValueError(msg)
@@ -201,6 +208,14 @@ class ToolBlueprint(BaseModel):
             raise ValueError(msg)
         if not _ACTION_TYPE_RE.match(self.action_type):
             msg = f"action_type must match 'category:action': {self.action_type!r}"
+            raise ValueError(msg)
+        capability_domain, capability_action = self.capability.split(":", 1)
+        expected_name = f"synthorg_{capability_domain}_{capability_action}"
+        if self.name != expected_name:
+            msg = (
+                "name and capability must reference the same domain/action: "
+                f"name={self.name!r}, capability={self.capability!r}"
+            )
             raise ValueError(msg)
         return self
 
@@ -225,22 +240,30 @@ class ToolBlueprint(BaseModel):
 
     @model_validator(mode="after")
     def _validate_state_timestamps(self) -> Self:
-        """Lifecycle timestamps must be present for their state, ordered."""
+        """Lifecycle timestamps must be present for their state, ordered.
+
+        Any post-PENDING state must carry the validation record: that is
+        the gate's audit evidence, and a missing record would mean a
+        consumer could observe a "validated" blueprint with no proof the
+        gate ever ran. The applier writes the record at the same instant
+        as ``validated_at``, so the two are inseparable across lifecycle.
+        """
+        terminal_states = {
+            ToolBlueprintState.VALIDATED,
+            ToolBlueprintState.ACTIVE,
+            ToolBlueprintState.RETIRED,
+        }
         if self.state in {ToolBlueprintState.VALIDATED, ToolBlueprintState.ACTIVE} and (
             self.validated_at is None
         ):
             msg = f"validated_at required in state {self.state.value!r}"
             raise ValueError(msg)
-        if self.state is ToolBlueprintState.ACTIVE:
-            if self.activated_at is None:
-                msg = "activated_at required in state 'active'"
-                raise ValueError(msg)
-            # An ACTIVE tool is live-registered, which the applier only does
-            # after the benchmark gate passes (persisting the result), so a
-            # live tool must always carry its validation record.
-            if self.validation is None:
-                msg = "validation result required in state 'active'"
-                raise ValueError(msg)
+        if self.state in terminal_states and self.validation is None:
+            msg = f"validation result required in state {self.state.value!r}"
+            raise ValueError(msg)
+        if self.state is ToolBlueprintState.ACTIVE and self.activated_at is None:
+            msg = "activated_at required in state 'active'"
+            raise ValueError(msg)
         if self.state is ToolBlueprintState.RETIRED and self.retired_at is None:
             msg = "retired_at required in state 'retired'"
             raise ValueError(msg)

@@ -317,13 +317,14 @@ def _build_dynamic_tool_repo(
     return PostgresDynamicToolRepository(persistence.get_db())
 
 
-def _build_toolsmith_runtime(
+def _build_toolsmith_runtime(  # noqa: PLR0913 -- explicit DI of the toolsmith runtime dependencies
     *,
     si_config: SelfImprovementConfig,
     provider_registry: ProviderRegistry,
     persistence: PersistenceBackend,
     approval_store: ApprovalStoreProtocol | None,
     cost_tracker: CostTracker | None,
+    workspace_root: Path,
 ) -> ToolsmithRuntime | None:
     """Resolve dependencies and build the toolsmith runtime, or None.
 
@@ -331,13 +332,15 @@ def _build_toolsmith_runtime(
     with). The sandbox resolver maps each blueprint's declared backend to
     a concrete sandbox built from the default sandboxing config, so a
     Docker-declared authored tool runs under Docker and a subprocess one
-    under subprocess. The golden-scorecard provider is intentionally
-    absent here: until a runnable score-with-candidate benchmark API is
-    available, the validation gate fails closed (a missing provider
-    rejects the apply) rather than trusting an unvalidated tool.
+    under subprocess. The sandbox workspace pins to the app's resolved
+    workspace root (the same root the project-workspace service uses) so
+    authored tools and the rest of the runtime share one writable mount
+    instead of diverging on the process CWD. The golden-scorecard
+    provider is intentionally absent here: until a runnable
+    score-with-candidate benchmark API is available, the validation gate
+    fails closed (a missing provider rejects the apply) rather than
+    trusting an unvalidated tool.
     """
-    from pathlib import Path  # noqa: PLC0415
-
     from synthorg.meta.toolsmith.factory import build_toolsmith  # noqa: PLC0415
     from synthorg.tools.sandbox.factory import (  # noqa: PLC0415
         build_sandbox_backends,
@@ -353,7 +356,7 @@ def _build_toolsmith_runtime(
     repo = _build_dynamic_tool_repo(persistence)
 
     sandboxing = SandboxingConfig()
-    backends = build_sandbox_backends(config=sandboxing, workspace=Path.cwd())
+    backends = build_sandbox_backends(config=sandboxing, workspace=workspace_root)
 
     def _resolve_sandbox(blueprint: ToolBlueprint) -> SandboxBackend:
         return backends.get(
@@ -1564,6 +1567,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 persistence=persistence,
                 approval_store=effective_approval_store,
                 cost_tracker=cost_tracker,
+                workspace_root=app_state.agent_workspace_root,
             )
         except MemoryError, RecursionError:
             raise
@@ -1578,12 +1582,30 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             return
         if runtime is None:
             return
-        app_state.set_toolsmith_service(runtime.service)
+        # Install the layered MCP surface BEFORE the once-only AppState
+        # mutation. ``set_toolsmith_service`` cannot be replayed on
+        # retry, so if the layer install fails after the AppState mutation
+        # the runtime is left half-wired (service present, layer missing)
+        # with no path back. Installing first means a failure here leaves
+        # the toolsmith disabled cleanly, mirroring the upstream try/except.
         from synthorg.meta.mcp.server import (  # noqa: PLC0415
             install_dynamic_tool_layer,
         )
 
-        install_dynamic_tool_layer(runtime.dynamic_registry)
+        try:
+            install_dynamic_tool_layer(runtime.dynamic_registry)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                API_APP_STARTUP,
+                service="toolsmith",
+                note="toolsmith dynamic layer install failed; disabled",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return
+        app_state.set_toolsmith_service(runtime.service)
         logger.info(API_APP_STARTUP, service="toolsmith", note="wired")
 
     startup = [*startup, _wire_toolsmith]

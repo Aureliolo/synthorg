@@ -205,3 +205,40 @@ class TestToolBlueprint:
                 activated_at=_NOW + timedelta(minutes=2),
                 validation=None,
             )
+
+    def test_validated_requires_validation_record(self) -> None:
+        # Same invariant as ACTIVE: a VALIDATED row without the gate
+        # result has lost the audit evidence the state name promises.
+        with pytest.raises(ValidationError):
+            _blueprint(
+                state=ToolBlueprintState.VALIDATED,
+                validated_at=_NOW + timedelta(minutes=1),
+                validation=None,
+            )
+
+    def test_retired_requires_validation_record(self) -> None:
+        # A RETIRED tool was once ACTIVE; the gate evidence MUST survive
+        # the lifecycle so post-retirement audits can replay the apply.
+        with pytest.raises(ValidationError):
+            _blueprint(
+                state=ToolBlueprintState.RETIRED,
+                validated_at=_NOW + timedelta(minutes=1),
+                activated_at=_NOW + timedelta(minutes=2),
+                retired_at=_NOW + timedelta(minutes=3),
+                validation=None,
+            )
+
+    def test_name_must_match_capability_domain_action(self) -> None:
+        # ``synthorg_textkit_slugify`` declares domain=textkit,
+        # action=slugify; if the capability disagrees, routing and
+        # governance see two different identifiers for the same tool.
+        with pytest.raises(ValidationError):
+            _blueprint(
+                name="synthorg_textkit_slugify",
+                capability="other:slugify",
+            )
+        with pytest.raises(ValidationError):
+            _blueprint(
+                name="synthorg_textkit_slugify",
+                capability="textkit:other",
+            )
