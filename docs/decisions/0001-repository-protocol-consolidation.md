@@ -178,6 +178,7 @@ compose any generic category and are documented at the end as "bespoke per D7".
 | 46 | CeremonySchedulerStateRepository | persistence/ | IdKeyed | `load_all` | WP-1 restart safety: hydrate counters/fired-once flags on sprint activation; perf bulk read on cold start |
 | 47 | MeetingCooldownRepository | persistence/ | IdKeyed | `load_all` | WP-1 restart safety: hydrate cooldown timestamps on scheduler start; perf bulk read on cold start |
 | 48 | TrackedContainerRepository | persistence/ | IdKeyed | `load_all` | WP-1 restart safety: enumerate sandbox containers for reconciliation on subsystem start |
+| 49 | DocsRepository | persistence/docs_protocol.py | IdKeyed (composite) + FilteredQuery | -- | Living-doc metadata; composite `(project_id, slug)` key, filter by doc_type / tag / updated_since |
 
 ### Bespoke-Only Protocols (No Generic Composition)
 

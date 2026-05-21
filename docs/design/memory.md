@@ -25,6 +25,7 @@ consolidation / retention pipeline.
 * [Shared Organizational Memory](memory-organizational.md): company-wide knowledge (policies, ADRs, procedures) behind `OrgMemoryBackend`.
 * [Operational Data Persistence](memory-operational.md): `PersistenceBackend` protocol, per-entity repositories, SQLite + Postgres backends, schema strategy, multi-tenancy, database-enforced invariants.
 * [Memory Learning and Injection](memory-learning.md): procedural memory auto-generation (failure + success capture), cross-agent skill pool, injection strategies (context / tool-based / self-editing), `MemoryService` REST + MCP entry point.
+* [Living Documentation](living-documentation.md): per-project documentation as a dual-purpose wiki + RAG namespace, integrated via the `PROJECT_DOC` memory category and `ProjectAwareMemoryFacade`.
 
 ---
 
@@ -51,6 +52,7 @@ and all access flows through the [`MemoryBackend`](#memorybackend-protocol) prot
 | **Semantic** | Knowledge | Long-term | "This project uses Litestar with aiosqlite" |
 | **Procedural** | Skills/patterns | Long-term | "Code reviews require 2 approvals here" |
 | **Social** | Relationships | Long-term | "The QA lead prefers detailed test plans" |
+| **Project doc** | Project-scoped living documentation | Long-term | "Q3 status report: checkout flow shipped, retention trending up" |
 
 ---
 
@@ -89,7 +91,7 @@ config.
 
 | Enum | Values | Purpose |
 |------|--------|---------|
-| `MemoryCategory` | WORKING, EPISODIC, SEMANTIC, PROCEDURAL, SOCIAL | Memory type categories |
+| `MemoryCategory` | WORKING, EPISODIC, SEMANTIC, PROCEDURAL, SOCIAL, PROJECT_DOC | Memory type categories |
 | `MemoryLevel` | PERSISTENT, PROJECT, SESSION, NONE | Persistence level per agent |
 | `ConsolidationInterval` | HOURLY, DAILY, WEEKLY, NEVER | How often old memories are compressed |
 

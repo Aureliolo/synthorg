@@ -64,6 +64,7 @@ from synthorg.persistence.custom_rule_protocol import (
     CustomRuleRepository,  # noqa: TC001
 )
 from synthorg.persistence.decision_protocol import DecisionRepository  # noqa: TC001
+from synthorg.persistence.docs_protocol import DocsRepository  # noqa: TC001
 from synthorg.persistence.escalation_protocol import (
     EscalationQueueRepository,  # noqa: TC001
 )
@@ -176,6 +177,7 @@ class PersistenceBackend(Protocol):
         settings: Repository for namespaced settings persistence.
         artifacts: Repository for Artifact persistence.
         projects: Repository for Project persistence.
+        project_docs: Repository for living-documentation metadata persistence.
         custom_presets: Repository for custom personality preset persistence.
         workflow_definitions: Repository for workflow definition persistence.
         workflow_executions: Repository for workflow execution persistence.
@@ -412,6 +414,11 @@ class PersistenceBackend(Protocol):
     @property
     def project_workspaces(self) -> ProjectWorkspaceRepository:
         """Repository for persistent per-project workspace mappings."""
+        ...
+
+    @property
+    def project_docs(self) -> DocsRepository:
+        """Repository for living-documentation metadata persistence."""
         ...
 
     @property

@@ -882,3 +882,79 @@ def test_malformed_sql_exits_with_clean_error(
     assert rc == 2
     captured = capsys.readouterr()
     assert "schema parsing failed" in captured.err
+
+
+# ── --update-baseline justification handling ────────────────────
+
+
+def test_update_baseline_without_justification_uses_placeholder(
+    tmp_path: Path,
+) -> None:
+    """A new entry registered with no --justification falls back to placeholder."""
+    baseline_path = _write_baseline(tmp_path, [])
+    rc = _MODULE._do_update_baseline(
+        baseline_path,
+        {"column:t:c:TEXT:TIMESTAMPTZ"},
+    )
+    assert rc == 0
+    reasons = _MODULE.load_baseline_with_reasons(baseline_path)
+    assert (
+        reasons["column:t:c:TEXT:TIMESTAMPTZ"] == _MODULE._PLACEHOLDER_BASELINE_REASON
+    )
+
+
+def test_update_baseline_with_justification_fills_new_and_backfills_placeholder(
+    tmp_path: Path,
+) -> None:
+    """--justification stamps new entries AND backfills existing placeholders.
+
+    Existing entries that already carry a real (non-placeholder) reason
+    are left untouched, so the flag can never clobber a curated reason.
+    """
+    baseline_path = _write_baseline(
+        tmp_path,
+        [
+            f"column:old:placeholder:TEXT:TIMESTAMPTZ:{_MODULE._PLACEHOLDER_BASELINE_REASON}",
+            "column:old:curated:TEXT:JSONB:hand-written audit reason",
+        ],
+    )
+    justification = "SQLite has no TIMESTAMPTZ; stored as ISO-8601 UTC text"
+    rc = _MODULE._do_update_baseline(
+        baseline_path,
+        {
+            "column:old:placeholder:TEXT:TIMESTAMPTZ",
+            "column:old:curated:TEXT:JSONB",
+            "column:new:entry:TEXT:TIMESTAMPTZ",
+        },
+        justification,
+    )
+    assert rc == 0
+    reasons = _MODULE.load_baseline_with_reasons(baseline_path)
+    # New entry gets the supplied justification.
+    assert reasons["column:new:entry:TEXT:TIMESTAMPTZ"] == justification
+    # Outstanding placeholder is backfilled with the supplied justification.
+    assert reasons["column:old:placeholder:TEXT:TIMESTAMPTZ"] == justification
+    # A curated reason is preserved verbatim.
+    assert reasons["column:old:curated:TEXT:JSONB"] == "hand-written audit reason"
+
+
+def test_update_baseline_trims_justification_and_rejects_blank(
+    tmp_path: Path,
+) -> None:
+    """A whitespace-only --justification aborts; a padded one is trimmed."""
+    baseline_path = _write_baseline(tmp_path, [])
+    rc = _MODULE._do_update_baseline(
+        baseline_path,
+        {"column:t:c:TEXT:TIMESTAMPTZ"},
+        "   ",
+    )
+    assert rc == 2
+
+    rc = _MODULE._do_update_baseline(
+        baseline_path,
+        {"column:t:c:TEXT:TIMESTAMPTZ"},
+        "  padded reason  ",
+    )
+    assert rc == 0
+    reasons = _MODULE.load_baseline_with_reasons(baseline_path)
+    assert reasons["column:t:c:TEXT:TIMESTAMPTZ"] == "padded reason"

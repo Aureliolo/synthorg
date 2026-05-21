@@ -2774,6 +2774,74 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/projects/{project_id}/docs": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListDocs */
+        readonly get: operations["ApiV1ProjectsProjectIdDocsListDocs"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/projects/{project_id}/docs/{slug}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetDoc */
+        readonly get: operations["ApiV1ProjectsProjectIdDocsSlugGetDoc"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/projects/{project_id}/docs/{slug}/history": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetHistory */
+        readonly get: operations["ApiV1ProjectsProjectIdDocsSlugHistoryGetHistory"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/projects/{project_id}/docs/search": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** SearchDocs */
+        readonly get: operations["ApiV1ProjectsProjectIdDocsSearchSearchDocs"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers": {
         readonly parameters: {
             readonly query?: never;
@@ -5248,6 +5316,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[LivingDocument] */
+        readonly ApiResponse_LivingDocument_: {
+            readonly data: components["schemas"]["LivingDocument"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[MeetingResponse] */
         readonly ApiResponse_MeetingResponse_: {
             readonly data: components["schemas"]["MeetingResponse"] | null;
@@ -5611,6 +5687,22 @@ export type components = {
         /** ApiResponse[tuple[Department, ...]] */
         readonly "ApiResponse_tuple_Department_..._": {
             readonly data: readonly components["schemas"]["Department"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[tuple[DocSearchHit, ...]] */
+        readonly "ApiResponse_tuple_DocSearchHit_..._": {
+            readonly data: readonly components["schemas"]["DocSearchHit"][] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[tuple[DocVersion, ...]] */
+        readonly "ApiResponse_tuple_DocVersion_..._": {
+            readonly data: readonly components["schemas"]["DocVersion"][] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -6367,6 +6459,18 @@ export type components = {
              */
             readonly total_monthly: number;
         };
+        /** BulletListBlock */
+        readonly BulletListBlock: {
+            readonly block_id: string;
+            /**
+             * @description Discriminator value for the DocBlock union
+             * @default bullet_list
+             * @constant
+             */
+            readonly block_kind: "bullet_list";
+            /** @description Non-empty tuple of bullet entries */
+            readonly items: readonly string[];
+        };
         /** CalibrationSummaryResponse */
         readonly CalibrationSummaryResponse: {
             readonly agent_id: string;
@@ -6611,6 +6715,20 @@ export type components = {
              *     ]
              */
             readonly supported_auth_types: readonly components["schemas"]["AuthType"][];
+        };
+        /** CodeBlock */
+        readonly CodeBlock: {
+            readonly block_id: string;
+            /**
+             * @description Discriminator value for the DocBlock union
+             * @default code
+             * @constant
+             */
+            readonly block_kind: "code";
+            /** @description Code body */
+            readonly code: string;
+            /** @description Renderer language hint */
+            readonly language: string | null;
         };
         /**
          * CodeExecutionIsolation
@@ -7426,6 +7544,20 @@ export type components = {
              */
             readonly type: "data";
         };
+        /** DecisionBlock */
+        readonly DecisionBlock: {
+            readonly block_id: string;
+            /**
+             * @description Discriminator value for the DocBlock union
+             * @default decision
+             * @constant
+             */
+            readonly block_kind: "decision";
+            /** @description What was decided */
+            readonly decision: string;
+            /** @description Why this decision */
+            readonly rationale: string;
+        };
         /**
          * DecisionMakingStyle
          * @description Decision-making approach used by an agent.
@@ -7535,6 +7667,62 @@ export type components = {
             readonly entry_count: number;
             /** @default [] */
             readonly host_port_allowlist: readonly string[];
+        };
+        /** DocSearchHit */
+        readonly DocSearchHit: {
+            /** @description Matching chunk content */
+            readonly chunk_text: string;
+            /** @description Matched doc slug */
+            readonly doc_slug: string;
+            readonly doc_type: components["schemas"]["DocType"];
+            /** @description Owning project */
+            readonly project_id: string;
+            /** @description Backend-assigned relevance */
+            readonly relevance_score: number;
+        };
+        /** DocSummary */
+        readonly DocSummary: {
+            readonly doc_type: components["schemas"]["DocType"];
+            /** @description Owning project */
+            readonly project_id: string;
+            /** @description Doc slug */
+            readonly slug: string;
+            /** @default [] */
+            readonly tags: readonly string[];
+            /** @description Display title */
+            readonly title: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly updated_at: string;
+        };
+        /**
+         * DocType
+         * @description Living-document type taxonomy.
+         *
+         *     ``STATUS_REPORT`` is a periodic or per-task summary agents write to
+         *     record progress and decisions. ``DELIVERABLE`` is an iteratively
+         *     edited artifact the org produces (PRD, design doc, research memo).
+         *     ``KNOWLEDGE_NOTE`` is freeform knowledge captured by agents during
+         *     work. All three share storage, chunking, and indexing; the type
+         *     drives wiki filtering and renderer affordances only.
+         * @enum {string}
+         */
+        readonly DocType: "status_report" | "deliverable" | "knowledge_note";
+        /** DocVersion */
+        readonly DocVersion: {
+            /** @description Agent that authored the write */
+            readonly author_agent_id: string;
+            /** @description Commit identifier */
+            readonly commit_sha: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly committed_at: string;
+            /** @description Commit subject line */
+            readonly summary: string;
         };
         /**
          * DriftAction
@@ -7727,7 +7915,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -8356,6 +8544,21 @@ export type components = {
              */
             readonly halted_at: string;
         };
+        /** HeadingBlock */
+        readonly HeadingBlock: {
+            /** @description Stable identifier surviving re-orders */
+            readonly block_id: string;
+            /**
+             * @description Discriminator value for the DocBlock union
+             * @default heading
+             * @constant
+             */
+            readonly block_kind: "heading";
+            /** @description Heading level (1 outer-most) */
+            readonly level: number;
+            /** @description Heading text */
+            readonly text: string;
+        };
         /** HealthReport */
         readonly HealthReport: {
             /**
@@ -8488,6 +8691,20 @@ export type components = {
          * @enum {string}
          */
         readonly LifecycleEventType: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted";
+        /** LinkBlock */
+        readonly LinkBlock: {
+            readonly block_id: string;
+            /**
+             * @description Discriminator value for the DocBlock union
+             * @default link
+             * @constant
+             */
+            readonly block_kind: "link";
+            /** @description Link display label */
+            readonly label: string;
+            /** @description Link target URL */
+            readonly url: string;
+        };
         /** LivenessStatus */
         readonly LivenessStatus: {
             /**
@@ -8500,6 +8717,41 @@ export type components = {
             readonly uptime_seconds: number;
             /** @description Application version */
             readonly version: string;
+        };
+        /** LivingDocument */
+        readonly LivingDocument: {
+            /** @description Agent that performed the last write */
+            readonly author_agent_id: string;
+            /**
+             * @description Ordered typed-block body
+             * @default []
+             */
+            readonly body: readonly (components["schemas"]["HeadingBlock"] | components["schemas"]["ProseBlock"] | components["schemas"]["BulletListBlock"] | components["schemas"]["CodeBlock"] | components["schemas"]["DecisionBlock"] | components["schemas"]["MetricBlock"] | components["schemas"]["LinkBlock"])[];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
+            readonly doc_type: components["schemas"]["DocType"];
+            /**
+             * @description Task IDs that produced or reference this doc
+             * @default []
+             */
+            readonly related_task_ids: readonly string[];
+            /** @description URL-safe identifier */
+            readonly slug: string;
+            /**
+             * @description Free-form classification tags
+             * @default []
+             */
+            readonly tags: readonly string[];
+            /** @description Human-readable title */
+            readonly title: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly updated_at: string;
         };
         /** LlmCalibrationRecord */
         readonly LlmCalibrationRecord: {
@@ -8776,9 +9028,15 @@ export type components = {
         /**
          * MemoryCategory
          * @description Memory type categories for agent memory (§7.2).
+         *
+         *     ``PROJECT_DOC`` is a project-scoped (not agent-scoped) category used
+         *     by the living-documentation engine. Entries are stored under a
+         *     system docs agent_id in the docs namespace and scoped to a project
+         *     via the ``project:<project_id>`` tag, then surfaced transparently
+         *     via ``ProjectAwareMemoryFacade``.
          * @enum {string}
          */
-        readonly MemoryCategory: "working" | "episodic" | "semantic" | "procedural" | "social";
+        readonly MemoryCategory: "working" | "episodic" | "semantic" | "procedural" | "social" | "project_doc";
         /**
          * MemoryConfig
          * @description Memory configuration
@@ -8904,6 +9162,22 @@ export type components = {
             readonly field: string;
             readonly new_value: string;
             readonly old_value: string;
+        };
+        /** MetricBlock */
+        readonly MetricBlock: {
+            readonly block_id: string;
+            /**
+             * @description Discriminator value for the DocBlock union
+             * @default metric
+             * @constant
+             */
+            readonly block_kind: "metric";
+            /** @description Metric label */
+            readonly name: string;
+            /** @description Optional unit suffix */
+            readonly unit: string | null;
+            /** @description Metric value (as string) */
+            readonly value: string;
         };
         /**
          * MiddlewareConfig
@@ -9278,6 +9552,21 @@ export type components = {
             readonly data: readonly {
                 readonly [key: string]: string;
             }[];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** PaginatedResponse[DocSummary] */
+        readonly PaginatedResponse_DocSummary_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["DocSummary"][];
             /**
              * @description Data sources that failed gracefully (partial data)
              * @default []
@@ -10257,6 +10546,18 @@ export type components = {
             readonly proposals: readonly components["schemas"]["ProposedApprovalSummary"][];
             /** @enum {string} */
             readonly status: "needs_clarification" | "proposed";
+        };
+        /** ProseBlock */
+        readonly ProseBlock: {
+            readonly block_id: string;
+            /**
+             * @description Discriminator value for the DocBlock union
+             * @default prose
+             * @constant
+             */
+            readonly block_kind: "prose";
+            /** @description Prose body */
+            readonly text: string;
         };
         /**
          * ProviderAuditActor
@@ -19222,6 +19523,140 @@ export interface operations {
             readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdDocsListDocs: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Filter by doc_type (status_report / deliverable / knowledge_note) */
+                readonly doc_type?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+                /** @description Filter by tag (exact match) */
+                readonly tag?: string | null;
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_DocSummary_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdDocsSlugGetDoc: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+                /** @description Resource identifier */
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_LivingDocument_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdDocsSlugHistoryGetHistory: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+                /** @description Resource identifier */
+                readonly slug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_DocVersion_..._"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProjectsProjectIdDocsSearchSearchDocs: {
+        readonly parameters: {
+            readonly query: {
+                /** @description Maximum hits to return */
+                readonly limit?: number;
+                /** @description Search query text */
+                readonly q: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly project_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_tuple_DocSearchHit_..._"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
             readonly 404: components["responses"]["NotFound"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];

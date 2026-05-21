@@ -65,6 +65,7 @@ from synthorg.persistence.sqlite.custom_rule_repo import (
 from synthorg.persistence.sqlite.decision_repo import (
     SQLiteDecisionRepository,
 )
+from synthorg.persistence.sqlite.docs_repo import SQLiteDocsRepository
 from synthorg.persistence.sqlite.fine_tune_repo import (
     SQLiteFineTuneCheckpointRepository,
     SQLiteFineTuneRunRepository,
@@ -206,6 +207,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._artifacts: SQLiteArtifactRepository | None = None
         self._projects: SQLiteProjectRepository | None = None
         self._project_workspaces: SQLiteProjectWorkspaceRepository | None = None
+        self._project_docs: SQLiteDocsRepository | None = None
         self._tasks: SQLiteTaskRepository | None = None
         self._cost_records: SQLiteCostRecordRepository | None = None
         self._messages: SQLiteMessageRepository | None = None
@@ -275,6 +277,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._artifacts = None
         self._projects = None
         self._project_workspaces = None
+        self._project_docs = None
         self._tasks = None
         self._cost_records = None
         self._messages = None
@@ -431,6 +434,10 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._project_workspaces = SQLiteProjectWorkspaceRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._project_docs = SQLiteDocsRepository(
             self._db,
             write_context=self.write_context,
         )

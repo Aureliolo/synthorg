@@ -118,13 +118,37 @@ class MemoryLevel(StrEnum):
 
 
 class MemoryCategory(StrEnum):
-    """Memory type categories for agent memory (§7.2)."""
+    """Memory type categories for agent memory (§7.2).
+
+    ``PROJECT_DOC`` is a project-scoped (not agent-scoped) category used
+    by the living-documentation engine. Entries are stored under a
+    system docs agent_id in the docs namespace and scoped to a project
+    via the ``project:<project_id>`` tag, then surfaced transparently
+    via ``ProjectAwareMemoryFacade``.
+    """
 
     WORKING = "working"
     EPISODIC = "episodic"
     SEMANTIC = "semantic"
     PROCEDURAL = "procedural"
     SOCIAL = "social"
+    PROJECT_DOC = "project_doc"
+
+
+class DocType(StrEnum):
+    """Living-document type taxonomy.
+
+    ``STATUS_REPORT`` is a periodic or per-task summary agents write to
+    record progress and decisions. ``DELIVERABLE`` is an iteratively
+    edited artifact the org produces (PRD, design doc, research memo).
+    ``KNOWLEDGE_NOTE`` is freeform knowledge captured by agents during
+    work. All three share storage, chunking, and indexing; the type
+    drives wiki filtering and renderer affordances only.
+    """
+
+    STATUS_REPORT = "status_report"
+    DELIVERABLE = "deliverable"
+    KNOWLEDGE_NOTE = "knowledge_note"
 
 
 class ConsolidationInterval(StrEnum):

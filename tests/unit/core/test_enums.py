@@ -89,8 +89,11 @@ class TestEnumMemberCounts:
     def test_conflict_approach_has_5_members(self) -> None:
         assert len(ConflictApproach) == 5
 
-    def test_memory_category_has_5_members(self) -> None:
-        assert len(MemoryCategory) == 5
+    def test_memory_category_has_6_members(self) -> None:
+        # 5 agent categories + PROJECT_DOC (project-scoped, #1976).
+        assert len(MemoryCategory) == 6
+        assert MemoryCategory.PROJECT_DOC in set(MemoryCategory)
+        assert MemoryCategory.PROJECT_DOC.value == "project_doc"
 
     def test_consolidation_interval_has_4_members(self) -> None:
         assert len(ConsolidationInterval) == 4

@@ -29,6 +29,8 @@ export const ROUTES = {
   PROVIDER_DETAIL: '/providers/:providerName',
   PROJECTS: '/projects',
   PROJECT_DETAIL: '/projects/:projectId',
+  PROJECT_DOCS: '/projects/:projectId/docs',
+  PROJECT_DOC_DETAIL: '/projects/:projectId/docs/:slug',
   ARTIFACTS: '/artifacts',
   ARTIFACT_DETAIL: '/artifacts/:artifactId',
   WORKFLOWS: '/workflows',

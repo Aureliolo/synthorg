@@ -630,6 +630,68 @@ class FakeProjectWorkspaceRepository:
         return self._rows.pop(entity_id, None) is not None
 
 
+class FakeDocsRepository:
+    """In-memory living-doc metadata repository for tests."""
+
+    def __init__(self) -> None:
+        from synthorg.docs_engine.models import DocMetadata
+
+        self._rows: dict[tuple[str, str], DocMetadata] = {}
+
+    async def save(self, entity: Any) -> None:
+        self._rows[(entity.project_id, entity.slug)] = entity
+
+    async def get(self, entity_id: tuple[NotBlankStr, NotBlankStr]) -> Any | None:
+        return self._rows.get(entity_id)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        result = sorted(
+            self._rows.values(),
+            key=lambda r: (r.updated_at, r.project_id, r.slug),
+            reverse=True,
+        )
+        return tuple(result[offset : offset + limit])
+
+    async def delete(self, entity_id: tuple[NotBlankStr, NotBlankStr]) -> bool:
+        return self._rows.pop(entity_id, None) is not None
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        rows = [
+            r for r in self._rows.values() if r.project_id == filter_spec.project_id
+        ]
+        if filter_spec.doc_type is not None:
+            rows = [r for r in rows if r.doc_type == filter_spec.doc_type]
+        if filter_spec.tag is not None:
+            rows = [r for r in rows if filter_spec.tag in r.tags]
+        if filter_spec.updated_since is not None:
+            rows = [r for r in rows if r.updated_at >= filter_spec.updated_since]
+        rows.sort(key=lambda r: (r.updated_at, r.slug), reverse=True)
+        return tuple(rows[offset : offset + limit])
+
+    async def count(self, filter_spec: Any) -> int:
+        rows = [
+            r for r in self._rows.values() if r.project_id == filter_spec.project_id
+        ]
+        if filter_spec.doc_type is not None:
+            rows = [r for r in rows if r.doc_type == filter_spec.doc_type]
+        if filter_spec.tag is not None:
+            rows = [r for r in rows if filter_spec.tag in r.tags]
+        if filter_spec.updated_since is not None:
+            rows = [r for r in rows if r.updated_at >= filter_spec.updated_since]
+        return len(rows)
+
+
 class FakeProjectRepository:
     """In-memory project repository for tests."""
 

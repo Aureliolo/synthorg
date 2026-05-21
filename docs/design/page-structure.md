@@ -94,6 +94,8 @@ Project list with card grid, search, and status filter. "Create Project" button 
 
 Detail page (`/projects/{projectId}`) shows project header with status badge and key metrics, team section with avatar grid and lead badge, and a linked task list with status indicators.
 
+Living-documentation page (`/projects/{projectId}/docs`, optional `/{slug}`) is the per-project wiki: a two-column layout with a doc-list sidebar (type-filter chips for status report / deliverable / knowledge note) and a `DocViewer` that renders a `LivingDocument`'s typed blocks one renderer per block kind. Docs are written by agents (tools + MCP), git-versioned on the `synthorg/docs` branch, and chunked into the `PROJECT_DOC` memory namespace for retrieval. See [Living Documentation](living-documentation.md).
+
 **Features**:
 
 - **Card grid**: responsive 3/2/1 column layout with hover effects, stagger animation
@@ -103,7 +105,7 @@ Detail page (`/projects/{projectId}`) shows project header with status badge and
 - **Team section**: avatar grid with links to agent detail pages, lead badge
 - **Task list**: linked tasks with status indicators and assignee display
 
-**API endpoints**: `GET /projects`, `GET /projects/{id}`, `POST /projects`, `DELETE /projects/{id}`
+**API endpoints**: `GET /projects`, `GET /projects/{id}`, `POST /projects`, `DELETE /projects/{id}`, `GET /projects/{id}/docs`, `GET /projects/{id}/docs/{slug}`, `GET /projects/{id}/docs/{slug}/history`, `GET /projects/{id}/docs/search`
 **WS channels**: `projects` (emits `project.created`, `project.deleted`), `tasks`
 
 #### Artifacts (`/artifacts`)
@@ -379,6 +381,8 @@ Sidebar layout (220px expanded, 56px icon rail):
 | `/agents/:agentName` | Agent detail | Full page with scrollable sections |
 | `/projects` | Projects | List with search/filter |
 | `/projects/:projectId` | Project detail | Full page with team, tasks |
+| `/projects/:projectId/docs` | Living docs | Per-project wiki: doc list + viewer (status reports, deliverables, knowledge notes) |
+| `/projects/:projectId/docs/:slug` | Living doc detail | Full doc view with typed-block rendering |
 | `/workflows` | Workflows | Card grid list with search, type filter, create (blank or from blueprint)/duplicate/delete |
 | `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (8 node types incl. subworkflow, 4 edge types, YAML preview, validation, version history with diff/rollback) |
 | `/subworkflows` | Subworkflows | Registry card grid with search, I/O signature, version count, detail drawer with parents and delete |
