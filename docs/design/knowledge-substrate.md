@@ -79,10 +79,10 @@ src/synthorg/knowledge/
   errors.py          KnowledgeError family (DomainError subclasses)
   loaders/
     protocol.py      SourceLoader
-    pdf.py           PdfLoader (pdfplumber: page text + word bounding boxes)
-    web.py           WebLoader (reuses the governed HTTP fetch + HTMLParseGuard)
-    repo.py          RepoLoader (workspace tree walk)
-    ticket.py        TicketLoader (reuses the governed external-API access tool)
+    pdf.py           PdfLoader (pdfplumber, per-page; thread-offloaded)
+    web.py           WebLoader (injected HtmlFetcher + HTMLParseGuard sanitise)
+    repo.py          RepoLoader (deterministic local tree walk)
+    ticket.py        TicketLoader (staged on the #1991 governed connection)
     factory.py       build_source_loader
   chunking/
     protocol.py      StructureAwareChunker + ChunkPiece
@@ -161,15 +161,15 @@ goes through `parse_typed()`.
 ### Loaders
 
 Every loader satisfies the `SourceLoader` protocol
-(`load(source_ref) -> RawDocument`). Selection is factory-based on
+(`load(source: KnowledgeSource) -> RawDocument`). Selection is factory-based on
 `SourceType`, so a new source type is a new strategy plus a registry entry.
 
 | Loader | Source | Notes |
 |--------|--------|-------|
-| `PdfLoader` | `PDF` | pdfplumber per page; each `RawUnit` carries page text plus word bounding boxes so the chunker can attach `PdfLocator(page, bbox, offsets)`. |
-| `WebLoader` | `WEB` | Reuses the governed HTTP fetch path (network policy, SSRF, DNS pinning) and `HTMLParseGuard` from `engine.prompt_safety`; emits text units with css-path / char-range locators. |
-| `RepoLoader` | `REPO` | Walks a project workspace or git tree via `ProjectWorkspaceService`, filters by extension, emits one `RawUnit` per source file with path and ref. |
-| `TicketLoader` | `TICKET` | Fetches ticket data through the governed external-API access tool (`tools/external_api/`: connection catalog, credential brokering, SSRF, rate limiting). A structured-payload path serves offline and test use. |
+| `PdfLoader` | `PDF`, `DESIGN_DOC` | pdfplumber per page (parsing offloaded to a worker thread); one `RawUnit` per page with a `PdfLocator(page, char offsets)`. Citations resolve to the page; word-level `bbox` refinement is a planned follow-up (the field exists, unset today). |
+| `WebLoader` | `WEB` | Fetches via an injected `HtmlFetcher` (the factory wires one on the governed HTTP path: network policy, SSRF, DNS pinning), sanitises with `HTMLParseGuard` to strip scripts and hidden-injection vectors, and emits one `DOCUMENT` unit with a `WebLocator`. |
+| `RepoLoader` | `REPO` | Walks the local repo tree deterministically, skips VCS-internal / vendored / binary / oversized files, and emits one `CODE` unit per text file with a `CodeLocator` (repo-relative path + line span). |
+| `TicketLoader` | `TICKET` | Live fetch routes through the merged governed external-API access tool (#1991). Transport wiring is staged after the MVP corpus, so the loader currently raises `KnowledgeSourceUnavailableError` rather than degrade silently. |
 
 PDF support is **pdfplumber** (MIT). pymupdf is deliberately excluded: its AGPL
 licence is incompatible with the project's BUSL-to-Apache model.

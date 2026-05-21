@@ -1,0 +1,152 @@
+"""Repository source loader.
+
+Walks a local repository tree (``source.uri`` is the root path) in
+deterministic order and emits one ``CODE`` :class:`RawUnit` per text
+file, each with a :class:`CodeLocator` (repo-relative path + line span).
+Binary, oversized, vendored, and VCS-internal files are skipped so the
+corpus stays meaningful and chunk ids stay stable across re-ingests.
+"""
+
+import asyncio
+from pathlib import Path
+from typing import TYPE_CHECKING, Final
+
+from synthorg.core.enums import ContentKind
+from synthorg.core.types import NotBlankStr
+from synthorg.knowledge.errors import KnowledgeSourceUnavailableError
+from synthorg.knowledge.models import CodeLocator, RawDocument, RawUnit
+from synthorg.observability import get_logger
+from synthorg.observability.events.knowledge import KNOWLEDGE_SOURCE_LOADED
+from synthorg.versioning.hashing import compute_text_hash
+
+if TYPE_CHECKING:
+    from synthorg.knowledge.models import KnowledgeSource
+
+logger = get_logger(__name__)
+
+_MAX_FILE_BYTES: Final[int] = 1_000_000
+"""Skip files larger than this; oversized blobs are rarely useful corpus."""
+
+_IGNORED_DIRS: frozenset[str] = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        "dist",
+        "build",
+        ".next",
+        "target",
+        "vendor",
+    }
+)
+
+_TEXT_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".py",
+        ".pyi",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".go",
+        ".rs",
+        ".java",
+        ".rb",
+        ".c",
+        ".h",
+        ".cpp",
+        ".cc",
+        ".hpp",
+        ".cs",
+        ".php",
+        ".kt",
+        ".scala",
+        ".swift",
+        ".md",
+        ".rst",
+        ".txt",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".cfg",
+        ".ini",
+        ".sql",
+        ".sh",
+    }
+)
+
+
+class RepoLoader:
+    """Loads a local repository tree into per-file code units."""
+
+    __slots__ = ("_max_file_bytes",)
+
+    def __init__(self, *, max_file_bytes: int = _MAX_FILE_BYTES) -> None:
+        self._max_file_bytes = max_file_bytes
+
+    async def load(self, source: KnowledgeSource) -> RawDocument:
+        """Walk ``source.uri`` and emit one unit per eligible text file."""
+        document = await asyncio.to_thread(self._load_sync, source)
+        logger.debug(
+            KNOWLEDGE_SOURCE_LOADED,
+            source_id=source.source_id,
+            source_type=source.source_type.value,
+            unit_count=len(document.units),
+        )
+        return document
+
+    def _load_sync(self, source: KnowledgeSource) -> RawDocument:
+        root = Path(source.uri)
+        if not root.is_dir():
+            msg = f"Repository path is not a directory: {source.uri!r}"
+            raise KnowledgeSourceUnavailableError(msg)
+        units: list[RawUnit] = []
+        hash_parts: list[str] = []
+        for path in sorted(root.rglob("*"), key=lambda p: p.as_posix()):
+            if not self._is_eligible(path):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError, OSError:
+                continue
+            rel = path.relative_to(root).as_posix()
+            units.append(
+                RawUnit(
+                    text=text,
+                    locator=CodeLocator(
+                        path=NotBlankStr(rel),
+                        line_start=1,
+                        line_end=max(1, text.count("\n") + 1),
+                    ),
+                    content_kind=ContentKind.CODE,
+                )
+            )
+            hash_parts.append(f"{rel}\n{text}")
+        return RawDocument(
+            source_id=source.source_id,
+            source_type=source.source_type,
+            uri=source.uri,
+            title=NotBlankStr(source.title),
+            content_hash=compute_text_hash("\n".join(hash_parts)),
+            units=tuple(units),
+        )
+
+    def _is_eligible(self, path: Path) -> bool:
+        if not path.is_file():
+            return False
+        if any(part in _IGNORED_DIRS for part in path.parts):
+            return False
+        if path.suffix.lower() not in _TEXT_EXTENSIONS:
+            return False
+        try:
+            return path.stat().st_size <= self._max_file_bytes
+        except OSError:
+            return False
