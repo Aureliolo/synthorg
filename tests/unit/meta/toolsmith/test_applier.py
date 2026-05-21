@@ -148,7 +148,7 @@ def _applier(repo: _InMemoryRepo, registry: DynamicToolRegistry, gate: _Gate) ->
     return ToolCreationApplier(
         repo=repo,  # type: ignore[arg-type]
         registry=registry,
-        gate=gate,  # type: ignore[arg-type]
+        gate=gate,
         clock=FakeClock(start=_NOW),
     )
 

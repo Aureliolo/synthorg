@@ -101,7 +101,7 @@ class TestBaselineSnapshot:
 class TestCodeModificationOverflowHandler:
     async def test_delegates_to_strategy_with_gap_rule(self) -> None:
         strategy = _FakeStrategy()
-        handler = CodeModificationOverflowHandler(strategy)  # type: ignore[arg-type]
+        handler = CodeModificationOverflowHandler(strategy)
 
         proposals = await handler.handle(_gap())
 
@@ -123,7 +123,7 @@ class TestCodeModificationOverflowHandler:
             return sentinel
 
         handler = CodeModificationOverflowHandler(
-            strategy,  # type: ignore[arg-type]
+            strategy,
             snapshot_provider=_provider,
         )
         await handler.handle(_gap())

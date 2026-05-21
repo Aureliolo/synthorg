@@ -118,12 +118,13 @@ class TestCreateBackend:
     ) -> None:
         """Each company config creates an isolated backend instance.
 
-        Reuses the session-wide migrated template (``_get_template_db``,
-        built once per worker and credited to the per-test wall-clock
-        guard) instead of running the full -- and ever-growing -- yoyo
-        chain per test, then copies it to each tenant path so the on-disk
-        layout stays symmetric with production. Running the chain inline
-        here tripped the unit wall-clock budget once the schema grew.
+        Both tenant databases are copied from the session-wide migrated
+        template (built once per session and amortised across the suite
+        via ``_get_template_db``) rather than re-running yoyo per test.
+        Re-migrating from scratch costs ~11s on Windows once the revision
+        chain grows, which trips the per-test wall-clock guard under
+        xdist load; copying the cached template keeps the on-disk layout
+        symmetric with production at negligible cost.
         """
         import shutil
 
@@ -132,9 +133,9 @@ class TestCreateBackend:
         path_a = str(tmp_path / "company-a.db")
         path_b = str(tmp_path / "company-b.db")
 
-        template = await _get_template_db(tmp_path_factory)
-        shutil.copyfile(str(template), path_a)
-        shutil.copyfile(str(template), path_b)
+        template_path = await _get_template_db(tmp_path_factory)
+        shutil.copyfile(template_path, path_a)
+        shutil.copyfile(template_path, path_b)
 
         config_a = PersistenceConfig(sqlite=SQLiteConfig(path=path_a))
         config_b = PersistenceConfig(sqlite=SQLiteConfig(path=path_b))
