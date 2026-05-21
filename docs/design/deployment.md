@@ -22,6 +22,14 @@ SynthOrg ships as six container images to `ghcr.io/aureliolo/synthorg-{backend,w
 
 Each published image is signed with **cosign keyless** via GitHub OIDC in `.github/workflows/docker.yml` and attested with **SLSA Level 3 provenance**. The signature is bound to the manifest list digest by the main-push run; on release tag-push the workflow's retag jobs apply the version tags (`{{version}}`, `dev`, `{{major}}.{{minor}}`) to the same digest via `docker buildx imagetools create`, so every tag of a single commit shares the main-run's signature without re-signing. **CycloneDX SBOMs** are generated per image and uploaded as GitHub Release artifacts. At pull/start time, `cli/internal/verify/verify.go` verifies cosign signatures and SLSA provenance (bypassable with `--skip-verify`); SBOM contents are not validated at runtime.
 
+## Dev / not-yet-published images
+
+| Image | Purpose | Base |
+|-------|---------|------|
+| `desktop` | Headless virtual-desktop sandbox the agent drives via the desktop tool (Xvfb + fluxbox + xdotool + scrot, plus Python/Tk for GUI deliverables). Spawned on demand by the backend; the `desktop_image_pin` setting defaults to `ghcr.io/aureliolo/synthorg-desktop:latest` | `debian:trixie-slim` pinned by digest in `docker/desktop/Dockerfile`. Debian rather than apko/Wolfi because the X11/GUI toolchain (Xvfb, fluxbox, Tk) is packaged for glibc Debian, not Wolfi |
+
+Unlike the published images above, `desktop` is **not yet built or published by `.github/workflows/docker.yml`**, so it is not cosign-signed or SLSA-attested. Its base-image digest is still kept fresh by Renovate (the `dockerfile` manager scans every Dockerfile). It is not yet wired into the publish + signing matrix (tracked in #2033), so the desktop tool's `desktop_image_pin` default does not resolve until that lands.
+
 ## apko-composed base images
 
 The backend, sandbox, and sidecar images use a **Hybrid A** pattern: apko composes the base image declaratively from Wolfi packages (`python-3.14`, `git`, etc.) with exact versions resolved via `apko.lock.json`, and a thin Dockerfile layers the application on top (`FROM apko-base@sha256:...`, `COPY .venv`, `COPY src`, `ENTRYPOINT`). The sidecar image adds `iptables` for DNAT setup but the sandbox image is minimal (no iptables, no elevated privileges). The web image is **pure apko** (no Dockerfile), composing Caddy plus a melange-packaged static site bundle.

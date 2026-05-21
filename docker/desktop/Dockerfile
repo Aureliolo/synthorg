@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.24
+# syntax=docker/dockerfile:1.24@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 # =============================================================================
 # SynthOrg Desktop -- headless virtual-desktop sandbox image
 # =============================================================================
@@ -12,7 +12,7 @@
 # workspace (/workspace/.synthorg/desktop/screenshots).
 # =============================================================================
 
-FROM debian:trixie-slim
+FROM debian:trixie-slim@sha256:b6e2a152f22a40ff69d92cb397223c906017e1391a73c952b588e51af8883bf8
 
 LABEL org.opencontainers.image.title="synthorg-desktop" \
       org.opencontainers.image.description="SynthOrg agent virtual desktop sandbox" \
