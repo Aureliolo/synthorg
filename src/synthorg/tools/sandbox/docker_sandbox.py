@@ -304,7 +304,7 @@ class DockerSandbox(
             self._docker = client
             return client
 
-    def _project_root(self, project_id: str | None) -> Path:
+    async def _project_root(self, project_id: str | None) -> Path:
         """Resolve the per-execution mount root for *project_id*.
 
         ``None`` mounts the whole workspace root (the no-project
@@ -314,19 +314,34 @@ class DockerSandbox(
         separator guard mirrors ``ProjectWorkspaceService`` so a crafted
         id cannot traverse out of the projects subdir.
 
+        The resolved root is re-anchored under the resolved projects
+        directory so a symlinked project entry cannot resolve to an
+        arbitrary host path and mount it into ``/workspace``. Filesystem
+        probes run in a worker thread to avoid blocking the event loop.
+
         Raises:
-            SandboxError: ``project_id`` bears path separators, or the
-                resolved project tree does not exist on the volume.
+            SandboxError: ``project_id`` bears path separators, resolves
+                outside the projects root (symlink escape), or names a
+                project tree that does not exist on the volume.
         """
         if project_id is None:
             return self._workspace
         pid = str(project_id)
-        if "/" in pid or "\\" in pid or ".." in pid:
+        if pid == "." or "/" in pid or "\\" in pid or ".." in pid:
             msg = f"refusing path-separator-bearing project_id {pid!r}"
             logger.warning(DOCKER_EXECUTE_FAILED, error=msg, project_id=pid)
             raise SandboxError(msg)
-        root = (self._workspace / _PROJECTS_SUBDIR / pid).resolve()
-        if not root.is_dir():
+        projects_root = await asyncio.to_thread(
+            (self._workspace / _PROJECTS_SUBDIR).resolve
+        )
+        root = await asyncio.to_thread((projects_root / pid).resolve)
+        try:
+            root.relative_to(projects_root)
+        except ValueError as exc:
+            msg = f"project workspace escapes projects root for project {pid!r}: {root}"
+            logger.warning(DOCKER_EXECUTE_FAILED, error=msg, project_id=pid)
+            raise SandboxError(msg) from exc
+        if not await asyncio.to_thread(root.is_dir):
             msg = f"project workspace does not exist for project {pid!r}: {root}"
             logger.warning(DOCKER_EXECUTE_FAILED, error=msg, project_id=pid)
             raise SandboxError(msg)
@@ -662,7 +677,7 @@ class DockerSandbox(
                 *env_overrides* set reserved sandbox control variables.
         """
         pid = str(project_id) if project_id is not None else self._context_project()
-        effective_root = self._project_root(pid)
+        effective_root = await self._project_root(pid)
         work_dir = cwd if cwd is not None else effective_root
         self._validate_cwd(work_dir, effective_root)
         effective_timeout = min(

@@ -78,13 +78,20 @@ def _hardened_backend(catalog: ConnectionCatalog) -> ExternalRemoteGitBackend:
 class _FakeGit:
     """Routes mocked ``run_git_subprocess`` calls by git subcommand.
 
-    ``push_results`` is a queue of ``(rc, stderr)`` consumed in order
-    by successive ``push`` calls; ``rev-parse`` always returns a SHA.
+    ``push_results`` / ``fetch_results`` are queues of ``(rc, stderr)``
+    consumed in order by successive ``push`` / ``fetch`` calls; an empty
+    ``fetch`` queue succeeds. ``rev-parse`` always returns a SHA.
     """
 
-    def __init__(self, push_results: Sequence[tuple[int, str]]) -> None:
+    def __init__(
+        self,
+        push_results: Sequence[tuple[int, str]],
+        fetch_results: Sequence[tuple[int, str]] | None = None,
+    ) -> None:
         self._push = list(push_results)
+        self._fetch = list(fetch_results or [])
         self.push_count = 0
+        self.fetch_count = 0
 
     async def __call__(
         self,
@@ -98,6 +105,12 @@ class _FakeGit:
             self.push_count += 1
             rc, stderr = self._push.pop(0)
             return rc, "", stderr
+        if sub == "fetch":
+            self.fetch_count += 1
+            if self._fetch:
+                rc, stderr = self._fetch.pop(0)
+                return rc, "", stderr
+            return 0, "", ""
         if sub == "rev-parse":
             return 0, "deadbeefcafe", ""
         return 0, "", ""
@@ -300,3 +313,43 @@ class TestExternalRemotePushHardening:
         # Auth is non-retryable: exactly one attempt, no existence probe.
         assert fake.push_count == 1
         forge.repo_exists.assert_not_called()
+
+    async def test_fetch_auth_failure_is_not_retried(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        # A fetch whose stderr carries an auth marker is classified as a
+        # non-retryable GitBackendForgeAuthError, so the handler makes a
+        # single attempt rather than burning the retry budget.
+        fake = _FakeGit([], fetch_results=[(1, "fatal: Authentication failed")])
+        _patch_git(monkeypatch, fake)
+        backend = _hardened_backend(_catalog_github())
+
+        with pytest.raises(GitBackendForgeAuthError):
+            await backend.fetch(
+                project_id=NotBlankStr("p1"),
+                repo_root=tmp_path,
+                branch=NotBlankStr("main"),
+            )
+        assert fake.fetch_count == 1
+
+    async def test_fetch_transient_failure_retries_then_succeeds(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        fake = _FakeGit(
+            [],
+            fetch_results=[(1, "fatal: unable to access: 500"), (0, "")],
+        )
+        _patch_git(monkeypatch, fake)
+        backend = _hardened_backend(_catalog_github())
+
+        result = await backend.fetch(
+            project_id=NotBlankStr("p1"),
+            repo_root=tmp_path,
+            branch=NotBlankStr("main"),
+        )
+        assert fake.fetch_count == 2
+        assert result.updated_refs == (NotBlankStr("main"),)

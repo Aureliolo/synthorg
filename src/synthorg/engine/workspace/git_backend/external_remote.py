@@ -19,6 +19,7 @@ any log line.
 """
 
 import asyncio
+import re
 from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
 from typing import TYPE_CHECKING, Final
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -113,6 +114,17 @@ def _is_retryable_git_op(exc: Exception) -> bool:
 
 def _matches(haystack: str, markers: tuple[str, ...]) -> bool:
     return any(marker in haystack for marker in markers)
+
+
+# git echoes the failing remote URL in clone/push stderr, and that URL
+# carries the percent-encoded token as HTTPS userinfo. Mask the
+# userinfo before any stderr text reaches a log line (SEC-1).
+_URL_USERINFO: Final[re.Pattern[str]] = re.compile(r"(\w+://)[^/@\s]+@")
+
+
+def _redact_stderr(text: str) -> str:
+    """Strip ``user:token@`` userinfo from any URL in git stderr."""
+    return _URL_USERINFO.sub(r"\1[REDACTED]@", text)
 
 
 class ExternalRemoteGitBackend:
@@ -238,7 +250,7 @@ class ExternalRemoteGitBackend:
             url,
             ".",
             cmd_timeout=self._cmd_timeout,
-            log_event=GIT_BACKEND_PROVISION_START,
+            log_event=GIT_BACKEND_PROVISION_FAILED,
         )
         if rc == 0:
             logger.info(
@@ -274,6 +286,16 @@ class ExternalRemoteGitBackend:
     ) -> None:
         """Init a local tree when the remote is missing; else fail."""
         lowered = stderr.lower()
+        # Surface the clone stderr before any classification branch so a
+        # clone failure that is neither auth nor missing-remote (the
+        # branch that re-raises a generic provision error) still leaves
+        # the operator the git diagnostic instead of an opaque message.
+        logger.warning(
+            GIT_BACKEND_PROVISION_FAILED,
+            project_id=pid,
+            reason="clone_failed",
+            stderr=_redact_stderr(stderr),
+        )
         if _matches(lowered, _AUTH_MARKERS):
             logger.warning(
                 GIT_BACKEND_PROVISION_FAILED,
@@ -292,11 +314,6 @@ class ExternalRemoteGitBackend:
                 project_id=pid,
             )
             return
-        logger.warning(
-            GIT_BACKEND_PROVISION_FAILED,
-            project_id=pid,
-            reason="clone_failed",
-        )
         msg = f"failed to clone forge remote for project {pid!r}"
         raise GitBackendProvisionError(msg)
 
@@ -376,14 +393,7 @@ class ExternalRemoteGitBackend:
             args.append(str(branch))
 
         async def _attempt() -> None:
-            await git(
-                repo_root,
-                *args,
-                cmd_timeout=self._cmd_timeout,
-                fail_exc=GitBackendFetchError,
-                project_id=pid,
-                event=GIT_BACKEND_FETCH_FAILED,
-            )
+            await self._do_fetch(repo_root, args, pid=pid)
 
         await self._retry.execute(_attempt, project_id=pid)
         logger.info(GIT_BACKEND_FETCH_COMPLETE, project_id=pid)
@@ -391,6 +401,39 @@ class ExternalRemoteGitBackend:
             (NotBlankStr(str(branch)),) if branch is not None else ()
         )
         return FetchResult(updated_refs=refs)
+
+    async def _do_fetch(self, repo_root: Path, args: list[str], *, pid: str) -> None:
+        """Run one fetch attempt; classify a failure into a typed error.
+
+        Mirrors :meth:`_do_push` so an auth failure raises the
+        non-retryable :class:`GitBackendForgeAuthError` instead of the
+        retryable :class:`GitBackendFetchError` that ``git`` would wrap
+        every non-zero exit as -- otherwise the retry handler would burn
+        attempts re-running a fetch that can only ever fail.
+        """
+        rc, _stdout, stderr = await run_git_subprocess(
+            repo_root,
+            *args,
+            cmd_timeout=self._cmd_timeout,
+            log_event=GIT_BACKEND_FETCH_FAILED,
+        )
+        if rc == 0:
+            return
+        lowered = stderr.lower()
+        logger.warning(
+            GIT_BACKEND_FETCH_FAILED,
+            project_id=pid,
+            git_args=_redact_args(("fetch", REMOTE_NAME)),
+            return_code=rc,
+        )
+        if _matches(lowered, _AUTH_MARKERS):
+            msg = f"forge authentication failed fetching project {pid!r}"
+            raise GitBackendForgeAuthError(msg)
+        if _matches(lowered, _RATE_LIMIT_MARKERS):
+            msg = f"forge rate-limited fetching project {pid!r}"
+            raise GitBackendRateLimitError(msg)
+        msg = f"git fetch failed for project {pid!r} (rc={rc})"
+        raise GitBackendFetchError(msg)
 
     async def _remote_repo_exists(self, pid: str) -> bool:
         """Check the forge REST API for ``<owner>/<project_id>``."""

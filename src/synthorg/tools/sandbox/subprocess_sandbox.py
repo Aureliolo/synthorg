@@ -369,17 +369,32 @@ class SubprocessSandbox:
         ``<workspace>/projects/<project_id>`` (separator-guarded to block
         traversal out of the projects subtree).
 
+        Rejects a missing project tree up front so a misprovisioned
+        workspace surfaces as a sandbox error rather than an opaque
+        command-spawn failure deep in ``create_subprocess_exec`` (and
+        stays diagnosable in parity with the Docker backend).
+
         Raises:
-            SandboxError: ``project_id`` bears path separators.
+            SandboxError: ``project_id`` bears path separators, or the
+                project tree does not exist on disk.
         """
         if project_id is None:
             return self._workspace
         pid = str(project_id)
-        if "/" in pid or "\\" in pid or ".." in pid:
+        if pid == "." or "/" in pid or "\\" in pid or ".." in pid:
             msg = f"refusing path-separator-bearing project_id {pid!r}"
             logger.warning(SANDBOX_WORKSPACE_VIOLATION, cwd=pid)
             raise SandboxError(msg)
-        return self._workspace / _PROJECTS_SUBDIR / pid
+        root = self._workspace / _PROJECTS_SUBDIR / pid
+        if not root.is_dir():
+            logger.warning(
+                SANDBOX_WORKSPACE_VIOLATION,
+                cwd=str(root),
+                workspace=str(self._workspace),
+            )
+            msg = f"project workspace does not exist: {root}"
+            raise SandboxError(msg)
+        return root
 
     @staticmethod
     def _kill_process(proc: asyncio.subprocess.Process) -> None:

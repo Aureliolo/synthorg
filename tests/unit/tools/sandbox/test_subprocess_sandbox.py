@@ -247,6 +247,21 @@ class TestWorkspaceBoundary:
     ) -> None:
         subprocess_sandbox._validate_cwd(subprocess_sandbox.workspace)
 
+    def test_project_root_missing_rejected(
+        self,
+        subprocess_sandbox: SubprocessSandbox,
+    ) -> None:
+        with pytest.raises(SandboxError, match="does not exist"):
+            subprocess_sandbox._project_root("never-provisioned")
+
+    def test_project_root_existing_accepted(
+        self,
+        subprocess_sandbox: SubprocessSandbox,
+    ) -> None:
+        proj = subprocess_sandbox.workspace / "projects" / "proj-a"
+        proj.mkdir(parents=True)
+        assert subprocess_sandbox._project_root("proj-a") == proj
+
     def test_workspace_only_disabled(
         self,
         sandbox_workspace: Path,

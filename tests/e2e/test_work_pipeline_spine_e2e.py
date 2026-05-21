@@ -242,6 +242,7 @@ async def _build_pipeline(  # noqa: PLR0913 -- test builder with keyword-only kn
         clock=FakeClock(),
         event_stream_hub=None,
         interrupt_store=None,
+        project_workspace_service=None,
         agent_workspace_root=tmp_path,
         persistence=persistence,
         has_simulation_runtime=True,

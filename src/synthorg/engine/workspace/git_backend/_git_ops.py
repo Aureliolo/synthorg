@@ -199,6 +199,13 @@ async def reject_if_nested_in_parent_worktree(
     toplevel = await asyncio.to_thread(Path(stdout).resolve)
     if toplevel == await asyncio.to_thread(path.resolve):
         return
+    logger.warning(
+        GIT_BACKEND_PROVISION_FAILED,
+        project_id=project_id,
+        reason="nested_in_parent_worktree",
+        path=str(path),
+        parent_toplevel=str(toplevel),
+    )
     msg = (
         f"refusing to provision project {project_id!r} inside an existing "
         f"parent git working tree at {toplevel!s}"

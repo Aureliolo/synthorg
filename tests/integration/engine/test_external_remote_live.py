@@ -19,7 +19,6 @@ Linux). Heavy by design; marked integration.
 
 import http.server
 import os
-import socket
 import ssl
 import subprocess
 import threading
@@ -153,10 +152,14 @@ def _make_handler(server_root: Path) -> type[http.server.BaseHTTPRequestHandler]
     return _Handler
 
 
-def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
+def _init_bare_empty(repo: Path) -> None:
+    """Create an empty bare repo (what a forge's create endpoint yields)."""
+    repo.mkdir(parents=True, exist_ok=True)
+    subprocess.run(  # noqa: S603
+        ["git", "init", "--bare", "--initial-branch=main", str(repo)],  # noqa: S607
+        check=True,
+        capture_output=True,
+    )
 
 
 def _init_bare_with_commit(repo: Path) -> None:
@@ -227,12 +230,14 @@ class TestExternalRemoteLive:
         server_root = tmp_path / "srv"
         _init_bare_with_commit(server_root / _OWNER / "proj-1.git")
         cert, key = _self_signed_cert(tmp_path)
-        port = _free_port()
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
+        # Bind to port 0 and read back the assigned port so there is no
+        # TOCTOU window between picking a free port and binding it.
         httpd = http.server.ThreadingHTTPServer(
-            ("127.0.0.1", port), _make_handler(server_root)
+            ("127.0.0.1", 0), _make_handler(server_root)
         )
+        port = int(httpd.server_address[1])
         httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
@@ -284,12 +289,14 @@ class TestExternalRemoteLive:
         server_root = tmp_path / "srv"
         server_root.mkdir()
         cert, key = _self_signed_cert(tmp_path)
-        port = _free_port()
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
+        # Bind to port 0 and read back the assigned port so there is no
+        # TOCTOU window between picking a free port and binding it.
         httpd = http.server.ThreadingHTTPServer(
-            ("127.0.0.1", port), _make_handler(server_root)
+            ("127.0.0.1", 0), _make_handler(server_root)
         )
+        port = int(httpd.server_address[1])
         httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
@@ -305,8 +312,11 @@ class TestExternalRemoteLive:
                 repo: NotBlankStr,
                 **_kw: object,
             ) -> ForgeRepo:
+                # A real forge create endpoint yields an *empty* repo; the
+                # first push then populates it. Seeding a commit here would
+                # make the local default branch a non-fast-forward.
                 bare = server_root / str(owner) / f"{repo}.git"
-                _init_bare_with_commit(bare)
+                _init_bare_empty(bare)
                 return ForgeRepo(
                     full_name=NotBlankStr(f"{owner}/{repo}"),
                     default_branch=NotBlankStr("main"),

@@ -27,7 +27,11 @@ class BaseForgeClient:
         headers: dict[str, str],
         timeout: float,
     ) -> None:
-        self._api_base_url = api_base_url.rstrip("/")
+        # Trailing slash is load-bearing: httpx resolves a relative
+        # request URL against the base_url's *path*, so without it a
+        # forge hosted under a path prefix (``/api/v3``, ``/api/v4``)
+        # would lose that prefix when joining the relative endpoint.
+        self._api_base_url = api_base_url.rstrip("/") + "/"
         self._headers = headers
         self._timeout = timeout
         self.__client: httpx.AsyncClient | None = None
@@ -58,7 +62,10 @@ class BaseForgeClient:
         ``GitBackendForgeApiError`` rather than a bare ``httpx`` error.
         """
         try:
-            return await self._client.request(method, url, json=json)
+            # Strip any leading slash so the endpoint resolves *against*
+            # the base_url path prefix; a leading slash would make httpx
+            # treat it as host-absolute and discard the prefix.
+            return await self._client.request(method, url.lstrip("/"), json=json)
         except httpx.HTTPError as exc:
             logger.warning(
                 FORGE_API_REQUEST_FAILED,

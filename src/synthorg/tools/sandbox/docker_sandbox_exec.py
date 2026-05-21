@@ -200,7 +200,7 @@ class DockerSandboxExecMixin:
         """
         return f"{project_id}:{key}" if project_id else key
 
-    def _resolve_lifecycle(
+    def _resolve_lifecycle(  # noqa: PLR0911 -- each owner source + prefix-validation guard needs its own early return
         self,
         owner_id: str | None,
         *,
@@ -242,6 +242,14 @@ class DockerSandboxExecMixin:
                 return self._ephemeral_key(), False
             owns = strategy.reuses_container
             prefixed = self._project_prefixed(key, project_id)
+            if not self._valid_owner(prefixed):
+                logger.warning(
+                    SANDBOX_LIFECYCLE_OWNER_DEGRADED,
+                    strategy=strategy_kind,
+                    owner_source="explicit",
+                    reason="project-prefixed owner_id failed format validation",
+                )
+                return self._ephemeral_key(), False
             logger.info(
                 SANDBOX_LIFECYCLE_DISPATCH,
                 strategy=strategy_kind,
@@ -257,6 +265,14 @@ class DockerSandboxExecMixin:
         ctx_key = self._context_owner(strategy_kind)
         if ctx_key is not None and self._valid_owner(ctx_key):
             prefixed = self._project_prefixed(ctx_key, project_id)
+            if not self._valid_owner(prefixed):
+                logger.warning(
+                    SANDBOX_LIFECYCLE_OWNER_DEGRADED,
+                    strategy=strategy_kind,
+                    owner_source="correlation_context",
+                    reason="project-prefixed owner_id failed format validation",
+                )
+                return self._ephemeral_key(), False
             logger.info(
                 SANDBOX_LIFECYCLE_DISPATCH,
                 strategy=strategy_kind,
@@ -305,6 +321,13 @@ class DockerSandboxExecMixin:
             return
         effective_project = project_id or self._context_project()
         key = self._project_prefixed(owner_id.strip(), effective_project)
+        if not self._valid_owner(key):
+            logger.warning(
+                SANDBOX_LIFECYCLE_OWNER_DEGRADED,
+                strategy=self._config.lifecycle.strategy,
+                reason="project-prefixed owner_id failed format validation",
+            )
+            return
         logger.info(
             SANDBOX_LIFECYCLE_RELEASE,
             strategy=self._config.lifecycle.strategy,

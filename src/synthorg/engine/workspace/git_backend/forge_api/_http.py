@@ -29,6 +29,11 @@ logger = get_logger(__name__)
 
 _AUTH_STATUS: Final[frozenset[int]] = frozenset({401, 403})
 _RATE_LIMIT_STATUS: Final[int] = 429
+# Only GitHub's *primary* rate limit surfaces as 403 + a zeroed
+# remaining header; a 401 is always genuine auth failure, never a
+# disguised rate limit, so the remaining-header heuristic is scoped to
+# 403 to keep auth failures non-retryable.
+_PRIMARY_RATE_LIMIT_STATUS: Final[int] = 403
 _RATE_LIMIT_REMAINING_HEADER: Final[str] = "x-ratelimit-remaining"
 _RETRY_AFTER_HEADER: Final[str] = "retry-after"
 _MAX_BODY_SNIPPET: Final[int] = 500
@@ -73,7 +78,7 @@ def _is_rate_limited(resp: httpx.Response) -> bool:
     """
     if resp.status_code == _RATE_LIMIT_STATUS:
         return True
-    if resp.status_code in _AUTH_STATUS:
+    if resp.status_code == _PRIMARY_RATE_LIMIT_STATUS:
         remaining = resp.headers.get(_RATE_LIMIT_REMAINING_HEADER)
         return remaining is not None and remaining.strip() == "0"
     return False

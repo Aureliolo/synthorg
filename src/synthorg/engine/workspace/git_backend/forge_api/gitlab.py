@@ -1,8 +1,11 @@
 """GitLab REST API forge client (repository existence + creation)."""
 
-from typing import Any, Final
+from typing import TYPE_CHECKING, Final
 from urllib.parse import quote
 
+from pydantic import BaseModel, ConfigDict, ValidationError
+
+from synthorg.api.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import GitBackendForgeApiError
 from synthorg.engine.workspace.git_backend.forge_api._base import BaseForgeClient
@@ -16,9 +19,54 @@ from synthorg.observability.events.workspace import (
     FORGE_API_REPO_EXISTS_CHECK,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
 logger = get_logger(__name__)
 
 _HTTP_NOT_FOUND: Final[int] = 404
+
+
+class _GitLabUser(BaseModel):
+    """Typed view of the ``GET /user`` fields the client consumes."""
+
+    model_config = ConfigDict(
+        frozen=True,
+        # lint-allow: frozen-extra-forbid -- forge /user returns many fields
+        # beyond the username we model; ignore the rest.
+        extra="ignore",
+    )
+
+    username: NotBlankStr
+
+
+class _GitLabNamespace(BaseModel):
+    """Typed view of the ``GET /namespaces/<owner>`` id field."""
+
+    model_config = ConfigDict(
+        frozen=True,
+        # lint-allow: frozen-extra-forbid -- the namespace payload carries
+        # many fields beyond the id we model; ignore the rest.
+        extra="ignore",
+    )
+
+    id: int
+
+
+class _GitLabProject(BaseModel):
+    """Typed view of the project-creation response fields the client uses."""
+
+    model_config = ConfigDict(
+        frozen=True,
+        # lint-allow: frozen-extra-forbid -- project payloads carry many
+        # fields beyond the four we model; ignore the rest.
+        extra="ignore",
+    )
+
+    path_with_namespace: NotBlankStr
+    http_url_to_repo: NotBlankStr
+    default_branch: str = "main"
+    visibility: str = ""
 
 
 class GitLabForgeClient(BaseForgeClient):
@@ -76,11 +124,12 @@ class GitLabForgeClient(BaseForgeClient):
         action = "resolve authenticated user"
         resp = await self._request("GET", "/user", action=action)
         raise_for_forge_status(resp, action=action)
-        username = resp.json().get("username")
-        if not isinstance(username, str) or not username:
+        try:
+            user = parse_typed("forge.gitlab.user", resp.json(), _GitLabUser)
+        except ValidationError as exc:
             msg = "GitLab /user response missing 'username'"
-            raise GitBackendForgeApiError(msg)
-        return username
+            raise GitBackendForgeApiError(msg) from exc
+        return str(user.username)
 
     async def _namespace_id(self, owner: NotBlankStr) -> int:
         action = f"resolve namespace {owner}"
@@ -90,25 +139,27 @@ class GitLabForgeClient(BaseForgeClient):
             action=action,
         )
         raise_for_forge_status(resp, action=action)
-        namespace_id = resp.json().get("id")
-        if not isinstance(namespace_id, int):
+        try:
+            namespace = parse_typed(
+                "forge.gitlab.namespace", resp.json(), _GitLabNamespace
+            )
+        except ValidationError as exc:
             msg = f"GitLab namespace {owner!r} response missing integer 'id'"
-            raise GitBackendForgeApiError(msg)
-        return namespace_id
+            raise GitBackendForgeApiError(msg) from exc
+        return namespace.id
 
 
-def _parse_repo(data: dict[str, Any]) -> ForgeRepo:
-    full_name = data.get("path_with_namespace")
-    default_branch = data.get("default_branch") or "main"
-    clone_url = data.get("http_url_to_repo")
-    if not isinstance(full_name, str) or not isinstance(clone_url, str):
+def _parse_repo(data: Mapping[str, object] | None) -> ForgeRepo:
+    try:
+        project = parse_typed("forge.gitlab.project", data, _GitLabProject)
+    except ValidationError as exc:
         msg = "GitLab project response missing 'path_with_namespace'/'http_url_to_repo'"
-        raise GitBackendForgeApiError(msg)
+        raise GitBackendForgeApiError(msg) from exc
     return ForgeRepo(
-        full_name=NotBlankStr(full_name),
-        default_branch=NotBlankStr(default_branch),
-        private=data.get("visibility") == "private",
-        clone_url=NotBlankStr(clone_url),
+        full_name=project.path_with_namespace,
+        default_branch=NotBlankStr(project.default_branch or "main"),
+        private=project.visibility == "private",
+        clone_url=project.http_url_to_repo,
     )
 
 

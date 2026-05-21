@@ -235,27 +235,27 @@ class TestFactoryApiBaseDerivation:
             (
                 ConnectionType.GITHUB,
                 "https://github.com/acme",
-                "https://api.github.com",
+                "https://api.github.com/",
             ),
             (
                 ConnectionType.GITHUB,
                 "https://ghe.corp.example/acme",
-                "https://ghe.corp.example/api/v3",
+                "https://ghe.corp.example/api/v3/",
             ),
             (
                 ConnectionType.GITLAB,
                 "https://gitlab.com/acme",
-                "https://gitlab.com/api/v4",
+                "https://gitlab.com/api/v4/",
             ),
             (
                 ConnectionType.GITEA,
                 "https://gitea.example.com/acme",
-                "https://gitea.example.com/api/v1",
+                "https://gitea.example.com/api/v1/",
             ),
             (
                 ConnectionType.FORGEJO,
                 "https://code.example.com/acme",
-                "https://code.example.com/api/v1",
+                "https://code.example.com/api/v1/",
             ),
         ],
         ids=[

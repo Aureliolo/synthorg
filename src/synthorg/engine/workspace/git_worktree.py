@@ -176,7 +176,12 @@ class PlannerWorktreeStrategy:
         """
         if project_id is None:
             return self._repo_root
-        if "/" in project_id or "\\" in project_id or ".." in project_id:
+        if (
+            project_id == "."
+            or "/" in project_id
+            or "\\" in project_id
+            or ".." in project_id
+        ):
             msg = f"refusing path-separator-bearing project_id {project_id!r}"
             logger.warning(WORKSPACE_SETUP_FAILED, error=msg, project_id=project_id)
             raise WorkspaceSetupError(msg)
@@ -716,6 +721,13 @@ class PlannerWorktreeStrategy:
         root = effective_root if effective_root is not None else self._repo_root
         if self._config.worktree_base_dir:
             base = Path(self._config.worktree_base_dir)
+        elif root != self._repo_root:
+            # Project-scoped: keep the worktree *inside* the project's own
+            # repo tree. Its sandbox mount only exposes
+            # ``<repo_root>/projects/<project_id>``, so a sibling
+            # ``projects/.worktrees`` would be invisible (and shared across
+            # projects) -- breaking project-scoped execution.
+            base = root / ".worktrees"
         else:
             base = root.parent / ".worktrees"
         return base / workspace_id

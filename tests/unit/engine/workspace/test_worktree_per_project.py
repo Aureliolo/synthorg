@@ -55,7 +55,7 @@ class TestEffectiveRoot:
     def test_project_id_is_project_subtree(self) -> None:
         assert _strategy()._effective_root("p1") == _ROOT / "projects" / "p1"
 
-    @pytest.mark.parametrize("bad", ["../escape", "a/b", "a\\b", ".."])
+    @pytest.mark.parametrize("bad", ["../escape", "a/b", "a\\b", "..", "."])
     def test_traversal_rejected(self, bad: str) -> None:
         with pytest.raises(WorkspaceSetupError, match="path-separator"):
             _strategy()._effective_root(bad)
@@ -85,8 +85,11 @@ class TestSetupRoutesToProjectRoot:
         # branch + worktree-add both ran in the project repo.
         assert recorder.cwds
         assert all(cwd == expected for cwd in recorder.cwds)
-        # The worktree dir is anchored on the project tree's parent.
-        assert "/projects/.worktrees/" in workspace.worktree_path.replace("\\", "/")
+        # The worktree dir is anchored *inside* the project tree so the
+        # project-scoped sandbox mount can reach it.
+        assert "/projects/proj-a/.worktrees/" in workspace.worktree_path.replace(
+            "\\", "/"
+        )
 
     async def test_setup_without_project_uses_singleton_root(
         self,
@@ -122,7 +125,7 @@ class TestMergeRoutesToProjectRoot:
             task_id="task-1",
             agent_id="agent-1",
             branch_name="workspace/task-1/w1",
-            worktree_path="/srv/agent-workspace/projects/.worktrees/w1",
+            worktree_path="/srv/agent-workspace/projects/proj-a/.worktrees/w1",
             base_branch="main",
             created_at=datetime.now(UTC),
             project_id="proj-a",
@@ -152,7 +155,7 @@ class TestTeardownRoutesToProjectRoot:
             task_id="task-1",
             agent_id="agent-1",
             branch_name="workspace/task-1/w1",
-            worktree_path="/srv/agent-workspace/projects/.worktrees/w1",
+            worktree_path="/srv/agent-workspace/projects/proj-a/.worktrees/w1",
             base_branch="main",
             created_at=datetime.now(UTC),
             project_id="proj-a",

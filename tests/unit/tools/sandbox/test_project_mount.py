@@ -31,25 +31,42 @@ def _make_project(workspace: Path, project_id: str) -> Path:
 
 
 class TestProjectRoot:
-    def test_none_returns_workspace_root(self, tmp_path: Path) -> None:
+    async def test_none_returns_workspace_root(self, tmp_path: Path) -> None:
         sandbox = _sandbox(tmp_path)
-        assert sandbox._project_root(None) == tmp_path
+        assert await sandbox._project_root(None) == tmp_path
 
-    def test_project_id_returns_subtree(self, tmp_path: Path) -> None:
+    async def test_project_id_returns_subtree(self, tmp_path: Path) -> None:
         _make_project(tmp_path, "proj-a")
         sandbox = _sandbox(tmp_path)
-        assert sandbox._project_root("proj-a") == (tmp_path / "projects" / "proj-a")
+        assert await sandbox._project_root("proj-a") == (
+            tmp_path / "projects" / "proj-a"
+        )
 
-    @pytest.mark.parametrize("bad", ["../escape", "a/b", "a\\b", ".."])
-    def test_traversal_rejected(self, tmp_path: Path, bad: str) -> None:
+    @pytest.mark.parametrize("bad", ["../escape", "a/b", "a\\b", "..", "."])
+    async def test_traversal_rejected(self, tmp_path: Path, bad: str) -> None:
         sandbox = _sandbox(tmp_path)
         with pytest.raises(SandboxError, match="path-separator"):
-            sandbox._project_root(bad)
+            await sandbox._project_root(bad)
 
-    def test_missing_project_dir_rejected(self, tmp_path: Path) -> None:
+    async def test_missing_project_dir_rejected(self, tmp_path: Path) -> None:
         sandbox = _sandbox(tmp_path)
         with pytest.raises(SandboxError, match="does not exist"):
-            sandbox._project_root("never-provisioned")
+            await sandbox._project_root("never-provisioned")
+
+    async def test_symlinked_project_escaping_root_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        projects = tmp_path / "projects"
+        projects.mkdir()
+        try:
+            (projects / "evil").symlink_to(outside, target_is_directory=True)
+        except OSError, NotImplementedError:
+            pytest.skip("symlink creation not permitted on this platform")
+        sandbox = _sandbox(tmp_path)
+        with pytest.raises(SandboxError, match="escapes projects root"):
+            await sandbox._project_root("evil")
 
 
 class TestHostConfigBindsProjectSubtree:
@@ -104,6 +121,15 @@ class TestOwnerKeyProjectPrefix:
         key_a, _ = sandbox._resolve_lifecycle("agent-1", project_id="proj-a")
         key_b, _ = sandbox._resolve_lifecycle("agent-1", project_id="proj-b")
         assert key_a != key_b
+
+    def test_invalid_project_prefix_degrades_to_ephemeral(self, tmp_path: Path) -> None:
+        # A valid owner combined with a project_id that produces an
+        # out-of-format prefixed key must not poison the lifecycle key;
+        # it degrades to an ephemeral per-call key instead.
+        sandbox = _sandbox(tmp_path)
+        key, owns = sandbox._resolve_lifecycle("agent-1", project_id="bad@id")
+        assert key.startswith("per-call:")
+        assert owns is False
 
 
 class TestContextProject:
