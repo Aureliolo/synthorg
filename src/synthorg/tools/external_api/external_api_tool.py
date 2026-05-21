@@ -174,7 +174,7 @@ class ExternalApiTool(BaseTool):
             method=args.method,
             resolved_url=resolved_url,
             body=args.body,
-            headers=args.headers,
+            headers=self._signable_headers(args.headers),
         )
         if (conn.sensitive or args.is_write) and not self._auto_approved:
             gate = await self._gate_approval(args, signature)
@@ -290,7 +290,25 @@ class ExternalApiTool(BaseTool):
         return build_auth_headers(conn.auth_method, credentials)
 
     @staticmethod
+    def _signable_headers(agent_headers: dict[str, str]) -> dict[str, str]:
+        """Agent headers minus restricted ones that egress would strip.
+
+        The approval signature must describe the request that is actually
+        sent, so restricted headers (``Host`` / framing) -- which
+        ``_merge_agent_headers`` drops before egress -- must not influence
+        the signature either. Otherwise two calls differing only in a
+        never-sent ``Host`` would sign differently and force a redundant
+        re-approval.
+        """
+        return {
+            k: v
+            for k, v in agent_headers.items()
+            if k.lower() not in _RESTRICTED_REQUEST_HEADERS
+        }
+
+    @classmethod
     def _merge_agent_headers(
+        cls,
         agent_headers: dict[str, str],
         brokered_headers: dict[str, str],
     ) -> dict[str, str]:
@@ -305,9 +323,8 @@ class ExternalApiTool(BaseTool):
         brokered_keys = {k.lower() for k in brokered_headers}
         safe_agent_headers = {
             k: v
-            for k, v in agent_headers.items()
-            if k.lower() not in _RESTRICTED_REQUEST_HEADERS
-            and k.lower() not in brokered_keys
+            for k, v in cls._signable_headers(agent_headers).items()
+            if k.lower() not in brokered_keys
         }
         return {**safe_agent_headers, **brokered_headers}
 

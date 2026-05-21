@@ -220,6 +220,32 @@ class TestExternalApiToolCredentials:
         assert "authorization" not in sent
         assert sent["X-Extra"] == "ok"
 
+    async def test_restricted_headers_excluded_from_signature(self) -> None:
+        # A call differing only in a never-sent restricted header signs
+        # identically, so it reuses its approval instead of re-parking.
+        store = ApprovalStore()
+        tool = _build_tool(conn=_connection(sensitive=True), approval_store=store)
+        park_args = {"connection": "crm-api", "path": "/d", "headers": {"Host": "a"}}
+        parked = await tool.execute(arguments=park_args)
+        approval_id = parked.metadata["approval_id"]
+        item = await store.get(approval_id)
+        assert item is not None
+        await store.save(item.model_copy(update={"status": ApprovalStatus.APPROVED}))
+
+        provider = StubProvider()
+        resumed_tool = _build_tool(
+            conn=_connection(sensitive=True),
+            provider=provider,
+            approval_store=store,
+        )
+        # Re-issue with a different Host (stripped at egress); the grant
+        # still matches because Host is excluded from the signature.
+        resumed = await resumed_tool.execute(
+            arguments={"connection": "crm-api", "path": "/d", "headers": {"Host": "b"}},
+        )
+        assert resumed.is_error is False
+        assert len(provider.requests) == 1
+
     async def test_credential_retrieval_failure_errors_without_egress(self) -> None:
         provider = StubProvider()
         tool = _build_tool(
@@ -433,6 +459,9 @@ class TestExternalApiToolApprovalGating:
         result = await intruder.execute(arguments=args)
         assert result.metadata.get("requires_parking") is True
         assert intruder_provider.requests == []
+        # The intruder gets a fresh, principal-scoped approval rather than
+        # latching onto the owner's grant id.
+        assert result.metadata["approval_id"] != parked.metadata["approval_id"]
 
     async def test_other_principal_explicit_approval_id_errors(self) -> None:
         # A leaked approval_id from another principal's grant is rejected,

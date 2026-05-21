@@ -98,6 +98,9 @@ class TestConnectionRepository:
         )
         refetched = await backend.connections.get(NotBlankStr("conn-secret"))
         assert refetched is not None
+        # The metadata change proves the upsert actually wrote a new row
+        # state; the flag staying True proves the upsert preserved it.
+        assert refetched.metadata["owner"] == "secops"
         assert refetched.sensitive is True
 
     async def test_save_is_idempotent_upsert(self, backend: PersistenceBackend) -> None:

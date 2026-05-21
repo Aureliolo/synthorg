@@ -31,7 +31,11 @@ from synthorg.observability.events.api import (
     API_APPROVAL_REPO_LISTED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import coerce_row_timestamp, validate_pagination_args
+from synthorg.persistence._shared import (
+    coerce_row_timestamp,
+    normalize_utc,
+    validate_pagination_args,
+)
 from synthorg.persistence.approval_protocol import ApprovalFilterSpec  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -660,7 +664,14 @@ class PostgresApprovalRepository:
             "UPDATE approvals SET consumed_at = %s "
             "WHERE id = %s AND status = %s AND consumed_at IS NULL"
         )
-        params = (consumed_at, approval_id, ApprovalStatus.APPROVED.value)
+        # Normalise to aware-UTC before binding to TIMESTAMPTZ so the
+        # stored instant matches the SQLite path (which goes through
+        # format_iso_utc) regardless of the session timezone.
+        params = (
+            normalize_utc(consumed_at),
+            approval_id,
+            ApprovalStatus.APPROVED.value,
+        )
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(sql, params)
