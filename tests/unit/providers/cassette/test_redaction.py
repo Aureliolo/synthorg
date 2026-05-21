@@ -72,6 +72,7 @@ class TestPatternRedactor:
             ],
         }
         out = PatternRedactor().redact(payload)
+        assert isinstance(out, dict)
         assert "A" * 512 not in str(out)
         assert out["content"][0]["image_url"]["url"] == IMAGE_DATA_PLACEHOLDER
         # The sibling non-image field is untouched.
