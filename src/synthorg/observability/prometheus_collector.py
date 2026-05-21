@@ -292,6 +292,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         self._client_disconnects = self._push.client_disconnects
         self._approval_decisions = self._push.approval_decisions
         self._escalation_outcomes = self._push.escalation_outcomes
+        self._push_queue_events = self._push.push_queue_events
         self._blueprint_instantiations = self._push.blueprint_instantiations
         self._settings_mutations = self._push.settings_mutations
         self._mcp_handler_outcomes = self._push.mcp_handler_outcomes

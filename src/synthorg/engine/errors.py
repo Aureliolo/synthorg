@@ -241,6 +241,63 @@ class GitBackendFetchError(GitBackendError):
     default_message: ClassVar[str] = "Git fetch failed"
 
 
+class GitBackendRemoteMissingError(GitBackendError):
+    """Raised when a push targets a forge repo that does not exist yet.
+
+    Distinct from a transient push failure: the operator's credential
+    is valid but the addressed repository has never been created. The
+    external-remote backend catches this to trigger lazy forge-API
+    repo provisioning (create-then-retry-once); it is NOT retried by
+    the transient-I/O retry handler.
+    """
+
+    default_message: ClassVar[str] = "Remote repository does not exist"
+
+
+class GitBackendRateLimitError(GitBackendError):
+    """Raised when a forge rate-limits a git or forge-API operation.
+
+    Retryable via the transient-I/O backoff handler. ``retry_after``
+    carries the server-advertised cooldown (seconds) when present, for
+    observability; the backoff itself is exponential (Pattern A).
+    """
+
+    retryable: ClassVar[bool] = True
+    default_message: ClassVar[str] = "Forge rate limit exceeded"
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after: float | None = retry_after
+
+
+class GitBackendForgeApiError(GitBackendError):
+    """Raised when a forge REST API call fails (non-auth).
+
+    Retryable: forge-API 5xx / connection failures are transient.
+    """
+
+    retryable: ClassVar[bool] = True
+    default_message: ClassVar[str] = "Forge API request failed"
+
+
+class GitBackendForgeAuthError(GitBackendForgeApiError):
+    """Raised on 401/403 forge-API responses (invalid/expired token).
+
+    Non-retryable: a fresh credential is required, not a backoff.
+    """
+
+    retryable: ClassVar[bool] = False
+    status_code: ClassVar[int] = 401
+    error_code: ClassVar[ErrorCode] = ErrorCode.UNAUTHORIZED
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    default_message: ClassVar[str] = "Forge API authentication failed"
+
+
 class TaskEngineError(EngineError):
     """Base exception for all task engine errors."""
 

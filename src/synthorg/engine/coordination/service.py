@@ -9,6 +9,7 @@ import asyncio
 from collections.abc import (
     Callable,  # noqa: TC003 -- runtime-read by typing.get_type_hints()
 )
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.coordination_collector import CollectionInputs
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
     from synthorg.budget.coordination_collector import (
         CoordinationMetricsCollector,
     )
+    from synthorg.core.types import NotBlankStr
     from synthorg.engine.coordination.dispatcher_types import DispatchResult
     from synthorg.engine.coordination.models import CoordinationContext
     from synthorg.engine.decomposition.models import (
@@ -59,6 +61,9 @@ if TYPE_CHECKING:
     from synthorg.engine.routing.models import RoutingResult
     from synthorg.engine.routing.service import TaskRoutingService
     from synthorg.engine.task_engine import TaskEngine
+    from synthorg.engine.workspace.project_workspace_service import (
+        ProjectWorkspaceService,
+    )
     from synthorg.engine.workspace.service import WorkspaceIsolationService
     from synthorg.hr.performance.tracker import PerformanceTracker
 
@@ -97,6 +102,12 @@ class MultiAgentCoordinator:
         routing_service: Service to route subtasks to agents.
         parallel_executor: Executor for parallel agent runs.
         workspace_service: Optional workspace isolation service.
+        project_workspace_service: Optional per-project workspace
+            provisioner. When supplied alongside ``workspace_service``,
+            the dispatch merge step routes through the per-project
+            push queue (``merge_workspace_with_push``) so forge-collision
+            safety runs end to end; otherwise the merge falls back to
+            the in-memory ``merge_group``.
         task_engine: Optional task engine for parent status updates.
         performance_tracker: Optional tracker for recording per-agent
             coordination contributions.
@@ -131,6 +142,7 @@ class MultiAgentCoordinator:
         "_default_topology_provider",
         "_parallel_executor",
         "_performance_tracker",
+        "_project_workspace_service",
         "_routing_service",
         "_task_engine",
         "_workspace_service",
@@ -143,6 +155,7 @@ class MultiAgentCoordinator:
         routing_service: TaskRoutingService,
         parallel_executor: ParallelExecutor,
         workspace_service: WorkspaceIsolationService | None = None,
+        project_workspace_service: ProjectWorkspaceService | None = None,
         task_engine: TaskEngine | None = None,
         performance_tracker: PerformanceTracker | None = None,
         coordination_chain: CoordinationMiddlewareChain | None = None,
@@ -156,6 +169,7 @@ class MultiAgentCoordinator:
         self._routing_service = routing_service
         self._parallel_executor = parallel_executor
         self._workspace_service = workspace_service
+        self._project_workspace_service = project_workspace_service
         self._task_engine = task_engine
         self._performance_tracker = performance_tracker
         self._coordination_chain = coordination_chain
@@ -767,6 +781,19 @@ class MultiAgentCoordinator:
                 partial_phases=tuple(phases),
             )
 
+    async def _resolve_repo_root(self, project_id: NotBlankStr | None) -> Path | None:
+        """Resolve the project's on-disk repo root for push-queue merges.
+
+        Returns ``None`` when there is no project context or no
+        project-workspace service is wired (the empty-company /
+        no-durable-backing path), which makes the dispatch merge fall
+        back to the in-memory ``merge_group``.
+        """
+        if project_id is None or self._project_workspace_service is None:
+            return None
+        workspace = await self._project_workspace_service.get_or_provision(project_id)
+        return Path(workspace.workspace_path)
+
     async def _phase_dispatch(
         self,
         topology: CoordinationTopology,
@@ -782,12 +809,16 @@ class MultiAgentCoordinator:
         logger.info(COORDINATION_PHASE_STARTED, phase=phase_name)
         try:
             dispatcher = select_dispatcher(topology, clock=self._clock)
+            project_id = context.task.project
+            repo_root = await self._resolve_repo_root(project_id)
             return await dispatcher.dispatch(
                 decomposition_result=decomp_result,
                 routing_result=routing_result,
                 parallel_executor=self._parallel_executor,
                 workspace_service=self._workspace_service,
                 config=context.config,
+                project_id=project_id,
+                repo_root=repo_root,
             )
         except CoordinationPhaseError:
             raise

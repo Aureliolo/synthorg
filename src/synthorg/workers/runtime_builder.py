@@ -518,6 +518,7 @@ async def _build_runtime_coordinator(
         task_engine=app_state.task_engine,
         workspace_strategy=workspace_strategy,
         workspace_config=workspace_config,
+        project_workspace_service=project_workspace_service,
         git_backend=git_backend,
         performance_tracker=performance_tracker,
         routing_scorer_config=routing_scorer_config,

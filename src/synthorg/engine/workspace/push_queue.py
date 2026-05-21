@@ -28,6 +28,7 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_PUSH_QUEUE_MERGED,
     WORKSPACE_PUSH_QUEUE_WORKER_FAILED,
 )
+from synthorg.observability.metrics_hub import record_push_queue_event
 
 if TYPE_CHECKING:
     from synthorg.engine.workspace.git_backend import GitBackend
@@ -151,6 +152,7 @@ class PushQueueCoordinator:
             project_id=self._project_id,
             workspace_id=workspace.workspace_id,
         )
+        record_push_queue_event(outcome="enqueued")
         return await future
 
     async def _worker_loop(self) -> None:
@@ -270,6 +272,7 @@ class PushQueueCoordinator:
             workspace_id=item.workspace.workspace_id,
             branch=item.workspace.branch_name,
         )
+        record_push_queue_event(outcome="merged")
         if not item.future.done():
             item.future.set_result(merge_result)
 

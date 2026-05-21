@@ -109,7 +109,11 @@ class AgentEngineResumeMixin:
         agent_id = str(identity.id)
         task_id = task.id
 
-        with correlation_scope(agent_id=agent_id, task_id=task_id):
+        with correlation_scope(
+            agent_id=agent_id,
+            task_id=task_id,
+            project_id=task.project,
+        ):
             start = self._clock.monotonic()
             logger.info(
                 APPROVAL_GATE_RESUME_STARTED,

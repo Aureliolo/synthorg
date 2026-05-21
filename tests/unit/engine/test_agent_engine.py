@@ -1515,6 +1515,7 @@ class TestAgentEngineCorrelationBinding:
             mock_scope.assert_called_once_with(
                 agent_id=str(sample_agent_with_personality.id),
                 task_id=sample_task_with_criteria.id,
+                project_id=sample_task_with_criteria.project,
             )
 
     async def test_correlation_context_clean_after_error(

@@ -132,6 +132,7 @@ class TestEmbeddedGitBackend:
         # check or against an unforeseen path where is_git_repo would
         # return false on a linked worktree.
         from synthorg.engine.errors import GitBackendProvisionError
+        from synthorg.engine.workspace.git_backend._git_ops import configure_identity
 
         host_repo = tmp_path / "host"
         host_repo.mkdir()
@@ -146,10 +147,13 @@ class TestEmbeddedGitBackend:
         # config` writes there bubble up to host_repo/.git/config.
         linked_tree = tmp_path / "linked"
         await _git(host_repo, "worktree", "add", "-B", "wt-branch", str(linked_tree))
-        backend = _backend(tmp_path / "base")
-
         with pytest.raises(GitBackendProvisionError) as exc_info:
-            await backend._configure_identity(linked_tree, "p1")
+            await configure_identity(
+                linked_tree,
+                cmd_timeout=30.0,
+                fail_exc=GitBackendProvisionError,
+                project_id="p1",
+            )
         assert "shared" in str(exc_info.value).lower()
         # The parent's user.email must still equal the value we set
         # above; the bot identity must NOT have leaked into the host

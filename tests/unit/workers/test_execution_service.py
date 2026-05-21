@@ -486,7 +486,10 @@ class TestSandboxOwnerRelease:
             strategy_kind=STRATEGY_PER_AGENT,
         )
         await self._run(service, task)
-        release.assert_awaited_once_with(str(identity.id))  # type: ignore[attr-defined]
+        release.assert_awaited_once_with(
+            str(identity.id),  # type: ignore[attr-defined]
+            project_id=task.project,  # type: ignore[attr-defined]
+        )
 
     async def test_per_task_releases_task_id(self) -> None:
         release = AsyncMock()
@@ -496,7 +499,10 @@ class TestSandboxOwnerRelease:
             strategy_kind=STRATEGY_PER_TASK,
         )
         await self._run(service, task)
-        release.assert_awaited_once_with(task.id)  # type: ignore[attr-defined]
+        release.assert_awaited_once_with(
+            task.id,  # type: ignore[attr-defined]
+            project_id=task.project,  # type: ignore[attr-defined]
+        )
 
     async def test_per_call_does_not_release(self) -> None:
         release = AsyncMock()
@@ -555,4 +561,4 @@ class TestSandboxOwnerRelease:
                 idempotency_key="k",
                 requested_by="user",
             )
-        release.assert_awaited_once_with(task.id)
+        release.assert_awaited_once_with(task.id, project_id=task.project)

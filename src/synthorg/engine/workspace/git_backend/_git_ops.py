@@ -8,7 +8,7 @@ failure surfaces as a :class:`~synthorg.engine.errors.GitBackendError`.
 
 import asyncio
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.engine.workspace._git_subprocess import (
     _redact_args,
@@ -23,6 +23,10 @@ if TYPE_CHECKING:
     from synthorg.engine.errors import GitBackendError
 
 logger = get_logger(__name__)
+
+BOT_NAME: Final[str] = "SynthOrg"
+BOT_EMAIL: Final[str] = "synthorg-bot@synthorg.local"
+REMOTE_NAME: Final[str] = "origin"
 
 
 async def git(
@@ -164,3 +168,143 @@ async def assert_standalone_repo(
         "across every linked worktree."
     )
     raise fail_exc(msg)
+
+
+async def reject_if_nested_in_parent_worktree(
+    path: Path,
+    *,
+    cmd_timeout: float,
+    fail_exc: type[GitBackendError],
+    project_id: str,
+) -> None:
+    """Refuse if *path* sits inside an EXISTING parent working tree.
+
+    ``rev-parse --show-toplevel`` succeeds and reports a toplevel
+    DIFFERENT from *path* iff some parent dir of *path* is a working
+    tree; in that case ``git init`` would silently no-op and the
+    subsequent ``git config`` / ``git commit`` would mutate the outer
+    repo. Raise instead of silently corrupting it. If git already
+    considers *path* itself the toplevel (idempotent re-provision), the
+    caller may proceed.
+    """
+    rc, stdout, _stderr = await run_git_subprocess(
+        path,
+        "rev-parse",
+        "--show-toplevel",
+        cmd_timeout=cmd_timeout,
+        log_event=GIT_BACKEND_PROVISION_FAILED,
+    )
+    if rc != 0:
+        return
+    toplevel = await asyncio.to_thread(Path(stdout.strip()).resolve)
+    if toplevel == await asyncio.to_thread(path.resolve):
+        return
+    logger.warning(
+        GIT_BACKEND_PROVISION_FAILED,
+        project_id=project_id,
+        reason="nested_in_parent_worktree",
+        path=str(path),
+        parent_toplevel=str(toplevel),
+    )
+    msg = (
+        f"refusing to provision project {project_id!r} inside an existing "
+        f"parent git working tree at {toplevel!s}"
+    )
+    raise fail_exc(msg)
+
+
+async def configure_identity(
+    workspace_path: Path,
+    *,
+    cmd_timeout: float,
+    fail_exc: type[GitBackendError],
+    project_id: str,
+) -> None:
+    """Set the bot ``user.{email,name}`` after a standalone-repo check."""
+    await assert_standalone_repo(
+        workspace_path,
+        cmd_timeout=cmd_timeout,
+        fail_exc=fail_exc,
+        project_id=project_id,
+    )
+    await git(
+        workspace_path,
+        "config",
+        "user.email",
+        BOT_EMAIL,
+        cmd_timeout=cmd_timeout,
+        fail_exc=fail_exc,
+        project_id=project_id,
+    )
+    await git(
+        workspace_path,
+        "config",
+        "user.name",
+        BOT_NAME,
+        cmd_timeout=cmd_timeout,
+        fail_exc=fail_exc,
+        project_id=project_id,
+    )
+
+
+async def init_working_tree_with_remote(  # noqa: PLR0913 -- irreducible git-init params
+    workspace_path: Path,
+    *,
+    default_branch: str,
+    remote_url: str,
+    cmd_timeout: float,
+    fail_exc: type[GitBackendError],
+    project_id: str,
+) -> None:
+    """Initialise a standalone working tree wired to ``origin``.
+
+    Creates the working tree (``git init`` on *default_branch*), sets
+    the bot identity, lands an empty initial commit so worktrees can
+    branch from *default_branch*, and adds ``origin`` pointing at
+    *remote_url*. Does NOT push: callers that target a not-yet-created
+    remote push (and lazily provision the remote) separately.
+
+    The standalone-repo + parent-worktree guards run first so identity
+    writes cannot leak into a shared parent config.
+    """
+    await reject_if_nested_in_parent_worktree(
+        workspace_path,
+        cmd_timeout=cmd_timeout,
+        fail_exc=fail_exc,
+        project_id=project_id,
+    )
+    await git(
+        workspace_path,
+        "init",
+        "--initial-branch",
+        default_branch,
+        cmd_timeout=cmd_timeout,
+        fail_exc=fail_exc,
+        project_id=project_id,
+    )
+    await configure_identity(
+        workspace_path,
+        cmd_timeout=cmd_timeout,
+        fail_exc=fail_exc,
+        project_id=project_id,
+    )
+    await git(
+        workspace_path,
+        "commit",
+        "--allow-empty",
+        "-m",
+        "Initialise project workspace",
+        cmd_timeout=cmd_timeout,
+        fail_exc=fail_exc,
+        project_id=project_id,
+    )
+    await git(
+        workspace_path,
+        "remote",
+        "add",
+        REMOTE_NAME,
+        remote_url,
+        cmd_timeout=cmd_timeout,
+        fail_exc=fail_exc,
+        project_id=project_id,
+    )

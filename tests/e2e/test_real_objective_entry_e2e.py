@@ -210,6 +210,7 @@ async def _build_objective_adapter(
         clock=FakeClock(),
         event_stream_hub=None,
         interrupt_store=None,
+        project_workspace_service=None,
         agent_workspace_root=tmp_path,
         persistence=persistence,
         has_simulation_runtime=True,

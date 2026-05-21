@@ -41,6 +41,7 @@ from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Mapping
 
+    from synthorg.core.types import NotBlankStr
     from synthorg.observability.config import ContainerLogShippingConfig
     from synthorg.persistence.tracked_container_protocol import (
         TrackedContainerRepository,
@@ -76,6 +77,7 @@ logger = get_logger(__name__)
 _DEFAULT_CONFIG = DockerSandboxConfig()
 _NANO_CPUS_MULTIPLIER: Final[int] = 1_000_000_000
 _CONTAINER_WORKSPACE: Final[str] = "/workspace"
+_PROJECTS_SUBDIR: Final[str] = "projects"
 _STOP_TIMEOUT_SECONDS: Final[int] = 5
 _DRIVE_SEPARATOR_PARTS: Final[int] = 2
 # Cap structured-log stderr captures so a stream of binary output from
@@ -302,39 +304,111 @@ class DockerSandbox(
             self._docker = client
             return client
 
-    def _validate_cwd(self, cwd: Path) -> None:
-        """Validate that *cwd* is within the workspace boundary.
+    async def _project_root(self, project_id: str | None) -> Path:
+        """Resolve the per-execution mount root for *project_id*.
+
+        ``None`` mounts the whole workspace root (the no-project
+        execution mode: empty-company backstop / non-project tooling).
+        A set ``project_id`` mounts ``<workspace>/projects/<project_id>``
+        so a project-A sandbox cannot see project-B files. The
+        separator guard mirrors ``ProjectWorkspaceService`` so a crafted
+        id cannot traverse out of the projects subdir.
+
+        The resolved root is re-anchored under the resolved projects
+        directory so a symlinked project entry cannot resolve to an
+        arbitrary host path and mount it into ``/workspace``. Filesystem
+        probes run in a worker thread to avoid blocking the event loop.
+
+        Raises:
+            SandboxError: ``project_id`` bears path separators, resolves
+                outside the projects root (symlink escape), or names a
+                project tree that does not exist on the volume.
+        """
+        if project_id is None:
+            return self._workspace
+        pid = str(project_id)
+        if not pid.strip() or pid == "." or "/" in pid or "\\" in pid or ".." in pid:
+            msg = f"refusing path-separator-bearing project_id {pid!r}"
+            logger.warning(DOCKER_EXECUTE_FAILED, error=msg, project_id=pid)
+            raise SandboxError(msg)
+        projects_root = await asyncio.to_thread(
+            (self._workspace / _PROJECTS_SUBDIR).resolve
+        )
+        try:
+            root = await asyncio.to_thread((projects_root / pid).resolve)
+            exists = await asyncio.to_thread(root.is_dir)
+        except (OSError, ValueError) as exc:
+            # An oversized / invalid project_id can make resolve()/is_dir()
+            # raise (e.g. ENAMETOOLONG) instead of returning; surface it as
+            # a sandbox error rather than leaking a raw OSError.
+            msg = f"project workspace does not exist for project {pid!r}"
+            logger.warning(
+                DOCKER_EXECUTE_FAILED,
+                error=msg,
+                project_id=pid,
+                error_type=type(exc).__name__,
+                error_detail=safe_error_description(exc),
+            )
+            raise SandboxError(msg) from exc
+        try:
+            root.relative_to(projects_root)
+        except ValueError as exc:
+            msg = f"project workspace escapes projects root for project {pid!r}: {root}"
+            logger.warning(DOCKER_EXECUTE_FAILED, error=msg, project_id=pid)
+            raise SandboxError(msg) from exc
+        if not exists:
+            msg = f"project workspace does not exist for project {pid!r}: {root}"
+            logger.warning(DOCKER_EXECUTE_FAILED, error=msg, project_id=pid)
+            raise SandboxError(msg)
+        return root
+
+    def _validate_cwd(self, cwd: Path, effective_root: Path | None = None) -> None:
+        """Validate that *cwd* is within *effective_root*.
 
         Args:
             cwd: Working directory to validate.
+            effective_root: Per-execution mount root (project subdir or
+                the whole workspace). Defaults to the workspace root.
 
         Raises:
-            SandboxError: If *cwd* is outside the workspace.
+            SandboxError: If *cwd* is outside *effective_root*.
         """
+        effective_root = (
+            effective_root if effective_root is not None else self._workspace
+        )
         try:
-            cwd.resolve().relative_to(self._workspace)
+            cwd.resolve().relative_to(effective_root)
         except ValueError as exc:
-            msg = f"Working directory '{cwd}' is outside workspace '{self._workspace}'"
+            msg = f"Working directory '{cwd}' is outside workspace '{effective_root}'"
             logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 error=msg,
                 cwd=str(cwd),
-                workspace=str(self._workspace),
+                workspace=str(effective_root),
             )
             raise SandboxError(msg) from exc
 
-    def _resolve_cwd_in_container(self, cwd: Path | None) -> str:
-        """Map a host cwd to a container-internal path.
+    def _resolve_cwd_in_container(
+        self,
+        cwd: Path | None,
+        effective_root: Path | None = None,
+    ) -> str:
+        """Map a host cwd to a container-internal path under the mount root.
 
         Args:
-            cwd: Host working directory, or ``None`` for workspace root.
+            cwd: Host working directory, or ``None`` for the mount root.
+            effective_root: Per-execution mount root bound at ``/workspace``.
+                Defaults to the workspace root.
 
         Returns:
             POSIX path inside the container.
         """
         if cwd is None:
             return _CONTAINER_WORKSPACE
-        rel = cwd.resolve().relative_to(self._workspace)
+        effective_root = (
+            effective_root if effective_root is not None else self._workspace
+        )
+        rel = cwd.resolve().relative_to(effective_root)
         return str(PurePosixPath(_CONTAINER_WORKSPACE) / rel)
 
     def _merged_env_list(
@@ -366,6 +440,7 @@ class DockerSandbox(
         args: tuple[str, ...],
         container_cwd: str,
         env_overrides: Mapping[str, str] | None,
+        effective_root: Path | None = None,
         category: str = "",
         network_mode: str | None = None,
         owner_id: str | None = None,
@@ -377,6 +452,8 @@ class DockerSandbox(
             args: Command arguments.
             container_cwd: Working directory inside the container.
             env_overrides: Environment variables for the container.
+            effective_root: Host path bound at ``/workspace`` (project
+                subtree or, when ``None``, the whole workspace root).
             category: Tool category for runtime resolution.
             network_mode: Override the default network mode. Used to
                 set ``container:<sidecar_id>`` when sidecar
@@ -387,7 +464,7 @@ class DockerSandbox(
             A dict suitable for ``aiodocker`` container creation.
         """
         env_list = self._merged_env_list(env_overrides)
-        host_config = self._build_host_config(category=category)
+        host_config = self._build_host_config(effective_root, category=category)
         if network_mode is not None:
             host_config["NetworkMode"] = network_mode
         # WP-1: ``synthorg.managed=true`` is the canonical label the
@@ -437,11 +514,17 @@ class DockerSandbox(
 
     def _build_host_config(
         self,
+        effective_root: Path | None = None,
         *,
         category: str = "",
     ) -> dict[str, Any]:
-        """Build the Docker host config dict."""
-        bind_path = _to_posix_bind_path(self._workspace)
+        """Build the Docker host config dict binding *effective_root*.
+
+        *effective_root* defaults to the workspace root (whole-workspace
+        mount) when not supplied.
+        """
+        root = effective_root if effective_root is not None else self._workspace
+        bind_path = _to_posix_bind_path(root)
         mount_mode = self._config.mount_mode
         bind_str = f"{bind_path}:{_CONTAINER_WORKSPACE}:{mount_mode}"
         memory_bytes = self._parse_memory_limit(
@@ -570,6 +653,7 @@ class DockerSandbox(
         timeout: float | None = None,  # noqa: ASYNC109
         category: str = "",
         owner_id: str | None = None,
+        project_id: NotBlankStr | None = None,
     ) -> SandboxResult:
         """Execute a command inside a Docker container.
 
@@ -593,6 +677,11 @@ class DockerSandbox(
                 (``agent_id`` for per-agent, ``task_id`` for per-task);
                 if neither is available the call degrades to ephemeral
                 per-call semantics.
+            project_id: Owning project; rebinds
+                ``<workspace>/projects/<project_id>`` at ``/workspace``
+                and prefixes the lifecycle owner key. Falls back to the
+                ``project_id`` correlation context; ``None`` selects the
+                whole-workspace mount.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
@@ -602,17 +691,19 @@ class DockerSandbox(
             SandboxError: If cwd is outside the workspace boundary or
                 *env_overrides* set reserved sandbox control variables.
         """
-        work_dir = cwd if cwd is not None else self._workspace
-        self._validate_cwd(work_dir)
+        pid = str(project_id) if project_id is not None else self._context_project()
+        effective_root = await self._project_root(pid)
+        work_dir = cwd if cwd is not None else effective_root
+        self._validate_cwd(work_dir, effective_root)
         effective_timeout = min(
             timeout if timeout is not None else self._config.timeout_seconds,
             self._config.timeout_seconds,
         )
-        container_cwd = self._resolve_cwd_in_container(cwd)
+        container_cwd = self._resolve_cwd_in_container(cwd, effective_root)
         # Validate / resolve the per-command env BEFORE any container
         # work so a reserved-variable rejection never leaks a container.
         exec_env = self._resolve_exec_env(env_overrides)
-        owner_key, strategy_owns = self._resolve_lifecycle(owner_id)
+        owner_key, strategy_owns = self._resolve_lifecycle(owner_id, project_id=pid)
         logger.debug(
             DOCKER_EXECUTE_START,
             command=command,
@@ -629,6 +720,7 @@ class DockerSandbox(
                 docker=docker,
                 container_cwd=container_cwd,
                 env_overrides=env_overrides,
+                effective_root=effective_root,
                 category=category,
                 owner_label=owner_key,
             )

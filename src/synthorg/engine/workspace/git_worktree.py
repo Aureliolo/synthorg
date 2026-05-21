@@ -9,7 +9,7 @@ import math
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.core.clock import Clock, SystemClock
@@ -53,6 +53,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _SAFE_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+_PROJECTS_SUBDIR: Final[str] = "projects"
 
 
 def _validate_git_ref(
@@ -164,12 +165,51 @@ class PlannerWorktreeStrategy:
         self._lock = asyncio.Lock()
         self._semantic_analyzer = semantic_analyzer
 
+    def _effective_root(
+        self,
+        project_id: str | None,
+        *,
+        event: str = WORKSPACE_SETUP_FAILED,
+        error_cls: type[WorkspaceError] = WorkspaceSetupError,
+    ) -> Path:
+        """Resolve the repo root for a project.
+
+        ``None`` returns the strategy's singleton root (non-project
+        path); a set ``project_id`` returns ``<root>/projects/<id>`` so a
+        worktree branches from, and merges back into, the project's own
+        persistent repo. The separator/empty guards block traversal out
+        of the projects subtree, and the resolved path is re-anchored
+        under it so a symlinked entry cannot escape. ``event`` /
+        ``error_cls`` let merge/teardown callers classify a bad id as a
+        merge/cleanup failure rather than a setup failure.
+        """
+        if project_id is None:
+            return self._repo_root
+        if (
+            not project_id.strip()
+            or project_id == "."
+            or "/" in project_id
+            or "\\" in project_id
+            or ".." in project_id
+        ):
+            msg = f"refusing path-separator-bearing project_id {project_id!r}"
+            logger.warning(event, error=msg, project_id=project_id)
+            raise error_cls(msg)
+        projects_root = (self._repo_root / _PROJECTS_SUBDIR).resolve()
+        candidate = self._repo_root / _PROJECTS_SUBDIR / project_id
+        if not candidate.resolve().is_relative_to(projects_root):
+            msg = f"project_id {project_id!r} escapes the projects subtree"
+            logger.warning(event, error=msg, project_id=project_id)
+            raise error_cls(msg)
+        return candidate
+
     async def _run_git(
         self,
         *args: str,
+        cwd: Path | None = None,
         log_event: str = WORKSPACE_SETUP_FAILED,
     ) -> tuple[int, str, str]:
-        """Run a git command in the repository root.
+        """Run a git command in *cwd* (defaults to the singleton root).
 
         Thin wrapper around :func:`run_git_subprocess` so this class
         stays focused on workflow orchestration rather than subprocess
@@ -179,13 +219,15 @@ class PlannerWorktreeStrategy:
 
         Args:
             *args: Git command arguments.
+            cwd: Repository the command runs in; defaults to the
+                strategy's singleton ``repo_root`` when ``None``.
             log_event: Event constant for timeout error logging.
 
         Returns:
             Tuple of (return_code, stdout, stderr).
         """
         return await run_git_subprocess(
-            self._repo_root,
+            cwd if cwd is not None else self._repo_root,
             *args,
             cmd_timeout=self._cmd_timeout,
             log_event=log_event,
@@ -212,12 +254,14 @@ class PlannerWorktreeStrategy:
         _validate_git_ref(request.task_id, "task_id")
         _validate_git_ref(request.base_branch, "base_branch")
 
+        effective_root = self._effective_root(request.project_id)
+
         async with self._lock:
             self._check_workspace_limit()
 
             workspace_id = str(uuid4())
             branch_name = f"workspace/{request.task_id}/{workspace_id}"
-            worktree_dir = self._resolve_worktree_path(workspace_id)
+            worktree_dir = self._resolve_worktree_path(workspace_id, effective_root)
 
             logger.info(
                 WORKSPACE_SETUP_START,
@@ -231,6 +275,7 @@ class PlannerWorktreeStrategy:
                 branch_name,
                 request.base_branch,
                 worktree_dir,
+                effective_root,
             )
 
             workspace = Workspace(
@@ -241,6 +286,7 @@ class PlannerWorktreeStrategy:
                 worktree_path=str(worktree_dir),
                 base_branch=request.base_branch,
                 created_at=datetime.now(UTC),
+                project_id=request.project_id,
             )
             self._active_workspaces[workspace_id] = workspace
 
@@ -272,12 +318,14 @@ class PlannerWorktreeStrategy:
         branch_name: str,
         base_branch: str,
         worktree_dir: Path,
+        effective_root: Path,
     ) -> None:
         """Create a git branch and worktree, cleaning up on failure."""
         rc, _, stderr = await self._run_git(
             "branch",
             branch_name,
             base_branch,
+            cwd=effective_root,
         )
         if rc != 0:
             logger.warning(
@@ -293,12 +341,14 @@ class PlannerWorktreeStrategy:
             "add",
             str(worktree_dir),
             branch_name,
+            cwd=effective_root,
         )
         if rc != 0:
             cleanup_rc, _, cleanup_stderr = await self._run_git(
                 "branch",
                 "-D",
                 branch_name,
+                cwd=effective_root,
             )
             if cleanup_rc != 0:
                 logger.warning(
@@ -340,9 +390,15 @@ class PlannerWorktreeStrategy:
             WorkspaceMergeError: When checkout of base branch fails
                 or when ``merge --abort`` fails after a conflict.
         """
+        effective_root = self._effective_root(
+            workspace.project_id,
+            event=WORKSPACE_MERGE_FAILED,
+            error_cls=WorkspaceMergeError,
+        )
         # Merge under lock.
         result, pre_merge_sha = await self._merge_under_lock(
             workspace=workspace,
+            effective_root=effective_root,
         )
 
         # Semantic analysis outside lock (read-only SHA ops).
@@ -364,6 +420,7 @@ class PlannerWorktreeStrategy:
         self,
         *,
         workspace: Workspace,
+        effective_root: Path,
     ) -> tuple[MergeResult, str]:
         """Execute the merge operation under the serialization lock.
 
@@ -389,12 +446,14 @@ class PlannerWorktreeStrategy:
             start = self._clock.monotonic()
             pre_merge_sha = await self._checkout_and_capture_sha(
                 workspace,
+                effective_root,
             )
 
             rc, _, stderr = await self._run_git(
                 "merge",
                 "--no-ff",
                 workspace.branch_name,
+                cwd=effective_root,
                 log_event=WORKSPACE_MERGE_FAILED,
             )
             elapsed = self._clock.monotonic() - start
@@ -404,17 +463,20 @@ class PlannerWorktreeStrategy:
                     workspace=workspace,
                     elapsed=elapsed,
                     pre_merge_sha=pre_merge_sha,
+                    effective_root=effective_root,
                 )
 
             return await self._handle_merge_conflict(
                 workspace=workspace,
                 stderr=stderr,
                 start=start,
+                effective_root=effective_root,
             ), pre_merge_sha
 
     async def _checkout_and_capture_sha(
         self,
         workspace: Workspace,
+        effective_root: Path,
     ) -> str:
         """Checkout the base branch and capture HEAD SHA."""
         logger.info(
@@ -426,6 +488,7 @@ class PlannerWorktreeStrategy:
         rc, _, stderr = await self._run_git(
             "checkout",
             workspace.base_branch,
+            cwd=effective_root,
             log_event=WORKSPACE_MERGE_FAILED,
         )
         if rc != 0:
@@ -440,6 +503,7 @@ class PlannerWorktreeStrategy:
         pre_rc, pre_sha_out, pre_stderr = await self._run_git(
             "rev-parse",
             "HEAD",
+            cwd=effective_root,
             log_event=WORKSPACE_MERGE_FAILED,
         )
         if pre_rc != 0:
@@ -458,6 +522,7 @@ class PlannerWorktreeStrategy:
         workspace: Workspace,
         elapsed: float,
         pre_merge_sha: str,
+        effective_root: Path,
     ) -> tuple[MergeResult, str]:
         """Finalize a successful merge by capturing the commit SHA.
 
@@ -467,6 +532,7 @@ class PlannerWorktreeStrategy:
         rc_sha, sha_out, sha_err = await self._run_git(
             "rev-parse",
             "HEAD",
+            cwd=effective_root,
             log_event=WORKSPACE_MERGE_FAILED,
         )
         if rc_sha != 0:
@@ -503,6 +569,7 @@ class PlannerWorktreeStrategy:
         workspace: Workspace,
         stderr: str,
         start: float,
+        effective_root: Path,
     ) -> MergeResult:
         """Handle a merge conflict: collect files and abort.
 
@@ -517,12 +584,13 @@ class PlannerWorktreeStrategy:
             workspace_id=workspace.workspace_id,
             error=stderr,
         )
-        conflicts = await self._collect_conflicts()
+        conflicts = await self._collect_conflicts(effective_root)
 
         # Abort the failed merge
         abort_rc, _, abort_stderr = await self._run_git(
             "merge",
             "--abort",
+            cwd=effective_root,
             log_event=WORKSPACE_MERGE_FAILED,
         )
         if abort_rc != 0:
@@ -577,7 +645,14 @@ class PlannerWorktreeStrategy:
                 workspace_id=workspace.workspace_id,
             )
 
-            errors = await self._remove_worktree_and_branch(workspace)
+            errors = await self._remove_worktree_and_branch(
+                workspace,
+                self._effective_root(
+                    workspace.project_id,
+                    event=WORKSPACE_TEARDOWN_FAILED,
+                    error_cls=WorkspaceCleanupError,
+                ),
+            )
 
             # Always unregister to prevent capacity leaks
             self._active_workspaces.pop(workspace.workspace_id, None)
@@ -597,6 +672,7 @@ class PlannerWorktreeStrategy:
     async def _remove_worktree_and_branch(
         self,
         workspace: Workspace,
+        effective_root: Path,
     ) -> list[str]:
         """Remove worktree and branch, returning error messages."""
         errors: list[str] = []
@@ -606,6 +682,7 @@ class PlannerWorktreeStrategy:
             "remove",
             workspace.worktree_path,
             "--force",
+            cwd=effective_root,
             log_event=WORKSPACE_TEARDOWN_FAILED,
         )
         if rc != 0:
@@ -620,6 +697,7 @@ class PlannerWorktreeStrategy:
             "branch",
             "-D",
             workspace.branch_name,
+            cwd=effective_root,
             log_event=WORKSPACE_TEARDOWN_FAILED,
         )
         if rc != 0:
@@ -648,22 +726,40 @@ class PlannerWorktreeStrategy:
         """
         return "planner_worktrees"
 
-    def _resolve_worktree_path(self, workspace_id: str) -> Path:
+    def _resolve_worktree_path(
+        self,
+        workspace_id: str,
+        effective_root: Path | None = None,
+    ) -> Path:
         """Resolve the filesystem path for a new worktree.
 
         Args:
             workspace_id: Unique workspace identifier.
+            effective_root: Per-project repo root the worktree links to;
+                its parent hosts the ``.worktrees`` directory. Defaults
+                to the strategy's singleton root.
 
         Returns:
             Path where the worktree will be created.
         """
+        root = effective_root if effective_root is not None else self._repo_root
         if self._config.worktree_base_dir:
             base = Path(self._config.worktree_base_dir)
+        elif root != self._repo_root:
+            # Project-scoped: keep the worktree *inside* the project's own
+            # repo tree. Its sandbox mount only exposes
+            # ``<repo_root>/projects/<project_id>``, so a sibling
+            # ``projects/.worktrees`` would be invisible (and shared across
+            # projects) -- breaking project-scoped execution.
+            base = root / ".worktrees"
         else:
-            base = self._repo_root.parent / ".worktrees"
+            base = root.parent / ".worktrees"
         return base / workspace_id
 
-    async def _collect_conflicts(self) -> tuple[MergeConflict, ...]:
+    async def _collect_conflicts(
+        self,
+        effective_root: Path,
+    ) -> tuple[MergeConflict, ...]:
         """Collect conflicting file paths after a failed merge.
 
         Returns:
@@ -676,6 +772,8 @@ class PlannerWorktreeStrategy:
             "diff",
             "--name-only",
             "--diff-filter=U",
+            cwd=effective_root,
+            log_event=WORKSPACE_MERGE_FAILED,
         )
         if rc != 0:
             logger.error(

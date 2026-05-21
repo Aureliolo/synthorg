@@ -284,6 +284,19 @@ def record_escalation_outcome(*, outcome: str) -> None:
     collector.record_escalation_outcome(outcome=outcome)
 
 
+@_safe_record(METRICS_RECORD_FAILED, "record_push_queue_event")
+def record_push_queue_event(*, outcome: str) -> None:
+    """Forward to :meth:`PrometheusCollector.record_push_queue_event`.
+
+    No-op when no collector is registered so the workspace push queue
+    can emit metrics without a guard.
+    """
+    collector = _active()
+    if collector is None:
+        return
+    collector.record_push_queue_event(outcome=outcome)
+
+
 @_safe_record(METRICS_RECORD_FAILED, "record_blueprint_instantiation")
 def record_blueprint_instantiation(
     *,

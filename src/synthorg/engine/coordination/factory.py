@@ -42,6 +42,9 @@ if TYPE_CHECKING:
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.engine.workspace.config import WorkspaceIsolationConfig
     from synthorg.engine.workspace.git_backend import GitBackend
+    from synthorg.engine.workspace.project_workspace_service import (
+        ProjectWorkspaceService,
+    )
     from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
     from synthorg.engine.workspace.service import WorkspaceIsolationService
     from synthorg.hr.performance.tracker import PerformanceTracker
@@ -193,6 +196,7 @@ def build_coordinator(  # noqa: PLR0913
     task_engine: TaskEngine | None = None,
     workspace_strategy: WorkspaceIsolationStrategy | None = None,
     workspace_config: WorkspaceIsolationConfig | None = None,
+    project_workspace_service: ProjectWorkspaceService | None = None,
     git_backend: GitBackend | None = None,
     shutdown_manager: ShutdownManager | None = None,
     performance_tracker: PerformanceTracker | None = None,
@@ -228,6 +232,10 @@ def build_coordinator(  # noqa: PLR0913
         task_engine: Optional task engine for parent status updates.
         workspace_strategy: Optional workspace isolation strategy.
         workspace_config: Optional workspace isolation config.
+        project_workspace_service: Optional per-project workspace
+            provisioner. Threaded to the coordinator so the dispatch
+            merge step resolves each project's repo root and routes
+            through the per-project push queue.
         git_backend: Optional pluggable git backend; when provided, the
             workspace service routes per-project merge+push through the
             serial :class:`PushQueueCoordinator` for forge-collision
@@ -286,6 +294,7 @@ def build_coordinator(  # noqa: PLR0913
         workspace_service=_build_workspace_service(
             workspace_strategy, workspace_config, git_backend
         ),
+        project_workspace_service=project_workspace_service,
         task_engine=task_engine,
         performance_tracker=performance_tracker,
         default_topology_provider=_topology_provider,

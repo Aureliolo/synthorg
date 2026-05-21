@@ -33,6 +33,9 @@ from synthorg.observability.events.workspace import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from synthorg.core.types import NotBlankStr
     from synthorg.engine.coordination.config import CoordinationConfig
     from synthorg.engine.decomposition.models import DecompositionResult
     from synthorg.engine.parallel import ParallelExecutor
@@ -54,7 +57,7 @@ class ContextDependentDispatcher:
     def __init__(self, *, clock: Clock | None = None) -> None:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
-    async def dispatch(
+    async def dispatch(  # noqa: PLR0913 -- dispatch contract surface
         self,
         *,
         decomposition_result: DecompositionResult,
@@ -62,6 +65,8 @@ class ContextDependentDispatcher:
         parallel_executor: ParallelExecutor,
         workspace_service: WorkspaceIsolationService | None,
         config: CoordinationConfig,
+        project_id: NotBlankStr | None = None,
+        repo_root: Path | None = None,
     ) -> DispatchResult:
         """Execute waves with conditional workspace isolation."""
         validate_routing_against_decomposition(decomposition_result, routing_result)
@@ -78,7 +83,13 @@ class ContextDependentDispatcher:
 
         for wave_idx, group in enumerate(groups):
             wave_workspaces, exec_group = await self._setup_wave(
-                wave_idx, group, workspace_service, config, all_phases, all_workspaces
+                wave_idx,
+                group,
+                workspace_service,
+                config,
+                all_phases,
+                all_workspaces,
+                project_id=project_id,
             )
             if exec_group is None:
                 if config.fail_fast:
@@ -94,6 +105,8 @@ class ContextDependentDispatcher:
                 wave_workspaces,
                 workspace_service,
                 merge_results,
+                project_id=project_id,
+                repo_root=repo_root,
             )
 
             if wave_failed and config.fail_fast:
@@ -109,6 +122,8 @@ class ContextDependentDispatcher:
         config: CoordinationConfig,
         all_phases: list[CoordinationPhaseResult],
         all_workspaces: list[Workspace],
+        *,
+        project_id: NotBlankStr | None = None,
     ) -> tuple[tuple[Workspace, ...], ParallelExecutionGroup | None]:
         """Set up workspaces for a wave if needed.
 
@@ -136,6 +151,7 @@ class ContextDependentDispatcher:
                 task_id=a.task.id,
                 agent_id=a.agent_id,
                 base_branch=config.base_branch,
+                project_id=project_id,
             )
             for a in group.assignments
         )
@@ -198,6 +214,9 @@ class ContextDependentDispatcher:
         wave_workspaces: tuple[Workspace, ...],
         workspace_service: WorkspaceIsolationService | None,
         merge_results: list[WorkspaceGroupResult],
+        *,
+        project_id: NotBlankStr | None = None,
+        repo_root: Path | None = None,
     ) -> bool:
         """Execute a single wave and handle per-wave merge/teardown.
 
@@ -294,6 +313,8 @@ class ContextDependentDispatcher:
                         wave_workspaces,
                         clock=self._clock,
                         phase_name=merge_phase_name,
+                        project_id=project_id,
+                        repo_root=repo_root,
                     )
                     all_phases.append(merge_phase)
                     if merge_result is not None:

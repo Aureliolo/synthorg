@@ -47,6 +47,7 @@ from synthorg.observability.prometheus_labels import (
     VALID_OTLP_KINDS,
     VALID_OTLP_OUTCOMES,
     VALID_PROVIDER_ERROR_CLASSES,
+    VALID_PUSH_QUEUE_OUTCOMES,
     VALID_SETTINGS_NAMESPACES,
     VALID_STATUS_CLASSES,
     VALID_TASK_OUTCOMES,
@@ -101,6 +102,7 @@ class RecordingMixin:
     _client_disconnects: PromCounter
     _approval_decisions: PromCounter
     _escalation_outcomes: PromCounter
+    _push_queue_events: PromCounter
     _blueprint_instantiations: PromCounter
     _settings_mutations: PromCounter
     _mcp_handler_outcomes: PromCounter
@@ -616,6 +618,21 @@ class RecordingMixin:
         """
         require_label("escalation outcome", outcome, VALID_ESCALATION_OUTCOMES)
         self._escalation_outcomes.labels(outcome=outcome).inc()
+
+    def record_push_queue_event(self, *, outcome: str) -> None:
+        """Increment the workspace push-queue event counter.
+
+        Args:
+            outcome: ``"enqueued"`` when a merge+push is queued, or
+                ``"merged"`` when it completes (merge succeeded and, if a
+                backend is wired, the default branch was pushed).
+
+        Raises:
+            ValueError: If *outcome* is not in
+                :data:`VALID_PUSH_QUEUE_OUTCOMES`.
+        """
+        require_label("push queue outcome", outcome, VALID_PUSH_QUEUE_OUTCOMES)
+        self._push_queue_events.labels(outcome=outcome).inc()
 
     def record_blueprint_instantiation(
         self,
