@@ -190,6 +190,16 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `engine/routing_policy/config.py::StakesRoutingConfig` (frozen) with `strategy: NotBlankStr` discriminator, `QualityFloors` (validated non-decreasing), `red_team_min_stakes`, and the coordination-nudge thresholds.
 - `engine/routing_policy/factory.py::build_stakes_router()`: `StrategyRegistry[StakesRoutingStrategy]` keyed on `strategy` ("stakes_aware" default; "stakes_aware" requires a benchmark provider, "flat" is dependency-free). Wired at boot in `workers/runtime_builder.py::_build_stakes_router_or_none` and injected into `AgentEngine`, which applies routing before the budget auto-downgrade (a hard budget ceiling wins over a stakes upgrade).
 
+### Per-project environment strategy
+
+- `engine/workspace/environment/protocol.py`: `EnvironmentStrategy` `@runtime_checkable` Protocol (`kind` / `detect` / `scaffold` / `declaration_hash` / `managed_paths` / `runtime_env_vars` / `provision`), with `ProvisionedEnvironment` / `ScaffoldResult` / `CommandOutcome` frozen result models and the `EnvironmentCommandRunner` seam (the resolved sandbox backend, adapted, so the subsystem never imports the tool layer).
+- `engine/workspace/environment/config.py`: `EnvironmentConfig` (frozen) with `kind: EnvironmentType` discriminator and `EnvironmentDeps` (collaborators not safe in frozen config: `image_builder`, `clock`).
+- `engine/workspace/environment/manifest.py::ManifestEnvironmentStrategy` (safe default: a committed `synthorg.env.yaml` of lockfiles + ordered setup commands; runs in both sandboxes and emits a stock `bootstrap.sh` so a fresh clone reproduces with no SynthOrg present).
+- `engine/workspace/environment/devcontainer.py::DevcontainerEnvironmentStrategy` (builds a sealed image from `.devcontainer/devcontainer.json` via `image_builder`; Docker backend only, raising `EnvironmentBackendUnavailableError` on a subprocess-backed project).
+- `engine/workspace/environment/nix.py::NixEnvironmentStrategy` (builds the declared `flake.nix` dev shell via `nix develop`; tool-wrapping of subsequent calls is a documented boundary).
+- `engine/workspace/environment/factory.py::build_environment_strategy()`: `StrategyRegistry[EnvironmentStrategy]` keyed on `EnvironmentType`; the devcontainer strategy falls back to the default `SubprocessImageBuilder` (host `docker build`) when no builder is injected.
+- `engine/workspace/environment/service.py::EnvironmentService`: provisions once per `(project_id, declaration_hash)` (persisted `project_environments` row is the durable cache), scaffolds + commits the declaration (`GitWorkspaceCommitter`), and is fail-loud. Wired at boot in `api/app.py::_install_runtime_services` alongside `ProjectWorkspaceService`. The result threads to the agent's sandbox via the ambient `tools/sandbox/active_environment.py::ActiveSandboxEnvironment` contextvar (image override + env additions), set per task in `workers/execution_service.py`.
+
 ## Services are a distinct pattern (not pluggable subsystems)
 
 A **service** wraps one or more repositories to keep controllers thin and centralise audit logging, and MAY orchestrate multiple repositories (e.g. `WorkflowService` spans `workflow_definitions` + `workflow_versions`; `MemoryService` spans fine-tune checkpoints + runs + settings).
