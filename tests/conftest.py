@@ -74,6 +74,50 @@ if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
     subprocess.Popen.__init__ = cast(Any, _no_console_popen_init)  # type: ignore[method-assign]
 
 
+# ── pytest-xdist loadscope crash-during-collection guard ───────────
+#
+# On Windows + Python 3.14, a worker subprocess intermittently dies
+# while it is still COLLECTING (importing test modules) -- before it
+# registers its collection with the controller. When any *other* worker
+# then finishes collecting, pytest-xdist 3.8.0's loadscope scheduler
+# (the base of ``--dist=loadfile``) runs ``schedule()``, which calls
+# ``_reschedule(node)`` for **every** node in ``self.nodes`` -- including
+# the vanished one. ``_assign_work_unit`` then does
+# ``self.registered_collections[node]`` and raises ``KeyError`` on the
+# dead node, surfacing as an ``INTERNALERROR`` that aborts the ENTIRE
+# run and discards every already-collected result.
+#
+# Guarding ``_reschedule`` to skip a node with no registered collection
+# is correct and lossless: such a node cannot be assigned work (there is
+# no collection to index into), and skipping it leaves that work in
+# ``self.workqueue`` for live nodes to pick up while xdist's normal
+# crash handling redistributes anything already assigned. The
+# catastrophic whole-run abort becomes graceful redistribution.
+#
+# Scoped to the controller process (where the scheduler lives) and
+# idempotent. Revisit when the pinned pytest-xdist is bumped past a
+# release that fixes the upstream reschedule-after-crash KeyError.
+def _install_xdist_loadscope_crash_guard() -> None:
+    try:
+        from xdist.scheduler.loadscope import LoadScopeScheduling
+    except ImportError:
+        return
+    original = LoadScopeScheduling._reschedule
+    if getattr(original, "_synthorg_crash_guarded", False):
+        return
+
+    def _guarded_reschedule(self: Any, node: Any) -> Any:
+        if node not in self.registered_collections:
+            return None
+        return original(self, node)
+
+    _guarded_reschedule._synthorg_crash_guarded = True  # type: ignore[attr-defined]
+    LoadScopeScheduling._reschedule = _guarded_reschedule
+
+
+_install_xdist_loadscope_crash_guard()
+
+
 class _WriteOnlyDatabase(ExampleDatabase):
     """Wraps a database so it only receives writes -- fetch returns nothing.
 
