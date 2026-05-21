@@ -52,8 +52,13 @@ logger = get_logger(__name__)
 
 _MAX_PAGE_LIMIT: Final[int] = 1_000
 
-_TRANSITION_TIMESTAMP_KEYS: Final[frozenset[str]] = frozenset(
-    {"validated_at", "activated_at", "retired_at"}
+# Status-correlated columns the CAS transition may stamp. ``validation``
+# is included so a PENDING -> VALIDATED CAS can populate the gate-evidence
+# atomically alongside ``validated_at``, satisfying the lifecycle CHECK
+# that requires ``validation IS NOT NULL`` in the validated/active/retired
+# branches.
+_TRANSITION_UPDATE_KEYS: Final[frozenset[str]] = frozenset(
+    {"validated_at", "activated_at", "retired_at", "validation"}
 )
 
 _SELECT_COLS = (
@@ -355,9 +360,12 @@ class PostgresDynamicToolRepository:
         """Atomic compare-and-set for blueprint state transitions.
 
         ``**updates`` may carry ``validated_at`` / ``activated_at`` /
-        ``retired_at``; unknown keys raise ``QueryError``.
+        ``retired_at`` / ``validation``; unknown keys raise ``QueryError``.
+        ``validation`` is serialised via ``model_dump_json()`` and wrapped
+        in :class:`psycopg.types.json.Jsonb` so the JSONB column stamps
+        gate evidence atomically with the timestamp.
         """
-        unknown = set(updates) - _TRANSITION_TIMESTAMP_KEYS
+        unknown = set(updates) - _TRANSITION_UPDATE_KEYS
         if unknown:
             msg = f"transition_if got unknown update keys: {sorted(unknown)!r}"
             logger.warning(
@@ -372,6 +380,9 @@ class PostgresDynamicToolRepository:
             if key in updates:
                 set_cols.append(f"{key} = %s")
                 params.append(_coerce_update_ts(updates[key]))
+        if "validation" in updates:
+            set_cols.append("validation = %s")
+            params.append(_coerce_validation(updates["validation"]))
         params.extend([entity_id, from_state.value])
         sql = (
             f"UPDATE dynamic_tools SET {', '.join(set_cols)} "  # noqa: S608
@@ -419,3 +430,21 @@ def _coerce_update_ts(value: object) -> datetime:
         msg = f"transition timestamp must be a datetime, got {type(value).__name__}"
         raise QueryError(msg)
     return normalize_utc(value)
+
+
+def _coerce_validation(value: object) -> Jsonb | None:
+    """Render a transition ``validation`` kwarg to a JSONB-ready payload.
+
+    ``None`` is passed through so callers can explicitly clear the column;
+    everything else must be a :class:`ToolValidationResult`.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, ToolValidationResult):
+        msg = (
+            "transition validation must be a ToolValidationResult or None, "
+            f"got {type(value).__name__}"
+        )
+        raise QueryError(msg)
+    result: ToolValidationResult = value
+    return Jsonb(result.model_dump(mode="json"))

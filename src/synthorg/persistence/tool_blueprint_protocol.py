@@ -32,11 +32,18 @@ if TYPE_CHECKING:
     from typing_extensions import TypedDict
 
     class TransitionKwargs(TypedDict, total=False):
-        """Typed kwargs for :meth:`DynamicToolRepository.transition_if`."""
+        """Typed kwargs for :meth:`DynamicToolRepository.transition_if`.
+
+        ``validation`` accepts a :class:`ToolValidationResult` (serialised
+        to the column's native JSON shape by the backend implementation),
+        or ``None`` to leave the column untouched. Required when the
+        target state implies ``validation IS NOT NULL`` at the DB layer.
+        """
 
         validated_at: object
         activated_at: object
         retired_at: object
+        validation: object
 
 
 class ToolBlueprintFilterSpec(BaseModel):

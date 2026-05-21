@@ -257,12 +257,22 @@ class TestDynamicToolRepository:
         bp = _blueprint(blueprint_id="bp-trans", name="synthorg_textkit_trans")
         await repo.save(bp)
         validated_at = _NOW + timedelta(minutes=1)
+        validation = ToolValidationResult(
+            passed=True,
+            brief_passed=True,
+            brief_score=88,
+            baseline_score=100,
+            candidate_score=101,
+            margin=1,
+            detail="passed",
+        )
 
         ok = await repo.transition_if(
             bp.id,
             from_state=ToolBlueprintState.PENDING,
             to_state=ToolBlueprintState.VALIDATED,
             validated_at=validated_at,
+            validation=validation,
         )
         assert ok is True
 
@@ -271,6 +281,8 @@ class TestDynamicToolRepository:
         assert fetched.state is ToolBlueprintState.VALIDATED
         assert fetched.validated_at is not None
         assert fetched.validated_at == validated_at
+        # The CAS stamped the gate evidence atomically with the timestamp.
+        assert fetched.validation == validation
 
     async def test_transition_if_mismatch_returns_false(
         self, backend: PersistenceBackend
