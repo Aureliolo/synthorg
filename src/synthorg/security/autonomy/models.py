@@ -88,7 +88,7 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
                 "deploy, org, budget require human approval"
             ),
             auto_approve=("code", "test", "docs", "vcs", "comms:internal", "db:query"),
-            human_approval=("deploy", "org", "budget", "comms:external"),
+            human_approval=("deploy", "org", "budget", "comms:external", "tool"),
             security_agent=True,
         ),
         AutonomyLevel.SUPERVISED: AutonomyPreset(
@@ -115,6 +115,7 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
                 "db:mutate",
                 "db:admin",
                 "arch:decide",
+                "tool",
             ),
             security_agent=True,
         ),

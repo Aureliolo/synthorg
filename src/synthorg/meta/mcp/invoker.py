@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.core.agent import AgentIdentity
-    from synthorg.meta.mcp.registry import DomainToolRegistry
+    from synthorg.meta.mcp.registry import ToolDefReader
 
 logger = get_logger(__name__)
 
@@ -54,13 +54,17 @@ class MCPToolInvoker:
     to ``ToolExecutionResult`` with ``is_error=True``.
 
     Args:
-        registry: Domain tool registry for handler key lookup.
-        handlers: Mapping of handler keys to handler functions.
+        registry: Tool definition reader for handler key lookup. The
+            frozen :class:`DomainToolRegistry` and the toolsmith's
+            ``LayeredToolRegistry`` (static + dynamic) both satisfy it.
+        handlers: Mapping of handler keys to handler functions. A
+            ``LayeredHandlerMap`` lets authored-tool handlers dispatch
+            alongside the static handler map.
     """
 
     def __init__(
         self,
-        registry: DomainToolRegistry,
+        registry: ToolDefReader,
         handlers: Mapping[str, ToolHandler],
     ) -> None:
         self._registry = registry

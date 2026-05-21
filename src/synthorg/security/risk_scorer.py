@@ -203,6 +203,9 @@ _DEFAULT_SCORE_MAP: Final[MappingProxyType[str, RiskScore]] = MappingProxyType(
         # credentials; same tier as outbound external comms.
         ActionType.EXTERNAL_DATA_REQUEST: _HIGH_SCORE,
         ActionType.BUDGET_EXCEED: _HIGH_SCORE,
+        # Authoring a new tool registers sandboxed code the org will run;
+        # governed at HIGH, matching the tool-creation approval gate.
+        ActionType.TOOL_CREATE: _HIGH_SCORE,
         # MEDIUM
         ActionType.CODE_CREATE: _MEDIUM_SCORE,
         ActionType.CODE_WRITE: _MEDIUM_SCORE,

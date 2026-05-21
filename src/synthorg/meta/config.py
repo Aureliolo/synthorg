@@ -13,6 +13,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.models import EvolutionMode, RolloutStrategyType
 from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
+from synthorg.meta.toolsmith.config import ToolsmithConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_SELF_IMPROVEMENT_LOAD_FAILED
 
@@ -284,6 +285,7 @@ class SelfImprovementConfig(BaseModel):
     architecture_proposals_enabled: bool = False
     prompt_tuning_enabled: bool = False
     code_modification_enabled: bool = False
+    tool_creation_enabled: bool = False
 
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     rollout: RolloutConfig = Field(default_factory=RolloutConfig)
@@ -304,6 +306,8 @@ class SelfImprovementConfig(BaseModel):
     cross_deployment_analytics: CrossDeploymentAnalyticsConfig = Field(
         default_factory=CrossDeploymentAnalyticsConfig,
     )
+
+    toolsmith: ToolsmithConfig = Field(default_factory=ToolsmithConfig)
 
     analysis_model: NotBlankStr = Field(
         default=NotBlankStr("example-small-001"),

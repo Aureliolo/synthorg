@@ -8,7 +8,7 @@ with freeze-on-read semantics.
 import re
 from copy import deepcopy
 from types import MappingProxyType
-from typing import Any, Self
+from typing import Any, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -21,6 +21,25 @@ from synthorg.observability.events.mcp import (
 )
 
 logger = get_logger(__name__)
+
+
+@runtime_checkable
+class ToolDefReader(Protocol):
+    """Read surface the :class:`MCPToolInvoker` needs from a registry.
+
+    :class:`DomainToolRegistry` satisfies this structurally. The
+    toolsmith's ``LayeredToolRegistry`` also implements it by composing
+    the frozen static registry with a mutable dynamic layer, so authored
+    tools can be dispatched without unfreezing the static surface.
+    """
+
+    def get(self, name: str) -> MCPToolDef:
+        """Look up a tool definition by name (raises ``KeyError`` if absent)."""
+        ...
+
+    def get_names(self) -> tuple[str, ...]:
+        """Return all known tool names."""
+        ...
 
 
 class MCPToolDef(BaseModel):

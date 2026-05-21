@@ -26,6 +26,7 @@ class TestActionTypeCategory:
             (ActionTypeCategory.ORG, "org"),
             (ActionTypeCategory.DB, "db"),
             (ActionTypeCategory.ARCH, "arch"),
+            (ActionTypeCategory.TOOL, "tool"),
             (ActionTypeCategory.MEMORY, "memory"),
             (ActionTypeCategory.BROWSER, "browser"),
             (ActionTypeCategory.EXTERNAL_DATA, "external_data"),

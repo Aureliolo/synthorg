@@ -10746,7 +10746,7 @@ export type components = {
          * @description Altitude of change a proposal targets.
          * @enum {string}
          */
-        readonly ProposalAltitude: "config_tuning" | "architecture" | "prompt_tuning" | "code_modification";
+        readonly ProposalAltitude: "config_tuning" | "architecture" | "prompt_tuning" | "code_modification" | "tool_creation";
         /** ProposedApprovalSummary */
         readonly ProposedApprovalSummary: {
             readonly approval_id: string;

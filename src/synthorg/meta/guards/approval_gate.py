@@ -38,6 +38,7 @@ _ALTITUDE_RISK: dict[ProposalAltitude, ApprovalRiskLevel] = {
     ProposalAltitude.ARCHITECTURE: ApprovalRiskLevel.HIGH,
     ProposalAltitude.PROMPT_TUNING: ApprovalRiskLevel.MEDIUM,
     ProposalAltitude.CODE_MODIFICATION: ApprovalRiskLevel.CRITICAL,
+    ProposalAltitude.TOOL_CREATION: ApprovalRiskLevel.HIGH,
 }
 
 _DEFAULT_EXPIRY_DAYS: Final[int] = 7
