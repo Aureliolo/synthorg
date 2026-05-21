@@ -23,6 +23,7 @@ from synthorg.budget.errors import (
 )
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.forecaster import BriefSignal, compute_brief_hash
+from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
     BUDGET_FORECAST_APPROVAL_REQUIRED,
@@ -131,53 +132,54 @@ class ForecastGate:
                 )
                 return await self._work_pipeline.run(released)
             if existing.decision is ForecastDecision.REJECTED:
-                self._log_rejected(existing)
-                msg = (
-                    f"Cost forecast {existing.forecast_id!s} was "
-                    f"rejected by the operator"
-                )
-                raise CostForecastRejectedError(
-                    msg,
-                    forecast_id=existing.forecast_id,
-                    brief_hash=existing.brief_hash,
-                )
+                self._raise_rejected(existing)
             if existing.decision is ForecastDecision.PENDING:
-                # A pending forecast already covers this brief; reuse it
-                # rather than minting a duplicate (handled by the shared
-                # brief-hash reuse path below, but short-circuit here when
-                # the caller already pointed us at the matching row).
                 self._raise_approval_required(existing)
 
-        # No matching forecast via the caller's id. A pending row may
-        # still exist for this brief (a prior dispatch left one awaiting a
-        # decision); reuse it rather than minting a duplicate, which would
-        # trip the partial-unique index on (brief_hash) WHERE
-        # decision='pending'.
-        signal = _signal_from_work_item(
-            work_item,
-            currency=self._budget_config.currency,
-        )
-        pending = await self._pending_forecast_for_brief(compute_brief_hash(signal))
-        if pending is not None:
-            self._raise_approval_required(pending)
-
-        fresh = await self._forecaster.forecast(signal)
-        await self._forecast_repo.save(fresh)
+        # No matching forecast via the caller's id: reuse a pending row for
+        # this brief if one exists, else mint one.
+        forecast = await self._forecast_for_brief(work_item)
         # Inlined (rather than via _raise_approval_required) so the static
         # analyser sees run() always terminates in a return or raise.
-        self._log_approval_required(fresh)
+        self._log_approval_required(forecast)
         msg = (
             f"Pre-flight cost forecast required: "
-            f"estimated {fresh.estimated_cost:.4f} {fresh.currency} "
+            f"estimated {forecast.estimated_cost:.4f} {forecast.currency} "
             f"awaiting operator approval"
         )
         raise CostForecastApprovalRequiredError(
             msg,
-            forecast_id=fresh.forecast_id,
-            brief_hash=fresh.brief_hash,
-            estimated_cost=fresh.estimated_cost,
-            currency=fresh.currency,
+            forecast_id=forecast.forecast_id,
+            brief_hash=forecast.brief_hash,
+            estimated_cost=forecast.estimated_cost,
+            currency=forecast.currency,
         )
+
+    async def _forecast_for_brief(self, work_item: WorkItem) -> Forecast:
+        """Return the pending forecast for the brief, minting one if absent.
+
+        Reuses an existing pending row (the partial-unique index permits
+        only one per brief). On a save race where a concurrent dispatch
+        wins that index, re-reads the winner rather than surfacing the
+        constraint violation.
+        """
+        signal = _signal_from_work_item(
+            work_item,
+            currency=self._budget_config.currency,
+        )
+        brief_hash = compute_brief_hash(signal)
+        pending = await self._pending_forecast_for_brief(brief_hash)
+        if pending is not None:
+            return pending
+        fresh = await self._forecaster.forecast(signal)
+        try:
+            await self._forecast_repo.save(fresh)
+        except ConstraintViolationError:
+            raced = await self._pending_forecast_for_brief(brief_hash)
+            if raced is None:
+                raise
+            return raced
+        return fresh
 
     def _raise_approval_required(self, forecast: Forecast) -> NoReturn:
         """Log and raise the approval-required signal for a pending forecast."""
@@ -193,6 +195,16 @@ class ForecastGate:
             brief_hash=forecast.brief_hash,
             estimated_cost=forecast.estimated_cost,
             currency=forecast.currency,
+        )
+
+    def _raise_rejected(self, forecast: Forecast) -> NoReturn:
+        """Log and raise the rejected signal for a rejected forecast."""
+        self._log_rejected(forecast)
+        msg = f"Cost forecast {forecast.forecast_id!s} was rejected by the operator"
+        raise CostForecastRejectedError(
+            msg,
+            forecast_id=forecast.forecast_id,
+            brief_hash=forecast.brief_hash,
         )
 
     async def _lookup_forecast(self, work_item: WorkItem) -> Forecast | None:

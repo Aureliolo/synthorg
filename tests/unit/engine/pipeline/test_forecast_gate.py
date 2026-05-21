@@ -14,6 +14,7 @@ from synthorg.budget.errors import (
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.forecaster import CostForecaster, compute_brief_hash
 from synthorg.core.enums import Priority, TaskStatus, TaskType
+from synthorg.core.persistence_errors import ConstraintViolationError
 from synthorg.engine.pipeline.forecast_gate import ForecastGate, _signal_from_work_item
 from synthorg.engine.pipeline.models import (
     ExecutionPath,
@@ -136,6 +137,44 @@ class _FakeForecastRepo:
         return len(await self.query(filter_spec, limit=len(self.rows) + 1))
 
 
+class _RacingForecastRepo(_FakeForecastRepo):
+    """Repo double simulating a concurrent pending-row insert.
+
+    The first pending lookup misses (so the gate mints fresh); the save
+    then trips the partial-unique index, and the re-query surfaces the
+    winning row a concurrent dispatch inserted.
+    """
+
+    def __init__(self, winner: Forecast) -> None:
+        super().__init__()
+        self._winner = winner
+        self._save_attempted = False
+
+    async def save(self, entity: Forecast) -> None:
+        self.saves.append(entity)
+        self._save_attempted = True
+        msg = "duplicate pending forecast"
+        raise ConstraintViolationError(
+            msg,
+            constraint="uq_cost_forecasts_pending_brief",
+        )
+
+    async def query(
+        self,
+        filter_spec: CostForecastFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Forecast, ...]:
+        if (
+            self._save_attempted
+            and filter_spec.decision is ForecastDecision.PENDING
+            and filter_spec.brief_hash == self._winner.brief_hash
+        ):
+            return (self._winner,)
+        return await super().query(filter_spec, limit=limit, offset=offset)
+
+
 def _gate(
     *,
     forecast_required: bool = True,
@@ -254,6 +293,29 @@ class TestForecastGate:
             await gate.run(_work_item(forecast_id=None))
         assert info.value.forecast_id == existing.forecast_id
         assert repo.saves == []
+        assert work_pipeline.calls == []
+
+    async def test_save_race_reuses_winner_pending_forecast(self) -> None:
+        """A concurrent insert that trips the pending-unique index on save
+        is recovered by re-reading the winning pending row, not surfaced as
+        a ConstraintViolationError."""
+        winner = Forecast(
+            forecast_id=uuid4(),
+            brief_hash=_BRIEF_HASH,
+            estimated_cost=0.5,
+            lower_bound=0.3,
+            upper_bound=0.7,
+            currency="USD",
+            decision=ForecastDecision.PENDING,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+        repo = _RacingForecastRepo(winner)
+        gate, _, work_pipeline = _gate(repo=repo)
+
+        with pytest.raises(CostForecastApprovalRequiredError) as info:
+            await gate.run(_work_item(forecast_id=None))
+        assert info.value.forecast_id == winner.forecast_id
         assert work_pipeline.calls == []
 
     async def test_approved_forecast_dispatches(self) -> None:
