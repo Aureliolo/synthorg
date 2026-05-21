@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
     from synthorg.core.types import NotBlankStr
     from synthorg.meta.config import SelfImprovementConfig
+    from synthorg.meta.mcp.handler_protocol import ToolHandler
     from synthorg.meta.signal_models import OrgSignalSnapshot
     from synthorg.meta.toolsmith.models import ToolBlueprint
     from synthorg.meta.toolsmith.protocol import (
@@ -103,10 +104,10 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
         max_observations=tsc.gap_buffer_size,
     )
 
-    def _handler_factory(blueprint: ToolBlueprint) -> object:
+    def _handler_factory(blueprint: ToolBlueprint) -> ToolHandler:
         return make_dynamic_tool_handler(blueprint, sandbox_resolver(blueprint))
 
-    dynamic_registry = DynamicToolRegistry(handler_factory=_handler_factory)  # type: ignore[arg-type]
+    dynamic_registry = DynamicToolRegistry(handler_factory=_handler_factory)
 
     generator = LLMToolBlueprintGenerator(
         config=tsc,

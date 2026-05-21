@@ -1,6 +1,6 @@
 -- depends: 20260521000001_external_api_governed_access
 
--- Self-extending toolkit (#1995): authored tool blueprints.
+-- Self-extending toolkit: authored tool blueprints.
 --
 -- dynamic_tools stores runtime-authored MCP tools. A blueprint is a
 -- declarative spec (name, capability, JSON Schema) plus a sandbox

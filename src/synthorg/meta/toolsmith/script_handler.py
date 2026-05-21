@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.meta.mcp.handlers.common import err, ok
 from synthorg.meta.toolsmith.errors import ToolsmithError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.toolsmith import (
     TOOLSMITH_TOOL_INVOKE_FAILED,
     TOOLSMITH_TOOL_INVOKED,
@@ -74,6 +74,7 @@ class _DynamicToolHandler:
                 TOOLSMITH_TOOL_INVOKE_FAILED,
                 tool_name=name,
                 error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             wrapped = (
                 exc

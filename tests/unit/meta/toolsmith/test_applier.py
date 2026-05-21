@@ -220,3 +220,49 @@ class TestToolCreationApplier:
     async def test_altitude(self) -> None:
         applier = _applier(_InMemoryRepo(), _registry(), _Gate(result=_pass_result()))
         assert applier.altitude is ProposalAltitude.TOOL_CREATION
+
+    async def test_pass_persists_validation_record(self) -> None:
+        repo = _InMemoryRepo()
+        result = _pass_result()
+        applier = _applier(repo, _registry(), _Gate(result=result))
+
+        bp = _blueprint()
+        await applier.apply(_proposal(bp))
+
+        stored = repo.rows[bp.id]
+        # The gate result lives on the persisted ACTIVE row so auditors
+        # can replay the apply decision without rerunning the benchmark.
+        assert stored.validation == result
+
+    async def test_apply_records_repo_save_failure(self) -> None:
+        class _RaisingRepo(_InMemoryRepo):
+            async def save(self, entity: ToolBlueprint) -> None:
+                del entity
+                msg = "simulated DB outage"
+                raise RuntimeError(msg)
+
+        repo = _RaisingRepo()
+        registry = _registry()
+        applier = _applier(repo, registry, _Gate(result=_pass_result()))
+
+        bp = _blueprint()
+        result = await applier.apply(_proposal(bp))
+
+        # The per-blueprint try/except catches the persistence failure,
+        # surfaces it in the ApplyResult, and never reaches registration.
+        assert result.success is False
+        assert result.changes_applied == 0
+        assert "RuntimeError" in (result.error_message or "")
+        assert registry.get_def(bp.name) is None
+
+    async def test_retire_non_active_returns_false(self) -> None:
+        repo = _InMemoryRepo()
+        registry = _registry()
+        applier = _applier(repo, registry, _Gate(result=_pass_result()))
+
+        # A PENDING blueprint is durably stored but has never been live;
+        # retire is a no-op (state stays PENDING, registry untouched).
+        bp = _blueprint()
+        await repo.save(bp)
+        assert await applier.retire(NotBlankStr(bp.id)) is False
+        assert repo.rows[bp.id].state is ToolBlueprintState.PENDING

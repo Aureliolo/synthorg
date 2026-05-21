@@ -6,7 +6,9 @@ with no network, and a benchmark gate that requires the golden-scorecard
 no-regression check.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.toolsmith.models import ToolSandboxBackend
@@ -87,3 +89,14 @@ class ToolsmithConfig(BaseModel):
     max_active_tools: int = Field(default=50, ge=1)
     authoring: ToolAuthoringConfig = Field(default_factory=ToolAuthoringConfig)
     validation: ToolValidationConfig = Field(default_factory=ToolValidationConfig)
+
+    @model_validator(mode="after")
+    def _enabled_requires_allowlist(self) -> Self:
+        """Enable+empty-allowlist is silently deny-all; reject it explicitly."""
+        if self.enabled and not self.allowed_capabilities:
+            msg = (
+                "ToolsmithConfig.enabled=True requires a non-empty "
+                "allowed_capabilities; an empty allowlist is silently deny-all"
+            )
+            raise ValueError(msg)
+        return self

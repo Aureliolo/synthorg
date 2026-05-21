@@ -8,7 +8,7 @@ blueprint from ``VALIDATED`` to ``ACTIVE``.
 import itertools
 import re
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Final, Self
 
 from pydantic import (
     AwareDatetime,
@@ -30,6 +30,10 @@ if TYPE_CHECKING:
 _TOOL_NAME_RE = re.compile(r"^synthorg_[a-z][a-z0-9_]*_[a-z][a-z0-9_]*$")
 _CAPABILITY_RE = re.compile(r"^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$")
 _ACTION_TYPE_RE = re.compile(r"^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$")
+
+# Authored scripts are bounded so a malformed or runaway authoring call
+# cannot persist an unbounded blob or exhaust the sandbox at invoke time.
+_MAX_SCRIPT_BODY_CHARS: Final[int] = 65536
 
 
 class ToolBlueprintState(StrEnum):
@@ -175,7 +179,7 @@ class ToolBlueprint(BaseModel):
     description: NotBlankStr
     capability: NotBlankStr
     parameters_schema: dict[str, Any]
-    script_body: NotBlankStr
+    script_body: NotBlankStr = Field(max_length=_MAX_SCRIPT_BODY_CHARS)
     sandbox_backend: ToolSandboxBackend = ToolSandboxBackend.DOCKER
     requires_network: bool = False
     action_type: NotBlankStr
@@ -227,9 +231,16 @@ class ToolBlueprint(BaseModel):
         ):
             msg = f"validated_at required in state {self.state.value!r}"
             raise ValueError(msg)
-        if self.state is ToolBlueprintState.ACTIVE and self.activated_at is None:
-            msg = "activated_at required in state 'active'"
-            raise ValueError(msg)
+        if self.state is ToolBlueprintState.ACTIVE:
+            if self.activated_at is None:
+                msg = "activated_at required in state 'active'"
+                raise ValueError(msg)
+            # An ACTIVE tool is live-registered, which the applier only does
+            # after the benchmark gate passes (persisting the result), so a
+            # live tool must always carry its validation record.
+            if self.validation is None:
+                msg = "validation result required in state 'active'"
+                raise ValueError(msg)
         if self.state is ToolBlueprintState.RETIRED and self.retired_at is None:
             msg = "retired_at required in state 'retired'"
             raise ValueError(msg)

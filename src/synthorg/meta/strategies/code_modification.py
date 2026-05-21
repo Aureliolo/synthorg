@@ -40,6 +40,7 @@ from synthorg.observability.events.meta import (
     META_PROPOSAL_GENERATED,
 )
 from synthorg.providers.cost_recording import cost_recording_scope
+from synthorg.providers.errors import ProviderError
 
 if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
@@ -175,6 +176,8 @@ class CodeModificationStrategy:
 
         try:
             response = await self._call_llm(prompt)
+        except ProviderError:
+            raise
         except MemoryError, RecursionError:
             raise
         except Exception as exc:

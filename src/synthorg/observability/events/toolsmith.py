@@ -16,14 +16,19 @@ TOOLSMITH_GAP_RECURRING_DETECTED: Final[str] = "toolsmith.gap.recurring_detected
 TOOLSMITH_AUTHOR_STARTED: Final[str] = "toolsmith.author.started"
 TOOLSMITH_AUTHOR_COMPLETED: Final[str] = "toolsmith.author.completed"
 TOOLSMITH_AUTHOR_FAILED: Final[str] = "toolsmith.author.failed"
+TOOLSMITH_AUTHOR_SKIPPED: Final[str] = "toolsmith.author.skipped"
 TOOLSMITH_AUTHOR_OVERFLOW_TO_CODE_MOD: Final[str] = (
     "toolsmith.author.overflow_to_code_mod"
 )
+
+# Proposal guard chain
+TOOLSMITH_PROPOSAL_GUARD_REJECTED: Final[str] = "toolsmith.proposal.guard_rejected"
 
 # Validation gate
 TOOLSMITH_VALIDATION_STARTED: Final[str] = "toolsmith.validation.started"
 TOOLSMITH_VALIDATION_PASSED: Final[str] = "toolsmith.validation.passed"
 TOOLSMITH_VALIDATION_FAILED: Final[str] = "toolsmith.validation.failed"
+TOOLSMITH_BRIEF_PARSE_FAILED: Final[str] = "toolsmith.validation.brief_parse_failed"
 
 # Live registration
 TOOLSMITH_TOOL_REGISTERED: Final[str] = "toolsmith.tool.registered"

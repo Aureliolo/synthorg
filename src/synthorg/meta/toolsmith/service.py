@@ -37,8 +37,10 @@ from synthorg.meta.toolsmith.errors import (
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.toolsmith import (
     TOOLSMITH_AUTHOR_OVERFLOW_TO_CODE_MOD,
+    TOOLSMITH_AUTHOR_SKIPPED,
     TOOLSMITH_CYCLE_COMPLETED,
     TOOLSMITH_CYCLE_STARTED,
+    TOOLSMITH_PROPOSAL_GUARD_REJECTED,
 )
 
 if TYPE_CHECKING:
@@ -139,7 +141,7 @@ class ToolsmithService:
             )
         except (ToolCapabilityNotAllowedError, ToolAuthoringError) as exc:
             logger.warning(
-                "toolsmith.author.skipped",
+                TOOLSMITH_AUTHOR_SKIPPED,
                 capability=gap.signature,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
@@ -171,7 +173,7 @@ class ToolsmithService:
             result = await guard.evaluate(proposal)
             if result.verdict is GuardVerdict.REJECTED:
                 logger.info(
-                    "toolsmith.proposal.guard_rejected",
+                    TOOLSMITH_PROPOSAL_GUARD_REJECTED,
                     guard=guard.name,
                     reason=result.reason,
                 )

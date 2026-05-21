@@ -51,14 +51,22 @@ _JSON_TYPE_TO_PYTHON: Mapping[str, Any] = {
 _MODEL_NAME_RE = re.compile(r"[^0-9a-zA-Z_]")
 
 
-def _python_type_for(prop_schema: object) -> Any:
-    """Map a JSON Schema property to a Python type for ``create_model``."""
+def _python_type_for(prop_schema: object) -> Any | None:
+    """Map a JSON Schema property to a Python type for ``create_model``.
+
+    Returns ``Any`` for an untyped property (valid JSON Schema) and the
+    mapped Python type for a known type. Returns ``None`` for an explicit
+    but unknown/unsupported ``type`` so the caller rejects the blueprint
+    rather than silently accepting any value for that field.
+    """
     if not isinstance(prop_schema, dict):
         return Any
     json_type = prop_schema.get("type")
+    if json_type is None:
+        return Any
     if isinstance(json_type, str):
-        return _JSON_TYPE_TO_PYTHON.get(json_type, Any)
-    return Any
+        return _JSON_TYPE_TO_PYTHON.get(json_type)
+    return None
 
 
 def _model_class_name(tool_name: str) -> str:
@@ -98,6 +106,12 @@ def build_args_model(blueprint: ToolBlueprint) -> type[BaseModel]:
     field_defs: dict[str, Any] = {}
     for prop_name, prop_schema in properties.items():
         py_type = _python_type_for(prop_schema)
+        if py_type is None:
+            msg = (
+                f"blueprint {blueprint.name!r} property {prop_name!r} declares "
+                f"an unsupported JSON Schema type"
+            )
+            raise ToolRegistrationError(msg)
         if prop_name in required:
             field_defs[prop_name] = (py_type, ...)
         else:

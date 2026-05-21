@@ -57,6 +57,20 @@ src/synthorg/meta/
     prompt_tuning.py   -- Org-wide constitutional principles
     code_modification.py -- Framework code changes (LLM-generated)
 
+  toolsmith/           -- Self-extending toolkit (TOOL_CREATION altitude)
+    models.py          -- ToolBlueprint, ToolBlueprintState, CapabilityGap, ToolValidationResult
+    config.py          -- ToolsmithConfig (enabled, gap thresholds, allowlists, sandbox, validation)
+    protocol.py        -- CapabilityGapStore, ToolBlueprintGenerator, ToolValidationGate, overflow handler
+    gap_store.py       -- RingBufferCapabilityGapStore (recurrence aggregation)
+    strategy.py        -- LLMToolBlueprintGenerator (LLM authors a sandbox tool)
+    dynamic_registry.py -- DynamicToolRegistry + LayeredToolRegistry/HandlerMap (runtime registration)
+    script_handler.py  -- Per-tool closure handler (runs script_body in the sandbox)
+    validation_gate.py -- BenchmarkToolValidationGate (per-tool brief + golden delta)
+    applier.py         -- ToolCreationApplier (validate, persist, register, retire)
+    service.py         -- ToolsmithService (orchestration + gap sink seam)
+    overflow.py        -- CodeModificationOverflowHandler (service-access gap routing)
+    factory.py         -- build_toolsmith wiring
+
   signals/             -- Signal aggregation from existing subsystems
     performance.py     -- PerformanceTracker wrapper
     budget.py          -- Budget analytics wrapper
@@ -148,7 +162,7 @@ src/synthorg/meta/
 | Meta-analyst | Interactive Chief of Staff agent | Company metaphor, conversational UX, evolvable via #243 |
 | Signal access | MCP tools | First slice of API-as-MCP; agents use native tool interface |
 | Proposal generation | Rule-first hybrid | Rules detect (cheap, auditable); LLM synthesizes (creative, scoped) |
-| Altitudes | Config + Architecture + Prompt + Code | All pluggable, config enabled by default, others opt-in |
+| Altitudes | Config + Architecture + Prompt + Code + Tool Creation | All pluggable, config enabled by default, others opt-in |
 | Scope | Deployment + product level | Code modification altitude for framework improvements |
 | Rollout | Before/after default, canary + A/B test opt-in | Per-proposal choice; A/B uses group assignment + statistical comparison |
 | Regression | Tiered: threshold + statistical | Layer 1 for catastrophic, Layer 2 for subtle degradation |
@@ -232,6 +246,7 @@ self_improvement:
   architecture_proposals_enabled: false  # Structural changes (opt-in)
   prompt_tuning_enabled: false      # Prompt policies (opt-in)
   code_modification_enabled: false  # Framework code changes (opt-in)
+  tool_creation_enabled: false      # Self-extending toolkit (opt-in)
   chief_of_staff:
     # Clarify-and-propose (POST /meta/chat/propose). All opt-in.
     propose_enabled: false                   # Master switch

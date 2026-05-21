@@ -24,6 +24,7 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_APPLY_STARTED,
     TOOLSMITH_BLUEPRINT_RETIRED,
 )
+from synthorg.providers.errors import ProviderError
 
 if TYPE_CHECKING:
     from synthorg.meta.toolsmith.dynamic_registry import DynamicToolRegistry
@@ -74,6 +75,8 @@ class ToolCreationApplier:
         for blueprint in proposal.tool_changes:
             try:
                 ok = await self._apply_one(blueprint)
+            except ProviderError:
+                raise
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
@@ -164,9 +167,11 @@ class ToolCreationApplier:
             ToolBlueprintState.RETIRED,
             retired_at=now,
         )
+        if not transitioned:
+            return False
         await self._registry.unregister(existing.name)
         logger.info(TOOLSMITH_BLUEPRINT_RETIRED, tool_name=existing.name)
-        return transitioned
+        return True
 
 
 __all__ = ["ToolCreationApplier"]

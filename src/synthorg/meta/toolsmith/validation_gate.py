@@ -25,8 +25,9 @@ from synthorg.meta.toolsmith.protocol import (
     ToolAcceptanceBriefRunner,  # noqa: TC001
 )
 from synthorg.meta.toolsmith.script_handler import make_dynamic_tool_handler
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.toolsmith import (
+    TOOLSMITH_BRIEF_PARSE_FAILED,
     TOOLSMITH_VALIDATION_FAILED,
     TOOLSMITH_VALIDATION_PASSED,
     TOOLSMITH_VALIDATION_STARTED,
@@ -107,7 +108,13 @@ class SandboxBriefRunner:
         raw = await handler(app_state=None, arguments=probe)
         try:
             envelope = _json.loads(raw)
-        except ValueError, TypeError:
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                TOOLSMITH_BRIEF_PARSE_FAILED,
+                tool_name=blueprint.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             return False, _BRIEF_FAIL_SCORE
         passed = envelope.get("status") == "ok"
         return passed, (_BRIEF_PASS_SCORE if passed else _BRIEF_FAIL_SCORE)

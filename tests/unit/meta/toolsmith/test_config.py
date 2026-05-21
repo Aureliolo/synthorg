@@ -47,3 +47,10 @@ class TestToolsmithConfig:
         assert config.allowed_capabilities == ("textkit:slugify",)
         assert config.authoring.temperature == pytest.approx(0.1)
         assert config.validation.min_score_margin == 5
+
+    def test_enabled_requires_non_empty_allowlist(self) -> None:
+        # enabled=True with the default empty allowlist is silently
+        # deny-all; the validator rejects it so the misconfiguration
+        # surfaces at boot rather than as 'tool never authored'.
+        with pytest.raises(ValidationError):
+            ToolsmithConfig(enabled=True, allowed_capabilities=())

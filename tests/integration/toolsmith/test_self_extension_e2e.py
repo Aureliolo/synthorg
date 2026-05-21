@@ -210,7 +210,10 @@ class TestSelfExtensionE2E:
         #    (the authored script really runs) and live-registers the tool.
         apply_result = await service.apply(proposal)
         assert apply_result.success is True
-        assert runtime.dynamic_registry.get_def("synthorg_textkit_slugify") is not None
+        definition = runtime.dynamic_registry.get_def("synthorg_textkit_slugify")
+        assert definition is not None
+        assert definition.name == "synthorg_textkit_slugify"
+        assert definition.capability == _CAPABILITY
 
         # 4. A LATER task invokes the brand-new tool through the real
         #    MCPToolInvoker over the layered registry, and it succeeds.

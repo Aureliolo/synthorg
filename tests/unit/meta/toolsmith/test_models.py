@@ -193,3 +193,15 @@ class TestToolBlueprint:
                 validated_at=_NOW + timedelta(minutes=5),
                 activated_at=_NOW + timedelta(minutes=2),
             )
+
+    def test_active_requires_validation_record(self) -> None:
+        # An ACTIVE tool is live-registered, which the applier only does
+        # after the benchmark gate passes and persists the result; a row
+        # in ACTIVE without a validation record indicates a corrupt write.
+        with pytest.raises(ValidationError):
+            _blueprint(
+                state=ToolBlueprintState.ACTIVE,
+                validated_at=_NOW + timedelta(minutes=1),
+                activated_at=_NOW + timedelta(minutes=2),
+                validation=None,
+            )

@@ -521,7 +521,7 @@ Action types classify agent actions for use by autonomy presets (see [Security &
 SecOps validation, tiered timeout policies, and progressive trust
 ([Decision Log](../architecture/decisions.md) D1).
 
-**Registry:** `StrEnum` for ~32 built-in action types (type safety, autocomplete, typos caught
+**Registry:** `StrEnum` for ~39 built-in action types (type safety, autocomplete, typos caught
 by static type checking and config-load-time validation) + `ActionTypeRegistry` for custom
 types via explicit registration. Unknown strings are rejected at config load time; a typo
 in `human_approval` list silently meaning "skip approval" is a critical safety concern.

@@ -38,6 +38,7 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_AUTHOR_STARTED,
 )
 from synthorg.providers.cost_recording import cost_recording_scope
+from synthorg.providers.errors import ProviderError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -120,6 +121,8 @@ class LLMToolBlueprintGenerator:
             response = await self._call_llm(gap, existing_capabilities)
             blueprint = self._parse(capability, response)
         except ToolAuthoringError, ToolCapabilityNotAllowedError:
+            raise
+        except ProviderError:
             raise
         except MemoryError, RecursionError:
             raise
