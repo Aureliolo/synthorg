@@ -200,6 +200,8 @@ class DesktopTool(BaseTool):
         """Release sandbox resources tied to this tool's owner."""
         try:
             await self._sandbox.release_owner(self._owner_id)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 DESKTOP_CLOSE_FAILED,
@@ -374,6 +376,8 @@ class DesktopTool(BaseTool):
                 timeout=timeout,
                 owner_id=self._owner_id,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 DESKTOP_EXECUTOR_FAILED,
