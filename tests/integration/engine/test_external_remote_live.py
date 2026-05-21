@@ -43,6 +43,20 @@ pytestmark = [pytest.mark.integration, pytest.mark.timeout(120)]
 _OWNER: Final[str] = "acme"
 
 
+def _clean_git_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """``os.environ`` minus inherited ``GIT_*`` vars, plus *extra*.
+
+    Strips ``GIT_DIR`` / ``GIT_WORK_TREE`` etc. so every git subprocess
+    resolves repos purely from its explicit ``-C`` / ``GIT_PROJECT_ROOT``
+    argument and never binds to the caller's repository (e.g. when the
+    test runs from inside a pre-push hook).
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    if extra:
+        env.update(extra)
+    return env
+
+
 def _git_available() -> bool:
     try:
         subprocess.run(
@@ -119,12 +133,7 @@ def _make_handler(server_root: Path) -> type[http.server.BaseHTTPRequestHandler]
             length = int(self.headers.get("Content-Length", "0"))
             body = self.rfile.read(length) if length else b""
             path, _, query = self.path.partition("?")
-            # Drop inherited GIT_* discovery vars (GIT_DIR / GIT_WORK_TREE
-            # etc.) so the served repo is resolved purely from
-            # GIT_PROJECT_ROOT + PATH_INFO; otherwise the test is
-            # non-hermetic when run from inside a git working tree.
-            env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-            env.update(
+            env = _clean_git_env(
                 {
                     "GIT_PROJECT_ROOT": str(server_root),
                     "GIT_HTTP_EXPORT_ALL": "1",
@@ -187,11 +196,13 @@ def _init_bare_pushable(repo: Path) -> None:
         ["git", "init", "--bare", "--initial-branch=main", str(repo)],  # noqa: S607
         check=True,
         capture_output=True,
+        env=_clean_git_env(),
     )
     subprocess.run(  # noqa: S603
         ["git", "-C", str(repo), "config", "http.receivepack", "true"],  # noqa: S607
         check=True,
         capture_output=True,
+        env=_clean_git_env(),
     )
 
 
@@ -208,11 +219,9 @@ def _init_bare_with_commit(repo: Path) -> None:
         ["git", "clone", str(repo), str(seed)],  # noqa: S607
         check=True,
         capture_output=True,
+        env=_clean_git_env(),
     )
-    # Strip inherited GIT_* discovery vars (same hermeticity as the
-    # http-backend handler) before setting the seed identity.
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env.update(
+    env = _clean_git_env(
         {
             "GIT_AUTHOR_NAME": "t",
             "GIT_AUTHOR_EMAIL": "t@t.invalid",
@@ -307,6 +316,7 @@ class TestExternalRemoteLive:
                     args,
                     check=True,
                     capture_output=True,
+                    env=_clean_git_env(),
                 )
             push = await _backend(port)[0].push(
                 project_id=NotBlankStr("proj-1"),
