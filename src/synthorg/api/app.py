@@ -1290,6 +1290,17 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             and app_state.review_gate_service is not None
         ):
             app_state.review_gate_service.set_vision_gate(services.vision_gate)
+        # Same seam for the adversarial red-team gate: built in the
+        # runtime wiring once the boot engine exists, attached here so a
+        # review pipeline supplied with red_team_input reaches the live
+        # gate. ``None`` when the red-team subsystem is disabled.
+        if (
+            services.red_team_runtime is not None
+            and app_state.review_gate_service is not None
+        ):
+            app_state.review_gate_service.set_red_team_gate(
+                services.red_team_runtime.gate,
+            )
         # Bring the real client-request, goal/objective, and
         # task-board work-entry paths online: ensure the configured
         # default projects exist and attach the entry adapters. No-op

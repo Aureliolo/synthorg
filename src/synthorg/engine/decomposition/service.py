@@ -14,6 +14,7 @@ from synthorg.engine.decomposition.models import (
     SubtaskStatusRollup,
 )
 from synthorg.engine.decomposition.rollup import StatusRollup
+from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.observability import get_logger
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
     from synthorg.engine.decomposition.classifier import TaskStructureClassifier
     from synthorg.engine.decomposition.models import DecompositionContext
     from synthorg.engine.decomposition.protocol import DecompositionStrategy
+    from synthorg.engine.stakes.protocol import StakesAssessor
 
 logger = get_logger(__name__)
 
@@ -38,15 +40,17 @@ class DecompositionService:
     DAG validator, and task factory to produce executable subtasks.
     """
 
-    __slots__ = ("_classifier", "_strategy")
+    __slots__ = ("_classifier", "_stakes_assessor", "_strategy")
 
     def __init__(
         self,
         strategy: DecompositionStrategy,
         classifier: TaskStructureClassifier,
+        stakes_assessor: StakesAssessor | None = None,
     ) -> None:
         self._strategy = strategy
         self._classifier = classifier
+        self._stakes_assessor = stakes_assessor or build_stakes_assessor()
 
     async def decompose_task(
         self,
@@ -115,6 +119,17 @@ class DecompositionService:
         graph = DependencyGraph(plan.subtasks)
         graph.validate()
 
+        # 3b. Assess per-subtask stakes and stamp it onto both the plan
+        # subtasks and the tasks created from them, so the plan and the
+        # executable tasks agree on stakes for the routing layer.
+        assessed_subtasks = tuple(
+            st.model_copy(
+                update={"stakes": self._stakes_assessor.assess_subtask(st)},
+            )
+            for st in plan.subtasks
+        )
+        plan = plan.model_copy(update={"subtasks": assessed_subtasks})
+
         # 4. Create Task objects
         created_tasks: list[Task] = []
         for subtask_def in plan.subtasks:
@@ -131,6 +146,7 @@ class DecompositionService:
                 dependencies=subtask_def.dependencies,
                 status=TaskStatus.CREATED,
                 estimated_complexity=subtask_def.estimated_complexity,
+                stakes=subtask_def.stakes,
             )
             created_tasks.append(child_task)
             logger.debug(

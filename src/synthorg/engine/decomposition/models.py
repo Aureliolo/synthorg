@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 from synthorg.core.enums import (
     Complexity,
     CoordinationTopology,
+    Stakes,
     TaskStatus,
     TaskStructure,
 )
@@ -28,6 +29,7 @@ class SubtaskDefinition(BaseModel):
         description: Detailed subtask description.
         dependencies: IDs of other subtasks this one depends on.
         estimated_complexity: Complexity estimate for routing.
+        stakes: Stakes level for stakes-aware model routing.
         required_skills: Skill IDs needed for routing.
         required_tags: Tags needed for multi-faceted routing match.  When
             set, the routing scorer awards a small bonus to agents whose
@@ -48,6 +50,10 @@ class SubtaskDefinition(BaseModel):
     estimated_complexity: Complexity = Field(
         default=Complexity.MEDIUM,
         description="Complexity estimate for routing",
+    )
+    stakes: Stakes = Field(
+        default=Stakes.NORMAL,
+        description="Stakes level for stakes-aware model routing",
     )
     required_skills: tuple[NotBlankStr, ...] = Field(
         default=(),

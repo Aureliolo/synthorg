@@ -12007,6 +12007,20 @@ export type components = {
             readonly stage_result: components["schemas"]["ReviewStageResult"];
             readonly task_id: string;
         };
+        /**
+         * Stakes
+         * @description How consequential a subtask or task is for stakes-aware routing.
+         *
+         *     Distinct from :class:`Priority` (urgency/importance) and
+         *     :class:`Complexity` (effort): stakes captures the *cost of being
+         *     wrong*. Low-stakes work tolerates a cheap model; high-stakes work
+         *     (architecture, irreversible decisions) warrants a strong model and
+         *     an adversarial red-team review. The authoritative ordering lives in
+         *     ``_STAKES_ORDER`` below.
+         * @default normal
+         * @enum {string}
+         */
+        readonly Stakes: "low" | "normal" | "high" | "critical";
         /** StartSimulationPayload */
         readonly StartSimulationPayload: {
             readonly config: components["schemas"]["SimulationConfig"];
@@ -12158,6 +12172,7 @@ export type components = {
              * @enum {string|null}
              */
             readonly source: "internal" | "client" | "simulation" | null;
+            readonly stakes: components["schemas"]["Stakes"];
             readonly status: components["schemas"]["TaskStatus"];
             /**
              * @description Classification of subtask relationships (None = not classified)

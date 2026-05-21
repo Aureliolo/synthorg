@@ -31,6 +31,7 @@ from synthorg.engine.pipeline.models import (
     WorkPhaseResult,
     WorkPipelineResult,
 )
+from synthorg.engine.stakes import build_stakes_assessor
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.pipeline import (
     PIPELINE_PHASE_COMPLETED,
@@ -49,6 +50,7 @@ if TYPE_CHECKING:
     from synthorg.engine.intake.engine import IntakeEngine
     from synthorg.engine.pipeline.policy.protocol import WorkRoutingPolicy
     from synthorg.engine.routing.scorer import AgentTaskScorer
+    from synthorg.engine.stakes.protocol import StakesAssessor
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.hr.registry import AgentRegistryService
     from synthorg.persistence.project_protocol import ProjectRepository
@@ -91,6 +93,7 @@ class DefaultWorkPipeline:
         "_project_repository",
         "_routing_policy",
         "_scorer",
+        "_stakes_assessor",
         "_task_engine",
         "_worker_execution_service",
     )
@@ -107,6 +110,7 @@ class DefaultWorkPipeline:
         coordinator: MultiAgentCoordinator | None,
         agent_registry: AgentRegistryService,
         clock: Clock | None = None,
+        stakes_assessor: StakesAssessor | None = None,
     ) -> None:
         self._intake_engine = intake_engine
         self._task_engine = task_engine
@@ -117,6 +121,7 @@ class DefaultWorkPipeline:
         self._coordinator = coordinator
         self._agent_registry = agent_registry
         self._clock = clock if clock is not None else SystemClock()
+        self._stakes_assessor = stakes_assessor or build_stakes_assessor()
 
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
         """Drive *work_item* through the full spine (see module docstring)."""
@@ -242,7 +247,25 @@ class DefaultWorkPipeline:
         if task is None:
             msg = f"intake reported task {result.task_id!r} but it is not persisted"
             raise WorkIntakeRejectedError(msg)
-        return await self._link_forecast(task, work_item)
+        task = await self._link_forecast(task, work_item)
+        return await self._assess_stakes(task, work_item)
+
+    async def _assess_stakes(self, task: Task, work_item: WorkItem) -> Task:
+        """Assess and stamp parent-task stakes for the LEAF (solo) path.
+
+        The decomposition service assesses each subtask on the team path,
+        but a LEAF task is executed directly without decomposition, so the
+        parent task itself must carry its stakes for the routing layer.
+        Stamped here, at the single intake funnel, so both paths converge.
+        """
+        stakes = self._stakes_assessor.assess_task(task)
+        if stakes is task.stakes:
+            return task
+        return await self._task_engine.update_task(
+            task.id,
+            {"stakes": stakes},
+            requested_by=work_item.requested_by,
+        )
 
     async def _link_forecast(self, task: Task, work_item: WorkItem) -> Task:
         """Stamp the approved forecast id + ceiling onto the task.

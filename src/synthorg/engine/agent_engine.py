@@ -83,6 +83,7 @@ if TYPE_CHECKING:
     from synthorg.engine.plan_models import PlanExecuteConfig
     from synthorg.engine.prompt import SystemPrompt
     from synthorg.engine.recovery import RecoveryStrategy
+    from synthorg.engine.routing_policy.router import StakesRouter
     from synthorg.engine.session import EventReader
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
@@ -200,6 +201,7 @@ class AgentEngine(
         interrupt_store: InterruptStore | None = None,
         approval_interrupt_timeout_seconds: float | None = None,
         external_api_runtime: ExternalApiRuntime | None = None,
+        stakes_router: StakesRouter | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._agent_middleware_chain = agent_middleware_chain
@@ -238,6 +240,7 @@ class AgentEngine(
         # the agent's registry. ``None`` (mode DISABLED) is a no-op.
         self._mcp_self_consumer = mcp_self_consumer
         self._approval_interrupt_timeout_seconds = approval_interrupt_timeout_seconds
+        self._stakes_router = stakes_router
         self._stagnation_detector = stagnation_detector
         self._auto_loop_config = auto_loop_config
         self._hybrid_loop_config = hybrid_loop_config
@@ -352,6 +355,25 @@ class AgentEngine(
             raise ExecutionStateError(msg)
         return await self._coordinator.coordinate(context)
 
+    async def _route_stakes(
+        self,
+        identity: AgentIdentity,
+        task: Task,
+    ) -> AgentIdentity:
+        """Apply stakes-aware routing, returning the adjusted identity.
+
+        Delegates to the injected :class:`StakesRouter` to pick a model
+        tier matched to ``task.stakes``. The red-team requirement carried
+        on the decision is consumed downstream by the review pipeline,
+        which derives it from the persisted ``task.stakes``; this method
+        only adjusts the model the subtask runs with.
+        """
+        assert self._stakes_router is not None  # noqa: S101  # caller checks
+        decision = await self._stakes_router.route(task=task, identity=identity)
+        if decision.selected_model == identity.model:
+            return identity
+        return identity.model_copy(update={"model": decision.selected_model})
+
     async def run(  # noqa: PLR0913, C901
         self,
         *,
@@ -401,6 +423,14 @@ class AgentEngine(
                     loop_type=loop_mode,
                     max_turns=max_turns,
                 )
+
+                # Stakes-aware routing runs BEFORE the budget block: it
+                # sets the target tier from the task's stakes, then the
+                # budget auto-downgrade below may lower it further when
+                # budget is tight (a hard ceiling must win over a stakes
+                # upgrade).
+                if self._stakes_router is not None:
+                    identity = await self._route_stakes(identity, task)
 
                 if self._budget_enforcer:
                     preflight = await self._budget_enforcer.check_can_execute(

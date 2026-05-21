@@ -13,6 +13,7 @@ from synthorg.core.enums import (
     Complexity,
     CoordinationTopology,
     Priority,
+    Stakes,
     TaskSource,
     TaskStatus,
     TaskStructure,
@@ -127,6 +128,14 @@ class Task(BaseModel):
     estimated_complexity: Complexity = Field(
         default=Complexity.MEDIUM,
         description="Task complexity estimate",
+    )
+    stakes: Stakes = Field(
+        default=Stakes.NORMAL,
+        description=(
+            "How consequential this task is, driving stakes-aware model"
+            " routing (cheap model for low stakes, strong model plus"
+            " red-team for high/critical stakes)"
+        ),
     )
     budget_limit: float = Field(
         default=0.0,
