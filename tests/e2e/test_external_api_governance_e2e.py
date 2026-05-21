@@ -154,12 +154,14 @@ class TestExternalApiGovernanceE2E:
         assert "public-token" not in read.content
         assert not invoker.pending_escalations
 
-        # 2. A sensitive connection gates to approval BEFORE any egress; the
-        #    invoker surfaces the parking escalation.
+        # 2. A sensitive connection gates to approval BEFORE any egress. Parking
+        #    is success-with-metadata (not an error); the invoker surfaces the
+        #    escalation via ``pending_escalations``.
         gated = await invoker.invoke(
             _call("c2", connection="crm-api", path="/customers"),
         )
-        assert gated.is_error is True
+        assert gated.is_error is False
+        assert "approval required" in gated.content.lower()
         assert len(invoker.pending_escalations) == 1
         approval_id = invoker.pending_escalations[0].approval_id
         # No egress to the sensitive host occurred.
