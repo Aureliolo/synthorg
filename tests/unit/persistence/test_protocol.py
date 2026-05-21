@@ -1034,6 +1034,14 @@ class _FakeBackend:
         return object()
 
     @property
+    def knowledge_sources(self) -> object:
+        return object()
+
+    @property
+    def knowledge_provenance(self) -> object:
+        return object()
+
+    @property
     def custom_presets(self) -> _FakePersonalityPresetRepository:
         return _FakePersonalityPresetRepository()
 
