@@ -64,6 +64,23 @@ class TestValidatedSandboxPath:
             _executor._validated_sandbox_path("rel/path.png", field="screenshot_path")
 
 
+class TestValidatedDisplay:
+    def test_defaults_when_missing(self) -> None:
+        assert _executor._validated_display(None) == _executor._DEFAULT_DISPLAY
+
+    @pytest.mark.parametrize("display", [":0", ":99", ":99.0", ":1.2"])
+    def test_accepts_canonical_forms(self, display: str) -> None:
+        assert _executor._validated_display(display) == display
+
+    @pytest.mark.parametrize(
+        "display",
+        ["99", "foo", ":99; rm -rf /", ":99 -screen", "::1", ":", ":99.", "$(id)"],
+    )
+    def test_rejects_malformed_or_injected(self, display: str) -> None:
+        with pytest.raises(ValueError, match="display must match"):
+            _executor._validated_display(display)
+
+
 class TestDispatchTable:
     def test_all_operations_registered(self) -> None:
         assert set(_executor._DISPATCH) == {

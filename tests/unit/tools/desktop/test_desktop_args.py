@@ -17,6 +17,10 @@ class TestDesktopArgsValid:
         args = DesktopToolArgs(mode="launch", app_command="python3 /workspace/app.py")
         assert args.app_command == "python3 /workspace/app.py"
 
+    def test_launch_rejects_whitespace_only_app_command(self) -> None:
+        with pytest.raises(ValidationError):
+            DesktopToolArgs(mode="launch", app_command="   ")
+
     def test_click_requires_coordinates(self) -> None:
         with pytest.raises(ValidationError, match="x and y"):
             DesktopToolArgs(mode="click", x=10)

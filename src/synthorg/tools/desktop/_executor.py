@@ -42,6 +42,7 @@ On failure::
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -86,7 +87,34 @@ def _validated_sandbox_path(raw: str, *, field: str) -> Path:
         raise ValueError(f"{field} must not contain '..' segments; got {raw!r}")
     if not candidate.is_relative_to(PurePosixPath(_SANDBOX_ROOT)):
         raise ValueError(f"{field} must resolve under {_SANDBOX_ROOT!r}; got {raw!r}")
-    return Path(raw)
+    # Lexical containment is not enough: a path under the sandbox root
+    # can still traverse out through a symlinked ancestor. Resolve both
+    # sides on the real filesystem (strict=False keeps non-existent
+    # leaf targets lexical) and re-check containment against the
+    # resolved root so symlink escapes are rejected.
+    sandbox_root = Path(_SANDBOX_ROOT).resolve()
+    resolved = Path(raw).resolve(strict=False)
+    if not resolved.is_relative_to(sandbox_root):
+        raise ValueError(f"{field} must resolve under {_SANDBOX_ROOT!r}; got {raw!r}")
+    return resolved
+
+
+_DISPLAY_PATTERN: Final = re.compile(r"^:\d+(\.\d+)?$")
+
+
+def _validated_display(raw: object) -> str:
+    """Return an X display name after asserting it is well-formed.
+
+    ``display`` originates in the user-controlled
+    ``DESKTOP_TOOL_ARGS_JSON`` payload and is interpolated into the
+    Xvfb / x11vnc command lines. Constraining it to the canonical
+    ``:N`` / ``:N.S`` form (allowlist, not denylist) blocks any
+    argument-injection vector before the value reaches a subprocess.
+    """
+    display = str(raw or _DEFAULT_DISPLAY)
+    if not _DISPLAY_PATTERN.fullmatch(display):
+        raise ValueError(f"display must match ':N' or ':N.S'; got {display!r}")
+    return display
 
 
 def _display_env(display: str) -> dict[str, str]:
@@ -112,7 +140,7 @@ def _display_up(display: str) -> bool:
 
 def _start_session(session: dict[str, Any]) -> None:
     """Bring up Xvfb (and optional x11vnc) idempotently for the session."""
-    display = str(session.get("display") or _DEFAULT_DISPLAY)
+    display = _validated_display(session.get("display"))
     width = int(session.get("screen_width") or _DEFAULT_SCREEN_WIDTH)
     height = int(session.get("screen_height") or _DEFAULT_SCREEN_HEIGHT)
     depth = int(session.get("color_depth") or _DEFAULT_COLOR_DEPTH)
@@ -248,12 +276,17 @@ def _launch(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
         payload.get("launch_timeout_seconds") or _SESSION_START_TIMEOUT_SECONDS,
     )
     deadline = time.monotonic() + timeout
+    window_seen = False
     while time.monotonic() < deadline:
         if proc.poll() is not None:
             raise RuntimeError("application exited before a window appeared")
         if _has_window(env):
+            window_seen = True
             break
         time.sleep(_LAUNCH_POLL_SECONDS)
+    if not window_seen:
+        proc.terminate()
+        raise RuntimeError("timed out waiting for application window")
     _write_session_state(display=display, pid=proc.pid)
     return {
         "display": display,
@@ -358,7 +391,7 @@ _DISPATCH = {
 def _dispatch(payload: dict[str, Any]) -> dict[str, Any]:
     session = payload.get("session") or {}
     _start_session(session)
-    display = str(session.get("display") or _DEFAULT_DISPLAY)
+    display = _validated_display(session.get("display"))
     env = _display_env(display)
     operation = payload["operation"]
     handler = _DISPATCH.get(operation)

@@ -5,6 +5,7 @@ so the host-side flow can be exercised without booting Xvfb or Docker.
 """
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
@@ -15,6 +16,7 @@ from synthorg.core.enums import ToolCategory
 from synthorg.tools.desktop import DesktopTool
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
+from tests._shared.fake_clock import FakeClock
 from tests._shared.mock_of import mock_of
 
 pytestmark = pytest.mark.unit
@@ -108,6 +110,41 @@ class TestDesktopToolDispatch:
         assert result.is_error is False
         assert result.metadata["sha256"] == "a" * 64
         assert result.metadata["saved_path"].endswith("shot.png")
+
+    async def test_screenshot_stamps_injected_clock(self, workspace: Path) -> None:
+        fixed = datetime(2026, 5, 21, 7, 0, tzinfo=UTC)
+        payload = {
+            "status": "ok",
+            "result": {
+                "saved_path": "/workspace/.synthorg/desktop/screenshots/shot.png",
+                "width": 640,
+                "height": 480,
+                "file_size_bytes": 1024,
+                "sha256": "b" * 64,
+            },
+        }
+        tool = DesktopTool(
+            sandbox=_fake_sandbox(_sandbox_result(payload)),
+            workspace=workspace,
+            clock=FakeClock(start=fixed),
+        )
+        result = await tool.execute(
+            arguments={"mode": "screenshot", "screenshot_name": "shot"},
+        )
+        assert result.metadata["captured_at_iso"] == fixed.isoformat()
+
+    async def test_malformed_executor_result_maps_to_error(
+        self, workspace: Path
+    ) -> None:
+        # A success envelope whose result omits required fields is
+        # protocol drift, not a successful launch.
+        payload = {"status": "ok", "result": {"display": ":99"}}
+        tool = _tool(workspace, payload)
+        result = await tool.execute(
+            arguments={"mode": "launch", "app_command": "python3 /workspace/app.py"},
+        )
+        assert result.is_error is True
+        assert result.metadata["error_type"] == "DesktopSessionError"
 
     async def test_app_not_running_maps_to_error(self, workspace: Path) -> None:
         payload = {

@@ -88,9 +88,19 @@ _IMAGE_DATA_FIELD_NAME: Final[re.Pattern[str]] = re.compile(
     r"(?i)^(base64_data|data_uri)$",
 )
 
+# A base64 ``data:`` image URI carried inline as a string value (the
+# multimodal mapper puts image bytes in ``image_url.url``, a key the
+# field-name rule above never matches). Elide the whole value so the
+# bytes do not bloat the human-readable cassette copy.
+_IMAGE_DATA_URI: Final[re.Pattern[str]] = re.compile(
+    r"(?i)^data:image/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$",
+)
+
 
 def _redact_str(value: str) -> str:
     """Apply every substitution pattern to a single string."""
+    if _IMAGE_DATA_URI.fullmatch(value):
+        return IMAGE_DATA_PLACEHOLDER
     for pattern, replacement in _SUBSTITUTIONS:
         value = pattern.sub(replacement, value)
     return value

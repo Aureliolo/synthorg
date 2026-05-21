@@ -58,3 +58,26 @@ class ScreenshotResult(BaseModel):
         pattern=SHA256_HEX_PATTERN,
         description="Lowercase hex SHA-256 (64 chars) of the captured PNG bytes.",
     )
+
+
+class ExecutorScreenshotPayload(BaseModel):
+    """Raw screenshot metadata returned by the in-sandbox executor.
+
+    Validated at the process boundary (JSON over stdout) before the host
+    builds the public :class:`ScreenshotResult`. The host re-derives the
+    workspace-relative ``saved_path`` and stamps ``captured_at_iso`` from
+    its own clock, so only the executor-produced fields live here.
+    """
+
+    model_config = _RESPONSE_CONFIG
+
+    saved_path: NotBlankStr = Field(
+        description="Container-absolute path the executor wrote the PNG to.",
+    )
+    width: int = Field(ge=1, description="Image width in pixels.")
+    height: int = Field(ge=1, description="Image height in pixels.")
+    file_size_bytes: int = Field(ge=0, description="On-disk size in bytes.")
+    sha256: str = Field(
+        pattern=SHA256_HEX_PATTERN,
+        description="Lowercase hex SHA-256 (64 chars) of the captured PNG bytes.",
+    )

@@ -18,15 +18,23 @@ the lifetime of the process.
 import asyncio
 import json
 import shutil
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Final, assert_never, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Final,
+    LiteralString,
+    assert_never,
+    cast,
+)
 from uuid import uuid4
 
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
+from synthorg.core.clock import SystemClock
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.desktop import (
@@ -51,6 +59,7 @@ from synthorg.tools.desktop._constants import (
     SESSION_START_TIMEOUT_SECONDS,
 )
 from synthorg.tools.desktop._models import (
+    ExecutorScreenshotPayload,
     InputResult,
     LaunchResult,
     ScreenshotResult,
@@ -69,6 +78,7 @@ from synthorg.tools.desktop.errors import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.core.clock import Clock
     from synthorg.tools.desktop.driver.protocol import DesktopDriver
     from synthorg.tools.sandbox.protocol import SandboxBackend
 
@@ -102,7 +112,7 @@ class DesktopTool(BaseTool):
 
     args_model: ClassVar[type[BaseModel] | None] = DesktopToolArgs
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- DI seam: sandbox, driver, settings, clock injected
         self,
         *,
         sandbox: SandboxBackend,
@@ -110,6 +120,7 @@ class DesktopTool(BaseTool):
         driver: DesktopDriver | None = None,
         owner_id: str | None = None,
         settings: DesktopSettings | None = None,
+        clock: Clock | None = None,
     ) -> None:
         """Wire the tool to a sandbox backend and the project workspace.
 
@@ -125,6 +136,9 @@ class DesktopTool(BaseTool):
                 tool instance gets a uuid4-derived id.
             settings: Operator-resolved settings. When omitted the model
                 defaults (mirroring the module constants) are used.
+            clock: Clock seam. Production passes :class:`SystemClock`;
+                tests pass :class:`FakeClock`. Defaults to a
+                :class:`SystemClock`.
         """
         super().__init__(
             name="desktop",
@@ -150,6 +164,7 @@ class DesktopTool(BaseTool):
         )
         self._screenshots = WorkspaceScreenshotStore(workspace=self._workspace)
         self._owner_id = owner_id or f"desktop-tool-{uuid4()}"
+        self._clock = clock or SystemClock()
 
     async def execute(
         self,
@@ -207,13 +222,11 @@ class DesktopTool(BaseTool):
                 "launch_timeout_seconds": args.launch_timeout_seconds,
             },
         )
-        result = payload.get("result") or {}
-        session = self._driver.session_config()
-        launch = LaunchResult(
-            display=str(result.get("display") or session.display),
-            pid=int(result.get("pid") or 1),
-            screen_width=int(result.get("screen_width") or session.screen_width),
-            screen_height=int(result.get("screen_height") or session.screen_height),
+        launch = self._parse_executor_result(
+            payload,
+            LaunchResult,
+            boundary="tool.desktop.launch",
+            operation="launch",
         )
         logger.info(DESKTOP_LAUNCH_SUCCESS, pid=launch.pid, display=launch.display)
         return _ok_result(launch)
@@ -235,10 +248,11 @@ class DesktopTool(BaseTool):
             args=args,
             extra=extra,
         )
-        result = payload.get("result") or {}
-        input_result = InputResult(
-            action=str(result.get("action") or args.mode),
-            detail=str(result.get("detail") or ""),
+        input_result = self._parse_executor_result(
+            payload,
+            InputResult,
+            boundary="tool.desktop.input",
+            operation=args.mode,
         )
         logger.info(DESKTOP_INPUT_SUCCESS, action=input_result.action)
         return _ok_result(input_result)
@@ -255,15 +269,19 @@ class DesktopTool(BaseTool):
             args=args,
             extra={"screenshot_path": container_path},
         )
-        result = payload.get("result") or {}
-        sha = str(result.get("sha256", ""))
+        shot_payload = self._parse_executor_result(
+            payload,
+            ExecutorScreenshotPayload,
+            boundary="tool.desktop.screenshot",
+            operation="screenshot",
+        )
         shot = ScreenshotResult(
             saved_path=self._screenshots.relative(host_path),
-            width=int(result.get("width") or 1),
-            height=int(result.get("height") or 1),
-            file_size_bytes=int(result.get("file_size_bytes") or 0),
-            captured_at_iso=datetime.now(UTC).isoformat(),
-            sha256=sha,
+            width=shot_payload.width,
+            height=shot_payload.height,
+            file_size_bytes=shot_payload.file_size_bytes,
+            captured_at_iso=self._clock.now().isoformat(),
+            sha256=shot_payload.sha256,
         )
         logger.info(
             DESKTOP_SCREENSHOT_SUCCESS,
@@ -281,14 +299,54 @@ class DesktopTool(BaseTool):
         relative = host_path.resolve().relative_to(self._workspace).as_posix()
         return f"{CONTAINER_WORKSPACE_ROOT}/{relative}"
 
-    def _executor_timeout_seconds(self, *, operation: str) -> float:
-        """Outer timeout for sandbox.execute covering the inner work."""
+    def _executor_timeout_seconds(
+        self,
+        *,
+        operation: str,
+        args: DesktopToolArgs,
+    ) -> float:
+        """Outer timeout for sandbox.execute covering the inner work.
+
+        The launch budget honours the per-call ``launch_timeout_seconds``
+        so a deliberately long launch is not terminated prematurely by a
+        static outer deadline.
+        """
         budget = SESSION_START_TIMEOUT_SECONDS
         if operation == "launch":
-            budget += LAUNCH_TIMEOUT_SECONDS
+            budget += float(args.launch_timeout_seconds or LAUNCH_TIMEOUT_SECONDS)
         if operation == "screenshot":
             budget += SCREENSHOT_TIMEOUT_SECONDS
         return budget + OUTER_TIMEOUT_BUFFER_SECONDS
+
+    def _parse_executor_result[T: BaseModel](
+        self,
+        payload: dict[str, Any],
+        model: type[T],
+        *,
+        boundary: LiteralString,
+        operation: str,
+    ) -> T:
+        """Validate the executor's ``result`` payload at the boundary.
+
+        The executor returns JSON over stdout; an absent or malformed
+        ``result`` is protocol drift, not a successful action, so it
+        surfaces as a domain error rather than silently defaulting to
+        placeholder values.
+        """
+        try:
+            return parse_typed(boundary, payload.get("result"), model)
+        except PydanticValidationError as exc:
+            logger.warning(
+                DESKTOP_EXECUTOR_FAILED,
+                operation=operation,
+                reason="malformed_result",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise DesktopSessionError(
+                "Executor returned a malformed result",
+                context={"operation": operation},
+            ) from exc
 
     async def _run_executor(
         self,
@@ -307,7 +365,7 @@ class DesktopTool(BaseTool):
             **{k: v for k, v in extra.items() if v is not None},
         }
         env = {"DESKTOP_TOOL_ARGS_JSON": json.dumps(payload)}
-        timeout = self._executor_timeout_seconds(operation=operation)
+        timeout = self._executor_timeout_seconds(operation=operation, args=args)
         try:
             result = await self._sandbox.execute(
                 command="python3",

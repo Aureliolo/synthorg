@@ -9,6 +9,9 @@ text-only model never silently drops the images.
 from pathlib import Path  # noqa: TC003 -- runtime use in screenshot resolution
 from typing import TYPE_CHECKING, Any, Final
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from synthorg.api.boundary import parse_typed
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -93,6 +96,30 @@ _DEGRADED_SUMMARY: Final[str] = (
 _DEGRADED_DESCRIPTION: Final[str] = (
     "The vision verifier could not parse a structured verdict from the model."
 )
+
+_VERDICT_ARGS_CONFIG = ConfigDict(frozen=True, extra="forbid")
+
+
+class _FindingArgs(BaseModel):
+    """Typed view of one finding entry in the verdict tool call."""
+
+    model_config = _VERDICT_ARGS_CONFIG
+
+    category: VisionFindingCategory
+    severity: VisionSeverity
+    description: NotBlankStr
+    evidence: tuple[NotBlankStr, ...] = ()
+    suggested_fix: NotBlankStr | None = None
+
+
+class _VerdictArgs(BaseModel):
+    """Typed view of the model's ``record_vision_verdict`` arguments."""
+
+    model_config = _VERDICT_ARGS_CONFIG
+
+    confidence: float = Field(ge=0.0, le=1.0)
+    summary: str
+    findings: tuple[_FindingArgs, ...] = ()
 
 
 class LLMVisionVerifier:
@@ -233,24 +260,20 @@ class LLMVisionVerifier:
         rather than raising, so a model fault never blocks completion.
         """
         try:
-            findings = tuple(
-                self._parse_finding(entry) for entry in arguments.get("findings", [])
-            )
-            confidence = float(arguments["confidence"])
-            raw_summary = str(arguments["summary"]).strip()
-            summary = NotBlankStr(raw_summary or _DEGRADED_SUMMARY)
+            verdict = parse_typed("vision.verdict", arguments, _VerdictArgs)
+            summary = NotBlankStr(verdict.summary.strip() or _DEGRADED_SUMMARY)
             return VisionVerificationReport(
                 task_id=review_input.task_id,
                 execution_id=review_input.execution_id,
-                findings=findings,
+                findings=tuple(self._to_finding(entry) for entry in verdict.findings),
                 summary=summary,
                 verifier_kind=VisionVerifierKind.LLM_VISION.value,
                 model_id=self._model_id,
-                confidence=confidence,
+                confidence=verdict.confidence,
                 generator_agent_id=review_input.generator_agent_id,
                 evaluator_agent_id=review_input.evaluator_agent_id,
             )
-        except (KeyError, ValueError, TypeError) as exc:
+        except ValidationError as exc:
             logger.warning(
                 VISION_VERIFIER_FAILED,
                 task_id=review_input.task_id,
@@ -262,18 +285,14 @@ class LLMVisionVerifier:
             return self._degraded_report(review_input)
 
     @staticmethod
-    def _parse_finding(entry: dict[str, Any]) -> VisionFinding:
-        """Map one tool-call finding entry to a ``VisionFinding``."""
+    def _to_finding(entry: _FindingArgs) -> VisionFinding:
+        """Map one validated finding entry to a ``VisionFinding``."""
         return VisionFinding(
-            category=VisionFindingCategory(entry["category"]),
-            severity=VisionSeverity(entry["severity"]),
-            description=NotBlankStr(entry["description"]),
-            evidence=tuple(NotBlankStr(e) for e in entry.get("evidence", ())),
-            suggested_fix=(
-                NotBlankStr(entry["suggested_fix"])
-                if entry.get("suggested_fix")
-                else None
-            ),
+            category=entry.category,
+            severity=entry.severity,
+            description=entry.description,
+            evidence=entry.evidence,
+            suggested_fix=entry.suggested_fix,
         )
 
     def _degraded_report(

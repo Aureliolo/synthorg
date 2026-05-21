@@ -58,7 +58,7 @@ class DesktopToolArgs(BaseModel):
         description="Operation: launch, click, type, key, screenshot, or scroll.",
     )
 
-    app_command: str | None = Field(
+    app_command: NotBlankStr | None = Field(
         default=None,
         description=(
             "Shell command that launches the GUI application (e.g. "
@@ -138,7 +138,7 @@ class DesktopToolArgs(BaseModel):
     @model_validator(mode="after")
     def _validate_per_mode_fields(self) -> Self:
         """Enforce the per-mode required-field invariants."""
-        if self.mode == "launch" and not self.app_command:
+        if self.mode == "launch" and self.app_command is None:
             msg = "'launch' mode requires app_command"
             raise ValueError(msg)
         if self.mode == "click" and (self.x is None or self.y is None):

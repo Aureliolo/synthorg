@@ -9,6 +9,7 @@ redactor behaviour in isolation.
 import pytest
 
 from synthorg.providers.cassette.redaction import (
+    IMAGE_DATA_PLACEHOLDER,
     REDACTION_PLACEHOLDER,
     CassetteRedactor,
     NullRedactor,
@@ -54,6 +55,27 @@ class TestPatternRedactor:
     def test_plain_prompt_text_untouched(self) -> None:
         text = "Write a haiku about the sea and the morning sun."
         assert PatternRedactor().redact(text) == text
+
+    def test_inline_image_data_uri_elided(self) -> None:
+        # The multimodal mapper carries image bytes in image_url.url; the
+        # value is a data: URI under a plain "url" key the field-name rule
+        # never matches, so it must be elided by value shape.
+        payload = {
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "data:image/png;base64," + "A" * 512,
+                        "detail": "auto",
+                    },
+                },
+            ],
+        }
+        out = PatternRedactor().redact(payload)
+        assert "A" * 512 not in str(out)
+        assert out["content"][0]["image_url"]["url"] == IMAGE_DATA_PLACEHOLDER
+        # The sibling non-image field is untouched.
+        assert out["content"][0]["image_url"]["detail"] == "auto"
 
     def test_nested_structure_traversed(self) -> None:
         payload = {
