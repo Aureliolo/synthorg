@@ -63,6 +63,7 @@ class TestApprovalStoreProtocol:
         expected = {
             "add",
             "clear",
+            "consume_if_approved",
             "delete",
             "get",
             "list_items",
