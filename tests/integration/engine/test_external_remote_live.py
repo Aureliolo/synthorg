@@ -169,24 +169,34 @@ def _make_handler(server_root: Path) -> type[http.server.BaseHTTPRequestHandler]
     return _Handler
 
 
-def _init_bare_empty(repo: Path) -> None:
-    """Create an empty bare repo (what a forge's create endpoint yields)."""
+def _init_bare_pushable(repo: Path) -> None:
+    """``git init --bare`` + enable smart-HTTP push (receive-pack).
+
+    git-http-backend serves receive-pack (push) only when the repo sets
+    ``http.receivepack=true``; without it every push over the test
+    server is denied with rc 128.
+    """
     repo.mkdir(parents=True, exist_ok=True)
     subprocess.run(  # noqa: S603
         ["git", "init", "--bare", "--initial-branch=main", str(repo)],  # noqa: S607
         check=True,
         capture_output=True,
     )
+    subprocess.run(  # noqa: S603
+        ["git", "-C", str(repo), "config", "http.receivepack", "true"],  # noqa: S607
+        check=True,
+        capture_output=True,
+    )
+
+
+def _init_bare_empty(repo: Path) -> None:
+    """Create an empty, pushable bare repo (a forge create endpoint result)."""
+    _init_bare_pushable(repo)
 
 
 def _init_bare_with_commit(repo: Path) -> None:
-    """Create a bare repo on the server with one commit on ``main``."""
-    repo.mkdir(parents=True, exist_ok=True)
-    subprocess.run(  # noqa: S603
-        ["git", "init", "--bare", "--initial-branch=main", str(repo)],  # noqa: S607
-        check=True,
-        capture_output=True,
-    )
+    """Create a pushable bare repo on the server with one commit on ``main``."""
+    _init_bare_pushable(repo)
     seed = repo.parent / f"{repo.stem}-seed"
     subprocess.run(  # noqa: S603
         ["git", "clone", str(repo), str(seed)],  # noqa: S607
