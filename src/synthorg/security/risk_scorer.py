@@ -230,6 +230,16 @@ _DEFAULT_SCORE_MAP: Final[MappingProxyType[str, RiskScore]] = MappingProxyType(
         ActionType.BROWSER_DIFF: _LOW_SCORE,
         ActionType.BROWSER_ACCESSIBILITY_SCAN: _LOW_SCORE,
         ActionType.BROWSER_SPEC: _LOW_SCORE,
+        # Virtual desktop tool capabilities. The desktop runs sandboxed
+        # on a headless display and operates the workspace's own GUI
+        # deliverable. Launch spawns a process (bash -c) so it is MEDIUM;
+        # pointer / keyboard / capture actions only drive the running app.
+        ActionType.DESKTOP_LAUNCH: _MEDIUM_SCORE,
+        ActionType.DESKTOP_CLICK: _LOW_SCORE,
+        ActionType.DESKTOP_TYPE: _LOW_SCORE,
+        ActionType.DESKTOP_KEY: _LOW_SCORE,
+        ActionType.DESKTOP_SCREENSHOT: _LOW_SCORE,
+        ActionType.DESKTOP_SCROLL: _LOW_SCORE,
     }
 )
 

@@ -9,7 +9,7 @@ description: Tool categories, concurrent execution model, layered sandboxing, MC
 
     This page is the source of truth for the **designed** behaviour of this subsystem. Tool execution runs via the agent runtime, which is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
 
-Agents act on the world through tools. SynthOrg defines a pluggable tool system with 14+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication, design, headless browser, governed external data access), layered sandboxing (subprocess for low-risk, Docker for high-risk, Kubernetes for future multi-tenant), MCP server integration, and a progressive-disclosure model that limits the surface an agent sees to what its role, seniority, and autonomy tier permit.
+Agents act on the world through tools. SynthOrg defines a pluggable tool system with 15+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication, design, headless browser, governed external data access, virtual desktop), layered sandboxing (subprocess for low-risk, Docker for high-risk, Kubernetes for future multi-tenant), MCP server integration, and a progressive-disclosure model that limits the surface an agent sees to what its role, seniority, and autonomy tier permit.
 
 ## Tool Categories
 
@@ -28,6 +28,7 @@ Agents act on the world through tools. SynthOrg defines a pluggable tool system 
 | **Memory** | Search memory, recall by ID | All agents (tool-based strategy) |
 | **Browser** | Headless Playwright + Chromium: navigate, screenshot, SSIM diff, axe accessibility scan, full spec | QA, frontend devs, agents validating web deliverables |
 | **External Data** | Governed external API/data access through a configured connection: credentials brokered from the connection catalog, egress constrained to the connection host (SSRF policy + DNS pinning), per-connection rate limiting, sensitive/write calls gated to approval | Agents consuming third-party APIs while building deliverables |
+| **Desktop** | Virtual desktop (Xvfb + xdotool + scrot in a container): launch a GUI app, click/type/press-keys/scroll, capture screenshots | QA, frontend devs, agents validating GUI deliverables |
 | **MCP Servers** | Any MCP-compatible tool | Configurable per agent |
 
 ## Tool Execution Model
@@ -75,6 +76,7 @@ isolation for high-risk tools.
         terminal: "docker"                 # high risk -- arbitrary commands
         database: "docker"                 # high risk -- data mutation
         browser: "docker"                  # opt-in -- Playwright + Chromium image
+        desktop: "docker"                   # opt-in -- Xvfb + xdotool + scrot image
       subprocess:
         timeout_seconds: 30
         workspace_only: true               # restrict filesystem access to project dir
@@ -198,6 +200,28 @@ timer so a subsequent task for the same agent within the window re-acquires
 the warm container); `DockerSandbox.cleanup()` destroys all strategy-owned
 containers via `cleanup_all()`. Containers carry the `synthorg.managed=true`
 label so the reconciliation pass reclaims any orphaned on an unclean exit.
+
+## Virtual Desktop & Vision Verification
+
+For GUI deliverables an agent must SEE and operate the running app, not just
+unit-test it. The **desktop tool** (`tools/desktop/`) drives a headless X session
+inside the existing `DockerSandbox`: it launches a windowed GUI app, injects
+pointer / keyboard input via `xdotool`, and captures screenshots via `scrot`. The
+session is stateful across calls because the per-agent lifecycle keeps the warm
+container (Xvfb + the running app) alive between tool invocations; a `per-call`
+reset surfaces as `DesktopAppNotRunningError` rather than a silent empty capture.
+
+The session bring-up is pluggable behind a `DesktopDriver` protocol + factory
+(`tools/desktop/driver/`): `xvfb` (the deterministic default: Xvfb + xdotool +
+scrot) and `vnc` (adds an x11vnc observation channel). The protocol leaves room
+for a future Windows-container / Wayland driver without reworking the tool. The
+driver targets Linux-renderable GUI toolkits (Qt / Tk / GTK / Electron / X11);
+the desktop-capable image is built from `docker/desktop/Dockerfile`. Screenshots
+are written under `<workspace>/.synthorg/desktop/screenshots/` with a sha256, so
+they are durable provenance on disk (never in the database).
+
+The screenshots feed the **vision verifier** quality gate (the UI cousin of the
+red-team gate); see [Verification & Quality](verification-quality.md).
 
 ## Git Clone SSRF Prevention
 
@@ -476,6 +500,7 @@ arch:decide
 memory:read
 browser:navigate, browser:screenshot, browser:diff, browser:accessibility_scan, browser:spec
 external_data:request
+desktop:launch, desktop:click, desktop:type, desktop:key, desktop:screenshot, desktop:scroll
 ```
 
 **Classification:** Static tool metadata. Each `BaseTool` declares its `action_type`. Default

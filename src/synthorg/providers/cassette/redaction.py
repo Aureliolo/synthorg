@@ -17,6 +17,7 @@ import re
 from typing import Final, Protocol, runtime_checkable
 
 REDACTION_PLACEHOLDER: Final[str] = "***REDACTED***"
+IMAGE_DATA_PLACEHOLDER: Final[str] = "***IMAGE_DATA_ELIDED***"
 
 
 @runtime_checkable
@@ -79,6 +80,14 @@ _SECRET_FIELD_NAME: Final[re.Pattern[str]] = re.compile(
     r"(?i)^(api[_-]?key|secret|password|token|authorization)$",
 )
 
+# An image payload field on a multimodal message: not a secret, but
+# base64 image bytes bloat the human-readable cassette copy with no
+# review value (the raw bytes are still hashed for replay fidelity in
+# ``keying.py``). Elide them to keep the on-disk cassette diffable.
+_IMAGE_DATA_FIELD_NAME: Final[re.Pattern[str]] = re.compile(
+    r"(?i)^(base64_data|data_uri)$",
+)
+
 
 def _redact_str(value: str) -> str:
     """Apply every substitution pattern to a single string."""
@@ -96,6 +105,8 @@ def _redact_value(value: object) -> object:
         for key, item in value.items():
             if isinstance(key, str) and _SECRET_FIELD_NAME.fullmatch(key):
                 redacted[key] = REDACTION_PLACEHOLDER
+            elif isinstance(key, str) and _IMAGE_DATA_FIELD_NAME.fullmatch(key):
+                redacted[key] = IMAGE_DATA_PLACEHOLDER
             else:
                 redacted[key] = _redact_value(item)
         return redacted
@@ -134,6 +145,7 @@ class NullRedactor:
 
 
 __all__ = [
+    "IMAGE_DATA_PLACEHOLDER",
     "REDACTION_PLACEHOLDER",
     "CassetteRedactor",
     "NullRedactor",

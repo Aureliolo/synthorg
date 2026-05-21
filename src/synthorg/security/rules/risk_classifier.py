@@ -47,6 +47,12 @@ _DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProx
         ActionType.BROWSER_DIFF: ApprovalRiskLevel.LOW,
         ActionType.BROWSER_ACCESSIBILITY_SCAN: ApprovalRiskLevel.LOW,
         ActionType.BROWSER_SPEC: ApprovalRiskLevel.LOW,
+        ActionType.DESKTOP_LAUNCH: ApprovalRiskLevel.MEDIUM,
+        ActionType.DESKTOP_CLICK: ApprovalRiskLevel.LOW,
+        ActionType.DESKTOP_TYPE: ApprovalRiskLevel.LOW,
+        ActionType.DESKTOP_KEY: ApprovalRiskLevel.LOW,
+        ActionType.DESKTOP_SCREENSHOT: ApprovalRiskLevel.LOW,
+        ActionType.DESKTOP_SCROLL: ApprovalRiskLevel.LOW,
     }
 )
 

@@ -68,6 +68,7 @@ if TYPE_CHECKING:
     from synthorg.engine.pipeline.protocol import WorkPipeline
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
+    from synthorg.security.visionverify.protocol import VisionVerifierGate
     from synthorg.tools.external_api._runtime import ExternalApiRuntime
     from synthorg.tools.sandbox.protocol import SandboxBackend
 
@@ -152,6 +153,7 @@ class RuntimeServices(NamedTuple):
     coordinator: MultiAgentCoordinator | None
     work_pipeline: WorkPipeline | None
     red_team_runtime: RedTeamRuntime | None = None
+    vision_gate: VisionVerifierGate | None = None
 
 
 def _select_active_provider(
@@ -228,8 +230,12 @@ async def _build_tool_registry(
     from synthorg.tools.browser._settings import (  # noqa: PLC0415
         resolve_browser_settings,
     )
+    from synthorg.tools.desktop._settings import (  # noqa: PLC0415
+        resolve_desktop_settings,
+    )
 
     browser_settings = await resolve_browser_settings(app_state.config_resolver)
+    desktop_settings = await resolve_desktop_settings(app_state.config_resolver)
     lifecycle_strategy = create_lifecycle_strategy(
         app_state.config.sandboxing.docker.lifecycle,
         clock=app_state.clock,
@@ -245,6 +251,7 @@ async def _build_tool_registry(
         sandbox_backends=sandbox_backends,
         web_request_timeout=web_request_timeout,
         browser_settings=browser_settings,
+        desktop_settings=desktop_settings,
     )
     tools: list[BaseTool] = [*default_tools, *extra_tools]
     return ToolRegistry(tools), len(tools), sandbox_backends
@@ -618,6 +625,11 @@ async def build_runtime_services(
             worker_execution_service=NoProviderExecutionService(),
             coordinator=None,
             work_pipeline=None,
+            vision_gate=_build_vision_gate_or_none(
+                app_state=app_state,
+                workspace_root=workspace_root,
+                provider=None,
+            ),
         )
     registry, names = selected
     provider = registry.get(names[0])
@@ -685,6 +697,11 @@ async def build_runtime_services(
         coordinator=coordinator,
         work_pipeline=work_pipeline,
         red_team_runtime=red_team_runtime,
+        vision_gate=_build_vision_gate_or_none(
+            app_state=app_state,
+            workspace_root=workspace_root,
+            provider=provider,
+        ),
     )
 
 
@@ -719,3 +736,52 @@ def _build_red_team_runtime_or_none(
         seed=seed,
         clock=app_state.clock,
     )
+
+
+def _build_vision_gate_or_none(
+    *,
+    app_state: AppState,
+    workspace_root: Path,
+    provider: CompletionProvider | None,
+) -> VisionVerifierGate | None:
+    """Construct the vision verifier gate when the subsystem is enabled.
+
+    Pulls :class:`VisionVerifyConfig` from
+    ``app_state.config.security.vision_verify``. The ``heuristic`` /
+    ``noop`` verifiers need only the workspace; the ``llm_vision``
+    verifier additionally needs the active provider, pinned to the
+    vendor-agnostic ``example-medium-001`` model id (operators override
+    via the post-init swap path). A misconfigured ``llm_vision`` with no
+    provider (empty company) degrades the gate to ``None`` with a
+    warning rather than crashing boot.
+    """
+    from synthorg.security.visionverify.builder import (  # noqa: PLC0415
+        build_vision_verifier_gate,
+    )
+    from synthorg.security.visionverify.errors import (  # noqa: PLC0415
+        VisionVerifyConfigError,
+    )
+
+    tier_resolver = (
+        (lambda _tier: "example-medium-001") if provider is not None else None
+    )
+    try:
+        return build_vision_verifier_gate(
+            app_state.config.security.vision_verify,
+            workspace=workspace_root,
+            provider=provider,
+            tier_resolver=tier_resolver,
+            cost_tracker=(
+                app_state.cost_tracker if app_state.has_cost_tracker else None
+            ),
+            clock=app_state.clock,
+        )
+    except VisionVerifyConfigError as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            service="runtime_services",
+            note="vision verifier gate disabled: configuration incomplete",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return None

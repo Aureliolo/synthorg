@@ -95,6 +95,7 @@ class ToolPermissionChecker:
                         ToolCategory.MEMORY,
                         ToolCategory.BROWSER,
                         ToolCategory.EXTERNAL_DATA,
+                        ToolCategory.DESKTOP,
                     }
                 ),
                 # all categories -- new ToolCategory members are auto-included;
