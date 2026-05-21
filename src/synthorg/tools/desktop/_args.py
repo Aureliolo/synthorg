@@ -16,6 +16,7 @@ from synthorg.tools.desktop._constants import (
     DEFAULT_SCROLL_AMOUNT,
     LAUNCH_TIMEOUT_SECONDS,
     MAX_COORDINATE,
+    MAX_LAUNCH_TIMEOUT_MULTIPLIER,
     MAX_MOUSE_BUTTON,
     MAX_SCROLL_AMOUNT,
     MAX_SETTLE_DELAY_SECONDS,
@@ -70,7 +71,7 @@ class DesktopToolArgs(BaseModel):
     launch_timeout_seconds: float = Field(
         default=LAUNCH_TIMEOUT_SECONDS,
         ge=1.0,
-        le=LAUNCH_TIMEOUT_SECONDS * 20,
+        le=LAUNCH_TIMEOUT_SECONDS * MAX_LAUNCH_TIMEOUT_MULTIPLIER,
         description="Time to wait for the app window to appear (launch mode).",
     )
 

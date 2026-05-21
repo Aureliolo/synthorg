@@ -286,6 +286,13 @@ def _launch(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
         time.sleep(_LAUNCH_POLL_SECONDS)
     if not window_seen:
         proc.terminate()
+        # Reap the child so a warm container does not accumulate
+        # lingering processes; escalate to kill if it ignores SIGTERM.
+        try:
+            proc.wait(timeout=_SUBPROCESS_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=_SUBPROCESS_TIMEOUT_SECONDS)
         raise RuntimeError("timed out waiting for application window")
     _write_session_state(display=display, pid=proc.pid)
     return {
@@ -434,6 +441,8 @@ def main() -> int:
         return 2
     try:
         result = _dispatch(payload)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         # Redact the raw message: str(exc) can carry filesystem paths,
         # env vars, or window content. Emit only the class name plus a

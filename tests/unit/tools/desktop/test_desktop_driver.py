@@ -1,6 +1,7 @@
 """Unit tests for the pluggable desktop driver subsystem."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.tools.desktop.driver import (
@@ -53,5 +54,5 @@ class TestSessionConfig:
 
     def test_session_config_is_frozen(self) -> None:
         session = build_desktop_driver(DesktopDriverConfig()).session_config()
-        with pytest.raises(Exception):  # noqa: B017, PT011 -- frozen model raises
+        with pytest.raises(ValidationError):
             session.display = ":1"

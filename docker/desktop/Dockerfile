@@ -24,7 +24,7 @@ LABEL org.opencontainers.image.title="synthorg-desktop" \
 ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:99
 
-# hadolint ignore=DL3008
+# hadolint ignore=DL3008 -- track latest stable from the Debian Trixie repos
 RUN apt-get update \
     && apt-get install --no-install-recommends -y \
         xvfb \
