@@ -31,6 +31,7 @@ Three implementations live here:
   when no explicit service has been installed.
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, Protocol
 
 from synthorg.core.domain_errors import (
@@ -61,16 +62,23 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASED,
     WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
 )
+from synthorg.tools.sandbox.active_environment import (
+    ActiveSandboxEnvironment,
+    active_sandbox_environment,
+)
 from synthorg.tools.sandbox.lifecycle.config import (
     STRATEGY_PER_AGENT,
     STRATEGY_PER_CALL,
     STRATEGY_PER_TASK,
 )
+from synthorg.workers.environment_runner import SandboxEnvironmentRunner
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
+    from synthorg.core.types import NotBlankStr
     from synthorg.engine.agent_engine import AgentEngine
     from synthorg.engine.task_engine import TaskEngine
+    from synthorg.engine.workspace.environment.service import EnvironmentService
     from synthorg.engine.workspace.project_workspace_service import (
         ProjectWorkspaceService,
     )
@@ -287,6 +295,8 @@ class AgentEngineExecutionService:
         "_agent_registry",
         "_autonomy_resolver",
         "_engine",
+        "_environment_runner_backend",
+        "_environment_service",
         "_lifecycle_strategy_kind",
         "_project_workspace_service",
         "_resume_tasks",
@@ -304,6 +314,8 @@ class AgentEngineExecutionService:
         sandbox_backend: SandboxBackend | None = None,
         lifecycle_strategy_kind: str = STRATEGY_PER_CALL,
         project_workspace_service: ProjectWorkspaceService | None = None,
+        environment_service: EnvironmentService | None = None,
+        environment_runner_backend: SandboxBackend | None = None,
     ) -> None:
         self._engine = engine
         self._task_engine = task_engine
@@ -323,6 +335,61 @@ class AgentEngineExecutionService:
         # deployments without persistence; ``execute_once`` then skips
         # the lazy provision.
         self._project_workspace_service = project_workspace_service
+        # Per-project reproducible-environment provisioner + the sandbox
+        # backend its setup commands run through (the backend resolved
+        # for the build/test tool categories). Both ``None`` when no
+        # persistence is wired; ``execute_once`` then skips provisioning.
+        self._environment_service = environment_service
+        self._environment_runner_backend = environment_runner_backend
+
+    async def _provision_environment(
+        self,
+        *,
+        task_id: str,
+        project_id: NotBlankStr | None,
+        workspace_path: Path | None,
+    ) -> ActiveSandboxEnvironment | None:
+        """Provision the project's environment; return the active sandbox env.
+
+        Returns ``None`` (no override) when no environment service is
+        wired, the task has no project, or the workspace was not
+        provisioned.  Fail-loud: a provisioning failure is logged and
+        re-raised so a broken environment never runs silently.
+        """
+        if (
+            self._environment_service is None
+            or self._environment_runner_backend is None
+            or project_id is None
+            or workspace_path is None
+        ):
+            return None
+        runner = SandboxEnvironmentRunner(
+            backend=self._environment_runner_backend,
+            project_id=project_id,
+        )
+        try:
+            provisioned = await self._environment_service.get_or_provision(
+                project_id,
+                workspace_path=workspace_path,
+                runner=runner,
+                sandbox_kind=self._environment_runner_backend.get_backend_type(),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.error(
+                WORKERS_EXECUTION_SERVICE_FAILED,
+                task_id=task_id,
+                project_id=project_id,
+                reason="project_environment_provision_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise
+        return ActiveSandboxEnvironment(
+            image_override=provisioned.image_ref,
+            env_additions=dict(provisioned.env_vars),
+        )
 
     async def execute_once(
         self,
@@ -354,9 +421,13 @@ class AgentEngineExecutionService:
         # its persistent git-backed working tree before the agent runs.
         # Skipped when no service is wired (test fixtures, persistence-less
         # dev apps) or the task has no project association.
+        workspace_path: Path | None = None
         if self._project_workspace_service is not None and task.project is not None:
             try:
-                await self._project_workspace_service.get_or_provision(task.project)
+                workspace = await self._project_workspace_service.get_or_provision(
+                    task.project
+                )
+                workspace_path = Path(workspace.workspace_path)
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
@@ -372,6 +443,17 @@ class AgentEngineExecutionService:
                     error=safe_error_description(exc),
                 )
 
+        # Per-project reproducible environment: provision the committed
+        # declaration into the workspace before the agent runs, and bind
+        # the resulting image + env additions as the active sandbox
+        # environment for this run. Fail-loud (log then raise): a broken
+        # environment must not present itself as a ready sandbox.
+        active_env = await self._provision_environment(
+            task_id=task_id,
+            project_id=task.project,
+            workspace_path=workspace_path,
+        )
+
         logger.info(
             WORKERS_EXECUTION_SERVICE_ATTEMPTED,
             task_id=task_id,
@@ -384,11 +466,12 @@ class AgentEngineExecutionService:
         )
 
         try:
-            run_result = await self._engine.run(
-                identity=identity,
-                task=task,
-                effective_autonomy=effective_autonomy,
-            )
+            with active_sandbox_environment(active_env):
+                run_result = await self._engine.run(
+                    identity=identity,
+                    task=task,
+                    effective_autonomy=effective_autonomy,
+                )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
