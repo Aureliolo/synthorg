@@ -147,6 +147,16 @@ class EnvironmentStrategy(Protocol):
         """
         ...
 
+    def runtime_env_vars(self, workspace_path: Path) -> Mapping[str, str]:
+        """Toolchain / PATH additions to apply to sandbox tool calls.
+
+        Derived from the declaration on every call (a cheap re-read), so
+        the active environment is available identically on a fresh
+        provision and on cache reuse without persisting env state.
+        Returns an empty mapping when the declaration carries none.
+        """
+        ...
+
     async def provision(
         self,
         *,

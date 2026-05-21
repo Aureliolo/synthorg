@@ -13,7 +13,10 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import EnvironmentConfigError, EnvironmentProvisionError
 from synthorg.engine.workspace.environment.config import EnvironmentConfig
 from synthorg.engine.workspace.environment.manifest import ManifestEnvironmentStrategy
-from synthorg.engine.workspace.environment.protocol import CommandOutcome
+from synthorg.engine.workspace.environment.protocol import (
+    CommandOutcome,
+    ProvisionedEnvironment,
+)
 from synthorg.engine.workspace.environment.service import EnvironmentService
 
 pytestmark = pytest.mark.unit
@@ -110,7 +113,7 @@ def _write_manifest(workspace: Path, setup: str = '["echo hi"]') -> None:
 
 async def _provision(
     service: EnvironmentService, workspace: Path, runner: _Runner
-) -> ProjectEnvironment:
+) -> ProvisionedEnvironment:
     return await service.get_or_provision(
         _PROJECT, workspace_path=workspace, runner=runner, sandbox_kind=_SUBPROCESS
     )
@@ -123,8 +126,8 @@ class TestEnvironmentService:
 
         env = await _provision(_service(repo, committer=committer), tmp_path, runner)
 
-        assert env.project_id == "proj-1"
         assert env.environment_type is EnvironmentType.MANIFEST
+        assert repo.rows["proj-1"].project_id == "proj-1"
         assert runner.calls == 1
         assert repo.save_calls == 1
         # Committed the manifest + generated bootstrap.sh.
@@ -140,7 +143,8 @@ class TestEnvironmentService:
         first = await _provision(service, tmp_path, runner)
         second = await _provision(service, tmp_path, runner)
 
-        assert first == second
+        assert first.declaration_hash == second.declaration_hash
+        assert first.environment_type == second.environment_type
         # No re-provision: setup ran only once.
         assert runner.calls == 1
         assert repo.save_calls == 1
@@ -182,7 +186,7 @@ class TestEnvironmentService:
         env = await _provision(_service(repo), tmp_path, runner)
         assert env.environment_type is EnvironmentType.MANIFEST
         # First-provision timestamp is preserved across the kind switch.
-        assert env.provisioned_at == ts
+        assert repo.rows["proj-1"].provisioned_at == ts
 
     async def test_provision_failure_is_fail_loud(self, tmp_path: Path) -> None:
         _write_manifest(tmp_path)
@@ -201,6 +205,22 @@ class TestEnvironmentService:
 
         with pytest.raises(EnvironmentConfigError):
             await _provision(service, tmp_path, _Runner())
+
+    async def test_env_vars_returned_on_fresh_and_reuse(self, tmp_path: Path) -> None:
+        (tmp_path / _MANIFEST).write_text(
+            'language: python\ntest_command: "pytest"\nsetup_commands: []\n'
+            'env: {"VIRTUAL_ENV": "/w/.venv"}\n',
+            encoding="utf-8",
+        )
+        repo, runner = _InMemoryRepo(), _Runner()
+        service = _service(repo)
+
+        fresh = await _provision(service, tmp_path, runner)
+        assert fresh.env_vars == {"VIRTUAL_ENV": "/w/.venv"}
+
+        # Reuse path re-derives env_vars from the declaration (not persisted).
+        reused = await _provision(service, tmp_path, runner)
+        assert reused.env_vars == {"VIRTUAL_ENV": "/w/.venv"}
 
     async def test_auto_seed_then_provision_empty_setup(self, tmp_path: Path) -> None:
         # No manifest written; auto_seed scaffolds the default (empty setup).

@@ -101,6 +101,11 @@ class NixEnvironmentStrategy:
         candidates = (_FLAKE_FILENAME, _FLAKE_LOCK_FILENAME)
         return tuple(c for c in candidates if (workspace_path / c).is_file())
 
+    def runtime_env_vars(self, workspace_path: Path) -> dict[str, str]:
+        """No forwarded env vars (see the tool-wrapping boundary above)."""
+        del workspace_path
+        return {}
+
     async def provision(
         self,
         *,

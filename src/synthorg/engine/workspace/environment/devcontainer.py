@@ -165,6 +165,15 @@ class DevcontainerEnvironmentStrategy:
                 paths.append(dockerfile.relative_to(workspace_path).as_posix())
         return tuple(paths)
 
+    def runtime_env_vars(self, workspace_path: Path) -> dict[str, str]:
+        """The declaration's ``containerEnv`` additions (empty if absent)."""
+        if not self.detect(workspace_path):
+            return {}
+        container_env = self._read_config(workspace_path).get("containerEnv")
+        if not isinstance(container_env, dict):
+            return {}
+        return {str(k): str(v) for k, v in container_env.items()}
+
     def _resolve_within(
         self, workspace_path: Path, base_dir: Path, candidate: object
     ) -> Path | None:

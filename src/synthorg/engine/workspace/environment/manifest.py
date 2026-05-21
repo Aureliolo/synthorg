@@ -139,6 +139,12 @@ class ManifestEnvironmentStrategy:
         candidates = (self._manifest_filename, BOOTSTRAP_SCRIPT_NAME)
         return tuple(c for c in candidates if (workspace_path / c).is_file())
 
+    def runtime_env_vars(self, workspace_path: Path) -> dict[str, str]:
+        """The manifest's declared ``env`` additions (empty if absent)."""
+        if not self.detect(workspace_path):
+            return {}
+        return dict(self._read_manifest(workspace_path).env)
+
     def _render_bootstrap(self, manifest: EnvironmentManifest) -> str:
         lines = [
             "#!/usr/bin/env sh",

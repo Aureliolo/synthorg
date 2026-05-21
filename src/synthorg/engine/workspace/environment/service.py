@@ -20,6 +20,7 @@ from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.engine.workspace.environment.hash_cache import (
     ProvisionedEnvironmentCache,
 )
+from synthorg.engine.workspace.environment.protocol import ProvisionedEnvironment
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     ENVIRONMENT_KIND_CHANGED,
@@ -99,6 +100,22 @@ class EnvironmentService:
             and row.declaration_hash == declaration_hash
         )
 
+    def _reconstruct(
+        self, row: ProjectEnvironment, workspace_path: Path
+    ) -> ProvisionedEnvironment:
+        """Rebuild the active environment for a reused row.
+
+        ``image_ref`` comes from the persisted row (building is the
+        expensive part worth caching); ``env_vars`` are re-derived from
+        the declaration (cheap, never persisted).
+        """
+        return ProvisionedEnvironment(
+            environment_type=row.environment_type,
+            declaration_hash=row.declaration_hash,
+            image_ref=row.image_ref,
+            env_vars=dict(self._strategy.runtime_env_vars(workspace_path)),
+        )
+
     async def get_or_provision(
         self,
         project_id: NotBlankStr,
@@ -106,13 +123,18 @@ class EnvironmentService:
         workspace_path: Path,
         runner: EnvironmentCommandRunner,
         sandbox_kind: NotBlankStr,
-    ) -> ProjectEnvironment:
-        """Return the project's environment, provisioning it once if stale.
+    ) -> ProvisionedEnvironment:
+        """Return the active environment, provisioning it once if stale.
 
         Scaffolds the default declaration (when ``auto_seed``) before
         hashing.  A persisted row matching the live declaration hash and
-        type is reused; otherwise the strategy provisions, the
-        declaration is committed, and the row is upserted.
+        type is reused (the active environment is reconstructed from the
+        row plus a cheap declaration re-read); otherwise the strategy
+        provisions, the declaration is committed, and the row is upserted.
+
+        Returns:
+            The :class:`ProvisionedEnvironment` describing the image
+            reference and env additions the sandbox should apply.
 
         Raises:
             EnvironmentProvisionError: Provisioning failed.
@@ -129,13 +151,14 @@ class EnvironmentService:
 
             cached = self._cache.get(project_id)
             if self._matches(cached, declaration_hash):
+                assert cached is not None  # noqa: S101 -- _matches guarantees it
                 logger.info(
                     ENVIRONMENT_REUSED,
                     project_id=str(project_id),
                     backend=self._strategy.kind().value,
                     source="memo",
                 )
-                return cached  # type: ignore[return-value]  # _matches proves not None
+                return self._reconstruct(cached, workspace_path)
 
             row = await self._repo.get(project_id)
             if self._matches(row, declaration_hash):
@@ -147,7 +170,7 @@ class EnvironmentService:
                     backend=self._strategy.kind().value,
                     source="persisted",
                 )
-                return row
+                return self._reconstruct(row, workspace_path)
 
             if row is not None and row.environment_type != self._strategy.kind():
                 logger.warning(
@@ -173,8 +196,8 @@ class EnvironmentService:
         runner: EnvironmentCommandRunner,
         sandbox_kind: NotBlankStr,
         prior: ProjectEnvironment | None,
-    ) -> ProjectEnvironment:
-        """Provision via the strategy, commit, and persist the row."""
+    ) -> ProvisionedEnvironment:
+        """Provision via the strategy, commit, persist the row, and return it."""
         provisioned = await self._strategy.provision(
             project_id=project_id,
             workspace_path=workspace_path,
@@ -199,7 +222,7 @@ class EnvironmentService:
         )
         await self._repo.save(environment)
         self._cache.set(project_id, environment)
-        return environment
+        return provisioned
 
 
 __all__ = ["EnvironmentService"]
