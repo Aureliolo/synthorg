@@ -11,7 +11,7 @@ from synthorg.security.action_types import ActionTypeCategory, ActionTypeRegistr
 @pytest.mark.unit
 class TestActionTypeCategory:
     def test_has_expected_member_count(self) -> None:
-        assert len(ActionTypeCategory) == 14
+        assert len(ActionTypeCategory) == 15
 
     @pytest.mark.parametrize(
         ("member", "value"),

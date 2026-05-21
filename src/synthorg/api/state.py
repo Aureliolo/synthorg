@@ -174,6 +174,8 @@ if TYPE_CHECKING:
     from synthorg.integrations.oauth.state_service import OAuthStateService
     from synthorg.integrations.oauth.token_manager import OAuthTokenManager
     from synthorg.integrations.tunnel.protocol import TunnelProvider
+    from synthorg.knowledge.service import KnowledgeService
+    from synthorg.knowledge.tool_factory import KnowledgeToolFactory
 
     # Imported under TYPE_CHECKING so the optional ``synthorg[distributed]``
     # extra is not required at runtime for deployments that do not use the
@@ -261,6 +263,8 @@ class AppState(AppStateServicesMixin):
         "_intake_entry_adapter",
         "_integration_health_facade_service",
         "_interrupt_store",
+        "_knowledge_service",
+        "_knowledge_tool_factory",
         "_lazy_service_lock",
         "_lockout_store",
         "_mcp_catalog_facade_service",
@@ -510,6 +514,8 @@ class AppState(AppStateServicesMixin):
         self._docs_service: DocsService | None = None
         self._docs_tool_factory: DocsToolFactory | None = None
         self._project_doc_memory_facade: ProjectAwareMemoryFacade | None = None
+        self._knowledge_service: KnowledgeService | None = None
+        self._knowledge_tool_factory: KnowledgeToolFactory | None = None
         # Guards the double-checked locking on first-access lazy wiring
         # of worker_execution_service / experiment_service. Both
         # properties may be invoked from concurrent request handlers
@@ -1091,6 +1097,36 @@ class AppState(AppStateServicesMixin):
             "_docs_tool_factory",
             factory,
             "Docs tool factory",
+        )
+
+    @property
+    def knowledge_service(self) -> KnowledgeService | None:
+        """Knowledge + provenance substrate, or ``None`` when not wired.
+
+        Wired at boot after persistence connects and the memory backend
+        is present; ``None`` for dev / empty-company runs.
+        """
+        return self._knowledge_service
+
+    def set_knowledge_service(self, service: KnowledgeService) -> None:
+        """Attach the knowledge service (once-only, startup)."""
+        self._set_once(
+            "_knowledge_service",
+            service,
+            "Knowledge service",
+        )
+
+    @property
+    def knowledge_tool_factory(self) -> KnowledgeToolFactory | None:
+        """Per-task factory for the knowledge agent tools, or ``None``."""
+        return self._knowledge_tool_factory
+
+    def set_knowledge_tool_factory(self, factory: KnowledgeToolFactory) -> None:
+        """Attach the knowledge tool factory (once-only, startup)."""
+        self._set_once(
+            "_knowledge_tool_factory",
+            factory,
+            "Knowledge tool factory",
         )
 
     @property

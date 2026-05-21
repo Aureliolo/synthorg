@@ -13,6 +13,7 @@ from synthorg.meta.mcp.domains.coordination import COORDINATION_TOOLS
 from synthorg.meta.mcp.domains.docs import DOCS_TOOLS
 from synthorg.meta.mcp.domains.infrastructure import INFRASTRUCTURE_TOOLS
 from synthorg.meta.mcp.domains.integrations import INTEGRATION_TOOLS
+from synthorg.meta.mcp.domains.knowledge import KNOWLEDGE_TOOLS
 from synthorg.meta.mcp.domains.memory import MEMORY_TOOLS
 from synthorg.meta.mcp.domains.meta import META_TOOLS
 from synthorg.meta.mcp.domains.organization import ORGANIZATION_TOOLS
@@ -43,6 +44,7 @@ ALL_DOMAIN_TOOLS: tuple[tuple[MCPToolDef, ...], ...] = (
     INTEGRATION_TOOLS,
     INFRASTRUCTURE_TOOLS,
     DOCS_TOOLS,
+    KNOWLEDGE_TOOLS,
 )
 
 

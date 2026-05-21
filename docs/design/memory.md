@@ -26,6 +26,7 @@ consolidation / retention pipeline.
 * [Operational Data Persistence](memory-operational.md): `PersistenceBackend` protocol, per-entity repositories, SQLite + Postgres backends, schema strategy, multi-tenancy, database-enforced invariants.
 * [Memory Learning and Injection](memory-learning.md): procedural memory auto-generation (failure + success capture), cross-agent skill pool, injection strategies (context / tool-based / self-editing), `MemoryService` REST + MCP entry point.
 * [Living Documentation](living-documentation.md): per-project documentation as a dual-purpose wiki + RAG namespace, integrated via the `PROJECT_DOC` memory category and `ProjectAwareMemoryFacade`.
+* [Knowledge and Provenance Substrate](knowledge-substrate.md): heavy-duty document/knowledge RAG over an ingested external corpus (specs, codebases, web pages, tickets) with citation tracking, reusing the hybrid retrieval stack via the `KNOWLEDGE` memory category.
 
 ---
 

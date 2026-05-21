@@ -81,9 +81,9 @@ BASELINE_MIGRATION_NAME: Final[str] = "00000000000000_baseline.sql"
 # DataType.Type values appear in the same family are treated as the
 # same logical type and produce no drift finding.
 #
-# JSONB, TIMESTAMPTZ and UUID are deliberately NOT in any default
-# family; pairing them with SQLite TEXT requires an explicit baseline
-# entry.
+# Cross-backend native fallbacks (TEXT<->TIMESTAMPTZ/JSONB/UUID,
+# INTEGER<->BOOLEAN) are NOT families -- they are directional and handled
+# by NATIVE_BACKEND_FALLBACKS below.
 TYPE_FAMILIES: Final[tuple[frozenset[Any], ...]] = (
     frozenset(
         {
@@ -125,6 +125,31 @@ TYPE_FAMILIES: Final[tuple[frozenset[Any], ...]] = (
 # CHECK(col IN (0, 1)) constraint (column-level or table-level).
 INTEGER_TYPES_FOR_BOOLEAN_CHECK: Final[frozenset[Any]] = frozenset(
     {DataType.Type.INT, DataType.Type.BIGINT, DataType.Type.SMALLINT}
+)
+
+# Sanctioned cross-backend native fallbacks. SQLite lacks Postgres's
+# richer native types, so a column declared with the Postgres type on
+# the right is necessarily stored as the SQLite type on the left. The
+# Postgres side unambiguously declares intent (you would not write
+# TIMESTAMPTZ/JSONB/BOOLEAN unless you meant it), and SQLite has no way
+# to express it, so the pairing is the correct native representation,
+# not drift to confirm per column. Treated as equivalent automatically
+# -- no baseline entry needed for every timestamp / json / bool column.
+#
+# This is intentionally directional and exhaustive: ONLY these pairs are
+# auto-accepted. Any other mismatch (e.g. SQLite TEXT vs Postgres
+# INTEGER, or a column present in one backend but absent in the other)
+# is still a genuine drift finding and still fails the gate.
+NATIVE_BACKEND_FALLBACKS: Final[frozenset[frozenset[Any]]] = frozenset(
+    {
+        frozenset({DataType.Type.TEXT, DataType.Type.TIMESTAMPTZ}),
+        frozenset({DataType.Type.TEXT, DataType.Type.JSONB}),
+        frozenset({DataType.Type.TEXT, DataType.Type.JSON}),
+        frozenset({DataType.Type.TEXT, DataType.Type.UUID}),
+        frozenset({DataType.Type.INT, DataType.Type.BOOLEAN}),
+        frozenset({DataType.Type.BIGINT, DataType.Type.BOOLEAN}),
+        frozenset({DataType.Type.SMALLINT, DataType.Type.BOOLEAN}),
+    }
 )
 
 # ── Baseline file format ────────────────────────────────────────

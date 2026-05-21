@@ -496,6 +496,65 @@ CREATE INDEX idx_project_docs_reindex
     WHERE last_indexed_commit_sha IS NULL
        OR last_indexed_commit_sha <> head_commit_sha;
 
+-- ── Knowledge + provenance substrate ─────────────────────────
+-- Registry of ingested corpus sources (PDF / web / repo / ticket /
+-- design doc). project_id is nullable: NULL means a global source
+-- shared across projects. ON DELETE CASCADE drops a project's scoped
+-- sources; global sources survive. Chunk text lives in the memory
+-- backend; only provenance lives below.
+CREATE TABLE knowledge_sources (
+    source_id TEXT NOT NULL PRIMARY KEY,
+    source_type TEXT NOT NULL
+        CHECK (source_type IN ('pdf', 'web', 'repo', 'ticket', 'design_doc')),
+    project_id TEXT,
+    uri TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    status TEXT NOT NULL
+        CHECK (status IN ('pending', 'indexed', 'stale', 'failed')),
+    chunk_count INTEGER NOT NULL DEFAULT 0 CHECK (chunk_count >= 0),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    last_indexed_at TIMESTAMPTZ,
+    last_error TEXT,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_knowledge_sources_updated_at
+    ON knowledge_sources(updated_at DESC, source_id DESC);
+
+CREATE INDEX idx_knowledge_sources_project_status
+    ON knowledge_sources(project_id, status);
+
+CREATE INDEX idx_knowledge_sources_stale
+    ON knowledge_sources(updated_at DESC)
+    WHERE status = 'stale';
+
+CREATE INDEX idx_knowledge_sources_global
+    ON knowledge_sources(updated_at DESC)
+    WHERE project_id IS NULL;
+
+-- Per-chunk provenance for citation resolution. locator_json stores the
+-- serialised ProvenanceLocator discriminated union (locator_kind names
+-- the variant). Replaced wholesale on re-index via delete_by_source.
+CREATE TABLE knowledge_chunk_provenance (
+    chunk_id TEXT NOT NULL PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    content_kind TEXT NOT NULL
+        CHECK (content_kind IN ('code', 'document', 'pdf_page', 'ticket_thread')),
+    chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
+    content_hash TEXT NOT NULL,
+    locator_kind TEXT NOT NULL
+        CHECK (locator_kind IN ('pdf', 'web', 'code', 'ticket')),
+    locator_json TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    FOREIGN KEY (source_id) REFERENCES knowledge_sources(source_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX idx_knowledge_provenance_source
+    ON knowledge_chunk_provenance(source_id, chunk_index);
+
 -- ── Project-lifetime cost aggregates ─────────────────────────
 CREATE TABLE project_cost_aggregates (
     project_id TEXT NOT NULL PRIMARY KEY CHECK (length(project_id) > 0),

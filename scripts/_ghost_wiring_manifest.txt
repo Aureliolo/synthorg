@@ -74,3 +74,10 @@ ENFORCED ProjectAwareMemoryFacade #1976 -- constructed inside docs_engine/factor
 ENFORCED DocsToolFactory #1976 -- constructed in api/app.py::_wire_docs_engine; per-task source of WriteLivingDocTool + SearchLivingDocsTool bound to the boot DocsService
 ENFORCED WriteLivingDocTool #1976 -- constructed by docs_engine/tool_factory.py::DocsToolFactory.build_tools per task with the agent's project + author binding
 ENFORCED SearchLivingDocsTool #1976 -- constructed by docs_engine/tool_factory.py::DocsToolFactory.build_tools per task with the agent's project binding
+ENFORCED build_knowledge_service #1988 -- called in api/app.py::_wire_knowledge_engine; assembles indexer + retriever + KnowledgeService over the memory backend + persistence repos
+ENFORCED KnowledgeService #1988 -- constructed by knowledge/factory.py::build_knowledge_service; attached to AppState by _wire_knowledge_engine
+ENFORCED KnowledgeIndexer #1988 -- constructed inside knowledge/factory.py::build_knowledge_service; stores KNOWLEDGE chunks + provenance with content-hash freshness
+ENFORCED KnowledgeRetriever #1988 -- constructed inside knowledge/factory.py::build_knowledge_service; hybrid retrieval + citation resolution
+ENFORCED build_knowledge_tool_factory #1988 -- called in api/app.py::_wire_knowledge_engine; per-task source of SearchKnowledgeTool + IngestKnowledgeTool
+ENFORCED SearchKnowledgeTool #1988 -- constructed by knowledge/tool_factory.py::KnowledgeToolFactory.build_tools per task with the agent's project binding
+ENFORCED IngestKnowledgeTool #1988 -- constructed by knowledge/tool_factory.py::KnowledgeToolFactory.build_tools per task with the agent's project binding

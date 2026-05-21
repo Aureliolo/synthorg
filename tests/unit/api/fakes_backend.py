@@ -51,6 +51,10 @@ from tests.unit.api.fakes_workflow import (
     FakeWorkflowExecutionRepository,
     FakeWorkflowVersionRepository,
 )
+from tests.unit.knowledge._fakes import (
+    FakeChunkProvenanceRepository,
+    FakeKnowledgeSourceRepository,
+)
 
 __all__ = [
     "FakePersistenceBackend",
@@ -598,6 +602,8 @@ class FakePersistenceBackend:
         self._projects = FakeProjectRepository()
         self._project_workspaces = FakeProjectWorkspaceRepository()
         self._project_docs = FakeDocsRepository()
+        self._knowledge_sources = FakeKnowledgeSourceRepository()
+        self._knowledge_provenance = FakeChunkProvenanceRepository()
         self._custom_presets = FakePersonalityPresetRepository()
         self._workflow_definitions = FakeWorkflowDefinitionRepository()
         self._workflow_executions = FakeWorkflowExecutionRepository()
@@ -719,6 +725,14 @@ class FakePersistenceBackend:
     @property
     def project_docs(self) -> FakeDocsRepository:
         return self._project_docs
+
+    @property
+    def knowledge_sources(self) -> FakeKnowledgeSourceRepository:
+        return self._knowledge_sources
+
+    @property
+    def knowledge_provenance(self) -> FakeChunkProvenanceRepository:
+        return self._knowledge_provenance
 
     @property
     def tasks(self) -> FakeTaskRepository:

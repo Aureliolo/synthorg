@@ -61,6 +61,15 @@ telemetry = ["logfire==4.33.0"]
 # Opt in with `pip install synthorg[distributed]`. See docs/design/distributed-runtime.md.
 distributed = ["nats-py==2.14.0"]
 postgres = ["psycopg[binary]==3.3.4", "psycopg_pool==3.3.1"]
+# Knowledge + provenance substrate (#1988): structure-aware ingestion.
+# Opt in with `pip install synthorg[knowledge]`. pdfplumber (MIT) gives
+# per-page text + word bboxes; tree-sitter + language pack drive AST-aware
+# code chunking. pymupdf is deliberately excluded (AGPL).
+knowledge = [
+    "pdfplumber==0.11.9",
+    "tree-sitter==0.25.2",
+    "tree-sitter-language-pack==1.8.1",
+]
 
 [tool.hatch.version]
 path = "src/synthorg/__init__.py"
@@ -89,6 +98,13 @@ test = [
     "psycopg[binary]==3.3.4",
     "psycopg_pool==3.3.1",
     "testcontainers[postgres]==4.14.2",
+    # Knowledge substrate: integration tests ingest a mixed PDF + repo +
+    # ticket corpus end-to-end, so the tree-sitter AST chunker and the
+    # pdfplumber loader must be installed alongside the test runner.
+    # Runtime users opt in via `pip install synthorg[knowledge]`.
+    "pdfplumber==0.11.9",
+    "tree-sitter==0.25.2",
+    "tree-sitter-language-pack==1.8.1",
 ]
 docs = [
     "zensical==0.0.43",
@@ -347,6 +363,10 @@ module = "aiodocker.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "xdist.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "logfire.*"
 ignore_missing_imports = true
 
@@ -376,6 +396,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "skimage.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pdfplumber.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tree_sitter_language_pack.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

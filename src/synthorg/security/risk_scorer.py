@@ -209,6 +209,9 @@ _DEFAULT_SCORE_MAP: Final[MappingProxyType[str, RiskScore]] = MappingProxyType(
         ActionType.CODE_REFACTOR: _MEDIUM_SCORE,
         ActionType.VCS_COMMIT: _MEDIUM_SCORE,
         ActionType.ARCH_DECIDE: _MEDIUM_SCORE,
+        # Ingestion pulls external (possibly untrusted) content into the
+        # knowledge corpus; admin-gated, moderate blast radius.
+        ActionType.KNOWLEDGE_INGEST: _MEDIUM_SCORE,
         ActionType.ORG_HIRE: _MEDIUM_SCORE,
         ActionType.ORG_PROMOTE: _MEDIUM_SCORE,
         ActionType.BUDGET_SPEND: _MEDIUM_SCORE,
@@ -222,6 +225,9 @@ _DEFAULT_SCORE_MAP: Final[MappingProxyType[str, RiskScore]] = MappingProxyType(
         ActionType.COMMS_INTERNAL: _LOW_SCORE,
         ActionType.DB_QUERY: _LOW_SCORE,
         ActionType.MEMORY_READ: _LOW_SCORE,
+        # Re-indexing reprocesses already-vetted sources; read-only on the
+        # outside world.
+        ActionType.KNOWLEDGE_REINDEX: _LOW_SCORE,
         # Browser tool capabilities. The browser runs sandboxed and only
         # observes / probes the workspace's own deliverables (test data),
         # so the tier is LOW.

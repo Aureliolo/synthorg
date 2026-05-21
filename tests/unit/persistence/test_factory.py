@@ -114,34 +114,27 @@ class TestCreateBackend:
     async def test_multi_tenancy_separate_databases(
         self,
         tmp_path: Path,
+        tmp_path_factory: pytest.TempPathFactory,
     ) -> None:
         """Each company config creates an isolated backend instance.
 
-        Migrations are applied via ``migrations.migrate_apply`` against
-        a per-test copy of the revisions directory.  Each xdist worker
-        already has its own SQLite file (per ``tmp_path``), so yoyo's
-        DB-level lock cannot contend across workers; the per-test
-        revisions copy keeps the on-disk layout symmetric with
-        production.
+        Reuses the session-wide migrated template (``_get_template_db``,
+        built once per worker and credited to the per-test wall-clock
+        guard) instead of running the full -- and ever-growing -- yoyo
+        chain per test, then copies it to each tenant path so the on-disk
+        layout stays symmetric with production. Running the chain inline
+        here tripped the unit wall-clock budget once the schema grew.
         """
         import shutil
 
-        from synthorg.persistence import migrations
+        from tests.conftest import _get_template_db
 
         path_a = str(tmp_path / "company-a.db")
         path_b = str(tmp_path / "company-b.db")
 
-        # Migrate once into a template and copy to both tenant paths;
-        # halves the migration cost so the test stays comfortably under
-        # the 8s unit wall-clock budget on Windows under xdist load.
-        template_path = tmp_path / "template.db"
-        rev_path = migrations.copy_revisions(tmp_path / "revisions")
-        await migrations.migrate_apply(
-            migrations.to_sqlite_url(str(template_path)),
-            revisions_path=rev_path,
-        )
-        shutil.copyfile(template_path, path_a)
-        shutil.copyfile(template_path, path_b)
+        template = await _get_template_db(tmp_path_factory)
+        shutil.copyfile(str(template), path_a)
+        shutil.copyfile(str(template), path_b)
 
         config_a = PersistenceConfig(sqlite=SQLiteConfig(path=path_a))
         config_b = PersistenceConfig(sqlite=SQLiteConfig(path=path_b))

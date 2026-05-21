@@ -440,6 +440,7 @@ export const MEMORY_CATEGORY_VALUES = [
     'procedural',
     'social',
     'project_doc',
+    'knowledge',
 ] as const
 export type MemoryCategory = (typeof MEMORY_CATEGORY_VALUES)[number]
 
@@ -673,6 +674,23 @@ export const SKILL_PATTERN_VALUES = [
     'pipeline',
 ] as const
 export type SkillPattern = (typeof SKILL_PATTERN_VALUES)[number]
+
+export const SOURCE_STATUS_VALUES = [
+    'pending',
+    'indexed',
+    'stale',
+    'failed',
+] as const
+export type SourceStatus = (typeof SOURCE_STATUS_VALUES)[number]
+
+export const SOURCE_TYPE_VALUES = [
+    'pdf',
+    'web',
+    'repo',
+    'ticket',
+    'design_doc',
+] as const
+export type SourceType = (typeof SOURCE_TYPE_VALUES)[number]
 
 export const STRATEGIC_OUTPUT_MODE_VALUES = [
     'option_expander',

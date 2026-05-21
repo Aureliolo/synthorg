@@ -75,6 +75,10 @@ from synthorg.persistence.fine_tune_protocol import (
 from synthorg.persistence.idempotency_protocol import (
     IdempotencyRepository,  # noqa: TC001
 )
+from synthorg.persistence.knowledge_protocol import (
+    ChunkProvenanceRepository,  # noqa: TC001
+    KnowledgeSourceRepository,  # noqa: TC001
+)
 from synthorg.persistence.mcp_protocol import (
     McpInstallationRepository,  # noqa: TC001
 )
@@ -178,6 +182,8 @@ class PersistenceBackend(Protocol):
         artifacts: Repository for Artifact persistence.
         projects: Repository for Project persistence.
         project_docs: Repository for living-documentation metadata persistence.
+        knowledge_sources: Repository for the knowledge-source registry.
+        knowledge_provenance: Repository for per-chunk knowledge provenance.
         custom_presets: Repository for custom personality preset persistence.
         workflow_definitions: Repository for workflow definition persistence.
         workflow_executions: Repository for workflow execution persistence.
@@ -419,6 +425,16 @@ class PersistenceBackend(Protocol):
     @property
     def project_docs(self) -> DocsRepository:
         """Repository for living-documentation metadata persistence."""
+        ...
+
+    @property
+    def knowledge_sources(self) -> KnowledgeSourceRepository:
+        """Repository for the knowledge-source registry."""
+        ...
+
+    @property
+    def knowledge_provenance(self) -> ChunkProvenanceRepository:
+        """Repository for per-chunk knowledge provenance."""
         ...
 
     @property

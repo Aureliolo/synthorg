@@ -7,7 +7,9 @@ reports and deliverables land here as living documents, versioned in
 the project git workspace.
 
 See also: [memory.md](memory.md), [engine.md](engine.md),
-[page-structure.md](page-structure.md).
+[page-structure.md](page-structure.md),
+[knowledge-substrate.md](knowledge-substrate.md) (the sibling document/knowledge
+RAG subsystem for ingested external corpora with citations).
 
 ## Goal
 
