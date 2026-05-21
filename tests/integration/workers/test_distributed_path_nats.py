@@ -27,14 +27,21 @@ from synthorg.workers.config import QueueConfig
 from synthorg.workers.dead_letter import DeadLetterConsumer, DeadLetterOutcome
 from synthorg.workers.worker import run_worker_pool
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(120)]
+"""Override the 30s global pytest-timeout to give the NATS JetStream
+testcontainer room to start on cold runners. Mirrors the established
+pattern used by other testcontainer-backed integration tests (Postgres
+timescaledb / jsonb-benchmark, Docker sandbox isolation, browser tests),
+all of which run on a 120s budget. Without this override, a cold-cache
+``DockerContainer`` pull + start eats most of the 30s budget before the
+first claim even publishes."""
 
 _HARD_CAP_SECONDS: Final[float] = 25.0
 """Wall-clock ceiling per bounded wait. A no-loss regression manifests
 as a claim that never reaches a terminal state; the cap turns that
 hang into a fast, legible failure rather than a suite timeout. Held
-below the global 30s test timeout so a tripped cap fails with a clear
-assertion instead of racing the suite-level timeout."""
+below the per-module 120s test timeout so a tripped cap fails with a
+clear assertion instead of racing the suite-level timeout."""
 
 _POLL_SECONDS: Final[float] = 0.05
 _ACK_WAIT_SECONDS: Final[int] = 2
