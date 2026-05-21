@@ -28,7 +28,7 @@ Each published image is signed with **cosign keyless** via GitHub OIDC in `.gith
 |-------|---------|------|
 | `desktop` | Headless virtual-desktop sandbox the agent drives via the desktop tool (Xvfb + fluxbox + xdotool + scrot, plus Python/Tk for GUI deliverables). Spawned on demand by the backend; the `desktop_image_pin` setting defaults to `ghcr.io/aureliolo/synthorg-desktop:latest` | `debian:trixie-slim` pinned by digest in `docker/desktop/Dockerfile`. Debian rather than apko/Wolfi because the X11/GUI toolchain (Xvfb, fluxbox, Tk) is packaged for glibc Debian, not Wolfi |
 
-Unlike the published images above, `desktop` is **not yet built or published by `.github/workflows/docker.yml`**, so it is not cosign-signed or SLSA-attested. Its base-image digest is still kept fresh by Renovate (the `dockerfile` manager scans every Dockerfile). Wiring it into the publish + signing matrix is tracked separately.
+Unlike the published images above, `desktop` is **not yet built or published by `.github/workflows/docker.yml`**, so it is not cosign-signed or SLSA-attested. Its base-image digest is still kept fresh by Renovate (the `dockerfile` manager scans every Dockerfile). It is not yet wired into the publish + signing matrix (tracked in #2033), so the desktop tool's `desktop_image_pin` default does not resolve until that lands.
 
 ## apko-composed base images
 
