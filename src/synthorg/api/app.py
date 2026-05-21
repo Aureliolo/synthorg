@@ -332,9 +332,9 @@ def _build_toolsmith_runtime(
     a concrete sandbox built from the default sandboxing config, so a
     Docker-declared authored tool runs under Docker and a subprocess one
     under subprocess. The golden-scorecard provider is intentionally
-    absent here: until #1980 exposes a runnable score-with-candidate API,
-    the validation gate fails closed (a missing provider rejects the
-    apply) rather than trusting an unvalidated tool.
+    absent here: until a runnable score-with-candidate benchmark API is
+    available, the validation gate fails closed (a missing provider
+    rejects the apply) rather than trusting an unvalidated tool.
     """
     from pathlib import Path  # noqa: PLC0415
 
@@ -1541,7 +1541,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
     startup = [*startup, _wire_chief_of_staff_proposer]
 
     async def _wire_toolsmith() -> None:
-        # Self-extending toolkit (#1995). Wired only when
+        # Self-extending toolkit. Wired only when
         # ``tool_creation_enabled`` is set AND a provider is registered
         # AND persistence is connected (authored blueprints are durable).
         # Disabled by default, so a normal boot skips this entirely.

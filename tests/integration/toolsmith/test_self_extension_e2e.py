@@ -1,4 +1,4 @@
-"""End-to-end self-extension loop (#1995 acceptance).
+"""End-to-end self-extension loop (acceptance).
 
 Drives the full deterministic loop the acceptance criterion describes:
 

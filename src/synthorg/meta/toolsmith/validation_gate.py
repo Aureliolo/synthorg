@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.toolsmith.config import ToolsmithConfig  # noqa: TC001
+from synthorg.meta.toolsmith.errors import ToolsmithError
 from synthorg.meta.toolsmith.models import ToolBlueprint, ToolValidationResult
 from synthorg.meta.toolsmith.protocol import (
     GoldenScorecardProvider,  # noqa: TC001
@@ -42,6 +43,7 @@ logger = get_logger(__name__)
 
 _BRIEF_PASS_SCORE: Final[int] = 100
 _BRIEF_FAIL_SCORE: Final[int] = 0
+_DEFAULT_BRIEF_TIMEOUT_SECONDS: Final[float] = 30.0
 
 _PROBE_VALUES: Mapping[str, Any] = {
     "string": "probe",
@@ -87,7 +89,7 @@ class SandboxBriefRunner:
         self,
         sandbox_resolver: SandboxResolver,
         *,
-        timeout_seconds: float = 30.0,
+        timeout_seconds: float = _DEFAULT_BRIEF_TIMEOUT_SECONDS,
     ) -> None:
         self._sandbox_resolver = sandbox_resolver
         self._timeout_seconds = timeout_seconds
@@ -172,8 +174,10 @@ class BenchmarkToolValidationGate:
         return result
 
 
-class ToolValidationConfigError(ValueError):
+class ToolValidationConfigError(ToolsmithError):
     """Raised when the gate is misconfigured (golden delta without provider)."""
+
+    default_message = "Tool validation gate is misconfigured"
 
 
 __all__ = [

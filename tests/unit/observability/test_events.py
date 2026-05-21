@@ -347,8 +347,8 @@ class TestEventConstants:
             "vision_verify",
             # Knowledge + provenance substrate ingestion / retrieval.
             "knowledge",
-            # Self-extending toolkit (#1995): capability-gap detection,
-            # authoring, benchmark validation, and live registration.
+            # Self-extending toolkit: capability-gap detection, authoring,
+            # benchmark validation, and live registration.
             "toolsmith",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}

@@ -182,7 +182,7 @@ class LLMToolBlueprintGenerator:
         gap: CapabilityGap,
         existing_capabilities: Sequence[NotBlankStr],
     ) -> str:
-        """Build the authoring user prompt (gap context is wrapped SEC-1)."""
+        """Build the authoring prompt; gap context is wrapped as untrusted."""
         context = {
             "capability": gap.signature,
             "occurrences": gap.occurrences,
