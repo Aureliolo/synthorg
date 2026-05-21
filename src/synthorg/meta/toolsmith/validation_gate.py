@@ -135,7 +135,21 @@ class SandboxBriefRunner:
             timeout_seconds=self._timeout_seconds,
         )
         probe = _synthesize_probe(blueprint.parameters_schema)
-        raw = await handler(app_state=None, arguments=probe)
+        # The brief passes iff the tool exits cleanly; a handler crash
+        # (sandbox failure, runtime error) must fail the brief, not
+        # propagate out of the gate. System-critical errors still escape.
+        try:
+            raw = await handler(app_state=None, arguments=probe)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                TOOLSMITH_BRIEF_PARSE_FAILED,
+                tool_name=blueprint.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return False, _BRIEF_FAIL_SCORE
         try:
             envelope = _json.loads(raw)
         except (ValueError, TypeError) as exc:
