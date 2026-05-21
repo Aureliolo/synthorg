@@ -1,16 +1,17 @@
 """Agent-tool acceptance for the knowledge substrate.
 
-The issue (#1988) acceptance says: an agent answers a question with
-citations that resolve to the exact source chunks, validated under the
-simulation harness. The formal simulation-harness benchmark (EPIC #1980)
-is an in-flight downstream of this PR; the most faithful validation
-available today is exercising the substrate through the same agent-tool
-execution surface (:class:`SearchKnowledgeTool`, :class:`IngestKnowledgeTool`)
-that the simulation harness will invoke once it lands. This test plays
-the agent's part: it calls the tool with raw ``arguments`` (as the agent
-runtime would), inspects the :class:`ToolExecutionResult` payload, and
-verifies the citations in ``metadata['citations']`` resolve to ingested
-source chunks the agent could quote.
+The substrate's acceptance requires that an agent answers a question
+with citations that resolve to the exact source chunks, validated
+through the same path a simulation harness uses. The formal
+simulation-harness benchmark is a downstream subsystem; the most
+faithful validation available today is exercising the substrate
+through the agent-tool execution surface
+(:class:`SearchKnowledgeTool`, :class:`IngestKnowledgeTool`) that the
+simulation harness will invoke. This test plays the agent's part: it
+calls the tool with raw ``arguments`` (as the agent runtime would),
+inspects the :class:`ToolExecutionResult` payload, and verifies the
+citations in ``metadata['citations']`` resolve to ingested source
+chunks the agent could quote.
 """
 
 from collections.abc import AsyncIterator
