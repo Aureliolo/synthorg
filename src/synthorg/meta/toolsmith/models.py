@@ -248,21 +248,26 @@ class ToolBlueprint(BaseModel):
         gate ever ran. The applier writes the record at the same instant
         as ``validated_at``, so the two are inseparable across lifecycle.
         """
+        # Every post-PENDING state is gate-graduated, so validated_at and
+        # the validation record are required throughout. A RETIRED tool
+        # was rolled back AFTER activation, so it must also carry
+        # activated_at; only PENDING and the impossible "retired without
+        # ever activating" lack it. This mirrors the DB-layer lifecycle
+        # CHECK so the model and persistence agree.
         terminal_states = {
             ToolBlueprintState.VALIDATED,
             ToolBlueprintState.ACTIVE,
             ToolBlueprintState.RETIRED,
         }
-        if self.state in {ToolBlueprintState.VALIDATED, ToolBlueprintState.ACTIVE} and (
-            self.validated_at is None
-        ):
+        activated_states = {ToolBlueprintState.ACTIVE, ToolBlueprintState.RETIRED}
+        if self.state in terminal_states and self.validated_at is None:
             msg = f"validated_at required in state {self.state.value!r}"
             raise ValueError(msg)
         if self.state in terminal_states and self.validation is None:
             msg = f"validation result required in state {self.state.value!r}"
             raise ValueError(msg)
-        if self.state is ToolBlueprintState.ACTIVE and self.activated_at is None:
-            msg = "activated_at required in state 'active'"
+        if self.state in activated_states and self.activated_at is None:
+            msg = f"activated_at required in state {self.state.value!r}"
             raise ValueError(msg)
         if self.state is ToolBlueprintState.RETIRED and self.retired_at is None:
             msg = "retired_at required in state 'retired'"

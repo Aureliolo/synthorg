@@ -157,10 +157,10 @@ def _upsert_params(bp: ToolBlueprint) -> tuple[object, ...]:
         bp.requires_network,
         bp.action_type,
         bp.state.value,
-        bp.created_at,
-        bp.validated_at,
-        bp.activated_at,
-        bp.retired_at,
+        normalize_utc(bp.created_at),
+        normalize_utc(bp.validated_at) if bp.validated_at is not None else None,
+        normalize_utc(bp.activated_at) if bp.activated_at is not None else None,
+        normalize_utc(bp.retired_at) if bp.retired_at is not None else None,
         Jsonb(bp.validation.model_dump(mode="json"))
         if bp.validation is not None
         else None,

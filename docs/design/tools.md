@@ -521,7 +521,7 @@ Action types classify agent actions for use by autonomy presets (see [Security &
 SecOps validation, tiered timeout policies, and progressive trust
 ([Decision Log](../architecture/decisions.md) D1).
 
-**Registry:** `StrEnum` for ~39 built-in action types (type safety, autocomplete, typos caught
+**Registry:** `StrEnum` for ~41 built-in action types (type safety, autocomplete, typos caught
 by static type checking and config-load-time validation) + `ActionTypeRegistry` for custom
 types via explicit registration. Unknown strings are rejected at config load time; a typo
 in `human_approval` list silently meaning "skip approval" is a critical safety concern.
@@ -530,7 +530,7 @@ in `human_approval` list silently meaning "skip approval" is a critical safety c
 actions in that category (e.g., `auto_approve: ["code"]` expands to all `code:*` actions).
 Fine-grained overrides are supported (e.g., `human_approval: ["code:create"]`).
 
-**Taxonomy (39 leaf types):**
+**Taxonomy (41 leaf types):**
 
 ```text
 code:read, code:write, code:create, code:delete, code:refactor
@@ -545,6 +545,7 @@ db:query, db:mutate, db:admin
 arch:decide
 tool:create
 memory:read
+knowledge:ingest, knowledge:reindex
 browser:navigate, browser:screenshot, browser:diff, browser:accessibility_scan, browser:spec
 external_data:request
 desktop:launch, desktop:click, desktop:type, desktop:key, desktop:screenshot, desktop:scroll

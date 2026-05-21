@@ -172,10 +172,17 @@ class BenchmarkToolValidationGate:
         if not validation_cfg.require_golden_delta:
             passed = brief_passed
             detail = f"brief={'pass' if brief_passed else 'fail'}; golden skipped"
+        elif not brief_passed:
+            # The golden run is gated behind a passing brief, so when the
+            # brief fails the scorecard never ran. Report it as skipped
+            # rather than a 0-0 scorecard so a real zero margin and a
+            # never-run golden stage stay distinguishable.
+            passed = False
+            detail = "brief=fail; golden skipped"
         else:
-            passed = brief_passed and margin >= validation_cfg.min_score_margin
+            passed = margin >= validation_cfg.min_score_margin
             detail = (
-                f"brief={'pass' if brief_passed else 'fail'}; "
+                f"brief=pass; "
                 f"golden baseline={baseline} candidate={candidate} "
                 f"margin={margin} min={validation_cfg.min_score_margin}"
             )

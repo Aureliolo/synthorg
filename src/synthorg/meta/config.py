@@ -260,6 +260,7 @@ class SelfImprovementConfig(BaseModel):
         architecture_proposals_enabled: Enable architecture proposals.
         prompt_tuning_enabled: Enable prompt tuning proposals.
         code_modification_enabled: Enable code modification proposals.
+        tool_creation_enabled: Enable self-extending toolkit proposals.
         schedule: Cycle scheduling configuration.
         rollout: Rollout behavior configuration.
         regression: Regression detection thresholds.
@@ -271,6 +272,8 @@ class SelfImprovementConfig(BaseModel):
             (learning, alerts, chat).
         cross_deployment_analytics: Cross-deployment analytics
             telemetry (opt-in, disabled by default).
+        toolsmith: Self-extending toolkit configuration
+            (gap thresholds, sandbox policy, validation).
         analysis_model: LLM model identifier for proposal analysis.
         analysis_temperature: Sampling temperature for analysis.
         analysis_max_tokens: Token budget for analysis responses.

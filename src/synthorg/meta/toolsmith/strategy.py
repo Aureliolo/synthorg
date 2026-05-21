@@ -13,6 +13,9 @@ import json
 from typing import TYPE_CHECKING, Any, Final
 from uuid import uuid4
 
+from pydantic import BaseModel, ConfigDict, ValidationError
+
+from synthorg.api.boundary import parse_typed
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
@@ -38,7 +41,6 @@ from synthorg.observability.events.toolsmith import (
     TOOLSMITH_AUTHOR_STARTED,
 )
 from synthorg.providers.cost_recording import cost_recording_scope
-from synthorg.providers.errors import ProviderError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -122,11 +124,14 @@ class LLMToolBlueprintGenerator:
             blueprint = self._parse(capability, response)
         except ToolAuthoringError, ToolCapabilityNotAllowedError:
             raise
-        except ProviderError:
-            raise
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
+            # ProviderError lands here too: a transient completion failure
+            # is a per-gap authoring failure, not a batch-wide abort. The
+            # service runs gaps under a TaskGroup, so wrapping it as
+            # ToolAuthoringError lets _handle_gap skip just this gap rather
+            # than cancelling the sibling authoring tasks.
             logger.warning(
                 TOOLSMITH_AUTHOR_FAILED,
                 capability=capability,
@@ -199,21 +204,40 @@ class LLMToolBlueprintGenerator:
         )
 
     def _parse(self, capability: NotBlankStr, response: str) -> ToolBlueprint:
-        """Parse the model response into a validated blueprint."""
-        payload = _parse_json_object(response)
+        """Parse the model response into a validated blueprint.
+
+        The provider output is an external dict ingestion, so it routes
+        through the frozen :class:`_AuthoredBlueprintArgs` boundary model
+        via ``parse_typed`` rather than ad-hoc field plucking. The sandbox
+        backend and network policy come from config, never the model.
+        """
+        text = response.strip()
+        try:
+            payload = json.loads(text)
+        except (ValueError, TypeError) as exc:
+            msg = "authoring response is not valid JSON"
+            raise ToolAuthoringError(msg) from exc
+        if not isinstance(payload, dict):
+            msg = "authoring response must be a JSON object"
+            raise ToolAuthoringError(msg)
+        try:
+            args = parse_typed("toolsmith.authoring", payload, _AuthoredBlueprintArgs)
+        except ValidationError as exc:
+            msg = f"authored blueprint for {capability!r} has invalid fields"
+            raise ToolAuthoringError(msg) from exc
         domain, action = capability.split(":", 1)
         name = f"synthorg_{domain}_{action}"
         try:
             return ToolBlueprint(
                 id=NotBlankStr(f"bp-{uuid4().hex}"),
                 name=NotBlankStr(name),
-                description=_require_str(payload, "description"),
+                description=args.description,
                 capability=capability,
-                parameters_schema=_require_schema(payload),
-                script_body=_require_str(payload, "script_body"),
+                parameters_schema=args.parameters_schema,
+                script_body=args.script_body,
                 sandbox_backend=self._config.sandbox_backend,
                 requires_network=self._config.requires_network,
-                action_type=_require_str(payload, "action_type"),
+                action_type=args.action_type,
                 state=ToolBlueprintState.PENDING,
                 created_at=self._clock.now(),
             )
@@ -222,36 +246,20 @@ class LLMToolBlueprintGenerator:
             raise ToolAuthoringError(msg) from exc
 
 
-def _parse_json_object(response: str) -> dict[str, Any]:
-    """Parse a single JSON object from the model response."""
-    text = response.strip()
-    try:
-        data = json.loads(text)
-    except (ValueError, TypeError) as exc:
-        msg = "authoring response is not valid JSON"
-        raise ToolAuthoringError(msg) from exc
-    if not isinstance(data, dict):
-        msg = "authoring response must be a JSON object"
-        raise ToolAuthoringError(msg)
-    return data
+class _AuthoredBlueprintArgs(BaseModel):
+    """Typed boundary for the model-authored blueprint fields.
 
+    Only the fields the model is asked to supply; the sandbox backend,
+    network policy, name, id, and timestamps are stamped by the generator
+    from trusted config, never the model output.
+    """
 
-def _require_str(payload: dict[str, Any], key: str) -> str:
-    """Extract a non-blank string field from the payload."""
-    value = payload.get(key)
-    if not isinstance(value, str) or not value.strip():
-        msg = f"authoring response missing non-blank {key!r}"
-        raise ToolAuthoringError(msg)
-    return value
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
-
-def _require_schema(payload: dict[str, Any]) -> dict[str, Any]:
-    """Extract the parameters schema object from the payload."""
-    schema = payload.get("parameters_schema")
-    if not isinstance(schema, dict):
-        msg = "authoring response missing 'parameters_schema' object"
-        raise ToolAuthoringError(msg)
-    return schema
+    description: NotBlankStr
+    action_type: NotBlankStr
+    script_body: NotBlankStr
+    parameters_schema: dict[str, Any]
 
 
 __all__ = ["LLMToolBlueprintGenerator"]

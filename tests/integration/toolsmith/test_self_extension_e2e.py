@@ -23,6 +23,7 @@ service/factory wiring, which is the meaningful end-to-end check.
 """
 
 import json
+import os
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
@@ -89,7 +90,11 @@ class _LocalPythonSandbox:
     ) -> SandboxResult:
         del cwd, owner_id, project_id
         overrides = env_overrides or {}
-        env = {"SYNTHORG_TOOL_ARGS": overrides.get("SYNTHORG_TOOL_ARGS", "{}")}
+        # Preserve the base environment (PATH etc.) and only inject the
+        # tool-args var; replacing it wholesale breaks the subprocess on
+        # platforms that need inherited vars (notably Windows).
+        env = dict(os.environ)
+        env["SYNTHORG_TOOL_ARGS"] = overrides.get("SYNTHORG_TOOL_ARGS", "{}")
         completed = subprocess.run(  # noqa: S603, ASYNC221
             [sys.executable, *args] if command == "python" else [command, *args],
             check=False,
