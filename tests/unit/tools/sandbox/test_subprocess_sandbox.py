@@ -262,6 +262,15 @@ class TestWorkspaceBoundary:
         proj.mkdir(parents=True)
         assert subprocess_sandbox._project_root("proj-a") == proj
 
+    @pytest.mark.parametrize("bad", ["", "   ", "."])
+    def test_project_root_empty_or_dot_rejected(
+        self,
+        subprocess_sandbox: SubprocessSandbox,
+        bad: str,
+    ) -> None:
+        with pytest.raises(SandboxError, match="path-separator"):
+            subprocess_sandbox._project_root(bad)
+
     def test_project_root_oversized_id_rejected(
         self,
         subprocess_sandbox: SubprocessSandbox,

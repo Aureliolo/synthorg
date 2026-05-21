@@ -119,15 +119,21 @@ def _make_handler(server_root: Path) -> type[http.server.BaseHTTPRequestHandler]
             length = int(self.headers.get("Content-Length", "0"))
             body = self.rfile.read(length) if length else b""
             path, _, query = self.path.partition("?")
-            env = {
-                **os.environ,
-                "GIT_PROJECT_ROOT": str(server_root),
-                "GIT_HTTP_EXPORT_ALL": "1",
-                "PATH_INFO": path,
-                "QUERY_STRING": query,
-                "REQUEST_METHOD": self.command,
-                "CONTENT_TYPE": self.headers.get("Content-Type", ""),
-            }
+            # Drop inherited GIT_* discovery vars (GIT_DIR / GIT_WORK_TREE
+            # etc.) so the served repo is resolved purely from
+            # GIT_PROJECT_ROOT + PATH_INFO; otherwise the test is
+            # non-hermetic when run from inside a git working tree.
+            env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+            env.update(
+                {
+                    "GIT_PROJECT_ROOT": str(server_root),
+                    "GIT_HTTP_EXPORT_ALL": "1",
+                    "PATH_INFO": path,
+                    "QUERY_STRING": query,
+                    "REQUEST_METHOD": self.command,
+                    "CONTENT_TYPE": self.headers.get("Content-Type", ""),
+                }
+            )
             proc = subprocess.run(
                 ["git", "http-backend"],  # noqa: S607
                 input=body,

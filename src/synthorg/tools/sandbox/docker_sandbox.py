@@ -327,7 +327,7 @@ class DockerSandbox(
         if project_id is None:
             return self._workspace
         pid = str(project_id)
-        if pid == "." or "/" in pid or "\\" in pid or ".." in pid:
+        if not pid.strip() or pid == "." or "/" in pid or "\\" in pid or ".." in pid:
             msg = f"refusing path-separator-bearing project_id {pid!r}"
             logger.warning(DOCKER_EXECUTE_FAILED, error=msg, project_id=pid)
             raise SandboxError(msg)
@@ -337,7 +337,7 @@ class DockerSandbox(
         try:
             root = await asyncio.to_thread((projects_root / pid).resolve)
             exists = await asyncio.to_thread(root.is_dir)
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             # An oversized / invalid project_id can make resolve()/is_dir()
             # raise (e.g. ENAMETOOLONG) instead of returning; surface it as
             # a sandbox error rather than leaking a raw OSError.

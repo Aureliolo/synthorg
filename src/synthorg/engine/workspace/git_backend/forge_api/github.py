@@ -94,7 +94,12 @@ class GitHubForgeClient(BaseForgeClient):
     ) -> ForgeRepo:
         """Create ``owner/repo`` under the user or org namespace."""
         login = await self._authenticated_login()
-        url = "/user/repos" if login == str(owner) else f"/orgs/{owner}/repos"
+        # Forge logins are case-insensitive, so match case-folded.
+        url = (
+            "/user/repos"
+            if login.casefold() == str(owner).casefold()
+            else f"/orgs/{owner}/repos"
+        )
         action = f"create repo {owner}/{repo}"
         resp = await self._request(
             "POST",

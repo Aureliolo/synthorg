@@ -108,7 +108,8 @@ class GitLabForgeClient(BaseForgeClient):
             "visibility": "private" if private else "public",
         }
         username = await self._authenticated_username()
-        if username != str(owner):
+        # Forge logins are case-insensitive, so match case-folded.
+        if username.casefold() != str(owner).casefold():
             payload["namespace_id"] = await self._namespace_id(owner)
         action = f"create project {owner}/{repo}"
         resp = await self._request("POST", "/projects", action=action, json=payload)

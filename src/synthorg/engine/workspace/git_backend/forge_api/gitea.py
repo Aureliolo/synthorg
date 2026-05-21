@@ -92,7 +92,12 @@ class GiteaForgeClient(BaseForgeClient):
     ) -> ForgeRepo:
         """Create ``owner/repo`` under the user or org namespace."""
         username = await self._authenticated_username()
-        url = "/user/repos" if username == str(owner) else f"/orgs/{owner}/repos"
+        # Forge logins are case-insensitive, so match case-folded.
+        url = (
+            "/user/repos"
+            if username.casefold() == str(owner).casefold()
+            else f"/orgs/{owner}/repos"
+        )
         action = f"create repo {owner}/{repo}"
         resp = await self._request(
             "POST",

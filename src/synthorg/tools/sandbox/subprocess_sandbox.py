@@ -381,14 +381,14 @@ class SubprocessSandbox:
         if project_id is None:
             return self._workspace
         pid = str(project_id)
-        if pid == "." or "/" in pid or "\\" in pid or ".." in pid:
+        if not pid.strip() or pid == "." or "/" in pid or "\\" in pid or ".." in pid:
             msg = f"refusing path-separator-bearing project_id {pid!r}"
             logger.warning(SANDBOX_WORKSPACE_VIOLATION, cwd=pid)
             raise SandboxError(msg)
         root = self._workspace / _PROJECTS_SUBDIR / pid
         try:
             exists = root.is_dir()
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             # An oversized / otherwise-invalid project_id can make the
             # stat raise (e.g. ENAMETOOLONG) rather than return False;
             # surface it as the same sandbox error instead of leaking a

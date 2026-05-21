@@ -335,7 +335,14 @@ class ExternalRemoteGitBackend:
         try:
             await self._retry.execute(_attempt, project_id=pid, branch=str(branch))
         except GitBackendRemoteMissingError:
-            await self._provision_remote_repo(pid)
+
+            async def _create() -> None:
+                await self._provision_remote_repo(pid)
+
+            # Run lazy creation under the same retry policy so a transient
+            # forge rate-limit / 5xx during create_repo is retried rather
+            # than aborting the push.
+            await self._retry.execute(_create, project_id=pid)
             await self._retry.execute(_attempt, project_id=pid, branch=str(branch))
         head = await git(
             repo_root,
@@ -442,7 +449,20 @@ class ExternalRemoteGitBackend:
         token = await self._token()
         _scheme, _host, _path, owner = self._split_base(connection)
         if not owner:
-            return False
+            # An ownerless base_url cannot name a forge repo; reject the
+            # connection as misconfigured rather than silently treating
+            # the repo as missing (which would provision local-only).
+            logger.warning(
+                GIT_BACKEND_PROVISION_FAILED,
+                project_id=pid,
+                action="forge_repo_exists",
+                reason="base_url_missing_owner",
+            )
+            msg = (
+                f"cannot resolve forge repo for project {pid!r}: base_url "
+                "has no owner/namespace path component"
+            )
+            raise GitBackendConfigError(msg)
         client = build_forge_api_client(
             connection_type=connection.connection_type,
             base_url=str(connection.base_url),

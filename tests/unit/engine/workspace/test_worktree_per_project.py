@@ -55,10 +55,27 @@ class TestEffectiveRoot:
     def test_project_id_is_project_subtree(self) -> None:
         assert _strategy()._effective_root("p1") == _ROOT / "projects" / "p1"
 
-    @pytest.mark.parametrize("bad", ["../escape", "a/b", "a\\b", "..", "."])
+    @pytest.mark.parametrize("bad", ["../escape", "a/b", "a\\b", "..", ".", "", "   "])
     def test_traversal_rejected(self, bad: str) -> None:
         with pytest.raises(WorkspaceSetupError, match="path-separator"):
             _strategy()._effective_root(bad)
+
+    def test_symlinked_project_escaping_subtree_rejected(self, tmp_path: Path) -> None:
+        strategy = PlannerWorktreeStrategy(
+            config=PlannerWorktreesConfig(),
+            repo_root=tmp_path,
+            cmd_timeout=60.0,
+        )
+        projects = tmp_path / "projects"
+        projects.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        try:
+            (projects / "evil").symlink_to(outside, target_is_directory=True)
+        except OSError, NotImplementedError:
+            pytest.skip("symlink creation not permitted on this platform")
+        with pytest.raises(WorkspaceSetupError, match="escapes"):
+            strategy._effective_root("evil")
 
 
 class TestSetupRoutesToProjectRoot:

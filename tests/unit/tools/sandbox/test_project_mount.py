@@ -42,7 +42,7 @@ class TestProjectRoot:
             tmp_path / "projects" / "proj-a"
         )
 
-    @pytest.mark.parametrize("bad", ["../escape", "a/b", "a\\b", "..", "."])
+    @pytest.mark.parametrize("bad", ["../escape", "a/b", "a\\b", "..", ".", "", "   "])
     async def test_traversal_rejected(self, tmp_path: Path, bad: str) -> None:
         sandbox = _sandbox(tmp_path)
         with pytest.raises(SandboxError, match="path-separator"):
