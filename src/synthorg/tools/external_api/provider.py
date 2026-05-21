@@ -10,9 +10,9 @@ Credentials live in ``ExternalAccessRequest.headers`` and MUST NOT be logged
 by any provider implementation.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic field type
 
@@ -37,13 +37,26 @@ class ExternalAccessRequest(BaseModel):
     pinned_ip: str | None = None
     pinned_hostname: str | None = None
 
+    @model_validator(mode="after")
+    def _validate_pinning_pair(self) -> Self:
+        """Pin both the IP and the hostname, or neither.
+
+        A provider pins the validated IP at connect time while keeping the
+        hostname for TLS SNI; an IP without its hostname (or vice versa)
+        is a malformed pin that would break SNI / certificate validation.
+        """
+        if (self.pinned_ip is None) != (self.pinned_hostname is None):
+            msg = "pinned_ip and pinned_hostname must be set together or both omitted"
+            raise ValueError(msg)
+        return self
+
 
 class ExternalAccessResponse(BaseModel):
     """The upstream response, body already truncated to the byte budget."""
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    status_code: int
+    status_code: int = Field(ge=100, le=599)
     headers: dict[str, str] = Field(default_factory=dict)
     body: str
     truncated: bool = False

@@ -136,6 +136,38 @@ class TestApprovalItem:
                 expires_at=now - timedelta(hours=1),
             )
 
+    def test_consumed_at_allowed_on_approved(self) -> None:
+        now = _now()
+        item = ApprovalItem(
+            id="approval-abc",
+            action_type="external_data:request",
+            title="External call",
+            description="desc",
+            requested_by="agent-dev",
+            risk_level=ApprovalRiskLevel.HIGH,
+            status=ApprovalStatus.APPROVED,
+            created_at=now,
+            decided_at=now,
+            decided_by="ceo",
+            consumed_at=now + timedelta(minutes=1),
+        )
+        assert item.consumed_at is not None
+
+    def test_consumed_at_rejected_when_not_approved(self) -> None:
+        now = _now()
+        with pytest.raises(ValueError, match="consumed_at may only be set"):
+            ApprovalItem(
+                id="approval-abc",
+                action_type="external_data:request",
+                title="External call",
+                description="desc",
+                requested_by="agent-dev",
+                risk_level=ApprovalRiskLevel.HIGH,
+                status=ApprovalStatus.PENDING,
+                created_at=now,
+                consumed_at=now,
+            )
+
     def test_metadata_defaults_to_empty(self) -> None:
         item = ApprovalItem(
             id="approval-abc",

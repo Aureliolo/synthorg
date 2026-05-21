@@ -40,6 +40,7 @@ from synthorg.observability.events.external_api import (
     EXTERNAL_API_CALL_SUCCEEDED,
     EXTERNAL_API_EGRESS_BLOCKED,
     EXTERNAL_API_RATE_LIMITED,
+    EXTERNAL_API_RISK_CLASSIFY_FAILED,
     EXTERNAL_API_SIGNATURE_MISMATCH,
 )
 from synthorg.providers.url_utils import redact_url
@@ -205,6 +206,11 @@ class ExternalApiTool(BaseTool):
         base-URL prefix.
         """
         if not conn.base_url:
+            logger.warning(
+                EXTERNAL_API_EGRESS_BLOCKED,
+                connection=args.connection,
+                reason="no_base_url",
+            )
             msg = f"Connection {args.connection!r} has no base_url"
             raise ExternalApiEgressBlockedError(msg)
         base_host = extract_hostname(conn.base_url)
@@ -441,5 +447,12 @@ class ExternalApiTool(BaseTool):
             return self._risk_classifier.classify(_ACTION_TYPE)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                EXTERNAL_API_RISK_CLASSIFY_FAILED,
+                action_type=_ACTION_TYPE,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                note="risk classification failed; defaulting to HIGH",
+            )
             return ApprovalRiskLevel.HIGH

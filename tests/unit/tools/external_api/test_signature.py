@@ -53,6 +53,13 @@ class TestApprovalSignature:
         assert _sig().matches(None) is False
         assert _sig().matches(_sig(method="GET")) is False
 
+    def test_header_key_case_insensitive(self) -> None:
+        # Header keys are lower-cased before hashing, so a re-issued call
+        # with differently-cased header names still matches its approval.
+        assert _sig(headers={"Accept": "application/json"}) == _sig(
+            headers={"accept": "application/json"},
+        )
+
     def test_credential_headers_excluded(self) -> None:
         # Auth headers are injected later, not part of the signed shape; the
         # agent-supplied headers are what's signed. Different agent headers

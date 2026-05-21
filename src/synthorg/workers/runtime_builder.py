@@ -260,26 +260,43 @@ async def _build_external_api_runtime(
     provider discriminator and default per-call limits via the settings
     resolver and builds the configured ``ExternalAccessProvider``.
 
-    Fail-open: a resolution failure (missing setting, validation error,
-    unknown provider discriminator) keeps the rest of the runtime buildable
-    by logging a warning and returning ``None``, mirroring
-    :func:`_resolve_routing_scorer_config`. A misconfigured external-access
-    feature should not crash the whole agent runtime.
+    Fail-open in both failure modes (a misconfigured external-access feature
+    must not crash the whole agent runtime), but at distinct log levels so
+    operators can tell them apart:
+
+    - A failure resolving the ``enabled`` flag is treated as transient and
+      logged at WARNING; the feature is simply left off this boot.
+    - A failure building the runtime once enabled (unknown provider
+      discriminator, missing/invalid limit setting) is an operator
+      misconfiguration and logged at ERROR, so a silently-disabled feature
+      is never mistaken for an intentional one.
     """
     if not app_state.has_connection_catalog:
         return None
     resolver = app_state.config_resolver
     try:
-        if not await resolver.get_bool(_EXTERNAL_API_NS, "enabled"):
-            return None
-
-        from synthorg.tools.external_api._runtime import (  # noqa: PLC0415
-            ExternalApiRuntime,
+        enabled = await resolver.get_bool(_EXTERNAL_API_NS, "enabled")
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            service="external_api",
+            context="enabled_flag_resolve",
+            note="could not resolve external_api.enabled; feature left off",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
-        from synthorg.tools.external_api.provider_factory import (  # noqa: PLC0415
-            build_external_access_provider,
-        )
+        return None
+    if not enabled:
+        return None
 
+    from synthorg.tools.external_api._runtime import ExternalApiRuntime  # noqa: PLC0415
+    from synthorg.tools.external_api.provider_factory import (  # noqa: PLC0415
+        build_external_access_provider,
+    )
+
+    try:
         provider_type = await resolver.get_str(_EXTERNAL_API_NS, "provider_type")
         max_response_bytes = await resolver.get_int(
             _EXTERNAL_API_NS,
@@ -294,11 +311,11 @@ async def _build_external_api_runtime(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.warning(
+        logger.error(
             API_APP_STARTUP,
             service="external_api",
             context="external_api_runtime_resolve",
-            note="external-access feature unavailable; tool not registered",
+            note="external-access misconfigured; tool not registered",
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )

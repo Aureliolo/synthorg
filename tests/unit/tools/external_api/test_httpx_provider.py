@@ -64,6 +64,40 @@ def _request(*, max_response_bytes: int = 1_048_576) -> ExternalAccessRequest:
 
 
 @pytest.mark.unit
+class TestExternalAccessRequestValidation:
+    def test_pinned_ip_without_hostname_rejected(self) -> None:
+        with pytest.raises(ValueError, match="pinned_ip and pinned_hostname"):
+            ExternalAccessRequest(
+                method="GET",
+                url="https://api.example.com/x",
+                timeout_seconds=30.0,
+                max_response_bytes=1024,
+                pinned_ip="203.0.113.5",
+            )
+
+    def test_pinned_hostname_without_ip_rejected(self) -> None:
+        with pytest.raises(ValueError, match="pinned_ip and pinned_hostname"):
+            ExternalAccessRequest(
+                method="GET",
+                url="https://api.example.com/x",
+                timeout_seconds=30.0,
+                max_response_bytes=1024,
+                pinned_hostname="api.example.com",
+            )
+
+    def test_both_pinned_accepted(self) -> None:
+        req = ExternalAccessRequest(
+            method="GET",
+            url="https://api.example.com/x",
+            timeout_seconds=30.0,
+            max_response_bytes=1024,
+            pinned_ip="203.0.113.5",
+            pinned_hostname="api.example.com",
+        )
+        assert req.pinned_ip == "203.0.113.5"
+
+
+@pytest.mark.unit
 class TestHttpxExternalAccessProvider:
     async def test_returns_response(self) -> None:
         provider = HttpxExternalAccessProvider()

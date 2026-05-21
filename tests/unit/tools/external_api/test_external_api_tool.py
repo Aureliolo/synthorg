@@ -15,7 +15,10 @@ from synthorg.integrations.connections.models import (
     Connection,
     ConnectionType,
 )
-from synthorg.integrations.errors import ConnectionRateLimitError
+from synthorg.integrations.errors import (
+    ConnectionRateLimitError,
+    SecretRetrievalError,
+)
 from synthorg.security.autonomy.models import EffectiveAutonomy
 from synthorg.tools.external_api.errors import ExternalApiResponseError
 from synthorg.tools.external_api.external_api_tool import ExternalApiTool
@@ -75,13 +78,16 @@ def _build_tool(  # noqa: PLR0913 -- test helper mirrors the tool's collaborator
     autonomy: EffectiveAutonomy | None = None,
     network_policy: NetworkPolicy | None = None,
     approval_store: ApprovalStore | None = None,
+    credentials_error: Exception | None = None,
 ) -> ExternalApiTool:
+    get_credentials = AsyncMock(spec=ConnectionCatalog.get_credentials)
+    if credentials_error is not None:
+        get_credentials.side_effect = credentials_error
+    else:
+        get_credentials.return_value = credentials or {"token": "sekret-token"}
     catalog = mock_of[ConnectionCatalog](
         get=AsyncMock(spec=ConnectionCatalog.get, return_value=conn),
-        get_credentials=AsyncMock(
-            spec=ConnectionCatalog.get_credentials,
-            return_value=credentials or {"token": "sekret-token"},
-        ),
+        get_credentials=get_credentials,
     )
     return ExternalApiTool(
         connection_catalog=catalog,
@@ -122,6 +128,29 @@ class TestExternalApiToolHappyPath:
         assert result.is_error is False
         assert result.metadata["status_code"] == 404
 
+    async def test_absolute_url_within_connection_host(self) -> None:
+        provider = StubProvider()
+        tool = _build_tool(conn=_connection(), provider=provider)
+        result = await tool.execute(
+            arguments={
+                "connection": "crm-api",
+                "url": "https://api.example.com/v2/things",
+            },
+        )
+        assert result.is_error is False
+        assert provider.requests[0].url == "https://api.example.com/v2/things"
+
+    async def test_head_on_non_sensitive_proceeds(self) -> None:
+        # HEAD is a read; a non-sensitive connection must not gate it.
+        provider = StubProvider()
+        tool = _build_tool(conn=_connection(sensitive=False), provider=provider)
+        result = await tool.execute(
+            arguments={"connection": "crm-api", "method": "HEAD", "path": "/ping"},
+        )
+        assert result.is_error is False
+        assert result.metadata.get("requires_parking") is None
+        assert len(provider.requests) == 1
+
 
 @pytest.mark.unit
 class TestExternalApiToolCredentials:
@@ -161,6 +190,19 @@ class TestExternalApiToolCredentials:
         await tool.execute(arguments={"connection": "crm-api", "path": "/data"})
         # base64("u:p") == "dTpw"
         assert provider.requests[0].headers["Authorization"] == "Basic dTpw"
+
+    async def test_credential_retrieval_failure_errors_without_egress(self) -> None:
+        provider = StubProvider()
+        tool = _build_tool(
+            conn=_connection(),
+            provider=provider,
+            credentials_error=SecretRetrievalError("backend down"),
+        )
+        result = await tool.execute(
+            arguments={"connection": "crm-api", "path": "/data"},
+        )
+        assert result.is_error is True
+        assert provider.requests == []
 
 
 @pytest.mark.unit

@@ -176,6 +176,7 @@ function isApprovalShape(
     isNullableString(c.decision_reason) &&
     isNullableString(c.decided_at) &&
     isNullableString(c.expires_at) &&
+    isNullableString(c.consumed_at) &&
     isNullableFiniteNumber(c.seconds_remaining) &&
     isEvidencePackageShape(c.evidence_package)
   )

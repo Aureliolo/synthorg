@@ -9,7 +9,7 @@ description: Tool categories, concurrent execution model, layered sandboxing, MC
 
     This page is the source of truth for the **designed** behaviour of this subsystem. Tool execution runs via the agent runtime, which is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
 
-Agents act on the world through tools. SynthOrg defines a pluggable tool system with 13+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication, design, headless browser), layered sandboxing (subprocess for low-risk, Docker for high-risk, Kubernetes for future multi-tenant), MCP server integration, and a progressive-disclosure model that limits the surface an agent sees to what its role, seniority, and autonomy tier permit.
+Agents act on the world through tools. SynthOrg defines a pluggable tool system with 14+ categories (file system, git, web, database, terminal, sandbox, MCP bridge, analytics, communication, design, headless browser, governed external data access), layered sandboxing (subprocess for low-risk, Docker for high-risk, Kubernetes for future multi-tenant), MCP server integration, and a progressive-disclosure model that limits the surface an agent sees to what its role, seniority, and autonomy tier permit.
 
 ## Tool Categories
 
@@ -27,6 +27,7 @@ Agents act on the world through tools. SynthOrg defines a pluggable tool system 
 | **Deployment** | CI/CD, container management | DevOps, SRE |
 | **Memory** | Search memory, recall by ID | All agents (tool-based strategy) |
 | **Browser** | Headless Playwright + Chromium: navigate, screenshot, SSIM diff, axe accessibility scan, full spec | QA, frontend devs, agents validating web deliverables |
+| **External Data** | Governed external API/data access through a configured connection: credentials brokered from the connection catalog, egress constrained to the connection host (SSRF policy + DNS pinning), per-connection rate limiting, sensitive/write calls gated to approval | Agents consuming third-party APIs while building deliverables |
 | **MCP Servers** | Any MCP-compatible tool | Configurable per agent |
 
 ## Tool Execution Model
@@ -450,7 +451,7 @@ Action types classify agent actions for use by autonomy presets (see [Security &
 SecOps validation, tiered timeout policies, and progressive trust
 ([Decision Log](../architecture/decisions.md) D1).
 
-**Registry:** `StrEnum` for ~31 built-in action types (type safety, autocomplete, typos caught
+**Registry:** `StrEnum` for ~32 built-in action types (type safety, autocomplete, typos caught
 by static type checking and config-load-time validation) + `ActionTypeRegistry` for custom
 types via explicit registration. Unknown strings are rejected at config load time; a typo
 in `human_approval` list silently meaning "skip approval" is a critical safety concern.
@@ -459,7 +460,7 @@ in `human_approval` list silently meaning "skip approval" is a critical safety c
 actions in that category (e.g., `auto_approve: ["code"]` expands to all `code:*` actions).
 Fine-grained overrides are supported (e.g., `human_approval: ["code:create"]`).
 
-**Taxonomy (~31 leaf types):**
+**Taxonomy (~32 leaf types):**
 
 ```text
 code:read, code:write, code:create, code:delete, code:refactor
@@ -474,6 +475,7 @@ db:query, db:mutate, db:admin
 arch:decide
 memory:read
 browser:navigate, browser:screenshot, browser:diff, browser:accessibility_scan, browser:spec
+external_data:request
 ```
 
 **Classification:** Static tool metadata. Each `BaseTool` declares its `action_type`. Default

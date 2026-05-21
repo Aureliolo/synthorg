@@ -123,3 +123,20 @@ class ApprovalItem(BaseModel):
             msg = "expires_at must be after created_at"
             raise ValueError(msg)
         return self
+
+    @model_validator(mode="after")
+    def _validate_consumption(self) -> Self:
+        """Enforce that ``consumed_at`` is only set on an APPROVED grant.
+
+        Consumption is a spent APPROVED grant (orthogonal to the decision
+        lifecycle), so a consumed approval can never be PENDING, REJECTED,
+        or EXPIRED. Enforcing this at construction keeps the one-shot
+        invariant a type guarantee, not just a store-side convention.
+        """
+        if self.consumed_at is not None and self.status is not ApprovalStatus.APPROVED:
+            msg = (
+                f"consumed_at may only be set when status is approved "
+                f"(got {self.status.value})"
+            )
+            raise ValueError(msg)
+        return self

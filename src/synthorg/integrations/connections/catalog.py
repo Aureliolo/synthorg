@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from synthorg.core.types import NotBlankStr
+from synthorg.integrations.connections._oauth_rotation import OAuthRotationMixin
 from synthorg.integrations.connections.models import (
     AuthMethod,
     Connection,
@@ -36,8 +37,6 @@ from synthorg.observability.events.integrations import (
     CONNECTION_UPDATED,
     CONNECTION_VALIDATION_FAILED,
     HEALTH_STATUS_TRANSITIONED,
-    OAUTH_TOKEN_EXCHANGE_FAILED,
-    OAUTH_TOKEN_EXCHANGED,
     SECRET_DELETE_FAILED,
     SECRET_DELETED,
     SECRET_RETRIEVAL_FAILED,
@@ -67,7 +66,7 @@ _UNSET = _UnsetType()
 """Sentinel value to distinguish 'not provided' from None."""
 
 
-class ConnectionCatalog:
+class ConnectionCatalog(OAuthRotationMixin):
     """Central registry for external service connections.
 
     Thread-safe via ``asyncio.Lock`` for cache invalidation.
@@ -764,159 +763,3 @@ class ConnectionCatalog:
                 raise SecretRetrievalError(msg)
             merged.update(data)
         return copy.deepcopy(merged)
-
-    async def store_oauth_tokens(
-        self,
-        name: str,
-        *,
-        access_token: str,
-        refresh_token: str | None = None,
-    ) -> Connection:
-        """Persist OAuth access/refresh tokens via the secret backend.
-
-        Merges the tokens into the connection's existing credential
-        blob (so token_url, client_id, client_secret etc. remain
-        available) and collapses ``secret_refs`` to a single fresh
-        ``SecretRef`` pointing at the merged payload. Any
-        previously-referenced secrets are deleted from the backend
-        so ``get_credentials`` cannot reintroduce stale keys on
-        the next resolve.
-
-        Raises:
-            ConnectionNotFoundError: If the connection does not exist.
-        """
-        lock = await self._lock_for(name)
-        async with lock:
-            # Load the connection once and share it across the
-            # credential merge + persist paths.
-            conn = await self.get_or_raise(name)
-            existing = await self._resolve_credentials_for(conn)
-            merged = dict(existing)
-            merged["access_token"] = access_token
-            if refresh_token is not None:
-                merged["refresh_token"] = refresh_token
-
-            new_secret_id, updated = await self._stage_oauth_secret_rotation(
-                conn,
-                merged,
-            )
-            await self._persist_oauth_rotation(updated, new_secret_id, name)
-            self._invalidate_cache()
-            await self._cleanup_stale_oauth_secrets(conn.secret_refs, name)
-            logger.info(
-                OAUTH_TOKEN_EXCHANGED,
-                connection_name=name,
-                has_refresh=refresh_token is not None,
-            )
-            return updated
-
-    async def _stage_oauth_secret_rotation(
-        self,
-        conn: Connection,
-        merged: dict[str, str],
-    ) -> tuple[str, Connection]:
-        """Write the merged secret blob and stage the updated connection.
-
-        Always allocates a fresh secret id and collapses ``secret_refs``
-        to exactly that one ref.  Writing back into an existing ref
-        would leave sibling refs pointing at stale credential slices,
-        and ``get_credentials`` merges them in order so old values
-        could shadow the fresh token on the next resolve.
-        """
-        new_secret_id = str(uuid4())
-        # Route through ``_store_secret`` so a backend-store failure
-        # carries ``connection_name`` / ``secret_id`` context under the
-        # OAuth-scoped event before bubbling to the caller.
-        await self._store_secret(
-            new_secret_id,
-            merged,
-            connection_name=conn.name,
-            failure_event=OAUTH_TOKEN_EXCHANGE_FAILED,
-        )
-        ref = SecretRef(
-            secret_id=NotBlankStr(new_secret_id),
-            backend=NotBlankStr(self._secret_backend.backend_name),
-        )
-        updated = conn.model_copy(
-            update={
-                "secret_refs": (ref,),
-                "updated_at": datetime.now(UTC),
-            }
-        )
-        return new_secret_id, updated
-
-    async def _persist_oauth_rotation(
-        self,
-        updated: Connection,
-        new_secret_id: str,
-        name: str,
-    ) -> None:
-        """Persist the rotated connection; delete the new secret on failure.
-
-        Logs use ``safe_error_description`` rather than raw tracebacks
-        because the OAuth-token path is secret-bearing -- tracebacks
-        on this code path can leak token / backend internals into the
-        log sink.
-        """
-        try:
-            await self._repo.save(updated)
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                OAUTH_TOKEN_EXCHANGE_FAILED,
-                connection_name=name,
-                note="repo_save_failed_deleting_orphaned_oauth_secret",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            try:
-                await self._secret_backend.delete(new_secret_id)
-            except MemoryError, RecursionError:
-                raise
-            except Exception as cleanup_exc:
-                logger.warning(
-                    OAUTH_TOKEN_EXCHANGE_FAILED,
-                    connection_name=name,
-                    secret_id=new_secret_id,
-                    error_context=(
-                        "rollback delete failed; manual cleanup "
-                        "required for orphaned OAuth secret"
-                    ),
-                    error_type=type(cleanup_exc).__name__,
-                    error=safe_error_description(cleanup_exc),
-                )
-            raise
-
-    async def _cleanup_stale_oauth_secrets(
-        self,
-        old_refs: tuple[SecretRef, ...],
-        name: str,
-    ) -> None:
-        """Best-effort delete the previously-referenced OAuth secrets.
-
-        Repo save has already succeeded so failures here log but do
-        not re-raise -- a single stale secret should not abort the
-        whole rotation.  Stale-secret cleanup failure is a
-        ``SECRET_DELETE_FAILED`` event, not a token-exchange failure.
-        """
-        for old_ref in old_refs:
-            try:
-                deleted = await self._secret_backend.delete(old_ref.secret_id)
-                if deleted:
-                    logger.debug(
-                        SECRET_DELETED,
-                        connection_name=name,
-                        secret_id=old_ref.secret_id,
-                    )
-            except MemoryError, RecursionError:
-                raise
-            except Exception as del_exc:
-                logger.warning(
-                    SECRET_DELETE_FAILED,
-                    connection_name=name,
-                    secret_id=old_ref.secret_id,
-                    note="failed_to_delete_stale_secret_after_rotation",
-                    error_type=type(del_exc).__name__,
-                    error=safe_error_description(del_exc),
-                )
