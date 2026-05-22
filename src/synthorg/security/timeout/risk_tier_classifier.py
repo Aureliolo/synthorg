@@ -52,6 +52,7 @@ _DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProx
         ActionType.VCS_COMMIT: ApprovalRiskLevel.MEDIUM,
         ActionType.ARCH_DECIDE: ApprovalRiskLevel.MEDIUM,
         ActionType.KNOWLEDGE_INGEST: ApprovalRiskLevel.MEDIUM,
+        ActionType.RESEARCH_RUN: ApprovalRiskLevel.MEDIUM,
         ActionType.ORG_HIRE: ApprovalRiskLevel.MEDIUM,
         ActionType.ORG_PROMOTE: ApprovalRiskLevel.MEDIUM,
         ActionType.BUDGET_SPEND: ApprovalRiskLevel.MEDIUM,

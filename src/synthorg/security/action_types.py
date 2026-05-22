@@ -38,6 +38,7 @@ class ActionTypeCategory(StrEnum):
     BROWSER = "browser"
     EXTERNAL_DATA = "external_data"
     DESKTOP = "desktop"
+    RESEARCH = "research"
 
 
 def _build_category_map() -> dict[str, frozenset[str]]:
