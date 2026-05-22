@@ -60,6 +60,9 @@ if TYPE_CHECKING:
         FineTuneCheckpointRepository,
         FineTuneRunRepository,
     )
+    from synthorg.persistence.flight_recorder_protocol import (
+        FlightRecorderFrameRepository,
+    )
     from synthorg.persistence.idempotency_protocol import IdempotencyRepository
     from synthorg.persistence.knowledge_protocol import (
         ChunkProvenanceRepository,
@@ -147,6 +150,7 @@ class _BackendRepositoryAccessors:
     _users: UserRepository | None
     _api_keys: ApiKeyRepository | None
     _checkpoints: CheckpointRepository | None
+    _flight_recorder_frames: FlightRecorderFrameRepository | None
     _heartbeats: HeartbeatRepository | None
     _agent_states: AgentStateRepository | None
     _settings: SettingsRepository | None
@@ -292,6 +296,14 @@ class _BackendRepositoryAccessors:
     def checkpoints(self) -> CheckpointRepository:
         """Repository for Checkpoint persistence."""
         return self._require_connected(self._checkpoints, "checkpoints")
+
+    @property
+    def flight_recorder_frames(self) -> FlightRecorderFrameRepository:
+        """Repository for flight-recorder frame persistence."""
+        return self._require_connected(
+            self._flight_recorder_frames,
+            "flight_recorder_frames",
+        )
 
     @property
     def heartbeats(self) -> HeartbeatRepository:

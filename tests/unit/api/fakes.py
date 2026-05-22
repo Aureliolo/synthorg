@@ -32,6 +32,10 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
+from synthorg.persistence.flight_recorder_protocol import (
+    FlightRecorderFrame,
+    FlightRecorderFrameFilterSpec,
+)
 from synthorg.persistence.preset_protocol import Preset
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.timeout.parked_context import ParkedContext
@@ -508,6 +512,53 @@ class FakeCheckpointRepository:
         for k in to_delete:
             del self._checkpoints[k]
         return len(to_delete)
+
+
+class FakeFlightRecorderFrameRepository:
+    """In-memory flight-recorder frame repository for tests."""
+
+    def __init__(self) -> None:
+        self._frames: dict[str, FlightRecorderFrame] = {}
+
+    async def append(self, frame: FlightRecorderFrame) -> None:
+        if frame.id in self._frames:
+            msg = f"Flight recorder frame {frame.id!r} already exists"
+            raise DuplicateRecordError(msg)
+        self._frames[frame.id] = frame
+
+    async def query(
+        self,
+        filter_spec: FlightRecorderFrameFilterSpec,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[FlightRecorderFrame, ...]:
+        candidates = list(self._frames.values())
+        if filter_spec.execution_id is not None:
+            candidates = [
+                f for f in candidates if f.execution_id == filter_spec.execution_id
+            ]
+        if filter_spec.task_id is not None:
+            candidates = [f for f in candidates if f.task_id == filter_spec.task_id]
+        if filter_spec.agent_id is not None:
+            candidates = [f for f in candidates if f.agent_id == filter_spec.agent_id]
+        if filter_spec.turn_index_min is not None:
+            candidates = [
+                f for f in candidates if f.turn_index >= filter_spec.turn_index_min
+            ]
+        if filter_spec.turn_index_max is not None:
+            candidates = [
+                f for f in candidates if f.turn_index <= filter_spec.turn_index_max
+            ]
+        candidates.sort(key=lambda f: (f.turn_index, f.timestamp), reverse=True)
+        return tuple(candidates[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime) -> int:
+        before = len(self._frames)
+        self._frames = {
+            k: v for k, v in self._frames.items() if v.timestamp >= threshold
+        }
+        return before - len(self._frames)
 
 
 class FakeHeartbeatRepository:
