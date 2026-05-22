@@ -29,8 +29,11 @@ from synthorg.engine.brownfield.scanner.protocol import EcosystemScan
 _REQUIRE_RE: Final[re.Pattern[str]] = re.compile(
     # The path token must contain a slash so bare go.mod directives like
     # ``retract v1.2.3`` are not misread as require lines. Dots, hyphens
-    # and pluses stay allowed inside each segment.
-    r"^\s*([\w.\-+]+/[\w.\-+/]+)\s+(v[\w.\-+]+)",
+    # and pluses stay allowed inside each segment. The optional
+    # ``require `` prefix lets the regex match BOTH the indented lines
+    # inside a ``require ( ... )`` block AND single-line directives of
+    # the form ``require <path> v<version>``.
+    r"^\s*(?:require\s+)?([\w.\-+]+/[\w.\-+/]+)\s+(v[\w.\-+]+)",
     re.MULTILINE,
 )
 _MODULE_RE: Final[re.Pattern[str]] = re.compile(r"^module\s+(\S+)", re.MULTILINE)
