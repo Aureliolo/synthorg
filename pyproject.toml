@@ -430,7 +430,7 @@ extraPaths = ["src", "."]
 # ---------------------------------------------------------------------------
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.8.6" # x-release-please-version
+version = "0.8.7" # x-release-please-version
 tag_format = "v$version"
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.8.7](https://github.com/Aureliolo/synthorg/compare/v0.8.6...v0.8.7) (2026-05-22)
+
+
+### Features
+
+* conversational interface v1 - 1:1 clarify + propose ([#2019](https://github.com/Aureliolo/synthorg/issues/2019)) ([216ef94](https://github.com/Aureliolo/synthorg/commit/216ef943d93690b1b507bae62ab24e010e604abd)), closes [#1968](https://github.com/Aureliolo/synthorg/issues/1968)
+* cost as a first-class dial (forecast gate, hard ceiling, Pareto) ([#2029](https://github.com/Aureliolo/synthorg/issues/2029)) ([700a59e](https://github.com/Aureliolo/synthorg/commit/700a59eb81e8d69423fe0d152b892455f3b568ec)), closes [#1982](https://github.com/Aureliolo/synthorg/issues/1982)
+* **env:** reproducible per-project environments ([#2039](https://github.com/Aureliolo/synthorg/issues/2039)) ([d2c0ef9](https://github.com/Aureliolo/synthorg/commit/d2c0ef91d8c9a565264bebe281a2ceaf3eee3dea)), closes [#1994](https://github.com/Aureliolo/synthorg/issues/1994)
+* **evals:** [#1980](https://github.com/Aureliolo/synthorg/issues/1980) spine -- scoring + data contract for golden-company benchmark ([#2025](https://github.com/Aureliolo/synthorg/issues/2025)) ([53108e8](https://github.com/Aureliolo/synthorg/commit/53108e8e28754a36d2a113ba86dc18676f6f0611))
+* goal/objective entry adapter ([#1964](https://github.com/Aureliolo/synthorg/issues/1964)) ([#2022](https://github.com/Aureliolo/synthorg/issues/2022)) ([cb15c3c](https://github.com/Aureliolo/synthorg/commit/cb15c3c743cd8187e5b0024f6701bf60bc4f8d68))
+* governed external API/data access tool ([#1991](https://github.com/Aureliolo/synthorg/issues/1991)) ([#2032](https://github.com/Aureliolo/synthorg/issues/2032)) ([e08b451](https://github.com/Aureliolo/synthorg/commit/e08b451ca595676d5882cb41e42f8490560bdf49))
+* harden external-remote git backend + per-project sandbox mount + push-queue dispatch ([#2020](https://github.com/Aureliolo/synthorg/issues/2020)) ([#2030](https://github.com/Aureliolo/synthorg/issues/2030)) ([2fa2e1e](https://github.com/Aureliolo/synthorg/commit/2fa2e1e355dedd4c83fd9594065231523121c2f4))
+* headless browser testing tool ([#1992](https://github.com/Aureliolo/synthorg/issues/1992)) ([#2024](https://github.com/Aureliolo/synthorg/issues/2024)) ([277b52a](https://github.com/Aureliolo/synthorg/commit/277b52afcddf15410dfc43dab5b0b79235297b51))
+* knowledge + provenance substrate ([#2036](https://github.com/Aureliolo/synthorg/issues/2036)) ([48c897b](https://github.com/Aureliolo/synthorg/commit/48c897b9cd36e150e95408bf8afc8cd6d26115dd))
+* living documentation engine (dual-purpose wiki + RAG namespace) ([#2028](https://github.com/Aureliolo/synthorg/issues/2028)) ([3d10da9](https://github.com/Aureliolo/synthorg/commit/3d10da93eac88c5cd954ab572e9d72689c8f65bd)), closes [#1976](https://github.com/Aureliolo/synthorg/issues/1976)
+* real intake engine online ([#2017](https://github.com/Aureliolo/synthorg/issues/2017)) ([9d8eb34](https://github.com/Aureliolo/synthorg/commit/9d8eb341f066bec5c3f87fa6b30c2a93e5dcfa7e))
+* **redteam:** adversarial red-team gate subsystem ([#1986](https://github.com/Aureliolo/synthorg/issues/1986)) ([#2026](https://github.com/Aureliolo/synthorg/issues/2026)) ([d2207e9](https://github.com/Aureliolo/synthorg/commit/d2207e91f62c7a07741436cc199eed6b18731354))
+* self-extending toolkit ([#1995](https://github.com/Aureliolo/synthorg/issues/1995)) ([#2035](https://github.com/Aureliolo/synthorg/issues/2035)) ([5ffc545](https://github.com/Aureliolo/synthorg/commit/5ffc545ef4fe92ee310c112e7e31f874d4e8cedb))
+* stakes-aware model routing ([#1998](https://github.com/Aureliolo/synthorg/issues/1998)) ([#2038](https://github.com/Aureliolo/synthorg/issues/2038)) ([9b98312](https://github.com/Aureliolo/synthorg/commit/9b983129637fb5882d243717067c251d76caa751))
+* task-board entry adapter to live runtime ([#1963](https://github.com/Aureliolo/synthorg/issues/1963)) ([#2023](https://github.com/Aureliolo/synthorg/issues/2023)) ([a8f1eea](https://github.com/Aureliolo/synthorg/commit/a8f1eea709127bfd3aced8c13cd79dacf73ff83c))
+* virtual desktop tool and vision verifier gate ([#2031](https://github.com/Aureliolo/synthorg/issues/2031)) ([dfe8b42](https://github.com/Aureliolo/synthorg/commit/dfe8b4279a759cdc0618e85de1afdef653f9814d)), closes [#1993](https://github.com/Aureliolo/synthorg/issues/1993)
+* **workspace:** persistent project workspace + pluggable git backend + per-project push queue ([#2021](https://github.com/Aureliolo/synthorg/issues/2021)) ([ee58ee7](https://github.com/Aureliolo/synthorg/commit/ee58ee77ecad00d23866e11a3be247f200523b34))
+
+
+### Bug Fixes
+
+* pin desktop Dockerfile by digest (Scorecard [#309](https://github.com/Aureliolo/synthorg/issues/309)) + document publish gap ([#2034](https://github.com/Aureliolo/synthorg/issues/2034)) ([8fda188](https://github.com/Aureliolo/synthorg/commit/8fda1888e8dc016c5f9914d9120e5b87fbd5cab0))
+
 ## [0.8.6](https://github.com/Aureliolo/synthorg/compare/v0.8.5...v0.8.6) (2026-05-19)
 
 
