@@ -193,33 +193,24 @@ async def _intervene_kill(
         return err(exc)
 
 
-async def _steer(
-    *,
+async def _steer_to(
     app_state: Any,
     arguments: dict[str, Any],
-    actor: AgentIdentity | None,
     kind: InterventionKind,
     tool_name: str,
 ) -> str:
-    try:
-        require_admin_guardrails(arguments, actor)
-        execution_id = require_arg(arguments, _ARG_EXECUTION_ID, str)
-        agent_id = require_arg(arguments, _ARG_AGENT_ID, str)
-        text = require_arg(arguments, _ARG_TEXT, str)
-        outcome = await app_state.steering_directive.steer(
-            kind=kind,
-            execution_id=execution_id,
-            agent_id=agent_id,
-            details={"text": text},
-        )
-        logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
-        return ok(outcome.model_dump(mode="json"))
-    except ArgumentValidationError as exc:
-        log_handler_argument_invalid(tool_name, exc)
-        return err(exc)
-    except Exception as exc:
-        log_handler_invoke_failed(tool_name, exc)
-        return err(exc)
+    """Resolve steering args and route through the steering directive."""
+    execution_id = require_arg(arguments, _ARG_EXECUTION_ID, str)
+    agent_id = require_arg(arguments, _ARG_AGENT_ID, str)
+    text = require_arg(arguments, _ARG_TEXT, str)
+    outcome = await app_state.steering_directive.steer(
+        kind=kind,
+        execution_id=execution_id,
+        agent_id=agent_id,
+        details={"text": text},
+    )
+    logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool_name)
+    return ok(outcome.model_dump(mode="json"))
 
 
 async def _intervene_hint(
@@ -228,13 +219,16 @@ async def _intervene_hint(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    return await _steer(
-        app_state=app_state,
-        arguments=arguments,
-        actor=actor,
-        kind=InterventionKind.HINT,
-        tool_name="synthorg_cockpit_intervene_hint",
-    )
+    tool_name = "synthorg_cockpit_intervene_hint"
+    try:
+        require_admin_guardrails(arguments, actor)
+        return await _steer_to(app_state, arguments, InterventionKind.HINT, tool_name)
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool_name, exc)
+        return err(exc)
+    except Exception as exc:
+        log_handler_invoke_failed(tool_name, exc)
+        return err(exc)
 
 
 async def _intervene_redirect(
@@ -243,13 +237,18 @@ async def _intervene_redirect(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    return await _steer(
-        app_state=app_state,
-        arguments=arguments,
-        actor=actor,
-        kind=InterventionKind.REDIRECT,
-        tool_name="synthorg_cockpit_intervene_redirect",
-    )
+    tool_name = "synthorg_cockpit_intervene_redirect"
+    try:
+        require_admin_guardrails(arguments, actor)
+        return await _steer_to(
+            app_state, arguments, InterventionKind.REDIRECT, tool_name
+        )
+    except ArgumentValidationError as exc:
+        log_handler_argument_invalid(tool_name, exc)
+        return err(exc)
+    except Exception as exc:
+        log_handler_invoke_failed(tool_name, exc)
+        return err(exc)
 
 
 COCKPIT_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(
