@@ -145,19 +145,23 @@ class TestDeclarationHash:
     def test_traversal_lockfile_not_read(self, tmp_path: Path, escape: str) -> None:
         # A lockfile path escaping the workspace is rejected: its bytes
         # never enter the hash, so editing the resolved escaped target is
-        # invisible. Mutate the actual resolved path so the assertion holds
-        # for every parameter, not just ``../outside_secret.txt``.
-        escaped = (tmp_path / escape).resolve()
+        # invisible. The workspace is a nested directory so the escaped
+        # target resolves inside this test's unique ``tmp_path`` rather
+        # than the shared xdist worker temp dir -- otherwise parallel
+        # tests collide on the resolved path (e.g. ``<worker>/escape``).
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        escaped = (workspace / escape).resolve()
         escaped.parent.mkdir(parents=True, exist_ok=True)
         escaped.write_text("v1", encoding="utf-8")
         strategy = _strategy()
         _write_manifest(
-            tmp_path,
+            workspace,
             f'language: python\ntest_command: "pytest"\nlockfiles: ["{escape}"]\n',
         )
-        before = strategy.declaration_hash(tmp_path)
+        before = strategy.declaration_hash(workspace)
         escaped.write_text("v2-changed", encoding="utf-8")
-        assert strategy.declaration_hash(tmp_path) == before
+        assert strategy.declaration_hash(workspace) == before
 
     def test_absolute_lockfile_not_read(self, tmp_path: Path) -> None:
         outside = tmp_path.parent / "abs_secret.txt"
