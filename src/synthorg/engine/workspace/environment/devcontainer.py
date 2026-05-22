@@ -87,11 +87,14 @@ _TRANSIENT_BUILD_MARKERS: Final[tuple[str, ...]] = (
 )
 
 
-class _TransientBuildError(Exception):
+class _TransientBuildError(EnvironmentDockerBuildError):
     """Internal retry signal for a transient image-build failure.
 
-    Never escapes the strategy: a transient failure that exhausts the
-    retry budget is re-raised as :class:`EnvironmentDockerBuildError`.
+    Subclasses :class:`EnvironmentDockerBuildError` so it stays within the
+    domain-error hierarchy; it is an internal control-flow signal that the
+    retry handler consumes and that never escapes the strategy (a transient
+    failure exhausting the retry budget is re-raised as a plain
+    :class:`EnvironmentDockerBuildError`).
     """
 
     def __init__(self, outcome: BuildOutcome) -> None:
