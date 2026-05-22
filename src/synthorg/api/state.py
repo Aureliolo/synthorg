@@ -1587,16 +1587,36 @@ class AppState(AppStateServicesMixin):
         Synchronised under ``_lazy_service_lock`` so the boot install is
         consistent against concurrent property reads. Idempotent and
         last-wins, so a transient shared-app boot or a setup-reinit can
-        re-wire without poisoning startup.
+        re-wire without poisoning startup. Emits ``transition="noop"``
+        when every incoming service is identical to its predecessor,
+        ``"attached"`` when there was no prior service, and
+        ``"replaced"`` when at least one slot is being swapped. Matches
+        the cost-dial / provider-registry swap-seam observability.
         """
         with self._lazy_service_lock:
+            had_any = (
+                self._cockpit_service is not None
+                or self._flight_recorder_service is not None
+                or self._steering_directive is not None
+            )
+            unchanged = (
+                self._cockpit_service is cockpit_service
+                and self._flight_recorder_service is flight_recorder_service
+                and self._steering_directive is steering_directive
+            )
+            if not had_any:
+                transition = "attached"
+            elif unchanged:
+                transition = "noop"
+            else:
+                transition = "replaced"
             self._cockpit_service = cockpit_service
             self._flight_recorder_service = flight_recorder_service
             self._steering_directive = steering_directive
             logger.info(
                 API_APP_STARTUP,
                 service="cockpit_services",
-                transition="attached",
+                transition=transition,
             )
 
     # ── Cost-dial services ──────────────────────────────────────────

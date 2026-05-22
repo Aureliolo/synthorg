@@ -6,9 +6,14 @@ persistence backend; the no-op sink discards frames. Recording is
 best-effort: a failing sink logs and never propagates into the engine.
 """
 
-from typing import Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from pydantic import AwareDatetime  # noqa: TC002 -- runtime annotation
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from synthorg.providers.models import ChatMessage
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import TaskStatus
@@ -61,31 +66,40 @@ class PersistenceFlightRecorderSink:
         self._repository = repository
 
     async def record_frames(self, frames: tuple[FlightRecorderFrame, ...]) -> None:
-        """Append each frame; a failure on one frame is logged, not raised.
+        """Persist the run's frames as one batch; a failure logs, not raises.
 
         Recording runs after the agent loop has finished, so it is off
         the per-turn hot path; guarding here keeps a transient storage
-        fault from turning a successful run into a failed one.
+        fault from turning a successful run into a failed one. The
+        batch lands in a single transaction (``append_many``), so a
+        partial finalise is not observable -- either every frame is
+        persisted or none are.
         """
-        recorded = 0
-        for frame in frames:
-            try:
-                await self._repository.append(frame)
-                recorded += 1
-            except Exception as exc:
-                logger.warning(
-                    FLIGHT_RECORDER_RECORD_FAILED,
-                    execution_id=frame.execution_id,
-                    turn_index=frame.turn_index,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-        if recorded:
-            logger.debug(
-                FLIGHT_RECORDER_FRAME_RECORDED,
+        if not frames:
+            return
+        try:
+            await self._repository.append_many(frames)
+        except MemoryError, RecursionError:
+            # System errors escape the broad ``Exception`` catch below so
+            # the engine still gets the operator-fatal signal it expects
+            # at the per-turn boundary. The recording path is best-effort
+            # for storage faults only.
+            raise
+        except Exception as exc:
+            logger.warning(
+                FLIGHT_RECORDER_RECORD_FAILED,
                 execution_id=frames[0].execution_id,
-                count=recorded,
+                turn_index=frames[0].turn_index,
+                batch_size=len(frames),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
+            return
+        logger.debug(
+            FLIGHT_RECORDER_FRAME_RECORDED,
+            execution_id=frames[0].execution_id,
+            count=len(frames),
+        )
 
 
 class NoOpFlightRecorderSink:
@@ -141,8 +155,13 @@ def build_frames(  # noqa: PLR0913 -- keyword-only frame builder, all required
     """Build one frame per turn from a finished run's execution result.
 
     Response content is taken from the assistant messages in the final
-    conversation, paired with turns in order. The terminal turn carries
-    the run's outcome status; earlier turns are ``IN_PROGRESS``.
+    conversation. Pairing is by ``turn.turn_number - 1`` (1-based turn
+    index into the 0-based assistant-message list) so a *resumed* run --
+    where ``execution_result.turns`` carries only the new turns while
+    ``execution_result.context.conversation`` holds the full history --
+    still correlates each turn with its actual assistant message instead
+    of the first one in the full history. The terminal turn carries the
+    run's outcome status; earlier turns are ``IN_PROGRESS``.
     """
     timestamp = (clock or SystemClock()).now()
     assistant_messages = [
@@ -161,17 +180,30 @@ def build_frames(  # noqa: PLR0913 -- keyword-only frame builder, all required
             execution_id=execution_id,
             agent_id=agent_id,
             task_id=task_id,
-            response=(
-                assistant_messages[index].content
-                if index < len(assistant_messages)
-                else None
-            ),
+            response=_response_for_turn(turn, assistant_messages),
             status=terminal_status if index == last_index else TaskStatus.IN_PROGRESS,
             timestamp=timestamp,
             summary_max_chars=summary_max_chars,
         )
         for index, turn in enumerate(execution_result.turns)
     )
+
+
+def _response_for_turn(
+    turn: TurnRecord, assistant_messages: Sequence[ChatMessage]
+) -> str | None:
+    """Pick the assistant message at ``turn.turn_number - 1`` (or None).
+
+    A resumed run's ``turn_number`` is 1-based against the full history,
+    so subtracting one indexes into the assistant-message list correctly
+    whether the run started fresh or resumed from a checkpoint. An
+    out-of-range index (e.g. the conversation never recorded an
+    assistant turn for that index) returns ``None`` rather than raising.
+    """
+    msg_index = turn.turn_number - 1
+    if 0 <= msg_index < len(assistant_messages):
+        return assistant_messages[msg_index].content
+    return None
 
 
 def _frame_for_turn(  # noqa: PLR0913 -- per-turn frame fields, all required

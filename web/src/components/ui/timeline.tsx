@@ -37,12 +37,16 @@ export function Timeline({
 
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>): void {
     if (frames.length === 0) return
+    // Clamp ``currentIndex`` into ``[0, lastIndex]`` BEFORE deriving any
+    // next target so a stale prop (e.g. after the frames array shrank
+    // out from under us) cannot produce an out-of-range seek target.
+    const clampedCurrent = Math.min(lastIndex, Math.max(0, currentIndex))
     if (event.key === 'ArrowRight') {
       event.preventDefault()
-      onSeek(Math.min(lastIndex, currentIndex + 1))
+      onSeek(Math.min(lastIndex, clampedCurrent + 1))
     } else if (event.key === 'ArrowLeft') {
       event.preventDefault()
-      onSeek(Math.max(0, currentIndex - 1))
+      onSeek(Math.max(0, clampedCurrent - 1))
     } else if (event.key === 'Home') {
       event.preventDefault()
       onSeek(0)

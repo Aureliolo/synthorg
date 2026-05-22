@@ -5486,14 +5486,6 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
-        /** ApiResponse[FlightRecorderFramesResponse] */
-        readonly ApiResponse_FlightRecorderFramesResponse_: {
-            readonly data: components["schemas"]["FlightRecorderFramesResponse"] | null;
-            readonly error: string | null;
-            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
-            /** @description Whether the request succeeded (derived from ``error``). */
-            readonly success: boolean;
-        };
         /** ApiResponse[ForecastResponse] */
         readonly ApiResponse_ForecastResponse_: {
             readonly data: components["schemas"]["ForecastResponse"] | null;
@@ -8741,16 +8733,6 @@ export type components = {
             /** @description 1-based turn index within the run */
             readonly turn_index: number;
         };
-        /** FlightRecorderFramesResponse */
-        readonly FlightRecorderFramesResponse: {
-            /** @description Execution the frames belong to */
-            readonly execution_id: string;
-            /**
-             * @description Frames newest-first
-             * @default []
-             */
-            readonly frames: readonly components["schemas"]["FlightRecorderFrame"][];
-        };
         /** Forecast */
         readonly Forecast: {
             /** @description SHA-256 hex digest of canonical brief JSON */
@@ -10137,6 +10119,21 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** PaginatedResponse[FlightRecorderFrame] */
+        readonly PaginatedResponse_FlightRecorderFrame_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["FlightRecorderFrame"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[HealthReport] */
         readonly PaginatedResponse_HealthReport_: {
             /** @default [] */
@@ -11408,7 +11405,7 @@ export type components = {
         /** ReplaySeekView */
         readonly ReplaySeekView: {
             /**
-             * @description Summed cost of frames up to and including turn_index
+             * @description Summed cost across every turn up to and including ``turn_index``; uses an unbounded SQL aggregate so it stays accurate when ``frames`` is windowed
              * @default 0
              */
             readonly cumulative_cost: number;
@@ -11417,10 +11414,15 @@ export type components = {
             /** @description Execution being replayed */
             readonly execution_id: string;
             /**
-             * @description Frames 1..turn_index, ascending
+             * @description Frames ascending up to ``turn_index``; windowed to the most recent ``_MAX_SEEK_FRAMES`` turns when ``truncated`` is True
              * @default []
              */
             readonly frames: readonly components["schemas"]["FlightRecorderFrame"][];
+            /**
+             * @description True when the run exceeded ``_MAX_SEEK_FRAMES`` and the returned ``frames`` are a windowed tail rather than the full prefix; callers should surface this to operators so a partial scrubber reconstruction is never silent
+             * @default false
+             */
+            readonly truncated: boolean;
             /** @description Target turn index */
             readonly turn_index: number;
         };
@@ -16821,8 +16823,10 @@ export interface operations {
     readonly ApiV1CockpitFlightRecorderExecutionIdFramesGetFrames: {
         readonly parameters: {
             readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
-                readonly offset?: number;
             };
             readonly header?: never;
             readonly path: {
@@ -16839,7 +16843,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["ApiResponse_FlightRecorderFramesResponse_"];
+                    readonly "application/json": components["schemas"]["PaginatedResponse_FlightRecorderFrame_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];
@@ -16857,6 +16861,7 @@ export interface operations {
             readonly path: {
                 /** @description Resource identifier */
                 readonly execution_id: string;
+                /** @description Target turn index (1-based) */
                 readonly turn_index: number;
             };
             readonly cookie?: never;

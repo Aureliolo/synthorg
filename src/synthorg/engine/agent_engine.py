@@ -33,11 +33,12 @@ from synthorg.engine.loop_protocol import make_budget_checker
 from synthorg.engine.loop_selector import AutoLoopConfig  # noqa: TC001
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.engine.run_result import AgentRunResult  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.correlation import correlation_scope
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_LOOP_WIRING_WARNING,
 )
+from synthorg.observability.events.cockpit import FLIGHT_RECORDER_RECORD_FAILED
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_CREATED,
     EXECUTION_ENGINE_ERROR,
@@ -671,19 +672,35 @@ class AgentEngine(
         """Record flight-recorder frames for a finished run (best-effort).
 
         Runs after the loop has completed, so it is off the per-turn hot
-        path; the sink itself swallows storage faults so a recording
-        failure never turns a successful run into a failed one.
+        path. Both frame construction and recording are guarded here so
+        a fault in ``build_frames`` (e.g. malformed conversation history,
+        Pydantic validation regression) cannot turn a successful run
+        into a failed one any more than a sink fault can. System errors
+        still escape so the operator sees them; storage / construction
+        faults log and return.
         """
         if self._flight_recorder_sink is None:
             return
         from synthorg.engine.flight_recording import build_frames  # noqa: PLC0415
 
-        frames = build_frames(
-            execution_result,
-            execution_id=execution_result.context.execution_id,
-            agent_id=agent_id,
-            task_id=task_id,
-            clock=self._clock,
-        )
-        if frames:
-            await self._flight_recorder_sink.record_frames(frames)
+        try:
+            frames = build_frames(
+                execution_result,
+                execution_id=execution_result.context.execution_id,
+                agent_id=agent_id,
+                task_id=task_id,
+                clock=self._clock,
+            )
+            if frames:
+                await self._flight_recorder_sink.record_frames(frames)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                FLIGHT_RECORDER_RECORD_FAILED,
+                execution_id=execution_result.context.execution_id,
+                agent_id=agent_id,
+                task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )

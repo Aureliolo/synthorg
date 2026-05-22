@@ -81,9 +81,13 @@ class TestCockpitController:
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["data"]["execution_id"] == "exec-frames"
-        turns = [f["turn_index"] for f in body["data"]["frames"]]
+        # ``getFlightRecorderFrames`` now uses opaque cursor pagination,
+        # so the envelope is ``PaginatedResponse`` (``data`` is the page,
+        # ``pagination`` carries cursor + has_more).
+        turns = [f["turn_index"] for f in body["data"]]
         assert turns == [2, 1]
+        assert body["pagination"]["has_more"] is False
+        assert body["pagination"]["next_cursor"] is None
 
     def test_seek_reconstructs_prefix(
         self,

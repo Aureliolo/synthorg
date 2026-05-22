@@ -21,6 +21,7 @@ from synthorg.communication.event_stream.interrupt import (
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import InterventionKind
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
 
 if TYPE_CHECKING:
@@ -110,6 +111,11 @@ class SafeDefaultSteeringDirective:
                 applied=False,
                 detail="no directive text supplied",
             )
+        # SEC-1: the operator types this text into the mission-control
+        # UI and it flows into the running agent's interrupt queue, so
+        # it is untrusted content from the model's perspective and must
+        # be wrapped before being persisted to the queued artefact.
+        safe_text = wrap_untrusted(TAG_TASK_DATA, text)
         interrupt = Interrupt(
             id=NotBlankStr(str(uuid4())),
             type=InterruptType.INFO_REQUEST,
@@ -117,7 +123,7 @@ class SafeDefaultSteeringDirective:
             agent_id=NotBlankStr(agent_id),
             created_at=self._clock.now(),
             timeout_seconds=DEFAULT_STEERING_TIMEOUT_SECONDS,
-            question=NotBlankStr(text),
+            question=NotBlankStr(safe_text),
             context_snippet=NotBlankStr(f"Operator {kind.value} via mission control"),
         )
         await self._interrupt_store.create(interrupt)

@@ -160,3 +160,87 @@ class TestFlightRecorderFrameRepository:
             FlightRecorderFrameFilterSpec(execution_id=NotBlankStr("exec-001")),
         )
         assert [f.id for f in page] == ["new"]
+
+    async def test_append_many_batches_atomically(
+        self, backend: PersistenceBackend
+    ) -> None:
+        frames = (
+            _frame(frame_id="b-1", turn_index=1),
+            _frame(frame_id="b-2", turn_index=2),
+            _frame(frame_id="b-3", turn_index=3),
+        )
+        await backend.flight_recorder_frames.append_many(frames)
+        page = await backend.flight_recorder_frames.query(
+            FlightRecorderFrameFilterSpec(execution_id=NotBlankStr("exec-001")),
+        )
+        assert {f.id for f in page} == {"b-1", "b-2", "b-3"}
+
+    async def test_append_many_empty_is_noop(self, backend: PersistenceBackend) -> None:
+        await backend.flight_recorder_frames.append_many(())
+        page = await backend.flight_recorder_frames.query(
+            FlightRecorderFrameFilterSpec(execution_id=NotBlankStr("exec-001")),
+        )
+        assert page == ()
+
+    async def test_append_many_duplicate_rolls_back(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # Pre-seed one frame, then attempt a batch that collides on id.
+        await backend.flight_recorder_frames.append(
+            _frame(frame_id="seed", turn_index=1),
+        )
+        with pytest.raises(DuplicateRecordError):
+            await backend.flight_recorder_frames.append_many(
+                (
+                    _frame(frame_id="new-1", turn_index=2),
+                    _frame(frame_id="seed", turn_index=3),  # duplicate id
+                ),
+            )
+        # Rollback: neither ``new-1`` nor ``seed``'s replacement made it in.
+        page = await backend.flight_recorder_frames.query(
+            FlightRecorderFrameFilterSpec(execution_id=NotBlankStr("exec-001")),
+        )
+        assert {f.id for f in page} == {"seed"}
+
+    async def test_unique_execution_turn_blocks_duplicate_turn(
+        self, backend: PersistenceBackend
+    ) -> None:
+        # Two frames with different ids but the same (execution_id, turn_index)
+        # must be rejected; the UNIQUE index guarantees a deterministic
+        # ``seek(turn N)`` reconstruction.
+        await backend.flight_recorder_frames.append(_frame(frame_id="t1", turn_index=5))
+        with pytest.raises(DuplicateRecordError):
+            await backend.flight_recorder_frames.append(
+                _frame(frame_id="t1-dup", turn_index=5),
+            )
+
+    async def test_get_aggregate_sums_cost_and_picks_latest(
+        self, backend: PersistenceBackend
+    ) -> None:
+        now = datetime.now(UTC)
+        for turn, cost in ((1, 0.5), (2, 1.0), (3, 1.5)):
+            await backend.flight_recorder_frames.append(
+                _frame(
+                    frame_id=f"a-{turn}",
+                    turn_index=turn,
+                    timestamp=now + timedelta(seconds=turn),
+                ).model_copy(update={"cost": cost}),
+            )
+        aggregate = await backend.flight_recorder_frames.get_aggregate(
+            FlightRecorderFrameFilterSpec(task_id=NotBlankStr("task-001")),
+        )
+        assert aggregate.total_cost == pytest.approx(3.0)
+        assert aggregate.max_turn_index == 3
+        assert aggregate.latest_execution_id == "exec-001"
+        assert aggregate.latest_timestamp is not None
+
+    async def test_get_aggregate_empty_set_returns_zeros(
+        self, backend: PersistenceBackend
+    ) -> None:
+        aggregate = await backend.flight_recorder_frames.get_aggregate(
+            FlightRecorderFrameFilterSpec(task_id=NotBlankStr("does-not-exist")),
+        )
+        assert aggregate.total_cost == 0.0
+        assert aggregate.max_turn_index == 0
+        assert aggregate.latest_timestamp is None
+        assert aggregate.latest_execution_id is None

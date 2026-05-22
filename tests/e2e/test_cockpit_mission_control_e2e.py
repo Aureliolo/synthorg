@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from synthorg.communication.event_stream.interrupt import InterruptStore, InterruptType
-from synthorg.core.enums import InterventionKind, TaskStatus
+from synthorg.core.enums import InterventionKind, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit import CockpitService
@@ -65,8 +65,17 @@ async def test_detect_stuck_intervene_then_replay() -> None:
     )
 
     # 2. The cockpit live snapshot flags the agent as stuck.
-    stuck_task = mock_of[Task](
+    # ``Task`` is a frozen Pydantic model, not a Protocol, so we
+    # construct it directly. ``mock_of[Task]`` would fail because
+    # Pydantic v2 field descriptors are not exposed as ``dir()``
+    # attributes that ``create_autospec`` can introspect.
+    stuck_task = Task(
         id=NotBlankStr(_TASK),
+        title=NotBlankStr("Stuck investigation"),
+        description=NotBlankStr("Reproduce the runaway agent scenario."),
+        type=TaskType.DEVELOPMENT,
+        project=NotBlankStr("mission-control-e2e"),
+        created_by=NotBlankStr("operator"),
         assigned_to=NotBlankStr("agent-1"),
         status=TaskStatus.IN_PROGRESS,
         budget_limit=0.0,

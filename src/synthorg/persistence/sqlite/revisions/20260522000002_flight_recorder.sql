@@ -17,7 +17,10 @@ CREATE TABLE flight_recorder_frames (
     intervention_kind TEXT
 );
 
-CREATE INDEX idx_frf_execution_turn
+-- UNIQUE so seek/replay is deterministic: (execution_id, turn_index)
+-- identifies one turn per run, ruling out duplicate inserts that would
+-- make ``seek(turn N)`` ambiguous and the scrubber timeline wobble.
+CREATE UNIQUE INDEX idx_frf_execution_turn
     ON flight_recorder_frames(execution_id, turn_index);
 CREATE INDEX idx_frf_task_id ON flight_recorder_frames(task_id);
 CREATE INDEX idx_frf_agent_id ON flight_recorder_frames(agent_id);

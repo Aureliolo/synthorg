@@ -1,13 +1,18 @@
 import type {
-  FlightRecorderFramesResponse,
+  FlightRecorderFrame,
   LiveActivitySnapshot,
   ReplaySeekView,
   SteeringOutcome,
   Task,
 } from '@/api/types'
 
-import { apiClient, unwrap } from '../client'
-import type { ApiResponse } from '../types/http'
+import {
+  apiClient,
+  unwrap,
+  unwrapPaginated,
+  type PaginatedResult,
+} from '../client'
+import type { ApiResponse, PaginatedResponse, PaginationParams } from '../types/http'
 
 /** Fetch the live org-activity snapshot (who/what + stuck/runaway). */
 export async function getCockpitSnapshot(): Promise<LiveActivitySnapshot> {
@@ -16,16 +21,23 @@ export async function getCockpitSnapshot(): Promise<LiveActivitySnapshot> {
   return unwrap(response)
 }
 
-/** Fetch a page of flight-recorder frames (newest-first) for an execution. */
+/**
+ * Fetch a page of flight-recorder frames (newest-first) for an execution.
+ *
+ * Uses opaque cursor pagination per the web dashboard's mandatory contract.
+ * The returned envelope carries ``data`` (the frame page) and ``pagination``
+ * (cursor + has_more) so callers can walk subsequent pages without
+ * tracking offset arithmetic themselves.
+ */
 export async function getFlightRecorderFrames(
   executionId: string,
-  params?: { limit?: number; offset?: number },
-): Promise<FlightRecorderFramesResponse> {
-  const response = await apiClient.get<ApiResponse<FlightRecorderFramesResponse>>(
+  params?: PaginationParams,
+): Promise<PaginatedResult<FlightRecorderFrame>> {
+  const response = await apiClient.get<PaginatedResponse<FlightRecorderFrame>>(
     `/cockpit/flight-recorder/${encodeURIComponent(executionId)}/frames`,
     { params },
   )
-  return unwrap(response)
+  return unwrapPaginated<FlightRecorderFrame>(response)
 }
 
 /** Reconstruct scrubber state at a target turn. */

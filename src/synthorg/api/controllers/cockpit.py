@@ -6,30 +6,33 @@ properties) until the cockpit services are wired after persistence
 connects. Interventions are audit-logged via ``cockpit.intervention.*``.
 """
 
-from typing import Final
+from typing import Annotated, Final
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.cursor import decode_cursor
+from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.pagination import CursorLimit, CursorParam, encode_countless_seek_meta
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import InterventionKind, TaskStatus
 from synthorg.core.task import Task  # noqa: TC001 -- response field type
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.cockpit import LiveActivitySnapshot  # noqa: TC001
 from synthorg.engine.flight_recording import ReplaySeekView  # noqa: TC001
 from synthorg.engine.intervention import SteeringOutcome  # noqa: TC001
+from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
 from synthorg.observability.events.cockpit import (
     COCKPIT_INTERVENTION_APPLIED,
     COCKPIT_INTERVENTION_INITIATED,
 )
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.flight_recorder_protocol import (
-    FlightRecorderFrame,  # noqa: TC001 -- response field type
+    FlightRecorderFrame,
 )
 
 logger = get_logger(__name__)
@@ -37,17 +40,14 @@ logger = get_logger(__name__)
 _OPERATOR: Final[str] = "mission-control"
 _COCKPIT_NS: Final[str] = "cockpit"
 
-
-class FlightRecorderFramesResponse(BaseModel):
-    """A page of flight-recorder frames for an execution."""
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    execution_id: NotBlankStr = Field(description="Execution the frames belong to")
-    frames: tuple[FlightRecorderFrame, ...] = Field(
-        default=(),
-        description="Frames newest-first",
-    )
+#: Litestar-validated annotated form for the ``turn_index`` path param so
+#: a negative value is rejected at request parsing instead of leaking
+#: into the repository as an invalid filter bound. ``ge=1`` matches the
+#: ``FlightRecorderFrame.turn_index`` invariant.
+TurnIndexPath = Annotated[
+    int,
+    Parameter(ge=1, description="Target turn index (1-based)"),
+]
 
 
 class PauseInterventionRequest(BaseModel):
@@ -107,29 +107,45 @@ class CockpitController(Controller):
         self,
         state: State,
         execution_id: PathId,
-        limit: int = DEFAULT_PAGE_SIZE,
-        offset: int = 0,
-    ) -> ApiResponse[FlightRecorderFramesResponse]:
-        """Return the flight-recorder scrubber timeline (newest-first)."""
+        cursor: CursorParam = None,
+        limit: CursorLimit = DEFAULT_LIMIT,
+    ) -> PaginatedResponse[FlightRecorderFrame]:
+        """Return the flight-recorder scrubber timeline (newest-first, paginated).
+
+        Uses opaque cursor pagination (``cursor`` + ``limit``) per the
+        web dashboard's MANDATORY pagination contract; offset-based
+        paging is gone. The underlying repo still slices on offset
+        internally, but the cursor is HMAC-signed so the client treats
+        it as opaque.
+        """
         app_state: AppState = state.app_state
+        offset = (
+            0
+            if cursor is None
+            else decode_cursor(cursor, secret=app_state.cursor_secret)
+        )
+        # Fetch ``limit + 1`` so we can detect that another page follows
+        # without paying a separate COUNT round-trip on the frames table.
         frames = await app_state.flight_recorder_service.get_frames(
             execution_id,
-            limit=limit,
+            limit=limit + 1,
             offset=offset,
         )
-        return ApiResponse(
-            data=FlightRecorderFramesResponse(
-                execution_id=NotBlankStr(execution_id),
-                frames=frames,
-            ),
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(frames),
+            limit=limit,
+            secret=app_state.cursor_secret,
         )
+        window = tuple(frames[:limit])
+        return PaginatedResponse[FlightRecorderFrame](data=window, pagination=meta)
 
     @get("/flight-recorder/{execution_id:str}/seek/{turn_index:int}")
     async def seek_frame(
         self,
         state: State,
         execution_id: PathId,
-        turn_index: int,
+        turn_index: TurnIndexPath,
     ) -> ApiResponse[ReplaySeekView]:
         """Reconstruct scrubber state at a target turn."""
         app_state: AppState = state.app_state
@@ -211,7 +227,17 @@ class CockpitController(Controller):
         kind: InterventionKind,
         data: SteerInterventionRequest,
     ) -> ApiResponse[SteeringOutcome]:
-        """Route a hint/redirect through the steering directive."""
+        """Route a hint/redirect through the steering directive.
+
+        Wraps the operator-supplied text via :func:`wrap_untrusted` at
+        the controller boundary (SEC-1): the agent will read this text
+        as untrusted content the next time it consumes interrupts, so
+        the boundary must apply the prompt-safety envelope before the
+        directive persists it. The directive applies its own wrap on
+        the persisted question for defence-in-depth; double-wrapping is
+        safe because the safety envelope is idempotent on already-tagged
+        content.
+        """
         app_state: AppState = state.app_state
         logger.info(
             COCKPIT_INTERVENTION_INITIATED,
@@ -223,7 +249,7 @@ class CockpitController(Controller):
             kind=kind,
             execution_id=data.execution_id,
             agent_id=data.agent_id,
-            details={"text": data.text},
+            details={"text": wrap_untrusted(TAG_TASK_DATA, data.text)},
         )
         logger.info(
             COCKPIT_INTERVENTION_APPLIED,

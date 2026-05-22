@@ -6,6 +6,7 @@ from operator-tuned thresholds. Activity and idle time come from the
 flight-recorder frames; cost comes from the cost tracker when wired.
 """
 
+import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING, Final
 
@@ -45,10 +46,6 @@ _ACTIVE_STATUSES: Final[tuple[TaskStatus, ...]] = (
 def _sum_costs(costs: Iterable[float]) -> float:
     """Sum costs known to share one budget currency by construction."""
     return sum(costs)  # lint-allow: currency-aggregation -- single budget
-
-
-#: Bounded page when summing cost from frames without a cost tracker.
-_FRAME_COST_PAGE: Final[int] = 1000
 
 
 class AgentActivity(BaseModel):
@@ -119,7 +116,10 @@ class CockpitService:
 
         Thresholds are passed in (resolved by the controller at request
         time) so the service stays pure and free of a settings-resolver
-        dependency at wire time.
+        dependency at wire time. Per-task activity rows fan out across
+        an ``asyncio.TaskGroup`` so snapshot latency stays bounded by
+        the slowest single ``get_aggregate`` round-trip rather than
+        scaling linearly with the active-task count.
         """
         runaway_pct = runaway_cost_percent
         now = self._clock.now()
@@ -128,12 +128,16 @@ class CockpitService:
         activities: list[AgentActivity] = []
         for status in _ACTIVE_STATUSES:
             tasks, _ = await self._task_engine.list_tasks(status=status)
-            activities.extend(
-                [
-                    await self._build_activity(task, stuck_cutoff, runaway_pct)
+            if not tasks:
+                continue
+            async with asyncio.TaskGroup() as tg:
+                handles = [
+                    tg.create_task(
+                        self._build_activity(task, stuck_cutoff, runaway_pct)
+                    )
                     for task in tasks
                 ]
-            )
+            activities.extend(handle.result() for handle in handles)
 
         stuck = tuple(NotBlankStr(a.agent_id) for a in activities if a.is_stuck)
         runaway = tuple(NotBlankStr(a.agent_id) for a in activities if a.is_runaway)
@@ -163,17 +167,23 @@ class CockpitService:
         stuck_cutoff: AwareDatetime,
         runaway_pct: float,
     ) -> AgentActivity:
-        """Derive one task's activity row from frames + cost tracker."""
+        """Derive one task's activity row from the frame aggregate.
+
+        Backed by a single ``get_aggregate`` round-trip so cost / turn
+        count / last-active timestamp come from the whole frame history
+        instead of a bounded page; this both avoids the N+1 query
+        pattern across active tasks and prevents the cost number from
+        capping at the page-size window when a run produces more turns
+        than fit in one page.
+        """
         agent_id = task.assigned_to or "unassigned"
-        frames = await self._frames.query(
+        aggregate = await self._frames.get_aggregate(
             FlightRecorderFrameFilterSpec(task_id=NotBlankStr(task.id)),
-            limit=_FRAME_COST_PAGE,
         )
-        latest = frames[0] if frames else None
-        turn_count = latest.turn_index if latest is not None else 0
-        last_active = latest.timestamp if latest is not None else None
-        execution_id = latest.execution_id if latest is not None else None
-        cost = _sum_costs(frame.cost for frame in frames)
+        turn_count = aggregate.max_turn_index
+        last_active = aggregate.latest_timestamp
+        execution_id = aggregate.latest_execution_id
+        cost = aggregate.total_cost
         is_stuck = last_active is not None and last_active < stuck_cutoff
         is_runaway = task.budget_limit > 0 and cost > task.budget_limit * (
             runaway_pct / _PERCENT_DIVISOR

@@ -141,6 +141,7 @@ export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'coordination',
   'objectives',
   'observability',
+  'cockpit',
   'telemetry',
   'backup',
   'engine',

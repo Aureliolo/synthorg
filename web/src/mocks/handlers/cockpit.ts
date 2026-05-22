@@ -11,7 +11,7 @@ import type {
 } from '@/api/endpoints/cockpit'
 
 import { buildTask } from './tasks'
-import { successFor } from './helpers'
+import { paginatedFor, successFor } from './helpers'
 
 export const cockpitHandlers = [
   http.get('/api/v1/cockpit/snapshot', () =>
@@ -58,9 +58,16 @@ export const cockpitHandlers = [
       intervention_kind: null,
     }))
     return HttpResponse.json(
-      successFor<typeof getFlightRecorderFrames>({
-        execution_id: execId,
-        frames,
+      paginatedFor<typeof getFlightRecorderFrames>({
+        data: frames,
+        limit: 50,
+        nextCursor: null,
+        hasMore: false,
+        pagination: {
+          limit: 50,
+          next_cursor: null,
+          has_more: false,
+        },
       }),
     )
   }),
@@ -74,6 +81,7 @@ export const cockpitHandlers = [
           frames: [],
           current_frame: null,
           cumulative_cost: 0,
+          truncated: false,
         }),
       ),
   ),

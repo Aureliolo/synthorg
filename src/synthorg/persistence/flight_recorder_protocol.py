@@ -22,6 +22,7 @@ from synthorg.persistence._generics import DEFAULT_PAGE_SIZE, AppendOnlyReposito
 
 __all__ = [
     "FlightRecorderFrame",
+    "FlightRecorderFrameAggregate",
     "FlightRecorderFrameFilterSpec",
     "FlightRecorderFrameRepository",
 ]
@@ -109,6 +110,48 @@ class FlightRecorderFrameFilterSpec(BaseModel):
     )
 
 
+class FlightRecorderFrameAggregate(BaseModel):
+    """Aggregate stats over a filtered frame set, computed in one query.
+
+    ``latest_timestamp`` and ``latest_execution_id`` come from the same
+    row (the one with the maximum ``turn_index`` under the filter, with
+    timestamp as a tiebreaker) so callers can identify the most recent
+    activity in a single round-trip. ``total_cost`` and
+    ``max_turn_index`` are SQL aggregates over the entire filtered set,
+    not just the rows that fit in a page.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    total_cost: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Sum of cost across all matching frames",
+    )
+    max_turn_index: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Maximum ``turn_index`` across matching frames; 0 when the"
+            " filter matches no rows"
+        ),
+    )
+    latest_timestamp: AwareDatetime | None = Field(
+        default=None,
+        description=(
+            "Timestamp of the latest matching frame, ordered by"
+            " (turn_index DESC, timestamp DESC); ``None`` when empty"
+        ),
+    )
+    latest_execution_id: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Execution id of the latest matching frame, ordered by"
+            " (turn_index DESC, timestamp DESC); ``None`` when empty"
+        ),
+    )
+
+
 @runtime_checkable
 class FlightRecorderFrameRepository(
     AppendOnlyRepository["FlightRecorderFrame", FlightRecorderFrameFilterSpec],
@@ -118,12 +161,30 @@ class FlightRecorderFrameRepository(
 
     Composes :class:`AppendOnlyRepository`: ``append`` writes one
     immutable frame, ``query`` returns frames newest-first under a
-    filter, and ``purge_before`` enforces retention. No bespoke methods;
-    the cockpit reconstructs ascending turn order in the service layer.
+    filter, and ``purge_before`` enforces retention. ``append_many`` and
+    ``get_aggregate`` are bespoke methods admitted under
+    `ADR-0001 D7 <../decisions/0001-repository-protocol-consolidation.md>`_
+    as real perf optimisations: batched-frame finalisation avoids N
+    one-row transactions on every run, and the cockpit dashboard needs
+    a single-query aggregate to avoid N+1 query patterns when summarising
+    activity across many in-flight tasks.
     """
 
-    async def append(self, frame: FlightRecorderFrame) -> None:
+    async def append(  # pyright: ignore[reportIncompatibleMethodOverride] -- domain-specific param name
+        self, frame: FlightRecorderFrame
+    ) -> None:
         """Persist one frame (append-only; a duplicate id is a violation)."""
+        ...
+
+    async def append_many(self, frames: tuple[FlightRecorderFrame, ...]) -> None:
+        """Persist a batch of frames in one transaction.
+
+        A duplicate id anywhere in the batch raises
+        ``DuplicateRecordError`` and rolls the entire batch back so the
+        store never reflects a partial finalise; on any other backend
+        error the batch is rolled back and ``QueryError`` is raised.
+        An empty tuple is a no-op.
+        """
         ...
 
     async def query(
@@ -136,6 +197,28 @@ class FlightRecorderFrameRepository(
         """Return frames matching the filter, newest-first (by turn index)."""
         ...
 
-    async def purge_before(self, threshold: datetime) -> int:
-        """Delete frames with ``timestamp < threshold``. Returns rows removed."""
+    async def get_aggregate(
+        self,
+        filter_spec: FlightRecorderFrameFilterSpec,
+    ) -> FlightRecorderFrameAggregate:
+        """Return aggregate stats for matching frames in one query.
+
+        The aggregate is unbounded by pagination; ``total_cost`` and
+        ``max_turn_index`` cover every matching row, so consumers can
+        compute cumulative cost or latest turn without paging through
+        the table. ``latest_timestamp`` and ``latest_execution_id`` are
+        taken from the single most-recent row (by turn_index then
+        timestamp). An empty match returns an all-zero / all-``None``
+        aggregate.
+        """
+        ...
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        """Delete frames with ``timestamp < threshold``. Returns rows removed.
+
+        ``threshold`` must be timezone-aware (an ``AwareDatetime``);
+        passing a naive value is a contract violation and is rejected
+        at the persistence boundary so the cut-off cannot drift with
+        the session timezone.
+        """
         ...

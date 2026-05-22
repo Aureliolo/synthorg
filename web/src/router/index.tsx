@@ -167,7 +167,7 @@ export const router = createBrowserRouter([
               { path: 'workflows/:id/versions', element: <WorkflowVersionsPage /> },
               { path: 'subworkflows', element: <SubworkflowsPage /> },
               { path: 'integrations/webhooks/receipts', element: <WebhookReceiptsPage /> },
-              { path: 'mission-control', element: <MissionControlPage /> },
+              { path: ROUTES.MISSION_CONTROL.slice(1), element: <MissionControlPage /> },
               { path: 'analytics/coordination', element: <CoordinationMetricsPage /> },
               { path: 'analytics/meta', element: <MetaAnalyticsPage /> },
               { path: 'admin/personalities', element: <PersonalitiesAdminPage /> },

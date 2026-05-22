@@ -6,6 +6,8 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
+from pydantic import AwareDatetime
+
 from synthorg.budget.cost_record import CostRecord
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message
@@ -34,6 +36,7 @@ from synthorg.hr.performance.models import (
 )
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
+    FlightRecorderFrameAggregate,
     FlightRecorderFrameFilterSpec,
 )
 from synthorg.persistence.preset_protocol import Preset
@@ -524,7 +527,48 @@ class FakeFlightRecorderFrameRepository:
         if frame.id in self._frames:
             msg = f"Flight recorder frame {frame.id!r} already exists"
             raise DuplicateRecordError(msg)
+        # Mirror the backend ``UNIQUE (execution_id, turn_index)`` index so
+        # the fake catches duplicate-turn writes the same way real backends do.
+        for existing in self._frames.values():
+            if (
+                existing.execution_id == frame.execution_id
+                and existing.turn_index == frame.turn_index
+            ):
+                msg = (
+                    f"Flight recorder frame for execution {frame.execution_id!r}"
+                    f" turn {frame.turn_index} already exists"
+                )
+                raise DuplicateRecordError(msg)
         self._frames[frame.id] = frame
+
+    async def append_many(self, frames: tuple[FlightRecorderFrame, ...]) -> None:
+        # Atomic batch: validate every frame first, then commit; on conflict
+        # the in-memory state is unchanged so the fake matches the backend
+        # rollback semantics on ``UNIQUE`` collisions.
+        if not frames:
+            return
+        seen_ids: set[str] = set()
+        seen_turns: set[tuple[str, int]] = set()
+        for frame in frames:
+            if frame.id in self._frames or frame.id in seen_ids:
+                msg = f"Flight recorder frame {frame.id!r} already exists"
+                raise DuplicateRecordError(msg)
+            key = (frame.execution_id, frame.turn_index)
+            existing_clash = any(
+                existing.execution_id == frame.execution_id
+                and existing.turn_index == frame.turn_index
+                for existing in self._frames.values()
+            )
+            if existing_clash or key in seen_turns:
+                msg = (
+                    f"Flight recorder batch ({len(frames)} frames) failed:"
+                    " duplicate id or (execution_id, turn_index)"
+                )
+                raise DuplicateRecordError(msg)
+            seen_ids.add(frame.id)
+            seen_turns.add(key)
+        for frame in frames:
+            self._frames[frame.id] = frame
 
     async def query(
         self,
@@ -533,6 +577,42 @@ class FakeFlightRecorderFrameRepository:
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
     ) -> tuple[FlightRecorderFrame, ...]:
+        candidates = self._filtered(filter_spec)
+        candidates.sort(key=lambda f: (f.turn_index, f.timestamp), reverse=True)
+        return tuple(candidates[offset : offset + limit])
+
+    async def get_aggregate(
+        self,
+        filter_spec: FlightRecorderFrameFilterSpec,
+    ) -> FlightRecorderFrameAggregate:
+        candidates = self._filtered(filter_spec)
+        if not candidates:
+            return FlightRecorderFrameAggregate()
+        candidates_sorted = sorted(
+            candidates,
+            key=lambda f: (f.turn_index, f.timestamp),
+            reverse=True,
+        )
+        latest = candidates_sorted[0]
+        # lint-allow: currency-aggregation -- single budget; test fake
+        total_cost = sum(f.cost for f in candidates)
+        return FlightRecorderFrameAggregate(
+            total_cost=total_cost,
+            max_turn_index=max(f.turn_index for f in candidates),
+            latest_timestamp=latest.timestamp,
+            latest_execution_id=latest.execution_id,
+        )
+
+    async def purge_before(self, threshold: AwareDatetime) -> int:
+        before = len(self._frames)
+        self._frames = {
+            k: v for k, v in self._frames.items() if v.timestamp >= threshold
+        }
+        return before - len(self._frames)
+
+    def _filtered(
+        self, filter_spec: FlightRecorderFrameFilterSpec
+    ) -> list[FlightRecorderFrame]:
         candidates = list(self._frames.values())
         if filter_spec.execution_id is not None:
             candidates = [
@@ -550,15 +630,7 @@ class FakeFlightRecorderFrameRepository:
             candidates = [
                 f for f in candidates if f.turn_index <= filter_spec.turn_index_max
             ]
-        candidates.sort(key=lambda f: (f.turn_index, f.timestamp), reverse=True)
-        return tuple(candidates[offset : offset + limit])
-
-    async def purge_before(self, threshold: datetime) -> int:
-        before = len(self._frames)
-        self._frames = {
-            k: v for k, v in self._frames.items() if v.timestamp >= threshold
-        }
-        return before - len(self._frames)
+        return candidates
 
 
 class FakeHeartbeatRepository:

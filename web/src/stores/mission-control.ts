@@ -29,15 +29,18 @@ interface MissionControlState {
   snapshotLoading: boolean
   snapshotError: string | null
 
-  // Flight recorder (read).
+  // Flight recorder (read; cursor-paginated).
   frames: readonly FlightRecorderFrame[]
   framesExecutionId: string | null
   framesLoading: boolean
   framesError: string | null
+  framesNextCursor: string | null
+  framesHasMore: boolean
   seekView: ReplaySeekView | null
 
   fetchSnapshot: () => Promise<void>
   fetchFrames: (executionId: string) => Promise<void>
+  fetchMoreFrames: () => Promise<void>
   seek: (executionId: string, turnIndex: number) => Promise<void>
 
   // Interventions (mutation pattern: toast + sentinel; callers do NOT wrap).
@@ -55,7 +58,7 @@ interface MissionControlState {
   ) => Promise<SteeringOutcome | null>
 }
 
-export const useMissionControlStore = create<MissionControlState>()((set) => ({
+export const useMissionControlStore = create<MissionControlState>()((set, get) => ({
   snapshot: null,
   snapshotLoading: false,
   snapshotError: null,
@@ -63,6 +66,8 @@ export const useMissionControlStore = create<MissionControlState>()((set) => ({
   framesExecutionId: null,
   framesLoading: false,
   framesError: null,
+  framesNextCursor: null,
+  framesHasMore: false,
   seekView: null,
 
   fetchSnapshot: async () => {
@@ -76,10 +81,53 @@ export const useMissionControlStore = create<MissionControlState>()((set) => ({
   },
 
   fetchFrames: async (executionId: string) => {
-    set({ framesLoading: true, framesError: null, framesExecutionId: executionId })
+    // Clear the previous run's frames + seekView synchronously so a
+    // failed fetch cannot leave the UI showing a different execution's
+    // timeline alongside the new ``framesExecutionId``.
+    set({
+      frames: [],
+      seekView: null,
+      framesLoading: true,
+      framesError: null,
+      framesExecutionId: executionId,
+      framesNextCursor: null,
+      framesHasMore: false,
+    })
     try {
-      const response = await getFlightRecorderFrames(executionId)
-      set({ frames: response.frames, framesLoading: false })
+      const page = await getFlightRecorderFrames(executionId)
+      set({
+        frames: page.data,
+        framesLoading: false,
+        framesNextCursor: page.nextCursor,
+        framesHasMore: page.hasMore,
+      })
+    } catch (err) {
+      set({
+        frames: [],
+        seekView: null,
+        framesLoading: false,
+        framesError: getErrorMessage(err),
+        framesNextCursor: null,
+        framesHasMore: false,
+      })
+    }
+  },
+
+  fetchMoreFrames: async () => {
+    const state = get()
+    if (!state.framesHasMore || state.framesNextCursor === null) return
+    if (state.framesExecutionId === null) return
+    const cursor = state.framesNextCursor
+    const executionId = state.framesExecutionId
+    set({ framesLoading: true, framesError: null })
+    try {
+      const page = await getFlightRecorderFrames(executionId, { cursor })
+      set({
+        frames: [...get().frames, ...page.data],
+        framesLoading: false,
+        framesNextCursor: page.nextCursor,
+        framesHasMore: page.hasMore,
+      })
     } catch (err) {
       set({ framesLoading: false, framesError: getErrorMessage(err) })
     }

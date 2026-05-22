@@ -39,10 +39,25 @@ export function useMissionControlData(): UseMissionControlDataReturn {
   }, [])
 
   const lastWsUpdateAtRef = useRef<number>(0)
+  // Coalesce burst-y WS-triggered refreshes: a flurry of cockpit/tasks/
+  // agents events arriving within a few ms must collapse into a single
+  // ``fetchSnapshot`` call so the dashboard never sees overlapping
+  // requests racing stale responses over fresh ones.
+  const snapshotFetchInFlightRef = useRef<boolean>(false)
+
+  const refreshSnapshot = useCallback(async () => {
+    if (snapshotFetchInFlightRef.current) return
+    snapshotFetchInFlightRef.current = true
+    try {
+      await useMissionControlStore.getState().fetchSnapshot()
+    } finally {
+      snapshotFetchInFlightRef.current = false
+    }
+  }, [])
 
   const pollFn = useCallback(async () => {
-    await useMissionControlStore.getState().fetchSnapshot()
-  }, [])
+    await refreshSnapshot()
+  }, [refreshSnapshot])
   const skipIfFresh = useCallback(
     () => Date.now() - lastWsUpdateAtRef.current < SNAPSHOT_FRESHNESS_WINDOW_MS,
     [],
@@ -61,10 +76,10 @@ export function useMissionControlData(): UseMissionControlDataReturn {
         channel,
         handler: () => {
           lastWsUpdateAtRef.current = Date.now()
-          void useMissionControlStore.getState().fetchSnapshot()
+          void refreshSnapshot()
         },
       })),
-    [],
+    [refreshSnapshot],
   )
 
   const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({
