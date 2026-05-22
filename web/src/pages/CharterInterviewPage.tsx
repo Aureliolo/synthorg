@@ -78,7 +78,12 @@ export default function CharterInterviewPage() {
           onSend={handleSend}
         />
         {draftCharter ? (
+          // ``key`` forces a fresh mount when the parent supplies a
+          // new charter or bumps its version so the card's local
+          // brief / amount state initialises from the refreshed prop
+          // instead of carrying stale edits across the swap.
           <CharterDraftCard
+            key={`${draftCharter.id}:${draftCharter.version}`}
             charter={draftCharter}
             busy={mutating || sending}
             onSave={handleSave}
