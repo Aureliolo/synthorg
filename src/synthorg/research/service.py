@@ -29,6 +29,7 @@ from synthorg.observability.events.research import (
     RESEARCH_RUN_TRIAGED,
     RESEARCH_SOURCE_FAILED,
 )
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
 from synthorg.research.errors import ResearchError, ResearchRunError
 from synthorg.research.models import (
@@ -42,7 +43,10 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from synthorg.core.enums import ResearchSourceType
-    from synthorg.persistence.research_protocol import ResearchRunRepository
+    from synthorg.persistence.research_protocol import (
+        ResearchRunFilter,
+        ResearchRunRepository,
+    )
     from synthorg.research.models import ResearchBrief
     from synthorg.research.planning.protocol import QueryPlanner
     from synthorg.research.retrieval.protocol import Deduplicator, RetrievalSource
@@ -121,6 +125,20 @@ class ResearchService:
             await self._fail(run, exc)
             msg = "Research run failed"
             raise ResearchRunError(msg) from exc
+
+    async def get_run(self, run_id: NotBlankStr) -> ResearchRun | None:
+        """Return a persisted run by id, or ``None`` when absent."""
+        return await self._runs_repo.get(run_id)
+
+    async def list_runs(
+        self,
+        filter_spec: ResearchRunFilter,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ResearchRun, ...]:
+        """Return persisted runs matching *filter_spec*, most-recent first."""
+        return await self._runs_repo.query(filter_spec, limit=limit, offset=offset)
 
     async def _execute(
         self,

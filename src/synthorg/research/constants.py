@@ -84,6 +84,12 @@ sources decay linearly to zero over the horizon below."""
 RESEARCH_HEURISTIC_RECENCY_HORIZON_MONTHS: Final[int] = 60
 """Age beyond which a source contributes no recency credit."""
 
+RESEARCH_LIST_DEFAULT_LIMIT: Final[int] = 100
+"""Default page size when listing research runs."""
+
+RESEARCH_LIST_MAX_LIMIT: Final[int] = 500
+"""Maximum page size accepted when listing research runs, bounding latency."""
+
 RESEARCH_SNIPPET_MAX_CHARS: Final[int] = 8192
 """Upper bound on a retrieved-item snippet, matching ``SnippetText``; longer
 source text (e.g. a full knowledge chunk) is truncated to this length."""

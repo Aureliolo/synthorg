@@ -81,6 +81,18 @@ ENFORCED KnowledgeRetriever #1988 -- constructed inside knowledge/factory.py::bu
 ENFORCED build_knowledge_tool_factory #1988 -- called in api/app.py::_wire_knowledge_engine; per-task source of SearchKnowledgeTool + IngestKnowledgeTool
 ENFORCED SearchKnowledgeTool #1988 -- constructed by knowledge/tool_factory.py::KnowledgeToolFactory.build_tools per task with the agent's project binding
 ENFORCED IngestKnowledgeTool #1988 -- constructed by knowledge/tool_factory.py::KnowledgeToolFactory.build_tools per task with the agent's project binding
+ENFORCED build_research_service #1989 -- called in api/app.py::_wire_research_engine; assembles planner + sources + triage + dedup + synthesiser into the ResearchService
+ENFORCED ResearchService #1989 -- constructed by research/factory.py::build_research_service; attached to AppState by _wire_research_engine
+ENFORCED LlmQueryPlanner #1989 -- constructed inside research/factory.py::build_research_service; decomposes a brief into source-targeted sub-queries
+ENFORCED HybridCredibilityTriage #1989 -- constructed inside research/factory.py::_build_triage; heuristic prefilter then LLM triage on survivors
+ENFORCED LexicalDeduplicator #1989 -- constructed inside research/factory.py::_build_deduplicator; deterministic hash/url/shingle dedup
+ENFORCED LlmSynthesizer #1989 -- constructed inside research/factory.py::build_research_service; produces the cited report, the binder validates refs
+ENFORCED KnowledgeRetrievalSource #1989 -- constructed inside research/factory.py::_build_sources; wraps KnowledgeService for the internal source
+ENFORCED WebRetrievalSource #1989 -- constructed inside research/factory.py::_build_sources when a WebSearchProvider is injected
+ENFORCED AcademicRetrievalSource #1989 -- constructed inside research/factory.py::_build_sources when an AcademicSearchProvider is injected
+ENFORCED CodeRetrievalSource #1989 -- constructed inside research/factory.py::_build_sources when a CodeSearchProvider is injected
+ENFORCED build_research_tool_factory #1989 -- called in api/app.py::_wire_research_engine; per-task source of the ResearchTool
+ENFORCED ResearchTool #1989 -- constructed by research/tool_factory.py::ResearchToolFactory.build_tools per task with the agent's project + identity binding
 ENFORCED build_toolsmith #1995 -- called by api/app.py::_build_toolsmith_runtime behind tool_creation_enabled + provider switch; wires the self-extending toolkit runtime
 ENFORCED ToolsmithService #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; orchestrates gap detection -> author -> guard -> apply at the TOOL_CREATION altitude
 ENFORCED RingBufferCapabilityGapStore #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; ring-buffered capability-gap sink + recurrence detector

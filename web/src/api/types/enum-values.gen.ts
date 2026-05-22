@@ -647,6 +647,7 @@ export const SETTING_NAMESPACE_VALUES = [
     'workers',
     'telemetry',
     'external_api',
+    'research',
 ] as const
 export type SettingNamespace = (typeof SETTING_NAMESPACE_VALUES)[number]
 

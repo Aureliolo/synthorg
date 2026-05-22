@@ -178,6 +178,8 @@ if TYPE_CHECKING:
     from synthorg.knowledge.service import KnowledgeService
     from synthorg.knowledge.tool_factory import KnowledgeToolFactory
     from synthorg.meta.toolsmith.service import ToolsmithService
+    from synthorg.research.service import ResearchService
+    from synthorg.research.tool_factory import ResearchToolFactory
 
     # Imported under TYPE_CHECKING so the optional ``synthorg[distributed]``
     # extra is not required at runtime for deployments that do not use the
@@ -317,6 +319,8 @@ class AppState(AppStateServicesMixin):
         "_request_locks",
         "_request_locks_guard",
         "_requests_facade_service",
+        "_research_service",
+        "_research_tool_factory",
         "_review_facade_service",
         "_review_gate_service",
         "_role_version_service",
@@ -521,6 +525,8 @@ class AppState(AppStateServicesMixin):
         self._project_doc_memory_facade: ProjectAwareMemoryFacade | None = None
         self._knowledge_service: KnowledgeService | None = None
         self._knowledge_tool_factory: KnowledgeToolFactory | None = None
+        self._research_service: ResearchService | None = None
+        self._research_tool_factory: ResearchToolFactory | None = None
         # Guards the double-checked locking on first-access lazy wiring
         # of worker_execution_service / experiment_service. Both
         # properties may be invoked from concurrent request handlers
@@ -1150,6 +1156,36 @@ class AppState(AppStateServicesMixin):
             "_knowledge_tool_factory",
             factory,
             "Knowledge tool factory",
+        )
+
+    @property
+    def research_service(self) -> ResearchService | None:
+        """Research subsystem, or ``None`` when not wired.
+
+        Wired at boot after persistence connects when research mode is
+        enabled and a provider + model are configured; ``None`` otherwise.
+        """
+        return self._research_service
+
+    def set_research_service(self, service: ResearchService) -> None:
+        """Attach the research service (once-only, startup)."""
+        self._set_once(
+            "_research_service",
+            service,
+            "Research service",
+        )
+
+    @property
+    def research_tool_factory(self) -> ResearchToolFactory | None:
+        """Per-task factory for the research agent tool, or ``None``."""
+        return self._research_tool_factory
+
+    def set_research_tool_factory(self, factory: ResearchToolFactory) -> None:
+        """Attach the research tool factory (once-only, startup)."""
+        self._set_once(
+            "_research_tool_factory",
+            factory,
+            "Research tool factory",
         )
 
     @property

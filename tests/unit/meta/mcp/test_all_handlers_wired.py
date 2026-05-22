@@ -211,14 +211,15 @@ class TestHandlerParity:
         assert not orphans
 
     def test_total_tool_count_matches_plan(self) -> None:
-        """Registry has exactly the documented 216-tool surface.
+        """Registry has exactly the documented 219-tool surface.
 
         Pinning to the exact count catches accidental tool removal
         *and* double-registration.  Bump this number only when the
-        MCP tool surface is intentionally grown or shrunk.
+        MCP tool surface is intentionally grown or shrunk (here: +3 for
+        the research domain run / get / list tools, #1989).
         """
         registry = build_full_registry()
-        assert registry.tool_count == 216
+        assert registry.tool_count == 219
 
 
 class TestNoPlaceholderInProduction:
