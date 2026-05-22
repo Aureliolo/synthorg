@@ -54,6 +54,26 @@ class TestRemoteSource:
                 NotBlankStr("https://user:token@git.example.com/acme/legacy.git")
             )
 
+    async def test_ssh_username_allowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The bare ``git@host`` username of an ssh:// ref is not a credential,
+        # so it must resolve rather than tripping the embedded-credentials guard.
+        async def _ok(_url: str, _policy: object) -> DnsValidationOk:
+            return DnsValidationOk(
+                hostname=NotBlankStr("git.example.com"),
+                port=22,
+                resolved_ips=(),
+                is_https=False,
+            )
+
+        monkeypatch.setattr(resolver_mod, "validate_clone_url_host", _ok)
+
+        result = await BrownfieldSourceResolver().resolve(
+            NotBlankStr("ssh://git@git.example.com/acme/legacy.git")
+        )
+
+        assert result.source_kind is SourceKind.REMOTE
+        assert result.fetch_url == "ssh://git@git.example.com/acme/legacy.git"
+
     async def test_ssrf_block_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         async def _blocked(_url: str, _policy: object) -> str:
             return "SSRF blocked: private IP"

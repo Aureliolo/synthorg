@@ -13,20 +13,22 @@ into a mapped, indexed, analysed base the org can extend.
 
 ## Flow
 
-```
-POST /brownfield/import
-  -> BrownfieldEntryAdapter.submit(CodebaseImportSubmission)
-       -> BrownfieldImportService.import_codebase   (per-project lock)
-            1. ProjectWorkspaceService.get_or_provision   (reuses the workspace/git model)
-            2. existing structure map?  same source + same content hash -> short-circuit
-                                        different source -> BrownfieldWorkspaceNotEmptyError
-            3. BrownfieldSourceResolver.resolve(source_ref)  (SSRF + forge-token auth)
-            4. GitBackend.seed(source)                       (one-shot history import)
-            5. scan_codebase(scanners) -> CodebaseStructureMap -> repository.save
-            6. KnowledgeService.ingest(SourceType.REPO, ...)  (hybrid index)
-       -> WorkItem(source=BROWNFIELD, task_type=ANALYSIS) -> work pipeline spine
-            -> agent analysis pass authors a CODEBASE_ANALYSIS living document
-  -> 202 Accepted (project_id)
+```mermaid
+flowchart TD
+    A["POST /brownfield/import"] --> B["BrownfieldEntryAdapter.submit(CodebaseImportSubmission)"]
+    B --> C["BrownfieldImportService.import_codebase (per-project lock)"]
+    C --> S1["1. ProjectWorkspaceService.get_or_provision (reuses the workspace/git model)"]
+    S1 --> S2{"2. Existing structure map?"}
+    S2 -->|"same source + same content hash"| SC["Short-circuit (reuse existing map)"]
+    S2 -->|"different source"| ERR["BrownfieldWorkspaceNotEmptyError"]
+    S2 -->|"none / new source"| S3["3. BrownfieldSourceResolver.resolve(source_ref) (SSRF + forge-token auth)"]
+    S3 --> S4["4. GitBackend.seed(source) (one-shot history import)"]
+    S4 --> S5["5. scan_codebase(scanners) -> CodebaseStructureMap -> repository.save"]
+    S5 --> S6["6. KnowledgeService.ingest(SourceType.REPO, ...) (hybrid index)"]
+    S6 --> W["WorkItem(source=BROWNFIELD, task_type=ANALYSIS) -> work pipeline spine"]
+    W --> AG["Agent analysis pass authors a CODEBASE_ANALYSIS living document"]
+    AG --> R["202 Accepted (project_id)"]
+    SC --> R
 ```
 
 The import + analysis run as a background task; the controller returns `202`

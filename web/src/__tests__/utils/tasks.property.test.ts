@@ -16,7 +16,7 @@ const ALL_STATUSES: TaskStatus[] = [
 
 const ALL_PRIORITIES: Priority[] = ['critical', 'high', 'medium', 'low']
 
-const ALL_TASK_TYPES: TaskType[] = ['development', 'design', 'research', 'review', 'meeting', 'admin']
+const ALL_TASK_TYPES: TaskType[] = ['development', 'design', 'research', 'review', 'meeting', 'admin', 'analysis']
 
 const arbTaskStatus = fc.constantFrom(...ALL_STATUSES)
 const arbPriority = fc.constantFrom(...ALL_PRIORITIES)

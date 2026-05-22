@@ -279,7 +279,21 @@ async def import_source_into_worktree(
         project_id=project_id,
         event=GIT_BACKEND_SEED_FAILED,
     )
-    if tracked.strip():
+    # ``ls-files`` alone misses untracked content, and ``status
+    # --porcelain`` alone misses a clean committed tree (the re-seed
+    # clobber case). Check both: tracked files OR non-ignored untracked
+    # files mean the workspace already holds a codebase.
+    untracked = await git(
+        repo_root,
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        cmd_timeout=cmd_timeout,
+        fail_exc=GitBackendSeedError,
+        project_id=project_id,
+        event=GIT_BACKEND_SEED_FAILED,
+    )
+    if tracked.strip() or untracked.strip():
         logger.warning(
             GIT_BACKEND_SEED_FAILED,
             project_id=project_id,
@@ -287,7 +301,7 @@ async def import_source_into_worktree(
         )
         msg = (
             f"refusing to seed project {project_id!r}: workspace already "
-            "tracks files (a codebase is already present)"
+            "contains files (a codebase is already present)"
         )
         raise GitBackendSeedError(msg)
     await git(

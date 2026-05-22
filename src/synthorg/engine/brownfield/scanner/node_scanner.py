@@ -103,8 +103,10 @@ class NodeScanner:
         return tuple(TestSuite(path=name, framework=framework) for name in present)
 
     def _test_framework(self, manifest: dict[str, Any]) -> str | None:
-        dev = manifest.get("devDependencies", {})
-        names = set(dev) if isinstance(dev, dict) else set()
+        names: set[str] = set()
+        for block in (manifest.get("dependencies"), manifest.get("devDependencies")):
+            if isinstance(block, dict):
+                names.update(block)
         for framework in _KNOWN_FRAMEWORKS:
             if framework in names:
                 return framework

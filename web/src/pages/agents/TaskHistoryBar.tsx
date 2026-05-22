@@ -16,6 +16,7 @@ const TYPE_COLORS: Record<TaskType, string> = {
   review: 'bg-accent-dim',
   meeting: 'bg-muted-foreground',
   admin: 'bg-muted-foreground',
+  analysis: 'bg-info',
 }
 
 /** Parse updated_at safely; fall back to created_at if unparseable or earlier. */

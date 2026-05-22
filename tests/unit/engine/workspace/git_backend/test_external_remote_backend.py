@@ -122,7 +122,7 @@ class _FakeGit:
 
 def _catalog_github() -> Any:
     catalog = mock_of[ConnectionCatalog]()
-    catalog.get.return_value = _connection("https://github.com/acme")
+    catalog.get.return_value = _connection("https://example-provider.invalid/acme")
     catalog.get_credentials.return_value = {"token": "secret-token"}
     return catalog
 
@@ -134,7 +134,7 @@ def _fake_forge(*, exists: bool) -> Any:
         full_name=NotBlankStr("acme/p1"),
         default_branch=NotBlankStr("main"),
         private=True,
-        clone_url=NotBlankStr("https://github.com/acme/p1.git"),
+        clone_url=NotBlankStr("https://example-provider.invalid/acme/p1.git"),
     )
     return forge
 
@@ -365,8 +365,9 @@ class TestExternalRemoteSeed:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        # Empty workspace (ls-files returns ""), source fetched, branch
-        # reset, then the imported head pushed to an existing forge repo.
+        # Empty workspace (ls-files reports nothing tracked or untracked),
+        # source fetched, branch reset, then the imported head pushed to an
+        # existing forge repo.
         fake = _FakeGit([(0, "")])
         _patch_git(monkeypatch, fake)
         _patch_forge(monkeypatch, _fake_forge(exists=True))
@@ -376,7 +377,9 @@ class TestExternalRemoteSeed:
             project_id=NotBlankStr("p1"),
             repo_root=tmp_path,
             source=ResolvedSource(
-                fetch_url=NotBlankStr("https://github.com/acme/legacy.git"),
+                fetch_url=NotBlankStr(
+                    "https://example-provider.invalid/acme/legacy.git"
+                ),
                 source_kind=SourceKind.REMOTE,
             ),
             default_branch=NotBlankStr("main"),

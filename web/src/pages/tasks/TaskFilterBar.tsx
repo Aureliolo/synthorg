@@ -11,7 +11,7 @@ const STATUSES: TaskStatus[] = [
 
 const PRIORITIES: Priority[] = ['critical', 'high', 'medium', 'low']
 
-const TASK_TYPES: TaskType[] = ['development', 'design', 'research', 'review', 'meeting', 'admin']
+const TASK_TYPES: TaskType[] = ['development', 'design', 'research', 'review', 'meeting', 'admin', 'analysis']
 
 export interface TaskFilterBarProps {
   filters: TaskBoardFilters

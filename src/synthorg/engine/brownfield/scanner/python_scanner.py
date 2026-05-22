@@ -85,7 +85,7 @@ class PythonScanner:
     def _modules(self, rel_paths: list[str]) -> tuple[Module, ...]:
         packages = sorted(
             {
-                path.rsplit("/__init__.py", 1)[0]
+                path.removesuffix("/__init__.py") if "/" in path else "."
                 for path in rel_paths
                 if path.endswith("__init__.py")
             }
@@ -135,7 +135,8 @@ class PythonScanner:
     def _test_framework(
         self, workspace_path: Path, pyproject: dict[str, Any]
     ) -> str | None:
-        if "pytest" in str(pyproject.get("tool", {})):
+        tool_table = pyproject.get("tool", {})
+        if isinstance(tool_table, dict) and "pytest" in tool_table:
             return "pytest"
         if (workspace_path / "pytest.ini").is_file():
             return "pytest"

@@ -179,6 +179,7 @@ class TestEnumStringValues:
         assert TaskType.REVIEW.value == "review"
         assert TaskType.MEETING.value == "meeting"
         assert TaskType.ADMIN.value == "admin"
+        assert TaskType.ANALYSIS.value == "analysis"
 
     def test_priority_values(self) -> None:
         assert Priority.CRITICAL.value == "critical"

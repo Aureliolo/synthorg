@@ -92,11 +92,16 @@ class BrownfieldSourceResolver:
                 "scheme (only https:// and ssh:// are permitted)"
             )
             raise BrownfieldSourceUnavailableError(msg)
-        if urlsplit(source_ref).username is not None:
+        split = urlsplit(source_ref)
+        if split.password is not None or (
+            split.scheme in {"http", "https"} and split.username is not None
+        ):
             # A credential embedded in the URL would be logged and persisted
             # in the structure map's source_ref. Forge tokens must come from
             # the connection catalog (injected transiently into the fetch
-            # URL), never from the operator-supplied source reference.
+            # URL), never from the operator-supplied source reference. The
+            # bare ``git@host`` username of an ssh:// ref is not a credential,
+            # so SSH usernames stay allowed.
             msg = (
                 "brownfield remote source must not embed credentials in the "
                 "URL; register a forge connection instead"

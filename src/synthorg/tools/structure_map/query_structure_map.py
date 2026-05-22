@@ -65,7 +65,6 @@ class QueryStructureMapTool(BaseTool):
         """Dispatch a ``query_structure_map`` invocation to the repository."""
         try:
             parsed = parse_typed("mcp.tool", arguments, QueryStructureMapArgs)
-            structure_map = await self._repository.get(self._project_id)
         except (ValueError, TypeError) as exc:
             return ToolExecutionResult(
                 content=(
@@ -73,6 +72,8 @@ class QueryStructureMapTool(BaseTool):
                 ),
                 is_error=True,
             )
+        try:
+            structure_map = await self._repository.get(self._project_id)
         except builtins.MemoryError, RecursionError:
             raise
         except QueryError as exc:

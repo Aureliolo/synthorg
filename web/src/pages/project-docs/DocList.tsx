@@ -5,12 +5,14 @@ const DOC_TYPE_LABEL: Record<DocType, string> = {
   status_report: 'Status report',
   deliverable: 'Deliverable',
   knowledge_note: 'Note',
+  codebase_analysis: 'Codebase analysis',
 }
 
 const DOC_TYPES: readonly DocType[] = [
   'status_report',
   'deliverable',
   'knowledge_note',
+  'codebase_analysis',
 ]
 
 export interface DocListProps {
