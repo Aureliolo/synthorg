@@ -596,9 +596,16 @@ class TestRootConfig:
         # (``degraded_threshold <= unhealthy_threshold``) that polyfactory
         # cannot satisfy with independent random draws, so we pin it to
         # its default here rather than pollute the shared factory.
+        # ``QualityFloors`` likewise requires non-decreasing floors
+        # (low <= normal <= high <= critical), which independent random
+        # draws violate, so pin ``stakes_routing`` to its default too.
+        from synthorg.engine.routing_policy.config import StakesRoutingConfig
         from synthorg.integrations.config import IntegrationsConfig
 
-        cfg = RootConfigFactory.build(integrations=IntegrationsConfig())
+        cfg = RootConfigFactory.build(
+            integrations=IntegrationsConfig(),
+            stakes_routing=StakesRoutingConfig(),
+        )
         assert isinstance(cfg, RootConfig)
         assert cfg.company_name
 
