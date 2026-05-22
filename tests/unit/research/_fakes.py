@@ -7,8 +7,11 @@ LLM-backed and knowledge-backed strategies deterministically.
 
 from synthorg.core.enums import SourceType
 from synthorg.knowledge.models import Citation, KnowledgeHit, WebLocator
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence.research_protocol import ResearchRunFilter
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
+from synthorg.research.models import ResearchRun
 from synthorg.research.retrieval.providers import AcademicResult, CodeResult
 from synthorg.tools.web.web_search import SearchResult
 
@@ -81,3 +84,60 @@ class FakeCodeSearchProvider:
         """Return the preset code results, capped."""
         del query
         return self._results[:max_results]
+
+
+class InMemoryResearchRunRepository:
+    """Structural ``ResearchRunRepository`` backed by a dict."""
+
+    def __init__(self) -> None:
+        self._rows: dict[str, ResearchRun] = {}
+
+    async def save(self, entity: ResearchRun) -> None:
+        """Upsert a run keyed by ``run_id``."""
+        self._rows[entity.run_id] = entity
+
+    async def get(self, entity_id: str) -> ResearchRun | None:
+        """Return a run by id, or None."""
+        return self._rows.get(entity_id)
+
+    async def delete(self, entity_id: str) -> bool:
+        """Delete a run by id; True iff it existed."""
+        return self._rows.pop(entity_id, None) is not None
+
+    def _ordered(self) -> list[ResearchRun]:
+        return sorted(
+            self._rows.values(),
+            key=lambda r: (r.created_at, r.run_id),
+            reverse=True,
+        )
+
+    async def list_items(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ResearchRun, ...]:
+        """List runs, most-recent first."""
+        return tuple(self._ordered()[offset : offset + limit])
+
+    def _matches(self, run: ResearchRun, spec: ResearchRunFilter) -> bool:
+        if spec.brief_id is not None and run.brief_id != spec.brief_id:
+            return False
+        if spec.project_id is not None and run.project_id != spec.project_id:
+            return False
+        return not (spec.status is not None and run.status is not spec.status)
+
+    async def query(
+        self,
+        filter_spec: ResearchRunFilter,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ResearchRun, ...]:
+        """Return runs matching the filter, most-recent first."""
+        matched = [r for r in self._ordered() if self._matches(r, filter_spec)]
+        return tuple(matched[offset : offset + limit])
+
+    async def count(self, filter_spec: ResearchRunFilter) -> int:
+        """Count runs matching the filter."""
+        return sum(1 for r in self._rows.values() if self._matches(r, filter_spec))

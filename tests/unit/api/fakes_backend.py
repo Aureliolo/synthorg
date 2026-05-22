@@ -56,6 +56,7 @@ from tests.unit.knowledge._fakes import (
     FakeChunkProvenanceRepository,
     FakeKnowledgeSourceRepository,
 )
+from tests.unit.research._fakes import InMemoryResearchRunRepository
 
 __all__ = [
     "FakePersistenceBackend",
@@ -606,6 +607,7 @@ class FakePersistenceBackend:
         self._project_docs = FakeDocsRepository()
         self._knowledge_sources = FakeKnowledgeSourceRepository()
         self._knowledge_provenance = FakeChunkProvenanceRepository()
+        self._research_runs = InMemoryResearchRunRepository()
         self._custom_presets = FakePersonalityPresetRepository()
         self._workflow_definitions = FakeWorkflowDefinitionRepository()
         self._workflow_executions = FakeWorkflowExecutionRepository()
@@ -739,6 +741,10 @@ class FakePersistenceBackend:
     @property
     def knowledge_provenance(self) -> FakeChunkProvenanceRepository:
         return self._knowledge_provenance
+
+    @property
+    def research_runs(self) -> InMemoryResearchRunRepository:
+        return self._research_runs
 
     @property
     def tasks(self) -> FakeTaskRepository:
