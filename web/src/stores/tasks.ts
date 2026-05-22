@@ -7,18 +7,16 @@ import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import { useToastStore } from '@/stores/toast'
 import {
   ARTIFACT_TYPE_VALUES,
+  COMPLEXITY_VALUES,
+  COORDINATION_TOPOLOGY_VALUES,
   PRIORITY_VALUES,
+  STAKES_VALUES,
   TASK_SOURCE_VALUES,
   TASK_STATUS_VALUES as TASK_STATUS_VALUES_TUPLE,
+  TASK_STRUCTURE_VALUES,
   TASK_TYPE_VALUES as TASK_TYPE_VALUES_TUPLE,
 } from '@/api/types/enums'
-import type {
-  Complexity,
-  CoordinationTopology,
-  Stakes,
-  TaskStatus,
-  TaskStructure,
-} from '@/api/types/enums'
+import type { TaskStatus } from '@/api/types/enums'
 import type {
   CancelTaskRequest,
   CreateTaskRequest,
@@ -30,44 +28,25 @@ import type {
 } from '@/api/types/tasks'
 import type { WsEvent } from '@/api/types/websocket'
 
-// Runtime-check sets derived from the canonical enum tuples in
-// `@/api/types/enums`. Building them here (rather than re-declaring the
-// literal list) keeps the validator in lockstep with the type union
-// -- drift between the runtime check and the declared enum is caught
-// at compile time.
-// Status / priority / type / source are no longer pre-validated
-// against the allowlist; sanitizeWsEnum owns that responsibility
-// (see sanitizeTask). Rejecting unknown enum values here would drop
-// the whole frame on rolling backend deploys.
-
-// Enum sets for the remaining scalar/enum fields that ``sanitizeTask``
-// previously copied through unchecked. Declared here so the validator
-// and the TS union stay in lockstep via the ``as const satisfies``
-// tuples these are derived from.
-const COMPLEXITY_SET: ReadonlySet<string> = new Set<string>([
-  'simple',
-  'medium',
-  'complex',
-  'epic',
-] satisfies readonly Complexity[])
-const TASK_STRUCTURE_SET: ReadonlySet<string> = new Set<string>([
-  'sequential',
-  'parallel',
-  'mixed',
-] satisfies readonly TaskStructure[])
-const COORDINATION_TOPOLOGY_SET: ReadonlySet<string> = new Set<string>([
-  'sas',
-  'centralized',
-  'decentralized',
-  'context_dependent',
-  'auto',
-] satisfies readonly CoordinationTopology[])
-const STAKES_SET: ReadonlySet<string> = new Set<string>([
-  'low',
-  'normal',
-  'high',
-  'critical',
-] satisfies readonly Stakes[])
+// Runtime-check sets for the behavioural enum fields ``sanitizeTask``
+// copies through unchecked. Built from the generated ``*_VALUES`` tuples
+// in `@/api/types/enums` (the single source of truth, regenerated from
+// the OpenAPI schema) rather than re-declared literal lists, so a value
+// added to an enum cannot drift out of sync with its validator within a
+// build. The frame guard's drop-on-unknown rationale is unchanged: the
+// tuple is still build-time-frozen to what this frontend ships, so a
+// behavioural enum value the frontend does not yet know is dropped
+// rather than mis-routed.
+// Status / priority / type / source are NOT pre-validated here;
+// sanitizeWsEnum owns that responsibility (see sanitizeTask).
+const COMPLEXITY_SET: ReadonlySet<string> = new Set<string>(COMPLEXITY_VALUES)
+const TASK_STRUCTURE_SET: ReadonlySet<string> = new Set<string>(
+  TASK_STRUCTURE_VALUES,
+)
+const COORDINATION_TOPOLOGY_SET: ReadonlySet<string> = new Set<string>(
+  COORDINATION_TOPOLOGY_VALUES,
+)
+const STAKES_SET: ReadonlySet<string> = new Set<string>(STAKES_VALUES)
 const log = createLogger('tasks')
 
 // ``metadata`` is an arbitrary key-value bag on the wire
