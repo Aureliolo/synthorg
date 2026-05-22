@@ -27,6 +27,7 @@ from synthorg.core.enums import (
 from synthorg.core.role import CustomRole  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
+from synthorg.engine.routing_policy.config import StakesRoutingConfig
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.workflow.config import WorkflowConfig
@@ -386,6 +387,8 @@ class RootConfig(BaseModel):
         communication: Communication configuration.
         providers: LLM provider configurations keyed by provider name.
         routing: Model routing configuration.
+        stakes_routing: Stakes-aware model routing configuration (strategy
+            discriminator, per-stakes quality floors, coordination nudge).
         logging: Logging configuration (``None`` to use platform defaults).
         graceful_shutdown: Graceful shutdown configuration.
         workflow_handoffs: Cross-department workflow handoffs.
@@ -471,6 +474,10 @@ class RootConfig(BaseModel):
     routing: RoutingConfig = Field(
         default_factory=RoutingConfig,
         description="Model routing configuration",
+    )
+    stakes_routing: StakesRoutingConfig = Field(
+        default_factory=StakesRoutingConfig,
+        description="Stakes-aware model routing configuration",
     )
     logging: LogConfig | None = Field(
         default=None,

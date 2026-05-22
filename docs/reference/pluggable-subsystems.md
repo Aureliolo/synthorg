@@ -176,6 +176,20 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `engine/workspace/git_backend/external_remote.py::ExternalRemoteGitBackend` (GitHub / GitLab / Gitea / Forgejo resolved via the connection catalog; ships protocol + thin clone/push/fetch glue; deep OAuth hardening is a tracked follow-up).
 - `engine/workspace/git_backend/factory.py::build_git_backend()`: `StrategyRegistry[GitBackend]` keyed on `GitBackendType`. Missing required deps fail fast at construction with `GitBackendConfigError`. Wired at boot in `api/app.py::_install_runtime_services` under the `has_persistence` gate, alongside `ProjectWorkspaceService`.
 
+### Stakes assessment (model-routing input)
+
+- `engine/stakes/protocol.py`: `StakesAssessor` `@runtime_checkable` Protocol (`assess_task(task)` / `assess_subtask(subtask)` returning `Stakes`).
+- `engine/stakes/heuristic.py::DefaultStakesAssessor` (safe default: deterministic, combines complexity base mapping, high/critical keyword signals, and critical-priority elevation; unknown complexity fails safe upward to HIGH).
+- `engine/stakes/config.py::StakesAssessmentConfig` (frozen) with `assessor: NotBlankStr` discriminator, the complexity-to-stakes rules, and the keyword sets.
+- `engine/stakes/factory.py::build_stakes_assessor()`: `StrategyRegistry[StakesAssessor]` keyed on `assessor` ("heuristic" default). Consumed by `DecompositionService` (per-subtask) and the work pipeline's LEAF path (parent task).
+
+### Stakes-aware model routing
+
+- `engine/routing_policy/protocol.py`: `StakesRoutingStrategy` `@runtime_checkable` Protocol (`route(task, identity)` returning a frozen `StakesRoutingDecision`).
+- `engine/routing_policy/strategies.py::StakesAwareStrategy` (safe default: picks the cheapest tier whose benchmark score clears the per-stakes `QualityFloors`, bumps one tier when coordination metrics are unhealthy, marks high/critical work for the red-team gate, and never downgrades below the agent's configured tier) and `FlatStrategy` (no-op control / opt-out).
+- `engine/routing_policy/config.py::StakesRoutingConfig` (frozen) with `strategy: NotBlankStr` discriminator, `QualityFloors` (validated non-decreasing), `red_team_min_stakes`, and the coordination-nudge thresholds.
+- `engine/routing_policy/factory.py::build_stakes_router()`: `StrategyRegistry[StakesRoutingStrategy]` keyed on `strategy` ("stakes_aware" default; "stakes_aware" requires a benchmark provider, "flat" is dependency-free). Wired at boot in `workers/runtime_builder.py::_build_stakes_router_or_none` and injected into `AgentEngine`, which applies routing before the budget auto-downgrade (a hard budget ceiling wins over a stakes upgrade).
+
 ## Services are a distinct pattern (not pluggable subsystems)
 
 A **service** wraps one or more repositories to keep controllers thin and centralise audit logging, and MAY orchestrate multiple repositories (e.g. `WorkflowService` spans `workflow_definitions` + `workflow_versions`; `MemoryService` spans fine-tune checkpoints + runs + settings).

@@ -107,6 +107,18 @@ class ReviewGateService:
         """
         self._vision_gate = vision_gate
 
+    def set_red_team_gate(self, red_team_gate: RedTeamGate) -> None:
+        """Attach the red-team gate after construction (boot wiring seam).
+
+        Mirrors :meth:`set_vision_gate`: the red-team runtime is built in
+        on-startup wiring once the boot ``AgentEngine`` exists, after this
+        service is constructed during app construction. Callers that pass
+        ``red_team_input`` to :meth:`run_pipeline` then reach the live
+        gate; building that input from a completed task's deliverable is
+        the review-pipeline integration's responsibility, not this seam.
+        """
+        self._red_team_gate = red_team_gate
+
     async def check_can_decide(
         self,
         *,

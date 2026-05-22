@@ -693,6 +693,14 @@ export const SOURCE_TYPE_VALUES = [
 ] as const
 export type SourceType = (typeof SOURCE_TYPE_VALUES)[number]
 
+export const STAKES_VALUES = [
+    'low',
+    'normal',
+    'high',
+    'critical',
+] as const
+export type Stakes = (typeof STAKES_VALUES)[number]
+
 export const STRATEGIC_OUTPUT_MODE_VALUES = [
     'option_expander',
     'advisor',

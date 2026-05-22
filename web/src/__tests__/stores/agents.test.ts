@@ -88,6 +88,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     artifacts_expected: [],
     acceptance_criteria: [],
     estimated_complexity: 'medium',
+    stakes: 'normal',
     budget_limit: 1.0,
     deadline: null,
     max_retries: 3,

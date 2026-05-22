@@ -196,6 +196,21 @@ routing:
     - "ollama"
 ```
 
+### Stakes-aware routing (orthogonal layer)
+
+Model routing above selects *which provider/model* serves a request. **Stakes-aware
+routing** is a separate, pluggable layer that re-tiers that selection based on how
+consequential the work is. Each task (and subtask) carries a `stakes` level
+(`low` / `normal` / `high` / `critical`), assessed by the `StakesAssessor`. The
+`StakesRoutingStrategy` then picks the cheapest model tier whose benchmark score
+clears the per-stakes quality floor, bumps one tier when coordination metrics are
+unhealthy, and marks high/critical work for the red-team gate. High/critical work
+is never routed below the agent's configured tier; low/normal work may drop to a
+cheaper tier (still clearing the floor) to save cost. It is config-selectable via
+`stakes_routing.strategy` (`stakes_aware` default, `flat` to opt out) and applied in
+the engine *before* the budget auto-downgrade, so a hard budget ceiling still wins
+over a stakes upgrade. See [Pluggable Subsystems](../reference/pluggable-subsystems.md).
+
 ### Multi-Provider Model Resolution
 
 When multiple providers register the same model ID or alias, the `ModelResolver`

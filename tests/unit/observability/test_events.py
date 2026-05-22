@@ -271,6 +271,7 @@ class TestEventConstants:
             "security",
             "session",
             "stagnation",
+            "stakes_routing",
             "strategy",
             "task",
             "task_assignment",

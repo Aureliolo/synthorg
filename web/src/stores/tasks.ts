@@ -7,17 +7,16 @@ import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import { useToastStore } from '@/stores/toast'
 import {
   ARTIFACT_TYPE_VALUES,
+  COMPLEXITY_VALUES,
+  COORDINATION_TOPOLOGY_VALUES,
   PRIORITY_VALUES,
+  STAKES_VALUES,
   TASK_SOURCE_VALUES,
   TASK_STATUS_VALUES as TASK_STATUS_VALUES_TUPLE,
+  TASK_STRUCTURE_VALUES,
   TASK_TYPE_VALUES as TASK_TYPE_VALUES_TUPLE,
 } from '@/api/types/enums'
-import type {
-  Complexity,
-  CoordinationTopology,
-  TaskStatus,
-  TaskStructure,
-} from '@/api/types/enums'
+import type { TaskStatus } from '@/api/types/enums'
 import type {
   CancelTaskRequest,
   CreateTaskRequest,
@@ -29,38 +28,25 @@ import type {
 } from '@/api/types/tasks'
 import type { WsEvent } from '@/api/types/websocket'
 
-// Runtime-check sets derived from the canonical enum tuples in
-// `@/api/types/enums`. Building them here (rather than re-declaring the
-// literal list) keeps the validator in lockstep with the type union
-// -- drift between the runtime check and the declared enum is caught
-// at compile time.
-// Status / priority / type / source are no longer pre-validated
-// against the allowlist; sanitizeWsEnum owns that responsibility
-// (see sanitizeTask). Rejecting unknown enum values here would drop
-// the whole frame on rolling backend deploys.
-
-// Enum sets for the remaining scalar/enum fields that ``sanitizeTask``
-// previously copied through unchecked. Declared here so the validator
-// and the TS union stay in lockstep via the ``as const satisfies``
-// tuples these are derived from.
-const COMPLEXITY_SET: ReadonlySet<string> = new Set<string>([
-  'simple',
-  'medium',
-  'complex',
-  'epic',
-] satisfies readonly Complexity[])
-const TASK_STRUCTURE_SET: ReadonlySet<string> = new Set<string>([
-  'sequential',
-  'parallel',
-  'mixed',
-] satisfies readonly TaskStructure[])
-const COORDINATION_TOPOLOGY_SET: ReadonlySet<string> = new Set<string>([
-  'sas',
-  'centralized',
-  'decentralized',
-  'context_dependent',
-  'auto',
-] satisfies readonly CoordinationTopology[])
+// Runtime-check sets for the behavioural enum fields ``sanitizeTask``
+// copies through unchecked. Built from the generated ``*_VALUES`` tuples
+// in `@/api/types/enums` (the single source of truth, regenerated from
+// the OpenAPI schema) rather than re-declared literal lists, so a value
+// added to an enum cannot drift out of sync with its validator within a
+// build. The frame guard's drop-on-unknown rationale is unchanged: the
+// tuple is still build-time-frozen to what this frontend ships, so a
+// behavioural enum value the frontend does not yet know is dropped
+// rather than mis-routed.
+// Status / priority / type / source are NOT pre-validated here;
+// sanitizeWsEnum owns that responsibility (see sanitizeTask).
+const COMPLEXITY_SET: ReadonlySet<string> = new Set<string>(COMPLEXITY_VALUES)
+const TASK_STRUCTURE_SET: ReadonlySet<string> = new Set<string>(
+  TASK_STRUCTURE_VALUES,
+)
+const COORDINATION_TOPOLOGY_SET: ReadonlySet<string> = new Set<string>(
+  COORDINATION_TOPOLOGY_VALUES,
+)
+const STAKES_SET: ReadonlySet<string> = new Set<string>(STAKES_VALUES)
 const log = createLogger('tasks')
 
 // ``metadata`` is an arbitrary key-value bag on the wire
@@ -235,6 +221,7 @@ function sanitizeTask(c: DashboardTask): DashboardTask {
       met: ac.met ?? false,
     })),
     estimated_complexity: c.estimated_complexity,
+    stakes: c.stakes,
     budget_limit: c.budget_limit,
     cost: c.cost,
     deadline: sanitizeNullable(c.deadline ?? null, 64),
@@ -441,11 +428,12 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     // the ceiling math / id sanitizer invariants downstream.
     isNullableNumber(c.hard_ceiling) &&
     isNullableString(c.forecast_id) &&
-    // Enum scalars: complexity / task_structure / coordination_topology
-    // are intentionally NOT routed through sanitizeWsEnum -- they're
-    // closed enums coupled to coordination + scheduling code paths
-    // that branch on the exact value (e.g. coordination_topology
-    // selects a specific orchestrator). A backend-only addition of
+    // Enum scalars: complexity / stakes / task_structure /
+    // coordination_topology are intentionally NOT routed through
+    // sanitizeWsEnum -- they're closed enums coupled to routing +
+    // coordination + scheduling code paths that branch on the exact
+    // value (e.g. coordination_topology selects a specific
+    // orchestrator; stakes selects a model tier). A backend-only addition of
     // a new value would silently degrade behaviour rather than just
     // a label mismatch, so dropping the frame here is the safer
     // failure mode. If/when a new value is rolled out, the frontend
@@ -454,6 +442,8 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     // facing labels with no behavioural branching.
     typeof c.estimated_complexity === 'string' &&
     COMPLEXITY_SET.has(c.estimated_complexity) &&
+    typeof c.stakes === 'string' &&
+    STAKES_SET.has(c.stakes) &&
     (c.task_structure === null ||
       (typeof c.task_structure === 'string' &&
         TASK_STRUCTURE_SET.has(c.task_structure))) &&

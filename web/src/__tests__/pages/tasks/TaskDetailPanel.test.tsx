@@ -21,6 +21,7 @@ const mockTask: Task = {
     { description: 'Criterion 2', met: false },
   ],
   estimated_complexity: 'complex',
+  stakes: 'normal',
   budget_limit: 10,
   cost: 3.45,
   deadline: null,

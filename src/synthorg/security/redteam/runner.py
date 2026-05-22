@@ -13,7 +13,7 @@ import asyncio
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from synthorg.core.enums import Complexity, Priority, TaskStatus, TaskType
+from synthorg.core.enums import Complexity, Priority, Stakes, TaskStatus, TaskType
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -126,4 +126,8 @@ class AgentEngineRunner:
             acceptance_criteria=criteria,
             status=TaskStatus.IN_PROGRESS,
             estimated_complexity=Complexity.SIMPLE,
+            # The adversarial review is the highest-stakes check: pin it so
+            # stakes-aware routing keeps the red-team agent on its strong
+            # configured tier rather than downgrading the reviewer.
+            stakes=Stakes.CRITICAL,
         )

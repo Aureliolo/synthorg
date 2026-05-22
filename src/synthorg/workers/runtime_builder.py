@@ -33,6 +33,7 @@ from synthorg.engine.coordination.factory import build_coordinator
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.pipeline.factory import build_work_pipeline
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
+from synthorg.engine.routing_policy import build_stakes_router
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
 from synthorg.engine.workspace.git_worktree import PlannerWorktreeStrategy
 from synthorg.observability import get_logger, safe_error_description
@@ -66,6 +67,7 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.engine.coordination.service import MultiAgentCoordinator
     from synthorg.engine.pipeline.protocol import WorkPipeline
+    from synthorg.engine.routing_policy.router import StakesRouter
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.visionverify.protocol import VisionVerifierGate
@@ -342,6 +344,44 @@ async def _build_external_api_runtime(
     )
 
 
+def _build_stakes_router_or_none(
+    app_state: AppState,
+    *,
+    active_provider_name: str,
+) -> StakesRouter | None:
+    """Build the stakes-aware model router from live application state.
+
+    Returns ``None`` when the benchmark provider is absent (cost-dial
+    not wired, e.g. a persistence-less boot), so the engine simply skips
+    stakes routing. Reads the benchmark provider and coordination-metrics
+    store off ``AppState`` and builds a tier resolver scoped to the
+    single active provider that the runtime executes against, so the
+    router can never resolve a tier to a model owned by an inactive
+    provider and hand it to the wrong client; ships the ``stakes_aware``
+    default strategy.
+    """
+    from synthorg.providers.routing.resolver import ModelResolver  # noqa: PLC0415
+
+    benchmark_provider = app_state.benchmark_provider
+    if benchmark_provider is None:
+        return None
+    provider_cfg = app_state.config.providers.get(active_provider_name)
+    if provider_cfg is None:
+        return None
+    resolver = ModelResolver.from_config({active_provider_name: provider_cfg})
+    coordination_store = (
+        app_state.coordination_metrics_store
+        if app_state.has_coordination_metrics_store
+        else None
+    )
+    return build_stakes_router(
+        app_state.config.stakes_routing,
+        benchmark_provider=benchmark_provider,
+        resolver=resolver,
+        coordination_store=coordination_store,
+    )
+
+
 def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
     app_state: AppState,
     provider: CompletionProvider,
@@ -349,6 +389,8 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
     tool_registry: ToolRegistry,
     coordination_metrics_collector: CoordinationMetricsCollector | None,
     external_api_runtime: ExternalApiRuntime | None = None,
+    *,
+    active_provider_name: str,
 ) -> AgentEngine:
     """Assemble the boot ``AgentEngine`` from live application state.
 
@@ -364,6 +406,9 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         provider=provider,
         provider_registry=registry,
         tool_registry=tool_registry,
+        stakes_router=_build_stakes_router_or_none(
+            app_state, active_provider_name=active_provider_name
+        ),
         cost_tracker=(app_state.cost_tracker if app_state.has_cost_tracker else None),
         task_engine=app_state.task_engine,
         approval_store=app_state.approval_store,
@@ -652,6 +697,7 @@ async def build_runtime_services(
         tool_registry,
         coordination_metrics_collector,
         external_api_runtime,
+        active_provider_name=names[0],
     )
     autonomy_resolver = AutonomyResolver(
         registry=ActionTypeRegistry(),

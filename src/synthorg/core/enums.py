@@ -356,6 +356,61 @@ class Complexity(StrEnum):
     EPIC = "epic"
 
 
+class Stakes(StrEnum):
+    """How consequential a subtask or task is for stakes-aware routing.
+
+    Distinct from :class:`Priority` (urgency/importance) and
+    :class:`Complexity` (effort): stakes captures the *cost of being
+    wrong*. Low-stakes work tolerates a cheap model; high-stakes work
+    (architecture, irreversible decisions) warrants a strong model and
+    an adversarial red-team review. The authoritative ordering lives in
+    ``_STAKES_ORDER`` below.
+    """
+
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+# Ordering: LOW (least consequential) < NORMAL < HIGH < CRITICAL.
+_STAKES_ORDER: tuple[Stakes, ...] = tuple(Stakes)
+
+# Guard against silent breakage if the enum is reordered or extended
+# without updating the ordering tuple (mirrors _SENIORITY_ORDER).
+_stakes_members = set(Stakes)
+_stakes_order_set = set(_STAKES_ORDER)
+if _stakes_order_set != _stakes_members:
+    _missing_stakes = _stakes_members - _stakes_order_set
+    _extra_stakes = _stakes_order_set - _stakes_members
+    _stakes_msg = (
+        f"_STAKES_ORDER is out of sync with Stakes: "
+        f"missing={_missing_stakes}, extra={_extra_stakes}"
+    )
+    raise RuntimeError(_stakes_msg)
+del _stakes_members, _stakes_order_set
+
+_STAKES_RANK: dict[Stakes, int] = {
+    level: idx for idx, level in enumerate(_STAKES_ORDER)
+}
+
+
+def compare_stakes(a: Stakes, b: Stakes) -> int:
+    """Compare two stakes levels.
+
+    Returns negative if *a* is lower-stakes than *b*, zero if equal,
+    positive if *a* is higher-stakes than *b*.
+
+    Args:
+        a: First stakes level.
+        b: Second stakes level.
+
+    Returns:
+        Integer indicating relative stakes.
+    """
+    return _STAKES_RANK[a] - _STAKES_RANK[b]
+
+
 class WorkflowType(StrEnum):
     """Workflow type for organizing task execution.
 

@@ -18,6 +18,7 @@ function makeTask(id: string, title: string, overrides: Partial<DashboardTask> =
     artifacts_expected: [],
     acceptance_criteria: [],
     estimated_complexity: 'medium',
+    stakes: 'normal',
     budget_limit: 10,
     cost: 2.50,
     deadline: null,
