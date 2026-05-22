@@ -7,7 +7,7 @@ deterministically from the request so an identical request reproduces the
 same run id (idempotent re-run, replay-friendly).
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from pydantic import (
     AwareDatetime,
@@ -40,8 +40,8 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _BRIEF_ARGS_BOUNDARY = "research.brief_args"
-_RUN_ID_HASH_LEN = 16
-_TITLE_FALLBACK_LEN = 120
+_RUN_ID_HASH_LEN: Final[int] = 16
+_TITLE_FALLBACK_LEN: Final[int] = 120
 
 
 class ResearchBriefArgs(BaseModel):

@@ -32,7 +32,7 @@ class CredibilityTriage(Protocol):
             brief: The research brief (supplies the credibility threshold).
 
         Returns:
-            A ``(verdicts, cost_usd)`` pair with exactly one verdict per
+            A ``(verdicts, cost)`` pair with exactly one verdict per
             input item, each ``passed`` flag set against
             ``brief.min_credibility``.
         """

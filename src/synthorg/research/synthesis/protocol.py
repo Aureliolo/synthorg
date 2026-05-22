@@ -38,7 +38,7 @@ class Synthesizer(Protocol):
                 report's methodology metrics.
 
         Returns:
-            A ``(report, cost_usd)`` pair. Every claim resolves to at least
+            A ``(report, cost)`` pair. Every claim resolves to at least
             one of *sources*; an unsourced claim raises
             :class:`~synthorg.research.errors.ResearchSynthesisError`.
         """

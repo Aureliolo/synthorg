@@ -58,7 +58,7 @@ async def complete_text(
         user: User prompt (carries the wrapped untrusted payload).
 
     Returns:
-        A ``(content, cost_usd)`` pair. ``content`` is the empty string
+        A ``(content, cost)`` pair. ``content`` is the empty string
         when the provider returns no text.
     """
     messages = [

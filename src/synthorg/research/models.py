@@ -33,7 +33,7 @@ from synthorg.knowledge.models import (  # noqa: TC001 -- Pydantic field annotat
     TitleText,
 )
 from synthorg.research.constants import (
-    RESEARCH_DEFAULT_MAX_COST_USD,
+    RESEARCH_DEFAULT_MAX_COST,
     RESEARCH_DEFAULT_MAX_SUBQUERIES,
     RESEARCH_DEFAULT_MAX_WALL_CLOCK_SECONDS,
     RESEARCH_DEFAULT_MIN_CREDIBILITY,
@@ -225,10 +225,10 @@ class ResearchBrief(BaseModel):
         le=1.0,
         description="Minimum credibility score a source must reach to be retained",
     )
-    max_cost_usd: float = Field(
-        default=RESEARCH_DEFAULT_MAX_COST_USD,
+    max_cost: float = Field(
+        default=RESEARCH_DEFAULT_MAX_COST,
         gt=0.0,
-        description="Per-run cost ceiling in USD",
+        description="Per-run cost ceiling in the configured currency",
     )
     max_wall_clock_seconds: int = Field(
         default=RESEARCH_DEFAULT_MAX_WALL_CLOCK_SECONDS,
@@ -458,7 +458,9 @@ class ResearchRun(BaseModel):
         default=None,
         description="Safe error description when status is FAILED",
     )
-    cost_usd: float = Field(default=0.0, ge=0.0, description="Accrued run cost in USD")
+    cost: float = Field(
+        default=0.0, ge=0.0, description="Accrued run cost in the configured currency"
+    )
     wall_clock_seconds: float = Field(
         default=0.0,
         ge=0.0,

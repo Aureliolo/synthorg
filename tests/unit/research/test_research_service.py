@@ -153,7 +153,7 @@ async def test_pipeline_produces_cited_report() -> None:
     for claim in run.report.claims:
         for citation in claim.citations:
             assert citation.ref_id in retrieved
-    assert run.cost_usd > 0.0
+    assert run.cost > 0.0
 
 
 async def test_run_is_replayable_byte_identical() -> None:

@@ -23,7 +23,7 @@ class QueryPlanner(Protocol):
             brief: The research brief to decompose.
 
         Returns:
-            A ``(plan, cost_usd)`` pair. The plan's sub-queries target only
+            A ``(plan, cost)`` pair. The plan's sub-queries target only
             the brief's enabled sources and number at most
             ``brief.max_subqueries``.
         """

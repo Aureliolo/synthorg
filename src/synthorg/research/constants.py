@@ -26,8 +26,8 @@ sub-query."""
 RESEARCH_DEFAULT_MIN_CREDIBILITY: Final[float] = 0.5
 """Default minimum credibility score a source must reach to be retained."""
 
-RESEARCH_DEFAULT_MAX_COST_USD: Final[float] = 50.0
-"""Default per-run cost ceiling in USD."""
+RESEARCH_DEFAULT_MAX_COST: Final[float] = 50.0
+"""Default per-run cost ceiling in the configured currency."""
 
 RESEARCH_DEFAULT_MAX_WALL_CLOCK_SECONDS: Final[int] = 300
 """Default per-run wall-clock ceiling in seconds."""

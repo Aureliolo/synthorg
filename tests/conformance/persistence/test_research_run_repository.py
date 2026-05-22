@@ -137,7 +137,7 @@ def _completed_run() -> ResearchRun:
                 ),
             ),
             "report": report,
-            "cost_usd": 0.12,
+            "cost": 0.12,
             "wall_clock_seconds": 1.5,
             "completed_at": _NOW,
         }

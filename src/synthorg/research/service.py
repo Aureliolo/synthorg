@@ -195,7 +195,7 @@ class ResearchService:
                 "retrieved_items": items,
                 "credibility": verdicts,
                 "report": report,
-                "cost_usd": total_cost,
+                "cost": total_cost,
                 "wall_clock_seconds": max(0.0, elapsed),
                 "completed_at": completed_at,
             }
@@ -205,7 +205,7 @@ class ResearchService:
             RESEARCH_RUN_COMPLETED,
             run_id=run.run_id,
             brief_id=run.brief_id,
-            cost_usd=total_cost,
+            cost=total_cost,
         )
         return completed
 
