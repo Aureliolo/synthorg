@@ -180,7 +180,9 @@ async def test_run_is_replayable_byte_identical() -> None:
             scripted_response(_SYNTH),
         ]
     )
-    replay_sources = dict(build_replay_sources(recorded.retrieved_items))
+    replay_sources: dict[ResearchSourceType, RetrievalSource] = dict(
+        build_replay_sources(recorded.retrieved_items)
+    )
     replayed = await _build_service(replay_provider, replay_sources).run(
         _brief(), run_id="run-1", created_by="agent-1"
     )
