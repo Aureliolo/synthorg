@@ -54,7 +54,12 @@ class ReplayRetrievalSource:
 def build_replay_sources(
     items: tuple[RetrievedItem, ...],
 ) -> dict[ResearchSourceType, ReplayRetrievalSource]:
-    """Build one replay source per source family present in *items*."""
+    """Build one replay source per source family.
+
+    A source is created for every :class:`ResearchSourceType` so the
+    service can route any planned sub-query; each source filters *items*
+    to its own family and serves an empty result when none were recorded.
+    """
     return {
         source_type: ReplayRetrievalSource(source_type=source_type, items=items)
         for source_type in ResearchSourceType

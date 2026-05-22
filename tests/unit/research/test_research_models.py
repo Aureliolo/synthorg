@@ -207,8 +207,13 @@ def test_citation_academic_and_code_locators() -> None:
         source_type=ResearchSourceType.CODE,
         external=CodeSourceLocator(repo="owner/repo", path="a.py", line_start=1),
     )
-    assert academic.external is not None
-    assert code.external is not None
+    assert isinstance(academic.external, AcademicSourceLocator)
+    assert academic.external.identifier == "arXiv:1234"
+    assert academic.external.year == 2024
+    assert isinstance(code.external, CodeSourceLocator)
+    assert code.external.repo == "owner/repo"
+    assert code.external.path == "a.py"
+    assert code.external.line_start == 1
 
 
 def test_code_locator_rejects_inverted_line_range() -> None:

@@ -122,12 +122,19 @@ class LlmSynthesizer:
         plan: ResearchQueryPlan,
         sources: tuple[RetrievedItem, ...],
     ) -> str:
-        """Build the user prompt: brief, angle, and wrapped source blocks."""
+        """Build the user prompt: brief, angle, and wrapped source blocks.
+
+        ``ref_id`` / ``source_type`` are trusted (assigned by the pipeline);
+        the title, uri, and snippet all come from untrusted external
+        sources, so they are wrapped together inside one fence.
+        """
         question = wrap_untrusted(TAG_TASK_DATA, f"Question: {brief.question}")
         blocks = [
             f"ref_id: {item.ref_id}\nsource_type: {item.source_type.value}\n"
-            f"title: {item.title}\nuri: {item.uri}\n"
-            f"{wrap_untrusted(TAG_RESEARCH_SOURCE, item.snippet)}"
+            + wrap_untrusted(
+                TAG_RESEARCH_SOURCE,
+                f"title: {item.title}\nuri: {item.uri}\n{item.snippet}",
+            )
             for item in sources
         ]
         return (

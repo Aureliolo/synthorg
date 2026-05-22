@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from synthorg.api.boundary import parse_typed
 from synthorg.engine.prompt_safety import (
     TAG_RESEARCH_SOURCE,
+    TAG_TASK_DATA,
     untrusted_content_directive,
     wrap_untrusted,
 )
@@ -41,7 +42,7 @@ _SYSTEM_PROMPT: Final[str] = (
     '"score": <0..1>, "red_flags": ["<flag>"]}]}\n'
     "Score lower for marketing material, unverified claims, or off-topic "
     "sources. Include one verdict per source, keyed by its exact ref_id. "
-    + untrusted_content_directive((TAG_RESEARCH_SOURCE,))
+    + untrusted_content_directive((TAG_RESEARCH_SOURCE, TAG_TASK_DATA))
 )
 
 
@@ -91,11 +92,13 @@ class LlmCredibilityTriage:
         """Score one batch and parse the model's structured verdicts."""
         blocks = [
             f"ref_id: {item.ref_id}\nsource_type: {item.source_type.value}\n"
-            f"title: {item.title}\n"
-            f"{wrap_untrusted(TAG_RESEARCH_SOURCE, item.snippet)}"
+            + wrap_untrusted(
+                TAG_RESEARCH_SOURCE, f"title: {item.title}\n{item.snippet}"
+            )
             for item in batch
         ]
-        user = f"Research question: {brief.question}\n\n" + "\n\n".join(blocks)
+        question = wrap_untrusted(TAG_TASK_DATA, f"Research question: {brief.question}")
+        user = f"{question}\n\n" + "\n\n".join(blocks)
         content, cost = await complete_text(
             self._provider,
             self._model,

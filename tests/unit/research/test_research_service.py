@@ -185,6 +185,14 @@ async def test_run_is_replayable_byte_identical() -> None:
 
     assert replayed.report is not None
     assert recorded.report is not None
+    # Every pipeline stage reproduces identically, not just the final report.
+    assert replayed.retrieved_items == recorded.retrieved_items
+    assert replayed.query_plan is not None
+    assert recorded.query_plan is not None
+    assert (
+        replayed.query_plan.model_dump_json() == recorded.query_plan.model_dump_json()
+    )
+    assert replayed.credibility == recorded.credibility
     assert replayed.report.model_dump_json() == recorded.report.model_dump_json()
     # Replay did not touch the real web provider.
     assert replay_web.queries == []

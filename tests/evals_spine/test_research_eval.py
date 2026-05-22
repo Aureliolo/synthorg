@@ -207,6 +207,8 @@ async def test_research_lane_runs_replays_and_grades() -> None:
 
     assert recorded.report is not None
     assert replayed.report is not None
+    assert replayed.retrieved_items == recorded.retrieved_items
+    assert replayed.credibility == recorded.credibility
     assert replayed.report.model_dump_json() == recorded.report.model_dump_json()
     assert replay_web.queries == []
 
