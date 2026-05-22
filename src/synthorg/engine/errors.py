@@ -298,6 +298,60 @@ class GitBackendForgeAuthError(GitBackendForgeApiError):
     default_message: ClassVar[str] = "Forge API authentication failed"
 
 
+class ProjectEnvironmentError(EngineError):
+    """Base exception for reproducible per-project environment failures.
+
+    Named ``ProjectEnvironmentError`` (not ``EnvironmentError``) to avoid
+    shadowing the built-in ``EnvironmentError`` alias of ``OSError``;
+    mirrors the :class:`ProjectWorkspaceError` sibling.
+    """
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.ENVIRONMENT_ERROR
+
+
+class EnvironmentConfigError(ProjectEnvironmentError):
+    """Raised when environment configuration is invalid for the strategy.
+
+    Fail-fast at factory construction (e.g. a strategy selected without
+    the runtime dependency it requires, mirroring
+    :class:`GitBackendConfigError`).
+    """
+
+    status_code: ClassVar[int] = 422
+    error_code: ClassVar[ErrorCode] = ErrorCode.REQUEST_VALIDATION_ERROR
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    default_message: ClassVar[str] = "Environment configuration invalid"
+
+
+class EnvironmentProvisionError(ProjectEnvironmentError):
+    """Raised when an environment strategy fails to provision."""
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.ENVIRONMENT_PROVISION_FAILED
+    default_message: ClassVar[str] = "Environment provisioning failed"
+
+
+class EnvironmentDockerBuildError(EnvironmentProvisionError):
+    """Raised when the devcontainer image build fails."""
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.ENVIRONMENT_DOCKER_BUILD_FAILED
+    default_message: ClassVar[str] = "Environment image build failed"
+
+
+class EnvironmentBackendUnavailableError(ProjectEnvironmentError):
+    """Raised when a declaration needs a sandbox backend that is not active.
+
+    Loud, never silent: e.g. a ``DEVCONTAINER`` declaration on a project
+    whose build/test categories resolve to the subprocess backend cannot
+    build a sealed image, so provisioning fails rather than degrading to
+    an unfaithful host-only run.
+    """
+
+    status_code: ClassVar[int] = 409
+    error_code: ClassVar[ErrorCode] = ErrorCode.ENVIRONMENT_BACKEND_UNAVAILABLE
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    default_message: ClassVar[str] = "Environment backend unavailable"
+
+
 class TaskEngineError(EngineError):
     """Base exception for all task engine errors."""
 

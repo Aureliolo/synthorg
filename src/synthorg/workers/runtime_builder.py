@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.budget.baseline_store import BaselineStore
 from synthorg.budget.coordination_collector import CoordinationMetricsCollector
+from synthorg.core.enums import ToolCategory
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.coordination.factory import build_coordinator
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
@@ -52,7 +53,10 @@ from synthorg.tools.base import BaseTool  # noqa: TC001
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.registry import ToolRegistry
-from synthorg.tools.sandbox.factory import build_sandbox_backends
+from synthorg.tools.sandbox.factory import (
+    build_sandbox_backends,
+    resolve_sandbox_for_category,
+)
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
@@ -716,14 +720,28 @@ async def build_runtime_services(
         provider=names[0],
         tool_count=tool_count,
     )
+    # The env runner provisions the declaration into the same backend the
+    # build/test tool categories resolve to (not necessarily Docker), so
+    # provisioning matches what the agent's code-execution tools use.
+    environment_runner_backend = resolve_sandbox_for_category(
+        config=app_state.config.sandboxing,
+        backends=sandbox_backends,
+        category=ToolCategory.CODE_EXECUTION,
+    )
     worker_execution_service = AgentEngineExecutionService(
         engine=engine,
         task_engine=app_state.task_engine,
         agent_registry=app_state.agent_registry,
         autonomy_resolver=autonomy_resolver,
-        sandbox_backend=sandbox_backends.get("docker"),
+        # Release the lifecycle owner on the SAME backend the code-execution
+        # tools resolve to (not hardwired docker): if code execution maps to
+        # subprocess, a docker-pinned release would target the wrong backend
+        # and skip owner cleanup on the one that actually held the container.
+        sandbox_backend=environment_runner_backend,
         lifecycle_strategy_kind=(app_state.config.sandboxing.docker.lifecycle.strategy),
         project_workspace_service=app_state.project_workspace_service,
+        environment_service=app_state.environment_service,
+        environment_runner_backend=environment_runner_backend,
     )
     work_pipeline = await _build_runtime_work_pipeline(
         app_state,

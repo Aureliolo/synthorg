@@ -21,7 +21,7 @@ The design specification has been split into focused documentation pages for bet
 | [Distributed Runtime](design/distributed-runtime.md) | Transport Evaluation, Bus Backend, Task Queue, Migration | Pluggable distributed backend design, NATS JetStream first implementation, distributed task queue hook into TaskEngine |
 | [Task & Workflow Engine](design/engine.md) | Task Engine Core | Task lifecycle, routing, workflow types and definitions, TaskEngine centralized state coordination |
 | [Agent Execution](design/agent-execution.md) | Execution Loops | Execution status, ReAct/Plan-Execute/Hybrid loops, prompt profiles, stagnation detection, context budget, brain/hands/session |
-| [Coordination & Resilience](design/coordination.md) | Multi-agent + Recovery | Crash recovery, graceful shutdown, workspace isolation, task decomposability, coordination topology |
+| [Coordination & Resilience](design/coordination.md) | Multi-agent + Recovery | Crash recovery, graceful shutdown, workspace isolation, reproducible per-project environments, task decomposability, coordination topology |
 | [Verification & Quality](design/verification-quality.md) | Quality Pipeline | Verification stage, harness middleware, review pipeline, intake engine |
 | [Memory](design/memory.md) | Memory | Memory types, backends, retrieval, embedding selection, consolidation |
 | [Memory Organizational](design/memory-organizational.md) | Shared Knowledge | Company-wide policies, ADRs, OrgMemoryBackend protocol, research directions |

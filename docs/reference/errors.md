@@ -102,6 +102,8 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4014 | `AGENT_RUNTIME_NOT_CONFIGURED` | No LLM provider configured; agent runtime cannot execute |
 | 4015 | `CONVERSATION_CLOSED` | Conversation is closed; no further messages or actions accepted |
 | 4016 | `PROJECT_WORKSPACE_NOT_PROVISIONED` | Project workspace required but never provisioned by the git backend |
+| 4017 | `LIVING_DOC_VERSION_CONFLICT` | Living-doc write lost an optimistic-concurrency race |
+| 4018 | `ENVIRONMENT_BACKEND_UNAVAILABLE` | Declaration needs a sandbox backend that is not active (e.g. devcontainer on the subprocess backend) |
 
 ## Rate Limit (5xxx)
 
@@ -157,6 +159,16 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 8013 | `BACKUP_MANIFEST_ERROR` | Backup manifest could not be parsed or validated |
 | 8014 | `SETTINGS_ENCRYPTION_ERROR` | Internal error processing a sensitive (encrypted) setting |
 | 8015 | `SINK_CONFIG_VALIDATION_ERROR` | Internal error validating an observability sink configuration |
+| 8016 | `WORKER_DEAD_LETTER_ERROR` | Worker dead-letter handling failed |
+| 8017 | `LIVING_DOC_INDEX_ERROR` | Living-doc RAG index operation failed |
+| 8018 | `LIVING_DOC_COMMIT_ERROR` | Living-doc commit to the workspace failed |
+| 8019 | `KNOWLEDGE_INGEST_ERROR` | Knowledge-source ingestion failed |
+| 8020 | `KNOWLEDGE_RETRIEVAL_ERROR` | Knowledge retrieval failed |
+| 8021 | `KNOWLEDGE_DEPENDENCY_ERROR` | Knowledge subsystem dependency unavailable |
+| 8022 | `KNOWLEDGE_SOURCE_UNAVAILABLE` | Requested knowledge source is unavailable |
+| 8023 | `ENVIRONMENT_ERROR` | Generic reproducible-environment failure |
+| 8024 | `ENVIRONMENT_PROVISION_FAILED` | Environment setup/provisioning failed |
+| 8025 | `ENVIRONMENT_DOCKER_BUILD_FAILED` | Devcontainer image build failed |
 
 ## Content negotiation
 

@@ -297,6 +297,42 @@ def _try_wire_cost_dial(app_state: AppState) -> None:
         )
 
 
+def _wire_environment_service(app_state: AppState) -> None:
+    """Wire the per-project reproducible-environment substrate.
+
+    The declaration strategy is config-selected (manifest default); the
+    service provisions the committed declaration into each project tree
+    so the sandbox builds from the same declaration a fresh clone gets.
+    Persistence-less boots skip wiring -- the service is optional and
+    gated on ``has_environment_service`` downstream.
+    """
+    if not app_state.has_persistence or app_state.environment_service is not None:
+        return
+    from synthorg.engine.workspace.environment import (  # noqa: PLC0415
+        EnvironmentConfig,
+        EnvironmentDeps,
+        GitWorkspaceCommitter,
+        build_environment_strategy,
+    )
+    from synthorg.engine.workspace.environment.service import (  # noqa: PLC0415
+        EnvironmentService,
+    )
+
+    environment_config = EnvironmentConfig()
+    app_state.set_environment_service(
+        EnvironmentService(
+            repo=app_state.persistence.project_environments,
+            strategy=build_environment_strategy(
+                environment_config,
+                EnvironmentDeps(clock=app_state.clock),
+            ),
+            config=environment_config,
+            committer=GitWorkspaceCommitter(),
+            clock=app_state.clock,
+        ),
+    )
+
+
 def _build_dynamic_tool_repo(
     persistence: PersistenceBackend,
 ) -> DynamicToolRepository:
@@ -1246,6 +1282,10 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                     clock=app_state.clock,
                 ),
             )
+
+        # Per-project reproducible environment substrate (extracted to
+        # keep this hook under the cyclomatic-complexity cap).
+        _wire_environment_service(app_state)
 
         try:
             services = await build_runtime_services(

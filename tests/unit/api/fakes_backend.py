@@ -39,6 +39,7 @@ from tests.unit.api.fakes import (
     FakeMessageRepository,
     FakeParkedContextRepository,
     FakePersonalityPresetRepository,
+    FakeProjectEnvironmentRepository,
     FakeProjectRepository,
     FakeProjectWorkspaceRepository,
     FakeSettingsRepository,
@@ -601,6 +602,7 @@ class FakePersistenceBackend:
         self._artifacts = FakeArtifactRepository()
         self._projects = FakeProjectRepository()
         self._project_workspaces = FakeProjectWorkspaceRepository()
+        self._project_environments = FakeProjectEnvironmentRepository()
         self._project_docs = FakeDocsRepository()
         self._knowledge_sources = FakeKnowledgeSourceRepository()
         self._knowledge_provenance = FakeChunkProvenanceRepository()
@@ -721,6 +723,10 @@ class FakePersistenceBackend:
     @property
     def project_workspaces(self) -> FakeProjectWorkspaceRepository:
         return self._project_workspaces
+
+    @property
+    def project_environments(self) -> FakeProjectEnvironmentRepository:
+        return self._project_environments
 
     @property
     def project_docs(self) -> FakeDocsRepository:

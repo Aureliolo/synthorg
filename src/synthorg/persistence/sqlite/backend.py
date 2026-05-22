@@ -121,6 +121,9 @@ from synthorg.persistence.sqlite.principle_override_repo import (
 from synthorg.persistence.sqlite.project_cost_aggregate_repo import (
     SQLiteProjectCostAggregateRepository,
 )
+from synthorg.persistence.sqlite.project_environment_repo import (
+    SQLiteProjectEnvironmentRepository,
+)
 from synthorg.persistence.sqlite.project_repo import (
     SQLiteProjectRepository,
 )
@@ -213,6 +216,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._artifacts: SQLiteArtifactRepository | None = None
         self._projects: SQLiteProjectRepository | None = None
         self._project_workspaces: SQLiteProjectWorkspaceRepository | None = None
+        self._project_environments: SQLiteProjectEnvironmentRepository | None = None
         self._project_docs: SQLiteDocsRepository | None = None
         self._knowledge_sources: SQLiteKnowledgeSourceRepository | None = None
         self._knowledge_provenance: SQLiteChunkProvenanceRepository | None = None
@@ -285,6 +289,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._artifacts = None
         self._projects = None
         self._project_workspaces = None
+        self._project_environments = None
         self._project_docs = None
         self._knowledge_sources = None
         self._knowledge_provenance = None
@@ -444,6 +449,10 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._project_workspaces = SQLiteProjectWorkspaceRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._project_environments = SQLiteProjectEnvironmentRepository(
             self._db,
             write_context=self.write_context,
         )

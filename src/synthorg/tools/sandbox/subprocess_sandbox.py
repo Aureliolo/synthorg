@@ -31,6 +31,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_WORKSPACE_VIOLATION,
 )
 from synthorg.tools._process_cleanup import close_subprocess_transport
+from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.config import SubprocessSandboxConfig
 from synthorg.tools.sandbox.errors import (
     SandboxError,
@@ -268,6 +269,35 @@ class SubprocessSandbox:
         from ``SubprocessSandboxConfig.extra_safe_path_prefixes``.
         """
         return self._get_platform_default_dirs() + self._config.extra_safe_path_prefixes
+
+    def _screen_declaration_env(
+        self,
+        env_additions: Mapping[str, str],
+    ) -> dict[str, str]:
+        """Drop denylisted keys from declaration-sourced env additions.
+
+        The per-project environment declaration is committed code, but
+        unlike the trusted internal overrides (git hardening vars) it is
+        screened through the secret denylist so a declared
+        secret-pattern variable cannot bypass the filter the inherited
+        host environment is subject to. Dropped keys are logged; PATH and
+        other allowed toolchain vars pass through.
+        """
+        screened: dict[str, str] = {}
+        dropped: list[str] = []
+        for name, value in env_additions.items():
+            if self._matches_denylist(name):
+                dropped.append(name)
+            else:
+                screened[name] = value
+        if dropped:
+            logger.warning(
+                SANDBOX_ENV_FILTERED,
+                source="declaration",
+                dropped_count=len(dropped),
+                dropped_keys=sorted(dropped),
+            )
+        return screened
 
     def _build_filtered_env(
         self,
@@ -607,7 +637,21 @@ class SubprocessSandbox:
         effective_timeout = (
             timeout if timeout is not None else self._config.timeout_seconds
         )
-        env = self._build_filtered_env(env_overrides)
+        # Per-task reproducible environment (ambient, set by the worker):
+        # toolchain / PATH additions for this run. The declaration is
+        # committed code, but it is broader than the trusted internal
+        # overrides (git hardening vars), so its additions are screened
+        # through the same denylist as the inherited host env before
+        # merging; a declared secret-pattern var is dropped and logged.
+        # An injected PATH is still re-filtered by ``_build_filtered_env``.
+        # Explicit ``env_overrides`` stay trusted and win on conflict.
+        # ``image_override`` has no meaning for subprocess.
+        active_env = get_active_sandbox_environment()
+        effective_overrides: Mapping[str, str] | None = env_overrides
+        if active_env is not None and active_env.env_additions:
+            screened = self._screen_declaration_env(active_env.env_additions)
+            effective_overrides = {**screened, **(env_overrides or {})}
+        env = self._build_filtered_env(effective_overrides)
 
         logger.debug(
             SANDBOX_EXECUTE_START,
@@ -674,6 +718,7 @@ class SubprocessSandbox:
         owner_id: NotBlankStr,
         *,
         project_id: NotBlankStr | None = None,
+        image_override: str | None = None,
     ) -> None:
         """No-op -- subprocesses hold no per-owner resources."""
 

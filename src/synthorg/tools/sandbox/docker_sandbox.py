@@ -8,6 +8,7 @@ dispatch live in :class:`DockerSandboxExecMixin`.
 """
 
 import asyncio
+import fnmatch
 import platform
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final
@@ -26,8 +27,10 @@ from synthorg.observability.events.docker import (
 from synthorg.observability.events.sandbox import (
     SANDBOX_CONTAINER_TRACK_FAILED,
     SANDBOX_CONTAINER_UNTRACK_FAILED,
+    SANDBOX_ENV_FILTERED,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
 )
+from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
@@ -411,6 +414,47 @@ class DockerSandbox(
         rel = cwd.resolve().relative_to(effective_root)
         return str(PurePosixPath(_CONTAINER_WORKSPACE) / rel)
 
+    def _matches_denylist(self, name: str) -> bool:
+        """Check if an env var name matches any denylist pattern.
+
+        Both name and patterns are uppercased for case-insensitive
+        matching so the denylist catches secrets / loader-injection
+        vars regardless of casing.
+        """
+        upper = name.upper()
+        return any(
+            fnmatch.fnmatch(upper, pat.upper())
+            for pat in self._config.env_denylist_patterns
+        )
+
+    def _screen_declaration_env(
+        self,
+        env_additions: Mapping[str, str],
+    ) -> dict[str, str]:
+        """Drop denylisted keys from declaration-sourced env additions.
+
+        The per-project environment declaration is committed code, but
+        unlike trusted internal overrides it is screened through the
+        secret / loader-injection denylist so a declared dangerous
+        variable (e.g. ``LD_PRELOAD``, ``PYTHONPATH``) cannot hijack
+        tool execution inside the container.  Dropped keys are logged.
+        """
+        screened: dict[str, str] = {}
+        dropped: list[str] = []
+        for name, value in env_additions.items():
+            if self._matches_denylist(name):
+                dropped.append(name)
+            else:
+                screened[name] = value
+        if dropped:
+            logger.warning(
+                SANDBOX_ENV_FILTERED,
+                source="declaration",
+                dropped_count=len(dropped),
+                dropped_keys=sorted(dropped),
+            )
+        return screened
+
     def _merged_env_list(
         self,
         env_overrides: Mapping[str, str] | None,
@@ -444,6 +488,7 @@ class DockerSandbox(
         category: str = "",
         network_mode: str | None = None,
         owner_id: str | None = None,
+        image_override: NotBlankStr | None = None,
     ) -> dict[str, Any]:
         """Build the Docker container creation config.
 
@@ -459,6 +504,11 @@ class DockerSandbox(
                 set ``container:<sidecar_id>`` when sidecar
                 enforcement is active.
             owner_id: Lifecycle owner for container labeling.
+            image_override: Per-project devcontainer image to run in
+                place of the configured sandbox image; ``None`` keeps the
+                configured image.  The hardened host config (read-only
+                root, ``CapDrop: ALL``, ``no-new-privileges``) still
+                applies, so the override image must run under it.
 
         Returns:
             A dict suitable for ``aiodocker`` container creation.
@@ -480,7 +530,7 @@ class DockerSandbox(
         if owner_id is not None:
             labels["synthorg.sandbox.owner_id"] = owner_id
         return {
-            "Image": self._config.image,
+            "Image": str(image_override) if image_override else self._config.image,
             "Cmd": [command, *args],
             "WorkingDir": container_cwd,
             "Env": env_list,
@@ -700,17 +750,37 @@ class DockerSandbox(
             self._config.timeout_seconds,
         )
         container_cwd = self._resolve_cwd_in_container(cwd, effective_root)
+        # Per-task reproducible environment (ambient, set by the worker):
+        # the devcontainer image to run in, plus toolchain / PATH
+        # additions. Additions are the base; explicit ``env_overrides``
+        # win on conflict. They flow through ``_resolve_exec_env`` like
+        # any other override, so the credential-sanitise + reserved-var
+        # checks still apply.
+        active_env = get_active_sandbox_environment()
+        image_override = active_env.image_override if active_env is not None else None
+        effective_overrides: Mapping[str, str] | None = env_overrides
+        if active_env is not None and active_env.env_additions:
+            # Declaration-sourced additions are screened through the
+            # secret/loader-injection denylist before merging; explicit
+            # tool-supplied env_overrides win on conflict and bypass the
+            # denylist by design (parity with SubprocessSandbox).
+            screened = self._screen_declaration_env(active_env.env_additions)
+            effective_overrides = {**screened, **(env_overrides or {})}
         # Validate / resolve the per-command env BEFORE any container
         # work so a reserved-variable rejection never leaks a container.
-        exec_env = self._resolve_exec_env(env_overrides)
-        owner_key, strategy_owns = self._resolve_lifecycle(owner_id, project_id=pid)
+        exec_env = self._resolve_exec_env(effective_overrides)
+        owner_key, strategy_owns = self._resolve_lifecycle(
+            owner_id,
+            project_id=pid,
+            image_override=str(image_override) if image_override else None,
+        )
         logger.debug(
             DOCKER_EXECUTE_START,
             command=command,
             args=args,
             cwd=container_cwd,
             timeout=effective_timeout,
-            image=self._config.image,
+            image=str(image_override) if image_override else self._config.image,
             owner_id=owner_key,
         )
         docker = await self._ensure_docker()
@@ -719,10 +789,11 @@ class DockerSandbox(
             return await self._create_keepalive_handle(
                 docker=docker,
                 container_cwd=container_cwd,
-                env_overrides=env_overrides,
+                env_overrides=effective_overrides,
                 effective_root=effective_root,
                 category=category,
                 owner_label=owner_key,
+                image_override=image_override,
             )
 
         handle = await self._acquire_owner_handle(

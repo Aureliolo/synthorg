@@ -15,6 +15,7 @@ from synthorg.tools.sandbox._image_resolution import (
     get_resolved_sandbox_image,
     get_resolved_sidecar_image,
 )
+from synthorg.tools.sandbox.config import DEFAULT_ENV_DENYLIST_PATTERNS
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.network_presets import PRESETS
 from synthorg.tools.sandbox.policy import SandboxPolicy  # noqa: TC001
@@ -162,6 +163,15 @@ class DockerSandboxConfig(BaseModel):
     runtime: NotBlankStr | None = Field(
         default=None,
         description="Optional container runtime (e.g. 'runsc' for gVisor)",
+    )
+    env_denylist_patterns: tuple[str, ...] = Field(
+        default=DEFAULT_ENV_DENYLIST_PATTERNS,
+        description=(
+            "fnmatch patterns for env-var names stripped from "
+            "declaration-sourced env additions before they reach the "
+            "container (secret heuristics + loader-injection vars). "
+            "Explicit tool-supplied env_overrides bypass this by design."
+        ),
     )
     sidecar_image: NotBlankStr = Field(
         default_factory=_default_sidecar_image,

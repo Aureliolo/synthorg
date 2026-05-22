@@ -42,6 +42,7 @@ class _FakeSandbox:
         owner_id: str,
         *,
         project_id: NotBlankStr | None = None,
+        image_override: str | None = None,
     ) -> None:
         pass
 

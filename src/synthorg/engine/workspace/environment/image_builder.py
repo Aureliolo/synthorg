@@ -1,0 +1,136 @@
+"""Docker image builder for the devcontainer strategy.
+
+The devcontainer strategy builds a sealed image from a ``build`` /
+Dockerfile declaration.  The build runs on the host daemon via the
+``docker`` CLI (the backend has ``docker.sock`` mounted), spawned as a
+subprocess rather than through ``aiodocker`` so the build context does
+not have to be tarred and streamed by hand, and so the failure surface
+stays small enough to mock in unit tests.
+"""
+
+import asyncio
+import contextlib
+from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+from typing import Final, Protocol, Self, runtime_checkable
+
+from pydantic import BaseModel, ConfigDict, computed_field, model_validator
+
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.workspace import ENVIRONMENT_IMAGE_BUILD_FAILED
+
+logger = get_logger(__name__)
+
+_DOCKER: Final[str] = "docker"
+
+
+class BuildOutcome(BaseModel):
+    """Immutable result of a docker image build.
+
+    Attributes:
+        tag: The image tag the build targeted.
+        exit_code: ``docker build`` exit status (``-1`` on timeout).
+        log: Combined build output (stdout + stderr), for diagnostics.
+        timed_out: Whether the build was killed at the timeout.
+        success: Computed -- ``True`` when ``exit_code`` is 0.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    tag: NotBlankStr
+    exit_code: int
+    log: str = ""
+    timed_out: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def success(self) -> bool:
+        """Whether the build exited cleanly."""
+        return self.exit_code == 0 and not self.timed_out
+
+    @model_validator(mode="after")
+    def _check_timeout_marker(self) -> Self:
+        """A timed-out build is signalled by the reserved ``-1`` exit code."""
+        if self.timed_out and self.exit_code != -1:
+            msg = "timed_out build must use exit_code -1"
+            raise ValueError(msg)
+        return self
+
+
+@runtime_checkable
+class ImageBuilder(Protocol):
+    """Builds a Docker image from a Dockerfile and context directory."""
+
+    async def build(
+        self,
+        *,
+        tag: NotBlankStr,
+        dockerfile: Path,
+        context_dir: Path,
+        timeout: float,  # noqa: ASYNC109 -- caller-tuned build ceiling
+    ) -> BuildOutcome:
+        """Build *dockerfile* in *context_dir*, tagged *tag*."""
+        ...
+
+
+class SubprocessImageBuilder:
+    """Builds images by spawning ``docker build`` on the host daemon."""
+
+    @staticmethod
+    async def _kill_and_reap(proc: asyncio.subprocess.Process) -> None:
+        """Kill *proc* and reap it, shielding the wait from cancellation.
+
+        Without the shield an outer cancellation arriving during
+        ``proc.wait()`` would unwind before the process is reaped,
+        leaking a zombie ``docker build``.
+        """
+        # The process may exit between the timeout firing and the kill;
+        # suppress the kill-race so the cancellation/timeout path still reaps.
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+            await asyncio.shield(proc.wait())
+
+    async def build(
+        self,
+        *,
+        tag: NotBlankStr,
+        dockerfile: Path,
+        context_dir: Path,
+        timeout: float,  # noqa: ASYNC109 -- caller-tuned build ceiling
+    ) -> BuildOutcome:
+        """Run ``docker build`` and capture its combined output."""
+        proc = await asyncio.create_subprocess_exec(
+            _DOCKER,
+            "build",
+            "-t",
+            str(tag),
+            "-f",
+            str(dockerfile),
+            str(context_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except TimeoutError:
+            await self._kill_and_reap(proc)
+            logger.warning(
+                ENVIRONMENT_IMAGE_BUILD_FAILED,
+                tag=str(tag),
+                reason="timeout",
+                timeout_seconds=timeout,
+            )
+            return BuildOutcome(tag=tag, exit_code=-1, timed_out=True)
+        except asyncio.CancelledError:
+            # Reap the build before unwinding so a cancelled provision
+            # cannot leave a zombie ``docker build`` holding the daemon.
+            await self._kill_and_reap(proc)
+            raise
+        return BuildOutcome(
+            tag=tag,
+            exit_code=proc.returncode if proc.returncode is not None else -1,
+            log=stdout.decode("utf-8", errors="replace"),
+        )
+
+
+__all__ = ["BuildOutcome", "ImageBuilder", "SubprocessImageBuilder"]

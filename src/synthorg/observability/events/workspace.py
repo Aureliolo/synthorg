@@ -65,6 +65,22 @@ WORKSPACE_PATH_TRAVERSAL_REJECTED: Final[str] = (
 )
 WORKSPACE_GIT_DIR_CLEARED: Final[str] = "project_workspace.git_dir.cleared"
 
+# ── Per-project environment provisioning events ──────────────────
+ENVIRONMENT_PROVISION_START: Final[str] = "environment.provision.start"
+ENVIRONMENT_PROVISIONED: Final[str] = "environment.provisioned"
+ENVIRONMENT_PROVISION_FAILED: Final[str] = "environment.provision.failed"
+ENVIRONMENT_REUSED: Final[str] = "environment.reused"
+ENVIRONMENT_KIND_CHANGED: Final[str] = "environment.kind.changed"
+ENVIRONMENT_DECLARATION_SCAFFOLDED: Final[str] = "environment.declaration.scaffolded"
+ENVIRONMENT_IMAGE_BUILD_START: Final[str] = "environment.image.build.start"
+ENVIRONMENT_IMAGE_BUILD_COMPLETE: Final[str] = "environment.image.build.complete"
+ENVIRONMENT_IMAGE_BUILD_FAILED: Final[str] = "environment.image.build.failed"
+ENVIRONMENT_IMAGE_BUILD_RETRY: Final[str] = "environment.image.build.retry"
+ENVIRONMENT_LOCKFILE_PATH_REJECTED: Final[str] = "environment.lockfile.path.rejected"
+ENVIRONMENT_DECLARATION_INVALID: Final[str] = "environment.declaration.invalid"
+ENVIRONMENT_ROW_PERSISTED: Final[str] = "environment.row.persisted"
+ENVIRONMENT_PROVISION_SKIPPED: Final[str] = "environment.provision.skipped"
+
 # ── Coordinator push-queue events ────────────────────────────────
 WORKSPACE_PUSH_QUEUE_ENQUEUED: Final[str] = "workspace.push_queue.enqueued"
 WORKSPACE_PUSH_QUEUE_MERGED: Final[str] = "workspace.push_queue.merged"

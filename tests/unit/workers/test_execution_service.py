@@ -489,6 +489,7 @@ class TestSandboxOwnerRelease:
         release.assert_awaited_once_with(
             str(identity.id),  # type: ignore[attr-defined]
             project_id=task.project,  # type: ignore[attr-defined]
+            image_override=None,
         )
 
     async def test_per_task_releases_task_id(self) -> None:
@@ -502,6 +503,7 @@ class TestSandboxOwnerRelease:
         release.assert_awaited_once_with(
             task.id,  # type: ignore[attr-defined]
             project_id=task.project,  # type: ignore[attr-defined]
+            image_override=None,
         )
 
     async def test_per_call_does_not_release(self) -> None:
@@ -561,4 +563,6 @@ class TestSandboxOwnerRelease:
                 idempotency_key="k",
                 requested_by="user",
             )
-        release.assert_awaited_once_with(task.id, project_id=task.project)
+        release.assert_awaited_once_with(
+            task.id, project_id=task.project, image_override=None
+        )
