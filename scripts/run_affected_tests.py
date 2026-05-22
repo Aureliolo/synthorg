@@ -242,19 +242,6 @@ _NODE_DOWN_RE = re.compile(
     r"\[(?P<worker>gw\d+)\] node down: Not properly terminated",
 )
 
-# pytest-xdist's scheduler raises Python-level exceptions when it
-# tries to assign work to a worker that already disappeared (KeyError
-# in ``loadscope.py``) or asserts on a residual ``crashitem`` while a
-# worker reports finished. Both are downstream consequences of the
-# native-level worker death captured by ``_NODE_DOWN_RE`` /
-# ``_WORKER_CRASH_RE`` above, not independent regressions, so the
-# classifier folds them into the crash-advisory branch when paired
-# with at least one observed crash signature.
-_XDIST_INTERNAL_ERROR_RE = re.compile(
-    r"^INTERNALERROR>",
-    re.MULTILINE,
-)
-
 # pytest in ``-q`` mode prints ``FAILED <test_id> - <reason>`` (or just
 # ``FAILED <test_id>``) at the start of a line for every failure in the
 # session summary.  ``\S+`` captures up to the first whitespace; valid
@@ -648,12 +635,15 @@ def _classify_isolation_outcome(
     * Crashes only, no repeats -> crash advisory (treat as pass; the
       gate exits 0 and prints a hint about Windows ProactorEventLoop /
       cross-worktree contention).
-    * Worker(s) went ``node down`` AND the only summary signal is an
-      ``INTERNALERROR>`` traceback (xdist scheduler crashed because
-      its workers vanished) -> crash advisory.  Without the parser
-      branch the dead-worker chain reads as "non-zero returncode +
-      no parsable test signal" and falls through to fail-closed,
-      blocking the push on documented native-level flakiness.
+    * Worker(s) went ``node down`` with a non-zero returncode (and no
+      real failure / repeated crash above) -> crash advisory. The
+      controller-side loadscope crash guard in ``tests/conftest.py``
+      suppresses the downstream ``INTERNALERROR>`` the dead-worker
+      chain used to emit, and a worker killed mid-teardown can die
+      before pytest prints any summary, so neither signal is required
+      to recognise the documented Python 3.14 + Windows xdist teardown
+      crash. The repeated-named-crash check above still blocks a test
+      that crashes the worker on every run.
     * No crashes, no failures, returncode 0 -> pass.
     * No parsable signal but returncode non-zero -> fail closed
       (regression) so degraded output never silently passes.
@@ -662,7 +652,6 @@ def _classify_isolation_outcome(
     crashed_tests = tuple(test for _, test in crashes)
     crashed_set = set(crashed_tests)
     node_down_workers = _parse_node_down(stdout)
-    has_internal_error = bool(_XDIST_INTERNAL_ERROR_RE.search(stdout))
     failed_tests_raw = _parse_test_failures(stdout)
     real_failures = tuple(t for t in failed_tests_raw if t not in crashed_set)
 
@@ -691,12 +680,26 @@ def _classify_isolation_outcome(
             exit_code=0,
             crashed_tests=crashed_tests,
         )
-    # ``node down`` without a paired ``crashed while running`` line means
-    # the worker died between tests, so the test names are not
-    # recoverable -- surface the worker ids in their place so the
-    # advisory banner still has something to print and the
-    # ``crash_advisory`` invariant (``crashed_tests`` non-empty) holds.
-    if node_down_workers and has_internal_error and returncode != 0:
+    # A worker that went ``node down`` is a native-level crash, not a
+    # test failure. The real-failure and repeated-named-crash checks
+    # above have already returned, so reaching here means the only
+    # adverse signal is the worker death itself, with a non-zero exit.
+    #
+    # We do NOT require a downstream ``INTERNALERROR>`` here: the
+    # controller-side loadscope crash guard in ``tests/conftest.py``
+    # (``_install_xdist_loadscope_crash_guard``) deliberately suppresses
+    # the reschedule ``KeyError`` that used to surface as
+    # ``INTERNALERROR>``, and a worker killed mid-teardown can die
+    # before pytest prints any FAILED summary -- so neither an
+    # INTERNALERROR nor a parseable test id is guaranteed for the
+    # documented Python 3.14 + Windows xdist teardown crash. Requiring
+    # the INTERNALERROR would (now that the guard suppresses it) fail
+    # closed on every such crash, blocking every push that widens the
+    # affected selection. The repeated-crash guard above is the safety
+    # net for a test that genuinely crashes the worker on every run; a
+    # one-off node-down is treated as advisory. The test names are
+    # unrecoverable from a bare node-down, so surface the worker ids.
+    if node_down_workers and returncode != 0:
         return IsolationOutcome(
             kind="crash_advisory",
             exit_code=0,

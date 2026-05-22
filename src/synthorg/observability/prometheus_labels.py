@@ -285,6 +285,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
         "api",
         "backup",
         "budget",
+        "charter",
         "client",
         "cockpit",
         "communication",

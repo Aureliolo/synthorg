@@ -7,6 +7,33 @@ from typing import Any
 
 import pytest
 
+# ── Windows: make SelectorEventLoop the process-wide default ────────
+#
+# The ``event_loop_policy`` fixture below pins *async* unit tests to the
+# Selector loop, but it does not govern loops created outside
+# pytest-asyncio: a sync test calling ``asyncio.run``, a litestar
+# ``TestClient`` anyio portal, or the xdist worker's own teardown all
+# fall back to the interpreter default -- the ``ProactorEventLoop`` on
+# Windows. That loop's Python 3.14 IOCP teardown race
+# (https://github.com/python/cpython/issues/116773) intermittently
+# segfaults the worker ("node down"), and the failure surfaces on any
+# change that widens the affected-tests pre-push selection (e.g. editing
+# ``api/app.py`` or a broadly-imported ``core`` module).
+#
+# Setting the global default to Selector at conftest import closes that
+# gap for every non-fixture loop in the unit worker. Tool tests that
+# genuinely need ``create_subprocess_exec`` still receive a
+# ``ProactorEventLoop`` because pytest-asyncio builds their loop from
+# the shadowing ``tests/unit/tools/conftest.py`` ``event_loop_policy``
+# fixture (applied per async test), which overrides this default for the
+# duration of those tests.
+if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        asyncio.set_event_loop_policy(
+            asyncio.WindowsSelectorEventLoopPolicy(),  # type: ignore[attr-defined,unused-ignore]
+        )
+
 
 @pytest.fixture(scope="session")
 def event_loop_policy() -> Any:

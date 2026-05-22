@@ -220,6 +220,7 @@ class TestEventConstants:
             "browser",
             "budget",
             "cfo",
+            "charter",
             "chief_of_staff",
             "citation",
             "classification",

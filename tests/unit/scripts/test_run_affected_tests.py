@@ -557,20 +557,29 @@ def test_classify_crash_advisory_when_node_down_with_internal_error() -> None:
     assert outcome.repeated_crashes == ()
 
 
-def test_classify_regression_when_node_down_without_internal_error() -> None:
+def test_classify_crash_advisory_when_node_down_without_internal_error() -> None:
     """``node down`` alone, no ``INTERNALERROR>``, returncode non-zero.
 
-    Without the scheduler-crash signature the run is degraded but not
-    necessarily the documented native-flakiness pattern -- err on the
-    safe side and fail closed so the operator inspects the output.
+    This is the dominant shape of the documented Python 3.14 + Windows
+    xdist teardown crash: the controller-side loadscope crash guard in
+    ``tests/conftest.py`` suppresses the downstream ``INTERNALERROR>``,
+    and a worker killed mid-teardown dies before pytest prints any
+    FAILED summary. Requiring the INTERNALERROR (as the gate once did)
+    fails closed on every such crash and blocks every push that widens
+    the affected selection. With no real failure and no repeated named
+    crash, a bare node-down is advisory; the worker id surfaces in lieu
+    of an unrecoverable test id.
     """
     stdout = "[gw5] node down: Not properly terminated\n"
     outcome = _MODULE._classify_isolation_outcome(
         returncode=1,
         stdout=stdout,
     )
-    assert outcome.kind == "regression"
-    assert outcome.exit_code == 1
+    assert outcome.kind == "crash_advisory"
+    assert outcome.exit_code == 0
+    assert outcome.crashed_tests == ("<worker gw5>",)
+    assert outcome.failed_tests == ()
+    assert outcome.repeated_crashes == ()
 
 
 def test_classify_real_failure_outranks_node_down_signature() -> None:

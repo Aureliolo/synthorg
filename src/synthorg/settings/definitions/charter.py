@@ -102,7 +102,7 @@ _r.register(
         namespace=SettingNamespace.CHARTER,
         key="default_currency",
         type=SettingType.STRING,
-        default="USD",
+        default="USD",  # lint-allow: regional-defaults -- budget DEFAULT_CURRENCY
         description=(
             _BOOTSTRAP_NOTE
             + "ISO 4217 currency assumed for the charter budget envelope when"
