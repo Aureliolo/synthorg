@@ -1165,6 +1165,13 @@ class _FakeBackend:
         return _FakeChunkProvenanceRepository()
 
     @property
+    def research_runs(self) -> object:
+        # Research-run repo. ``PersistenceBackend`` is ``@runtime_checkable``,
+        # which only verifies attribute presence; returning ``object()`` is
+        # enough for the isinstance check.
+        return object()
+
+    @property
     def custom_presets(self) -> _FakePersonalityPresetRepository:
         return _FakePersonalityPresetRepository()
 

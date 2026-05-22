@@ -12,6 +12,7 @@ import re
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 from urllib.parse import urlsplit
 
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.research.constants import (
     RESEARCH_DEDUP_JACCARD_THRESHOLD,
     RESEARCH_DEDUP_SHINGLE_SIZE,
@@ -36,9 +37,10 @@ class Embedder(Protocol):
 
 def _canonical_url(uri: str) -> str:
     """Normalise a URI for equality (drop scheme, query, fragment, slash)."""
-    parts = urlsplit(uri.strip().lower())
+    normalised = normalize_ascii_lowercase(uri)
+    parts = urlsplit(normalised)
     host_path = f"{parts.netloc}{parts.path}".rstrip("/")
-    return host_path or uri.strip().lower()
+    return host_path or normalised
 
 
 def _shingles(text: str) -> frozenset[tuple[str, ...]]:

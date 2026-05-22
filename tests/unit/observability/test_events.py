@@ -263,6 +263,7 @@ class TestEventConstants:
             "prompt",
             "provider",
             "quota",
+            "research",
             "role",
             "routing",
             "backup",
