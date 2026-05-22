@@ -168,7 +168,11 @@ class TestResearchRunRepository:
         await backend.research_runs.save(_run())
         await backend.research_runs.save(
             _run().model_copy(
-                update={"status": ResearchRunStatus.FAILED, "error": NotBlankStr("x")}
+                update={
+                    "status": ResearchRunStatus.FAILED,
+                    "error": NotBlankStr("x"),
+                    "completed_at": _NOW,
+                }
             )
         )
         fetched = await backend.research_runs.get(NotBlankStr("run-1"))

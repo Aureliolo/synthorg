@@ -54,7 +54,9 @@ class AcademicRetrievalSource:
         for position, result in enumerate(results):
             ref_id = make_ref_id(sub_query.index, position)
             snippet = truncate_snippet(result.abstract)
-            uri = (result.url or result.identifier).strip()
+            uri = (result.url or result.identifier or "").strip()
+            if not uri:
+                continue
             citation = ResearchCitation(
                 ref_id=ref_id,
                 source_type=ResearchSourceType.ACADEMIC,

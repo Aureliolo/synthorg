@@ -5,6 +5,7 @@ recorded run replays identically) and the extraction of a JSON object from
 a model response that may be wrapped in prose or a fenced code block.
 """
 
+import json
 import re
 from typing import TYPE_CHECKING, Final
 
@@ -18,28 +19,37 @@ _DETERMINISTIC_TEMPERATURE: Final[float] = 0.0
 """Sampling temperature for every research LLM call: deterministic output
 is a precondition for byte-identical cassette replay."""
 
-_JSON_OBJECT_RE: Final[re.Pattern[str]] = re.compile(r"\{.*\}", re.DOTALL)
-"""Matches the outermost JSON object in a response body, tolerating a
-fenced code block or surrounding prose."""
+_JSON_OBJECT_START_RE: Final[re.Pattern[str]] = re.compile(r"\{", re.DOTALL)
+"""Locates candidate JSON-object starts in a response body."""
 
 
 def extract_json_object(content: str) -> str:
-    """Return the outermost ``{...}`` JSON object found in *content*.
+    """Return the first balanced ``{...}`` JSON object found in *content*.
+
+    Scans each ``{`` and asks the JSON decoder to consume a single object
+    from that point, so prose or fenced code with stray braces around the
+    payload cannot extend the match to an invalid span.
 
     Args:
         content: Raw model response text.
 
     Returns:
-        The substring spanning the first ``{`` to the last ``}``.
+        The substring spanning the first decodable JSON object.
 
     Raises:
-        ValueError: If no JSON object delimiters are present.
+        ValueError: If no JSON object is present.
     """
-    match = _JSON_OBJECT_RE.search(content)
-    if match is None:
-        msg = "no JSON object found in model response"
-        raise ValueError(msg)
-    return match.group(0)
+    decoder = json.JSONDecoder()
+    for match in _JSON_OBJECT_START_RE.finditer(content):
+        start = match.start()
+        try:
+            parsed, end = decoder.raw_decode(content[start:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return content[start : start + end]
+    msg = "no JSON object found in model response"
+    raise ValueError(msg)
 
 
 async def complete_text(

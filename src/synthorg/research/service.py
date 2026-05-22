@@ -31,7 +31,11 @@ from synthorg.observability.events.research import (
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.research.constants import RESEARCH_DEFAULT_PER_QUERY_LIMIT
-from synthorg.research.errors import ResearchError, ResearchRunError
+from synthorg.research.errors import (
+    ResearchBudgetExceededError,
+    ResearchError,
+    ResearchRunError,
+)
 from synthorg.research.models import (
     ResearchRun,
     RetrievedItem,
@@ -99,6 +103,8 @@ class ResearchService:
             The persisted :class:`ResearchRun` in ``COMPLETED`` state.
 
         Raises:
+            ResearchBudgetExceededError: If the run breaches its cost or
+                wall-clock ceiling; the run row is persisted ``FAILED``.
             ResearchError: If any pipeline stage fails; the run row is
                 persisted in ``FAILED`` state before the error propagates.
         """
@@ -115,9 +121,17 @@ class ResearchService:
         await self._runs_repo.save(run)
         logger.info(RESEARCH_RUN_STARTED, run_id=run_id, brief_id=brief.brief_id)
         try:
-            return await self._execute(run, brief, started_at)
+            async with asyncio.timeout(brief.max_wall_clock_seconds):
+                return await self._execute(run, brief, started_at)
         except MemoryError, RecursionError:
             raise
+        except TimeoutError as exc:
+            budget = ResearchBudgetExceededError(
+                f"research run exceeded wall-clock budget of "
+                f"{brief.max_wall_clock_seconds}s"
+            )
+            await self._fail(run, budget)
+            raise budget from exc
         except ResearchError as exc:
             await self._fail(run, exc)
             raise
@@ -150,6 +164,7 @@ class ResearchService:
         total_cost = 0.0
         plan, plan_cost = await self._planner.plan(brief)
         total_cost += plan_cost
+        self._enforce_cost_budget(total_cost, brief)
         logger.info(
             RESEARCH_RUN_PLANNED,
             run_id=run.run_id,
@@ -162,6 +177,7 @@ class ResearchService:
 
         verdicts, triage_cost = await self._triage.triage(items, brief=brief)
         total_cost += triage_cost
+        self._enforce_cost_budget(total_cost, brief)
         retained = self._retain(items, verdicts)
         logger.info(
             RESEARCH_RUN_TRIAGED,
@@ -180,6 +196,7 @@ class ResearchService:
             brief, plan, deduped, sources_consulted=consulted
         )
         total_cost += synth_cost
+        self._enforce_cost_budget(total_cost, brief)
         logger.info(
             RESEARCH_RUN_SYNTHESISED,
             run_id=run.run_id,
@@ -215,11 +232,17 @@ class ResearchService:
         sub_queries: tuple[SubQuery, ...],
     ) -> tuple[RetrievedItem, ...]:
         """Fan out retrieval across sources, isolating per-source failures."""
-        async with asyncio.TaskGroup() as group:
-            tasks = [
-                group.create_task(self._safe_retrieve(brief, sub_query))
-                for sub_query in sub_queries
-            ]
+        try:
+            async with asyncio.TaskGroup() as group:
+                tasks = [
+                    group.create_task(self._safe_retrieve(brief, sub_query))
+                    for sub_query in sub_queries
+                ]
+        except BaseExceptionGroup as exc_group:
+            for inner in exc_group.exceptions:
+                if isinstance(inner, (MemoryError, RecursionError)):
+                    raise inner from exc_group
+            raise
         return tuple(chain.from_iterable(task.result() for task in tasks))
 
     async def _safe_retrieve(
@@ -252,6 +275,13 @@ class ResearchService:
                 error=safe_error_description(exc),
             )
             return ()
+
+    @staticmethod
+    def _enforce_cost_budget(total_cost: float, brief: ResearchBrief) -> None:
+        """Raise if accumulated LLM cost has breached the brief's ceiling."""
+        if total_cost > brief.max_cost:
+            msg = f"research run cost {total_cost} exceeded budget of {brief.max_cost}"
+            raise ResearchBudgetExceededError(msg)
 
     @staticmethod
     def _retain(

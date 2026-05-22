@@ -24,6 +24,7 @@ _r.register(
             " run research briefs."
         ),
         group="General",
+        restart_required=True,
     )
 )
 

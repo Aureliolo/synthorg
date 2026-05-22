@@ -86,7 +86,9 @@ def _service() -> ResearchService:
 
 
 async def test_run_returns_cited_report() -> None:
-    app_state = SimpleNamespace(research_service=_service())
+    app_state = SimpleNamespace(
+        research_service=_service(), clock=FakeClock(start=_NOW)
+    )
     result = await _research_run(
         app_state=app_state,
         arguments={"question": "what are widgets?", "include_knowledge": False},

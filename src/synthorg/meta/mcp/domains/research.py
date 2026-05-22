@@ -8,6 +8,7 @@ record.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.enums import ResearchRunStatus
 from synthorg.meta.mcp.domains._research_args import (
     ResearchGetArgs,
     ResearchListArgs,
@@ -19,15 +20,9 @@ from synthorg.research.constants import RESEARCH_LIST_MAX_LIMIT
 if TYPE_CHECKING:
     from synthorg.meta.mcp.registry import MCPToolDef
 
-_STATUSES = [
-    "planning",
-    "retrieving",
-    "triaging",
-    "deduplicating",
-    "synthesising",
-    "completed",
-    "failed",
-]
+_STATUSES: tuple[str, ...] = tuple(status.value for status in ResearchRunStatus)
+"""Run-status filter values for ``research:list``, derived from the single
+source of truth so the exposed schema cannot drift from validation."""
 
 
 RESEARCH_TOOLS: tuple[MCPToolDef, ...] = (

@@ -498,7 +498,9 @@ class ResearchRun(BaseModel):
         ):
             msg = "status=COMPLETED requires report and completed_at to be set"
             raise ValueError(msg)
-        if self.status is ResearchRunStatus.FAILED and self.error is None:
-            msg = "status=FAILED requires error to be set"
+        if self.status is ResearchRunStatus.FAILED and (
+            self.error is None or self.completed_at is None
+        ):
+            msg = "status=FAILED requires error and completed_at to be set"
             raise ValueError(msg)
         return self

@@ -18,12 +18,15 @@ from tests.unit.research._fakes import (
 )
 
 from synthorg.core.enums import ResearchRunStatus, ResearchSourceType
-from synthorg.research.errors import ResearchRunError
+from synthorg.research.errors import ResearchBudgetExceededError, ResearchRunError
 from synthorg.research.models import ResearchBrief
 from synthorg.research.planning.llm_planner import LlmQueryPlanner
 from synthorg.research.retrieval.dedup import LexicalDeduplicator
 from synthorg.research.retrieval.protocol import RetrievalSource
-from synthorg.research.retrieval.replay import build_replay_sources
+from synthorg.research.retrieval.replay import (
+    ReplayRetrievalSource,
+    build_replay_sources,
+)
 from synthorg.research.retrieval.sources.web import WebRetrievalSource
 from synthorg.research.service import ResearchService
 from synthorg.research.synthesis.citation_binder import CitationBinder
@@ -177,9 +180,8 @@ async def test_run_is_replayable_byte_identical() -> None:
             scripted_response(_SYNTH),
         ]
     )
-    replay_web = _web_provider()
-    replay_sources = build_replay_sources(recorded.retrieved_items)
-    replayed = await _build_service(replay_provider, dict(replay_sources)).run(
+    replay_sources = dict(build_replay_sources(recorded.retrieved_items))
+    replayed = await _build_service(replay_provider, replay_sources).run(
         _brief(), run_id="run-1", created_by="agent-1"
     )
 
@@ -194,8 +196,10 @@ async def test_run_is_replayable_byte_identical() -> None:
     )
     assert replayed.credibility == recorded.credibility
     assert replayed.report.model_dump_json() == recorded.report.model_dump_json()
-    # Replay did not touch the real web provider.
-    assert replay_web.queries == []
+    # Replay is served entirely from playback-backed sources; no live source.
+    assert all(
+        isinstance(source, ReplayRetrievalSource) for source in replay_sources.values()
+    )
 
 
 async def test_run_persists_failure_and_raises() -> None:
@@ -224,3 +228,25 @@ async def test_run_persists_failure_and_raises() -> None:
     assert stored is not None
     assert stored.status is ResearchRunStatus.FAILED
     assert stored.error is not None
+
+
+async def test_run_exceeding_cost_budget_fails() -> None:
+    provider = ScriptedProvider(
+        responses=[
+            scripted_response(_PLAN),
+            scripted_response(_TRIAGE),
+            scripted_response(_SYNTH),
+        ]
+    )
+    web = WebRetrievalSource(provider=_web_provider(), clock=FakeClock(start=_NOW))
+    service = _build_service(provider, {ResearchSourceType.WEB: web})
+    # The planning stage alone (scripted cost 0.01) overruns this ceiling.
+    brief = _brief().model_copy(update={"max_cost": 0.001})
+
+    with pytest.raises(ResearchBudgetExceededError):
+        await service.run(brief, run_id="run-budget", created_by="agent")
+
+    stored = await service.get_run("run-budget")
+    assert stored is not None
+    assert stored.status is ResearchRunStatus.FAILED
+    assert stored.completed_at is not None

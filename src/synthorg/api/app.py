@@ -1469,8 +1469,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         if app_state.research_service is not None:
             _research_engine_installed = True
             return
-        if settings_service is None or provider_registry is None:
+        if not app_state.has_settings_service or provider_registry is None:
             return
+        runtime_settings = app_state.settings_service
         try:
             from synthorg.research.config import ResearchConfig  # noqa: PLC0415
             from synthorg.research.factory import (  # noqa: PLC0415
@@ -1481,9 +1482,9 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             )
 
             enabled = (
-                await settings_service.get("research", "enabled")
+                await runtime_settings.get("research", "enabled")
             ).value.strip().lower() == "true"
-            model = (await settings_service.get("research", "model")).value.strip()
+            model = (await runtime_settings.get("research", "model")).value.strip()
             if not enabled or not model:
                 logger.info(
                     API_APP_STARTUP,
@@ -1495,7 +1496,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             if not provider_names:
                 return
             provider_name = (
-                await settings_service.get("research", "provider")
+                await runtime_settings.get("research", "provider")
             ).value.strip()
             provider = (
                 provider_registry.get(provider_name)
@@ -1505,16 +1506,16 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             config = ResearchConfig(
                 enabled=True,
                 query_planner=(
-                    await settings_service.get("research", "query_planner")
+                    await runtime_settings.get("research", "query_planner")
                 ).value.strip(),  # type: ignore[arg-type]
                 credibility_triage=(
-                    await settings_service.get("research", "credibility_triage")
+                    await runtime_settings.get("research", "credibility_triage")
                 ).value.strip(),  # type: ignore[arg-type]
                 deduplicator=(
-                    await settings_service.get("research", "deduplicator")
+                    await runtime_settings.get("research", "deduplicator")
                 ).value.strip(),  # type: ignore[arg-type]
                 synthesizer=(
-                    await settings_service.get("research", "synthesizer")
+                    await runtime_settings.get("research", "synthesizer")
                 ).value.strip(),  # type: ignore[arg-type]
             )
             service = build_research_service(

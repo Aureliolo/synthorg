@@ -82,6 +82,21 @@ class ResearchSynthesisError(ResearchError):
     status_code: ClassVar[int] = 500
 
 
+class ResearchBudgetExceededError(ResearchError):
+    """Raised when a run breaches its declared cost or wall-clock ceiling.
+
+    Not retryable: the same brief under the same ceilings would breach
+    again, so the run must be re-scoped (raise the ceiling or narrow the
+    question) rather than blindly retried.
+    """
+
+    default_message: ClassVar[str] = "Research run exceeded its budget"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.BUDGET_EXHAUSTED
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESEARCH_BUDGET_EXCEEDED
+    retryable: ClassVar[bool] = False
+    status_code: ClassVar[int] = 429
+
+
 class ResearchUnavailableError(ResearchError):
     """Raised when research mode is not wired (disabled or missing deps)."""
 

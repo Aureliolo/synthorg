@@ -83,7 +83,7 @@ def derive_research_ids(
             str(args.include_web),
             str(args.include_academic),
             str(args.include_code),
-            f"{args.min_credibility:.4f}",
+            repr(args.min_credibility),
             str(args.max_subqueries),
         ]
     )

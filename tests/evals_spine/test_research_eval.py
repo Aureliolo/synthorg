@@ -31,7 +31,10 @@ from synthorg.research.models import ResearchBrief
 from synthorg.research.planning.llm_planner import LlmQueryPlanner
 from synthorg.research.retrieval.dedup import LexicalDeduplicator
 from synthorg.research.retrieval.protocol import RetrievalSource
-from synthorg.research.retrieval.replay import build_replay_sources
+from synthorg.research.retrieval.replay import (
+    ReplayRetrievalSource,
+    build_replay_sources,
+)
 from synthorg.research.retrieval.sources.web import WebRetrievalSource
 from synthorg.research.service import ResearchService
 from synthorg.research.synthesis.citation_binder import CitationBinder
@@ -197,7 +200,6 @@ async def test_research_lane_runs_replays_and_grades() -> None:
 
     # Replay: retrieval served from the recorded run; the real web provider
     # is not touched.
-    replay_web = FakeWebSearchProvider([])
     replay_sources: dict[ResearchSourceType, RetrievalSource] = dict(
         build_replay_sources(recorded.retrieved_items)
     )
@@ -210,7 +212,7 @@ async def test_research_lane_runs_replays_and_grades() -> None:
     assert replayed.retrieved_items == recorded.retrieved_items
     assert replayed.credibility == recorded.credibility
     assert replayed.report.model_dump_json() == recorded.report.model_dump_json()
-    assert replay_web.queries == []
+    assert isinstance(replay_sources[ResearchSourceType.WEB], ReplayRetrievalSource)
 
     score = grade_research_run(recorded, exam.research_spec)
     assert score.citation_resolution == 1.0

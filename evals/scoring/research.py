@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from evals.models.brief import ResearchBriefSpec
     from synthorg.research.models import ResearchRun
 
-_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[a-z0-9]+")
+_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[^\W_]+", re.UNICODE)
 
 COVERAGE_TOKEN_OVERLAP: Final[float] = 0.5
 """Fraction of an expected claim's tokens that must appear in a report claim
@@ -44,7 +44,7 @@ class ResearchScore(BaseModel):
 
 
 def _tokens(text: str) -> frozenset[str]:
-    return frozenset(_TOKEN_RE.findall(text.lower()))
+    return frozenset(_TOKEN_RE.findall(text.casefold()))
 
 
 def _coverage(run: ResearchRun, spec: ResearchBriefSpec) -> float:

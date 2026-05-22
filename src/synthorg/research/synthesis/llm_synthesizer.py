@@ -126,9 +126,13 @@ class LlmSynthesizer:
 
         ``ref_id`` / ``source_type`` are trusted (assigned by the pipeline);
         the title, uri, and snippet all come from untrusted external
-        sources, so they are wrapped together inside one fence.
+        sources, so they are wrapped together inside one fence. The research
+        angle is model-produced by the planning stage, so it is fenced too.
         """
         question = wrap_untrusted(TAG_TASK_DATA, f"Question: {brief.question}")
+        research_angle = wrap_untrusted(
+            TAG_TASK_DATA, f"Research angle: {plan.research_angle}"
+        )
         blocks = [
             f"ref_id: {item.ref_id}\nsource_type: {item.source_type.value}\n"
             + wrap_untrusted(
@@ -137,10 +141,7 @@ class LlmSynthesizer:
             )
             for item in sources
         ]
-        return (
-            f"{question}\nResearch angle: {plan.research_angle}\n\n"
-            "Sources:\n" + "\n\n".join(blocks)
-        )
+        return f"{question}\n{research_angle}\n\nSources:\n" + "\n\n".join(blocks)
 
     def _parse(self, content: str) -> SynthesisOutput:
         """Extract and validate the synthesiser's structured output."""

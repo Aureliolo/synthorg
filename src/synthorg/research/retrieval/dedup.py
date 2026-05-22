@@ -36,11 +36,17 @@ class Embedder(Protocol):
 
 
 def _canonical_url(uri: str) -> str:
-    """Normalise a URI for equality (drop scheme, query, fragment, slash)."""
-    normalised = normalize_ascii_lowercase(uri)
-    parts = urlsplit(normalised)
-    host_path = f"{parts.netloc}{parts.path}".rstrip("/")
-    return host_path or normalised
+    """Normalise a URI for equality (drop scheme, query, fragment, slash).
+
+    Only the host is case-folded (hosts are case-insensitive); the path is
+    preserved verbatim because path segments are case-sensitive and distinct
+    resources must not collapse into one another.
+    """
+    raw = uri.strip()
+    parts = urlsplit(raw)
+    netloc = normalize_ascii_lowercase(parts.netloc)
+    host_path = f"{netloc}{parts.path}".rstrip("/")
+    return host_path or normalize_ascii_lowercase(raw)
 
 
 def _shingles(text: str) -> frozenset[tuple[str, ...]]:

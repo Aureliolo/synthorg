@@ -73,6 +73,16 @@ def _created_by(actor: AgentIdentity | None) -> NotBlankStr:
     return NotBlankStr(str(actor.id)) if actor is not None else _OPERATOR
 
 
+def _now(app_state: Any) -> Any:
+    """Read the wall clock through the app-state Clock seam.
+
+    Falls back to a fresh ``SystemClock`` when the seam is absent so the
+    handler stays usable against minimal app-state stubs.
+    """
+    clock = getattr(app_state, "clock", None)
+    return (clock or SystemClock()).now()
+
+
 async def _research_run(
     *,
     app_state: Any,
@@ -87,7 +97,7 @@ async def _research_run(
             args,
             brief_id=brief_id,
             project_id=args.project_id,
-            created_at=SystemClock().now(),
+            created_at=_now(app_state),
         )
         run = await svc.run(brief, run_id=run_id, created_by=_created_by(actor))
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_RUN)

@@ -310,6 +310,19 @@ def test_run_failed_requires_error() -> None:
         )
 
 
+def test_run_failed_requires_completed_at() -> None:
+    with pytest.raises(ValidationError, match="status=FAILED requires"):
+        ResearchRun(
+            run_id="run1",
+            brief_id="b1",
+            status=ResearchRunStatus.FAILED,
+            brief=_brief(),
+            created_by="agent",
+            created_at=_NOW,
+            error="boom",
+        )
+
+
 def test_run_completed_round_trips_through_json() -> None:
     run = ResearchRun(
         run_id="run1",

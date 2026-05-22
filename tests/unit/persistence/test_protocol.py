@@ -49,6 +49,7 @@ from synthorg.persistence.project_workspace_protocol import (
     ProjectWorkspaceRepository,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.persistence.research_protocol import ResearchRunRepository
 from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
 from synthorg.persistence.settings_protocol import SettingsRepository
 from synthorg.persistence.ssrf_violation_protocol import SsrfViolationRepository
@@ -70,6 +71,7 @@ from synthorg.persistence.workflow_definition_protocol import (
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionRepository,
 )
+from tests.unit.research._fakes import InMemoryResearchRunRepository
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
@@ -1165,11 +1167,10 @@ class _FakeBackend:
         return _FakeChunkProvenanceRepository()
 
     @property
-    def research_runs(self) -> object:
-        # Research-run repo. ``PersistenceBackend`` is ``@runtime_checkable``,
-        # which only verifies attribute presence; returning ``object()`` is
-        # enough for the isinstance check.
-        return object()
+    def research_runs(self) -> InMemoryResearchRunRepository:
+        # Concrete fake so the protocol-conformance suite catches drift
+        # between ``ResearchRunRepository`` and the backend's exposure path.
+        return InMemoryResearchRunRepository()
 
     @property
     def custom_presets(self) -> _FakePersonalityPresetRepository:
@@ -1496,6 +1497,12 @@ class TestProtocolCompliance:
     ) -> None:
         backend = _FakeBackend()
         assert isinstance(backend.knowledge_provenance, ChunkProvenanceRepository)
+
+    def test_fake_research_runs_repo_is_research_run_repository(self) -> None:
+        # Route through the backend property so a regression that drifts
+        # ``research_runs`` back to ``object()`` surfaces here.
+        backend = _FakeBackend()
+        assert isinstance(backend.research_runs, ResearchRunRepository)
 
     def test_fake_preset_repo_is_personality_preset_repository(self) -> None:
         assert isinstance(

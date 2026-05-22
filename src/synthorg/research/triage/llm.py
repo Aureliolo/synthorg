@@ -58,6 +58,9 @@ class LlmCredibilityTriage:
         model: str,
         batch_size: int = RESEARCH_TRIAGE_BATCH_SIZE,
     ) -> None:
+        if batch_size < 1:
+            msg = "batch_size must be >= 1"
+            raise ValueError(msg)
         self._provider = provider
         self._model = model
         self._batch_size = batch_size
