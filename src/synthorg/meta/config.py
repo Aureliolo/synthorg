@@ -13,6 +13,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.models import EvolutionMode, RolloutStrategyType
 from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
+from synthorg.meta.toolsmith.config import ToolsmithConfig
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import META_SELF_IMPROVEMENT_LOAD_FAILED
 
@@ -259,6 +260,7 @@ class SelfImprovementConfig(BaseModel):
         architecture_proposals_enabled: Enable architecture proposals.
         prompt_tuning_enabled: Enable prompt tuning proposals.
         code_modification_enabled: Enable code modification proposals.
+        tool_creation_enabled: Enable self-extending toolkit proposals.
         schedule: Cycle scheduling configuration.
         rollout: Rollout behavior configuration.
         regression: Regression detection thresholds.
@@ -270,6 +272,8 @@ class SelfImprovementConfig(BaseModel):
             (learning, alerts, chat).
         cross_deployment_analytics: Cross-deployment analytics
             telemetry (opt-in, disabled by default).
+        toolsmith: Self-extending toolkit configuration
+            (gap thresholds, sandbox policy, validation).
         analysis_model: LLM model identifier for proposal analysis.
         analysis_temperature: Sampling temperature for analysis.
         analysis_max_tokens: Token budget for analysis responses.
@@ -284,6 +288,7 @@ class SelfImprovementConfig(BaseModel):
     architecture_proposals_enabled: bool = False
     prompt_tuning_enabled: bool = False
     code_modification_enabled: bool = False
+    tool_creation_enabled: bool = False
 
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     rollout: RolloutConfig = Field(default_factory=RolloutConfig)
@@ -305,12 +310,29 @@ class SelfImprovementConfig(BaseModel):
         default_factory=CrossDeploymentAnalyticsConfig,
     )
 
+    toolsmith: ToolsmithConfig = Field(default_factory=ToolsmithConfig)
+
     analysis_model: NotBlankStr = Field(
         default=NotBlankStr("example-small-001"),
         description="Model for proposal analysis LLM calls",
     )
     analysis_temperature: float = Field(default=0.3, ge=0.0, le=2.0)
     analysis_max_tokens: int = Field(default=4000, ge=100)
+
+    @model_validator(mode="after")
+    def _validate_tool_creation_flags(self) -> Self:
+        """Keep the two tool-creation switches coherent.
+
+        ``tool_creation_enabled`` gates the boot wiring and scope guard,
+        while ``toolsmith.enabled`` gates the toolsmith's own
+        allowlist-consistency check. They must agree, otherwise an
+        operator can enable one and silently leave the subsystem off (or
+        configure an allowlist that never runs).
+        """
+        if self.tool_creation_enabled != self.toolsmith.enabled:
+            msg = "tool_creation_enabled and toolsmith.enabled must match"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _validate_code_modification_requirements(self) -> Self:

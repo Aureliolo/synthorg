@@ -526,6 +526,7 @@ export const PROPOSAL_ALTITUDE_VALUES = [
     'architecture',
     'prompt_tuning',
     'code_modification',
+    'tool_creation',
 ] as const
 export type ProposalAltitude = (typeof PROPOSAL_ALTITUDE_VALUES)[number]
 

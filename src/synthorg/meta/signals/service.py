@@ -310,6 +310,8 @@ def _risk_from_altitude(proposal: ImprovementProposal) -> ApprovalRiskLevel:
     altitude = proposal.altitude
     if altitude is ProposalAltitude.CODE_MODIFICATION:
         return ApprovalRiskLevel.HIGH
+    if altitude is ProposalAltitude.TOOL_CREATION:
+        return ApprovalRiskLevel.HIGH
     if altitude is ProposalAltitude.ARCHITECTURE:
         return ApprovalRiskLevel.MEDIUM
     if altitude is ProposalAltitude.PROMPT_TUNING:

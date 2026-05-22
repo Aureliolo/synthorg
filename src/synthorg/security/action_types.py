@@ -32,6 +32,7 @@ class ActionTypeCategory(StrEnum):
     ORG = "org"
     DB = "db"
     ARCH = "arch"
+    TOOL = "tool"
     MEMORY = "memory"
     KNOWLEDGE = "knowledge"
     BROWSER = "browser"

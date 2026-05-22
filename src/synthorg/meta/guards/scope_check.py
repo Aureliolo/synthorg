@@ -91,5 +91,7 @@ class ScopeCheckGuard:
                 return self._config.prompt_tuning_enabled
             case ProposalAltitude.CODE_MODIFICATION:
                 return self._config.code_modification_enabled
+            case ProposalAltitude.TOOL_CREATION:
+                return self._config.tool_creation_enabled
             case _:
                 return False  # type: ignore[unreachable]

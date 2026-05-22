@@ -21,6 +21,7 @@ from pydantic import (
 )
 
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.toolsmith.models import ToolBlueprint  # noqa: TC001 -- field type
 
 # ── Enums ──────────────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ class ProposalAltitude(StrEnum):
     ARCHITECTURE = "architecture"
     PROMPT_TUNING = "prompt_tuning"
     CODE_MODIFICATION = "code_modification"
+    TOOL_CREATION = "tool_creation"
 
 
 class ProposalStatus(StrEnum):
@@ -333,6 +335,7 @@ class ImprovementProposal(BaseModel):
     architecture_changes: tuple[ArchitectureChange, ...] = ()
     prompt_changes: tuple[PromptChange, ...] = ()
     code_changes: tuple[CodeChange, ...] = ()
+    tool_changes: tuple[ToolBlueprint, ...] = ()
     rollback_plan: RollbackPlan
     rollout_strategy: RolloutStrategyType = RolloutStrategyType.BEFORE_AFTER
     confidence: float = Field(ge=0.0, le=1.0)
@@ -370,11 +373,13 @@ class ImprovementProposal(BaseModel):
     def _validate_changes_match_altitude(self) -> Self:
         """Ensure only the declared altitude carries changes."""
         other_code = self.code_changes
+        tools = self.tool_changes
         if self.altitude == ProposalAltitude.CONFIG_TUNING and (
             not self.config_changes
             or self.architecture_changes
             or self.prompt_changes
             or other_code
+            or tools
         ):
             msg = "config_tuning proposals must contain only config_changes"
             raise ValueError(msg)
@@ -383,6 +388,7 @@ class ImprovementProposal(BaseModel):
             or self.config_changes
             or self.prompt_changes
             or other_code
+            or tools
         ):
             msg = "architecture proposals must contain only architecture_changes"
             raise ValueError(msg)
@@ -391,6 +397,7 @@ class ImprovementProposal(BaseModel):
             or self.config_changes
             or self.architecture_changes
             or other_code
+            or tools
         ):
             msg = "prompt_tuning proposals must contain only prompt_changes"
             raise ValueError(msg)
@@ -399,8 +406,18 @@ class ImprovementProposal(BaseModel):
             or self.config_changes
             or self.architecture_changes
             or self.prompt_changes
+            or tools
         ):
             msg = "code_modification proposals must contain only code_changes"
+            raise ValueError(msg)
+        if self.altitude == ProposalAltitude.TOOL_CREATION and (
+            not self.tool_changes
+            or self.config_changes
+            or self.architecture_changes
+            or self.prompt_changes
+            or other_code
+        ):
+            msg = "tool_creation proposals must contain only tool_changes"
             raise ValueError(msg)
         return self
 
@@ -413,6 +430,7 @@ class ImprovementProposal(BaseModel):
             + len(self.architecture_changes)
             + len(self.prompt_changes)
             + len(self.code_changes)
+            + len(self.tool_changes)
         )
 
 

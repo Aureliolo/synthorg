@@ -430,6 +430,52 @@ non-whitespace string via `"minLength": 1` + `"pattern": r".*\S.*"`, and the
 guardrails run regardless so validation stays uniform once services come
 online.
 
+## Self-Extending Toolkit
+
+A fixed toolset caps what the studio can build. The **toolsmith**
+(`src/synthorg/meta/toolsmith/`) lets the organisation extend its own MCP tool
+surface at runtime when it hits a recurring capability gap, governed end to end.
+
+**Detection.** Every unfulfilled capability request is recorded into a
+ring-buffered `CapabilityGapStore` (the `ToolsmithService` is the sink). When a
+capability signature (`domain:action`) recurs at least
+`gap_recurrence_threshold` times within `gap_window_hours`, it qualifies as a
+recurring gap.
+
+**Authoring.** `LLMToolBlueprintGenerator` authors a `ToolBlueprint` from the
+gap: a declarative spec (name, capability, JSON Schema, action type) plus a
+self-contained Python `script_body`. The tool name is derived from the
+capability so it always satisfies the `synthorg_{domain}_{action}` contract;
+the sandbox backend and network policy come from config, never the model, so an
+authored tool cannot widen its own isolation. Capabilities that need
+service-layer access (configured via `service_access_capabilities`) cannot be a
+sandbox script and route to the `CODE_MODIFICATION` overflow handler instead.
+
+**Governance.** Tool creation runs at the `TOOL_CREATION` proposal altitude
+behind the same guard chain as self-improvement (scope, rollback plan, rate
+limit, mandatory approval). The `tool:create` action type is HIGH risk and
+human-gated under `supervised` and `semi` autonomy. Nothing is trusted without
+human approval.
+
+**Validation.** On approval, `ToolCreationApplier` runs the
+`BenchmarkToolValidationGate`: a focused per-tool acceptance brief (the authored
+script actually runs in its resolved sandbox and must return structured output)
+followed by a golden-company scorecard delta (registering the candidate must not
+regress the benchmark). A failing gate registers nothing; the blueprint keeps
+its validation record for audit but never goes `ACTIVE`.
+
+**Live registration.** A validated blueprint is persisted
+(PENDING -> VALIDATED -> ACTIVE; RETIRED on rollback) and registered into the
+mutable `DynamicToolRegistry`. The static `DomainToolRegistry` stays frozen; a
+`LayeredToolRegistry` reads the static surface first then the dynamic layer, so
+`MCPToolInvoker` dispatches authored tools (validating arguments against a
+Pydantic args model materialised from the blueprint's JSON Schema) without
+unfreezing anything. A later task invokes the new tool exactly like a built-in.
+
+The toolsmith is disabled by default (`meta.self_improvement` ->
+`tool_creation_enabled`); it wires at boot only when enabled, a provider is
+registered, and persistence is connected.
+
 ## Progressive Tool Disclosure
 
 When the tool inventory exceeds ~30 tools, loading every full definition into the LLM
@@ -475,7 +521,7 @@ Action types classify agent actions for use by autonomy presets (see [Security &
 SecOps validation, tiered timeout policies, and progressive trust
 ([Decision Log](../architecture/decisions.md) D1).
 
-**Registry:** `StrEnum` for ~32 built-in action types (type safety, autocomplete, typos caught
+**Registry:** `StrEnum` for ~41 built-in action types (type safety, autocomplete, typos caught
 by static type checking and config-load-time validation) + `ActionTypeRegistry` for custom
 types via explicit registration. Unknown strings are rejected at config load time; a typo
 in `human_approval` list silently meaning "skip approval" is a critical safety concern.
@@ -484,7 +530,7 @@ in `human_approval` list silently meaning "skip approval" is a critical safety c
 actions in that category (e.g., `auto_approve: ["code"]` expands to all `code:*` actions).
 Fine-grained overrides are supported (e.g., `human_approval: ["code:create"]`).
 
-**Taxonomy (38 leaf types):**
+**Taxonomy (41 leaf types):**
 
 ```text
 code:read, code:write, code:create, code:delete, code:refactor
@@ -497,7 +543,9 @@ budget:spend, budget:exceed
 org:hire, org:fire, org:promote
 db:query, db:mutate, db:admin
 arch:decide
+tool:create
 memory:read
+knowledge:ingest, knowledge:reindex
 browser:navigate, browser:screenshot, browser:diff, browser:accessibility_scan, browser:spec
 external_data:request
 desktop:launch, desktop:click, desktop:type, desktop:key, desktop:screenshot, desktop:scroll

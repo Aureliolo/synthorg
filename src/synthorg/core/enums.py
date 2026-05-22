@@ -623,6 +623,7 @@ class ActionType(StrEnum):
     DB_MUTATE = "db:mutate"
     DB_ADMIN = "db:admin"
     ARCH_DECIDE = "arch:decide"
+    TOOL_CREATE = "tool:create"
     MEMORY_READ = "memory:read"
     KNOWLEDGE_INGEST = "knowledge:ingest"
     KNOWLEDGE_REINDEX = "knowledge:reindex"

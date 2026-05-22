@@ -118,14 +118,15 @@ class TestEnumMemberCounts:
     def test_workflow_edge_type_has_7_members(self) -> None:
         assert len(WorkflowEdgeType) == 7
 
-    def test_action_type_has_40_members(self) -> None:
-        assert len(ActionType) == 40
+    def test_action_type_has_41_members(self) -> None:
+        assert len(ActionType) == 41
         assert ActionType.MEMORY_READ.value == "memory:read"
         assert ActionType.KNOWLEDGE_INGEST.value == "knowledge:ingest"
         assert ActionType.KNOWLEDGE_REINDEX.value == "knowledge:reindex"
         assert ActionType.BROWSER_NAVIGATE.value == "browser:navigate"
         assert ActionType.EXTERNAL_DATA_REQUEST.value == "external_data:request"
         assert ActionType.DESKTOP_LAUNCH.value == "desktop:launch"
+        assert ActionType.TOOL_CREATE.value == "tool:create"
 
 
 # ── String Values ──────────────────────────────────────────────────

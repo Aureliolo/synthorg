@@ -1633,3 +1633,56 @@ CREATE TABLE tracked_containers (
     sidecar_id TEXT CHECK (sidecar_id IS NULL OR length(trim(sidecar_id)) > 0),
     created_at TIMESTAMPTZ NOT NULL
 );
+
+-- Self-extending toolkit: runtime-authored MCP tool blueprints. A
+-- blueprint is a declarative spec (name, capability, JSON Schema) plus a
+-- sandbox script body, governed through the TOOL_CREATION proposal
+-- altitude. state drives the lifecycle pending -> validated -> active ->
+-- retired; the state-correlated timestamps are stamped on transition.
+-- SQLite sibling stores JSON columns as TEXT and timestamps as TEXT;
+-- the dual-backend conformance suite pins the round-trip equality.
+CREATE TABLE dynamic_tools (
+    id TEXT NOT NULL PRIMARY KEY CHECK (char_length(trim(id)) > 0),
+    name TEXT NOT NULL UNIQUE CHECK (char_length(trim(name)) > 0),
+    description TEXT NOT NULL CHECK (char_length(trim(description)) > 0),
+    capability TEXT NOT NULL CHECK (char_length(trim(capability)) > 0),
+    parameters_schema JSONB NOT NULL
+        CHECK (jsonb_typeof(parameters_schema) = 'object'),
+    script_body TEXT NOT NULL CHECK (char_length(trim(script_body)) > 0),
+    sandbox_backend TEXT NOT NULL
+        CHECK (sandbox_backend IN ('docker', 'subprocess')),
+    requires_network BOOLEAN NOT NULL DEFAULT FALSE,
+    action_type TEXT NOT NULL CHECK (char_length(trim(action_type)) > 0),
+    state TEXT NOT NULL DEFAULT 'pending'
+        CHECK (state IN ('pending', 'validated', 'active', 'retired')),
+    created_at TIMESTAMPTZ NOT NULL,
+    validated_at TIMESTAMPTZ,
+    activated_at TIMESTAMPTZ,
+    retired_at TIMESTAMPTZ,
+    validation JSONB
+        CHECK (validation IS NULL OR jsonb_typeof(validation) = 'object'),
+    CHECK (
+        (state = 'pending'
+            AND validated_at IS NULL
+            AND activated_at IS NULL
+            AND retired_at IS NULL)
+        OR (state = 'validated'
+            AND validated_at IS NOT NULL
+            AND activated_at IS NULL
+            AND retired_at IS NULL
+            AND validation IS NOT NULL)
+        OR (state = 'active'
+            AND validated_at IS NOT NULL
+            AND activated_at IS NOT NULL
+            AND retired_at IS NULL
+            AND validation IS NOT NULL)
+        OR (state = 'retired'
+            AND validated_at IS NOT NULL
+            AND activated_at IS NOT NULL
+            AND retired_at IS NOT NULL
+            AND validation IS NOT NULL)
+    )
+);
+
+CREATE INDEX idx_dynamic_tools_state ON dynamic_tools(state);
+CREATE INDEX idx_dynamic_tools_capability ON dynamic_tools(capability);

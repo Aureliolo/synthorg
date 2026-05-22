@@ -81,3 +81,12 @@ ENFORCED KnowledgeRetriever #1988 -- constructed inside knowledge/factory.py::bu
 ENFORCED build_knowledge_tool_factory #1988 -- called in api/app.py::_wire_knowledge_engine; per-task source of SearchKnowledgeTool + IngestKnowledgeTool
 ENFORCED SearchKnowledgeTool #1988 -- constructed by knowledge/tool_factory.py::KnowledgeToolFactory.build_tools per task with the agent's project binding
 ENFORCED IngestKnowledgeTool #1988 -- constructed by knowledge/tool_factory.py::KnowledgeToolFactory.build_tools per task with the agent's project binding
+ENFORCED build_toolsmith #1995 -- called by api/app.py::_build_toolsmith_runtime behind tool_creation_enabled + provider switch; wires the self-extending toolkit runtime
+ENFORCED ToolsmithService #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; orchestrates gap detection -> author -> guard -> apply at the TOOL_CREATION altitude
+ENFORCED RingBufferCapabilityGapStore #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; ring-buffered capability-gap sink + recurrence detector
+ENFORCED LLMToolBlueprintGenerator #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; authors a sandbox-tool blueprint from a recurring gap
+ENFORCED BenchmarkToolValidationGate #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; per-tool acceptance brief + golden scorecard delta gate
+ENFORCED SandboxBriefRunner #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; runs the authored tool in its resolved sandbox for the acceptance brief
+ENFORCED ToolCreationApplier #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; validates then live-registers an approved blueprint, retires on rollback
+ENFORCED DynamicToolRegistry #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; mutable live authored-tool registry read behind the static surface
+ENFORCED install_dynamic_tool_layer #1995 -- called by api/app.py::_wire_toolsmith; layers the dynamic registry into the live MCP invoker so authored tools dispatch
