@@ -31,9 +31,9 @@ class TestSafeDefaultSteeringDirective:
         pending = await store.get(outcome.artifact_id)
         assert pending is not None
         assert pending.type is InterruptType.INFO_REQUEST
-        # SEC-1: the persisted question is the wrapped form so the
-        # downstream agent reads it as untrusted content; the operator's
-        # raw text is still recoverable inside the safety envelope.
+        # The persisted question is the wrapped form so the downstream
+        # agent reads it as untrusted content; the operator's raw text
+        # is still recoverable inside the safety envelope.
         question = pending.question
         assert question is not None
         assert "use Postgres not Mongo" in question

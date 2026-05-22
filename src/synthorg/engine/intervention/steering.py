@@ -111,10 +111,10 @@ class SafeDefaultSteeringDirective:
                 applied=False,
                 detail="no directive text supplied",
             )
-        # SEC-1: the operator types this text into the mission-control
-        # UI and it flows into the running agent's interrupt queue, so
-        # it is untrusted content from the model's perspective and must
-        # be wrapped before being persisted to the queued artefact.
+        # The operator types this text into the mission-control UI and
+        # it flows into the running agent's interrupt queue, so it is
+        # untrusted content from the model's perspective and must be
+        # wrapped before being persisted to the queued artefact.
         safe_text = wrap_untrusted(TAG_TASK_DATA, text)
         interrupt = Interrupt(
             id=NotBlankStr(str(uuid4())),

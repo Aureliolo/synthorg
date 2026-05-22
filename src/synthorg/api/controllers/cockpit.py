@@ -230,8 +230,8 @@ class CockpitController(Controller):
         """Route a hint/redirect through the steering directive.
 
         Wraps the operator-supplied text via :func:`wrap_untrusted` at
-        the controller boundary (SEC-1): the agent will read this text
-        as untrusted content the next time it consumes interrupts, so
+        the controller boundary: the agent will read this text as
+        untrusted content the next time it consumes interrupts, so
         the boundary must apply the prompt-safety envelope before the
         directive persists it. The directive applies its own wrap on
         the persisted question for defence-in-depth; double-wrapping is
