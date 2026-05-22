@@ -25,6 +25,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     ENVIRONMENT_KIND_CHANGED,
     ENVIRONMENT_REUSED,
+    ENVIRONMENT_ROW_PERSISTED,
 )
 
 if TYPE_CHECKING:
@@ -222,6 +223,12 @@ class EnvironmentService:
         )
         await self._repo.save(environment)
         self._cache.set(project_id, environment)
+        logger.info(
+            ENVIRONMENT_ROW_PERSISTED,
+            project_id=str(project_id),
+            backend=environment.environment_type.value,
+            first_provision=prior is None,
+        )
         return provisioned
 
 

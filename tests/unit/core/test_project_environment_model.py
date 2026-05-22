@@ -41,7 +41,10 @@ class TestProjectEnvironmentModel:
             _environment(unexpected="x")
 
     def test_environment_type_round_trips(self) -> None:
-        env = _environment(environment_type=EnvironmentType.DEVCONTAINER)
+        env = _environment(
+            environment_type=EnvironmentType.DEVCONTAINER,
+            image_ref=NotBlankStr("synthorg-project-proj-1:abc123"),
+        )
         dumped = env.model_dump()
         assert dumped["environment_type"] == "devcontainer"
         assert ProjectEnvironment.model_validate(dumped).environment_type is (
@@ -66,3 +69,30 @@ class TestProjectEnvironmentModel:
             image_ref=NotBlankStr("synthorg-project-proj-1:abc123"),
         )
         assert env.image_ref == "synthorg-project-proj-1:abc123"
+
+    def test_devcontainer_requires_image_ref(self) -> None:
+        with pytest.raises(ValidationError, match="DEVCONTAINER"):
+            _environment(environment_type=EnvironmentType.DEVCONTAINER)
+
+    @pytest.mark.parametrize("kind", [EnvironmentType.MANIFEST, EnvironmentType.NIX])
+    def test_bootstrap_forbids_image_ref(self, kind: EnvironmentType) -> None:
+        with pytest.raises(ValidationError, match="must not set image_ref"):
+            _environment(
+                environment_type=kind,
+                image_ref=NotBlankStr("some-image:tag"),
+            )
+
+    @pytest.mark.parametrize(
+        "bad_hash",
+        ["a" * 63, "a" * 65, "g" * 64, "A" * 64, "abc123"],
+    )
+    def test_non_sha256_declaration_hash_rejected(self, bad_hash: str) -> None:
+        with pytest.raises(ValidationError):
+            _environment(declaration_hash=NotBlankStr(bad_hash))
+
+    def test_updated_before_provisioned_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="updated_at"):
+            _environment(
+                provisioned_at=datetime(2026, 5, 21, tzinfo=UTC),
+                updated_at=datetime(2026, 5, 20, tzinfo=UTC),
+            )

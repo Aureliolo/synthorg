@@ -75,6 +75,10 @@ ENVIRONMENT_DECLARATION_SCAFFOLDED: Final[str] = "environment.declaration.scaffo
 ENVIRONMENT_IMAGE_BUILD_START: Final[str] = "environment.image.build.start"
 ENVIRONMENT_IMAGE_BUILD_COMPLETE: Final[str] = "environment.image.build.complete"
 ENVIRONMENT_IMAGE_BUILD_FAILED: Final[str] = "environment.image.build.failed"
+ENVIRONMENT_IMAGE_BUILD_RETRY: Final[str] = "environment.image.build.retry"
+ENVIRONMENT_LOCKFILE_PATH_REJECTED: Final[str] = "environment.lockfile.path.rejected"
+ENVIRONMENT_ROW_PERSISTED: Final[str] = "environment.row.persisted"
+ENVIRONMENT_PROVISION_SKIPPED: Final[str] = "environment.provision.skipped"
 
 # ── Coordinator push-queue events ────────────────────────────────
 WORKSPACE_PUSH_QUEUE_ENQUEUED: Final[str] = "workspace.push_queue.enqueued"

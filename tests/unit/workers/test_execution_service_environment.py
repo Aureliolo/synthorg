@@ -25,8 +25,11 @@ pytestmark = pytest.mark.unit
 def _provisioned(
     *, image_ref: str | None = None, env_vars: dict[str, str] | None = None
 ) -> ProvisionedEnvironment:
+    # Only the devcontainer image path carries an image_ref; the manifest
+    # path carries env additions instead.
+    kind = EnvironmentType.DEVCONTAINER if image_ref else EnvironmentType.MANIFEST
     return ProvisionedEnvironment(
-        environment_type=EnvironmentType.MANIFEST,
+        environment_type=kind,
         declaration_hash=NotBlankStr("a" * 64),
         image_ref=NotBlankStr(image_ref) if image_ref else None,
         env_vars=env_vars or {},

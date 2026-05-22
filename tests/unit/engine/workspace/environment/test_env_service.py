@@ -1,5 +1,6 @@
 """Unit tests for the EnvironmentService orchestration."""
 
+import asyncio
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -174,11 +175,13 @@ class TestEnvironmentService:
     async def test_kind_change_reprovisions(self, tmp_path: Path) -> None:
         _write_manifest(tmp_path)
         repo, runner = _InMemoryRepo(), _Runner()
-        ts = datetime(2026, 5, 1, tzinfo=UTC)
+        # Prior provisioning precedes the FakeClock "now" (2026-01-01) so
+        # the preserved provisioned_at stays <= the re-provision updated_at.
+        ts = datetime(2025, 12, 1, tzinfo=UTC)
         repo.rows["proj-1"] = ProjectEnvironment(
             project_id=_PROJECT,
             environment_type=EnvironmentType.NIX,
-            declaration_hash=NotBlankStr("stale"),
+            declaration_hash=NotBlankStr("f" * 64),
             provisioned_at=ts,
             updated_at=ts,
         )
@@ -229,3 +232,53 @@ class TestEnvironmentService:
         assert (tmp_path / _MANIFEST).is_file()
         assert env.environment_type is EnvironmentType.MANIFEST
         assert runner.calls == 0  # default scaffold has no setup commands
+
+    async def test_concurrent_provision_same_project_provisions_once(
+        self, tmp_path: Path
+    ) -> None:
+        # The per-project lock serialises concurrent first-touch: one task
+        # provisions, the rest reuse. Exactly one setup run + one save.
+        _write_manifest(tmp_path)
+        repo, runner = _InMemoryRepo(), _Runner()
+        service = _service(repo)
+
+        results = await asyncio.gather(
+            *(_provision(service, tmp_path, runner) for _ in range(5))
+        )
+
+        assert repo.save_calls == 1
+        assert runner.calls == 1  # the single "echo hi" setup command
+        hashes = {r.declaration_hash for r in results}
+        assert len(hashes) == 1  # every caller got the same environment
+
+    async def test_cancellation_mid_provision_persists_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        # A cancellation during the setup run must not persist a partial
+        # row or poison the cache; a later provision succeeds cleanly.
+        _write_manifest(tmp_path)
+        repo = _InMemoryRepo()
+
+        class _CancellingRunner(_Runner):
+            async def run(
+                self,
+                *,
+                command: str,
+                args: tuple[str, ...],
+                cwd: Path,
+                env: Mapping[str, str] | None = None,
+                timeout: float | None = None,  # noqa: ASYNC109 -- matches protocol
+            ) -> CommandOutcome:
+                del command, args, cwd, env, timeout
+                raise asyncio.CancelledError
+
+        service = _service(repo)
+        with pytest.raises(asyncio.CancelledError):
+            await _provision(service, tmp_path, _CancellingRunner())
+        assert repo.save_calls == 0
+        assert repo.rows == {}
+
+        # The lock was released and nothing was cached: a clean retry works.
+        env = await _provision(service, tmp_path, _Runner())
+        assert env.environment_type is EnvironmentType.MANIFEST
+        assert repo.save_calls == 1

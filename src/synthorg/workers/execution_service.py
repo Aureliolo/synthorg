@@ -62,6 +62,7 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASED,
     WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
 )
+from synthorg.observability.events.workspace import ENVIRONMENT_PROVISION_SKIPPED
 from synthorg.tools.sandbox.active_environment import (
     ActiveSandboxEnvironment,
     active_sandbox_environment,
@@ -359,9 +360,21 @@ class AgentEngineExecutionService:
         if (
             self._environment_service is None
             or self._environment_runner_backend is None
-            or project_id is None
-            or workspace_path is None
         ):
+            return None
+        if project_id is None:
+            return None
+        if workspace_path is None:
+            # The environment subsystem is wired and the task has a
+            # project, but workspace provisioning did not yield a path
+            # (it is best-effort upstream). Surface that the declared
+            # environment is NOT being applied rather than skipping mute.
+            logger.warning(
+                ENVIRONMENT_PROVISION_SKIPPED,
+                task_id=task_id,
+                project_id=project_id,
+                reason="workspace_path_unavailable",
+            )
             return None
         runner = SandboxEnvironmentRunner(
             backend=self._environment_runner_backend,

@@ -47,6 +47,28 @@ class _FakeBuilder:
         return BuildOutcome(tag=tag, exit_code=self._exit_code)
 
 
+class _SequenceBuilder:
+    """Builder returning a preset sequence of outcomes (last repeats)."""
+
+    def __init__(self, outcomes: list[BuildOutcome]) -> None:
+        self.builds: list[NotBlankStr] = []
+        self._outcomes = outcomes
+
+    async def build(
+        self,
+        *,
+        tag: NotBlankStr,
+        dockerfile: Path,
+        context_dir: Path,
+        timeout: float,  # noqa: ASYNC109 -- matches ImageBuilder protocol
+    ) -> BuildOutcome:
+        del dockerfile, context_dir, timeout
+        self.builds.append(tag)
+        idx = min(len(self.builds) - 1, len(self._outcomes) - 1)
+        outcome = self._outcomes[idx]
+        return outcome.model_copy(update={"tag": tag})
+
+
 class _Runner:
     def __init__(self, *, exit_code: int = 0) -> None:
         self.calls: list[tuple[str, tuple[str, ...]]] = []
@@ -70,6 +92,9 @@ def _strategy(builder: _FakeBuilder | None = None) -> DevcontainerEnvironmentStr
     return DevcontainerEnvironmentStrategy(
         image_builder=builder if builder is not None else _FakeBuilder(),
         docker_build_timeout_seconds=120.0,
+        build_max_attempts=2,
+        build_retry_base_seconds=0.0,
+        build_retry_cap_seconds=0.0,
         clock=FakeClock(),
     )
 
@@ -209,3 +234,67 @@ class TestDevcontainerStrategy:
         )
         with pytest.raises(EnvironmentConfigError):
             _strategy().declaration_hash(tmp_path)
+
+    async def _provision_build(self, tmp_path: Path, builder: _SequenceBuilder) -> None:
+        _write_devcontainer(tmp_path, '{"build": {"dockerfile": "Dockerfile"}}')
+        (tmp_path / ".devcontainer" / "Dockerfile").write_text(
+            "FROM debian:bookworm-slim\n", encoding="utf-8"
+        )
+        await _strategy(builder).provision(  # type: ignore[arg-type]
+            project_id=NotBlankStr("proj-1"),
+            workspace_path=tmp_path,
+            runner=_Runner(),
+            sandbox_kind=_DOCKER,
+        )
+
+    async def test_transient_build_retried_then_succeeds(self, tmp_path: Path) -> None:
+        # A timed-out build is transient: retry, then succeed.
+        builder = _SequenceBuilder(
+            [
+                BuildOutcome(tag=NotBlankStr("t"), exit_code=-1, timed_out=True),
+                BuildOutcome(tag=NotBlankStr("t"), exit_code=0),
+            ]
+        )
+        await self._provision_build(tmp_path, builder)
+        assert len(builder.builds) == 2
+
+    async def test_transient_marker_in_log_retried(self, tmp_path: Path) -> None:
+        builder = _SequenceBuilder(
+            [
+                BuildOutcome(
+                    tag=NotBlankStr("t"),
+                    exit_code=1,
+                    log="failed to pull: connection refused",
+                ),
+                BuildOutcome(tag=NotBlankStr("t"), exit_code=0),
+            ]
+        )
+        await self._provision_build(tmp_path, builder)
+        assert len(builder.builds) == 2
+
+    async def test_deterministic_failure_not_retried(self, tmp_path: Path) -> None:
+        # A plain non-zero exit with no transient marker is deterministic.
+        builder = _SequenceBuilder(
+            [BuildOutcome(tag=NotBlankStr("t"), exit_code=1, log="invalid Dockerfile")]
+        )
+        with pytest.raises(EnvironmentDockerBuildError):
+            await self._provision_build(tmp_path, builder)
+        assert len(builder.builds) == 1  # not retried
+
+    async def test_transient_failure_exhausts_retries(self, tmp_path: Path) -> None:
+        builder = _SequenceBuilder(
+            [BuildOutcome(tag=NotBlankStr("t"), exit_code=-1, timed_out=True)]
+        )
+        with pytest.raises(EnvironmentDockerBuildError):
+            await self._provision_build(tmp_path, builder)
+        assert len(builder.builds) == 2  # build_max_attempts in _strategy
+
+
+class TestBuildOutcomeValidator:
+    def test_timed_out_requires_minus_one_exit(self) -> None:
+        with pytest.raises(ValueError, match="exit_code -1"):
+            BuildOutcome(tag=NotBlankStr("t"), exit_code=0, timed_out=True)
+
+    def test_timed_out_with_minus_one_ok(self) -> None:
+        outcome = BuildOutcome(tag=NotBlankStr("t"), exit_code=-1, timed_out=True)
+        assert outcome.success is False

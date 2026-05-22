@@ -42,6 +42,7 @@ from synthorg.engine.workspace.project_workspace_service import (
 
 pytestmark = [
     pytest.mark.integration,
+    pytest.mark.slow,
     pytest.mark.skipif(
         shutil.which("sh") is None or shutil.which("git") is None,
         reason="acceptance test requires POSIX sh + git",

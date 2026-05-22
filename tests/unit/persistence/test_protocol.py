@@ -41,6 +41,9 @@ from synthorg.persistence.preset_protocol import (
 from synthorg.persistence.principle_override_protocol import (
     PrincipleOverrideRepository,
 )
+from synthorg.persistence.project_environment_protocol import (
+    ProjectEnvironmentRepository,
+)
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.project_workspace_protocol import (
     ProjectWorkspaceRepository,
@@ -76,6 +79,7 @@ if TYPE_CHECKING:
     from synthorg.core.artifact import Artifact
     from synthorg.core.auth.models import ApiKey, User
     from synthorg.core.project import Project
+    from synthorg.core.project_environment import ProjectEnvironment
     from synthorg.core.project_workspace import ProjectWorkspace
     from synthorg.core.task import Task
     from synthorg.engine.agent_state import AgentRuntimeState
@@ -610,6 +614,28 @@ class _FakeProjectWorkspaceRepository:
         return False
 
 
+class _FakeProjectEnvironmentRepository:
+    async def save(self, entity: ProjectEnvironment) -> None:
+        del entity
+
+    async def get(self, entity_id: NotBlankStr) -> ProjectEnvironment | None:
+        del entity_id
+        return None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[ProjectEnvironment, ...]:
+        del limit, offset
+        return ()
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        del entity_id
+        return False
+
+
 class _FakeProjectRepository:
     async def create(self, project: Project) -> None:
         pass
@@ -1111,11 +1137,11 @@ class _FakeBackend:
         return _FakeProjectWorkspaceRepository()
 
     @property
-    def project_environments(self) -> object:
-        # Per-project environment repo. ``PersistenceBackend`` is
-        # ``@runtime_checkable``, which only verifies attribute presence;
-        # returning ``object()`` is enough for the isinstance check.
-        return object()
+    def project_environments(self) -> _FakeProjectEnvironmentRepository:
+        # Concrete fake so the protocol-conformance suite catches drift
+        # between ``ProjectEnvironmentRepository`` and the backend's
+        # exposure path.
+        return _FakeProjectEnvironmentRepository()
 
     @property
     def project_docs(self) -> object:
@@ -1428,6 +1454,18 @@ class TestProtocolCompliance:
         assert isinstance(
             _FakeProjectWorkspaceRepository(),
             ProjectWorkspaceRepository,
+        )
+
+    def test_fake_project_environment_repo_is_project_environment_repository(
+        self,
+    ) -> None:
+        # Route through the backend property AND construct the fake
+        # directly so drift in either path is caught.
+        backend = _FakeBackend()
+        assert isinstance(backend.project_environments, ProjectEnvironmentRepository)
+        assert isinstance(
+            _FakeProjectEnvironmentRepository(),
+            ProjectEnvironmentRepository,
         )
 
     def test_fake_ssrf_violation_repo_is_ssrf_violation_repository(self) -> None:

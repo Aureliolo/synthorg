@@ -60,6 +60,9 @@ def _build_devcontainer(
     return DevcontainerEnvironmentStrategy(
         image_builder=image_builder,
         docker_build_timeout_seconds=config.docker_build_timeout_seconds,
+        build_max_attempts=config.docker_build_max_attempts,
+        build_retry_base_seconds=config.docker_build_retry_base_seconds,
+        build_retry_cap_seconds=config.docker_build_retry_cap_seconds,
         clock=deps.clock,
     )
 

@@ -430,8 +430,11 @@ Events emitted: `PROJECT_WORKSPACE_PROVISIONED`,
 
 ### Reproducible per-project environments
 
-Each project declares its dev environment in committed files so "worked in
-the agent sandbox" equals "works on a fresh clone". `EnvironmentService.
+Orthogonal to the concurrent workspace isolation above (which arbitrates
+simultaneous agent edits to one codebase), this provisions a reproducible
+dev environment from committed declarations. Each project declares its dev
+environment in committed files so "worked in the agent sandbox" equals
+"works on a fresh clone". `EnvironmentService.
 get_or_provision(project_id, ...)` resolves the declaration via a
 config-selected `EnvironmentStrategy` (`manifest` default; `devcontainer`
 and `nix` opt-in), scaffolds a default declaration into a fresh workspace
@@ -452,11 +455,20 @@ bound for the scope of one agent run in the worker execution path. The
 override image runs under the existing hardened sandbox host config
 (read-only root, `CapDrop: ALL`, `no-new-privileges`).
 
+A transient image build failure (timeout, registry/network hiccup) is
+retried with exponential backoff via `GeneralRetryHandler`; a deterministic
+build failure (bad Dockerfile) is not. Declaration-sourced env additions
+are screened through the sandbox denylist (a declared secret or
+exec-hijacking var is dropped), unlike the trusted internal hardening
+overrides.
+
 Events emitted: `ENVIRONMENT_PROVISION_START`, `ENVIRONMENT_PROVISIONED`,
-`ENVIRONMENT_PROVISION_FAILED`, `ENVIRONMENT_REUSED`,
-`ENVIRONMENT_KIND_CHANGED`, `ENVIRONMENT_DECLARATION_SCAFFOLDED`,
-`ENVIRONMENT_IMAGE_BUILD_START`, `ENVIRONMENT_IMAGE_BUILD_COMPLETE`,
-`ENVIRONMENT_IMAGE_BUILD_FAILED`.
+`ENVIRONMENT_PROVISION_FAILED`, `ENVIRONMENT_PROVISION_SKIPPED`,
+`ENVIRONMENT_REUSED`, `ENVIRONMENT_KIND_CHANGED`,
+`ENVIRONMENT_DECLARATION_SCAFFOLDED`, `ENVIRONMENT_ROW_PERSISTED`,
+`ENVIRONMENT_LOCKFILE_PATH_REJECTED`, `ENVIRONMENT_IMAGE_BUILD_START`,
+`ENVIRONMENT_IMAGE_BUILD_COMPLETE`, `ENVIRONMENT_IMAGE_BUILD_FAILED`,
+`ENVIRONMENT_IMAGE_BUILD_RETRY`.
 
 **Modules**:
 - `src/synthorg/engine/workspace/environment/` (protocol + 3 strategies +

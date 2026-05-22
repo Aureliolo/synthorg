@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import EnvironmentType
+from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     EnvironmentBackendUnavailableError,
@@ -41,13 +42,17 @@ from synthorg.engine.workspace.environment.protocol import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.engine.workspace.environment.image_builder import ImageBuilder
+    from synthorg.engine.workspace.environment.image_builder import (
+        BuildOutcome,
+        ImageBuilder,
+    )
 from synthorg.engine.workspace.environment.templates import DEFAULT_DEVCONTAINER_JSON
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     ENVIRONMENT_DECLARATION_SCAFFOLDED,
     ENVIRONMENT_IMAGE_BUILD_COMPLETE,
     ENVIRONMENT_IMAGE_BUILD_FAILED,
+    ENVIRONMENT_IMAGE_BUILD_RETRY,
     ENVIRONMENT_IMAGE_BUILD_START,
     ENVIRONMENT_PROVISION_FAILED,
     ENVIRONMENT_PROVISION_START,
@@ -62,21 +67,76 @@ _DOCKER_BACKEND: Final[str] = "docker"
 _SHELL: Final[str] = "sh"
 _TAG_HASH_LEN: Final[int] = 12
 _TAG_UNSAFE: Final[re.Pattern[str]] = re.compile(r"[^a-z0-9_.-]+")
+# Lowercased build-log markers that indicate a transient (retryable)
+# image build failure: registry / network / daemon hiccups, not a
+# deterministic Dockerfile error.
+_TRANSIENT_BUILD_MARKERS: Final[tuple[str, ...]] = (
+    "timeout",
+    "timed out",
+    "connection refused",
+    "connection reset",
+    "i/o timeout",
+    "tls handshake",
+    "temporary failure",
+    "temporarily unavailable",
+    "503 service",
+    "too many requests",
+    "no such host",
+    "dial tcp",
+    "eof",
+)
+
+
+class _TransientBuildError(Exception):
+    """Internal retry signal for a transient image-build failure.
+
+    Never escapes the strategy: a transient failure that exhausts the
+    retry budget is re-raised as :class:`EnvironmentDockerBuildError`.
+    """
+
+    def __init__(self, outcome: BuildOutcome) -> None:
+        super().__init__(f"transient image build failure for {outcome.tag!r}")
+        self.outcome = outcome
+
+
+def _is_transient_build_failure(outcome: BuildOutcome) -> bool:
+    """Classify a failed build as transient (retryable) or deterministic.
+
+    A timeout is always transient; otherwise the combined build log is
+    scanned for registry / network / daemon markers. A plain non-zero
+    exit with no transient marker is a deterministic Dockerfile failure
+    and is not retried.
+    """
+    if outcome.timed_out:
+        return True
+    haystack = outcome.log.lower()
+    return any(marker in haystack for marker in _TRANSIENT_BUILD_MARKERS)
 
 
 class DevcontainerEnvironmentStrategy:
     """Devcontainer (sealed-image) strategy; Docker backend only."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- image builder + build-retry tuning is the boundary surface
         self,
         *,
         image_builder: ImageBuilder,
         docker_build_timeout_seconds: float,
+        build_max_attempts: int,
+        build_retry_base_seconds: float,
+        build_retry_cap_seconds: float,
         clock: Clock | None = None,
     ) -> None:
         self._image_builder = image_builder
         self._build_timeout = docker_build_timeout_seconds
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._build_retry = GeneralRetryHandler(
+            retryable=lambda exc: isinstance(exc, _TransientBuildError),
+            max_attempts=build_max_attempts,
+            base=build_retry_base_seconds,
+            cap=build_retry_cap_seconds,
+            event=ENVIRONMENT_IMAGE_BUILD_RETRY,
+            clock=self._clock,
+        )
 
     def kind(self) -> EnvironmentType:
         """Return the ``DEVCONTAINER`` discriminator."""
@@ -215,12 +275,33 @@ class DevcontainerEnvironmentStrategy:
         logger.info(
             ENVIRONMENT_IMAGE_BUILD_START, project_id=str(project_id), tag=str(tag)
         )
-        outcome = await self._image_builder.build(
-            tag=tag,
-            dockerfile=dockerfile,
-            context_dir=context,
-            timeout=self._build_timeout,
-        )
+
+        async def _attempt() -> BuildOutcome:
+            built = await self._image_builder.build(
+                tag=tag,
+                dockerfile=dockerfile,
+                context_dir=context,
+                timeout=self._build_timeout,
+            )
+            if not built.success and _is_transient_build_failure(built):
+                raise _TransientBuildError(built)
+            return built
+
+        try:
+            outcome = await self._build_retry.execute(
+                _attempt, project_id=str(project_id), tag=str(tag)
+            )
+        except _TransientBuildError as exc:
+            # Transient failure that exhausted the retry budget.
+            logger.error(
+                ENVIRONMENT_IMAGE_BUILD_FAILED,
+                project_id=str(project_id),
+                tag=str(tag),
+                exit_code=exc.outcome.exit_code,
+                reason="transient_exhausted",
+            )
+            msg = f"devcontainer image build failed for {tag!r}"
+            raise EnvironmentDockerBuildError(msg) from exc
         if not outcome.success:
             logger.error(
                 ENVIRONMENT_IMAGE_BUILD_FAILED,

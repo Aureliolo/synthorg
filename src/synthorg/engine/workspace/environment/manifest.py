@@ -11,7 +11,7 @@ reproducible with no SynthOrg present.
 
 import asyncio
 import hashlib
-from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
+from pathlib import Path
 from typing import Final
 
 import yaml
@@ -30,6 +30,7 @@ from synthorg.engine.workspace.environment.templates import DEFAULT_MANIFEST_YAM
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     ENVIRONMENT_DECLARATION_SCAFFOLDED,
+    ENVIRONMENT_LOCKFILE_PATH_REJECTED,
     ENVIRONMENT_PROVISION_FAILED,
     ENVIRONMENT_PROVISION_START,
     ENVIRONMENT_PROVISIONED,
@@ -39,6 +40,9 @@ logger = get_logger(__name__)
 
 BOOTSTRAP_SCRIPT_NAME: Final[str] = "bootstrap.sh"
 _SHELL: Final[str] = "sh"
+# Bound the failed-command output captured in the structured error log so
+# a noisy build cannot blow up the logging pipeline.
+_MAX_ERROR_OUTPUT_CHARS: Final[int] = 2000
 
 
 class EnvironmentManifest(BaseModel):
@@ -129,10 +133,30 @@ class ManifestEnvironmentStrategy:
         manifest = self._read_manifest(workspace_path)
         for lockfile in manifest.lockfiles:
             digest.update(lockfile.encode("utf-8"))
-            lock_path = workspace_path / lockfile
-            if lock_path.is_file():
+            lock_path = self._resolve_lockfile(workspace_path, lockfile)
+            if lock_path is not None and lock_path.is_file():
                 digest.update(lock_path.read_bytes())
         return NotBlankStr(digest.hexdigest())
+
+    def _resolve_lockfile(self, workspace_path: Path, lockfile: str) -> Path | None:
+        """Resolve a declared lockfile, rejecting any workspace escape.
+
+        A lockfile path is project-authored; an absolute path or a
+        ``..`` traversal would let the declaration hash arbitrary files
+        outside the working tree. Rejected paths are logged and skipped
+        (the path string still feeds the hash, so editing it re-provisions).
+        """
+        candidate = Path(lockfile)
+        root = workspace_path.resolve()
+        resolved = (workspace_path / candidate).resolve()
+        if candidate.is_absolute() or not resolved.is_relative_to(root):
+            logger.warning(
+                ENVIRONMENT_LOCKFILE_PATH_REJECTED,
+                backend=EnvironmentType.MANIFEST.value,
+                lockfile=lockfile,
+            )
+            return None
+        return resolved
 
     def managed_paths(self, workspace_path: Path) -> tuple[str, ...]:
         """The manifest plus the generated ``bootstrap.sh`` (if present)."""
@@ -197,14 +221,21 @@ class ManifestEnvironmentStrategy:
             )
             logs.append(f"$ {command}\n{outcome.stdout}{outcome.stderr}")
             if not outcome.success:
+                output_tail = (outcome.stdout + outcome.stderr)[
+                    -_MAX_ERROR_OUTPUT_CHARS:
+                ]
                 logger.error(
                     ENVIRONMENT_PROVISION_FAILED,
                     project_id=str(project_id),
                     backend=EnvironmentType.MANIFEST.value,
                     command=command,
                     exit_code=outcome.exit_code,
+                    output_tail=output_tail,
                 )
-                msg = f"environment setup command failed: {command!r}"
+                msg = (
+                    f"environment setup command failed (exit {outcome.exit_code}): "
+                    f"{command!r}"
+                )
                 raise EnvironmentProvisionError(msg)
         declaration_hash = self.declaration_hash(workspace_path)
         logger.info(

@@ -129,6 +129,46 @@ class TestDeclarationHash:
         with pytest.raises(EnvironmentConfigError):
             _strategy().declaration_hash(tmp_path)
 
+    def test_missing_lockfile_on_disk_is_tolerated(self, tmp_path: Path) -> None:
+        # A declared-but-absent lockfile still feeds its path into the
+        # hash; creating it later (changing content) re-provisions.
+        strategy = _strategy()
+        _write_manifest(
+            tmp_path,
+            'language: python\ntest_command: "pytest"\nlockfiles: ["req.lock"]\n',
+        )
+        before = strategy.declaration_hash(tmp_path)
+        (tmp_path / "req.lock").write_text("a==1\n", encoding="utf-8")
+        assert strategy.declaration_hash(tmp_path) != before
+
+    @pytest.mark.parametrize("escape", ["../outside_secret.txt", "sub/../../escape"])
+    def test_traversal_lockfile_not_read(self, tmp_path: Path, escape: str) -> None:
+        # A lockfile path escaping the workspace is rejected: its bytes
+        # never enter the hash, so editing the outside file is invisible.
+        outside = tmp_path.parent / "outside_secret.txt"
+        outside.write_text("v1", encoding="utf-8")
+        strategy = _strategy()
+        _write_manifest(
+            tmp_path,
+            f'language: python\ntest_command: "pytest"\nlockfiles: ["{escape}"]\n',
+        )
+        before = strategy.declaration_hash(tmp_path)
+        outside.write_text("v2-changed", encoding="utf-8")
+        assert strategy.declaration_hash(tmp_path) == before
+
+    def test_absolute_lockfile_not_read(self, tmp_path: Path) -> None:
+        outside = tmp_path.parent / "abs_secret.txt"
+        outside.write_text("v1", encoding="utf-8")
+        strategy = _strategy()
+        _write_manifest(
+            tmp_path,
+            f'language: python\ntest_command: "pytest"\n'
+            f'lockfiles: ["{outside.as_posix()}"]\n',
+        )
+        before = strategy.declaration_hash(tmp_path)
+        outside.write_text("v2-changed", encoding="utf-8")
+        assert strategy.declaration_hash(tmp_path) == before
+
 
 class TestReadManifestValidation:
     def test_non_mapping_rejected(self, tmp_path: Path) -> None:
@@ -202,7 +242,7 @@ class TestProvision:
         )
         runner = _RecordingRunner(fail_on="boom")
 
-        with pytest.raises(EnvironmentProvisionError):
+        with pytest.raises(EnvironmentProvisionError, match=r"exit 1") as exc_info:
             await _strategy().provision(
                 project_id=NotBlankStr("proj-1"),
                 workspace_path=tmp_path,
@@ -211,3 +251,5 @@ class TestProvision:
             )
         # Stops at the failing command; the third never runs.
         assert [c[1][-1] for c in runner.calls] == ["good", "boom"]
+        # The failing command is named in the error for debuggability.
+        assert "boom" in str(exc_info.value)

@@ -17,11 +17,11 @@ reference in :attr:`ProvisionedEnvironment.image_ref`.
 
 from collections.abc import Mapping  # noqa: TC003 -- runtime annotation (PEP 649)
 from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import EnvironmentType  # noqa: TC001
+from synthorg.core.enums import EnvironmentType
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
@@ -110,6 +110,22 @@ class ProvisionedEnvironment(BaseModel):
     image_ref: NotBlankStr | None = None
     env_vars: dict[str, str] = Field(default_factory=dict)
     setup_log: str = ""
+
+    @model_validator(mode="after")
+    def _check_image_ref(self) -> Self:
+        """Only the ``DEVCONTAINER`` image-build path carries an image ref.
+
+        The bootstrap (manifest / nix) paths run setup into the mounted
+        workspace and never build a sealed image.
+        """
+        if self.environment_type == EnvironmentType.DEVCONTAINER:
+            if self.image_ref is None:
+                msg = "DEVCONTAINER provisioning requires an image_ref"
+                raise ValueError(msg)
+        elif self.image_ref is not None:
+            msg = f"{self.environment_type.value} provisioning must not set image_ref"
+            raise ValueError(msg)
+        return self
 
 
 @runtime_checkable

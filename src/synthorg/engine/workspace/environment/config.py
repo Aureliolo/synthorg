@@ -24,6 +24,9 @@ if TYPE_CHECKING:
 _DEFAULT_MANIFEST_FILENAME: Final[str] = "synthorg.env.yaml"
 _DEFAULT_PROVISION_TIMEOUT_SECONDS: Final[float] = 900.0
 _DEFAULT_DOCKER_BUILD_TIMEOUT_SECONDS: Final[float] = 1800.0
+_DEFAULT_DOCKER_BUILD_MAX_ATTEMPTS: Final[int] = 3
+_DEFAULT_DOCKER_BUILD_RETRY_BASE_SECONDS: Final[float] = 2.0
+_DEFAULT_DOCKER_BUILD_RETRY_CAP_SECONDS: Final[float] = 30.0
 
 
 class EnvironmentConfig(BaseModel):
@@ -54,6 +57,21 @@ class EnvironmentConfig(BaseModel):
     docker_build_timeout_seconds: float = Field(
         default=_DEFAULT_DOCKER_BUILD_TIMEOUT_SECONDS,
         gt=0.0,
+    )
+    # DEVCONTAINER: total image-build attempts (incl. the first) for
+    # transient failures (registry/network/daemon); a deterministic
+    # build failure (bad Dockerfile) is never retried.
+    docker_build_max_attempts: int = Field(
+        default=_DEFAULT_DOCKER_BUILD_MAX_ATTEMPTS,
+        ge=1,
+    )
+    docker_build_retry_base_seconds: float = Field(
+        default=_DEFAULT_DOCKER_BUILD_RETRY_BASE_SECONDS,
+        ge=0.0,
+    )
+    docker_build_retry_cap_seconds: float = Field(
+        default=_DEFAULT_DOCKER_BUILD_RETRY_CAP_SECONDS,
+        ge=0.0,
     )
 
 

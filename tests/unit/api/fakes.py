@@ -656,6 +656,10 @@ class FakeProjectEnvironmentRepository:
     async def delete(self, entity_id: NotBlankStr) -> bool:
         return self._rows.pop(entity_id, None) is not None
 
+    def clear(self) -> None:
+        """Reset all stored environments for test isolation."""
+        self._rows.clear()
+
 
 class FakeDocsRepository:
     """In-memory living-doc metadata repository for tests."""

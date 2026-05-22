@@ -97,6 +97,22 @@ class TestEnvironmentFiltering:
             env = sandbox._build_filtered_env()
             assert "MY_SECRET_KEY" not in env
 
+    def test_declaration_env_screened_through_denylist(
+        self,
+        subprocess_sandbox: SubprocessSandbox,
+    ) -> None:
+        # Declaration-sourced env additions are screened through the
+        # secret/dangerous-var denylist; only safe toolchain vars survive.
+        screened = subprocess_sandbox._screen_declaration_env(
+            {
+                "PATH_EXTRA": "/x/bin",
+                "LD_PRELOAD": "/evil.so",
+                "MY_SECRET": "s",
+                "PYTHONPATH": "/inject",
+            }
+        )
+        assert screened == {"PATH_EXTRA": "/x/bin"}
+
     def test_env_overrides_applied(
         self,
         subprocess_sandbox: SubprocessSandbox,

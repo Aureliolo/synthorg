@@ -9,10 +9,11 @@ stays small enough to mock in unit tests.
 """
 
 import asyncio
+import contextlib
 from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
-from typing import Final, Protocol, runtime_checkable
+from typing import Final, Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict, computed_field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -47,6 +48,14 @@ class BuildOutcome(BaseModel):
         """Whether the build exited cleanly."""
         return self.exit_code == 0 and not self.timed_out
 
+    @model_validator(mode="after")
+    def _check_timeout_marker(self) -> Self:
+        """A timed-out build is signalled by the reserved ``-1`` exit code."""
+        if self.timed_out and self.exit_code != -1:
+            msg = "timed_out build must use exit_code -1"
+            raise ValueError(msg)
+        return self
+
 
 @runtime_checkable
 class ImageBuilder(Protocol):
@@ -66,6 +75,18 @@ class ImageBuilder(Protocol):
 
 class SubprocessImageBuilder:
     """Builds images by spawning ``docker build`` on the host daemon."""
+
+    @staticmethod
+    async def _kill_and_reap(proc: asyncio.subprocess.Process) -> None:
+        """Kill *proc* and reap it, shielding the wait from cancellation.
+
+        Without the shield an outer cancellation arriving during
+        ``proc.wait()`` would unwind before the process is reaped,
+        leaking a zombie ``docker build``.
+        """
+        proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            await asyncio.shield(proc.wait())
 
     async def build(
         self,
@@ -90,8 +111,7 @@ class SubprocessImageBuilder:
         try:
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except TimeoutError:
-            proc.kill()
-            await proc.wait()
+            await self._kill_and_reap(proc)
             logger.warning(
                 ENVIRONMENT_IMAGE_BUILD_FAILED,
                 tag=str(tag),
@@ -99,6 +119,11 @@ class SubprocessImageBuilder:
                 timeout_seconds=timeout,
             )
             return BuildOutcome(tag=tag, exit_code=-1, timed_out=True)
+        except asyncio.CancelledError:
+            # Reap the build before unwinding so a cancelled provision
+            # cannot leave a zombie ``docker build`` holding the daemon.
+            await self._kill_and_reap(proc)
+            raise
         return BuildOutcome(
             tag=tag,
             exit_code=proc.returncode if proc.returncode is not None else -1,
