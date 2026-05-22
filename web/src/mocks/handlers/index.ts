@@ -68,6 +68,7 @@ import { authHandlers } from './auth'
 import { backupHandlers } from './backup'
 import { budgetHandlers } from './budget'
 import { capabilitiesHandlers } from './capabilities'
+import { charterHandlers } from './charter'
 import { ceremonyPolicyHandlers } from './ceremony-policy'
 import { clientsHandlers } from './clients'
 import { cockpitHandlers } from './cockpit'
@@ -122,6 +123,7 @@ export const defaultHandlers = [
   ...backupHandlers,
   ...budgetHandlers,
   ...capabilitiesHandlers,
+  ...charterHandlers,
   ...ceremonyPolicyHandlers,
   ...clientsHandlers,
   ...cockpitHandlers,
@@ -173,6 +175,7 @@ export {
   backupHandlers,
   budgetHandlers,
   capabilitiesHandlers,
+  charterHandlers,
   ceremonyPolicyHandlers,
   clientsHandlers,
   cockpitHandlers,
@@ -237,6 +240,7 @@ export { buildAuthUser } from './auth'
 export { buildManifest as buildBackupManifest, buildBackupInfo } from './backup'
 export { buildBudgetConfig } from './budget'
 export { buildCeremonyPolicy } from './ceremony-policy'
+export { buildCharter } from './charter'
 export {
   buildProfile as buildClientProfile,
   buildRequirement as buildClientRequirement,

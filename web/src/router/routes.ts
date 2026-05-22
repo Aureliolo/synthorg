@@ -20,6 +20,7 @@ export const ROUTES = {
   APPROVALS: '/approvals',
   SCALING: '/scaling',
   META: '/meta',
+  CHARTERS: '/meta/charters',
   AGENTS: '/agents',
   AGENT_DETAIL: '/agents/:agentId',
   TRAINING: '/training',

@@ -234,6 +234,8 @@ class AppState(AppStateServicesMixin):
         "_budget_config",
         "_ceremony_policy_service",
         "_ceremony_scheduler",
+        "_charter_dispatcher",
+        "_charter_service",
         "_chief_of_staff_chat",
         "_chief_of_staff_proposer",
         "_client_facade_service",

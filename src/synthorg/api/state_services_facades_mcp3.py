@@ -30,6 +30,10 @@ from synthorg.engine.workflow.subworkflow_service import (
 from synthorg.engine.workflow.version_service import (
     WorkflowVersionService,  # noqa: TC001
 )
+from synthorg.meta.charter.dispatch import CharterDispatcher  # noqa: TC001
+from synthorg.meta.charter.service import (  # noqa: TC001
+    CharterInterviewService,
+)
 from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat  # noqa: TC001
 from synthorg.meta.chief_of_staff.propose import (  # noqa: TC001
     ChiefOfStaffProposer,
@@ -82,6 +86,8 @@ class _MetaMcp3FacadesMixin:
     _self_improvement_service: SelfImprovementService | None
     _chief_of_staff_chat: ChiefOfStaffChat | None
     _chief_of_staff_proposer: ChiefOfStaffProposer | None
+    _charter_service: CharterInterviewService | None
+    _charter_dispatcher: CharterDispatcher | None
     _conversational_proposal_repo: ConversationalProposalRepository | None
 
     # ── WorkflowService ──────────────────────────────────────────
@@ -252,6 +258,52 @@ class _MetaMcp3FacadesMixin:
             slot="_chief_of_staff_proposer",
             service=service,
             name="chief_of_staff_proposer",
+        )
+
+    # ── CharterInterviewService ──────────────────────────────────
+
+    @property
+    def has_charter_service(self) -> bool:
+        """Whether the charter-interview backend has been attached."""
+        return self._charter_service is not None
+
+    @property
+    def charter_service(self) -> CharterInterviewService:
+        """Return the attached :class:`CharterInterviewService`."""
+        return self._require_service(
+            self._charter_service,
+            "charter_service",
+        )
+
+    def set_charter_service(self, service: CharterInterviewService) -> None:
+        """Attach the charter-interview backend (one-shot)."""
+        self._attach_service(
+            slot="_charter_service",
+            service=service,
+            name="charter_service",
+        )
+
+    # ── CharterDispatcher ────────────────────────────────────────
+
+    @property
+    def has_charter_dispatcher(self) -> bool:
+        """Whether the charter approval dispatcher has been attached."""
+        return self._charter_dispatcher is not None
+
+    @property
+    def charter_dispatcher(self) -> CharterDispatcher:
+        """Return the attached :class:`CharterDispatcher`."""
+        return self._require_service(
+            self._charter_dispatcher,
+            "charter_dispatcher",
+        )
+
+    def set_charter_dispatcher(self, service: CharterDispatcher) -> None:
+        """Attach the charter approval dispatcher (one-shot)."""
+        self._attach_service(
+            slot="_charter_dispatcher",
+            service=service,
+            name="charter_dispatcher",
         )
 
     # ── ConversationalProposalRepository ──────────────────────────

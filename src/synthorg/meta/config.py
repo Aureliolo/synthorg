@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr
+from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
 from synthorg.meta.models import EvolutionMode, RolloutStrategyType
 from synthorg.meta.telemetry.config import CrossDeploymentAnalyticsConfig
@@ -270,6 +271,7 @@ class SelfImprovementConfig(BaseModel):
         code_modification: Code modification strategy configuration.
         chief_of_staff: Chief of Staff advanced capabilities
             (learning, alerts, chat).
+        charter: Deep CEO interview to project charter capabilities.
         cross_deployment_analytics: Cross-deployment analytics
             telemetry (opt-in, disabled by default).
         toolsmith: Self-extending toolkit configuration
@@ -304,6 +306,10 @@ class SelfImprovementConfig(BaseModel):
 
     chief_of_staff: ChiefOfStaffConfig = Field(
         default_factory=ChiefOfStaffConfig,
+    )
+
+    charter: CharterConfig = Field(
+        default_factory=CharterConfig,
     )
 
     cross_deployment_analytics: CrossDeploymentAnalyticsConfig = Field(
