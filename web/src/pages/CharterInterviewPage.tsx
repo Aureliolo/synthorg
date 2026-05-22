@@ -61,7 +61,11 @@ export default function CharterInterviewPage() {
         title="Project charters"
         description="Interview the CEO to turn an idea into an approvable project charter."
         primaryAction={
-          <Button variant="outline" onClick={resetInterview} disabled={sending}>
+          <Button
+            variant="outline"
+            onClick={resetInterview}
+            disabled={sending || mutating}
+          >
             New interview
           </Button>
         }

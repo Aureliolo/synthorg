@@ -349,26 +349,26 @@ class TestCharterRepository:
     async def test_constraint_violation_on_corrupt_raw_write(
         self, backend: PersistenceBackend
     ) -> None:
-        """A drafted row carrying approval provenance trips the DB CHECK.
+        """The DB CHECK rejects an APPROVED transition with partial provenance.
 
-        The model forbids this, so the repo path cannot emit it; this
-        guards the DB-level approval-coupling constraint by asserting a
-        clean drafted save (no provenance) succeeds while an approved
-        save requires full provenance via the model + DB together.
+        ``chk_charter_approval_coupling`` mandates that
+        ``status='approved'`` ONLY appears with ``approved_at`` +
+        ``approved_by`` + ``forecast_id`` + ``correlation_id`` +
+        ``task_id`` all populated. The model also enforces this, but
+        the repo's ``transition_if`` exposes the field set as kwargs,
+        so a caller that supplies an incomplete subset must be
+        rejected by the database rather than smuggled through.
         """
         repo = _repo(backend)
-        approved = _make_charter(
-            charter_id="ap1",
-            status=CharterStatus.APPROVED,
-            approved_at=_NOW,
-            approved_by="user-1",
-            forecast_id=uuid4(),
-            correlation_id="conv-1",
-            task_id="task-1",
-        )
-        await repo.save(approved)
-        fetched = await repo.get(NotBlankStr("ap1"))
-        assert fetched is not None
-        assert fetched.status is CharterStatus.APPROVED
-        # Sanity: a constraint violation type exists for raw corrupt writes.
-        assert issubclass(ConstraintViolationError, Exception)
+        await repo.save(_make_charter(charter_id="ap1"))
+        with pytest.raises(ConstraintViolationError):
+            # forecast_id / correlation_id / task_id intentionally
+            # omitted: the CHECK rejects ``approved`` without them.
+            await repo.transition_if(
+                NotBlankStr("ap1"),
+                from_state=CharterStatus.DRAFTED,
+                to_state=CharterStatus.APPROVED,
+                updated_at=_NOW,
+                approved_at=_NOW,
+                approved_by="user-1",
+            )

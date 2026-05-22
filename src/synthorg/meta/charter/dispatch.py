@@ -35,13 +35,17 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.errors import WorkProjectNotFoundError
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.meta.charter.models import CharterApprovalResult, ProjectCharter
-from synthorg.meta.errors import CharterAlreadyDecidedError, CharterNotFoundError
+from synthorg.meta.errors import (
+    CharterAlreadyDecidedError,
+    CharterNotFoundError,
+    CharterStateInconsistentError,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.charter import (
     CHARTER_APPROVED,
     CHARTER_DISPATCH_FAILED,
     CHARTER_DISPATCHED,
-    CHARTER_STATUS_TRANSITIONED,
+    CHARTER_PROJECT_ALREADY_EXISTS,
 )
 
 if TYPE_CHECKING:
@@ -218,8 +222,14 @@ class CharterDispatcher:
             is_success=result.is_success,
         )
         approved = await self._charter_repo.get(charter_id)
+        if approved is None:
+            # ``_stamp_approved`` only returns after a winning CAS, so
+            # a missing row here is a storage-contract violation, not
+            # an ownership race. Returning the pre-transition charter
+            # would leak ``DRAFTED`` status to the client.
+            raise CharterStateInconsistentError(charter_id=charter_id)
         return CharterApprovalResult(
-            charter=approved if approved is not None else charter,
+            charter=approved,
             project_id=project_id,
             task_id=result.task_id,
             is_success=result.is_success,
@@ -265,8 +275,10 @@ class CharterDispatcher:
             await self._project_service.create(project)
         except DuplicateRecordError:
             # Idempotent retry: the project from a prior attempt stands.
+            # No charter state changed here, so the transition-event
+            # stream stays reserved for actual ``DRAFTED -> *`` moves.
             logger.info(
-                CHARTER_STATUS_TRANSITIONED,
+                CHARTER_PROJECT_ALREADY_EXISTS,
                 charter_id=charter.id,
                 project_id=project_id,
                 note="project already created on a prior attempt",
@@ -361,13 +373,31 @@ class CharterDispatcher:
     async def _close_conversation(
         self, conversation_id: NotBlankStr, now: datetime
     ) -> None:
-        """Best-effort close of the interview conversation (idempotent)."""
-        await self._conversation_repo.transition_if(
-            conversation_id,
-            from_state=ConversationStatus.ACTIVE,
-            to_state=ConversationStatus.CLOSED,
-            updated_at=now.isoformat(),
-        )
+        """Best-effort close of the interview conversation (idempotent).
+
+        The dispatch already drove the work pipeline and stamped the
+        charter as ``APPROVED``; a failure to close the conversation
+        must not retroactively fail the approval response. Swallow
+        unexpected errors with a structured log so operators still
+        see the dispatch attempt, then return.
+        """
+        try:
+            await self._conversation_repo.transition_if(
+                conversation_id,
+                from_state=ConversationStatus.ACTIVE,
+                to_state=ConversationStatus.CLOSED,
+                updated_at=now.isoformat(),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                CHARTER_DISPATCH_FAILED,
+                conversation_id=conversation_id,
+                stage="close_conversation",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
 
 __all__ = ["CharterDispatcher"]

@@ -32,6 +32,7 @@ from synthorg.meta.chief_of_staff.models import Conversation, ConversationTurn
 from synthorg.meta.errors import (
     CharterNotEditableError,
     CharterNotFoundError,
+    CharterStateInconsistentError,
     ConversationClosedError,
     ConversationNotFoundError,
 )
@@ -527,7 +528,12 @@ class CharterInterviewService:
             to_state=CharterStatus.CANCELLED.value,
         )
         refreshed = await self._charter_repo.get(charter_id)
-        return refreshed if refreshed is not None else charter
+        if refreshed is None:
+            # ``transition_if`` returned ``True``, so the row must exist
+            # post-cancellation. Returning ``charter`` would surface a
+            # stale ``DRAFTED`` status to the caller.
+            raise CharterStateInconsistentError(charter_id=charter_id)
+        return refreshed
 
     async def _close_conversation(
         self, conversation_id: NotBlankStr, now: datetime

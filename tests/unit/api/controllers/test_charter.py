@@ -46,6 +46,22 @@ class TestCharterControllerUnwired:
         )
         assert resp.status_code == _SERVICE_UNAVAILABLE
 
+    def test_patch_returns_503_when_unwired(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.patch(
+            "/api/v1/meta/charters/charter-1",
+            json={"brief": "tweaked"},
+        )
+        assert resp.status_code == _SERVICE_UNAVAILABLE
+
+    def test_cancel_returns_503_when_unwired(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        resp = test_client.post(
+            "/api/v1/meta/charters/charter-1/cancel",
+            json={},
+        )
+        assert resp.status_code == _SERVICE_UNAVAILABLE
+
     def test_interview_rejects_blank_message(
         self, test_client: TestClient[Any]
     ) -> None:

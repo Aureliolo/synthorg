@@ -201,10 +201,14 @@ async def _charter_cancel(
     actor: AgentIdentity | None = None,
 ) -> str:
     try:
+        # MCP cancel is admin-gated at the registry; the local
+        # guardrail re-check (mandated for every admin tool) is what
+        # actually authorises the ``enforce_ownership=False`` bypass.
+        # Without it a caller invoking the handler map directly could
+        # cancel another user's draft.
+        require_admin_guardrails(arguments, actor)
         svc = _require_charter_service(app_state)
         charter_id = NotBlankStr(require_arg(arguments, _ARG_CHARTER_ID, str))
-        # MCP cancel is admin-gated at the registry; an operator can
-        # cancel a stalled charter they did not create.
         cancelled = await svc.cancel_charter(
             charter_id,
             cancelled_by=_actor_id(actor),

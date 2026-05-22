@@ -451,6 +451,9 @@ async def test_vague_idea_becomes_approved_charter_that_runs(
     assert project.budget == pytest.approx(_AMOUNT)
 
     # An APPROVED forecast is the budget record, with the envelope ceiling.
+    # Assert the cardinality so a duplicate forecast write does not slip
+    # through silently (the dispatcher must upsert by ``forecast_id``).
+    assert len(forecast_repo.items) == 1
     forecast = next(iter(forecast_repo.items.values()))
     assert forecast.decision is ForecastDecision.APPROVED
     assert forecast.ceiling_amount == pytest.approx(_AMOUNT)

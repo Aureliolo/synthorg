@@ -1790,82 +1790,100 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             or not app_state.has_persistence
         ):
             return
-        from synthorg.api.services.project_service import (  # noqa: PLC0415
-            ProjectService,
-        )
-        from synthorg.meta.charter.dispatch import CharterDispatcher  # noqa: PLC0415
-        from synthorg.meta.charter.factory import (  # noqa: PLC0415
-            build_charter_interview_strategy,
-        )
-        from synthorg.meta.charter.service import (  # noqa: PLC0415
-            CharterInterviewService,
-        )
-        from synthorg.meta.config import (  # noqa: PLC0415
-            load_self_improvement_config,
-        )
-        from synthorg.persistence.charter_factory import (  # noqa: PLC0415
-            build_charter_repository,
-        )
-        from synthorg.persistence.conversational_factory import (  # noqa: PLC0415
-            build_conversational_repositories,
-        )
+        try:
+            from synthorg.api.services.project_service import (  # noqa: PLC0415
+                ProjectService,
+            )
+            from synthorg.meta.charter.dispatch import (  # noqa: PLC0415
+                CharterDispatcher,
+            )
+            from synthorg.meta.charter.factory import (  # noqa: PLC0415
+                build_charter_interview_strategy,
+            )
+            from synthorg.meta.charter.service import (  # noqa: PLC0415
+                CharterInterviewService,
+            )
+            from synthorg.meta.config import (  # noqa: PLC0415
+                load_self_improvement_config,
+            )
+            from synthorg.persistence.charter_factory import (  # noqa: PLC0415
+                build_charter_repository,
+            )
+            from synthorg.persistence.conversational_factory import (  # noqa: PLC0415
+                build_conversational_repositories,
+            )
 
-        si_config = await load_self_improvement_config(
-            app_state.settings_service if app_state.has_settings_service else None,
-        )
-        charter_config = si_config.charter
-        if not charter_config.interview_enabled:
-            return
-        charter_repo = build_charter_repository(persistence)
-        conv_repos = build_conversational_repositories(persistence)
-        available = provider_registry.list_providers()
-        if charter_repo is None or conv_repos is None or not available:
+            si_config = await load_self_improvement_config(
+                app_state.settings_service if app_state.has_settings_service else None,
+            )
+            charter_config = si_config.charter
+            if not charter_config.interview_enabled:
+                return
+            charter_repo = build_charter_repository(persistence)
+            conv_repos = build_conversational_repositories(persistence)
+            available = provider_registry.list_providers()
+            if charter_repo is None or conv_repos is None or not available:
+                logger.warning(
+                    CHARTER_SUBSTRATE_UNAVAILABLE,
+                    note="charter interview enabled but stores/provider unavailable",
+                )
+                return
+            provider = provider_registry.get(available[0])
+            strategy = build_charter_interview_strategy(
+                charter_config,
+                provider=provider,
+                cost_tracker=cost_tracker,
+            )
+            app_state.set_charter_service(
+                CharterInterviewService(
+                    strategy=strategy,
+                    config=charter_config,
+                    conversation_repo=conv_repos.conversation_repo,
+                    turn_repo=conv_repos.turn_repo,
+                    charter_repo=charter_repo,
+                )
+            )
+            # The approval dispatcher additionally needs the work-pipeline
+            # spine, the cost-forecast store, and the live budget config.
+            # When any is absent the interview still works; only approve
+            # 503s.
+            forecast_repo = app_state.cost_forecast_repo
+            budget_config = app_state.budget_config
+            if (
+                not app_state.has_work_pipeline
+                or forecast_repo is None
+                or budget_config is None
+            ):
+                logger.warning(
+                    CHARTER_SUBSTRATE_UNAVAILABLE,
+                    note="charter dispatcher deps absent; approve will 503",
+                )
+                return
+            resolved_budget = budget_config
+            app_state.set_charter_dispatcher(
+                CharterDispatcher(
+                    charter_repo=charter_repo,
+                    forecast_repo=forecast_repo,
+                    project_service=ProjectService(repo=persistence.projects),
+                    work_pipeline=app_state.work_pipeline,
+                    conversation_repo=conv_repos.conversation_repo,
+                    budget_currency=lambda: resolved_budget.currency,
+                )
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            # Any other failure (settings load, repo construction,
+            # strategy build, ...) must not poison startup; the
+            # controllers will keep 503ing until the operator fixes
+            # the underlying configuration and reboots.
             logger.warning(
                 CHARTER_SUBSTRATE_UNAVAILABLE,
-                note="charter interview enabled but stores/provider unavailable",
+                note="charter wiring raised; charter endpoints stay unavailable",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return
-        provider = provider_registry.get(available[0])
-        strategy = build_charter_interview_strategy(
-            charter_config,
-            provider=provider,
-            cost_tracker=cost_tracker,
-        )
-        app_state.set_charter_service(
-            CharterInterviewService(
-                strategy=strategy,
-                config=charter_config,
-                conversation_repo=conv_repos.conversation_repo,
-                turn_repo=conv_repos.turn_repo,
-                charter_repo=charter_repo,
-            )
-        )
-        # The approval dispatcher additionally needs the work-pipeline
-        # spine, the cost-forecast store, and the live budget config. When
-        # any is absent the interview still works; only approve 503s.
-        forecast_repo = app_state.cost_forecast_repo
-        budget_config = app_state.budget_config
-        if (
-            not app_state.has_work_pipeline
-            or forecast_repo is None
-            or budget_config is None
-        ):
-            logger.warning(
-                CHARTER_SUBSTRATE_UNAVAILABLE,
-                note="charter dispatcher deps absent; approve will 503",
-            )
-            return
-        resolved_budget = budget_config
-        app_state.set_charter_dispatcher(
-            CharterDispatcher(
-                charter_repo=charter_repo,
-                forecast_repo=forecast_repo,
-                project_service=ProjectService(repo=persistence.projects),
-                work_pipeline=app_state.work_pipeline,
-                conversation_repo=conv_repos.conversation_repo,
-                budget_currency=lambda: resolved_budget.currency,
-            )
-        )
 
     startup = [*startup, _wire_charter_engine]
 

@@ -30,6 +30,12 @@ interface CharterState {
   charters: ProjectCharter[]
   loading: boolean
   error: string | null
+  // Opaque cursor for the NEXT page; ``null`` when the catalogue end
+  // has been reached. Stores keep ``nextCursor`` + ``hasMore`` rather
+  // than offset arithmetic per the cursor-pagination MANDATORY rule
+  // in ``web/CLAUDE.md``.
+  nextCursor: string | null
+  hasMore: boolean
 
   // Active interview
   conversationId: string | null
@@ -40,6 +46,7 @@ interface CharterState {
 
   // Actions
   fetchCharters: (filters?: CharterFilters) => Promise<void>
+  fetchMoreCharters: (filters?: CharterFilters) => Promise<void>
   runTurn: (message: string) => Promise<void>
   editDraft: (id: string, data: CharterEditRequest) => Promise<ProjectCharter | null>
   approve: (id: string) => Promise<CharterApprovalResult | null>
@@ -51,6 +58,8 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
   charters: [],
   loading: false,
   error: null,
+  nextCursor: null,
+  hasMore: false,
   conversationId: null,
   messages: [],
   draftCharter: null,
@@ -60,15 +69,48 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
   fetchCharters: async (filters) => {
     set({ loading: true, error: null })
     try {
-      const charters = await charterApi.listCharters(filters)
-      set({ charters, loading: false })
+      const page = await charterApi.listCharters(filters)
+      set({
+        charters: page.data,
+        nextCursor: page.nextCursor,
+        hasMore: page.hasMore,
+        loading: false,
+      })
     } catch (err) {
       log.warn('Failed to fetch charters', sanitizeForLog(err))
       set({ loading: false, error: getErrorMessage(err) })
     }
   },
 
+  fetchMoreCharters: async (filters) => {
+    const { hasMore, nextCursor, charters, loading } = get()
+    // Early-return on no-more-pages and on duplicate-in-flight calls per
+    // the cursor-pagination MANDATORY rule in ``web/CLAUDE.md``.
+    if (!hasMore || !nextCursor || loading) return
+    set({ loading: true })
+    try {
+      const page = await charterApi.listCharters({
+        ...filters,
+        cursor: nextCursor,
+      })
+      set({
+        charters: [...charters, ...page.data],
+        nextCursor: page.nextCursor,
+        hasMore: page.hasMore,
+        loading: false,
+      })
+    } catch (err) {
+      log.warn('Failed to fetch more charters', sanitizeForLog(err))
+      set({ loading: false, error: getErrorMessage(err) })
+    }
+  },
+
   runTurn: async (message) => {
+    // Refuse re-entry while a turn is in flight. Overlapping turns would
+    // share the same ``previousMessages`` snapshot, so a single error
+    // could roll the transcript back over a newer turn's optimistic
+    // user bubble and assistant reply.
+    if (get().sending) return
     const { conversationId, messages: previousMessages } = get()
     // Snapshot the pre-turn transcript so we can roll the optimistic
     // user bubble back if the API call fails (otherwise the user sees

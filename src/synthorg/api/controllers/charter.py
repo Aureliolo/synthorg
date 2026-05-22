@@ -17,11 +17,17 @@ from litestar import Controller, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.api.dto import ApiResponse
+from synthorg.api.cursor import decode_cursor
+from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import (
     require_approval_roles,
     require_org_mutation,
     require_read_access,
+)
+from synthorg.api.pagination import (
+    CursorLimit,
+    CursorParam,
+    encode_countless_seek_meta,
 )
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.actor_context import require_actor
@@ -48,7 +54,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _DEFAULT_PAGE_SIZE: int = 50
-_MAX_PAGE_SIZE: int = 200
 
 
 class InterviewTurnRequest(BaseModel):
@@ -146,21 +151,45 @@ class CharterController(Controller):
         state: State,
         status: CharterStatus | None = None,
         project_id: str | None = None,
-        limit: int = _DEFAULT_PAGE_SIZE,
-        offset: int = 0,
-    ) -> ApiResponse[tuple[ProjectCharter, ...]]:
-        """List charters, newest-first, with optional filters."""
+        cursor: CursorParam = None,
+        limit: CursorLimit = _DEFAULT_PAGE_SIZE,
+    ) -> PaginatedResponse[ProjectCharter]:
+        """List charters, newest-first, with optional filters.
+
+        Uses opaque cursor-based pagination (see ``web/CLAUDE.md`` and
+        the helpers in ``synthorg.api.pagination``): the request takes
+        an opaque ``cursor`` string + ``limit``, the response carries
+        ``data`` plus ``PaginationMeta`` (``next_cursor`` / ``has_more``)
+        so callers walk the catalogue without offset arithmetic.
+        """
         service = self._service(state)
         actor = require_actor()
-        capped = min(max(limit, 1), _MAX_PAGE_SIZE)
-        charters = await service.list_charters(
+        app_state = state.app_state
+        # ``decode_cursor`` raises ``InvalidCursorError`` (mapped to 400)
+        # for malformed / tampered / foreign-secret cursors; let it
+        # bubble so the boundary handler returns the typed error envelope.
+        offset = (
+            0
+            if cursor is None
+            else decode_cursor(cursor, secret=app_state.cursor_secret)
+        )
+        # Fetch limit+1 so the overflow row drives ``has_more`` without
+        # a separate COUNT(*) round-trip on the repo.
+        fetched = await service.list_charters(
             status=status,
             project_id=NotBlankStr(project_id) if project_id else None,
             created_by=NotBlankStr(actor.actor_id),
-            limit=capped,
-            offset=max(offset, 0),
+            limit=limit + 1,
+            offset=offset,
         )
-        return ApiResponse[tuple[ProjectCharter, ...]](data=charters)
+        page = fetched[:limit]
+        meta = encode_countless_seek_meta(
+            offset=offset,
+            fetched_rows=len(fetched),
+            limit=limit,
+            secret=app_state.cursor_secret,
+        )
+        return PaginatedResponse[ProjectCharter](data=page, pagination=meta)
 
     @get("/{charter_id:str}")
     async def get_charter(

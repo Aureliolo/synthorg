@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useCharterStore } from '@/stores/charter'
 import { useToastStore } from '@/stores/toast'
-import { apiError, buildCharter, successFor } from '@/mocks/handlers'
+import { apiError, buildCharter, paginatedFor, successFor } from '@/mocks/handlers'
 import type {
   approveCharter as approveCharterApi,
   listCharters as listChartersApi,
@@ -17,6 +17,8 @@ describe('useCharterStore', () => {
       charters: [],
       loading: false,
       error: null,
+      nextCursor: null,
+      hasMore: false,
       conversationId: null,
       messages: [],
       draftCharter: null,
@@ -27,16 +29,24 @@ describe('useCharterStore', () => {
   })
 
   it('fetchCharters populates the list', async () => {
+    const data = [buildCharter({ id: 'c-1' })]
     server.use(
       http.get('/api/v1/meta/charters', () =>
         HttpResponse.json(
-          successFor<typeof listChartersApi>([buildCharter({ id: 'c-1' })]),
+          paginatedFor<typeof listChartersApi>({
+            data,
+            limit: 50,
+            nextCursor: null,
+            hasMore: false,
+            pagination: { limit: 50, next_cursor: null, has_more: false },
+          }),
         ),
       ),
     )
     await useCharterStore.getState().fetchCharters()
     expect(useCharterStore.getState().charters.map((c) => c.id)).toEqual(['c-1'])
     expect(useCharterStore.getState().error).toBeNull()
+    expect(useCharterStore.getState().hasMore).toBe(false)
   })
 
   it('fetchCharters sets error on failure', async () => {

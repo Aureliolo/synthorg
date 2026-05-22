@@ -328,8 +328,13 @@ class TestApprove:
             )
         # The failure was structurally logged with the charter id before
         # the exception bubbled, so operators see the dispatch attempt.
+        # Pin BOTH the event name AND the structured ``charter_id``: a
+        # regression that drops the id key would still pass an
+        # event-only check, masking the missing context.
         assert any(
-            record.get("event") == CHARTER_DISPATCH_FAILED for record in log_records
+            record.get("event") == CHARTER_DISPATCH_FAILED
+            and record.get("charter_id") == "charter-1"
+            for record in log_records
         )
 
     async def test_duplicate_project_branch_is_idempotent(self) -> None:

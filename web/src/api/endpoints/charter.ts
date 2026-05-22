@@ -1,4 +1,5 @@
-import { apiClient, unwrap } from '../client'
+import { apiClient, unwrap, unwrapPaginated } from '../client'
+import type { PaginatedResult } from '../client'
 import type {
   CharterApprovalResult,
   CharterEditRequest,
@@ -6,24 +7,25 @@ import type {
   InterviewTurnResult,
   ProjectCharter,
 } from '../types'
-import type { ApiResponse } from '../types/http'
+import type { ApiResponse, PaginatedResponse } from '../types/http'
 
 export interface CharterFilters {
   status?: string
   project_id?: string
+  cursor?: string
   limit?: number
-  offset?: number
 }
 
 const BASE = '/meta/charters'
 
 export async function listCharters(
   filters?: CharterFilters,
-): Promise<ProjectCharter[]> {
-  const response = await apiClient.get<ApiResponse<ProjectCharter[]>>(BASE, {
-    params: filters,
-  })
-  return unwrap(response)
+): Promise<PaginatedResult<ProjectCharter>> {
+  const response = await apiClient.get<PaginatedResponse<ProjectCharter>>(
+    BASE,
+    { params: filters },
+  )
+  return unwrapPaginated(response)
 }
 
 export async function getCharter(id: string): Promise<ProjectCharter> {

@@ -29,6 +29,7 @@ CHARTER_APPROVED: Final[str] = "charter.approved"
 CHARTER_CANCELLED: Final[str] = "charter.cancelled"
 CHARTER_DISPATCHED: Final[str] = "charter.dispatched"
 CHARTER_DISPATCH_FAILED: Final[str] = "charter.dispatch_failed"
+CHARTER_PROJECT_ALREADY_EXISTS: Final[str] = "charter.project_already_exists"
 
 # -- Boot wiring --------------------------------------------------------
 
@@ -47,6 +48,7 @@ __all__ = [
     "CHARTER_INTERVIEW_RESPONSE_INVALID",
     "CHARTER_INTERVIEW_TURN",
     "CHARTER_OWNERSHIP_DENIED",
+    "CHARTER_PROJECT_ALREADY_EXISTS",
     "CHARTER_STATUS_TRANSITIONED",
     "CHARTER_SUBSTRATE_UNAVAILABLE",
 ]

@@ -12,7 +12,8 @@ import type {
   InterviewTurnResult,
   ProjectCharter,
 } from '@/api/types'
-import { successFor } from './helpers'
+import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import { paginatedFor, successFor } from './helpers'
 
 export function buildCharter(
   overrides: Partial<ProjectCharter> = {},
@@ -31,7 +32,7 @@ export function buildCharter(
     scope: { in_scope: ['retrieval'], out_of_scope: ['billing'] },
     envelope: {
       amount: 5000,
-      currency: 'USD',
+      currency: DEFAULT_CURRENCY,
       deadline: null,
       time_horizon: '1 month',
     },
@@ -50,9 +51,18 @@ export function buildCharter(
 }
 
 export const charterHandlers = [
-  http.get('/api/v1/meta/charters', () =>
-    HttpResponse.json(successFor<typeof listCharters>([buildCharter()])),
-  ),
+  http.get('/api/v1/meta/charters', () => {
+    const data = [buildCharter()]
+    return HttpResponse.json(
+      paginatedFor<typeof listCharters>({
+        data,
+        limit: 50,
+        nextCursor: null,
+        hasMore: false,
+        pagination: { limit: 50, next_cursor: null, has_more: false },
+      }),
+    )
+  }),
   http.get('/api/v1/meta/charters/:id', ({ params }) =>
     HttpResponse.json(
       successFor<typeof getCharter>(buildCharter({ id: String(params.id) })),
@@ -87,7 +97,7 @@ export const charterHandlers = [
     })
     const result: CharterApprovalResult = {
       charter,
-      project_id: 'charter-charter-default',
+      project_id: `charter-${String(params.id)}`,
       task_id: 'task-1',
       is_success: true,
     }

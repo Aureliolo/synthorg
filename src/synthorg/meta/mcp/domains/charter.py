@@ -84,14 +84,15 @@ CHARTER_TOOLS: tuple[MCPToolDef, ...] = (
         required=("charter_id",),
         args_model=CharterGetArgs,
     ),
-    write_tool(
+    admin_tool(
         "charter",
         "cancel",
-        "Cancel a DRAFTED charter (terminal).",
+        "Cancel a DRAFTED charter (terminal; admin can cancel another owner's draft).",
         {
             "charter_id": {"type": "string", "description": "Charter id"},
+            **ADMIN_GUARDRAIL_PROPERTIES,
         },
-        required=("charter_id",),
+        required=("charter_id", *ADMIN_GUARDRAIL_REQUIRED),
         args_model=CharterCancelArgs,
     ),
     admin_tool(

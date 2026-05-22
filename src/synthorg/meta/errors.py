@@ -265,3 +265,28 @@ class UnknownCharterStrategyError(CharterError):
     def __init__(self, *, strategy: str) -> None:
         super().__init__(f"Unknown charter interview strategy: {strategy!r}")
         self.strategy: str = strategy
+
+
+class CharterStateInconsistentError(CharterError):
+    """Raised when a successful state transition is followed by a missing row.
+
+    ``transition_if`` returned ``True`` (the persistence layer reported
+    a winning compare-and-set) but the immediate re-fetch returned
+    ``None``. That contradicts the storage contract and would surface
+    a stale pre-transition object to the caller; refusing to return is
+    safer than smuggling a mismatched status downstream.
+
+    Attributes:
+        charter_id: The charter id whose state could not be re-read.
+    """
+
+    default_message: ClassVar[str] = (
+        "Charter row vanished after a successful transition"
+    )
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.PERSISTENCE_ERROR
+    status_code: ClassVar[int] = 500
+
+    def __init__(self, *, charter_id: str) -> None:
+        super().__init__("Charter row vanished after a successful transition")
+        self.charter_id: str = charter_id

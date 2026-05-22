@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CharterEditRequest, ProjectCharter } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { InputField } from '@/components/ui/input-field'
@@ -43,6 +43,14 @@ export function CharterDraftCard({
 }: CharterDraftCardProps) {
   const [brief, setBrief] = useState(charter.brief)
   const [amount, setAmount] = useState(String(charter.envelope.amount))
+  // When the parent swaps in a new charter or bumps its version (e.g.
+  // a successful save / approve / cancel), resync the local edit
+  // buffer so ``dirty`` doesn't flag a phantom change against the
+  // refreshed authoritative copy.
+  useEffect(() => {
+    setBrief(charter.brief)
+    setAmount(String(charter.envelope.amount))
+  }, [charter.id, charter.version, charter.brief, charter.envelope.amount])
   const isDraft = charter.status === 'drafted'
   const parsedAmount = Number(amount)
   const amountValid = Number.isFinite(parsedAmount) && parsedAmount > 0

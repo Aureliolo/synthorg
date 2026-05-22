@@ -63,8 +63,8 @@ class CharterApproveArgs(AdminGuardrailFields):
     charter_id: NotBlankStr = Field(description="Charter id")
 
 
-class CharterCancelArgs(_ArgsBase):
-    """Args for ``charter.cancel``."""
+class CharterCancelArgs(AdminGuardrailFields):
+    """Args for ``charter.cancel`` (admin; bypasses ownership-fence)."""
 
     charter_id: NotBlankStr = Field(description="Charter id")
 
