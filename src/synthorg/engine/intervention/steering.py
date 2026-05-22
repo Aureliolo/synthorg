@@ -4,8 +4,8 @@ PAUSE and KILL reuse the task lifecycle seams at the controller; this
 module covers HINT and REDIRECT. The safe default delivers them as an
 ``INFO_REQUEST`` interrupt the running agent consumes at its next safe
 turn boundary, producing a visible queued artefact rather than a silent
-no-op. EPIC E mid-flight steering (#1997) replaces the default with
-deeper in-loop propagation behind this same protocol.
+no-op. Future strategies can swap in deeper in-loop propagation
+behind this same protocol without controller or wiring churn.
 """
 
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
