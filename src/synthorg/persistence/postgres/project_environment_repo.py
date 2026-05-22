@@ -101,7 +101,9 @@ class PostgresProjectEnvironmentRepository:
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    "SELECT * FROM project_environments WHERE project_id = %s",
+                    "SELECT project_id, environment_type, declaration_hash, "
+                    "image_ref, provisioned_at, updated_at "
+                    "FROM project_environments WHERE project_id = %s",
                     (entity_id,),
                 )
                 row = await cur.fetchone()
@@ -156,7 +158,9 @@ class PostgresProjectEnvironmentRepository:
                 conn.cursor(row_factory=dict_row) as cur,
             ):
                 await cur.execute(
-                    "SELECT * FROM project_environments "
+                    "SELECT project_id, environment_type, declaration_hash, "
+                    "image_ref, provisioned_at, updated_at "
+                    "FROM project_environments "
                     "ORDER BY project_id LIMIT %s OFFSET %s",
                     (effective_limit, offset),
                 )

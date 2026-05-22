@@ -84,8 +84,10 @@ class SubprocessImageBuilder:
         ``proc.wait()`` would unwind before the process is reaped,
         leaking a zombie ``docker build``.
         """
-        proc.kill()
+        # The process may exit between the timeout firing and the kill;
+        # suppress the kill-race so the cancellation/timeout path still reaps.
         with contextlib.suppress(ProcessLookupError):
+            proc.kill()
             await asyncio.shield(proc.wait())
 
     async def build(

@@ -76,6 +76,7 @@ class SandboxBackend(Protocol):
         owner_id: NotBlankStr,
         *,
         project_id: NotBlankStr | None = None,
+        image_override: str | None = None,
     ) -> None:
         """Signal that *owner_id* no longer needs its sandbox resources.
 
@@ -92,6 +93,11 @@ class SandboxBackend(Protocol):
             project_id: The project the owner ran under; the Docker
                 backend prefixes the lifecycle key with it so the
                 release matches the key ``execute`` acquired under.
+            image_override: The reproducible-environment image the owner
+                ran under; the Docker backend suffixes the lifecycle key
+                with its identity so the release matches the key
+                ``execute`` acquired under. ``None`` when no per-project
+                environment applied.
         """
         ...
 

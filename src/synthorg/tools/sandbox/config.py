@@ -2,8 +2,30 @@
 
 import os
 from pathlib import PurePath
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Shared default denylist of env-var name patterns that must never reach
+# a sandbox, regardless of backend: secret-name heuristics plus the
+# library/loader-injection vars that can hijack tool execution
+# (``LD_PRELOAD``, ``PYTHONPATH``, ...).  The Docker backend reuses this
+# so both sandboxes screen declaration-sourced env additions identically.
+DEFAULT_ENV_DENYLIST_PATTERNS: Final[tuple[str, ...]] = (
+    "*KEY*",
+    "*SECRET*",
+    "*TOKEN*",
+    "*PASSWORD*",
+    "*CREDENTIAL*",
+    "*PRIVATE*",
+    "LD_PRELOAD",
+    "LD_LIBRARY_PATH",
+    "DYLD_INSERT_LIBRARIES",
+    "PYTHONPATH",
+    "NODE_PATH",
+    "RUBYLIB",
+    "PERL5LIB",
+)
 
 
 class SubprocessSandboxConfig(BaseModel):
@@ -48,21 +70,7 @@ class SubprocessSandboxConfig(BaseModel):
         "WINDIR",
         "COMSPEC",
     )
-    env_denylist_patterns: tuple[str, ...] = (
-        "*KEY*",
-        "*SECRET*",
-        "*TOKEN*",
-        "*PASSWORD*",
-        "*CREDENTIAL*",
-        "*PRIVATE*",
-        "LD_PRELOAD",
-        "LD_LIBRARY_PATH",
-        "DYLD_INSERT_LIBRARIES",
-        "PYTHONPATH",
-        "NODE_PATH",
-        "RUBYLIB",
-        "PERL5LIB",
-    )
+    env_denylist_patterns: tuple[str, ...] = DEFAULT_ENV_DENYLIST_PATTERNS
     extra_safe_path_prefixes: tuple[str, ...] = ()
     """Additional safe PATH prefixes appended to platform defaults.
 

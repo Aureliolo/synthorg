@@ -144,16 +144,19 @@ class TestDeclarationHash:
     @pytest.mark.parametrize("escape", ["../outside_secret.txt", "sub/../../escape"])
     def test_traversal_lockfile_not_read(self, tmp_path: Path, escape: str) -> None:
         # A lockfile path escaping the workspace is rejected: its bytes
-        # never enter the hash, so editing the outside file is invisible.
-        outside = tmp_path.parent / "outside_secret.txt"
-        outside.write_text("v1", encoding="utf-8")
+        # never enter the hash, so editing the resolved escaped target is
+        # invisible. Mutate the actual resolved path so the assertion holds
+        # for every parameter, not just ``../outside_secret.txt``.
+        escaped = (tmp_path / escape).resolve()
+        escaped.parent.mkdir(parents=True, exist_ok=True)
+        escaped.write_text("v1", encoding="utf-8")
         strategy = _strategy()
         _write_manifest(
             tmp_path,
             f'language: python\ntest_command: "pytest"\nlockfiles: ["{escape}"]\n',
         )
         before = strategy.declaration_hash(tmp_path)
-        outside.write_text("v2-changed", encoding="utf-8")
+        escaped.write_text("v2-changed", encoding="utf-8")
         assert strategy.declaration_hash(tmp_path) == before
 
     def test_absolute_lockfile_not_read(self, tmp_path: Path) -> None:

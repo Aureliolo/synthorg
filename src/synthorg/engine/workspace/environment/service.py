@@ -14,6 +14,7 @@ itself as ready.
 import asyncio
 from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
 from typing import TYPE_CHECKING, Final
+from weakref import WeakValueDictionary
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.project_environment import ProjectEnvironment
@@ -65,7 +66,6 @@ class EnvironmentService:
         "_committer",
         "_config",
         "_locks",
-        "_locks_guard",
         "_repo",
         "_strategy",
     )
@@ -86,13 +86,15 @@ class EnvironmentService:
         self._committer = committer
         self._cache = cache if cache is not None else ProvisionedEnvironmentCache()
         self._clock: Clock = clock if clock is not None else SystemClock()
-        self._locks: dict[str, asyncio.Lock] = {}
-        self._locks_guard = asyncio.Lock()
+        # Per-project provisioning locks. WeakValueDictionary so a lock is
+        # collected once no caller holds it; callers keep a strong ref for
+        # the duration of the ``async with`` so an in-flight lock never
+        # vanishes. setdefault is atomic here (no await on the asyncio loop).
+        self._locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 
     async def _lock_for(self, project_id: str) -> asyncio.Lock:
         """Return the per-project provisioning lock (created once)."""
-        async with self._locks_guard:
-            return self._locks.setdefault(project_id, asyncio.Lock())
+        return self._locks.setdefault(project_id, asyncio.Lock())
 
     def _matches(self, row: ProjectEnvironment | None, declaration_hash: str) -> bool:
         return (

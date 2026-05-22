@@ -9,13 +9,16 @@
 -- ON DELETE CASCADE: deleting a project drops its environment mapping.
 
 CREATE TABLE project_environments (
-    project_id TEXT NOT NULL PRIMARY KEY,
+    project_id TEXT NOT NULL PRIMARY KEY
+        CHECK (length(trim(project_id)) > 0),
     environment_type TEXT NOT NULL
         CHECK (environment_type IN ('manifest', 'devcontainer', 'nix')),
-    declaration_hash TEXT NOT NULL,
+    declaration_hash TEXT NOT NULL
+        CHECK (length(trim(declaration_hash)) > 0),
     image_ref TEXT,
     provisioned_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    CHECK (updated_at >= provisioned_at),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 

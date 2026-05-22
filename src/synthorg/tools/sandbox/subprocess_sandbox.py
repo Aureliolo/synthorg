@@ -718,6 +718,7 @@ class SubprocessSandbox:
         owner_id: NotBlankStr,
         *,
         project_id: NotBlankStr | None = None,
+        image_override: str | None = None,
     ) -> None:
         """No-op -- subprocesses hold no per-owner resources."""
 

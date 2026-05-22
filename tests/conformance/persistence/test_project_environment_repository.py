@@ -26,7 +26,7 @@ def _environment(
 ) -> ProjectEnvironment:
     ts = datetime(2026, 5, 21, tzinfo=UTC)
     if image_ref is None and env_type is EnvironmentType.DEVCONTAINER:
-        image_ref = "synthorg-project-proj-1:abc123"
+        image_ref = f"synthorg-project-{project_id.lower()}:abc123"
     return ProjectEnvironment(
         project_id=NotBlankStr(project_id),
         environment_type=env_type,

@@ -123,7 +123,9 @@ ON CONFLICT(project_id) DO UPDATE SET
         """Retrieve a project environment by owning project id."""
         try:
             cursor = await self._db.execute(
-                "SELECT * FROM project_environments WHERE project_id = ?",
+                "SELECT project_id, environment_type, declaration_hash, "
+                "image_ref, provisioned_at, updated_at "
+                "FROM project_environments WHERE project_id = ?",
                 (entity_id,),
             )
             row = await cursor.fetchone()
@@ -174,7 +176,9 @@ ON CONFLICT(project_id) DO UPDATE SET
         effective_limit = min(limit, _MAX_LIST_ROWS)
         try:
             cursor = await self._db.execute(
-                "SELECT * FROM project_environments "
+                "SELECT project_id, environment_type, declaration_hash, "
+                "image_ref, provisioned_at, updated_at "
+                "FROM project_environments "
                 "ORDER BY project_id LIMIT ? OFFSET ?",
                 (effective_limit, offset),
             )

@@ -506,6 +506,7 @@ class AgentEngineExecutionService:
                 identity=identity,
                 task_id=task_id,
                 project_id=task.project,
+                image_override=active_env.image_override if active_env else None,
             )
         logger.info(
             WORKERS_EXECUTION_SERVICE_AGENT_RUN,
@@ -575,6 +576,7 @@ class AgentEngineExecutionService:
         identity: AgentIdentity,
         task_id: str,
         project_id: str | None,
+        image_override: str | None = None,
     ) -> None:
         """Release the sandbox lifecycle owner at the task boundary.
 
@@ -595,6 +597,10 @@ class AgentEngineExecutionService:
             task_id: The task that just completed.
             project_id: The project the task ran under (matches the
                 sandbox mount + lifecycle key prefix).
+            image_override: The reproducible-environment image the run
+                executed under, so the release key matches the
+                image-suffixed key ``execute`` acquired the container
+                under. ``None`` when no per-project environment applied.
         """
         backend = self._sandbox_backend
         if backend is None:
@@ -606,7 +612,9 @@ class AgentEngineExecutionService:
         else:
             return
         try:
-            await backend.release_owner(owner_id, project_id=project_id)
+            await backend.release_owner(
+                owner_id, project_id=project_id, image_override=image_override
+            )
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
@@ -759,13 +767,42 @@ class AgentEngineExecutionService:
             ctx.identity,
             task_id=task_id,
         )
+
+        # Resumed runs must execute under the same provisioned image / env
+        # additions as the original run, or reproducibility breaks across
+        # the pause/resume boundary. Mirror execute_once: best-effort
+        # workspace provisioning, then bind the active sandbox environment.
+        workspace_path: Path | None = None
+        if self._project_workspace_service is not None and project_id is not None:
+            try:
+                workspace = await self._project_workspace_service.get_or_provision(
+                    project_id
+                )
+                workspace_path = Path(workspace.workspace_path)
+            except MemoryError, RecursionError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    WORKERS_EXECUTION_SERVICE_FAILED,
+                    task_id=task_id,
+                    project_id=project_id,
+                    reason="project_workspace_provision_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+        active_env = await self._provision_environment(
+            task_id=task_id,
+            project_id=project_id,
+            workspace_path=workspace_path,
+        )
         try:
-            await self._engine.resume_parked_run(
-                parked_context=ctx,
-                approval_id=approval_id,
-                decision_message=decision_message,
-                effective_autonomy=effective_autonomy,
-            )
+            with active_sandbox_environment(active_env):
+                await self._engine.resume_parked_run(
+                    parked_context=ctx,
+                    approval_id=approval_id,
+                    decision_message=decision_message,
+                    effective_autonomy=effective_autonomy,
+                )
         finally:
             # The resumed run can acquire a reusable sandbox container
             # just like execute_once(); release the lifecycle owner at
@@ -775,6 +812,7 @@ class AgentEngineExecutionService:
                 identity=ctx.identity,
                 task_id=task_id,
                 project_id=project_id,
+                image_override=active_env.image_override if active_env else None,
             )
 
     async def drain_resume_tasks(

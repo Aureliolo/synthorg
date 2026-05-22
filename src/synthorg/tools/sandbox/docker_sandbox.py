@@ -8,6 +8,7 @@ dispatch live in :class:`DockerSandboxExecMixin`.
 """
 
 import asyncio
+import fnmatch
 import platform
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final
@@ -26,6 +27,7 @@ from synthorg.observability.events.docker import (
 from synthorg.observability.events.sandbox import (
     SANDBOX_CONTAINER_TRACK_FAILED,
     SANDBOX_CONTAINER_UNTRACK_FAILED,
+    SANDBOX_ENV_FILTERED,
     SANDBOX_RUNTIME_RESOLVER_ATTACHED,
 )
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
@@ -412,6 +414,47 @@ class DockerSandbox(
         rel = cwd.resolve().relative_to(effective_root)
         return str(PurePosixPath(_CONTAINER_WORKSPACE) / rel)
 
+    def _matches_denylist(self, name: str) -> bool:
+        """Check if an env var name matches any denylist pattern.
+
+        Both name and patterns are uppercased for case-insensitive
+        matching so the denylist catches secrets / loader-injection
+        vars regardless of casing.
+        """
+        upper = name.upper()
+        return any(
+            fnmatch.fnmatch(upper, pat.upper())
+            for pat in self._config.env_denylist_patterns
+        )
+
+    def _screen_declaration_env(
+        self,
+        env_additions: Mapping[str, str],
+    ) -> dict[str, str]:
+        """Drop denylisted keys from declaration-sourced env additions.
+
+        The per-project environment declaration is committed code, but
+        unlike trusted internal overrides it is screened through the
+        secret / loader-injection denylist so a declared dangerous
+        variable (e.g. ``LD_PRELOAD``, ``PYTHONPATH``) cannot hijack
+        tool execution inside the container.  Dropped keys are logged.
+        """
+        screened: dict[str, str] = {}
+        dropped: list[str] = []
+        for name, value in env_additions.items():
+            if self._matches_denylist(name):
+                dropped.append(name)
+            else:
+                screened[name] = value
+        if dropped:
+            logger.warning(
+                SANDBOX_ENV_FILTERED,
+                source="declaration",
+                dropped_count=len(dropped),
+                dropped_keys=sorted(dropped),
+            )
+        return screened
+
     def _merged_env_list(
         self,
         env_overrides: Mapping[str, str] | None,
@@ -717,11 +760,20 @@ class DockerSandbox(
         image_override = active_env.image_override if active_env is not None else None
         effective_overrides: Mapping[str, str] | None = env_overrides
         if active_env is not None and active_env.env_additions:
-            effective_overrides = {**active_env.env_additions, **(env_overrides or {})}
+            # Declaration-sourced additions are screened through the
+            # secret/loader-injection denylist before merging; explicit
+            # tool-supplied env_overrides win on conflict and bypass the
+            # denylist by design (parity with SubprocessSandbox).
+            screened = self._screen_declaration_env(active_env.env_additions)
+            effective_overrides = {**screened, **(env_overrides or {})}
         # Validate / resolve the per-command env BEFORE any container
         # work so a reserved-variable rejection never leaks a container.
         exec_env = self._resolve_exec_env(effective_overrides)
-        owner_key, strategy_owns = self._resolve_lifecycle(owner_id, project_id=pid)
+        owner_key, strategy_owns = self._resolve_lifecycle(
+            owner_id,
+            project_id=pid,
+            image_override=str(image_override) if image_override else None,
+        )
         logger.debug(
             DOCKER_EXECUTE_START,
             command=command,

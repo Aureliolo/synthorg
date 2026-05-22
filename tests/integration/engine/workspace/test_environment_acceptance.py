@@ -181,8 +181,10 @@ def _plant_deliverable(workspace: Path) -> None:
     tests_dir.mkdir(exist_ok=True)
     (tests_dir / "test_hello.py").write_text(_TEST_PY, encoding="utf-8")
     # Commit the deliverable files (the agent's work) so the clone has them.
-    _run("git", "add", "-A", cwd=workspace)
-    _run("git", "commit", "-m", "Deliverable project", cwd=workspace)
+    add_result = _run("git", "add", "-A", cwd=workspace)
+    assert add_result.returncode == 0, add_result.stderr
+    commit_result = _run("git", "commit", "-m", "Deliverable project", cwd=workspace)
+    assert commit_result.returncode == 0, commit_result.stderr
 
 
 class TestFreshCloneReproducibility:

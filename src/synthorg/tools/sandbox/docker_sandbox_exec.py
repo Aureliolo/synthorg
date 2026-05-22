@@ -8,6 +8,7 @@ concrete :class:`DockerSandbox` and its sibling mixins.
 """
 
 import asyncio
+import hashlib
 import re
 import uuid
 from typing import TYPE_CHECKING, Any, Final
@@ -77,6 +78,10 @@ _EXEC_STREAM_STDERR: Final[int] = 2
 # reuse key; the call degrades to ephemeral per-call instead.
 _OWNER_ID_MAX_LEN: Final[int] = 128
 _OWNER_ID_RE: Final[re.Pattern[str]] = re.compile(r"\A[A-Za-z0-9._:-]{1,128}\Z")
+# Truncated SHA-256 length for the environment-image segment of a reuse
+# key: 12 hex chars (48 bits) make accidental cross-image collisions
+# negligible while keeping the owner key well under the 128-char cap.
+_IMAGE_SEGMENT_HASH_LEN: Final[int] = 12
 
 
 class DockerSandboxExecMixin:
@@ -192,21 +197,37 @@ class DockerSandboxExecMixin:
         return str(value) if value else None
 
     @staticmethod
-    def _project_prefixed(key: str, project_id: str | None) -> str:
-        """Prefix a reusable owner key with ``<project_id>:``.
+    def _project_prefixed(
+        key: str,
+        project_id: str | None,
+        image_override: str | None = None,
+    ) -> str:
+        """Prefix a reusable owner key with project + environment identity.
 
         Forces a per-agent/per-task reused container to be torn down and
         recreated when the project changes, so a container mounted for
         project A is never reused for project B (the isolation
         guarantee). ``None`` leaves the key unprefixed.
+
+        When *image_override* is set (a per-project reproducible
+        environment image is active), a short hash of it is appended so
+        a warm container built under one declared image is never reused
+        for a run that requires a different image; the new image would
+        otherwise be silently ignored. ``None`` (no active environment)
+        appends nothing, preserving the prior key shape.
         """
-        return f"{project_id}:{key}" if project_id else key
+        prefixed = f"{project_id}:{key}" if project_id else key
+        if image_override:
+            digest = hashlib.sha256(image_override.encode("utf-8")).hexdigest()
+            return f"{prefixed}:img-{digest[:_IMAGE_SEGMENT_HASH_LEN]}"
+        return prefixed
 
     def _resolve_lifecycle(  # noqa: PLR0911 -- each owner source + prefix-validation guard needs its own early return
         self,
         owner_id: str | None,
         *,
         project_id: str | None = None,
+        image_override: str | None = None,
     ) -> tuple[str, bool]:
         """Resolve the lifecycle owner key and teardown ownership.
 
@@ -219,12 +240,16 @@ class DockerSandboxExecMixin:
         the container and the strategy is not poisoned).
 
         A reusable key is prefixed with ``<project_id>:`` so a container
-        mounted for one project is never reused for another.
+        mounted for one project is never reused for another, and suffixed
+        with the active environment image identity so a container built
+        under one declared image is never reused for a different one.
 
         Args:
             owner_id: Explicit lifecycle owner, or ``None``.
             project_id: Owning project, or ``None`` for the no-project
                 execution mode.
+            image_override: Active reproducible-environment image, or
+                ``None`` when no per-project environment is active.
 
         Returns:
             ``(owner_key, strategy_owns_teardown)``.
@@ -243,7 +268,7 @@ class DockerSandboxExecMixin:
                 )
                 return self._ephemeral_key(), False
             owns = strategy.reuses_container
-            prefixed = self._project_prefixed(key, project_id)
+            prefixed = self._project_prefixed(key, project_id, image_override)
             if not self._valid_owner(prefixed):
                 logger.warning(
                     SANDBOX_LIFECYCLE_OWNER_DEGRADED,
@@ -266,7 +291,7 @@ class DockerSandboxExecMixin:
 
         ctx_key = self._context_owner(strategy_kind)
         if ctx_key is not None and self._valid_owner(ctx_key):
-            prefixed = self._project_prefixed(ctx_key, project_id)
+            prefixed = self._project_prefixed(ctx_key, project_id, image_override)
             if not self._valid_owner(prefixed):
                 logger.warning(
                     SANDBOX_LIFECYCLE_OWNER_DEGRADED,
@@ -299,6 +324,7 @@ class DockerSandboxExecMixin:
         owner_id: str,
         *,
         project_id: str | None = None,
+        image_override: str | None = None,
     ) -> None:
         """Signal that *owner_id* no longer needs its sandbox container.
 
@@ -318,11 +344,17 @@ class DockerSandboxExecMixin:
                 per-task).
             project_id: Owning project; falls back to the correlation
                 context when ``None``.
+            image_override: Active reproducible-environment image used
+                when the container was acquired, so the release key
+                matches the acquire key. ``None`` when no per-project
+                environment was active.
         """
         if not owner_id or not owner_id.strip():
             return
         effective_project = project_id or self._context_project()
-        key = self._project_prefixed(owner_id.strip(), effective_project)
+        key = self._project_prefixed(
+            owner_id.strip(), effective_project, image_override
+        )
         if not self._valid_owner(key):
             logger.warning(
                 SANDBOX_LIFECYCLE_OWNER_DEGRADED,

@@ -206,7 +206,7 @@ class DevcontainerEnvironmentStrategy:
         build = config.get("build")
         if isinstance(build, dict):
             dockerfile = self._resolve_within(
-                workspace_path, path.parent, build.get("dockerfile")
+                workspace_path, path.parent, build.get("dockerfile", "Dockerfile")
             )
             if dockerfile is not None and dockerfile.is_file():
                 digest.update(dockerfile.read_bytes())
@@ -348,6 +348,9 @@ class DevcontainerEnvironmentStrategy:
         elif isinstance(post_create, list) and all(
             isinstance(part, str) for part in post_create
         ):
+            if not post_create:
+                msg = "devcontainer postCreateCommand list must not be empty"
+                raise EnvironmentConfigError(msg)
             parts: list[str] = [str(p) for p in post_create]
             command, args = parts[0], tuple(parts[1:])
         else:
