@@ -43,6 +43,7 @@ from synthorg.observability.events.charter import (
     CHARTER_INTERVIEW_QUESTION,
     CHARTER_INTERVIEW_TURN,
     CHARTER_OWNERSHIP_DENIED,
+    CHARTER_STATE_INCONSISTENT,
     CHARTER_STATUS_TRANSITIONED,
 )
 from synthorg.persistence.charter_protocol import (
@@ -531,7 +532,16 @@ class CharterInterviewService:
         if refreshed is None:
             # ``transition_if`` returned ``True``, so the row must exist
             # post-cancellation. Returning ``charter`` would surface a
-            # stale ``DRAFTED`` status to the caller.
+            # stale ``DRAFTED`` status to the caller; record the
+            # inconsistency before raising so operators see the missing
+            # row in logs even though the exception bubbles past.
+            logger.error(
+                CHARTER_STATE_INCONSISTENT,
+                charter_id=charter_id,
+                stage="cancel_charter",
+                pre_transition_status=charter.status.value,
+                refreshed=None,
+            )
             raise CharterStateInconsistentError(charter_id=charter_id)
         return refreshed
 

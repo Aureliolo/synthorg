@@ -31,6 +31,10 @@ CHARTER_DISPATCHED: Final[str] = "charter.dispatched"
 CHARTER_DISPATCH_FAILED: Final[str] = "charter.dispatch_failed"
 CHARTER_PROJECT_ALREADY_EXISTS: Final[str] = "charter.project_already_exists"
 
+# -- Data inconsistency ------------------------------------------------
+
+CHARTER_STATE_INCONSISTENT: Final[str] = "charter.state_inconsistent"
+
 # -- Boot wiring --------------------------------------------------------
 
 CHARTER_SUBSTRATE_UNAVAILABLE: Final[str] = "charter.substrate.unavailable"
@@ -49,6 +53,7 @@ __all__ = [
     "CHARTER_INTERVIEW_TURN",
     "CHARTER_OWNERSHIP_DENIED",
     "CHARTER_PROJECT_ALREADY_EXISTS",
+    "CHARTER_STATE_INCONSISTENT",
     "CHARTER_STATUS_TRANSITIONED",
     "CHARTER_SUBSTRATE_UNAVAILABLE",
 ]

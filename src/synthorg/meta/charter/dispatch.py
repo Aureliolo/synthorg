@@ -46,6 +46,7 @@ from synthorg.observability.events.charter import (
     CHARTER_DISPATCH_FAILED,
     CHARTER_DISPATCHED,
     CHARTER_PROJECT_ALREADY_EXISTS,
+    CHARTER_STATE_INCONSISTENT,
 )
 
 if TYPE_CHECKING:
@@ -226,7 +227,17 @@ class CharterDispatcher:
             # ``_stamp_approved`` only returns after a winning CAS, so
             # a missing row here is a storage-contract violation, not
             # an ownership race. Returning the pre-transition charter
-            # would leak ``DRAFTED`` status to the client.
+            # would leak ``DRAFTED`` status to the client; log the
+            # inconsistency before raising so operators see the row
+            # disappearance even though the exception bubbles past.
+            logger.error(
+                CHARTER_STATE_INCONSISTENT,
+                charter_id=charter_id,
+                stage="approve_charter",
+                pre_transition_status=charter.status.value,
+                task_id=result.task_id,
+                refreshed=None,
+            )
             raise CharterStateInconsistentError(charter_id=charter_id)
         return CharterApprovalResult(
             charter=approved,

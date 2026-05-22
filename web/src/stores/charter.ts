@@ -83,7 +83,7 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
   },
 
   fetchMoreCharters: async (filters) => {
-    const { hasMore, nextCursor, charters, loading } = get()
+    const { hasMore, nextCursor, loading } = get()
     // Early-return on no-more-pages and on duplicate-in-flight calls per
     // the cursor-pagination MANDATORY rule in ``web/CLAUDE.md``.
     if (!hasMore || !nextCursor || loading) return
@@ -93,12 +93,15 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
         ...filters,
         cursor: nextCursor,
       })
-      set({
-        charters: [...charters, ...page.data],
+      // Functional updater so the append uses the LATEST charters
+      // (mutations that landed during the in-flight fetch are
+      // preserved instead of being clobbered by a pre-await snapshot).
+      set((state) => ({
+        charters: [...state.charters, ...page.data],
         nextCursor: page.nextCursor,
         hasMore: page.hasMore,
         loading: false,
-      })
+      }))
     } catch (err) {
       log.warn('Failed to fetch more charters', sanitizeForLog(err))
       set({ loading: false, error: getErrorMessage(err) })
