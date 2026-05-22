@@ -2,7 +2,7 @@ import { LayoutGrid, List, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getTaskStatusLabel, getPriorityLabel, getTaskTypeLabel } from '@/utils/tasks'
 import type { TaskBoardFilters } from '@/utils/tasks'
-import type { Priority, TaskStatus, TaskType } from '@/api/types/enums'
+import { TASK_TYPE_VALUES, type Priority, type TaskStatus, type TaskType } from '@/api/types/enums'
 
 const STATUSES: TaskStatus[] = [
   'created', 'assigned', 'in_progress', 'in_review', 'completed',
@@ -11,7 +11,7 @@ const STATUSES: TaskStatus[] = [
 
 const PRIORITIES: Priority[] = ['critical', 'high', 'medium', 'low']
 
-const TASK_TYPES: TaskType[] = ['development', 'design', 'research', 'review', 'meeting', 'admin', 'analysis']
+const TASK_TYPES = TASK_TYPE_VALUES
 
 export interface TaskFilterBarProps {
   filters: TaskBoardFilters

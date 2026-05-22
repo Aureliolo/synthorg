@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { DocSummary, DocType } from '@/api/types'
+import { DOC_TYPE_VALUES, type DocSummary, type DocType } from '@/api/types'
 
 const DOC_TYPE_LABEL: Record<DocType, string> = {
   status_report: 'Status report',
@@ -8,12 +8,7 @@ const DOC_TYPE_LABEL: Record<DocType, string> = {
   codebase_analysis: 'Codebase analysis',
 }
 
-const DOC_TYPES: readonly DocType[] = [
-  'status_report',
-  'deliverable',
-  'knowledge_note',
-  'codebase_analysis',
-]
+const DOC_TYPES = DOC_TYPE_VALUES
 
 export interface DocListProps {
   docs: readonly DocSummary[]

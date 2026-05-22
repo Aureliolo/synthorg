@@ -47,7 +47,7 @@ _GIT_SUBPROC_OPS = "synthorg.engine.workspace.git_backend._git_ops.run_git_subpr
 
 def _connection(base_url: str | None) -> Connection:
     return Connection(
-        name=NotBlankStr("github-main"),
+        name=NotBlankStr("forge-main"),
         connection_type=ConnectionType.GITHUB,
         auth_method=AuthMethod.API_KEY,
         base_url=NotBlankStr(base_url) if base_url else None,
@@ -56,7 +56,7 @@ def _connection(base_url: str | None) -> Connection:
 
 def _backend(catalog: ConnectionCatalog) -> ExternalRemoteGitBackend:
     return ExternalRemoteGitBackend(
-        connection_name="github-main",
+        connection_name="forge-main",
         connection_catalog=catalog,
         cmd_timeout=30.0,
         clock=FakeClock(),
@@ -66,7 +66,7 @@ def _backend(catalog: ConnectionCatalog) -> ExternalRemoteGitBackend:
 def _hardened_backend(catalog: ConnectionCatalog) -> ExternalRemoteGitBackend:
     """Backend with zero-delay retry so tests do not sleep."""
     return ExternalRemoteGitBackend(
-        connection_name="github-main",
+        connection_name="forge-main",
         connection_catalog=catalog,
         cmd_timeout=30.0,
         resilience=GitBackendResilienceConfig(
@@ -120,7 +120,7 @@ class _FakeGit:
         return 0, "", ""
 
 
-def _catalog_github() -> Any:
+def _catalog_forge() -> Any:
     catalog = mock_of[ConnectionCatalog]()
     catalog.get.return_value = _connection("https://example-provider.invalid/acme")
     catalog.get_credentials.return_value = {"token": "secret-token"}
@@ -210,7 +210,7 @@ class TestExternalRemotePushHardening:
         fake = _FakeGit([(1, "fatal: unable to access: 500"), (0, "")])
         _patch_git(monkeypatch, fake)
         _patch_forge(monkeypatch, _fake_forge(exists=True))
-        backend = _hardened_backend(_catalog_github())
+        backend = _hardened_backend(_catalog_forge())
 
         result = await backend.push(
             project_id=NotBlankStr("p1"),
@@ -232,7 +232,7 @@ class TestExternalRemotePushHardening:
         fake = _FakeGit([(1, "429: too many requests")] * 3)
         _patch_git(monkeypatch, fake)
         _patch_forge(monkeypatch, _fake_forge(exists=True))
-        backend = _hardened_backend(_catalog_github())
+        backend = _hardened_backend(_catalog_forge())
 
         with pytest.raises(GitBackendRateLimitError):
             await backend.push(
@@ -254,7 +254,7 @@ class TestExternalRemotePushHardening:
         _patch_git(monkeypatch, fake)
         forge = _fake_forge(exists=False)
         _patch_forge(monkeypatch, forge)
-        backend = _hardened_backend(_catalog_github())
+        backend = _hardened_backend(_catalog_forge())
 
         await backend.push(
             project_id=NotBlankStr("p1"),
@@ -275,8 +275,8 @@ class TestExternalRemotePushHardening:
         forge = _fake_forge(exists=False)
         _patch_forge(monkeypatch, forge)
         backend = ExternalRemoteGitBackend(
-            connection_name="github-main",
-            connection_catalog=_catalog_github(),
+            connection_name="forge-main",
+            connection_catalog=_catalog_forge(),
             cmd_timeout=30.0,
             resilience=GitBackendResilienceConfig(
                 max_attempts=1,
@@ -305,7 +305,7 @@ class TestExternalRemotePushHardening:
         _patch_git(monkeypatch, fake)
         forge = _fake_forge(exists=True)
         _patch_forge(monkeypatch, forge)
-        backend = _hardened_backend(_catalog_github())
+        backend = _hardened_backend(_catalog_forge())
 
         with pytest.raises(GitBackendForgeAuthError):
             await backend.push(
@@ -328,7 +328,7 @@ class TestExternalRemotePushHardening:
         # single attempt rather than burning the retry budget.
         fake = _FakeGit([], fetch_results=[(1, "fatal: Authentication failed")])
         _patch_git(monkeypatch, fake)
-        backend = _hardened_backend(_catalog_github())
+        backend = _hardened_backend(_catalog_forge())
 
         with pytest.raises(GitBackendForgeAuthError):
             await backend.fetch(
@@ -348,7 +348,7 @@ class TestExternalRemotePushHardening:
             fetch_results=[(1, "fatal: unable to access: 500"), (0, "")],
         )
         _patch_git(monkeypatch, fake)
-        backend = _hardened_backend(_catalog_github())
+        backend = _hardened_backend(_catalog_forge())
 
         result = await backend.fetch(
             project_id=NotBlankStr("p1"),
@@ -371,7 +371,7 @@ class TestExternalRemoteSeed:
         fake = _FakeGit([(0, "")])
         _patch_git(monkeypatch, fake)
         _patch_forge(monkeypatch, _fake_forge(exists=True))
-        backend = _hardened_backend(_catalog_github())
+        backend = _hardened_backend(_catalog_forge())
 
         result = await backend.seed(
             project_id=NotBlankStr("p1"),

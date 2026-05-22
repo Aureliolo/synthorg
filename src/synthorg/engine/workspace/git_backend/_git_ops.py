@@ -251,25 +251,19 @@ async def configure_identity(
     )
 
 
-async def import_source_into_worktree(
+async def _assert_workspace_empty(
     repo_root: Path,
     *,
-    source: ResolvedSource,
     cmd_timeout: float,
     project_id: str,
-) -> NotBlankStr:
-    """Fetch *source* into *repo_root* and reset the branch onto its head.
+) -> None:
+    """Raise if *repo_root* already holds a codebase.
 
-    Requires an empty working tree (no tracked files): provisioning lands
-    a single empty commit, so a non-empty index means the workspace
-    already holds a codebase and seeding would clobber it. The source is
-    fetched directly from its URL (no named remote is configured), so a
-    credential embedded in ``fetch_url`` never persists in the workspace's
-    git config. Returns the imported head SHA.
-
-    Raises:
-        GitBackendSeedError: The workspace is non-empty, or the
-            fetch / reset failed.
+    ``ls-files`` alone misses untracked content, and ``status
+    --porcelain`` alone misses a clean committed tree (the re-seed
+    clobber case). Check both: tracked files OR non-ignored untracked
+    files mean the workspace already holds a codebase and seeding would
+    clobber it.
     """
     tracked = await git(
         repo_root,
@@ -279,10 +273,6 @@ async def import_source_into_worktree(
         project_id=project_id,
         event=GIT_BACKEND_SEED_FAILED,
     )
-    # ``ls-files`` alone misses untracked content, and ``status
-    # --porcelain`` alone misses a clean committed tree (the re-seed
-    # clobber case). Check both: tracked files OR non-ignored untracked
-    # files mean the workspace already holds a codebase.
     untracked = await git(
         repo_root,
         "ls-files",
@@ -293,17 +283,44 @@ async def import_source_into_worktree(
         project_id=project_id,
         event=GIT_BACKEND_SEED_FAILED,
     )
-    if tracked.strip() or untracked.strip():
-        logger.warning(
-            GIT_BACKEND_SEED_FAILED,
-            project_id=project_id,
-            reason="workspace_not_empty",
-        )
-        msg = (
-            f"refusing to seed project {project_id!r}: workspace already "
-            "contains files (a codebase is already present)"
-        )
-        raise GitBackendSeedError(msg)
+    if not (tracked.strip() or untracked.strip()):
+        return
+    logger.warning(
+        GIT_BACKEND_SEED_FAILED,
+        project_id=project_id,
+        reason="workspace_not_empty",
+    )
+    msg = (
+        f"refusing to seed project {project_id!r}: workspace already "
+        "contains files (a codebase is already present)"
+    )
+    raise GitBackendSeedError(msg)
+
+
+async def import_source_into_worktree(
+    repo_root: Path,
+    *,
+    source: ResolvedSource,
+    cmd_timeout: float,
+    project_id: str,
+) -> NotBlankStr:
+    """Fetch *source* into *repo_root* and reset the branch onto its head.
+
+    Requires an empty working tree (no tracked or untracked files):
+    provisioning lands a single empty commit, so any content means the
+    workspace already holds a codebase and seeding would clobber it. The
+    source is fetched directly from its URL (no named remote is
+    configured), so a credential embedded in ``fetch_url`` never
+    persists in the workspace's git config. Returns the imported head
+    SHA.
+
+    Raises:
+        GitBackendSeedError: The workspace is non-empty, or the
+            fetch / reset failed.
+    """
+    await _assert_workspace_empty(
+        repo_root, cmd_timeout=cmd_timeout, project_id=project_id
+    )
     await git(
         repo_root,
         *source.pre_fetch_config_args,

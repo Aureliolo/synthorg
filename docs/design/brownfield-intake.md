@@ -54,8 +54,11 @@ auth-agnostic. It classifies the `source_ref`:
   connection, that connection's token is injected into the HTTPS userinfo;
   otherwise the fetch is anonymous (a private repo with no matching connection
   fails at fetch time). Credentials embedded directly in the `source_ref` are
-  rejected: forge tokens come from the connection catalog, never from the
-  operator-supplied reference.
+  rejected: a password in any scheme, and a username in an `http(s)://` URL,
+  raise `BrownfieldSourceUnavailableError` so forge tokens come from the
+  connection catalog rather than the operator-supplied reference. The bare
+  `git@host` username of an `ssh://` ref is not a credential and stays
+  allowed.
 
 The import helper fetches directly from the resolved URL with no named remote,
 so a credential-bearing fetch URL never persists in the workspace git config.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
-import type { Priority, TaskStatus, TaskType } from '@/api/types/enums'
+import { TASK_TYPE_VALUES, type Priority, type TaskStatus } from '@/api/types/enums'
 import type { Task } from '@/api/types/tasks'
 import {
   type TaskBoardFilters,
@@ -16,7 +16,7 @@ const ALL_STATUSES: TaskStatus[] = [
 
 const ALL_PRIORITIES: Priority[] = ['critical', 'high', 'medium', 'low']
 
-const ALL_TASK_TYPES: TaskType[] = ['development', 'design', 'research', 'review', 'meeting', 'admin', 'analysis']
+const ALL_TASK_TYPES = TASK_TYPE_VALUES
 
 const arbTaskStatus = fc.constantFrom(...ALL_STATUSES)
 const arbPriority = fc.constantFrom(...ALL_PRIORITIES)
