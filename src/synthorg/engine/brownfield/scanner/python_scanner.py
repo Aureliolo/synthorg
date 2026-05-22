@@ -99,7 +99,10 @@ class PythonScanner:
         self, rel_paths: list[str], pyproject: dict[str, Any]
     ) -> tuple[EntryPoint, ...]:
         points: list[EntryPoint] = []
-        scripts = pyproject.get("project", {}).get("scripts", {})
+        project = pyproject.get("project")
+        if not isinstance(project, dict):
+            project = {}
+        scripts = project.get("scripts", {})
         if isinstance(scripts, dict):
             for name, target in sorted(scripts.items()):
                 points.append(
@@ -145,7 +148,9 @@ class PythonScanner:
         return None
 
     def _dependencies(self, pyproject: dict[str, Any]) -> tuple[Dependency, ...]:
-        project = pyproject.get("project", {})
+        project = pyproject.get("project")
+        if not isinstance(project, dict):
+            project = {}
         deps: list[Dependency] = []
         runtime = project.get("dependencies", [])
         if isinstance(runtime, list):

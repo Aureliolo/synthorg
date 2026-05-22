@@ -13,11 +13,16 @@ CREATE TABLE codebase_structure_maps (
         CHECK (length(trim(project_id)) > 0),
     source_ref TEXT NOT NULL
         CHECK (length(trim(source_ref)) > 0),
-    modules JSONB NOT NULL DEFAULT '[]'::jsonb,
-    entry_points JSONB NOT NULL DEFAULT '[]'::jsonb,
-    test_suites JSONB NOT NULL DEFAULT '[]'::jsonb,
-    build_files JSONB NOT NULL DEFAULT '[]'::jsonb,
-    dependencies JSONB NOT NULL DEFAULT '[]'::jsonb,
+    modules JSONB NOT NULL DEFAULT '[]'::jsonb
+        CHECK (jsonb_typeof(modules) = 'array'),
+    entry_points JSONB NOT NULL DEFAULT '[]'::jsonb
+        CHECK (jsonb_typeof(entry_points) = 'array'),
+    test_suites JSONB NOT NULL DEFAULT '[]'::jsonb
+        CHECK (jsonb_typeof(test_suites) = 'array'),
+    build_files JSONB NOT NULL DEFAULT '[]'::jsonb
+        CHECK (jsonb_typeof(build_files) = 'array'),
+    dependencies JSONB NOT NULL DEFAULT '[]'::jsonb
+        CHECK (jsonb_typeof(dependencies) = 'array'),
     scanned_at TIMESTAMPTZ NOT NULL,
     content_hash TEXT NOT NULL
         CHECK (length(content_hash) = 64),

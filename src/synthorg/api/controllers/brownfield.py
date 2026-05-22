@@ -18,7 +18,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.api.rate_limits import (
+    per_op_concurrency_from_policy,
+    per_op_rate_limit_from_policy,
+)
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.brownfield.models import CodebaseImportSubmission
@@ -122,6 +125,7 @@ class BrownfieldController(Controller):
             require_write_access,
             per_op_rate_limit_from_policy("brownfield.import", key="user"),
         ],
+        opt=per_op_concurrency_from_policy("brownfield.import", key="user"),
         status_code=202,
     )
     async def import_codebase(

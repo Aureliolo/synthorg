@@ -33,6 +33,7 @@ from synthorg.api.rate_limits.guard import per_op_rate_limit
 from synthorg.api.rate_limits.inflight_guard import per_op_concurrency
 from synthorg.observability import get_logger
 from synthorg.settings.definitions.api import (
+    BROWNFIELD_IMPORT_INFLIGHT_MAX,
     EVENTS_STREAM_INFLIGHT_MAX,
     EVENTS_STREAM_RATE_LIMIT_MAX_REQUESTS,
     EVENTS_STREAM_RATE_LIMIT_WINDOW_SECONDS,
@@ -250,6 +251,7 @@ RATE_LIMIT_POLICIES: Final[Mapping[str, tuple[int, int]]] = MappingProxyType(
 # ``PerOpConcurrencyConfig.overrides``; this map is the default that
 # ships with a fresh deployment.
 _INFLIGHT_POLICIES: Final[dict[str, int]] = {
+    "brownfield.import": BROWNFIELD_IMPORT_INFLIGHT_MAX,
     "events.stream": EVENTS_STREAM_INFLIGHT_MAX,
     "memory.checkpoint_deploy": MEMORY_CHECKPOINT_DEPLOY_INFLIGHT_MAX,
     "memory.checkpoint_rollback": MEMORY_CHECKPOINT_ROLLBACK_INFLIGHT_MAX,

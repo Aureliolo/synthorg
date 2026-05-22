@@ -1614,8 +1614,19 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
             wire_real_brownfield_entry,
         )
 
-        await wire_real_brownfield_entry(app_state)
-        _brownfield_intake_installed = True
+        try:
+            await wire_real_brownfield_entry(app_state)
+            _brownfield_intake_installed = True
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.info(
+                API_APP_STARTUP,
+                service="brownfield_intake",
+                note="brownfield intake wiring unavailable; skipped",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
 
     startup = [
         *startup,

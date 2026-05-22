@@ -16,6 +16,7 @@ from synthorg.engine.errors import (
     GitBackendFetchError,
     GitBackendProvisionError,
     GitBackendPushError,
+    GitBackendSeedError,
 )
 from synthorg.engine.workspace.git_backend._git_ops import (
     REMOTE_NAME,
@@ -41,6 +42,7 @@ from synthorg.observability.events.workspace import (
     GIT_BACKEND_PUSH_COMPLETE,
     GIT_BACKEND_PUSH_FAILED,
     GIT_BACKEND_SEED_COMPLETE,
+    GIT_BACKEND_SEED_FAILED,
     GIT_BACKEND_SEED_START,
 )
 
@@ -213,18 +215,18 @@ class EmbeddedGitBackend:
             REMOTE_NAME,
             str(default_branch),
             cmd_timeout=self._cmd_timeout,
-            fail_exc=GitBackendPushError,
+            fail_exc=GitBackendSeedError,
             project_id=pid,
-            event=GIT_BACKEND_PUSH_FAILED,
+            event=GIT_BACKEND_SEED_FAILED,
         )
         head = await git(
             repo_root,
             "rev-parse",
             str(default_branch),
             cmd_timeout=self._cmd_timeout,
-            fail_exc=GitBackendPushError,
+            fail_exc=GitBackendSeedError,
             project_id=pid,
-            event=GIT_BACKEND_PUSH_FAILED,
+            event=GIT_BACKEND_SEED_FAILED,
         )
         logger.info(
             GIT_BACKEND_SEED_COMPLETE,

@@ -50,7 +50,11 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_URL_USERINFO: Final[re.Pattern[str]] = re.compile(r"(\w+://)[^/@\s]+@")
+_URL_USERINFO: Final[re.Pattern[str]] = re.compile(
+    # RFC 3986 scheme: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ). The
+    # earlier ``\w+`` form missed compound schemes like ``git+ssh://``.
+    r"([A-Za-z][A-Za-z0-9+\-.]*://)[^/@\s]+@"
+)
 
 
 def _redact_source_ref(source_ref: str) -> str:
@@ -133,8 +137,12 @@ class BrownfieldImportService:
             source_kind=resolved.source_kind.value,
         )
         structure_map = await self._scan(submission, repo_root)
-        await self._repo.save(structure_map)
+        # Index BEFORE persisting the structure map: if ``_index`` raises,
+        # the save never happens, so the next attempt re-enters
+        # ``_fresh_import`` instead of taking the ``_reimport`` early-return
+        # path with an unindexed codebase persisted.
         knowledge_source_id = await self._index(submission, repo_root)
+        await self._repo.save(structure_map)
         logger.info(
             BROWNFIELD_IMPORT_COMPLETED,
             project_id=submission.project_id,
@@ -163,8 +171,10 @@ class BrownfieldImportService:
                 content_hash=existing.content_hash,
             )
             return self._result(existing, None, unchanged=True)
-        await self._repo.save(rescanned)
+        # Index before save here too, for the same reason as the fresh path:
+        # a failed re-index must not leave a stale rescanned map persisted.
         knowledge_source_id = await self._index(submission, repo_root)
+        await self._repo.save(rescanned)
         return self._result(rescanned, knowledge_source_id, unchanged=False)
 
     async def _scan(

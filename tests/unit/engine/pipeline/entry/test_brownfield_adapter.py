@@ -80,9 +80,10 @@ class TestBrownfieldEntryAdapter:
         )
         assert adapter.source is WorkSource.BROWNFIELD
 
-        result = await adapter.submit(_submission())
+        submission = _submission()
+        result = await adapter.submit(submission)
 
-        import_service.import_codebase.assert_awaited_once()
+        import_service.import_codebase.assert_awaited_once_with(submission)
         item = captured["item"]
         assert item.source is WorkSource.BROWNFIELD
         assert item.task_type is TaskType.ANALYSIS

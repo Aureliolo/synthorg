@@ -32,6 +32,10 @@ class TestLocalSource:
             NotBlankStr(f"file://{tmp_path}")
         )
         assert result.source_kind is SourceKind.LOCAL_PATH
+        # The resolver must normalise file:// into the same local-path
+        # contract used by the bare-directory case so downstream callers
+        # see a stable fetch_url shape regardless of the input form.
+        assert result.fetch_url == str(tmp_path)
 
     async def test_missing_local_path_raises(self, tmp_path: Path) -> None:
         missing = tmp_path / "does-not-exist"

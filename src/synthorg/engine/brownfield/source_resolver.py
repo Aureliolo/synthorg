@@ -140,7 +140,11 @@ class BrownfieldSourceResolver:
             return source_ref
         split = urlsplit(source_ref)
         host = split.hostname or ""
-        netloc = f"{_TOKEN_USER}:{quote(token, safe='')}@{host}"
+        # ``urlsplit.hostname`` strips IPv6 brackets, so wrap them back
+        # before composing netloc; otherwise the embedded ``:`` would be
+        # misparsed as the host:port separator and break urlunsplit.
+        host_for_netloc = f"[{host}]" if ":" in host else host
+        netloc = f"{_TOKEN_USER}:{quote(token, safe='')}@{host_for_netloc}"
         if split.port is not None:
             netloc = f"{netloc}:{split.port}"
         return urlunsplit(

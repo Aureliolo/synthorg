@@ -59,6 +59,11 @@ MEMORY_CHECKPOINT_ROLLBACK_INFLIGHT_MAX: Final[int] = 1
 MEMORY_FINE_TUNE_INFLIGHT_MAX: Final[int] = 1
 PROVIDERS_DISCOVER_MODELS_INFLIGHT_MAX: Final[int] = 2
 PROVIDERS_PULL_MODEL_INFLIGHT_MAX: Final[int] = 2
+# Brownfield codebase intake is a heavy, multi-minute operation (clone,
+# scan, index): a single-slot cap per user keeps a single operator from
+# pinning the runtime by firing several imports back-to-back, while the
+# sliding-window rate limit covers burst protection across users.
+BROWNFIELD_IMPORT_INFLIGHT_MAX: Final[int] = 1
 
 # Number of hex digits to retain from each SHA-256 sink-destination
 # fingerprint published as the public sink identifier.  16 hex chars
