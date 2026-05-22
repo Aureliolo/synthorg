@@ -8,6 +8,8 @@ best-effort: a failing sink logs and never propagates into the engine.
 
 from typing import Final, Protocol, runtime_checkable
 
+from pydantic import AwareDatetime  # noqa: TC002 -- runtime annotation
+
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import TaskStatus
 from synthorg.engine.loop_protocol import (
@@ -142,8 +144,7 @@ def build_frames(  # noqa: PLR0913 -- keyword-only frame builder, all required
     conversation, paired with turns in order. The terminal turn carries
     the run's outcome status; earlier turns are ``IN_PROGRESS``.
     """
-    the_clock = clock or SystemClock()
-    timestamp = the_clock.now()
+    timestamp = (clock or SystemClock()).now()
     assistant_messages = [
         msg
         for msg in execution_result.context.conversation
@@ -154,28 +155,48 @@ def build_frames(  # noqa: PLR0913 -- keyword-only frame builder, all required
         TaskStatus.IN_PROGRESS,
     )
     last_index = len(execution_result.turns) - 1
-    frames: list[FlightRecorderFrame] = []
-    for index, turn in enumerate(execution_result.turns):
-        response = (
-            assistant_messages[index].content
-            if index < len(assistant_messages)
-            else None
+    return tuple(
+        _frame_for_turn(
+            turn,
+            execution_id=execution_id,
+            agent_id=agent_id,
+            task_id=task_id,
+            response=(
+                assistant_messages[index].content
+                if index < len(assistant_messages)
+                else None
+            ),
+            status=terminal_status if index == last_index else TaskStatus.IN_PROGRESS,
+            timestamp=timestamp,
+            summary_max_chars=summary_max_chars,
         )
-        status = terminal_status if index == last_index else TaskStatus.IN_PROGRESS
-        frames.append(
-            FlightRecorderFrame(
-                execution_id=execution_id,
-                task_id=task_id,
-                agent_id=agent_id,
-                turn_index=turn.turn_number,
-                timestamp=timestamp,
-                response_summary=_truncate(response, summary_max_chars),
-                decision=_classify_decision(turn),
-                tool_calls=tuple(turn.tool_calls_made),
-                input_tokens=turn.input_tokens,
-                output_tokens=turn.output_tokens,
-                cost=turn.cost,
-                status=status,
-            )
-        )
-    return tuple(frames)
+        for index, turn in enumerate(execution_result.turns)
+    )
+
+
+def _frame_for_turn(  # noqa: PLR0913 -- per-turn frame fields, all required
+    turn: TurnRecord,
+    *,
+    execution_id: str,
+    agent_id: str,
+    task_id: str | None,
+    response: str | None,
+    status: TaskStatus,
+    timestamp: AwareDatetime,
+    summary_max_chars: int,
+) -> FlightRecorderFrame:
+    """Build one flight-recorder frame from a turn record."""
+    return FlightRecorderFrame(
+        execution_id=execution_id,
+        task_id=task_id,
+        agent_id=agent_id,
+        turn_index=turn.turn_number,
+        timestamp=timestamp,
+        response_summary=_truncate(response, summary_max_chars),
+        decision=_classify_decision(turn),
+        tool_calls=tuple(turn.tool_calls_made),
+        input_tokens=turn.input_tokens,
+        output_tokens=turn.output_tokens,
+        cost=turn.cost,
+        status=status,
+    )

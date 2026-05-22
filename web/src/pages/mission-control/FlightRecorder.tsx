@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -43,8 +43,6 @@ export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
   }))
 
   const lastIndex = ordered.length - 1
-  const playingRef = useRef(playing)
-  playingRef.current = playing
 
   useEffect(() => {
     if (!playing || ordered.length === 0) return undefined

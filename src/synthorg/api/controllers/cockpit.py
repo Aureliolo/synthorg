@@ -41,7 +41,7 @@ _COCKPIT_NS: Final[str] = "cockpit"
 class FlightRecorderFramesResponse(BaseModel):
     """A page of flight-recorder frames for an execution."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     execution_id: NotBlankStr = Field(description="Execution the frames belong to")
     frames: tuple[FlightRecorderFrame, ...] = Field(
@@ -53,7 +53,7 @@ class FlightRecorderFramesResponse(BaseModel):
 class PauseInterventionRequest(BaseModel):
     """Pause a running task (transition to INTERRUPTED)."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr = Field(description="Task to pause")
     reason: NotBlankStr = Field(description="Operator reason for the pause")
@@ -62,7 +62,7 @@ class PauseInterventionRequest(BaseModel):
 class KillInterventionRequest(BaseModel):
     """Kill a running task (cancel it)."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     task_id: NotBlankStr = Field(description="Task to kill")
     reason: NotBlankStr = Field(description="Operator reason for the kill")
@@ -71,7 +71,7 @@ class KillInterventionRequest(BaseModel):
 class SteerInterventionRequest(BaseModel):
     """Send a hint or redirect to a running agent."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     execution_id: NotBlankStr = Field(description="Execution to steer")
     agent_id: NotBlankStr = Field(description="Agent to steer")
