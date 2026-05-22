@@ -36,6 +36,7 @@ CHANNEL_SIMULATIONS: Final[str] = "simulations"
 CHANNEL_REVIEWS: Final[str] = "reviews"
 CHANNEL_EVENTS: Final[str] = "events"
 CHANNEL_INTERRUPTS: Final[str] = "interrupts"
+CHANNEL_COCKPIT: Final[str] = "cockpit"
 CHANNEL_DISSENT: Final[str] = "#dissent"
 CHANNEL_WEBHOOKS: Final[str] = "#webhooks"
 CHANNEL_RATELIMIT: Final[str] = "#ratelimit"
@@ -60,6 +61,7 @@ ALL_CHANNELS: Final[tuple[str, ...]] = (
     CHANNEL_REVIEWS,
     CHANNEL_EVENTS,
     CHANNEL_INTERRUPTS,
+    CHANNEL_COCKPIT,
     CHANNEL_DISSENT,
     CHANNEL_WEBHOOKS,
     CHANNEL_RATELIMIT,

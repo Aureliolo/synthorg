@@ -384,6 +384,14 @@ export const INTERRUPT_TYPE_VALUES = [
 ] as const
 export type InterruptType = (typeof INTERRUPT_TYPE_VALUES)[number]
 
+export const INTERVENTION_KIND_VALUES = [
+    'pause',
+    'kill',
+    'hint',
+    'redirect',
+] as const
+export type InterventionKind = (typeof INTERVENTION_KIND_VALUES)[number]
+
 export const LLM_CALL_CATEGORY_VALUES = [
     'productive',
     'coordination',

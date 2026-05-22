@@ -68,7 +68,10 @@ from synthorg.config.schema import RootConfig  # noqa: TC001
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
+from synthorg.engine.cockpit import CockpitService  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
+from synthorg.engine.flight_recording import FlightRecorderService  # noqa: TC001
+from synthorg.engine.intervention import SteeringDirective  # noqa: TC001
 from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter  # noqa: TC001
 from synthorg.engine.pipeline.entry.task_board_adapter import (  # noqa: TC001
     TaskBoardEntryAdapter,
@@ -232,6 +235,7 @@ class AppState(AppStateServicesMixin):
         "_chief_of_staff_proposer",
         "_client_facade_service",
         "_client_simulation_state",
+        "_cockpit_service",
         "_company_read_service",
         "_config_resolver",
         "_connection_catalog",
@@ -263,6 +267,7 @@ class AppState(AppStateServicesMixin):
         "_events_read_service",
         "_experiment_service",
         "_fine_tune_orchestrator",
+        "_flight_recorder_service",
         "_health_prober_service",
         "_idempotency_service",
         "_intake_entry_adapter",
@@ -334,6 +339,7 @@ class AppState(AppStateServicesMixin):
         "_shutdown_requested",
         "_signals_service",
         "_simulation_facade_service",
+        "_steering_directive",
         "_subworkflow_service",
         "_task_board_entry_adapter",
         "_task_engine",
@@ -441,6 +447,9 @@ class AppState(AppStateServicesMixin):
         self._task_engine = task_engine
         self._distributed_task_queue: JetStreamTaskQueue | None = None
         self._distributed_backend_services: DistributedBackendServices | None = None
+        self._cockpit_service: CockpitService | None = None
+        self._flight_recorder_service: FlightRecorderService | None = None
+        self._steering_directive: SteeringDirective | None = None
         self._coordinator = coordinator
         self._work_pipeline = work_pipeline
         self._intake_entry_adapter = intake_entry_adapter
@@ -1529,6 +1538,65 @@ class AppState(AppStateServicesMixin):
                 API_APP_STARTUP,
                 service="coordinator",
                 transition=transition,
+            )
+
+    # ── Mission-control cockpit services ────────────────────────────
+
+    @property
+    def cockpit_service(self) -> CockpitService:
+        """Live-activity cockpit service, or raise 503."""
+        return self._require_service(self._cockpit_service, "cockpit_service")
+
+    @property
+    def has_cockpit_service(self) -> bool:
+        """Whether the cockpit service is wired."""
+        return self._cockpit_service is not None
+
+    @property
+    def flight_recorder_service(self) -> FlightRecorderService:
+        """Flight-recorder query/seek service, or raise 503."""
+        return self._require_service(
+            self._flight_recorder_service,
+            "flight_recorder_service",
+        )
+
+    @property
+    def has_flight_recorder_service(self) -> bool:
+        """Whether the flight-recorder service is wired."""
+        return self._flight_recorder_service is not None
+
+    @property
+    def steering_directive(self) -> SteeringDirective:
+        """Cockpit steering directive, or raise 503."""
+        return self._require_service(self._steering_directive, "steering_directive")
+
+    @property
+    def has_steering_directive(self) -> bool:
+        """Whether the steering directive is wired."""
+        return self._steering_directive is not None
+
+    def set_cockpit_services(
+        self,
+        *,
+        cockpit_service: CockpitService,
+        flight_recorder_service: FlightRecorderService,
+        steering_directive: SteeringDirective,
+    ) -> None:
+        """Attach (or hot-swap) the cockpit services at boot / reinit.
+
+        Synchronised under ``_lazy_service_lock`` so the boot install is
+        consistent against concurrent property reads. Idempotent and
+        last-wins, so a transient shared-app boot or a setup-reinit can
+        re-wire without poisoning startup.
+        """
+        with self._lazy_service_lock:
+            self._cockpit_service = cockpit_service
+            self._flight_recorder_service = flight_recorder_service
+            self._steering_directive = steering_directive
+            logger.info(
+                API_APP_STARTUP,
+                service="cockpit_services",
+                transition="attached",
             )
 
     # ── Cost-dial services ──────────────────────────────────────────

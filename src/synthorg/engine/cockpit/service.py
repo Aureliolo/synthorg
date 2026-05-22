@@ -30,13 +30,9 @@ if TYPE_CHECKING:
     from synthorg.persistence.flight_recorder_protocol import (
         FlightRecorderFrameRepository,
     )
-    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
-_COCKPIT_NS: Final[str] = "cockpit"
-_STUCK_KEY: Final[str] = "stuck_idle_threshold_minutes"
-_RUNAWAY_KEY: Final[str] = "runaway_cost_threshold_percent"
 _PERCENT_DIVISOR: Final[float] = 100.0
 _ACTIVE_STATUSES: Final[tuple[TaskStatus, ...]] = (
     TaskStatus.IN_PROGRESS,
@@ -94,20 +90,27 @@ class CockpitService:
         task_engine: TaskEngine,
         flight_recorder_frames: FlightRecorderFrameRepository,
         *,
-        config_resolver: ConfigResolver,
         clock: Clock | None = None,
     ) -> None:
         self._task_engine = task_engine
         self._frames = flight_recorder_frames
-        self._config_resolver = config_resolver
         self._clock = clock or SystemClock()
 
-    async def get_live_snapshot(self) -> LiveActivitySnapshot:
-        """Build a snapshot of active work with stuck / runaway flags."""
-        stuck_minutes = await self._config_resolver.get_float(_COCKPIT_NS, _STUCK_KEY)
-        runaway_pct = await self._config_resolver.get_float(_COCKPIT_NS, _RUNAWAY_KEY)
+    async def get_live_snapshot(
+        self,
+        *,
+        stuck_idle_minutes: float,
+        runaway_cost_percent: float,
+    ) -> LiveActivitySnapshot:
+        """Build a snapshot of active work with stuck / runaway flags.
+
+        Thresholds are passed in (resolved by the controller at request
+        time) so the service stays pure and free of a settings-resolver
+        dependency at wire time.
+        """
+        runaway_pct = runaway_cost_percent
         now = self._clock.now()
-        stuck_cutoff = now - timedelta(minutes=stuck_minutes)
+        stuck_cutoff = now - timedelta(minutes=stuck_idle_minutes)
 
         activities: list[AgentActivity] = []
         for status in _ACTIVE_STATUSES:

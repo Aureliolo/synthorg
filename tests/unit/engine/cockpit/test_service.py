@@ -13,7 +13,6 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit import CockpitService
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame
-from synthorg.settings.resolver import ConfigResolver
 
 pytestmark = pytest.mark.unit
 
@@ -53,20 +52,13 @@ def _frame(
 def _service(
     tasks: tuple[Task, ...],
     repo: FakeFlightRecorderFrameRepository,
-    *,
-    stuck_minutes: float = 10.0,
-    runaway_pct: float = 150.0,
 ) -> CockpitService:
     task_engine = mock_of[TaskEngine](
         list_tasks=AsyncMock(side_effect=[(tasks, len(tasks)), ((), 0)]),
     )
-    resolver = mock_of[ConfigResolver](
-        get_float=AsyncMock(side_effect=[stuck_minutes, runaway_pct]),
-    )
     return CockpitService(
         task_engine,
         repo,
-        config_resolver=resolver,
         clock=FakeClock(start=_NOW),
     )
 
@@ -82,7 +74,10 @@ class TestCockpitService:
         task = _task(sample_task_with_criteria, task_id="t1", agent="alice", budget=0.0)
         service = _service((task,), repo)
 
-        snapshot = await service.get_live_snapshot()
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
         assert snapshot.active_count == 1
         activity = snapshot.agents[0]
         assert activity.agent_id == "alice"
@@ -99,9 +94,12 @@ class TestCockpitService:
             _frame(task_id="t1", turn=1, cost=0.1, ts=_NOW - timedelta(minutes=30)),
         )
         task = _task(sample_task_with_criteria, task_id="t1", agent="bob", budget=0.0)
-        service = _service((task,), repo, stuck_minutes=10.0)
+        service = _service((task,), repo)
 
-        snapshot = await service.get_live_snapshot()
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
         assert snapshot.agents[0].is_stuck is True
         assert snapshot.stuck_agents == ("bob",)
 
@@ -114,9 +112,12 @@ class TestCockpitService:
             _frame(task_id="t1", turn=1, cost=2.0, ts=_NOW - timedelta(minutes=1)),
         )
         task = _task(sample_task_with_criteria, task_id="t1", agent="carol", budget=1.0)
-        service = _service((task,), repo, runaway_pct=150.0)
+        service = _service((task,), repo)
 
-        snapshot = await service.get_live_snapshot()
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
         assert snapshot.agents[0].is_runaway is True
         assert snapshot.runaway_agents == ("carol",)
 
@@ -124,7 +125,10 @@ class TestCockpitService:
         repo = FakeFlightRecorderFrameRepository()
         service = _service((), repo)
 
-        snapshot = await service.get_live_snapshot()
+        snapshot = await service.get_live_snapshot(
+            stuck_idle_minutes=10.0,
+            runaway_cost_percent=150.0,
+        )
         assert snapshot.active_count == 0
         assert snapshot.agents == ()
         assert snapshot.total_cost == pytest.approx(0.0)
