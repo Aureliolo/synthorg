@@ -72,6 +72,9 @@ from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,  # noqa: TC001
     FineTuneRunRepository,  # noqa: TC001
 )
+from synthorg.persistence.flight_recorder_protocol import (
+    FlightRecorderFrameRepository,  # noqa: TC001
+)
 from synthorg.persistence.idempotency_protocol import (
     IdempotencyRepository,  # noqa: TC001
 )
@@ -396,6 +399,11 @@ class PersistenceBackend(Protocol):
     @property
     def checkpoints(self) -> CheckpointRepository:
         """Repository for Checkpoint persistence."""
+        ...
+
+    @property
+    def flight_recorder_frames(self) -> FlightRecorderFrameRepository:
+        """Repository for flight-recorder frame persistence."""
         ...
 
     @property

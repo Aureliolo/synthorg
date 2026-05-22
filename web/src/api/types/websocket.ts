@@ -16,7 +16,7 @@ export const WS_CHANNELS = [
   'approvals', 'meetings', 'artifacts', 'projects',
   'company', 'departments', 'clients', 'requests',
   'simulations', 'reviews', 'events', 'interrupts',
-  'scaling',
+  'scaling', 'cockpit',
 ] as const
 
 export type WsChannel = typeof WS_CHANNELS[number]

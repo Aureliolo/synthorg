@@ -297,6 +297,61 @@ def _try_wire_cost_dial(app_state: AppState) -> None:
         )
 
 
+def _wire_cockpit_services(app_state: AppState) -> None:
+    """Construct the mission-control cockpit services from live state.
+
+    Builds the live-activity ``CockpitService``, the flight-recorder
+    query/seek service, and the steering directive, then installs them
+    on ``AppState`` for the cockpit controllers and MCP tools. Requires
+    a connected persistence backend (for the frame store) plus a task
+    engine and interrupt store.
+    """
+    interrupt_store = app_state.interrupt_store
+    if (
+        not app_state.has_persistence
+        or not app_state.has_task_engine
+        or interrupt_store is None
+    ):
+        return
+    from synthorg.engine.cockpit import CockpitService  # noqa: PLC0415
+    from synthorg.engine.flight_recording import (  # noqa: PLC0415
+        FlightRecorderService,
+    )
+    from synthorg.engine.intervention import build_steering_directive  # noqa: PLC0415
+
+    frames = app_state.persistence.flight_recorder_frames
+    app_state.set_cockpit_services(
+        cockpit_service=CockpitService(
+            app_state.task_engine,
+            frames,
+            clock=app_state.clock,
+        ),
+        flight_recorder_service=FlightRecorderService(frames),
+        steering_directive=build_steering_directive(
+            interrupt_store,
+            clock=app_state.clock,
+        ),
+    )
+
+
+def _try_wire_cockpit(app_state: AppState) -> None:
+    """Wire the cockpit services best-effort; never poison startup."""
+    if not app_state.has_persistence or app_state.has_cockpit_service:
+        return
+    try:
+        _wire_cockpit_services(app_state)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            API_APP_STARTUP,
+            service="cockpit",
+            note="cockpit wiring failed; controllers will 503",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+
 def _wire_environment_service(app_state: AppState) -> None:
     """Wire the per-project reproducible-environment substrate.
 
@@ -1245,6 +1300,7 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         # tree per project under the workspace base. Persistence-less
         # boots (test fixtures, dev apps with no DB) skip wiring -- the
         _try_wire_cost_dial(app_state)
+        _try_wire_cockpit(app_state)
 
         # service is optional and gates on ``has_project_workspace_service``.
         if app_state.has_persistence and app_state.project_workspace_service is None:

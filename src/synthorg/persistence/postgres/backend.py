@@ -71,6 +71,9 @@ from synthorg.persistence.postgres.fine_tune_repo import (
     PostgresFineTuneCheckpointRepository,
     PostgresFineTuneRunRepository,
 )
+from synthorg.persistence.postgres.flight_recorder_repo import (
+    PostgresFlightRecorderFrameRepository,
+)
 from synthorg.persistence.postgres.heartbeat_repo import (
     PostgresHeartbeatRepository,
 )
@@ -225,6 +228,9 @@ if TYPE_CHECKING:
     from synthorg.persistence.decision_protocol import DecisionRepository
     from synthorg.persistence.docs_protocol import DocsRepository
     from synthorg.persistence.escalation_protocol import EscalationQueueRepository
+    from synthorg.persistence.flight_recorder_protocol import (
+        FlightRecorderFrameRepository,
+    )
     from synthorg.persistence.idempotency_protocol import IdempotencyRepository
     from synthorg.persistence.knowledge_protocol import (
         ChunkProvenanceRepository,
@@ -329,6 +335,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._users: UserRepository | None = None
         self._api_keys: ApiKeyRepository | None = None
         self._checkpoints: CheckpointRepository | None = None
+        self._flight_recorder_frames: FlightRecorderFrameRepository | None = None
         self._heartbeats: HeartbeatRepository | None = None
         self._agent_states: AgentStateRepository | None = None
         self._settings: SettingsRepository | None = None
@@ -397,6 +404,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._users = None
         self._api_keys = None
         self._checkpoints = None
+        self._flight_recorder_frames = None
         self._heartbeats = None
         self._agent_states = None
         self._settings = None
@@ -468,6 +476,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._users = PostgresUserRepository(pool)
         self._api_keys = PostgresApiKeyRepository(pool)
         self._checkpoints = PostgresCheckpointRepository(pool)
+        self._flight_recorder_frames = PostgresFlightRecorderFrameRepository(pool)
         self._heartbeats = PostgresHeartbeatRepository(pool)
         self._agent_states = PostgresAgentStateRepository(pool)
         self._settings = PostgresSettingsRepository(pool)
@@ -682,6 +691,14 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
     def checkpoints(self) -> CheckpointRepository:
         """Repository for Checkpoint persistence."""
         return self._require_connected(self._checkpoints, "checkpoints")
+
+    @property
+    def flight_recorder_frames(self) -> FlightRecorderFrameRepository:
+        """Repository for flight-recorder frame persistence."""
+        return self._require_connected(
+            self._flight_recorder_frames,
+            "flight_recorder_frames",
+        )
 
     @property
     def heartbeats(self) -> HeartbeatRepository:

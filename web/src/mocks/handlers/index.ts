@@ -70,6 +70,7 @@ import { budgetHandlers } from './budget'
 import { capabilitiesHandlers } from './capabilities'
 import { ceremonyPolicyHandlers } from './ceremony-policy'
 import { clientsHandlers } from './clients'
+import { cockpitHandlers } from './cockpit'
 import { collaborationHandlers } from './collaboration'
 import { companyHandlers } from './company'
 import { connectionsHandlers } from './connections'
@@ -123,6 +124,7 @@ export const defaultHandlers = [
   ...capabilitiesHandlers,
   ...ceremonyPolicyHandlers,
   ...clientsHandlers,
+  ...cockpitHandlers,
   ...collaborationHandlers,
   ...companyHandlers,
   ...connectionsHandlers,
@@ -173,6 +175,7 @@ export {
   capabilitiesHandlers,
   ceremonyPolicyHandlers,
   clientsHandlers,
+  cockpitHandlers,
   collaborationHandlers,
   companyHandlers,
   connectionsHandlers,

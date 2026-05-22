@@ -103,3 +103,7 @@ ENFORCED ToolCreationApplier #1995 -- constructed by meta/toolsmith/factory.py::
 ENFORCED DynamicToolRegistry #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; mutable live authored-tool registry read behind the static surface
 ENFORCED install_dynamic_tool_layer #1995 -- called by api/app.py::_wire_toolsmith; layers the dynamic registry into the live MCP invoker so authored tools dispatch
 ENFORCED build_stakes_router #1998 -- called by workers/runtime_builder._build_stakes_router_or_none when a benchmark provider is wired; injected into AgentEngine for stakes-aware tier selection before budget downgrade
+ENFORCED CockpitService #1981 -- constructed in api/app.py::_wire_cockpit_services and installed on AppState; serves the mission-control live-activity snapshot (who/what + stuck/runaway)
+ENFORCED FlightRecorderService #1981 -- constructed in api/app.py::_wire_cockpit_services; frame-authoritative get/seek behind the flight-recorder cockpit endpoints
+ENFORCED build_steering_directive #1981 -- called in api/app.py::_wire_cockpit_services; builds the SafeDefaultSteeringDirective that delivers cockpit hint/redirect as INFO_REQUEST interrupts
+ENFORCED build_flight_recorder_sink #1981 -- called in workers/runtime_builder._build_flight_recorder_sink; selects the recorder sink the boot AgentEngine records per-turn frames through

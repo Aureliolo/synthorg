@@ -454,6 +454,7 @@ class TestAuditChainSinkFailurePaths:
         ``_SIGNING_EXECUTOR.submit`` so its returned future raises
         ``TimeoutError`` immediately removes the timing dependency.
         """
+        import asyncio
         import concurrent.futures
 
         import structlog
@@ -465,11 +466,18 @@ class TestAuditChainSinkFailurePaths:
 
         fake_future = MagicMock(spec=concurrent.futures.Future)
         fake_future.result.side_effect = concurrent.futures.TimeoutError()
-        monkeypatch.setattr(
-            sink_module._SIGNING_EXECUTOR,
-            "submit",
-            lambda *_args, **_kwargs: fake_future,
-        )
+
+        def _submit(*args: object, **_kwargs: object) -> object:
+            # Close any coroutine passed through so the mocked submit
+            # does not leak an un-awaited coroutine into pytest's
+            # unraisable-exception capture (which would taint a later
+            # test in the same worker).
+            for arg in args:
+                if asyncio.iscoroutine(arg):
+                    arg.close()
+            return fake_future
+
+        monkeypatch.setattr(sink_module._SIGNING_EXECUTOR, "submit", _submit)
 
         sink = self._make_sink(signer=_make_mock_signer())
         callback_calls: list[tuple[str, int, float]] = []

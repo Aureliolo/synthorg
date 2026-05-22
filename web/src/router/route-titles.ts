@@ -45,6 +45,7 @@ const EXACT_TITLES: Record<string, string> = {
   [ROUTES.WORKFLOW_EDITOR]: 'Workflow Editor',
   [ROUTES.SUBWORKFLOWS]: 'Subworkflows',
   [ROUTES.WEBHOOK_RECEIPTS]: 'Webhook Receipts',
+  [ROUTES.MISSION_CONTROL]: 'Mission Control',
   [ROUTES.COORDINATION_METRICS]: 'Coordination Metrics',
   [ROUTES.META_ANALYTICS]: 'Meta Analytics',
   [ROUTES.PERSONALITIES_ADMIN]: 'Personalities',

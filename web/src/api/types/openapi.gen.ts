@@ -1272,6 +1272,125 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/cockpit/flight-recorder/{execution_id}/frames": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetFrames */
+        readonly get: operations["ApiV1CockpitFlightRecorderExecutionIdFramesGetFrames"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/cockpit/flight-recorder/{execution_id}/seek/{turn_index}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** SeekFrame */
+        readonly get: operations["ApiV1CockpitFlightRecorderExecutionIdSeekTurnIndexSeekFrame"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/cockpit/interventions/hint": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Hint */
+        readonly post: operations["ApiV1CockpitInterventionsHintHint"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/cockpit/interventions/kill": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Kill */
+        readonly post: operations["ApiV1CockpitInterventionsKillKill"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/cockpit/interventions/pause": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Pause */
+        readonly post: operations["ApiV1CockpitInterventionsPausePause"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/cockpit/interventions/redirect": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Redirect */
+        readonly post: operations["ApiV1CockpitInterventionsRedirectRedirect"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/cockpit/snapshot": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetSnapshot */
+        readonly get: operations["ApiV1CockpitSnapshotGetSnapshot"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/company": {
         readonly parameters: {
             readonly query?: never;
@@ -4760,6 +4879,29 @@ export type components = {
         readonly AddModelRequest: {
             readonly model: components["schemas"]["ProviderModelConfig"];
         };
+        /** AgentActivity */
+        readonly AgentActivity: {
+            /** @description Agent working the task */
+            readonly agent_id: string;
+            /** @description Accumulated cost for the task */
+            readonly cost: number;
+            /** @description Execution id of the latest recorded turn, when any */
+            readonly execution_id: string | null;
+            /** @description Cost beyond the runaway threshold */
+            readonly is_runaway: boolean;
+            /** @description Idle beyond the stuck threshold */
+            readonly is_stuck: boolean;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly last_active: string | null;
+            readonly status: components["schemas"]["TaskStatus"];
+            /** @description Task being worked */
+            readonly task_id: string;
+            /** @description Turns recorded so far */
+            readonly turn_count: number;
+        };
         /** AgentConfig */
         readonly AgentConfig: {
             /** @description Raw authority config */
@@ -5384,6 +5526,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[LiveActivitySnapshot] */
+        readonly ApiResponse_LiveActivitySnapshot_: {
+            readonly data: components["schemas"]["LiveActivitySnapshot"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[LivenessStatus] */
         readonly ApiResponse_LivenessStatus_: {
             readonly data: components["schemas"]["LivenessStatus"] | null;
@@ -5536,6 +5686,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[ReplaySeekView] */
+        readonly ApiResponse_ReplaySeekView_: {
+            readonly data: components["schemas"]["ReplaySeekView"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[ReportResponse] */
         readonly ApiResponse_ReportResponse_: {
             readonly data: components["schemas"]["ReportResponse"] | null;
@@ -5651,6 +5809,14 @@ export type components = {
         /** ApiResponse[StageDecisionResult] */
         readonly ApiResponse_StageDecisionResult_: {
             readonly data: components["schemas"]["StageDecisionResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[SteeringOutcome] */
+        readonly ApiResponse_SteeringOutcome_: {
+            readonly data: components["schemas"]["SteeringOutcome"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -8517,6 +8683,56 @@ export type components = {
          * @enum {string}
          */
         readonly FinishReason: "stop" | "max_tokens" | "tool_use" | "content_filter" | "error";
+        /** FlightRecorderFrame */
+        readonly FlightRecorderFrame: {
+            /** @description Agent that produced the turn */
+            readonly agent_id: string;
+            /**
+             * @description Turn cost
+             * @default 0
+             */
+            readonly cost: number;
+            /** @description Classified turn outcome (e.g. tool_call, completed) */
+            readonly decision: string | null;
+            /** @description Execution run identifier */
+            readonly execution_id: string;
+            /** @description Unique frame identifier */
+            readonly id: string;
+            /**
+             * @description Prompt tokens
+             * @default 0
+             */
+            readonly input_tokens: number;
+            /**
+             * @description Operator intervention recorded on this turn, if any
+             * @enum {string|null}
+             */
+            readonly intervention_kind: "pause" | "kill" | "hint" | "redirect" | null;
+            /**
+             * @description Completion tokens
+             * @default 0
+             */
+            readonly output_tokens: number;
+            /** @description Redacted, length-bounded prompt summary */
+            readonly prompt_summary: string | null;
+            /** @description Redacted, length-bounded model response summary */
+            readonly response_summary: string | null;
+            readonly status: components["schemas"]["TaskStatus"];
+            /** @description Task the agent was working on, when known */
+            readonly task_id: string | null;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly timestamp: string;
+            /**
+             * @description Tool names invoked during the turn
+             * @default []
+             */
+            readonly tool_calls: readonly string[];
+            /** @description 1-based turn index within the run */
+            readonly turn_index: number;
+        };
         /** Forecast */
         readonly Forecast: {
             /** @description SHA-256 hex digest of canonical brief JSON */
@@ -8815,6 +9031,25 @@ export type components = {
          * @enum {string}
          */
         readonly InterruptType: "tool_approval" | "info_request";
+        /**
+         * InterventionKind
+         * @description Operator intervention applied from the mission-control cockpit.
+         *
+         *     PAUSE and KILL reuse the task lifecycle seams (transition to
+         *     ``INTERRUPTED`` / cancel to ``CANCELLED``). HINT and REDIRECT route
+         *     through the steering directive: both post an ``INFO_REQUEST``
+         *     interrupt the engine consumes at the next safe turn boundary, so the
+         *     operator's text reaches the running agent without corrupting state.
+         * @enum {string}
+         */
+        readonly InterventionKind: "pause" | "kill" | "hint" | "redirect";
+        /** KillInterventionRequest */
+        readonly KillInterventionRequest: {
+            /** @description Operator reason for the kill */
+            readonly reason: string;
+            /** @description Task to kill */
+            readonly task_id: string;
+        };
         /** KnowledgeHit */
         readonly KnowledgeHit: {
             /** @description Matching chunk content */
@@ -8881,6 +9116,39 @@ export type components = {
             readonly label: string;
             /** @description Link target URL */
             readonly url: string;
+        };
+        /** LiveActivitySnapshot */
+        readonly LiveActivitySnapshot: {
+            /**
+             * @description Active task count
+             * @default 0
+             */
+            readonly active_count: number;
+            /**
+             * @description Per-task activity for active work
+             * @default []
+             */
+            readonly agents: readonly components["schemas"]["AgentActivity"][];
+            /**
+             * @description Agent ids flagged runaway
+             * @default []
+             */
+            readonly runaway_agents: readonly string[];
+            /**
+             * @description Agent ids flagged stuck
+             * @default []
+             */
+            readonly stuck_agents: readonly string[];
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly timestamp: string;
+            /**
+             * @description Summed active cost
+             * @default 0
+             */
+            readonly total_cost: number;
         };
         /** LivenessStatus */
         readonly LivenessStatus: {
@@ -9851,6 +10119,21 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** PaginatedResponse[FlightRecorderFrame] */
+        readonly PaginatedResponse_FlightRecorderFrame_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["FlightRecorderFrame"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[HealthReport] */
         readonly PaginatedResponse_HealthReport_: {
             /** @default [] */
@@ -10394,6 +10677,13 @@ export type components = {
             readonly role_label: string;
             /** @description Benchmark-score provenance identifier */
             readonly source: string;
+        };
+        /** PauseInterventionRequest */
+        readonly PauseInterventionRequest: {
+            /** @description Operator reason for the pause */
+            readonly reason: string;
+            /** @description Task to pause */
+            readonly task_id: string;
         };
         /** PdfLocator */
         readonly PdfLocator: {
@@ -11112,6 +11402,30 @@ export type components = {
             /** @description Ordered team names */
             readonly team_names: readonly string[];
         };
+        /** ReplaySeekView */
+        readonly ReplaySeekView: {
+            /**
+             * @description Summed cost across every turn up to and including ``turn_index``; uses an unbounded SQL aggregate so it stays accurate when ``frames`` is windowed
+             * @default 0
+             */
+            readonly cumulative_cost: number;
+            /** @description Frame at turn_index, when recorded */
+            readonly current_frame: components["schemas"]["FlightRecorderFrame"] | null;
+            /** @description Execution being replayed */
+            readonly execution_id: string;
+            /**
+             * @description Frames ascending up to ``turn_index``; windowed to the most recent ``_MAX_SEEK_FRAMES`` turns when ``truncated`` is True
+             * @default []
+             */
+            readonly frames: readonly components["schemas"]["FlightRecorderFrame"][];
+            /**
+             * @description True when the run exceeded ``_MAX_SEEK_FRAMES`` and the returned ``frames`` are a windowed tail rather than the full prefix; callers should surface this to operators so a partial scrubber reconstruction is never silent
+             * @default false
+             */
+            readonly truncated: boolean;
+            /** @description Target turn index */
+            readonly turn_index: number;
+        };
         /** ReportingLine */
         readonly ReportingLine: {
             /** @description Subordinate role name or identifier */
@@ -11677,7 +11991,7 @@ export type components = {
          *     can be edited at runtime via the settings API.
          * @enum {string}
          */
-        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research";
+        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit";
         /**
          * SettingSource
          * @description Origin of a resolved setting value.
@@ -12024,6 +12338,25 @@ export type components = {
         /** StartSimulationPayload */
         readonly StartSimulationPayload: {
             readonly config: components["schemas"]["SimulationConfig"];
+        };
+        /** SteeringOutcome */
+        readonly SteeringOutcome: {
+            /** @description Whether the directive was delivered */
+            readonly applied: boolean;
+            /** @description Interrupt id the directive produced, when applied */
+            readonly artifact_id: string | null;
+            /** @description Human-readable outcome description */
+            readonly detail: string;
+            readonly kind: components["schemas"]["InterventionKind"];
+        };
+        /** SteerInterventionRequest */
+        readonly SteerInterventionRequest: {
+            /** @description Agent to steer */
+            readonly agent_id: string;
+            /** @description Execution to steer */
+            readonly execution_id: string;
+            /** @description Operator hint / redirect text */
+            readonly text: string;
         };
         /** StragglerGap */
         readonly StragglerGap: {
@@ -16482,6 +16815,219 @@ export interface operations {
             readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1CockpitFlightRecorderExecutionIdFramesGetFrames: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly execution_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_FlightRecorderFrame_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1CockpitFlightRecorderExecutionIdSeekTurnIndexSeekFrame: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Resource identifier */
+                readonly execution_id: string;
+                /** @description Target turn index (1-based) */
+                readonly turn_index: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ReplaySeekView_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1CockpitInterventionsHintHint: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SteerInterventionRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SteeringOutcome_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1CockpitInterventionsKillKill: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["KillInterventionRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1CockpitInterventionsPausePause: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PauseInterventionRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_Task_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1CockpitInterventionsRedirectRedirect: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SteerInterventionRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_SteeringOutcome_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1CockpitSnapshotGetSnapshot: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_LiveActivitySnapshot_"];
+                };
+            };
+            readonly 401: components["responses"]["Unauthorized"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

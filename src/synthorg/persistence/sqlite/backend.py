@@ -70,6 +70,9 @@ from synthorg.persistence.sqlite.fine_tune_repo import (
     SQLiteFineTuneCheckpointRepository,
     SQLiteFineTuneRunRepository,
 )
+from synthorg.persistence.sqlite.flight_recorder_repo import (
+    SQLiteFlightRecorderFrameRepository,
+)
 from synthorg.persistence.sqlite.heartbeat_repo import (
     SQLiteHeartbeatRepository,
 )
@@ -237,6 +240,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._users: SQLiteUserRepository | None = None
         self._api_keys: SQLiteApiKeyRepository | None = None
         self._checkpoints: SQLiteCheckpointRepository | None = None
+        self._flight_recorder_frames: SQLiteFlightRecorderFrameRepository | None = None
         self._heartbeats: SQLiteHeartbeatRepository | None = None
         self._agent_states: SQLiteAgentStateRepository | None = None
         self._settings: SQLiteSettingsRepository | None = None
@@ -311,6 +315,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._users = None
         self._api_keys = None
         self._checkpoints = None
+        self._flight_recorder_frames = None
         self._heartbeats = None
         self._agent_states = None
         self._settings = None
@@ -526,6 +531,10 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._checkpoints = SQLiteCheckpointRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._flight_recorder_frames = SQLiteFlightRecorderFrameRepository(
             self._db,
             write_context=self.write_context,
         )

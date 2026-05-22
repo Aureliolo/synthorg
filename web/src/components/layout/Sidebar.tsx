@@ -16,6 +16,7 @@ import {
   KeyRound,
   LayoutDashboard,
   Layers,
+  Radio,
   LibraryBig,
   LogOut,
   MessageSquare,
@@ -225,6 +226,7 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
     <nav className="flex-1 overflow-y-auto px-2 py-3" aria-label="Main navigation">
       <div className="flex flex-col gap-1">
         <SidebarNavItem to={ROUTES.DASHBOARD} icon={LayoutDashboard} label="Dashboard" collapsed={collapsed} end />
+        <SidebarNavItem to={ROUTES.MISSION_CONTROL} icon={Radio} label="Mission Control" collapsed={collapsed} />
         <SidebarNavItem to={ROUTES.ORG} icon={GitBranch} label="Org Chart" collapsed={collapsed} />
         <SidebarNavItem to={ROUTES.TASKS} icon={KanbanSquare} label="Task Board" collapsed={collapsed} />
         <SidebarNavItem to={ROUTES.BUDGET} icon={DollarSign} label="Budget" collapsed={collapsed} />

@@ -24,6 +24,7 @@ from synthorg.api.controllers.ceremony_policy import (
     CeremonyPolicyController,
 )
 from synthorg.api.controllers.clients import ClientController
+from synthorg.api.controllers.cockpit import CockpitController
 from synthorg.api.controllers.collaboration import CollaborationController
 from synthorg.api.controllers.company import CompanyController
 from synthorg.api.controllers.company_versions import (
@@ -168,6 +169,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     MetaController,
     MetaAnalyticsController,
     CustomRuleController,
+    CockpitController,
 )
 
 # Controllers gated by their collaborator service.  These do NOT live

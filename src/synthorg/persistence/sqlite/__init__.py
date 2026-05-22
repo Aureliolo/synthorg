@@ -10,6 +10,9 @@ from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from synthorg.persistence.sqlite.checkpoint_repo import (
     SQLiteCheckpointRepository,
 )
+from synthorg.persistence.sqlite.flight_recorder_repo import (
+    SQLiteFlightRecorderFrameRepository,
+)
 from synthorg.persistence.sqlite.heartbeat_repo import (
     SQLiteHeartbeatRepository,
 )
@@ -24,6 +27,7 @@ __all__ = [
     "SQLiteAuditRepository",
     "SQLiteCheckpointRepository",
     "SQLiteCostRecordRepository",
+    "SQLiteFlightRecorderFrameRepository",
     "SQLiteHeartbeatRepository",
     "SQLiteMessageRepository",
     "SQLitePersistenceBackend",

@@ -23,6 +23,7 @@ from synthorg.persistence.checkpoint_protocol import (
 )
 from synthorg.persistence.cost_record_protocol import CostRecordRepository
 from synthorg.persistence.decision_protocol import DecisionRepository
+from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrameRepository
 from synthorg.persistence.idempotency_protocol import (
     IdempotencyClaim,
     IdempotencyOutcome,
@@ -433,6 +434,33 @@ class _FakeApiKeyRepository:
 
     async def delete(self, entity_id: str) -> bool:
         return False
+
+
+class _FakeFlightRecorderRepository:
+    async def append(self, frame: Any) -> None:
+        pass
+
+    async def append_many(self, frames: Any) -> None:
+        pass
+
+    async def query(
+        self,
+        filter_spec: Any,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        return ()
+
+    async def get_aggregate(self, filter_spec: Any) -> Any:
+        from synthorg.persistence.flight_recorder_protocol import (
+            FlightRecorderFrameAggregate,
+        )
+
+        return FlightRecorderFrameAggregate()
+
+    async def purge_before(self, threshold: Any) -> int:
+        return 0
 
 
 class _FakeCheckpointRepository:
@@ -1115,6 +1143,10 @@ class _FakeBackend:
         return _FakeCheckpointRepository()
 
     @property
+    def flight_recorder_frames(self) -> _FakeFlightRecorderRepository:
+        return _FakeFlightRecorderRepository()
+
+    @property
     def heartbeats(self) -> _FakeHeartbeatRepository:
         return _FakeHeartbeatRepository()
 
@@ -1435,6 +1467,18 @@ class TestProtocolCompliance:
 
     def test_fake_checkpoint_repo_is_checkpoint_repository(self) -> None:
         assert isinstance(_FakeCheckpointRepository(), CheckpointRepository)
+
+    def test_fake_flight_recorder_repo_is_flight_recorder_repository(self) -> None:
+        # Backend-routed assertion mirrors the idempotency / seen-claims
+        # pattern above: a regression that swaps the property to ``None``
+        # or removes ``flight_recorder_frames`` from ``_FakeBackend``
+        # fails here, not only on the standalone-class check that would
+        # happily pass even if the backend forgot to wire the repo.
+        backend = _FakeBackend()
+        assert isinstance(backend.flight_recorder_frames, FlightRecorderFrameRepository)
+        assert isinstance(
+            _FakeFlightRecorderRepository(), FlightRecorderFrameRepository
+        )
 
     def test_fake_heartbeat_repo_is_heartbeat_repository(self) -> None:
         assert isinstance(_FakeHeartbeatRepository(), HeartbeatRepository)
