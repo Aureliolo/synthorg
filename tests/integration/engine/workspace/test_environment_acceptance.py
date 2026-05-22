@@ -229,9 +229,9 @@ class TestAutoSeedCommit:
         base_root = tmp_path / "base"
         workspace = await _provision_workspace(base_root)
 
-        before = _run(
-            "git", "rev-list", "--count", "HEAD", cwd=workspace
-        ).stdout.strip()
+        before = _run("git", "rev-list", "--count", "HEAD", cwd=workspace)
+        assert before.returncode == 0, before.stderr
+        before_count = before.stdout.strip()
 
         await _env_service(_InMemoryEnvironmentRepo()).get_or_provision(
             NotBlankStr("proj-1"),
@@ -243,8 +243,9 @@ class TestAutoSeedCommit:
         # The default declaration was seeded and committed.
         assert (workspace / "synthorg.env.yaml").is_file()
         assert (workspace / "bootstrap.sh").is_file()
-        after = _run("git", "rev-list", "--count", "HEAD", cwd=workspace).stdout.strip()
-        assert int(after) == int(before) + 1
+        after = _run("git", "rev-list", "--count", "HEAD", cwd=workspace)
+        assert after.returncode == 0, after.stderr
+        assert int(after.stdout.strip()) == int(before_count) + 1
         tracked = _run("git", "ls-files", cwd=workspace).stdout
         assert "synthorg.env.yaml" in tracked
         assert "bootstrap.sh" in tracked

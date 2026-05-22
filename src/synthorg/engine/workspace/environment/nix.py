@@ -30,6 +30,7 @@ from synthorg.engine.workspace.environment.protocol import (
 from synthorg.engine.workspace.environment.templates import DEFAULT_FLAKE_NIX
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
+    ENVIRONMENT_DECLARATION_INVALID,
     ENVIRONMENT_DECLARATION_SCAFFOLDED,
     ENVIRONMENT_PROVISION_FAILED,
     ENVIRONMENT_PROVISION_START,
@@ -88,12 +89,24 @@ class NixEnvironmentStrategy:
         flake = self._flake_path(workspace_path)
         if not flake.is_file():
             msg = f"nix flake {_FLAKE_FILENAME!r} not found"
+            logger.warning(
+                ENVIRONMENT_DECLARATION_INVALID,
+                backend=EnvironmentType.NIX.value,
+                reason=msg,
+            )
             raise EnvironmentConfigError(msg)
+        # Length-frame each input so different (flake.nix, flake.lock) byte
+        # splits can never collapse to the same combined stream and reuse a
+        # stale provisioning cache entry.
         digest = hashlib.sha256()
-        digest.update(flake.read_bytes())
+        flake_bytes = flake.read_bytes()
+        digest.update(f"{_FLAKE_FILENAME}:{len(flake_bytes)}:".encode())
+        digest.update(flake_bytes)
         lock = workspace_path / _FLAKE_LOCK_FILENAME
         if lock.is_file():
-            digest.update(lock.read_bytes())
+            lock_bytes = lock.read_bytes()
+            digest.update(f"{_FLAKE_LOCK_FILENAME}:{len(lock_bytes)}:".encode())
+            digest.update(lock_bytes)
         return NotBlankStr(digest.hexdigest())
 
     def managed_paths(self, workspace_path: Path) -> tuple[str, ...]:
@@ -118,6 +131,11 @@ class NixEnvironmentStrategy:
         del sandbox_kind  # nix runs through the runner in either backend
         if not self.detect(workspace_path):
             msg = f"nix flake {_FLAKE_FILENAME!r} not found"
+            logger.warning(
+                ENVIRONMENT_DECLARATION_INVALID,
+                backend=EnvironmentType.NIX.value,
+                reason=msg,
+            )
             raise EnvironmentConfigError(msg)
         logger.info(
             ENVIRONMENT_PROVISION_START,

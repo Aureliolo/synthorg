@@ -165,7 +165,9 @@ class TestDevcontainerStrategy:
 
     async def test_build_failure_raises(self, tmp_path: Path) -> None:
         _write_devcontainer(tmp_path, '{"build": {"dockerfile": "Dockerfile"}}')
-        (tmp_path / ".devcontainer" / "Dockerfile").write_text("FROM x\n")
+        (tmp_path / ".devcontainer" / "Dockerfile").write_text(
+            "FROM x\n", encoding="utf-8"
+        )
         builder = _FakeBuilder(exit_code=1)
 
         with pytest.raises(EnvironmentDockerBuildError):

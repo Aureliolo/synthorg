@@ -733,7 +733,11 @@ async def build_runtime_services(
         task_engine=app_state.task_engine,
         agent_registry=app_state.agent_registry,
         autonomy_resolver=autonomy_resolver,
-        sandbox_backend=sandbox_backends.get("docker"),
+        # Release the lifecycle owner on the SAME backend the code-execution
+        # tools resolve to (not hardwired docker): if code execution maps to
+        # subprocess, a docker-pinned release would target the wrong backend
+        # and skip owner cleanup on the one that actually held the container.
+        sandbox_backend=environment_runner_backend,
         lifecycle_strategy_kind=(app_state.config.sandboxing.docker.lifecycle.strategy),
         project_workspace_service=app_state.project_workspace_service,
         environment_service=app_state.environment_service,

@@ -77,6 +77,7 @@ ENVIRONMENT_IMAGE_BUILD_COMPLETE: Final[str] = "environment.image.build.complete
 ENVIRONMENT_IMAGE_BUILD_FAILED: Final[str] = "environment.image.build.failed"
 ENVIRONMENT_IMAGE_BUILD_RETRY: Final[str] = "environment.image.build.retry"
 ENVIRONMENT_LOCKFILE_PATH_REJECTED: Final[str] = "environment.lockfile.path.rejected"
+ENVIRONMENT_DECLARATION_INVALID: Final[str] = "environment.declaration.invalid"
 ENVIRONMENT_ROW_PERSISTED: Final[str] = "environment.row.persisted"
 ENVIRONMENT_PROVISION_SKIPPED: Final[str] = "environment.provision.skipped"
 

@@ -200,8 +200,13 @@ class DevcontainerEnvironmentStrategy:
         if not path.is_file():
             msg = f"devcontainer declaration {_DEVCONTAINER_JSON!r} not found"
             raise EnvironmentConfigError(msg)
+        # Length-frame each input so different (declaration, Dockerfile)
+        # byte splits can never collapse to the same combined stream and
+        # reuse a stale provisioning cache entry.
         digest = hashlib.sha256()
-        digest.update(path.read_bytes())
+        decl_bytes = path.read_bytes()
+        digest.update(f"{_DEVCONTAINER_JSON}:{len(decl_bytes)}:".encode())
+        digest.update(decl_bytes)
         config = self._read_config(workspace_path)
         build = config.get("build")
         if isinstance(build, dict):
@@ -209,7 +214,9 @@ class DevcontainerEnvironmentStrategy:
                 workspace_path, path.parent, build.get("dockerfile", "Dockerfile")
             )
             if dockerfile is not None and dockerfile.is_file():
-                digest.update(dockerfile.read_bytes())
+                df_bytes = dockerfile.read_bytes()
+                digest.update(f"dockerfile:{len(df_bytes)}:".encode())
+                digest.update(df_bytes)
         return NotBlankStr(digest.hexdigest())
 
     def managed_paths(self, workspace_path: Path) -> tuple[str, ...]:
