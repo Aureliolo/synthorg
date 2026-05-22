@@ -7,6 +7,8 @@ cost) entirely from frames, with no dependency on the observability
 event log.
 """
 
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.types import NotBlankStr
@@ -19,11 +21,19 @@ from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrameRepository,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
 logger = get_logger(__name__)
 
 #: Upper bound on frames a single seek reconstructs, so a pathological
 #: turn index cannot pull an unbounded page from the store.
 _MAX_SEEK_FRAMES: int = 1000
+
+
+def _sum_costs(costs: Iterable[float]) -> float:
+    """Sum costs known to share one budget currency by construction."""
+    return sum(costs)  # lint-allow: currency-aggregation -- single budget
 
 
 class ReplaySeekView(BaseModel):
@@ -88,7 +98,7 @@ class FlightRecorderService:
             (f for f in ascending if f.turn_index == turn_index),
             None,
         )
-        cumulative = sum(f.cost for f in ascending)
+        cumulative = _sum_costs(f.cost for f in ascending)
         logger.debug(
             FLIGHT_RECORDER_SEEK,
             execution_id=execution_id,

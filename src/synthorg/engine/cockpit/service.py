@@ -25,6 +25,8 @@ from synthorg.persistence.flight_recorder_protocol import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from synthorg.core.task import Task
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.persistence.flight_recorder_protocol import (
@@ -38,6 +40,13 @@ _ACTIVE_STATUSES: Final[tuple[TaskStatus, ...]] = (
     TaskStatus.IN_PROGRESS,
     TaskStatus.BLOCKED,
 )
+
+
+def _sum_costs(costs: Iterable[float]) -> float:
+    """Sum costs known to share one budget currency by construction."""
+    return sum(costs)  # lint-allow: currency-aggregation -- single budget
+
+
 #: Bounded page when summing cost from frames without a cost tracker.
 _FRAME_COST_PAGE: Final[int] = 1000
 
@@ -131,7 +140,7 @@ class CockpitService:
         snapshot = LiveActivitySnapshot(
             timestamp=now,
             agents=tuple(activities),
-            total_cost=sum(a.cost for a in activities),
+            total_cost=_sum_costs(a.cost for a in activities),
             active_count=len(activities),
             stuck_agents=stuck,
             runaway_agents=runaway,
@@ -164,7 +173,7 @@ class CockpitService:
         turn_count = latest.turn_index if latest is not None else 0
         last_active = latest.timestamp if latest is not None else None
         execution_id = latest.execution_id if latest is not None else None
-        cost = sum(frame.cost for frame in frames)
+        cost = _sum_costs(frame.cost for frame in frames)
         is_stuck = last_active is not None and last_active < stuck_cutoff
         is_runaway = task.budget_limit > 0 and cost > task.budget_limit * (
             runaway_pct / _PERCENT_DIVISOR

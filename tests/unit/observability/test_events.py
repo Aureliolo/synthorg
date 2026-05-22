@@ -352,6 +352,9 @@ class TestEventConstants:
             # Self-extending toolkit: capability-gap detection, authoring,
             # benchmark validation, and live registration.
             "toolsmith",
+            # Mission-control cockpit: live snapshot, flight-recorder
+            # replay, and operator interventions.
+            "cockpit",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
