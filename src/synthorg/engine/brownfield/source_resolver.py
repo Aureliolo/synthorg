@@ -92,6 +92,16 @@ class BrownfieldSourceResolver:
                 "scheme (only https:// and ssh:// are permitted)"
             )
             raise BrownfieldSourceUnavailableError(msg)
+        if urlsplit(source_ref).username is not None:
+            # A credential embedded in the URL would be logged and persisted
+            # in the structure map's source_ref. Forge tokens must come from
+            # the connection catalog (injected transiently into the fetch
+            # URL), never from the operator-supplied source reference.
+            msg = (
+                "brownfield remote source must not embed credentials in the "
+                "URL; register a forge connection instead"
+            )
+            raise BrownfieldSourceUnavailableError(msg)
         validation = await validate_clone_url_host(source_ref, self._network_policy)
         if isinstance(validation, str):
             raise BrownfieldSourceUnavailableError(validation)

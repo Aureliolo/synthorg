@@ -11,8 +11,9 @@ source onto an occupied project is refused.
 """
 
 import asyncio
+import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import SourceType
@@ -48,6 +49,17 @@ if TYPE_CHECKING:
     )
 
 logger = get_logger(__name__)
+
+_URL_USERINFO: Final[re.Pattern[str]] = re.compile(r"(\w+://)[^/@\s]+@")
+
+
+def _redact_source_ref(source_ref: str) -> str:
+    """Strip ``user:token@`` userinfo from a source URL before logging.
+
+    The resolver rejects credential-bearing remote refs, but the import-started
+    log fires before resolution, so redact defensively here too.
+    """
+    return _URL_USERINFO.sub(r"\1[REDACTED]@", source_ref)
 
 
 class BrownfieldImportService:
@@ -93,7 +105,7 @@ class BrownfieldImportService:
             logger.info(
                 BROWNFIELD_IMPORT_STARTED,
                 project_id=project_id,
-                source_ref=submission.source_ref,
+                source_ref=_redact_source_ref(submission.source_ref),
             )
             workspace = await self._workspaces.get_or_provision(project_id)
             repo_root = Path(workspace.workspace_path)

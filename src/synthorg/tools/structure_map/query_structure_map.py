@@ -18,7 +18,7 @@ from synthorg.core.persistence_errors import QueryError
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.brownfield import (
-    BROWNFIELD_STRUCTURE_SCANNED,
+    BROWNFIELD_STRUCTURE_QUERY_FAILED,
 )
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.structure_map._args import (
@@ -77,7 +77,7 @@ class QueryStructureMapTool(BaseTool):
             raise
         except QueryError as exc:
             logger.error(
-                BROWNFIELD_STRUCTURE_SCANNED,
+                BROWNFIELD_STRUCTURE_QUERY_FAILED,
                 project_id=self._project_id,
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),

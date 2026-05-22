@@ -63,8 +63,9 @@ flowchart LR
 | `status_report` | Periodic or per-task summary an agent writes for progress and decisions. |
 | `deliverable` | The artifact the studio is producing (PRD, design doc, research memo). Iteratively edited. |
 | `knowledge_note` | Freeform knowledge captured by an agent during work. |
+| `codebase_analysis` | Architecture and health assessment of an imported codebase, produced by the brownfield-intake analysis pass. |
 
-All three share storage, chunking, and indexing. The type drives wiki
+All four share storage, chunking, and indexing. The type drives wiki
 filtering and renderer affordances only.
 
 ## Block schema

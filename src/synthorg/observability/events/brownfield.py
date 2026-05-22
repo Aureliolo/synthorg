@@ -18,6 +18,9 @@ BROWNFIELD_WORKSPACE_SEEDED: Final[str] = "brownfield.workspace.seeded"
 BROWNFIELD_STRUCTURE_SCANNED: Final[str] = "brownfield.structure.scanned"
 """Deterministic scan produced a codebase structure map."""
 
+BROWNFIELD_STRUCTURE_QUERY_FAILED: Final[str] = "brownfield.structure.query_failed"
+"""Agent structure-map query failed against the repository."""
+
 BROWNFIELD_STRUCTURE_UNCHANGED: Final[str] = "brownfield.structure.unchanged"
 """Re-import of the same source: scan content hash matched; short-circuited."""
 

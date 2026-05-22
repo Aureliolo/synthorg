@@ -46,6 +46,14 @@ class TestRemoteSource:
                 NotBlankStr("http://insecure.example.com/acme/legacy.git")
             )
 
+    async def test_embedded_credentials_rejected(self) -> None:
+        # A token in the URL would leak into logs + the persisted source_ref;
+        # forge tokens must come from the connection catalog.
+        with pytest.raises(BrownfieldSourceUnavailableError, match="credentials"):
+            await BrownfieldSourceResolver().resolve(
+                NotBlankStr("https://user:token@git.example.com/acme/legacy.git")
+            )
+
     async def test_ssrf_block_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         async def _blocked(_url: str, _policy: object) -> str:
             return "SSRF blocked: private IP"

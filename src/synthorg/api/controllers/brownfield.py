@@ -10,7 +10,7 @@ asynchronously; the operator polls the project's structure map / tasks.
 """
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from litestar import Controller, post
 from litestar.datastructures import State  # noqa: TC002
@@ -28,6 +28,9 @@ from synthorg.observability.events.brownfield import (
     BROWNFIELD_IMPORT_STARTED,
     BROWNFIELD_PIPELINE_FAILED,
 )
+
+if TYPE_CHECKING:
+    from synthorg.engine.pipeline.entry.protocol import WorkEntryAdapter
 
 logger = get_logger(__name__)
 
@@ -137,7 +140,9 @@ class BrownfieldController(Controller):
         return await import_codebase_impl(state.app_state, data)
 
 
-async def _drive_pipeline(adapter: Any, submission: CodebaseImportSubmission) -> None:
+async def _drive_pipeline(
+    adapter: WorkEntryAdapter[Any], submission: CodebaseImportSubmission
+) -> None:
     """Run the adapter's import + pipeline submission, discarding the result.
 
     The terminal :class:`WorkPipelineResult` is intentionally discarded:

@@ -10,6 +10,11 @@ import os
 from pathlib import Path
 from typing import Final
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.brownfield import BROWNFIELD_STRUCTURE_SCANNED
+
+logger = get_logger(__name__)
+
 IGNORED_DIRS: Final[frozenset[str]] = frozenset(
     {
         ".git",
@@ -50,6 +55,15 @@ def walk_relative_paths(root: Path) -> list[str]:
             rel = (base / filename).relative_to(root).as_posix()
             found.append(rel)
             if len(found) >= _MAX_WALK_ENTRIES:
+                # Truncated: the scan (and its content hash) is now partial,
+                # so a re-scan whose boundary shifts is not guaranteed stable.
+                # Surface it rather than silently dropping modules/deps.
+                logger.warning(
+                    BROWNFIELD_STRUCTURE_SCANNED,
+                    root=str(root),
+                    truncated=True,
+                    max_entries=_MAX_WALK_ENTRIES,
+                )
                 return found
     return found
 

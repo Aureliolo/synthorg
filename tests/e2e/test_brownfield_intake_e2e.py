@@ -1,8 +1,8 @@
 """Acceptance: brownfield codebase intake under the runtime harness.
 
 Points the studio at an existing repo (a real on-disk git fixture) and
-proves the #1975 acceptance end-to-end against the REAL work-pipeline
-spine built by ``build_runtime_services``:
+proves the brownfield-intake acceptance end-to-end against the REAL
+work-pipeline spine built by ``build_runtime_services``:
 
 1. The :class:`BrownfieldEntryAdapter` imports the source into the
    project's persistent workspace (real ``EmbeddedGitBackend`` seed),
