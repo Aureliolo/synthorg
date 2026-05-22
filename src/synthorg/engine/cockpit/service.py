@@ -49,6 +49,10 @@ class AgentActivity(BaseModel):
 
     agent_id: NotBlankStr = Field(description="Agent working the task")
     task_id: NotBlankStr = Field(description="Task being worked")
+    execution_id: NotBlankStr | None = Field(
+        default=None,
+        description="Execution id of the latest recorded turn, when any",
+    )
     status: TaskStatus = Field(description="Current task status")
     turn_count: int = Field(ge=0, description="Turns recorded so far")
     cost: float = Field(ge=0.0, description="Accumulated cost for the task")
@@ -159,6 +163,7 @@ class CockpitService:
         latest = frames[0] if frames else None
         turn_count = latest.turn_index if latest is not None else 0
         last_active = latest.timestamp if latest is not None else None
+        execution_id = latest.execution_id if latest is not None else None
         cost = sum(frame.cost for frame in frames)
         is_stuck = last_active is not None and last_active < stuck_cutoff
         is_runaway = task.budget_limit > 0 and cost > task.budget_limit * (
@@ -167,6 +172,7 @@ class CockpitService:
         return AgentActivity(
             agent_id=NotBlankStr(agent_id),
             task_id=NotBlankStr(task.id),
+            execution_id=execution_id,
             status=task.status,
             turn_count=turn_count,
             cost=cost,

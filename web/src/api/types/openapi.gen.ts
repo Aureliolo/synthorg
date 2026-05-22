@@ -4885,6 +4885,8 @@ export type components = {
             readonly agent_id: string;
             /** @description Accumulated cost for the task */
             readonly cost: number;
+            /** @description Execution id of the latest recorded turn, when any */
+            readonly execution_id: string | null;
             /** @description Cost beyond the runaway threshold */
             readonly is_runaway: boolean;
             /** @description Idle beyond the stuck threshold */

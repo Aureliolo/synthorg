@@ -185,6 +185,7 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   workers: 'Workers',
   telemetry: 'Telemetry',
   external_api: 'External API',
+  cockpit: 'Mission Control',
 }
 
 /** sessionStorage key for the advanced-mode first-toggle warning. */

@@ -9,6 +9,7 @@ export const ROUTES = {
   LOGIN: '/login',
   SETUP: '/setup',
   SETUP_STEP: '/setup/:step',
+  MISSION_CONTROL: '/mission-control',
   ORG: '/org',
   ORG_EDIT: '/org/edit',
   TASKS: '/tasks',
