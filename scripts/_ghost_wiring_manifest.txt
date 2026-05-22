@@ -90,3 +90,4 @@ ENFORCED SandboxBriefRunner #1995 -- constructed by meta/toolsmith/factory.py::b
 ENFORCED ToolCreationApplier #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; validates then live-registers an approved blueprint, retires on rollback
 ENFORCED DynamicToolRegistry #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; mutable live authored-tool registry read behind the static surface
 ENFORCED install_dynamic_tool_layer #1995 -- called by api/app.py::_wire_toolsmith; layers the dynamic registry into the live MCP invoker so authored tools dispatch
+ENFORCED build_stakes_router #1998 -- called by workers/runtime_builder._build_stakes_router_or_none when a benchmark provider is wired; injected into AgentEngine for stakes-aware tier selection before budget downgrade

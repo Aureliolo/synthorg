@@ -1,10 +1,12 @@
 """Unit tests for stakes-aware routing strategies and factory."""
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 import pytest
 from tests._shared.scripted_provider import make_e2e_identity
 
+from synthorg.budget.benchmark_protocol import BenchmarkScore
 from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.budget.coordination_metrics import (
     CoordinationMetrics,
@@ -28,6 +30,22 @@ from synthorg.engine.routing_policy import (
 from synthorg.engine.routing_policy.config import QualityFloors
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
+
+
+class _NoScoreProvider:
+    """Benchmark provider that has no score for any model.
+
+    Exercises the under-floor fallback: every tier resolves but none can
+    clear its quality floor, so routing must pick the strongest tier and
+    flag the decision rather than crash or silently downgrade.
+    """
+
+    async def get_score(self, model_id: str) -> BenchmarkScore | None:
+        return None
+
+    async def list_scores(self) -> Mapping[str, BenchmarkScore]:
+        return {}
+
 
 _PROVIDER = "example-provider"
 _TIER_MODEL_IDS: dict[ModelTier, str] = {
@@ -279,3 +297,105 @@ class TestBuildStakesRouter:
     def test_stakes_aware_without_benchmark_raises(self) -> None:
         with pytest.raises(ValueError, match="benchmark"):
             build_stakes_router(StakesRoutingConfig(strategy="stakes_aware"))
+
+
+@pytest.mark.unit
+class TestFloorBoundary:
+    """A score exactly equal to the floor clears it (``>=`` boundary).
+
+    Stub scores: small=72, medium=85, large=92. NORMAL stakes avoid the
+    red-team tier-floor interaction so the floor selection is observed
+    directly on a large-tier agent.
+    """
+
+    @pytest.mark.parametrize(
+        ("normal_floor", "expected_tier"),
+        [
+            (72.0, "small"),  # small score == floor: clears
+            (72.01, "medium"),  # just above small: small fails, medium clears
+            (85.0, "medium"),  # medium score == floor: clears
+            (85.01, "large"),  # just above medium: large clears
+        ],
+    )
+    async def test_score_equal_to_floor_clears(
+        self,
+        normal_floor: float,
+        expected_tier: ModelTier,
+    ) -> None:
+        config = StakesRoutingConfig(
+            quality_floors=QualityFloors(
+                low=0, normal=normal_floor, high=100, critical=100
+            ),
+        )
+        decision = await _strategy(config=config).route(
+            task=_task(Stakes.NORMAL),
+            identity=_identity("large"),
+        )
+        assert decision.selected_model.model_tier == expected_tier
+
+
+@pytest.mark.unit
+class TestCoordinationNudgeBoundary:
+    """The nudge fires only when amplification is strictly above threshold."""
+
+    def _store_with_amplification(
+        self,
+        *,
+        error_rate_mas: float,
+        error_rate_sas: float,
+    ) -> CoordinationMetricsStore:
+        store = CoordinationMetricsStore()
+        store.record(
+            CoordinationMetricsRecord(
+                task_id="task-1",
+                computed_at=datetime.now(UTC),
+                team_size=3,
+                metrics=CoordinationMetrics(
+                    error_amplification=ErrorAmplification(
+                        error_rate_mas=error_rate_mas,
+                        error_rate_sas=error_rate_sas,
+                    ),
+                ),
+            ),
+        )
+        return store
+
+    async def test_amplification_at_threshold_does_not_nudge(self) -> None:
+        # 0.3 / 0.2 == 1.5, exactly the default threshold (strict ">").
+        store = self._store_with_amplification(error_rate_mas=0.3, error_rate_sas=0.2)
+        decision = await _strategy(coordination_store=store).route(
+            task=_task(Stakes.NORMAL),  # floor -> medium
+            identity=_identity("small"),
+        )
+        assert decision.selected_model.model_tier == "medium"
+        assert decision.source == "stakes_aware:floor"
+
+    async def test_amplification_above_threshold_nudges(self) -> None:
+        # 0.32 / 0.2 == 1.6 > 1.5.
+        store = self._store_with_amplification(error_rate_mas=0.32, error_rate_sas=0.2)
+        decision = await _strategy(coordination_store=store).route(
+            task=_task(Stakes.NORMAL),  # floor -> medium, nudged to large
+            identity=_identity("small"),
+        )
+        assert decision.selected_model.model_tier == "large"
+        assert decision.source == "stakes_aware:nudge"
+
+
+@pytest.mark.unit
+class TestBenchmarkUnavailable:
+    """No tier clears the floor: fall back to the strongest tier, flagged."""
+
+    async def test_no_score_falls_back_to_strongest_and_flags(self) -> None:
+        strategy = StakesAwareStrategy(
+            benchmark_provider=_NoScoreProvider(),
+            resolver=_resolver(),
+        )
+        decision = await strategy.route(
+            task=_task(Stakes.LOW),
+            identity=_identity("small"),
+        )
+        # No tier clears the floor, so the strongest resolvable tier is
+        # chosen and the decision is flagged rather than silently kept.
+        assert decision.selected_model.model_tier == "large"
+        assert decision.source == "stakes_aware:floor_unmet"
+        assert "floor not met" in decision.reason

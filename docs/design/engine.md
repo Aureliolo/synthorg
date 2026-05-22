@@ -130,6 +130,7 @@ task:
     - "Unit and integration tests with >80% coverage"
     - "API documentation"
   estimated_complexity: "medium"  # simple, medium, complex, epic
+  stakes: "normal"               # low, normal, high, critical (assessed; drives stakes-aware model routing)
   task_structure: "parallel"      # sequential, parallel, mixed
   coordination_topology: "auto"  # auto, sas, centralized, decentralized, context_dependent
   budget_limit: 2.00             # max spend for this task in base currency (display formatted per budget.currency)

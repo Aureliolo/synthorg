@@ -173,6 +173,19 @@ class TestDefaultStakesAssessor:
             Stakes.LOW
         )
 
+    def test_complexity_without_rule_fails_safe_to_high(self) -> None:
+        """A complexity absent from the rules biases upward, not to LOW."""
+        config = StakesAssessmentConfig(
+            complexity_rules=(
+                ComplexityStakesRule(complexity=Complexity.SIMPLE, stakes=Stakes.LOW),
+            ),
+        )
+        assessor = DefaultStakesAssessor(config)
+        # EPIC has no rule in this partial config: fail-safe to HIGH.
+        assert assessor.assess_subtask(_subtask(complexity=Complexity.EPIC)) is (
+            Stakes.HIGH
+        )
+
 
 @pytest.mark.unit
 class TestBuildStakesAssessor:

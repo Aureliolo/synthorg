@@ -12,11 +12,12 @@ from synthorg.engine.routing_policy.tiers import (
     bump_one,
     higher_tier,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.stakes_routing import (
     STAKES_ROUTING_COORD_NUDGE,
     STAKES_ROUTING_TIER_UNRESOLVABLE,
 )
+from synthorg.providers.errors import ProviderError
 
 if TYPE_CHECKING:
     from synthorg.budget.benchmark_protocol import BenchmarkScoreProvider
@@ -101,7 +102,7 @@ class StakesAwareStrategy:
         current_tier = identity.model.model_tier
 
         floor = self._config.quality_floors.for_stakes(stakes)
-        target_tier = await self._cheapest_tier_meeting_floor(floor)
+        target_tier, floor_cleared = await self._cheapest_tier_meeting_floor(floor)
 
         nudged = False
         if target_tier is not None and self._coordination_unhealthy(task.id):
@@ -116,7 +117,8 @@ class StakesAwareStrategy:
                 nudged = True
             target_tier = bumped
 
-        # High/critical work must never run below the agent's own tier.
+        # Work at or above the configured red_team_min_stakes threshold
+        # must never run below the agent's own tier.
         if red_team_required and target_tier is not None and current_tier is not None:
             target_tier = higher_tier(target_tier, current_tier)
 
@@ -127,6 +129,7 @@ class StakesAwareStrategy:
             target_tier=target_tier,
             nudged=nudged,
             floor=floor,
+            floor_cleared=floor_cleared,
         )
 
     def _build_decision(  # noqa: PLR0913 -- keyword-only assembly inputs
@@ -138,6 +141,7 @@ class StakesAwareStrategy:
         target_tier: ModelTier | None,
         nudged: bool,
         floor: float,
+        floor_cleared: bool,
     ) -> StakesRoutingDecision:
         """Assemble the decision, resolving the target tier to a model."""
         current = identity.model
@@ -165,10 +169,17 @@ class StakesAwareStrategy:
                 fallback_model=current.fallback_model,
                 model_tier=target_tier,
             )
-            source = "stakes_aware:nudge" if nudged else "stakes_aware:floor"
+            if nudged:
+                source = "stakes_aware:nudge"
+            elif not floor_cleared:
+                source = "stakes_aware:floor_unmet"
+            else:
+                source = "stakes_aware:floor"
             reason = (
                 f"stakes={stakes.value}: routed to {target_tier} tier (floor {floor:g})"
             )
+            if not floor_cleared:
+                reason += " [floor not met; strongest available tier]"
 
         return StakesRoutingDecision(
             selected_model=selected_model,
@@ -178,31 +189,62 @@ class StakesAwareStrategy:
             source=source,
         )
 
-    async def _cheapest_tier_meeting_floor(self, floor: float) -> ModelTier | None:
-        """Return the cheapest tier whose benchmark score clears *floor*.
+    async def _cheapest_tier_meeting_floor(
+        self, floor: float
+    ) -> tuple[ModelTier | None, bool]:
+        """Return the cheapest tier clearing *floor* and whether it cleared.
 
-        Falls back to the strongest resolvable tier when none clears the
-        floor, and to ``None`` when no tier resolves at all (no resolver
-        wired, or the provider catalogue lacks the canonical tiers).
+        The second element is ``True`` only when the returned tier's
+        benchmark score meets the floor. When no resolvable tier clears
+        the floor, the strongest resolvable tier is returned with
+        ``False`` and a logged fallback, so high/critical work is never
+        silently routed under-floor. ``(None, False)`` is returned when no
+        tier resolves at all (no resolver wired, or the provider catalogue
+        lacks the canonical tiers).
+
+        A benchmark-provider failure for one tier is logged and skipped:
+        retries belong to the provider layer, and a transient lookup error
+        must not crash the routing decision for every task.
         """
         if self._resolver is None:
-            return None
+            return None, False
         strongest_resolvable: ModelTier | None = None
+        strongest_score: float | None = None
         for tier in TIER_LADDER:
             resolved = self._resolver.resolve_safe(tier)
             if resolved is None:
                 continue
+            try:
+                score = await self._benchmark_provider.get_score(resolved.model_id)
+            except ProviderError as exc:
+                logger.warning(
+                    STAKES_ROUTING_TIER_UNRESOLVABLE,
+                    floor=floor,
+                    tier=tier,
+                    reason="benchmark_lookup_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                continue
             strongest_resolvable = tier
-            score = await self._benchmark_provider.get_score(resolved.model_id)
+            strongest_score = score.score if score is not None else None
             if score is not None and score.score >= floor:
-                return tier
+                return tier, True
         if strongest_resolvable is None:
             logger.warning(
                 STAKES_ROUTING_TIER_UNRESOLVABLE,
                 floor=floor,
                 reason="no_tier_resolved",
             )
-        return strongest_resolvable
+            return None, False
+        logger.warning(
+            STAKES_ROUTING_TIER_UNRESOLVABLE,
+            floor=floor,
+            best_tier=strongest_resolvable,
+            best_score=strongest_score,
+            reason="no_tier_clears_floor",
+        )
+        return strongest_resolvable, False
 
     def _resolve_tier(self, tier: ModelTier) -> ResolvedModel | None:
         """Resolve a tier alias to a model, or ``None``."""

@@ -2,6 +2,7 @@
 
 from typing import Final
 
+STAKES_ASSESSED: Final[str] = "stakes_routing.assessed"
 STAKES_ROUTING_DECIDED: Final[str] = "stakes_routing.decided"
 STAKES_ROUTING_TIER_ADJUSTED: Final[str] = "stakes_routing.tier_adjusted"
 STAKES_ROUTING_COORD_NUDGE: Final[str] = "stakes_routing.coordination_nudge"

@@ -16,6 +16,7 @@ from typing import Final, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import Stakes
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 # Per-stakes benchmark quality floors (0 to 100). A model tier is a
 # candidate only when its benchmark score clears the floor for the
@@ -54,6 +55,23 @@ class QualityFloors(BaseModel):
     high: float = Field(default=_FLOOR_HIGH, ge=_FLOOR_MIN, le=_FLOOR_MAX)
     critical: float = Field(default=_FLOOR_CRITICAL, ge=_FLOOR_MIN, le=_FLOOR_MAX)
 
+    @model_validator(mode="after")
+    def _validate_floors_ordered(self) -> Self:
+        """Reject floors that invert the stakes hierarchy.
+
+        A lower-stakes subtask must never carry a higher quality bar than
+        a higher-stakes one; otherwise routing would send cheap work to
+        strong models and consequential work to weak ones.
+        """
+        if not self.low <= self.normal <= self.high <= self.critical:
+            msg = (
+                "quality floors must be non-decreasing across stakes: "
+                f"low={self.low} <= normal={self.normal} <= "
+                f"high={self.high} <= critical={self.critical}"
+            )
+            raise ValueError(msg)
+        return self
+
     def for_stakes(self, stakes: Stakes) -> float:
         """Return the quality floor for *stakes*."""
         return {
@@ -85,7 +103,7 @@ class StakesRoutingConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    strategy: str = Field(
+    strategy: NotBlankStr = Field(
         default="stakes_aware",
         description="Routing strategy discriminator",
     )
@@ -112,11 +130,3 @@ class StakesRoutingConfig(BaseModel):
         ge=1,
         description="Recent coordination records inspected for the nudge",
     )
-
-    @model_validator(mode="after")
-    def _validate_strategy(self) -> Self:
-        """Reject a blank strategy discriminator."""
-        if not self.strategy.strip():
-            msg = "strategy must not be blank"
-            raise ValueError(msg)
-        return self

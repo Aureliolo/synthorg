@@ -41,6 +41,7 @@ from synthorg.observability.events.pipeline import (
     PIPELINE_RUN_STARTED,
     PIPELINE_SOLO_AGENT_SELECTED,
 )
+from synthorg.observability.events.stakes_routing import STAKES_ASSESSED
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable
@@ -261,11 +262,19 @@ class DefaultWorkPipeline:
         stakes = self._stakes_assessor.assess_task(task)
         if stakes is task.stakes:
             return task
-        return await self._task_engine.update_task(
+        updated = await self._task_engine.update_task(
             task.id,
             {"stakes": stakes},
             requested_by=work_item.requested_by,
         )
+        logger.info(
+            STAKES_ASSESSED,
+            task_id=task.id,
+            from_stakes=task.stakes.value,
+            to_stakes=stakes.value,
+            path="leaf",
+        )
+        return updated
 
     async def _link_forecast(self, task: Task, work_item: WorkItem) -> Task:
         """Stamp the approved forecast id + ceiling onto the task.

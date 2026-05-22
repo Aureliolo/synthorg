@@ -15,7 +15,7 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.decomposition.rollup import StatusRollup
 from synthorg.engine.stakes import build_stakes_assessor
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
     DECOMPOSITION_FAILED,
@@ -83,11 +83,15 @@ class DecompositionService:
 
         try:
             return await self._do_decompose(task, context)
-        except Exception:
-            logger.exception(
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.warning(
                 DECOMPOSITION_FAILED,
                 task_id=task.id,
                 strategy=self._strategy.get_strategy_name(),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
