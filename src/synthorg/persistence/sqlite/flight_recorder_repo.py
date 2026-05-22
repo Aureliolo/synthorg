@@ -192,9 +192,12 @@ INSERT INTO flight_recorder_frames ({_COLUMNS}) VALUES (
         """
         try:
             raw_tool_calls = row.get("tool_calls")
-            if isinstance(raw_tool_calls, str):
-                row["tool_calls"] = tuple(json.loads(raw_tool_calls))
-            return FlightRecorderFrame.model_validate(row)
+            decoded = (
+                tuple(json.loads(raw_tool_calls))
+                if isinstance(raw_tool_calls, str)
+                else raw_tool_calls
+            )
+            return FlightRecorderFrame.model_validate({**row, "tool_calls": decoded})
         except (ValidationError, json.JSONDecodeError) as exc:
             msg = f"Failed to deserialize flight recorder frame {row.get('id')!r}"
             logger.warning(

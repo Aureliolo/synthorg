@@ -182,9 +182,12 @@ INSERT INTO flight_recorder_frames ({_COLUMNS}) VALUES (
         """
         try:
             raw_tool_calls = row.get("tool_calls")
-            if isinstance(raw_tool_calls, list):
-                row["tool_calls"] = tuple(raw_tool_calls)
-            return FlightRecorderFrame.model_validate(row)
+            decoded = (
+                tuple(raw_tool_calls)
+                if isinstance(raw_tool_calls, list)
+                else raw_tool_calls
+            )
+            return FlightRecorderFrame.model_validate({**row, "tool_calls": decoded})
         except ValidationError as exc:
             msg = f"Failed to deserialize flight recorder frame {row.get('id')!r}"
             logger.warning(

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
+import type { FlightRecorderFrame } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
@@ -35,12 +36,12 @@ export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
   const fetchFrames = useMissionControlStore((s) => s.fetchFrames)
 
   // Frames arrive newest-first; show the timeline oldest-first for replay.
-  const ordered = [...frames].reverse()
+  const ordered = useMemo(() => [...frames].reverse(), [frames])
   const current = ordered[index]
-  const timelineFrames: readonly TimelineFrame[] = ordered.map((f) => ({
-    turnIndex: f.turn_index,
-    status: f.status,
-  }))
+  const timelineFrames: readonly TimelineFrame[] = useMemo(
+    () => ordered.map((f) => ({ turnIndex: f.turn_index, status: f.status })),
+    [ordered],
+  )
 
   const lastIndex = ordered.length - 1
 
@@ -153,11 +154,7 @@ export function FlightRecorder({ initialExecutionId }: FlightRecorderProps) {
   )
 }
 
-function FrameDetail({
-  frame,
-}: {
-  frame: ReturnType<typeof useMissionControlStore.getState>['frames'][number]
-}) {
+function FrameDetail({ frame }: { frame: FlightRecorderFrame }) {
   return (
     <div className="space-y-3 rounded-lg border border-border bg-card p-card">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">

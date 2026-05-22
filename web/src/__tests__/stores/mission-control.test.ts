@@ -8,6 +8,16 @@ import { server } from '@/test-setup'
 
 afterEach(() => {
   useToastStore.getState().dismissAll()
+  useMissionControlStore.setState({
+    snapshot: null,
+    snapshotLoading: false,
+    snapshotError: null,
+    frames: [],
+    framesExecutionId: null,
+    framesLoading: false,
+    framesError: null,
+    seekView: null,
+  })
 })
 
 describe('useMissionControlStore', () => {

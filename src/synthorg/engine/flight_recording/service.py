@@ -7,7 +7,7 @@ cost) entirely from frames, with no dependency on the observability
 event log.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 
 #: Upper bound on frames a single seek reconstructs, so a pathological
 #: turn index cannot pull an unbounded page from the store.
-_MAX_SEEK_FRAMES: int = 1000
+_MAX_SEEK_FRAMES: Final[int] = 1000
 
 
 def _sum_costs(costs: Iterable[float]) -> float:

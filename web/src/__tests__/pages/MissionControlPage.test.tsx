@@ -1,11 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import type { getCockpitSnapshot } from '@/api/endpoints/cockpit'
 import MissionControlPage from '@/pages/MissionControlPage'
 import { successFor } from '@/mocks/handlers'
+import { useMissionControlStore } from '@/stores/mission-control'
 import { server } from '@/test-setup'
 
 function renderPage() {
@@ -15,6 +16,19 @@ function renderPage() {
     </MemoryRouter>,
   )
 }
+
+afterEach(() => {
+  useMissionControlStore.setState({
+    snapshot: null,
+    snapshotLoading: false,
+    snapshotError: null,
+    frames: [],
+    framesExecutionId: null,
+    framesLoading: false,
+    framesError: null,
+    seekView: null,
+  })
+})
 
 describe('MissionControlPage', () => {
   it('renders the cockpit heading and live KPIs', async () => {

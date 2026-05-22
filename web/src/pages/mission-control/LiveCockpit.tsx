@@ -22,17 +22,27 @@ function statusTone(activity: AgentActivity): string {
   return 'text-text-secondary'
 }
 
+function statusLabel(activity: AgentActivity): string {
+  if (activity.is_runaway) return 'runaway'
+  if (activity.is_stuck) return 'stuck'
+  return 'healthy'
+}
+
 function AgentRow({ activity }: { activity: AgentActivity }) {
   const [hint, setHint] = useState('')
   const pause = useMissionControlStore((s) => s.pauseTaskAction)
   const kill = useMissionControlStore((s) => s.killTaskAction)
   const sendHint = useMissionControlStore((s) => s.sendHintAction)
 
+  const headerId = `agent-row-${activity.task_id}`
+
   return (
     <div className="rounded-lg border border-border bg-card p-card">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span
+            role="img"
+            aria-label={`Status: ${statusLabel(activity)}`}
             className={cn(
               'size-2 rounded-full',
               activity.is_runaway
@@ -42,7 +52,9 @@ function AgentRow({ activity }: { activity: AgentActivity }) {
                   : 'bg-success',
             )}
           />
-          <span className="font-medium text-foreground">{activity.agent_id}</span>
+          <span id={headerId} className="font-medium text-foreground">
+            {activity.agent_id}
+          </span>
           <span className="text-xs text-text-secondary">{activity.task_id}</span>
         </div>
         <div className="flex items-center gap-3 text-xs">
@@ -76,7 +88,7 @@ function AgentRow({ activity }: { activity: AgentActivity }) {
           Kill
         </Button>
         {activity.execution_id != null && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" aria-describedby={headerId}>
             <InputField
               label="Hint"
               placeholder="Hint or redirect..."

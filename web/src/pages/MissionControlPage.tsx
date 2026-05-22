@@ -8,9 +8,9 @@ import { FlightRecorder } from '@/pages/mission-control/FlightRecorder'
 type CockpitTab = 'live' | 'recorder'
 
 const TAB_OPTIONS = [
-  { value: 'live' as const, label: 'Live' },
-  { value: 'recorder' as const, label: 'Flight Recorder' },
-]
+  { value: 'live', label: 'Live' },
+  { value: 'recorder', label: 'Flight Recorder' },
+] as const satisfies readonly { value: CockpitTab; label: string }[]
 
 export default function MissionControlPage() {
   const [tab, setTab] = useState<CockpitTab>('live')

@@ -18,22 +18,52 @@ export const cockpitHandlers = [
     HttpResponse.json(
       successFor<typeof getCockpitSnapshot>({
         timestamp: '2026-05-22T12:00:00Z',
-        agents: [],
-        total_cost: 0,
-        active_count: 0,
+        agents: [
+          {
+            agent_id: 'agent-1',
+            task_id: 'task-1',
+            execution_id: 'exec-1',
+            status: 'in_progress',
+            turn_count: 3,
+            cost: 0.45,
+            last_active: '2026-05-22T11:58:00Z',
+            is_stuck: false,
+            is_runaway: false,
+          },
+        ],
+        total_cost: 0.45,
+        active_count: 1,
         stuck_agents: [],
         runaway_agents: [],
       }),
     ),
   ),
-  http.get('/api/v1/cockpit/flight-recorder/:executionId/frames', ({ params }) =>
-    HttpResponse.json(
+  http.get('/api/v1/cockpit/flight-recorder/:executionId/frames', ({ params }) => {
+    const execId = String(params.executionId)
+    const frames = [3, 2, 1].map((turn) => ({
+      id: `${execId}-${String(turn)}`,
+      execution_id: execId,
+      task_id: 'task-1',
+      agent_id: 'agent-1',
+      turn_index: turn,
+      timestamp: '2026-05-22T12:00:00Z',
+      prompt_summary: null,
+      response_summary: `turn ${String(turn)} response`,
+      decision: 'completed',
+      tool_calls: [],
+      input_tokens: 40,
+      output_tokens: 20,
+      cost: 0.15,
+      status: 'in_progress' as const,
+      intervention_kind: null,
+    }))
+    return HttpResponse.json(
       successFor<typeof getFlightRecorderFrames>({
-        execution_id: String(params.executionId),
-        frames: [],
+        execution_id: execId,
+        frames,
       }),
-    ),
-  ),
+    )
+  }),
   http.get(
     '/api/v1/cockpit/flight-recorder/:executionId/seek/:turnIndex',
     ({ params }) =>

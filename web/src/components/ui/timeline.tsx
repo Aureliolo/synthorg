@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { statusBgClass } from '@/utils/status-color'
 
 /** A single point on the timeline (a recorded turn). */
 export interface TimelineFrame {
@@ -18,22 +19,6 @@ export interface TimelineProps {
   /** Accessible label for the scrubber. */
   label?: string
   className?: string
-}
-
-const _STATUS_DOT: Record<string, string> = {
-  completed: 'bg-success',
-  in_progress: 'bg-accent',
-  in_review: 'bg-accent',
-  blocked: 'bg-warning',
-  interrupted: 'bg-warning',
-  suspended: 'bg-warning',
-  failed: 'bg-danger',
-  cancelled: 'bg-danger',
-  rejected: 'bg-danger',
-}
-
-function dotColor(status: string): string {
-  return _STATUS_DOT[status] ?? 'bg-text-secondary'
 }
 
 /**
@@ -98,7 +83,7 @@ export function Timeline({
           <span
             className={cn(
               'size-3 rounded-full',
-              dotColor(frame.status),
+              statusBgClass(frame.status),
               index === currentIndex
                 ? 'ring-2 ring-accent'
                 : 'opacity-70 group-hover:opacity-100',
