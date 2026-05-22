@@ -22,7 +22,7 @@ class TestAgentSystemPromptContract:
     # or any tag-escaping logic changes -- a drift here means the
     # fence contract has moved and dependent call sites must be
     # re-audited.
-    PINNED_PROMPT_SAFETY_FP = "5eb32b42076d45dc"
+    PINNED_PROMPT_SAFETY_FP = "3cea34315eb03f1d"
 
     def test_prompt_safety_fingerprint_stable(self) -> None:
         """Detect silent edits to the untrusted-content fence directive."""

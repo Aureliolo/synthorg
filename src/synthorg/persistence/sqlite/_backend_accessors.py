@@ -94,6 +94,7 @@ if TYPE_CHECKING:
         ProjectWorkspaceRepository,
     )
     from synthorg.persistence.provider_audit_protocol import ProviderAuditRepo
+    from synthorg.persistence.research_protocol import ResearchRunRepository
     from synthorg.persistence.risk_override_protocol import RiskOverrideRepository
     from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
     from synthorg.persistence.settings_protocol import SettingsRepository
@@ -156,6 +157,7 @@ class _BackendRepositoryAccessors:
     _project_docs: DocsRepository | None
     _knowledge_sources: KnowledgeSourceRepository | None
     _knowledge_provenance: ChunkProvenanceRepository | None
+    _research_runs: ResearchRunRepository | None
     _project_cost_aggregates: ProjectCostAggregateRepository | None
     _fine_tune_checkpoints: FineTuneCheckpointRepository | None
     _fine_tune_runs: FineTuneRunRepository | None
@@ -344,6 +346,11 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._knowledge_provenance, "knowledge_provenance"
         )
+
+    @property
+    def research_runs(self) -> ResearchRunRepository:
+        """Repository for the research-run record."""
+        return self._require_connected(self._research_runs, "research_runs")
 
     @property
     def project_cost_aggregates(self) -> ProjectCostAggregateRepository:

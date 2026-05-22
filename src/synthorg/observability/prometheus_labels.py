@@ -299,6 +299,7 @@ VALID_SETTINGS_NAMESPACES: Final[frozenset[str]] = frozenset(
         "objectives",
         "observability",
         "providers",
+        "research",
         "security",
         "settings_ns",
         "simulations",

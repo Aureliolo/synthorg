@@ -118,6 +118,9 @@ from synthorg.persistence.project_workspace_protocol import (  # noqa: TC001
 from synthorg.persistence.provider_audit_protocol import (  # noqa: TC001
     ProviderAuditRepo,
 )
+from synthorg.persistence.research_protocol import (
+    ResearchRunRepository,  # noqa: TC001
+)
 from synthorg.persistence.risk_override_protocol import (
     RiskOverrideRepository,  # noqa: TC001
 )
@@ -443,6 +446,11 @@ class PersistenceBackend(Protocol):
     @property
     def knowledge_provenance(self) -> ChunkProvenanceRepository:
         """Repository for per-chunk knowledge provenance."""
+        ...
+
+    @property
+    def research_runs(self) -> ResearchRunRepository:
+        """Repository for the research-run record."""
         ...
 
     @property

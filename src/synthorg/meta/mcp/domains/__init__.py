@@ -18,6 +18,7 @@ from synthorg.meta.mcp.domains.memory import MEMORY_TOOLS
 from synthorg.meta.mcp.domains.meta import META_TOOLS
 from synthorg.meta.mcp.domains.organization import ORGANIZATION_TOOLS
 from synthorg.meta.mcp.domains.quality import QUALITY_TOOLS
+from synthorg.meta.mcp.domains.research import RESEARCH_TOOLS
 from synthorg.meta.mcp.domains.signals import SIGNAL_MCP_TOOLS
 from synthorg.meta.mcp.domains.tasks import TASK_TOOLS
 from synthorg.meta.mcp.domains.workflows import WORKFLOW_TOOLS
@@ -45,6 +46,7 @@ ALL_DOMAIN_TOOLS: tuple[tuple[MCPToolDef, ...], ...] = (
     INFRASTRUCTURE_TOOLS,
     DOCS_TOOLS,
     KNOWLEDGE_TOOLS,
+    RESEARCH_TOOLS,
 )
 
 

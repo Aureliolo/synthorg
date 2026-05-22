@@ -215,6 +215,11 @@ _DEFAULT_SCORE_MAP: Final[MappingProxyType[str, RiskScore]] = MappingProxyType(
         # Ingestion pulls external (possibly untrusted) content into the
         # knowledge corpus; admin-gated, moderate blast radius.
         ActionType.KNOWLEDGE_INGEST: _MEDIUM_SCORE,
+        # A research run fans out to external sources and synthesises
+        # (possibly untrusted) content into a report; the underlying egress
+        # is separately gated at HIGH via external_data:request, so the
+        # orchestration capability itself is MEDIUM, matching ingestion.
+        ActionType.RESEARCH_RUN: _MEDIUM_SCORE,
         ActionType.ORG_HIRE: _MEDIUM_SCORE,
         ActionType.ORG_PROMOTE: _MEDIUM_SCORE,
         ActionType.BUDGET_SPEND: _MEDIUM_SCORE,

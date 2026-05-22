@@ -37,6 +37,12 @@ _ALLOWLIST: Final[frozenset[str]] = frozenset(
         "src/synthorg/providers/health_prober.py",
         # Docstring examples / non-runtime references.
         "src/synthorg/providers/registry.py",
+        # Research pipeline LLM helper: invoked during an agent turn, so
+        # it runs under the engine's ambient cost-recording scope (the
+        # chokepoint records via the contextvar). The helper has no
+        # agent/task context to open its own scope, and the
+        # ResearchService additionally tracks per-run cost on the run.
+        "src/synthorg/research/_llm.py",
     }
 )
 

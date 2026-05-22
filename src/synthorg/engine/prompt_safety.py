@@ -89,6 +89,21 @@ mishap need to trace the leak back to the consolidation pipeline, not
 the task itself.
 """
 
+TAG_RESEARCH_SOURCE: Final[str] = "research-source"
+"""Wrap a retrieved research source snippet flowing into an LLM call.
+
+The research subsystem fans out to web, academic, code, and internal
+knowledge sources; every external snippet (and the title/uri around it)
+is attacker-controllable. Wrapping each item under this tag keeps the
+query planner, credibility-triage, and synthesis LLMs from following
+instructions an attacker may have embedded in a fetched page, paper
+abstract, or code comment.
+
+Distinct from :data:`TAG_TOOL_RESULT`: research sources are curated
+retrieval hits presented to the synthesiser as the evidence corpus, not
+the raw output of a single tool call.
+"""
+
 _TAG_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 """Valid tag names: lower-case ASCII, starts with letter, ``[a-z0-9-]``, max 32 chars.
 

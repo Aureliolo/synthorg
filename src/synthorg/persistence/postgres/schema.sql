@@ -1704,3 +1704,24 @@ CREATE TABLE dynamic_tools (
 
 CREATE INDEX idx_dynamic_tools_state ON dynamic_tools(state);
 CREATE INDEX idx_dynamic_tools_capability ON dynamic_tools(capability);
+
+CREATE TABLE research_runs (
+    run_id TEXT NOT NULL PRIMARY KEY,
+    brief_id TEXT NOT NULL,
+    project_id TEXT,
+    status TEXT NOT NULL
+        CHECK (status IN ('planning', 'retrieving', 'triaging',
+                          'deduplicating', 'synthesising', 'completed', 'failed')),
+    created_at TIMESTAMPTZ NOT NULL,
+    run_json TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_research_runs_created_at
+    ON research_runs(created_at DESC, run_id DESC);
+
+CREATE INDEX idx_research_runs_brief
+    ON research_runs(brief_id, created_at DESC);
+
+CREATE INDEX idx_research_runs_project
+    ON research_runs(project_id, created_at DESC);

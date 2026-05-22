@@ -141,6 +141,9 @@ from synthorg.persistence.sqlite.repositories import (
     SQLiteMessageRepository,
     SQLiteTaskRepository,
 )
+from synthorg.persistence.sqlite.research_run_repo import (
+    SQLiteResearchRunRepository,
+)
 from synthorg.persistence.sqlite.risk_override_repo import (
     SQLiteRiskOverrideRepository,
 )
@@ -220,6 +223,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._project_docs: SQLiteDocsRepository | None = None
         self._knowledge_sources: SQLiteKnowledgeSourceRepository | None = None
         self._knowledge_provenance: SQLiteChunkProvenanceRepository | None = None
+        self._research_runs: SQLiteResearchRunRepository | None = None
         self._tasks: SQLiteTaskRepository | None = None
         self._cost_records: SQLiteCostRecordRepository | None = None
         self._messages: SQLiteMessageRepository | None = None
@@ -293,6 +297,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._project_docs = None
         self._knowledge_sources = None
         self._knowledge_provenance = None
+        self._research_runs = None
         self._tasks = None
         self._cost_records = None
         self._messages = None
@@ -465,6 +470,10 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._knowledge_provenance = SQLiteChunkProvenanceRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._research_runs = SQLiteResearchRunRepository(
             self._db,
             write_context=self.write_context,
         )

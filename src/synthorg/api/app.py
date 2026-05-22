@@ -1450,11 +1450,104 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
         )
         _knowledge_engine_installed = True
 
+    _research_engine_installed = False
+
+    async def _wire_research_engine() -> None:
+        # Research subsystem: builds the ResearchService over the connected
+        # persistence repo and the configured completion provider, behind
+        # the research.enabled + research.model settings. Best-effort and
+        # idempotent (mirrors the cost-dial / knowledge wiring): a missing
+        # provider, unset model, or disabled flag logs and skips rather
+        # than poisoning startup. Web / academic / code retrieval sources
+        # are vendor-agnostic and wire only when a provider is injected, so
+        # the boot service fans out to the knowledge substrate alone.
+        nonlocal _research_engine_installed
+        if _research_engine_installed:
+            return
+        if not app_state.has_persistence:
+            return
+        if app_state.research_service is not None:
+            _research_engine_installed = True
+            return
+        if not app_state.has_settings_service or provider_registry is None:
+            return
+        runtime_settings = app_state.settings_service
+        try:
+            from synthorg.research.config import ResearchConfig  # noqa: PLC0415
+            from synthorg.research.factory import (  # noqa: PLC0415
+                build_research_service,
+            )
+            from synthorg.research.tool_factory import (  # noqa: PLC0415
+                build_research_tool_factory,
+            )
+
+            enabled = (
+                await runtime_settings.get("research", "enabled")
+            ).value.strip().lower() == "true"
+            model = (await runtime_settings.get("research", "model")).value.strip()
+            if not enabled or not model:
+                logger.info(
+                    API_APP_STARTUP,
+                    service="research_engine",
+                    note="research disabled or model unset; wiring skipped",
+                )
+                return
+            provider_names = provider_registry.list_providers()
+            if not provider_names:
+                return
+            provider_name = (
+                await runtime_settings.get("research", "provider")
+            ).value.strip()
+            provider = (
+                provider_registry.get(provider_name)
+                if provider_name and provider_name in provider_registry
+                else provider_registry.get(provider_names[0])
+            )
+            config = ResearchConfig(
+                enabled=True,
+                query_planner=(
+                    await runtime_settings.get("research", "query_planner")
+                ).value.strip(),  # type: ignore[arg-type]
+                credibility_triage=(
+                    await runtime_settings.get("research", "credibility_triage")
+                ).value.strip(),  # type: ignore[arg-type]
+                deduplicator=(
+                    await runtime_settings.get("research", "deduplicator")
+                ).value.strip(),  # type: ignore[arg-type]
+                synthesizer=(
+                    await runtime_settings.get("research", "synthesizer")
+                ).value.strip(),  # type: ignore[arg-type]
+            )
+            service = build_research_service(
+                runs_repo=app_state.persistence.research_runs,
+                provider=provider,
+                model=model,
+                config=config,
+                knowledge_service=app_state.knowledge_service,
+                clock=app_state.clock,
+            )
+            app_state.set_research_service(service)
+            app_state.set_research_tool_factory(
+                build_research_tool_factory(service=service, clock=app_state.clock)
+            )
+            _research_engine_installed = True
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.info(
+                API_APP_STARTUP,
+                service="research_engine",
+                note="research engine wiring unavailable; skipped",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
     startup = [
         *startup,
         _install_runtime_services,
         _wire_docs_engine,
         _wire_knowledge_engine,
+        _wire_research_engine,
     ]
 
     # Project telemetry: build collector (reads SYNTHORG_TELEMETRY_ENABLED env for

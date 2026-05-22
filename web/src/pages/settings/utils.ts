@@ -27,6 +27,7 @@ const SETTING_NAMESPACE_TABLE: Record<SettingNamespace, true> = {
   observability: true,
   backup: true,
   engine: true,
+  research: true,
   communication: true,
   a2a: true,
   integrations: true,
