@@ -194,19 +194,38 @@ class TestCharterMcpHandlersWired:
         assert payload["status"] == "error"
 
     async def test_cancel_passes_enforce_ownership_false_admin_path(self) -> None:
-        # The MCP cancel handler is admin-gated at the registry, so an
-        # operator can cancel a stalled charter they did not create; the
-        # handler must pass enforce_ownership=False so the service does
-        # not reject the call.
+        # The MCP cancel handler is admin-gated at the registry AND in
+        # the handler body (require_admin_guardrails); an operator that
+        # passes the guardrail can cancel a stalled charter they did
+        # not create, and the handler MUST forward enforce_ownership
+        # =False so the service honours the bypass.
         svc = _StubService()
         handler = CHARTER_HANDLERS[_TOOL_CANCEL]
         await handler(
             app_state=_state(service=svc),
-            arguments={"charter_id": "charter-1"},
+            arguments={
+                "charter_id": "charter-1",
+                "confirm": True,
+                "reason": "operator cancelling stalled charter",
+            },
             actor=_actor("admin-1"),
         )
         assert svc.cancel_calls[0]["enforce_ownership"] is False
         assert svc.cancel_calls[0]["cancelled_by"] == "admin-1"
+
+    async def test_cancel_requires_admin_guardrail(self) -> None:
+        # A cancel request that does not satisfy require_admin_guardrails
+        # (missing confirm / reason) MUST NOT reach the service.
+        svc = _StubService()
+        handler = CHARTER_HANDLERS[_TOOL_CANCEL]
+        result = await handler(
+            app_state=_state(service=svc),
+            arguments={"charter_id": "charter-1"},
+            actor=_actor(),
+        )
+        payload = json.loads(result)
+        assert payload["status"] == "error"
+        assert svc.cancel_calls == []
 
     async def test_approve_requires_admin_guardrail(self) -> None:
         # A request that does not satisfy require_admin_guardrails (no
