@@ -169,9 +169,9 @@ class PostgresFlightRecorderFrameRepository:
             "COALESCE(SUM(cost), 0)::float8 AS total_cost, "
             "COALESCE(MAX(turn_index), 0) AS max_turn_index, "
             f"(SELECT timestamp FROM flight_recorder_frames WHERE {where} "
-            "ORDER BY turn_index DESC, timestamp DESC LIMIT 1) AS latest_timestamp, "
+            "ORDER BY timestamp DESC, turn_index DESC LIMIT 1) AS latest_timestamp, "
             f"(SELECT execution_id FROM flight_recorder_frames WHERE {where} "
-            "ORDER BY turn_index DESC, timestamp DESC LIMIT 1) "
+            "ORDER BY timestamp DESC, turn_index DESC LIMIT 1) "
             "AS latest_execution_id "
             f"FROM flight_recorder_frames WHERE {where}"
         )

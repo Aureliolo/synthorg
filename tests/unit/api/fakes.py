@@ -588,12 +588,11 @@ class FakeFlightRecorderFrameRepository:
         candidates = self._filtered(filter_spec)
         if not candidates:
             return FlightRecorderFrameAggregate()
-        candidates_sorted = sorted(
-            candidates,
-            key=lambda f: (f.turn_index, f.timestamp),
-            reverse=True,
-        )
-        latest = candidates_sorted[0]
+        # Pick the latest row by (timestamp DESC, turn_index DESC) so
+        # ``latest_timestamp`` reflects the most recent recorded
+        # activity, not the row that happens to carry the highest
+        # ``turn_index``. Matches the SQL backends.
+        latest = max(candidates, key=lambda f: (f.timestamp, f.turn_index))
         # lint-allow: currency-aggregation -- single budget; test fake
         total_cost = sum(f.cost for f in candidates)
         return FlightRecorderFrameAggregate(

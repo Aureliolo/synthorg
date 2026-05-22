@@ -114,11 +114,15 @@ class FlightRecorderFrameAggregate(BaseModel):
     """Aggregate stats over a filtered frame set, computed in one query.
 
     ``latest_timestamp`` and ``latest_execution_id`` come from the same
-    row (the one with the maximum ``turn_index`` under the filter, with
-    timestamp as a tiebreaker) so callers can identify the most recent
-    activity in a single round-trip. ``total_cost`` and
-    ``max_turn_index`` are SQL aggregates over the entire filtered set,
-    not just the rows that fit in a page.
+    row (the one with the most recent ``timestamp`` under the filter,
+    with ``turn_index`` as a tiebreaker) so callers can identify the
+    most recent activity in a single round-trip. Ordering by timestamp
+    first matches the semantic meaning of "latest activity" -- a frame
+    at turn 5 written 30s after turn 6 (clock skew, resumed-run
+    interleaving) is the *more recent* activity even if turn 6 has a
+    higher index. ``total_cost`` and ``max_turn_index`` are SQL
+    aggregates over the entire filtered set, not just the rows that fit
+    in a page.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -140,14 +144,14 @@ class FlightRecorderFrameAggregate(BaseModel):
         default=None,
         description=(
             "Timestamp of the latest matching frame, ordered by"
-            " (turn_index DESC, timestamp DESC); ``None`` when empty"
+            " (timestamp DESC, turn_index DESC); ``None`` when empty"
         ),
     )
     latest_execution_id: NotBlankStr | None = Field(
         default=None,
         description=(
             "Execution id of the latest matching frame, ordered by"
-            " (turn_index DESC, timestamp DESC); ``None`` when empty"
+            " (timestamp DESC, turn_index DESC); ``None`` when empty"
         ),
     )
 

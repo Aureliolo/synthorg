@@ -124,8 +124,13 @@ class FlightRecorderService:
             limit=_MAX_SEEK_FRAMES,
         )
         ascending = tuple(sorted(windowed_frames, key=lambda f: f.turn_index))
-        truncated = turn_index > _MAX_SEEK_FRAMES
         aggregate = await self._repository.get_aggregate(filter_spec)
+        # Derive truncation from the actual recorded max turn (the
+        # aggregate's ``max_turn_index``), not from the operator-supplied
+        # ``turn_index``: a scrubber that seeks to turn 2000 in a run
+        # that only recorded 50 frames is NOT truncated, even though
+        # 2000 > _MAX_SEEK_FRAMES.
+        truncated = aggregate.max_turn_index > _MAX_SEEK_FRAMES
         cumulative = aggregate.total_cost
         current = next(
             (f for f in ascending if f.turn_index == turn_index),

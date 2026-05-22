@@ -93,8 +93,14 @@ export const useMissionControlStore = create<MissionControlState>()((set, get) =
       framesNextCursor: null,
       framesHasMore: false,
     })
+    // Capture the executionId we started with; the async page-fetch can
+    // race against a subsequent ``fetchFrames(other-execution)`` call
+    // and we must not apply this page's data once the store has moved
+    // on to a different execution.
+    const requestExecutionId = executionId
     try {
       const page = await getFlightRecorderFrames(executionId)
+      if (get().framesExecutionId !== requestExecutionId) return
       set({
         frames: page.data,
         framesLoading: false,
@@ -102,6 +108,7 @@ export const useMissionControlStore = create<MissionControlState>()((set, get) =
         framesHasMore: page.hasMore,
       })
     } catch (err) {
+      if (get().framesExecutionId !== requestExecutionId) return
       set({
         frames: [],
         seekView: null,
@@ -119,9 +126,14 @@ export const useMissionControlStore = create<MissionControlState>()((set, get) =
     if (state.framesExecutionId === null) return
     const cursor = state.framesNextCursor
     const executionId = state.framesExecutionId
+    // Same race guard as ``fetchFrames``: by the time the page arrives,
+    // the user may have loaded a different execution and we must not
+    // append this page's frames onto an unrelated timeline.
+    const requestExecutionId = executionId
     set({ framesLoading: true, framesError: null })
     try {
       const page = await getFlightRecorderFrames(executionId, { cursor })
+      if (get().framesExecutionId !== requestExecutionId) return
       set({
         frames: [...get().frames, ...page.data],
         framesLoading: false,
@@ -129,6 +141,7 @@ export const useMissionControlStore = create<MissionControlState>()((set, get) =
         framesHasMore: page.hasMore,
       })
     } catch (err) {
+      if (get().framesExecutionId !== requestExecutionId) return
       set({ framesLoading: false, framesError: getErrorMessage(err) })
     }
   },
