@@ -27,10 +27,14 @@ from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
-from synthorg.engine.pipeline.entry.factory import build_work_entry_adapter
+from synthorg.engine.pipeline.entry.factory import (
+    build_brownfield_entry_adapter,
+    build_work_entry_adapter,
+)
 from synthorg.engine.pipeline.forecast_gate import ForecastGate
 from synthorg.engine.pipeline.models import WorkSource
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.brownfield import BROWNFIELD_ENTRY_WIRED
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.observability.events.objectives import OBJECTIVE_ENTRY_WIRED
 from synthorg.settings.bootstrap_resolver import resolve_init_value
@@ -297,3 +301,75 @@ async def wire_real_task_board_entry(
         app_state.swap_task_board_entry_adapter(adapter)
     else:
         app_state.set_task_board_entry_adapter_if_absent(adapter)
+
+
+async def wire_real_brownfield_entry(
+    app_state: AppState,
+    *,
+    hot_swap: bool = False,
+) -> None:
+    """Attach the brownfield codebase-intake entry adapter to ``AppState``.
+
+    Gated on the work pipeline plus the import collaborators: a connected
+    persistence backend (for the structure-map repo + project workspace),
+    a wired :class:`ProjectWorkspaceService`, and a wired
+    :class:`KnowledgeService` (the codebase index target). A missing
+    collaborator is a logged no-op so a partial boot does not poison
+    startup; the ``/brownfield`` controller then honestly 503s.
+
+    Args:
+        app_state: Live application state.
+        hot_swap: When ``True`` replace an already-wired adapter
+            (provider-reinit path); otherwise install once at boot.
+    """
+    workspace_service = (
+        app_state.project_workspace_service if app_state.has_persistence else None
+    )
+    knowledge_service = app_state.knowledge_service
+    if (
+        not app_state.has_work_pipeline
+        or workspace_service is None
+        or knowledge_service is None
+    ):
+        logger.info(
+            BROWNFIELD_ENTRY_WIRED,
+            service="brownfield_entry_adapter",
+            mode="disabled",
+            note="missing work pipeline / workspace service / knowledge service",
+        )
+        return
+    from synthorg.engine.brownfield.scanner import (  # noqa: PLC0415
+        build_structure_map_scanners,
+    )
+    from synthorg.engine.brownfield.service import (  # noqa: PLC0415
+        BrownfieldImportService,
+    )
+    from synthorg.engine.brownfield.source_resolver import (  # noqa: PLC0415
+        BrownfieldSourceResolver,
+    )
+    from synthorg.tools.structure_map.tool_factory import (  # noqa: PLC0415
+        build_structure_map_tool_factory,
+    )
+
+    structure_map_repo = app_state.persistence.codebase_structure_maps
+    app_state.set_structure_map_tool_factory(
+        build_structure_map_tool_factory(repository=structure_map_repo)
+    )
+    catalog = app_state.connection_catalog if app_state.has_connection_catalog else None
+    import_service = BrownfieldImportService(
+        workspace_service=workspace_service,
+        source_resolver=BrownfieldSourceResolver(connection_catalog=catalog),
+        scanners=build_structure_map_scanners(),
+        structure_map_repo=structure_map_repo,
+        knowledge_service=knowledge_service,
+        clock=app_state.clock,
+    )
+    adapter = build_brownfield_entry_adapter(
+        work_pipeline=app_state.work_pipeline,
+        import_service=import_service,
+        forecast_gate=_forecast_gate_for(app_state),
+    )
+    if hot_swap:
+        app_state.swap_brownfield_entry_adapter(adapter)
+    else:
+        app_state.set_brownfield_entry_adapter_if_absent(adapter)

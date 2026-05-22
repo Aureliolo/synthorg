@@ -495,6 +495,31 @@ CREATE TABLE project_environments (
 CREATE INDEX idx_project_environments_declaration_hash
     ON project_environments(declaration_hash);
 
+-- ── Brownfield codebase structure map (1:1 with projects) ────
+CREATE TABLE codebase_structure_maps (
+    project_id TEXT NOT NULL PRIMARY KEY
+        CHECK (length(trim(project_id)) > 0),
+    source_ref TEXT NOT NULL
+        CHECK (length(trim(source_ref)) > 0),
+    modules TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(modules) AND json_type(modules) = 'array'),
+    entry_points TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(entry_points) AND json_type(entry_points) = 'array'),
+    test_suites TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(test_suites) AND json_type(test_suites) = 'array'),
+    build_files TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(build_files) AND json_type(build_files) = 'array'),
+    dependencies TEXT NOT NULL DEFAULT '[]'
+        CHECK (json_valid(dependencies) AND json_type(dependencies) = 'array'),
+    scanned_at TEXT NOT NULL,
+    content_hash TEXT NOT NULL
+        CHECK (length(content_hash) = 64),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_codebase_structure_maps_content_hash
+    ON codebase_structure_maps(content_hash);
+
 -- ── Living-documentation metadata ────────────────────────────
 CREATE TABLE project_docs (
     project_id TEXT NOT NULL,

@@ -76,6 +76,7 @@ one level up in `src/synthorg/persistence/`:
 | `approval_protocol.py`                 | `ApprovalRepository`: human-in-the-loop approval queue |
 | `auth_protocol.py`                     | `SessionRepository`, `RefreshTokenRepository`, `LockoutRepository` |
 | `ceremony_scheduler_state_protocol.py` | `CeremonySchedulerStateRepository`: per-sprint ceremony-trigger state (completion counters, fired-once flags, velocity history) so restarts re-hydrate position |
+| `codebase_structure_map_protocol.py`   | `CodebaseStructureMapRepository`: brownfield-intake structure map (modules, entry points, tests, build files, deps) for an imported codebase (1:1 per project) |
 | `escalation_protocol.py`               | Conflict-resolution escalation queue |
 | `fine_tune_protocol.py`                | `FineTuneRunRepository`, `FineTuneCheckpointRepository` |
 | `mcp_protocol.py`                      | MCP catalog installation repository |

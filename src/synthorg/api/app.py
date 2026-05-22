@@ -1598,12 +1598,43 @@ def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
                 error=safe_error_description(exc),
             )
 
+    _brownfield_intake_installed = False
+
+    async def _wire_brownfield_intake() -> None:
+        # Brownfield codebase intake (the "merger/acquisition" entry mode).
+        # Runs AFTER _wire_knowledge_engine so the import service can index
+        # the codebase into the knowledge store. Best-effort + idempotent:
+        # a missing collaborator (no persistence / workspace / knowledge)
+        # leaves the /brownfield controller to 503 rather than poisoning
+        # startup.
+        nonlocal _brownfield_intake_installed
+        if _brownfield_intake_installed:
+            return
+        from synthorg.engine.pipeline.entry.boot import (  # noqa: PLC0415
+            wire_real_brownfield_entry,
+        )
+
+        try:
+            await wire_real_brownfield_entry(app_state)
+            _brownfield_intake_installed = True
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.info(
+                API_APP_STARTUP,
+                service="brownfield_intake",
+                note="brownfield intake wiring unavailable; skipped",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
     startup = [
         *startup,
         _install_runtime_services,
         _wire_docs_engine,
         _wire_knowledge_engine,
         _wire_research_engine,
+        _wire_brownfield_intake,
     ]
 
     # Project telemetry: build collector (reads SYNTHORG_TELEMETRY_ENABLED env for

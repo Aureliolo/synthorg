@@ -14,6 +14,7 @@ from synthorg.api.controllers.artifacts import ArtifactController
 from synthorg.api.controllers.audit import AuditController
 from synthorg.api.controllers.autonomy import AutonomyController
 from synthorg.api.controllers.backup import BackupController
+from synthorg.api.controllers.brownfield import BrownfieldController
 from synthorg.api.controllers.budget import BudgetController
 from synthorg.api.controllers.budget_config_versions import (
     BudgetConfigVersionController,
@@ -186,6 +187,7 @@ OPTIONAL_CONTROLLERS: tuple[tuple[type[Controller], str], ...] = (
     (SimulationController, "has_simulation_runtime"),
     (RequestController, "has_simulation_runtime"),
     (ObjectiveController, "has_objective_entry_adapter"),
+    (BrownfieldController, "has_brownfield_entry_adapter"),
 )
 
 # Integration subsystem controllers. Registered only when
@@ -222,6 +224,7 @@ __all__ = [
     "AuthController",
     "AutonomyController",
     "BackupController",
+    "BrownfieldController",
     "BudgetConfigVersionController",
     "BudgetController",
     "CeremonyPolicyController",

@@ -275,6 +275,7 @@ export const DOC_TYPE_VALUES = [
     'status_report',
     'deliverable',
     'knowledge_note',
+    'codebase_analysis',
 ] as const
 export type DocType = (typeof DOC_TYPE_VALUES)[number]
 
@@ -756,6 +757,7 @@ export const TASK_TYPE_VALUES = [
     'review',
     'meeting',
     'admin',
+    'analysis',
 ] as const
 export type TaskType = (typeof TASK_TYPE_VALUES)[number]
 

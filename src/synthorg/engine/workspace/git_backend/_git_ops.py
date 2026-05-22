@@ -10,6 +10,8 @@ import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.errors import GitBackendSeedError
 from synthorg.engine.workspace._git_subprocess import (
     _redact_args,
     run_git_subprocess,
@@ -17,10 +19,12 @@ from synthorg.engine.workspace._git_subprocess import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     GIT_BACKEND_PROVISION_FAILED,
+    GIT_BACKEND_SEED_FAILED,
 )
 
 if TYPE_CHECKING:
     from synthorg.engine.errors import GitBackendError
+    from synthorg.engine.workspace.git_backend.protocol import ResolvedSource
 
 logger = get_logger(__name__)
 
@@ -245,6 +249,109 @@ async def configure_identity(
         fail_exc=fail_exc,
         project_id=project_id,
     )
+
+
+async def _assert_workspace_empty(
+    repo_root: Path,
+    *,
+    cmd_timeout: float,
+    project_id: str,
+) -> None:
+    """Raise if *repo_root* already holds a codebase.
+
+    ``ls-files`` alone misses untracked content, and ``status
+    --porcelain`` alone misses a clean committed tree (the re-seed
+    clobber case). Check both: tracked files OR non-ignored untracked
+    files mean the workspace already holds a codebase and seeding would
+    clobber it.
+    """
+    tracked = await git(
+        repo_root,
+        "ls-files",
+        cmd_timeout=cmd_timeout,
+        fail_exc=GitBackendSeedError,
+        project_id=project_id,
+        event=GIT_BACKEND_SEED_FAILED,
+    )
+    untracked = await git(
+        repo_root,
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        cmd_timeout=cmd_timeout,
+        fail_exc=GitBackendSeedError,
+        project_id=project_id,
+        event=GIT_BACKEND_SEED_FAILED,
+    )
+    if not (tracked.strip() or untracked.strip()):
+        return
+    logger.warning(
+        GIT_BACKEND_SEED_FAILED,
+        project_id=project_id,
+        reason="workspace_not_empty",
+    )
+    msg = (
+        f"refusing to seed project {project_id!r}: workspace already "
+        "contains files (a codebase is already present)"
+    )
+    raise GitBackendSeedError(msg)
+
+
+async def import_source_into_worktree(
+    repo_root: Path,
+    *,
+    source: ResolvedSource,
+    cmd_timeout: float,
+    project_id: str,
+) -> NotBlankStr:
+    """Fetch *source* into *repo_root* and reset the branch onto its head.
+
+    Requires an empty working tree (no tracked or untracked files):
+    provisioning lands a single empty commit, so any content means the
+    workspace already holds a codebase and seeding would clobber it. The
+    source is fetched directly from its URL (no named remote is
+    configured), so a credential embedded in ``fetch_url`` never
+    persists in the workspace's git config. Returns the imported head
+    SHA.
+
+    Raises:
+        GitBackendSeedError: The workspace is non-empty, or the
+            fetch / reset failed.
+    """
+    await _assert_workspace_empty(
+        repo_root, cmd_timeout=cmd_timeout, project_id=project_id
+    )
+    await git(
+        repo_root,
+        *source.pre_fetch_config_args,
+        "fetch",
+        str(source.fetch_url),
+        "HEAD",
+        cmd_timeout=cmd_timeout,
+        fail_exc=GitBackendSeedError,
+        project_id=project_id,
+        event=GIT_BACKEND_SEED_FAILED,
+    )
+    await git(
+        repo_root,
+        "reset",
+        "--hard",
+        "FETCH_HEAD",
+        cmd_timeout=cmd_timeout,
+        fail_exc=GitBackendSeedError,
+        project_id=project_id,
+        event=GIT_BACKEND_SEED_FAILED,
+    )
+    head = await git(
+        repo_root,
+        "rev-parse",
+        "HEAD",
+        cmd_timeout=cmd_timeout,
+        fail_exc=GitBackendSeedError,
+        project_id=project_id,
+        event=GIT_BACKEND_SEED_FAILED,
+    )
+    return NotBlankStr(head)
 
 
 async def init_working_tree_with_remote(  # noqa: PLR0913 -- irreducible git-init params

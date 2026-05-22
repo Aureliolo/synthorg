@@ -752,6 +752,37 @@ class FakeProjectWorkspaceRepository:
         return self._rows.pop(entity_id, None) is not None
 
 
+class FakeCodebaseStructureMapRepository:
+    """In-memory codebase_structure_maps repository for tests."""
+
+    def __init__(self) -> None:
+        from synthorg.core.codebase_structure_map import CodebaseStructureMap
+
+        self._rows: dict[str, CodebaseStructureMap] = {}
+
+    async def save(self, entity: Any) -> None:
+        self._rows[entity.project_id] = entity
+
+    async def get(self, entity_id: NotBlankStr) -> Any | None:
+        return self._rows.get(entity_id)
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
+        offset: int = 0,
+    ) -> tuple[Any, ...]:
+        result = sorted(self._rows.values(), key=lambda r: r.project_id)
+        return tuple(result[offset : offset + limit])
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._rows.pop(entity_id, None) is not None
+
+    def clear(self) -> None:
+        """Reset all stored structure maps for test isolation."""
+        self._rows.clear()
+
+
 class FakeProjectEnvironmentRepository:
     """In-memory project_environments repository for tests."""
 

@@ -8001,11 +8001,13 @@ export type components = {
          *     record progress and decisions. ``DELIVERABLE`` is an iteratively
          *     edited artifact the org produces (PRD, design doc, research memo).
          *     ``KNOWLEDGE_NOTE`` is freeform knowledge captured by agents during
-         *     work. All three share storage, chunking, and indexing; the type
-         *     drives wiki filtering and renderer affordances only.
+         *     work. ``CODEBASE_ANALYSIS`` is the architecture/health assessment a
+         *     brownfield-intake analysis pass produces over an imported codebase.
+         *     All share storage, chunking, and indexing; the type drives wiki
+         *     filtering and renderer affordances only.
          * @enum {string}
          */
-        readonly DocType: "status_report" | "deliverable" | "knowledge_note";
+        readonly DocType: "status_report" | "deliverable" | "knowledge_note" | "codebase_analysis";
         /** DocVersion */
         readonly DocVersion: {
             /** @description Agent that authored the write */
@@ -12599,7 +12601,7 @@ export type components = {
          * @default development
          * @enum {string}
          */
-        readonly TaskType: "development" | "design" | "research" | "review" | "meeting" | "admin";
+        readonly TaskType: "development" | "design" | "research" | "review" | "meeting" | "admin" | "analysis";
         /** Team */
         readonly Team: {
             /** @description Team lead agent name */

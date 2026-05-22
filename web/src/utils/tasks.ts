@@ -79,6 +79,7 @@ const TASK_TYPE_LABELS: Record<TaskType, string> = {
   review: 'Review',
   meeting: 'Meeting',
   admin: 'Admin',
+  analysis: 'Analysis',
 }
 
 export function getTaskTypeLabel(type: TaskType): string {

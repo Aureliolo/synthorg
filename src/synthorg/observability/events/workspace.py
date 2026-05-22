@@ -49,6 +49,9 @@ GIT_BACKEND_FETCH_COMPLETE: Final[str] = "git_backend.fetch.complete"
 GIT_BACKEND_FETCH_FAILED: Final[str] = "git_backend.fetch.failed"
 GIT_BACKEND_PUSH_RETRY: Final[str] = "git_backend.push.retry"
 GIT_BACKEND_REMOTE_PROVISIONED: Final[str] = "git_backend.remote.provisioned"
+GIT_BACKEND_SEED_START: Final[str] = "git_backend.seed.start"
+GIT_BACKEND_SEED_COMPLETE: Final[str] = "git_backend.seed.complete"
+GIT_BACKEND_SEED_FAILED: Final[str] = "git_backend.seed.failed"
 
 # ── Forge REST API events ────────────────────────────────────────
 FORGE_API_REPO_CREATED: Final[str] = "forge_api.repo.created"

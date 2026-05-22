@@ -23,6 +23,9 @@ from synthorg.engine.workspace.git_backend.protocol import (
     GitBackend,
     ProvisionResult,
     PushResult,
+    ResolvedSource,
+    SeedResult,
+    SourceKind,
 )
 
 __all__ = [
@@ -36,5 +39,8 @@ __all__ = [
     "LocalPathGitBackend",
     "ProvisionResult",
     "PushResult",
+    "ResolvedSource",
+    "SeedResult",
+    "SourceKind",
     "build_git_backend",
 ]
