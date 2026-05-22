@@ -21,6 +21,7 @@ from synthorg.engine.workspace.git_backend._git_ops import (
     REMOTE_NAME,
     configure_identity,
     git,
+    import_source_into_worktree,
     is_git_repo,
     reject_if_nested_in_parent_worktree,
 )
@@ -28,6 +29,8 @@ from synthorg.engine.workspace.git_backend.protocol import (
     FetchResult,
     ProvisionResult,
     PushResult,
+    ResolvedSource,
+    SeedResult,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
@@ -37,6 +40,8 @@ from synthorg.observability.events.workspace import (
     GIT_BACKEND_PROVISION_START,
     GIT_BACKEND_PUSH_COMPLETE,
     GIT_BACKEND_PUSH_FAILED,
+    GIT_BACKEND_SEED_COMPLETE,
+    GIT_BACKEND_SEED_START,
 )
 
 logger = get_logger(__name__)
@@ -172,6 +177,65 @@ class EmbeddedGitBackend:
             repo_root=NotBlankStr(str(workspace_path)),
             default_branch=default_branch,
             newly_created=True,
+        )
+
+    async def seed(
+        self,
+        *,
+        project_id: NotBlankStr,
+        repo_root: Path,
+        source: ResolvedSource,
+        default_branch: NotBlankStr,
+    ) -> SeedResult:
+        """Import *source* into the working tree, then push to the bare repo."""
+        pid = str(project_id)
+        logger.info(
+            GIT_BACKEND_SEED_START,
+            project_id=pid,
+            backend=GitBackendType.EMBEDDED.value,
+            source_kind=source.source_kind.value,
+        )
+        await import_source_into_worktree(
+            repo_root,
+            source=source,
+            cmd_timeout=self._cmd_timeout,
+            project_id=pid,
+        )
+        # Provisioning pushed an empty initial commit to the bare repo;
+        # the imported history is unrelated to it, so a plain push is a
+        # non-fast-forward rejection. Force-update the bare repo: the only
+        # thing overwritten is that throwaway empty commit on a workspace
+        # that was provisioned moments ago for this very import.
+        await git(
+            repo_root,
+            "push",
+            "--force",
+            REMOTE_NAME,
+            str(default_branch),
+            cmd_timeout=self._cmd_timeout,
+            fail_exc=GitBackendPushError,
+            project_id=pid,
+            event=GIT_BACKEND_PUSH_FAILED,
+        )
+        head = await git(
+            repo_root,
+            "rev-parse",
+            str(default_branch),
+            cmd_timeout=self._cmd_timeout,
+            fail_exc=GitBackendPushError,
+            project_id=pid,
+            event=GIT_BACKEND_PUSH_FAILED,
+        )
+        logger.info(
+            GIT_BACKEND_SEED_COMPLETE,
+            project_id=pid,
+            backend=GitBackendType.EMBEDDED.value,
+        )
+        return SeedResult(
+            repo_root=NotBlankStr(str(repo_root)),
+            default_branch=default_branch,
+            head_sha=NotBlankStr(head),
+            source_kind=source.source_kind,
         )
 
     async def push(

@@ -93,6 +93,14 @@ ENFORCED AcademicRetrievalSource #1989 -- constructed inside research/factory.py
 ENFORCED CodeRetrievalSource #1989 -- constructed inside research/factory.py::_build_sources when a CodeSearchProvider is injected
 ENFORCED build_research_tool_factory #1989 -- called in api/app.py::_wire_research_engine; per-task source of the ResearchTool
 ENFORCED ResearchTool #1989 -- constructed by research/tool_factory.py::ResearchToolFactory.build_tools per task with the agent's project + identity binding
+ENFORCED wire_real_brownfield_entry #1975 -- called by api/app.py::_wire_brownfield_intake; builds the import service + adapter and attaches them to AppState
+ENFORCED BrownfieldImportService #1975 -- constructed by engine/pipeline/entry/boot.py::wire_real_brownfield_entry; imports/seeds/scans/indexes an existing codebase
+ENFORCED BrownfieldSourceResolver #1975 -- constructed by boot.py::wire_real_brownfield_entry; SSRF-validates + forge-token-resolves the import source
+ENFORCED build_structure_map_scanners #1975 -- called by boot.py::wire_real_brownfield_entry + the import service; builds the pluggable per-ecosystem scanner set
+ENFORCED build_brownfield_entry_adapter #1975 -- called by boot.py::wire_real_brownfield_entry; constructs the BROWNFIELD work-entry adapter over the spine
+ENFORCED BrownfieldEntryAdapter #1975 -- constructed by engine/pipeline/entry/factory.py::build_brownfield_entry_adapter; the merger/acquisition entry mode
+ENFORCED build_structure_map_tool_factory #1975 -- called by boot.py::wire_real_brownfield_entry; attaches the per-task structure-map tool factory to AppState
+ENFORCED QueryStructureMapTool #1975 -- constructed by tools/structure_map/tool_factory.py::StructureMapToolFactory.build_tools per task with the project binding
 ENFORCED build_toolsmith #1995 -- called by api/app.py::_build_toolsmith_runtime behind tool_creation_enabled + provider switch; wires the self-extending toolkit runtime
 ENFORCED ToolsmithService #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; orchestrates gap detection -> author -> guard -> apply at the TOOL_CREATION altitude
 ENFORCED RingBufferCapabilityGapStore #1995 -- constructed by meta/toolsmith/factory.py::build_toolsmith; ring-buffered capability-gap sink + recurrence detector

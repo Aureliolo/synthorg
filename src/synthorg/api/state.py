@@ -183,6 +183,7 @@ if TYPE_CHECKING:
     from synthorg.meta.toolsmith.service import ToolsmithService
     from synthorg.research.service import ResearchService
     from synthorg.research.tool_factory import ResearchToolFactory
+    from synthorg.tools.structure_map.tool_factory import StructureMapToolFactory
 
     # Imported under TYPE_CHECKING so the optional ``synthorg[distributed]``
     # extra is not required at runtime for deployments that do not use the
@@ -228,6 +229,8 @@ class AppState(AppStateServicesMixin):
         "_backup_service",
         "_benchmark_provider",
         "_bridge_config_applied",
+        "_brownfield_background_tasks",
+        "_brownfield_entry_adapter",
         "_budget_config",
         "_ceremony_policy_service",
         "_ceremony_scheduler",
@@ -340,6 +343,7 @@ class AppState(AppStateServicesMixin):
         "_signals_service",
         "_simulation_facade_service",
         "_steering_directive",
+        "_structure_map_tool_factory",
         "_subworkflow_service",
         "_task_board_entry_adapter",
         "_task_engine",
@@ -391,6 +395,7 @@ class AppState(AppStateServicesMixin):
         work_pipeline: WorkPipeline | None = None,
         intake_entry_adapter: WorkEntryAdapter[Any] | None = None,
         objective_entry_adapter: WorkEntryAdapter[Any] | None = None,
+        brownfield_entry_adapter: WorkEntryAdapter[Any] | None = None,
         task_board_entry_adapter: TaskBoardEntryAdapter | None = None,
         agent_registry: AgentRegistryService | None = None,
         performance_tracker: PerformanceTracker | None = None,
@@ -455,6 +460,8 @@ class AppState(AppStateServicesMixin):
         self._intake_entry_adapter = intake_entry_adapter
         self._objective_entry_adapter = objective_entry_adapter
         self._objective_background_tasks: set[asyncio.Task[None]] = set()
+        self._brownfield_entry_adapter = brownfield_entry_adapter
+        self._brownfield_background_tasks: set[asyncio.Task[None]] = set()
         self._task_board_entry_adapter = task_board_entry_adapter
         self._agent_registry = agent_registry
         self._performance_tracker = performance_tracker
@@ -536,6 +543,7 @@ class AppState(AppStateServicesMixin):
         self._knowledge_tool_factory: KnowledgeToolFactory | None = None
         self._research_service: ResearchService | None = None
         self._research_tool_factory: ResearchToolFactory | None = None
+        self._structure_map_tool_factory: StructureMapToolFactory | None = None
         # Guards the double-checked locking on first-access lazy wiring
         # of worker_execution_service / experiment_service. Both
         # properties may be invoked from concurrent request handlers
@@ -1195,6 +1203,19 @@ class AppState(AppStateServicesMixin):
             "_research_tool_factory",
             factory,
             "Research tool factory",
+        )
+
+    @property
+    def structure_map_tool_factory(self) -> StructureMapToolFactory | None:
+        """Per-task factory for the brownfield structure-map tool, or ``None``."""
+        return self._structure_map_tool_factory
+
+    def set_structure_map_tool_factory(self, factory: StructureMapToolFactory) -> None:
+        """Attach the structure-map tool factory (once-only, startup)."""
+        self._set_once(
+            "_structure_map_tool_factory",
+            factory,
+            "Structure-map tool factory",
         )
 
     @property
@@ -2002,6 +2023,86 @@ class AppState(AppStateServicesMixin):
             logger.info(
                 API_APP_STARTUP,
                 service="objective_entry_adapter",
+                transition=transition,
+            )
+
+    @property
+    def brownfield_entry_adapter(self) -> WorkEntryAdapter[Any]:
+        """Return the brownfield codebase-intake entry adapter or raise 503."""
+        return self._require_service(
+            self._brownfield_entry_adapter,
+            "brownfield_entry_adapter",
+        )
+
+    @property
+    def brownfield_background_tasks(self) -> set[asyncio.Task[None]]:
+        """In-flight brownfield import + analysis pipeline tasks.
+
+        The ``BrownfieldController`` adds each spawned ``adapter.submit``
+        task here so a strong reference outlives the request handler; a
+        ``done_callback`` discards completed tasks so the set is bounded.
+        """
+        return self._brownfield_background_tasks
+
+    @property
+    def has_brownfield_entry_adapter(self) -> bool:
+        """Check whether the brownfield entry adapter is configured.
+
+        Unsynchronised by design, identical to
+        :meth:`has_objective_entry_adapter`: a single reference read is
+        atomic under CPython and the only ``None -> set`` flip happens
+        once at boot before HTTP traffic.
+        """
+        return self._brownfield_entry_adapter is not None
+
+    def set_brownfield_entry_adapter_if_absent(
+        self,
+        brownfield_entry_adapter: WorkEntryAdapter[Any],
+    ) -> bool:
+        """Attach the brownfield adapter only if none is configured (atomic).
+
+        Returns:
+            ``True`` if this call installed the adapter, ``False`` if one
+            was already configured (injected) and kept.
+        """
+        with self._lazy_service_lock:
+            if self._brownfield_entry_adapter is not None:
+                logger.info(
+                    API_APP_STARTUP,
+                    service="brownfield_entry_adapter",
+                    transition="skipped_injected",
+                )
+                return False
+            self._brownfield_entry_adapter = brownfield_entry_adapter
+            logger.info(
+                API_APP_STARTUP,
+                service="brownfield_entry_adapter",
+                transition="attached",
+            )
+            return True
+
+    def swap_brownfield_entry_adapter(
+        self,
+        brownfield_entry_adapter: WorkEntryAdapter[Any],
+    ) -> None:
+        """Replace the brownfield entry adapter (hot-reload after setup).
+
+        Holds ``_lazy_service_lock`` so the write is synchronised against
+        concurrent property reads, mirroring
+        :meth:`swap_objective_entry_adapter`.
+        """
+        with self._lazy_service_lock:
+            previous = self._brownfield_entry_adapter
+            if previous is brownfield_entry_adapter:
+                transition = "noop"
+            elif previous is None:
+                transition = "attached"
+            else:
+                transition = "replaced"
+            self._brownfield_entry_adapter = brownfield_entry_adapter
+            logger.info(
+                API_APP_STARTUP,
+                service="brownfield_entry_adapter",
                 transition=transition,
             )
 

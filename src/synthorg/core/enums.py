@@ -149,13 +149,16 @@ class DocType(StrEnum):
     record progress and decisions. ``DELIVERABLE`` is an iteratively
     edited artifact the org produces (PRD, design doc, research memo).
     ``KNOWLEDGE_NOTE`` is freeform knowledge captured by agents during
-    work. All three share storage, chunking, and indexing; the type
-    drives wiki filtering and renderer affordances only.
+    work. ``CODEBASE_ANALYSIS`` is the architecture/health assessment a
+    brownfield-intake analysis pass produces over an imported codebase.
+    All share storage, chunking, and indexing; the type drives wiki
+    filtering and renderer affordances only.
     """
 
     STATUS_REPORT = "status_report"
     DELIVERABLE = "deliverable"
     KNOWLEDGE_NOTE = "knowledge_note"
+    CODEBASE_ANALYSIS = "codebase_analysis"
 
 
 class SourceType(StrEnum):
@@ -382,6 +385,7 @@ class TaskType(StrEnum):
     REVIEW = "review"
     MEETING = "meeting"
     ADMIN = "admin"
+    ANALYSIS = "analysis"
 
 
 class Priority(StrEnum):

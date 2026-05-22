@@ -227,6 +227,19 @@ class GitBackendProvisionError(GitBackendError):
     default_message: ClassVar[str] = "Repository provisioning failed"
 
 
+class GitBackendSeedError(GitBackendError):
+    """Raised when the git backend fails to seed an existing source.
+
+    Seeding is the one-shot import of an existing repository (clone of a
+    remote URL or copy of a local path) into a freshly provisioned
+    workspace. Distinct from provisioning (which creates an empty repo):
+    a seed onto a workspace that already holds a git history fails here,
+    and the brownfield intake service maps that to its own typed error.
+    """
+
+    default_message: ClassVar[str] = "Repository seeding failed"
+
+
 class GitBackendPushError(GitBackendError):
     """Raised when the git backend fails to push a branch."""
 

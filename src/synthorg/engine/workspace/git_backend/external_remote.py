@@ -42,6 +42,7 @@ from synthorg.engine.workspace._git_subprocess import _redact_args, run_git_subp
 from synthorg.engine.workspace.git_backend._git_ops import (
     REMOTE_NAME,
     git,
+    import_source_into_worktree,
     init_working_tree_with_remote,
     is_git_repo,
 )
@@ -51,6 +52,8 @@ from synthorg.engine.workspace.git_backend.protocol import (
     FetchResult,
     ProvisionResult,
     PushResult,
+    ResolvedSource,
+    SeedResult,
 )
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
@@ -63,6 +66,8 @@ from synthorg.observability.events.workspace import (
     GIT_BACKEND_PUSH_FAILED,
     GIT_BACKEND_PUSH_RETRY,
     GIT_BACKEND_REMOTE_PROVISIONED,
+    GIT_BACKEND_SEED_COMPLETE,
+    GIT_BACKEND_SEED_START,
 )
 
 if TYPE_CHECKING:
@@ -324,6 +329,46 @@ class ExternalRemoteGitBackend:
             return
         msg = f"failed to clone forge remote for project {pid!r}"
         raise GitBackendProvisionError(msg)
+
+    async def seed(
+        self,
+        *,
+        project_id: NotBlankStr,
+        repo_root: Path,
+        source: ResolvedSource,
+        default_branch: NotBlankStr,
+    ) -> SeedResult:
+        """Import *source*, then push to the forge (lazy-creating it)."""
+        pid = str(project_id)
+        logger.info(
+            GIT_BACKEND_SEED_START,
+            project_id=pid,
+            backend=GitBackendType.EXTERNAL_REMOTE.value,
+            source_kind=source.source_kind.value,
+        )
+        await import_source_into_worktree(
+            repo_root,
+            source=source,
+            cmd_timeout=self._cmd_timeout,
+            project_id=pid,
+        )
+        pushed = await self.push(
+            project_id=project_id,
+            repo_root=repo_root,
+            branch=default_branch,
+            base_branch=default_branch,
+        )
+        logger.info(
+            GIT_BACKEND_SEED_COMPLETE,
+            project_id=pid,
+            backend=GitBackendType.EXTERNAL_REMOTE.value,
+        )
+        return SeedResult(
+            repo_root=NotBlankStr(str(repo_root)),
+            default_branch=default_branch,
+            head_sha=pushed.head_sha,
+            source_kind=source.source_kind,
+        )
 
     async def push(
         self,

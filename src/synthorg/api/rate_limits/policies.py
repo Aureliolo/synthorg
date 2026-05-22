@@ -83,6 +83,8 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "artifacts.upload": (10, 60),
     # auth
     "auth.ws_ticket": (20, 60),
+    # brownfield
+    "brownfield.import": (10, 60),
     # clients
     "clients.create": (10, 60),
     # collaboration

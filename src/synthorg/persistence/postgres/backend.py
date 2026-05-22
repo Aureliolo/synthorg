@@ -56,6 +56,9 @@ from synthorg.persistence.postgres.checkpoint_repo import (
 from synthorg.persistence.postgres.circuit_breaker_repo import (
     PostgresCircuitBreakerStateRepository,
 )
+from synthorg.persistence.postgres.codebase_structure_map_repo import (
+    PostgresCodebaseStructureMapRepository,
+)
 from synthorg.persistence.postgres.connection_repo import (
     PostgresConnectionRepository,
 )
@@ -217,6 +220,9 @@ if TYPE_CHECKING:
     from synthorg.persistence.circuit_breaker_protocol import (
         CircuitBreakerStateRepository,
     )
+    from synthorg.persistence.codebase_structure_map_protocol import (
+        CodebaseStructureMapRepository,
+    )
     from synthorg.persistence.connection_protocol import (
         ConnectionRepository,
         ConnectionSecretRepository,
@@ -317,6 +323,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._artifacts: ArtifactRepository | None = None
         self._projects: ProjectRepository | None = None
         self._project_workspaces: ProjectWorkspaceRepository | None = None
+        self._codebase_structure_maps: CodebaseStructureMapRepository | None = None
         self._project_environments: ProjectEnvironmentRepository | None = None
         self._project_docs: DocsRepository | None = None
         self._knowledge_sources: KnowledgeSourceRepository | None = None
@@ -386,6 +393,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._artifacts = None
         self._projects = None
         self._project_workspaces = None
+        self._codebase_structure_maps = None
         self._knowledge_sources = None
         self._knowledge_provenance = None
         self._research_runs = None
@@ -454,6 +462,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._artifacts = PostgresArtifactRepository(pool)
         self._projects = PostgresProjectRepository(pool)
         self._project_workspaces = PostgresProjectWorkspaceRepository(pool)
+        self._codebase_structure_maps = PostgresCodebaseStructureMapRepository(pool)
         self._knowledge_sources = PostgresKnowledgeSourceRepository(pool)
         self._knowledge_provenance = PostgresChunkProvenanceRepository(pool)
         self._research_runs = PostgresResearchRunRepository(pool)
@@ -729,6 +738,13 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
     def project_workspaces(self) -> ProjectWorkspaceRepository:
         """Repository for persistent per-project workspace mappings."""
         return self._require_connected(self._project_workspaces, "project_workspaces")
+
+    @property
+    def codebase_structure_maps(self) -> CodebaseStructureMapRepository:
+        """Repository for per-project brownfield codebase structure maps."""
+        return self._require_connected(
+            self._codebase_structure_maps, "codebase_structure_maps"
+        )
 
     @property
     def project_environments(self) -> ProjectEnvironmentRepository:

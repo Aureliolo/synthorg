@@ -46,6 +46,9 @@ if TYPE_CHECKING:
     from synthorg.persistence.circuit_breaker_protocol import (
         CircuitBreakerStateRepository,
     )
+    from synthorg.persistence.codebase_structure_map_protocol import (
+        CodebaseStructureMapRepository,
+    )
     from synthorg.persistence.connection_protocol import (
         ConnectionRepository,
         ConnectionSecretRepository,
@@ -157,6 +160,7 @@ class _BackendRepositoryAccessors:
     _artifacts: ArtifactRepository | None
     _projects: ProjectRepository | None
     _project_workspaces: ProjectWorkspaceRepository | None
+    _codebase_structure_maps: CodebaseStructureMapRepository | None
     _project_environments: ProjectEnvironmentRepository | None
     _project_docs: DocsRepository | None
     _knowledge_sources: KnowledgeSourceRepository | None
@@ -334,6 +338,13 @@ class _BackendRepositoryAccessors:
     def project_workspaces(self) -> ProjectWorkspaceRepository:
         """Repository for persistent per-project workspace mappings."""
         return self._require_connected(self._project_workspaces, "project_workspaces")
+
+    @property
+    def codebase_structure_maps(self) -> CodebaseStructureMapRepository:
+        """Repository for per-project brownfield codebase structure maps."""
+        return self._require_connected(
+            self._codebase_structure_maps, "codebase_structure_maps"
+        )
 
     @property
     def project_environments(self) -> ProjectEnvironmentRepository:

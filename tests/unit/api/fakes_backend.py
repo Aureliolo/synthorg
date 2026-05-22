@@ -30,6 +30,7 @@ from tests.unit.api.fakes import (
     FakeArtifactRepository,
     FakeAuditRepository,
     FakeCheckpointRepository,
+    FakeCodebaseStructureMapRepository,
     FakeCollaborationMetricRepository,
     FakeCostRecordRepository,
     FakeDecisionRepository,
@@ -604,6 +605,7 @@ class FakePersistenceBackend:
         self._artifacts = FakeArtifactRepository()
         self._projects = FakeProjectRepository()
         self._project_workspaces = FakeProjectWorkspaceRepository()
+        self._codebase_structure_maps = FakeCodebaseStructureMapRepository()
         self._project_environments = FakeProjectEnvironmentRepository()
         self._project_docs = FakeDocsRepository()
         self._knowledge_sources = FakeKnowledgeSourceRepository()
@@ -727,6 +729,10 @@ class FakePersistenceBackend:
     @property
     def project_workspaces(self) -> FakeProjectWorkspaceRepository:
         return self._project_workspaces
+
+    @property
+    def codebase_structure_maps(self) -> FakeCodebaseStructureMapRepository:
+        return self._codebase_structure_maps
 
     @property
     def project_environments(self) -> FakeProjectEnvironmentRepository:

@@ -355,6 +355,8 @@ class TestEventConstants:
             # Mission-control cockpit: live snapshot, flight-recorder
             # replay, and operator interventions.
             "cockpit",
+            # Brownfield codebase intake: import / seed / scan / index events.
+            "brownfield",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected

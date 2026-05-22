@@ -1171,6 +1171,12 @@ class _FakeBackend:
         return _FakeProjectWorkspaceRepository()
 
     @property
+    def codebase_structure_maps(self) -> object:
+        # ``PersistenceBackend`` is ``@runtime_checkable``; the isinstance
+        # conformance check only verifies the attribute exists.
+        return object()
+
+    @property
     def project_environments(self) -> _FakeProjectEnvironmentRepository:
         # Concrete fake so the protocol-conformance suite catches drift
         # between ``ProjectEnvironmentRepository`` and the backend's

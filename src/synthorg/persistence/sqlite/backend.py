@@ -55,6 +55,9 @@ from synthorg.persistence.sqlite.checkpoint_repo import (
 from synthorg.persistence.sqlite.circuit_breaker_repo import (
     SQLiteCircuitBreakerStateRepository,
 )
+from synthorg.persistence.sqlite.codebase_structure_map_repo import (
+    SQLiteCodebaseStructureMapRepository,
+)
 from synthorg.persistence.sqlite.connection_repo import SQLiteConnectionRepository
 from synthorg.persistence.sqlite.connection_secret_repo import (
     SQLiteConnectionSecretRepository,
@@ -222,6 +225,9 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._artifacts: SQLiteArtifactRepository | None = None
         self._projects: SQLiteProjectRepository | None = None
         self._project_workspaces: SQLiteProjectWorkspaceRepository | None = None
+        self._codebase_structure_maps: SQLiteCodebaseStructureMapRepository | None = (
+            None
+        )
         self._project_environments: SQLiteProjectEnvironmentRepository | None = None
         self._project_docs: SQLiteDocsRepository | None = None
         self._knowledge_sources: SQLiteKnowledgeSourceRepository | None = None
@@ -297,6 +303,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._artifacts = None
         self._projects = None
         self._project_workspaces = None
+        self._codebase_structure_maps = None
         self._project_environments = None
         self._project_docs = None
         self._knowledge_sources = None
@@ -459,6 +466,10 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._project_workspaces = SQLiteProjectWorkspaceRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._codebase_structure_maps = SQLiteCodebaseStructureMapRepository(
             self._db,
             write_context=self.write_context,
         )

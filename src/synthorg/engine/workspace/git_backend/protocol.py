@@ -7,13 +7,52 @@ it.  Implementations are interchangeable behind the
 storage is a config change only.
 """
 
+from enum import StrEnum
 from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649 introspection)
 from typing import Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import GitBackendType  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+
+class SourceKind(StrEnum):
+    """Classification of a brownfield import source reference.
+
+    ``REMOTE`` is a clone URL (https/ssh) fetched over the network;
+    ``LOCAL_PATH`` is an on-disk repository fetched from the filesystem.
+    """
+
+    REMOTE = "remote"
+    LOCAL_PATH = "local_path"
+
+
+class ResolvedSource(BaseModel):
+    """A brownfield import source resolved and ready to fetch.
+
+    Built by the service layer (which owns the connection catalog and
+    SSRF validation) so the git backend stays auth-agnostic: by the time
+    a backend sees it, ``fetch_url`` is fetch-ready (token injected when
+    the source matched a forge connection) and ``pre_fetch_config_args``
+    carries any ``git -c`` options needed for transport (e.g. DNS-pinning
+    ``http.curloptResolve`` for HTTPS sources).
+
+    ``fetch_url`` may embed a credential; never log it. The backend adds
+    it as a temporary remote, fetches once, and removes the remote, so it
+    never persists in the workspace's git config.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    fetch_url: NotBlankStr = Field(
+        description="Fetch-ready source reference (URL or local path)",
+    )
+    source_kind: SourceKind = Field(description="Source classification")
+    pre_fetch_config_args: tuple[str, ...] = Field(
+        default=(),
+        description="git -c options prepended to the fetch (transport pinning)",
+    )
 
 
 class ProvisionResult(BaseModel):
@@ -24,6 +63,17 @@ class ProvisionResult(BaseModel):
     repo_root: NotBlankStr
     default_branch: NotBlankStr
     newly_created: bool
+
+
+class SeedResult(BaseModel):
+    """Outcome of seeding a workspace from an existing source."""
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    repo_root: NotBlankStr
+    default_branch: NotBlankStr
+    head_sha: NotBlankStr
+    source_kind: SourceKind
 
 
 class PushResult(BaseModel):
@@ -67,6 +117,30 @@ class GitBackend(Protocol):
 
         Raises:
             GitBackendProvisionError: Repository creation failed.
+        """
+        ...
+
+    async def seed(
+        self,
+        *,
+        project_id: NotBlankStr,
+        repo_root: Path,
+        source: ResolvedSource,
+        default_branch: NotBlankStr,
+    ) -> SeedResult:
+        """Import an existing source into a freshly provisioned workspace.
+
+        One-shot history import: fetches *source* into *repo_root*, resets
+        the default branch onto the imported head, and pushes to the
+        backend's own origin (the imported codebase becomes the initial
+        real content). Distinct from :meth:`provision`, which creates an
+        empty repository.
+
+        Requires a provisioned-but-empty workspace (no tracked files).
+
+        Raises:
+            GitBackendSeedError: The workspace already holds a codebase,
+                or the fetch/reset failed.
         """
         ...
 

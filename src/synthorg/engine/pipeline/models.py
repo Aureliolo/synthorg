@@ -37,6 +37,7 @@ class WorkSource(StrEnum):
     TASK_BOARD = "task_board"
     OBJECTIVE = "objective"
     CONVERSATIONAL = "conversational"
+    BROWNFIELD = "brownfield"
 
 
 class RoutingVerdict(StrEnum):

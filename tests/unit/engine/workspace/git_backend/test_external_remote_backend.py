@@ -23,6 +23,10 @@ from synthorg.engine.errors import (
 from synthorg.engine.workspace.git_backend import ExternalRemoteGitBackend
 from synthorg.engine.workspace.git_backend.config import GitBackendResilienceConfig
 from synthorg.engine.workspace.git_backend.forge_api import ForgeApiClient, ForgeRepo
+from synthorg.engine.workspace.git_backend.protocol import (
+    ResolvedSource,
+    SourceKind,
+)
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import (
     AuthMethod,
@@ -353,3 +357,32 @@ class TestExternalRemotePushHardening:
         )
         assert fake.fetch_count == 2
         assert result.updated_refs == (NotBlankStr("main"),)
+
+
+class TestExternalRemoteSeed:
+    async def test_seed_imports_then_pushes(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        # Empty workspace (ls-files returns ""), source fetched, branch
+        # reset, then the imported head pushed to an existing forge repo.
+        fake = _FakeGit([(0, "")])
+        _patch_git(monkeypatch, fake)
+        _patch_forge(monkeypatch, _fake_forge(exists=True))
+        backend = _hardened_backend(_catalog_github())
+
+        result = await backend.seed(
+            project_id=NotBlankStr("p1"),
+            repo_root=tmp_path,
+            source=ResolvedSource(
+                fetch_url=NotBlankStr("https://github.com/acme/legacy.git"),
+                source_kind=SourceKind.REMOTE,
+            ),
+            default_branch=NotBlankStr("main"),
+        )
+
+        assert result.head_sha == "deadbeefcafe"
+        assert result.source_kind is SourceKind.REMOTE
+        assert fake.fetch_count == 1
+        assert fake.push_count == 1

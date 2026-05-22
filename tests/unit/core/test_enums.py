@@ -62,8 +62,8 @@ class TestEnumMemberCounts:
     def test_task_status_has_12_members(self) -> None:
         assert len(TaskStatus) == 12
 
-    def test_task_type_has_6_members(self) -> None:
-        assert len(TaskType) == 6
+    def test_task_type_has_7_members(self) -> None:
+        assert len(TaskType) == 7
 
     def test_priority_has_4_members(self) -> None:
         assert len(Priority) == 4

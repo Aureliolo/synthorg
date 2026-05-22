@@ -24,12 +24,15 @@ from synthorg.engine.errors import (
 from synthorg.engine.workspace.git_backend._git_ops import (
     assert_standalone_repo,
     git,
+    import_source_into_worktree,
     is_git_repo,
 )
 from synthorg.engine.workspace.git_backend.protocol import (
     FetchResult,
     ProvisionResult,
     PushResult,
+    ResolvedSource,
+    SeedResult,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
@@ -37,6 +40,8 @@ from synthorg.observability.events.workspace import (
     GIT_BACKEND_PROVISION_START,
     GIT_BACKEND_PUSH_COMPLETE,
     GIT_BACKEND_PUSH_FAILED,
+    GIT_BACKEND_SEED_COMPLETE,
+    GIT_BACKEND_SEED_START,
 )
 
 logger = get_logger(__name__)
@@ -215,6 +220,46 @@ class LocalPathGitBackend:
             repo_root=NotBlankStr(str(repo_path)),
             default_branch=default_branch,
             newly_created=True,
+        )
+
+    async def seed(
+        self,
+        *,
+        project_id: NotBlankStr,
+        repo_root: Path,
+        source: ResolvedSource,
+        default_branch: NotBlankStr,
+    ) -> SeedResult:
+        """Import *source* into the per-project repo (on-disk durable store)."""
+        pid = str(project_id)
+        logger.info(
+            GIT_BACKEND_SEED_START,
+            project_id=pid,
+            backend=GitBackendType.LOCAL_PATH.value,
+            source_kind=source.source_kind.value,
+        )
+        await import_source_into_worktree(
+            repo_root,
+            source=source,
+            cmd_timeout=self._cmd_timeout,
+            project_id=pid,
+        )
+        pushed = await self.push(
+            project_id=project_id,
+            repo_root=repo_root,
+            branch=default_branch,
+            base_branch=default_branch,
+        )
+        logger.info(
+            GIT_BACKEND_SEED_COMPLETE,
+            project_id=pid,
+            backend=GitBackendType.LOCAL_PATH.value,
+        )
+        return SeedResult(
+            repo_root=NotBlankStr(str(repo_root)),
+            default_branch=default_branch,
+            head_sha=pushed.head_sha,
+            source_kind=source.source_kind,
         )
 
     async def push(

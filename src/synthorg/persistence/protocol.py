@@ -51,6 +51,9 @@ from synthorg.persistence.checkpoint_protocol import (
 from synthorg.persistence.circuit_breaker_protocol import (
     CircuitBreakerStateRepository,  # noqa: TC001
 )
+from synthorg.persistence.codebase_structure_map_protocol import (  # noqa: TC001
+    CodebaseStructureMapRepository,
+)
 from synthorg.persistence.connection_protocol import (
     ConnectionRepository,  # noqa: TC001
     ConnectionSecretRepository,  # noqa: TC001
@@ -434,6 +437,11 @@ class PersistenceBackend(Protocol):
     @property
     def project_workspaces(self) -> ProjectWorkspaceRepository:
         """Repository for persistent per-project workspace mappings."""
+        ...
+
+    @property
+    def codebase_structure_maps(self) -> CodebaseStructureMapRepository:
+        """Repository for per-project brownfield codebase structure maps."""
         ...
 
     @property
