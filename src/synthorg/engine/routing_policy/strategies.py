@@ -2,7 +2,6 @@
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.agent import ModelConfig
 from synthorg.core.enums import Stakes, compare_stakes
 from synthorg.core.types import ModelTier  # noqa: TC001
 from synthorg.engine.routing_policy.config import StakesRoutingConfig
@@ -161,13 +160,12 @@ class StakesAwareStrategy:
             )
         )
         if changed and resolved is not None and target_tier is not None:
-            selected_model = ModelConfig(
-                provider=resolved.provider_name,
-                model_id=resolved.model_id,
-                temperature=current.temperature,
-                max_tokens=current.max_tokens,
-                fallback_model=current.fallback_model,
-                model_tier=target_tier,
+            selected_model = current.model_copy(
+                update={
+                    "provider": resolved.provider_name,
+                    "model_id": resolved.model_id,
+                    "model_tier": target_tier,
+                }
             )
             if nudged:
                 source = "stakes_aware:nudge"

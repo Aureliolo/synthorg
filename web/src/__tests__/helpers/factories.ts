@@ -33,6 +33,7 @@ export function makeTask(id: string, titleOrOverrides?: string | Partial<Dashboa
     artifacts_expected: [],
     acceptance_criteria: [],
     estimated_complexity: 'medium',
+    stakes: 'normal',
     budget_limit: 10,
     deadline: null,
     max_retries: 3,

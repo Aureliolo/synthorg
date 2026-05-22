@@ -18,6 +18,7 @@ function makeTask(overrides: Partial<Task> & { id: string; title: string }): Tas
     artifacts_expected: [],
     acceptance_criteria: [],
     estimated_complexity: 'medium',
+    stakes: 'normal',
     budget_limit: 10,
     deadline: null,
     max_retries: 3,

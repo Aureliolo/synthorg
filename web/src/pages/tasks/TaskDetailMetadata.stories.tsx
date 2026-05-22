@@ -17,6 +17,7 @@ const baseTask: DashboardTask = {
   artifacts_expected: [],
   acceptance_criteria: [],
   estimated_complexity: 'medium',
+  stakes: 'normal',
   budget_limit: 100,
   deadline: null,
   max_retries: 3,

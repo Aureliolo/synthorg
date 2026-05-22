@@ -18,6 +18,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     artifacts_expected: [],
     acceptance_criteria: [],
     estimated_complexity: 'complex',
+    stakes: 'normal',
     budget_limit: 10,
     cost: 3.45,
     deadline: new Date(Date.now() + 86400000 * 2).toISOString(),

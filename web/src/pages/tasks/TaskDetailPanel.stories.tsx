@@ -21,6 +21,7 @@ const mockTask: DashboardTask = {
     { description: 'JWT refresh rotation implemented', met: false },
   ],
   estimated_complexity: 'complex',
+  stakes: 'normal',
   budget_limit: 10,
   cost: 3.45,
   deadline: '2026-04-01T00:00:00.000Z',

@@ -204,8 +204,9 @@ consequential the work is. Each task (and subtask) carries a `stakes` level
 (`low` / `normal` / `high` / `critical`), assessed by the `StakesAssessor`. The
 `StakesRoutingStrategy` then picks the cheapest model tier whose benchmark score
 clears the per-stakes quality floor, bumps one tier when coordination metrics are
-unhealthy, marks high/critical work for the red-team gate, and never downgrades
-below the agent's configured tier. It is config-selectable via
+unhealthy, and marks high/critical work for the red-team gate. High/critical work
+is never routed below the agent's configured tier; low/normal work may drop to a
+cheaper tier (still clearing the floor) to save cost. It is config-selectable via
 `stakes_routing.strategy` (`stakes_aware` default, `flat` to opt out) and applied in
 the engine *before* the budget auto-downgrade, so a hard budget ceiling still wins
 over a stakes upgrade. See [Pluggable Subsystems](../reference/pluggable-subsystems.md).

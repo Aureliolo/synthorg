@@ -15,6 +15,7 @@ import {
 import type {
   Complexity,
   CoordinationTopology,
+  Stakes,
   TaskStatus,
   TaskStructure,
 } from '@/api/types/enums'
@@ -61,6 +62,12 @@ const COORDINATION_TOPOLOGY_SET: ReadonlySet<string> = new Set<string>([
   'context_dependent',
   'auto',
 ] satisfies readonly CoordinationTopology[])
+const STAKES_SET: ReadonlySet<string> = new Set<string>([
+  'low',
+  'normal',
+  'high',
+  'critical',
+] satisfies readonly Stakes[])
 const log = createLogger('tasks')
 
 // ``metadata`` is an arbitrary key-value bag on the wire
@@ -235,6 +242,7 @@ function sanitizeTask(c: DashboardTask): DashboardTask {
       met: ac.met ?? false,
     })),
     estimated_complexity: c.estimated_complexity,
+    stakes: c.stakes,
     budget_limit: c.budget_limit,
     cost: c.cost,
     deadline: sanitizeNullable(c.deadline ?? null, 64),
@@ -441,11 +449,12 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     // the ceiling math / id sanitizer invariants downstream.
     isNullableNumber(c.hard_ceiling) &&
     isNullableString(c.forecast_id) &&
-    // Enum scalars: complexity / task_structure / coordination_topology
-    // are intentionally NOT routed through sanitizeWsEnum -- they're
-    // closed enums coupled to coordination + scheduling code paths
-    // that branch on the exact value (e.g. coordination_topology
-    // selects a specific orchestrator). A backend-only addition of
+    // Enum scalars: complexity / stakes / task_structure /
+    // coordination_topology are intentionally NOT routed through
+    // sanitizeWsEnum -- they're closed enums coupled to routing +
+    // coordination + scheduling code paths that branch on the exact
+    // value (e.g. coordination_topology selects a specific
+    // orchestrator; stakes selects a model tier). A backend-only addition of
     // a new value would silently degrade behaviour rather than just
     // a label mismatch, so dropping the frame here is the safer
     // failure mode. If/when a new value is rolled out, the frontend
@@ -454,6 +463,8 @@ function isTaskShape(c: Record<string, unknown>): c is Record<string, unknown> &
     // facing labels with no behavioural branching.
     typeof c.estimated_complexity === 'string' &&
     COMPLEXITY_SET.has(c.estimated_complexity) &&
+    typeof c.stakes === 'string' &&
+    STAKES_SET.has(c.stakes) &&
     (c.task_structure === null ||
       (typeof c.task_structure === 'string' &&
         TASK_STRUCTURE_SET.has(c.task_structure))) &&

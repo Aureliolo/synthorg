@@ -344,21 +344,31 @@ async def _build_external_api_runtime(
     )
 
 
-def _build_stakes_router_or_none(app_state: AppState) -> StakesRouter | None:
+def _build_stakes_router_or_none(
+    app_state: AppState,
+    *,
+    active_provider_name: str,
+) -> StakesRouter | None:
     """Build the stakes-aware model router from live application state.
 
     Returns ``None`` when the benchmark provider is absent (cost-dial
     not wired, e.g. a persistence-less boot), so the engine simply skips
     stakes routing. Reads the benchmark provider and coordination-metrics
-    store off ``AppState`` and builds a tier resolver from the configured
-    providers; ships the ``stakes_aware`` default strategy.
+    store off ``AppState`` and builds a tier resolver scoped to the
+    single active provider that the runtime executes against, so the
+    router can never resolve a tier to a model owned by an inactive
+    provider and hand it to the wrong client; ships the ``stakes_aware``
+    default strategy.
     """
     from synthorg.providers.routing.resolver import ModelResolver  # noqa: PLC0415
 
     benchmark_provider = app_state.benchmark_provider
     if benchmark_provider is None:
         return None
-    resolver = ModelResolver.from_config(app_state.config.providers)
+    provider_cfg = app_state.config.providers.get(active_provider_name)
+    if provider_cfg is None:
+        return None
+    resolver = ModelResolver.from_config({active_provider_name: provider_cfg})
     coordination_store = (
         app_state.coordination_metrics_store
         if app_state.has_coordination_metrics_store
@@ -379,6 +389,8 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
     tool_registry: ToolRegistry,
     coordination_metrics_collector: CoordinationMetricsCollector | None,
     external_api_runtime: ExternalApiRuntime | None = None,
+    *,
+    active_provider_name: str,
 ) -> AgentEngine:
     """Assemble the boot ``AgentEngine`` from live application state.
 
@@ -394,7 +406,9 @@ def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators threaded in
         provider=provider,
         provider_registry=registry,
         tool_registry=tool_registry,
-        stakes_router=_build_stakes_router_or_none(app_state),
+        stakes_router=_build_stakes_router_or_none(
+            app_state, active_provider_name=active_provider_name
+        ),
         cost_tracker=(app_state.cost_tracker if app_state.has_cost_tracker else None),
         task_engine=app_state.task_engine,
         approval_store=app_state.approval_store,
@@ -683,6 +697,7 @@ async def build_runtime_services(
         tool_registry,
         coordination_metrics_collector,
         external_api_runtime,
+        active_provider_name=names[0],
     )
     autonomy_resolver = AutonomyResolver(
         registry=ActionTypeRegistry(),

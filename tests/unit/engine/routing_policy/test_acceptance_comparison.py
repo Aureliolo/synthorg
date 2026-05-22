@@ -15,6 +15,8 @@ The benchmark scores come from the calibrated stub, so the comparison
 is fully reproducible without any LLM spend.
 """
 
+from typing import Final
+
 import pytest
 from tests._shared.scripted_provider import make_e2e_identity
 
@@ -39,14 +41,14 @@ from synthorg.engine.routing_policy.config import QualityFloors
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 
-_PROVIDER = "example-provider"
-_TIER_MODEL_IDS: dict[ModelTier, str] = {
+_PROVIDER: Final[str] = "example-provider"
+_TIER_MODEL_IDS: Final[dict[ModelTier, str]] = {
     "small": "example-small-001",
     "medium": "example-medium-001",
     "large": "example-large-001",
 }
 # total_cost_per_1k = input + output; strictly increasing by tier.
-_TIER_TOTAL_COST: dict[ModelTier, float] = {
+_TIER_TOTAL_COST: Final[dict[ModelTier, float]] = {
     "small": 0.2,
     "medium": 1.0,
     "large": 4.0,
@@ -96,6 +98,12 @@ def _parent() -> Task:
 
 def _mixed_plan() -> DecompositionPlan:
     """Mostly low/normal stakes with a couple of high/critical subtasks."""
+    # Subtasks deliberately omit an explicit ``stakes=``: this acceptance
+    # test exercises the assessment end-to-end, so ``DecompositionService``
+    # derives each stakes level from ``estimated_complexity`` plus the
+    # description keywords ("architecture", "production", "irreversible").
+    # Keep those keyword cues in sync with the heuristic's inputs if they
+    # change, or the per-subtask tier assertions below will drift.
     subtasks = (
         SubtaskDefinition(
             id="st-doc",
