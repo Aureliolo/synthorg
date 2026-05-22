@@ -8,6 +8,7 @@ from synthorg.meta.mcp.domains.agents import AGENT_TOOLS
 from synthorg.meta.mcp.domains.analytics import ANALYTICS_TOOLS
 from synthorg.meta.mcp.domains.approvals import APPROVAL_TOOLS
 from synthorg.meta.mcp.domains.budget import BUDGET_TOOLS
+from synthorg.meta.mcp.domains.cockpit import COCKPIT_TOOLS
 from synthorg.meta.mcp.domains.communication import COMMUNICATION_TOOLS
 from synthorg.meta.mcp.domains.coordination import COORDINATION_TOOLS
 from synthorg.meta.mcp.domains.docs import DOCS_TOOLS
@@ -38,6 +39,7 @@ ALL_DOMAIN_TOOLS: tuple[tuple[MCPToolDef, ...], ...] = (
     ORGANIZATION_TOOLS,
     COORDINATION_TOOLS,
     ANALYTICS_TOOLS,
+    COCKPIT_TOOLS,
     MEMORY_TOOLS,
     QUALITY_TOOLS,
     META_TOOLS,
