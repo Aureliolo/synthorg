@@ -18,7 +18,11 @@ from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_org_mutation, require_read_access
+from synthorg.api.guards import (
+    require_approval_roles,
+    require_org_mutation,
+    require_read_access,
+)
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import ServiceUnavailableError
@@ -164,9 +168,13 @@ class CharterController(Controller):
         charter_id: str,
         state: State,
     ) -> ApiResponse[ProjectCharter]:
-        """Fetch a single charter by id."""
+        """Fetch a single charter by id (creator-only)."""
         service = self._service(state)
-        charter = await service.get(NotBlankStr(charter_id))
+        actor = require_actor()
+        charter = await service.get(
+            NotBlankStr(charter_id),
+            requested_by=NotBlankStr(actor.actor_id),
+        )
         return ApiResponse[ProjectCharter](data=charter)
 
     @patch(
@@ -204,6 +212,10 @@ class CharterController(Controller):
         "/{charter_id:str}/approve",
         status_code=200,
         guards=[
+            # Approve dispatches the charter to the spine and is gated to
+            # CEO / Manager / Board Member, matching the MCP handler's
+            # admin guardrail; budget is actually spent here.
+            require_approval_roles,
             require_org_mutation(),
             per_op_rate_limit_from_policy("meta.charters.approve", key="user"),
         ],

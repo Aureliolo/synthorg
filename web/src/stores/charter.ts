@@ -13,6 +13,11 @@ import type {
 
 const log = createLogger('charter')
 
+// Charter content lives in in-memory Zustand state for the lifetime of
+// the tab; nothing is persisted to localStorage / sessionStorage. The
+// authoritative copy is the server-side charter; closing the tab loses
+// only unsent draft edits.
+
 /** One rendered turn in the local interview transcript. */
 export interface InterviewMessage {
   id: string
@@ -64,11 +69,14 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
   },
 
   runTurn: async (message) => {
-    const { conversationId, messages } = get()
+    const { conversationId, messages: previousMessages } = get()
+    // Snapshot the pre-turn transcript so we can roll the optimistic
+    // user bubble back if the API call fails (otherwise the user sees
+    // their message with no assistant reply).
     set({
       sending: true,
       messages: [
-        ...messages,
+        ...previousMessages,
         { id: crypto.randomUUID(), role: 'user', content: message },
       ],
     })
@@ -100,7 +108,9 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
         title: 'Could not continue the interview',
         description: getErrorMessage(err),
       })
-      set({ sending: false })
+      // Restore the pre-turn transcript so a failed send does not leave
+      // an orphan user bubble in the chat.
+      set({ sending: false, messages: previousMessages })
     }
   },
 

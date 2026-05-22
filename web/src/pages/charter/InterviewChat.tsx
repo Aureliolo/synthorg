@@ -11,6 +11,10 @@ export interface InterviewChatProps {
   onSend: (message: string) => void
 }
 
+// Local chat-bubble for the charter interview. Not promoted to
+// `components/ui/` because it has a single caller and a single shape;
+// if a second caller appears it should move to a shared
+// `ui/chat-bubble.tsx` with stories.
 function ChatBubble({ message }: { message: InterviewMessage }) {
   const isUser = message.role === 'user'
   return (
@@ -46,7 +50,7 @@ export function InterviewChat({
   return (
     <SectionCard title="CEO interview">
       <div className="space-y-4">
-        <div className="space-y-3" aria-live="polite">
+        <div className="space-y-3" aria-live="polite" aria-atomic="true">
           {messages.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Describe your product idea in a sentence. The CEO will interview

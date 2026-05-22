@@ -8,6 +8,7 @@ import pytest
 from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.core.enums import CharterStatus, ProjectStatus
+from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.pipeline.errors import WorkProjectNotFoundError
@@ -20,6 +21,7 @@ from synthorg.meta.charter.models import (
     ScopeBoundaries,
 )
 from synthorg.meta.errors import CharterAlreadyDecidedError, CharterNotFoundError
+from synthorg.observability.events.charter import CHARTER_DISPATCH_FAILED
 from synthorg.persistence.charter_protocol import CharterRepository
 from synthorg.persistence.conversation_protocol import ConversationRepository
 from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
@@ -249,3 +251,159 @@ class TestApprove:
         forecast = next(iter(forecast_repo.items.values()))
         # Charter provenance points at the persisted forecast row.
         assert result.charter.forecast_id == forecast.forecast_id
+
+    async def test_brief_hash_deterministic_for_same_brief(self) -> None:
+        # Two charters with the same brief must produce the same forecast
+        # brief_hash so a retried approval upserts the same row (the
+        # ForecastGate later checks brief_hash to decide coverage).
+        dispatcher_a, repo_a, _, _ = _dispatcher(_charter())
+        dispatcher_b, repo_b, _, _ = _dispatcher(
+            _charter(id="charter-2", conversation_id="conv-2")
+        )
+        await dispatcher_a.approve(
+            NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
+        )
+        await dispatcher_b.approve(
+            NotBlankStr("charter-2"), approved_by=NotBlankStr("user-1")
+        )
+        hash_a = next(iter(repo_a.items.values())).brief_hash
+        hash_b = next(iter(repo_b.items.values())).brief_hash
+        assert hash_a == hash_b
+
+    async def test_concurrent_approve_only_one_wins_cas(self) -> None:
+        import asyncio
+
+        dispatcher, _, pipeline, proj_repo = _dispatcher(_charter())
+
+        async def _approve() -> object:
+            try:
+                return await dispatcher.approve(
+                    NotBlankStr("charter-1"),
+                    approved_by=NotBlankStr("user-1"),
+                )
+            except CharterAlreadyDecidedError as exc:
+                return exc
+
+        outcomes = await asyncio.gather(_approve(), _approve())
+        # Per-charter lock + status guard yield one success, one
+        # already-decided; project / pipeline run only once.
+        successes = [o for o in outcomes if not isinstance(o, Exception)]
+        already = [o for o in outcomes if isinstance(o, CharterAlreadyDecidedError)]
+        assert len(successes) == 1
+        assert len(already) == 1
+        assert len(pipeline.ran) == 1
+        assert len(proj_repo.created) == 1
+
+    async def test_dispatch_failure_is_logged_before_reraise(self) -> None:
+        import structlog
+        from structlog.testing import capture_logs
+
+        class _BoomPipeline:
+            async def run(self, work_item: WorkItem) -> object:
+                del work_item
+                msg = "spine boom"
+                raise RuntimeError(msg)
+
+        charter_repo = _FakeCharterRepo(_charter())
+        forecast_repo = _FakeForecastRepo()
+        proj_repo = _FakeProjectRepo()
+        from synthorg.api.services.project_service import ProjectService
+
+        dispatcher = CharterDispatcher(
+            charter_repo=cast(CharterRepository, charter_repo),
+            forecast_repo=cast(CostForecastRepository, forecast_repo),
+            project_service=ProjectService(repo=cast(ProjectRepository, proj_repo)),
+            work_pipeline=cast(WorkPipeline, _BoomPipeline()),
+            conversation_repo=cast(ConversationRepository, _FakeConversationRepo()),
+            budget_currency=lambda: _CURRENCY,
+            clock=FakeClock(start=_START),
+        )
+        del structlog  # imported for context; capture_logs is the seam
+        with (
+            capture_logs() as log_records,
+            pytest.raises(RuntimeError, match="spine boom"),
+        ):
+            await dispatcher.approve(
+                NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
+            )
+        # The failure was structurally logged with the charter id before
+        # the exception bubbled, so operators see the dispatch attempt.
+        assert any(
+            record.get("event") == CHARTER_DISPATCH_FAILED for record in log_records
+        )
+
+    async def test_duplicate_project_branch_is_idempotent(self) -> None:
+        # A previous approval attempt created the project; the retry must
+        # treat the DuplicateRecordError as a no-op and reuse the project.
+        class _DupProjectRepo(_FakeProjectRepo):
+            async def create(self, project: Project) -> None:
+                del project
+                msg = "duplicate"
+                raise DuplicateRecordError(msg)
+
+        from synthorg.api.services.project_service import ProjectService
+
+        charter_repo = _FakeCharterRepo(_charter())
+        forecast_repo = _FakeForecastRepo()
+        proj_repo = _DupProjectRepo()
+        pipeline = _FakeWorkPipeline()
+        dispatcher = CharterDispatcher(
+            charter_repo=cast(CharterRepository, charter_repo),
+            forecast_repo=cast(CostForecastRepository, forecast_repo),
+            project_service=ProjectService(repo=cast(ProjectRepository, proj_repo)),
+            work_pipeline=cast(WorkPipeline, pipeline),
+            conversation_repo=cast(ConversationRepository, _FakeConversationRepo()),
+            budget_currency=lambda: _CURRENCY,
+            clock=FakeClock(start=_START),
+        )
+        result = await dispatcher.approve(
+            NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
+        )
+        assert result.project_id == "charter-charter-1"
+        assert result.is_success is True
+
+    async def test_approve_idempotent_when_conversation_already_closed(self) -> None:
+        # The dispatcher's conversation-close path is transition_if(ACTIVE->CLOSED);
+        # if the conversation was already CLOSED, the close is a no-op and the
+        # approval still succeeds (the spine ran, the charter is APPROVED).
+        class _ClosedConvRepo(_FakeConversationRepo):
+            async def transition_if(self, entity_id: str, **kwargs: object) -> bool:
+                # Simulate already-closed: transition returns False.
+                self.closed.append(entity_id)
+                return False
+
+        from synthorg.api.services.project_service import ProjectService
+
+        charter_repo = _FakeCharterRepo(_charter())
+        forecast_repo = _FakeForecastRepo()
+        proj_repo = _FakeProjectRepo()
+        pipeline = _FakeWorkPipeline()
+        dispatcher = CharterDispatcher(
+            charter_repo=cast(CharterRepository, charter_repo),
+            forecast_repo=cast(CostForecastRepository, forecast_repo),
+            project_service=ProjectService(repo=cast(ProjectRepository, proj_repo)),
+            work_pipeline=cast(WorkPipeline, pipeline),
+            conversation_repo=cast(ConversationRepository, _ClosedConvRepo()),
+            budget_currency=lambda: _CURRENCY,
+            clock=FakeClock(start=_START),
+        )
+        result = await dispatcher.approve(
+            NotBlankStr("charter-1"), approved_by=NotBlankStr("user-1")
+        )
+        assert result.charter.status is CharterStatus.APPROVED
+        assert result.is_success is True
+
+    async def test_approve_by_approval_role_actor_succeeds(self) -> None:
+        # Approve is intentionally NOT ownership-fenced at the service
+        # layer; the REST surface is gated by `require_approval_roles`
+        # and the MCP surface by `require_admin_guardrails`, so an
+        # approval-tier actor legitimately dispatches a junior's
+        # charter. The original authorship stays on `created_by`.
+        dispatcher, _, pipeline, _ = _dispatcher(_charter())
+        result = await dispatcher.approve(
+            NotBlankStr("charter-1"),
+            approved_by=NotBlankStr("ceo-1"),
+        )
+        assert result.charter.approved_by == "ceo-1"
+        assert result.charter.created_by == "user-1"
+        assert len(pipeline.ran) == 1

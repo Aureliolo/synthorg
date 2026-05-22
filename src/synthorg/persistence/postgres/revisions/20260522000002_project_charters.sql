@@ -83,3 +83,7 @@ CREATE INDEX idx_project_charters_project_id ON project_charters(project_id);
 CREATE INDEX idx_project_charters_created_by ON project_charters(created_by);
 CREATE INDEX idx_project_charters_conversation_id
     ON project_charters(conversation_id);
+-- Composite (created_at, id) DESC covers the list_items / query
+-- ORDER BY so large pages avoid a sort.
+CREATE INDEX idx_project_charters_created_id
+    ON project_charters(created_at DESC, id DESC);

@@ -21,6 +21,7 @@ CHARTER_INTERVIEW_FAILED: Final[str] = "charter.interview.failed"
 
 CHARTER_EDITED: Final[str] = "charter.edited"
 CHARTER_STATUS_TRANSITIONED: Final[str] = "charter.status_transitioned"
+CHARTER_OWNERSHIP_DENIED: Final[str] = "charter.ownership_denied"
 
 # -- Approval to spine dispatch ----------------------------------------
 
@@ -45,6 +46,7 @@ __all__ = [
     "CHARTER_INTERVIEW_QUESTION",
     "CHARTER_INTERVIEW_RESPONSE_INVALID",
     "CHARTER_INTERVIEW_TURN",
+    "CHARTER_OWNERSHIP_DENIED",
     "CHARTER_STATUS_TRANSITIONED",
     "CHARTER_SUBSTRATE_UNAVAILABLE",
 ]

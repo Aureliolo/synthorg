@@ -19,12 +19,16 @@ export interface CharterDraftCardProps {
   onCancel: () => void
 }
 
+// Local-only render helper for the charter draft. Not a shared
+// design-system primitive; if it grows callers it should move to
+// `components/ui/string-list.tsx` with stories.
 function StringList({ items }: { items: readonly string[] }) {
   if (items.length === 0) return <p className="text-sm text-muted-foreground">None.</p>
   return (
     <ul className="list-disc space-y-1 pl-5 text-sm">
-      {items.map((item) => (
-        <li key={item}>{item}</li>
+      {items.map((item, idx) => (
+        // eslint-disable-next-line @eslint-react/no-array-index-key -- items lack stable ids; strings may duplicate
+        <li key={`${item}-${idx}`}>{item}</li>
       ))}
     </ul>
   )
@@ -123,7 +127,7 @@ export function CharterDraftCard({
               Save changes
             </Button>
             <Button onClick={onApprove} disabled={busy || dirty}>
-              Approve &amp; start run
+              Approve & start run
             </Button>
             <Button variant="ghost" onClick={onCancel} disabled={busy}>
               Cancel charter

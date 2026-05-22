@@ -41,6 +41,7 @@ from synthorg.observability.events.charter import (
     CHARTER_INTERVIEW_DRAFTED,
     CHARTER_INTERVIEW_QUESTION,
     CHARTER_INTERVIEW_TURN,
+    CHARTER_OWNERSHIP_DENIED,
     CHARTER_STATUS_TRANSITIONED,
 )
 from synthorg.persistence.charter_protocol import (
@@ -384,14 +385,34 @@ class CharterInterviewService:
             conversation_closed=True,
         )
 
-    async def get(self, charter_id: NotBlankStr) -> ProjectCharter:
+    async def get(
+        self,
+        charter_id: NotBlankStr,
+        *,
+        requested_by: NotBlankStr | None = None,
+    ) -> ProjectCharter:
         """Return a charter by id.
 
+        When ``requested_by`` is supplied, a charter created by a
+        different actor is treated as unfound so the response cannot
+        be used to probe a foreign charter's existence; the
+        discriminating ids surface in the structured warning so
+        operators can still see ownership-fence events in logs.
+
         Raises:
-            CharterNotFoundError: When the id is unknown.
+            CharterNotFoundError: When the id is unknown OR the
+                requester is not the creator.
         """
         charter = await self._charter_repo.get(charter_id)
         if charter is None:
+            raise CharterNotFoundError(charter_id=charter_id)
+        if requested_by is not None and charter.created_by != requested_by:
+            logger.warning(
+                CHARTER_OWNERSHIP_DENIED,
+                charter_id=charter_id,
+                created_by=charter.created_by,
+                requested_by=requested_by,
+            )
             raise CharterNotFoundError(charter_id=charter_id)
         return charter
 
@@ -423,11 +444,13 @@ class CharterInterviewService:
         """Apply an in-place edit to a DRAFTED charter.
 
         Raises:
-            CharterNotFoundError: When the id is unknown.
+            CharterNotFoundError: When the id is unknown OR the editor
+                is not the charter's creator (ownership fence shaped
+                as NotFound so the response cannot probe existence).
             CharterNotEditableError: When the charter is no longer
                 DRAFTED.
         """
-        charter = await self.get(charter_id)
+        charter = await self.get(charter_id, requested_by=edited_by)
         if charter.status is not CharterStatus.DRAFTED:
             raise CharterNotEditableError(charter_id=charter_id)
         updates = self._edit_updates(args)
@@ -466,14 +489,24 @@ class CharterInterviewService:
         charter_id: NotBlankStr,
         *,
         cancelled_by: NotBlankStr,
+        enforce_ownership: bool = True,
     ) -> ProjectCharter:
         """Cancel a DRAFTED charter (terminal).
 
+        ``enforce_ownership=False`` is reserved for admin paths (the MCP
+        cancel handler is admin-gated at the registry layer) where an
+        operator legitimately cancels a stalled charter they did not
+        create.
+
         Raises:
-            CharterNotFoundError: When the id is unknown.
+            CharterNotFoundError: When the id is unknown OR (when
+                ``enforce_ownership`` is set) the canceller is not the
+                creator.
             CharterNotEditableError: When the charter is not DRAFTED.
         """
-        charter = await self.get(charter_id)
+        charter = await self.get(
+            charter_id, requested_by=cancelled_by if enforce_ownership else None
+        )
         if charter.status is not CharterStatus.DRAFTED:
             raise CharterNotEditableError(charter_id=charter_id)
         now = self._clock.now()

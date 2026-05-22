@@ -58,7 +58,12 @@ logger = get_logger(__name__)
 
 _ORIGIN_ADAPTER_ID: NotBlankStr = NotBlankStr("charter-interview")
 # Fixed namespace for deriving a deterministic, retry-stable forecast id
-# from a charter id (uuid5), so a retried approval upserts one forecast.
+# from the (unique) charter id via uuid5, so a retried approval upserts
+# one forecast rather than creating duplicates. The namespace is not a
+# secret: only the charter id is hashed against it, and charter ids are
+# already opaque uuid4s, so id collisions are bounded by charter id
+# uniqueness. Rotating this constant would orphan in-flight forecasts;
+# treat it as part of the persistence contract.
 _FORECAST_NAMESPACE: uuid.UUID = uuid.UUID("6f1d4c2e-0000-4000-8000-000000000001")
 
 
@@ -173,13 +178,19 @@ class CharterDispatcher:
         charter = await self._charter_repo.get(charter_id)
         if charter is None:
             raise CharterNotFoundError(charter_id=charter_id)
+        # Approve is intentionally NOT ownership-fenced: the REST surface
+        # is gated to CEO / Manager / Board Member via require_approval_roles
+        # and the MCP surface is admin-gated via require_admin_guardrails,
+        # so an approval-tier role can legitimately dispatch a junior's
+        # charter (charter authorship is preserved separately on
+        # ``created_by`` for audit).
         if charter.status is not CharterStatus.DRAFTED:
             raise CharterAlreadyDecidedError(charter_id=charter_id)
         currency = self._budget_currency()
         self._require_matching_currency(charter, currency)
         now = self._clock.now()
 
-        project_id = await self._resolve_project(charter, now)
+        project_id = await self._resolve_project(charter)
         forecast = self._build_forecast(charter, currency, approved_by, now)
         await self._forecast_repo.save(forecast)
         work_item = self._build_work_item(charter, project_id, forecast, now)
@@ -224,9 +235,7 @@ class CharterDispatcher:
                 currencies=frozenset({charter.envelope.currency, currency}),
             )
 
-    async def _resolve_project(
-        self, charter: ProjectCharter, now: datetime
-    ) -> NotBlankStr:
+    async def _resolve_project(self, charter: ProjectCharter) -> NotBlankStr:
         """Verify an existing project or create the proposed new one.
 
         New-project creation is idempotent: the project id is derived
@@ -262,7 +271,6 @@ class CharterDispatcher:
                 project_id=project_id,
                 note="project already created on a prior attempt",
             )
-        del now
         return project_id
 
     def _build_forecast(

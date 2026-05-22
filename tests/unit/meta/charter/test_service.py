@@ -368,3 +368,139 @@ class TestEditAndCancel:
                     conversation_id=NotBlankStr(result.conversation_id),
                 )
             )
+
+
+class TestOwnership:
+    async def test_get_by_non_creator_is_unfound(self) -> None:
+        service, _ = _service([InterviewDecision(needs_more=False, draft=_draft())])
+        result = await service.run_turn(
+            InterviewTurnArgs(message=NotBlankStr("idea"), created_by="u1")
+        )
+        assert result.charter is not None
+        # Same actor: reads through.
+        same = await service.get(result.charter.id, requested_by=NotBlankStr("u1"))
+        assert same.id == result.charter.id
+        # Foreign actor: shaped as NotFound (no probe of existence).
+        with pytest.raises(CharterNotFoundError):
+            await service.get(result.charter.id, requested_by=NotBlankStr("u2"))
+
+    async def test_edit_by_non_creator_is_denied(self) -> None:
+        service, _ = _service([InterviewDecision(needs_more=False, draft=_draft())])
+        result = await service.run_turn(
+            InterviewTurnArgs(message=NotBlankStr("idea"), created_by="u1")
+        )
+        assert result.charter is not None
+        with pytest.raises(CharterNotFoundError):
+            await service.edit_charter(
+                result.charter.id,
+                CharterEditArgs(brief=NotBlankStr("hijacked")),
+                edited_by=NotBlankStr("attacker"),
+            )
+
+    async def test_cancel_by_non_creator_is_denied(self) -> None:
+        service, _ = _service([InterviewDecision(needs_more=False, draft=_draft())])
+        result = await service.run_turn(
+            InterviewTurnArgs(message=NotBlankStr("idea"), created_by="u1")
+        )
+        assert result.charter is not None
+        with pytest.raises(CharterNotFoundError):
+            await service.cancel_charter(
+                result.charter.id, cancelled_by=NotBlankStr("attacker")
+            )
+
+
+class TestConcurrency:
+    async def test_concurrent_turns_serialize_on_same_conversation(self) -> None:
+        # Two concurrent run_turn calls on the same conversation must
+        # not interleave: the lock guarantees one snapshot per turn so
+        # the second turn sees the first user message and assistant
+        # reply before snapshotting its own history.
+        import asyncio
+
+        # Three decisions: one for the initial seeding turn, then two
+        # more for the concurrent pair (the lock guarantees both run
+        # and each consumes exactly one decision).
+        service, _ = _service(
+            [
+                InterviewDecision(needs_more=True, next_question="What budget?"),
+                InterviewDecision(
+                    needs_more=True, next_question="What is the deadline?"
+                ),
+                InterviewDecision(needs_more=False, draft=_draft()),
+            ]
+        )
+        first = await service.run_turn(
+            InterviewTurnArgs(message=NotBlankStr("a vague idea"), created_by="u1")
+        )
+
+        # Now fire two concurrent turns on the same conversation.
+        async def _turn(text: str) -> object:
+            return await service.run_turn(
+                InterviewTurnArgs(
+                    message=NotBlankStr(text),
+                    created_by="u1",
+                    conversation_id=first.conversation_id,
+                )
+            )
+
+        outcomes = await asyncio.gather(_turn("sharper-1"), _turn("sharper-2"))
+        # Both turns succeeded (strategy provided enough decisions);
+        # no exception, no charter-double-mint, no lost-update.
+        assert all(o is not None for o in outcomes)
+
+    async def test_lock_allocation_under_many_distinct_conversations(self) -> None:
+        # Lock allocation guards against a race in the per-conversation
+        # lock dict creation. Fan out many first-uses of distinct ids;
+        # all must complete cleanly.
+        import asyncio
+
+        decisions = [
+            InterviewDecision(needs_more=True, next_question=NotBlankStr(f"q{i}"))
+            for i in range(20)
+        ]
+        service, _ = _service(decisions)
+
+        async def _open(idx: int) -> object:
+            return await service.run_turn(
+                InterviewTurnArgs(
+                    message=NotBlankStr(f"idea-{idx}"),
+                    created_by=NotBlankStr(f"u{idx}"),
+                )
+            )
+
+        results = await asyncio.gather(*[_open(i) for i in range(20)])
+        assert len(results) == 20
+
+    async def test_turn_cap_at_default_config_boundary(self) -> None:
+        # Default cap (CharterConfig.interview_max_turns) is honoured;
+        # the (cap+1)th assistant turn replies with the cap message and
+        # the conversation transitions to CLOSED.
+        default_cap = CharterConfig().interview_max_turns
+        decisions: list[InterviewDecision] = [
+            InterviewDecision(needs_more=True, next_question=NotBlankStr(f"q{i}"))
+            for i in range(default_cap)
+        ]
+        # One extra decision that should never be consumed; the cap
+        # path returns before the strategy is invoked.
+        decisions.append(InterviewDecision(needs_more=False, draft=_draft()))
+        service, _ = _service(decisions)
+        first = await service.run_turn(
+            InterviewTurnArgs(message=NotBlankStr("idea-0"), created_by="u1")
+        )
+        for i in range(1, default_cap):
+            await service.run_turn(
+                InterviewTurnArgs(
+                    message=NotBlankStr(f"idea-{i}"),
+                    created_by="u1",
+                    conversation_id=first.conversation_id,
+                )
+            )
+        # The cap+1 turn must be force-closed.
+        capped = await service.run_turn(
+            InterviewTurnArgs(
+                message=NotBlankStr("one too many"),
+                created_by="u1",
+                conversation_id=first.conversation_id,
+            )
+        )
+        assert capped.conversation_closed is True

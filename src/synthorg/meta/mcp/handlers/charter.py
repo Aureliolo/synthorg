@@ -203,7 +203,13 @@ async def _charter_cancel(
     try:
         svc = _require_charter_service(app_state)
         charter_id = NotBlankStr(require_arg(arguments, _ARG_CHARTER_ID, str))
-        cancelled = await svc.cancel_charter(charter_id, cancelled_by=_actor_id(actor))
+        # MCP cancel is admin-gated at the registry; an operator can
+        # cancel a stalled charter they did not create.
+        cancelled = await svc.cancel_charter(
+            charter_id,
+            cancelled_by=_actor_id(actor),
+            enforce_ownership=False,
+        )
         logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=_TOOL_CANCEL)
         return ok(cancelled.model_dump(mode="json"))
     except ArgumentValidationError as exc:
