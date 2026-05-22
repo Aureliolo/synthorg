@@ -2338,6 +2338,92 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/meta/charters": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** ListCharters */
+        readonly get: operations["ApiV1MetaChartersListCharters"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/meta/charters/{charter_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** GetCharter */
+        readonly get: operations["ApiV1MetaChartersCharterIdGetCharter"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /** EditCharter */
+        readonly patch: operations["ApiV1MetaChartersCharterIdEditCharter"];
+        readonly trace?: never;
+    };
+    readonly "/api/v1/meta/charters/{charter_id}/approve": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** ApproveCharter */
+        readonly post: operations["ApiV1MetaChartersCharterIdApproveApproveCharter"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/meta/charters/{charter_id}/cancel": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** CancelCharter */
+        readonly post: operations["ApiV1MetaChartersCharterIdCancelCancelCharter"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/meta/charters/interview": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Interview */
+        readonly post: operations["ApiV1MetaChartersInterviewInterview"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/meta/chat": {
         readonly parameters: {
             readonly query?: never;
@@ -4775,6 +4861,8 @@ export type components = {
             readonly custom_header_name: string;
             readonly custom_header_value: string;
         };
+        /** _DecisionRequest */
+        readonly _DecisionRequest: Record<string, never>;
         /** _OAuthRotation */
         readonly _OAuthRotation: {
             /** @constant */
@@ -5290,6 +5378,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[CharterApprovalResult] */
+        readonly ApiResponse_CharterApprovalResult_: {
+            readonly data: components["schemas"]["CharterApprovalResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[CheckpointRecord] */
         readonly ApiResponse_CheckpointRecord_: {
             readonly data: components["schemas"]["CheckpointRecord"] | null;
@@ -5510,6 +5606,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[InterviewTurnResult] */
+        readonly ApiResponse_InterviewTurnResult_: {
+            readonly data: components["schemas"]["InterviewTurnResult"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[KnowledgeSource] */
         readonly ApiResponse_KnowledgeSource_: {
             readonly data: components["schemas"]["KnowledgeSource"] | null;
@@ -5625,6 +5729,14 @@ export type components = {
         /** ApiResponse[Project] */
         readonly ApiResponse_Project_: {
             readonly data: components["schemas"]["Project"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[ProjectCharter] */
+        readonly ApiResponse_ProjectCharter_: {
+            readonly data: components["schemas"]["ProjectCharter"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -6714,6 +6826,19 @@ export type components = {
              */
             readonly total_monthly: number;
         };
+        /** BudgetEnvelope */
+        readonly BudgetEnvelope: {
+            /** @description Budget ceiling in `currency` */
+            readonly amount: number;
+            /** @description ISO 4217 currency code */
+            readonly currency: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly deadline: string | null;
+            readonly time_horizon: string | null;
+        };
         /** BulletListBlock */
         readonly BulletListBlock: {
             readonly block_id: string;
@@ -6844,6 +6969,37 @@ export type components = {
          * @enum {string}
          */
         readonly ChannelType: "topic" | "direct" | "broadcast";
+        /** CharterApprovalResult */
+        readonly CharterApprovalResult: {
+            readonly charter: components["schemas"]["ProjectCharter"];
+            readonly is_success: boolean;
+            readonly project_id: string;
+            readonly task_id: string;
+        };
+        /** CharterEditRequest */
+        readonly CharterEditRequest: {
+            readonly brief?: string | null;
+            readonly constraints?: readonly string[] | null;
+            readonly envelope?: components["schemas"]["BudgetEnvelope"] | null;
+            readonly goals?: readonly string[] | null;
+            readonly scope?: components["schemas"]["ScopeBoundaries"] | null;
+            readonly success_criteria?: readonly string[] | null;
+            readonly title?: string | null;
+        };
+        /**
+         * CharterStatus
+         * @description Lifecycle state of a project charter produced by a deep interview.
+         *
+         *     Attributes:
+         *         DRAFTED: The interview produced a charter draft; the user may
+         *             review and edit it in place. The only non-terminal state.
+         *         APPROVED: The charter was approved and dispatched into the work
+         *             pipeline spine as a real project run. Terminal.
+         *         CANCELLED: The charter was discarded before approval. Terminal.
+         * @default drafted
+         * @enum {string}
+         */
+        readonly CharterStatus: "drafted" | "approved" | "cancelled";
         /** ChatRequest */
         readonly ChatRequest: {
             /** Format: uuid */
@@ -8213,7 +8369,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3012 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4006 | 4007 | 4008 | 4009 | 4010 | 4011 | 4012 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 5000 | 5001 | 5002 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -9045,6 +9201,22 @@ export type components = {
          * @enum {string}
          */
         readonly InterventionKind: "pause" | "kill" | "hint" | "redirect";
+        /** InterviewTurnRequest */
+        readonly InterviewTurnRequest: {
+            readonly conversation_id?: string | null;
+            readonly message: string;
+            readonly project?: string | null;
+        };
+        /** InterviewTurnResult */
+        readonly InterviewTurnResult: {
+            readonly charter: components["schemas"]["ProjectCharter"] | null;
+            /** @default false */
+            readonly conversation_closed: boolean;
+            readonly conversation_id: string;
+            readonly next_question: string | null;
+            /** @enum {string} */
+            readonly status: "needs_more" | "drafted";
+        };
         /** KillInterventionRequest */
         readonly KillInterventionRequest: {
             /** @description Operator reason for the kill */
@@ -10271,6 +10443,21 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** PaginatedResponse[ProjectCharter] */
+        readonly PaginatedResponse_ProjectCharter_: {
+            /** @default [] */
+            readonly data: readonly components["schemas"]["ProjectCharter"][];
+            /**
+             * @description Data sources that failed gracefully (partial data)
+             * @default []
+             */
+            readonly degraded_sources: readonly string[];
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            readonly pagination: components["schemas"]["PaginationMeta"];
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** PaginatedResponse[ProviderAuditEvent] */
         readonly PaginatedResponse_ProviderAuditEvent_: {
             /** @default [] */
@@ -11025,6 +11212,49 @@ export type components = {
              * @default []
              */
             readonly team: readonly string[];
+        };
+        /** ProjectCharter */
+        readonly ProjectCharter: {
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly approved_at: string | null;
+            readonly approved_by: string | null;
+            readonly brief: string;
+            /** @default [] */
+            readonly constraints: readonly string[];
+            readonly conversation_id: string;
+            readonly correlation_id: string | null;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly created_at: string;
+            readonly created_by: string;
+            readonly envelope: components["schemas"]["BudgetEnvelope"];
+            /** Format: uuid */
+            readonly forecast_id: string | null;
+            /** @default [] */
+            readonly goals: readonly string[];
+            readonly id: string;
+            readonly project_id: string | null;
+            /** @default  */
+            readonly proposed_project_description: string;
+            readonly proposed_project_name: string | null;
+            readonly scope: components["schemas"]["ScopeBoundaries"];
+            readonly status: components["schemas"]["CharterStatus"];
+            /** @default [] */
+            readonly success_criteria: readonly string[];
+            readonly task_id: string | null;
+            readonly title: string;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly updated_at: string;
+            /** @default 1 */
+            readonly version: number;
         };
         /**
          * ProjectStatus
@@ -11835,6 +12065,13 @@ export type components = {
             /** @description Priority rank */
             readonly priority: number;
         };
+        /** ScopeBoundaries */
+        readonly ScopeBoundaries: {
+            /** @default [] */
+            readonly in_scope: readonly string[];
+            /** @default [] */
+            readonly out_of_scope: readonly string[];
+        };
         /** ScopingPayload */
         readonly ScopingPayload: {
             /** @description Scoping notes from the reviewer */
@@ -11993,7 +12230,7 @@ export type components = {
          *     can be edited at runtime via the settings API.
          * @enum {string}
          */
-        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit";
+        readonly SettingNamespace: "api" | "client" | "company" | "providers" | "memory" | "budget" | "security" | "coordination" | "observability" | "backup" | "engine" | "communication" | "a2a" | "integrations" | "meta" | "notifications" | "objectives" | "simulations" | "tools" | "settings" | "hr" | "workers" | "telemetry" | "external_api" | "research" | "cockpit" | "charter";
         /**
          * SettingSource
          * @description Origin of a resolved setting value.
@@ -19097,6 +19334,199 @@ export interface operations {
             };
             readonly 400: components["responses"]["BadRequest"];
             readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChartersListCharters: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Opaque pagination cursor returned by the previous page */
+                readonly cursor?: string | null;
+                /** @description Page size (default 50, max 200) */
+                readonly limit?: number;
+                readonly project_id?: string | null;
+                readonly status?: "drafted" | "approved" | "cancelled" | null;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PaginatedResponse_ProjectCharter_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChartersCharterIdGetCharter: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly charter_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ProjectCharter_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChartersCharterIdEditCharter: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly charter_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CharterEditRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ProjectCharter_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChartersCharterIdApproveApproveCharter: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly charter_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["_DecisionRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_CharterApprovalResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChartersCharterIdCancelCancelCharter: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly charter_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["_DecisionRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ProjectCharter_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1MetaChartersInterviewInterview: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["InterviewTurnRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_InterviewTurnResult_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

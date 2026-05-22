@@ -32,6 +32,7 @@ const SETTING_NAMESPACE_TABLE: Record<SettingNamespace, true> = {
   a2a: true,
   integrations: true,
   meta: true,
+  charter: true,
   notifications: true,
   objectives: true,
   simulations: true,

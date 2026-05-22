@@ -175,6 +175,8 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self._self_improvement_service = None
         self._chief_of_staff_chat = None
         self._chief_of_staff_proposer = None
+        self._charter_service = None
+        self._charter_dispatcher = None
         self._conversational_proposal_repo = None
 
     # Slot attrs for facade services (populated on concrete AppState).

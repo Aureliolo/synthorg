@@ -17,6 +17,7 @@ const ReportsPage = lazy(() => import('@/pages/ReportsPage'))
 const ApprovalsPage = lazy(() => import('@/pages/ApprovalsPage'))
 const ScalingPage = lazy(() => import('@/pages/ScalingPage'))
 const MetaPage = lazy(() => import('@/pages/MetaPage'))
+const CharterInterviewPage = lazy(() => import('@/pages/CharterInterviewPage'))
 const AgentsPage = lazy(() => import('@/pages/AgentsPage'))
 const AgentDetailPage = lazy(() => import('@/pages/AgentDetailPage'))
 const TrainingPage = lazy(() => import('@/pages/TrainingPage'))
@@ -140,6 +141,10 @@ export const router = createBrowserRouter([
               { path: 'approvals', element: <ApprovalsPage /> },
               { path: 'scaling', element: <ScalingPage /> },
               { path: ROUTES.META.slice(1), element: <MetaPage /> },
+              {
+                path: ROUTES.CHARTERS.slice(1),
+                element: <CharterInterviewPage />,
+              },
               { path: 'agents', element: <AgentsPage /> },
               { path: 'agents/:agentId', element: <AgentDetailPage /> },
               { path: ROUTES.TRAINING.slice(1), element: <TrainingPage /> },

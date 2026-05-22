@@ -4,6 +4,7 @@ import {
   Activity,
   Bell,
   BookOpen,
+  ClipboardList,
   Command,
   Cpu,
   DollarSign,
@@ -231,6 +232,7 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
         <SidebarNavItem to={ROUTES.TASKS} icon={KanbanSquare} label="Task Board" collapsed={collapsed} />
         <SidebarNavItem to={ROUTES.BUDGET} icon={DollarSign} label="Budget" collapsed={collapsed} />
         <SidebarNavItem to={ROUTES.REPORTS} icon={FileText} label="Reports" collapsed={collapsed} />
+        <SidebarNavItem to={ROUTES.CHARTERS} icon={ClipboardList} label="Charters" collapsed={collapsed} />
         <SidebarNavItem to={ROUTES.APPROVALS} icon={ShieldCheck} label="Approvals" collapsed={collapsed} badge={0} />
         <SidebarNavItem to={ROUTES.SCALING} icon={Scale} label="Scaling" collapsed={collapsed} />
       </div>

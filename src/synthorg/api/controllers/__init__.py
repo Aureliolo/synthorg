@@ -24,6 +24,7 @@ from synthorg.api.controllers.capabilities import CapabilitiesController
 from synthorg.api.controllers.ceremony_policy import (
     CeremonyPolicyController,
 )
+from synthorg.api.controllers.charter import CharterController
 from synthorg.api.controllers.clients import ClientController
 from synthorg.api.controllers.cockpit import CockpitController
 from synthorg.api.controllers.collaboration import CollaborationController
@@ -128,6 +129,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     MessageController,
     MeetingController,
     ArtifactController,
+    CharterController,
     BudgetController,
     ForecastBudgetController,
     AnalyticsController,
@@ -228,6 +230,7 @@ __all__ = [
     "BudgetConfigVersionController",
     "BudgetController",
     "CeremonyPolicyController",
+    "CharterController",
     "ClientController",
     "CollaborationController",
     "CompanyController",

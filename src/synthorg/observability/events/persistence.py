@@ -825,6 +825,18 @@ PERSISTENCE_CONVERSATIONAL_HANDLE_UNAVAILABLE: Final[str] = (
     "persistence.conversational.handle_unavailable"
 )
 
+# Project-charter persistence events (deep CEO interview). Read/query
+# markers + failure path only; the persistence-boundary gate forbids
+# repos from emitting mutation lifecycle events (the service layer owns
+# the charter-status audit hop).
+PERSISTENCE_CHARTER_FETCHED: Final[str] = "persistence.charter.fetched"
+PERSISTENCE_CHARTER_LISTED: Final[str] = "persistence.charter.listed"
+PERSISTENCE_CHARTER_FAILED: Final[str] = "persistence.charter.failed"
+PERSISTENCE_CHARTER_UNKNOWN_BACKEND: Final[str] = "persistence.charter.unknown_backend"
+PERSISTENCE_CHARTER_HANDLE_UNAVAILABLE: Final[str] = (
+    "persistence.charter.handle_unavailable"
+)
+
 # Dynamic tool blueprint events (self-extending toolkit). Failure paths
 # plus read/query markers only: the persistence-boundary gate forbids
 # repos from emitting their own mutation lifecycle (_SAVED / _DELETED)

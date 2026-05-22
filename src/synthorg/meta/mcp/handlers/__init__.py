@@ -11,6 +11,7 @@ from synthorg.meta.mcp.handlers.agents import AGENT_HANDLERS
 from synthorg.meta.mcp.handlers.analytics import ANALYTICS_HANDLERS
 from synthorg.meta.mcp.handlers.approvals import APPROVAL_HANDLERS
 from synthorg.meta.mcp.handlers.budget import BUDGET_HANDLERS
+from synthorg.meta.mcp.handlers.charter import CHARTER_HANDLERS
 from synthorg.meta.mcp.handlers.cockpit import COCKPIT_HANDLERS
 from synthorg.meta.mcp.handlers.communication import COMMUNICATION_HANDLERS
 from synthorg.meta.mcp.handlers.coordination import COORDINATION_HANDLERS
@@ -42,6 +43,7 @@ _ALL_HANDLER_MAPS: tuple[Mapping[str, ToolHandler], ...] = (
     TASK_HANDLERS,
     WORKFLOW_HANDLERS,
     APPROVAL_HANDLERS,
+    CHARTER_HANDLERS,
     BUDGET_HANDLERS,
     ORGANIZATION_HANDLERS,
     COORDINATION_HANDLERS,

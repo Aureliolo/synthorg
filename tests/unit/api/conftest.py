@@ -88,6 +88,15 @@ _auth_mod._hasher = argon2.PasswordHasher(
 )
 
 
+# The TestClient anyio portal that these sync controller tests run the
+# app lifespan on inherits the process-wide event-loop policy, which
+# ``tests/unit/conftest.py`` pins to ``WindowsSelectorEventLoopPolicy``
+# on Windows. That avoids the Python 3.14 ProactorEventLoop IOCP
+# teardown race that otherwise segfaults the xdist worker ("node down")
+# whenever an ``api/app.py`` edit widens the affected-tests pre-push
+# selection to the whole api tree.
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _required_env_vars() -> Iterator[None]:
     """Set bootstrap env vars + Cat-2 mirrors for API tests.
@@ -704,7 +713,10 @@ def test_client(  # noqa: C901, PLR0912, PLR0913, PLR0915
     #    shutdown is skipped (_skip_lifecycle_shutdown=True).
     #    Startup may create a system user (ensure_system_user) and
     #    modify settings, so re-clear persistence + settings cache
-    #    and re-seed users AFTER entering.
+    #    and re-seed users AFTER entering. On Windows the TestClient's
+    #    anyio portal inherits the SelectorEventLoop policy set
+    #    process-wide in ``tests/unit/conftest.py`` (see the comment
+    #    above the import block there).
     with TestClient(_shared_app) as client:
         fake_persistence.clear()
         fake_persistence._connected = True

@@ -36,6 +36,7 @@ class SettingNamespace(StrEnum):
     EXTERNAL_API = "external_api"
     RESEARCH = "research"
     COCKPIT = "cockpit"
+    CHARTER = "charter"
 
 
 class SettingType(StrEnum):

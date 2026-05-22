@@ -134,6 +134,13 @@ export const CHANNEL_TYPE_VALUES = [
 ] as const
 export type ChannelType = (typeof CHANNEL_TYPE_VALUES)[number]
 
+export const CHARTER_STATUS_VALUES = [
+    'drafted',
+    'approved',
+    'cancelled',
+] as const
+export type CharterStatus = (typeof CHARTER_STATUS_VALUES)[number]
+
 export const CODE_EXECUTION_ISOLATION_VALUES = [
     'containerized',
     'process',
@@ -658,6 +665,7 @@ export const SETTING_NAMESPACE_VALUES = [
     'external_api',
     'research',
     'cockpit',
+    'charter',
 ] as const
 export type SettingNamespace = (typeof SETTING_NAMESPACE_VALUES)[number]
 
