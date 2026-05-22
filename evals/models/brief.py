@@ -58,10 +58,11 @@ DEFAULT_HIDDEN_CHECK_TIMEOUT_SECONDS: Final[int] = 30
 
 
 class BriefKind(StrEnum):
-    """Discriminator between executable and judged briefs."""
+    """Discriminator between executable, judged, and research briefs."""
 
     EXECUTABLE = "executable"
     JUDGED = "judged"
+    RESEARCH = "research"
 
 
 class BriefPriority(StrEnum):
@@ -189,6 +190,22 @@ class JudgedRubric(BaseModel):
         return self
 
 
+class ResearchBriefSpec(BaseModel):
+    """Research-lane payload for a ``kind="research"`` brief.
+
+    Carries the research question, the claims a competent run is expected
+    to surface (graded for coverage), the source-credibility floor, and a
+    judged rubric (with its reference answer) used to score report quality.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    question: NotBlankStr
+    expected_claims: tuple[NotBlankStr, ...] = Field(min_length=1)
+    min_credibility: float = Field(default=0.5, ge=0.0, le=1.0)
+    rubric: JudgedRubric
+
+
 class Brief(BaseModel):
     """One exam item.
 
@@ -216,36 +233,41 @@ class Brief(BaseModel):
     limits: LimitsSpec
     checks: ExecutableChecks | None = None
     rubric: JudgedRubric | None = None
+    research_spec: ResearchBriefSpec | None = None
+
+    def _require(self, *, present: object, name: str) -> None:
+        """Raise when a required per-kind payload block is missing."""
+        if present is None:
+            msg = (
+                f"Brief {self.brief_id!r}: kind={self.kind.value} "
+                f"requires a {name!r} block"
+            )
+            raise ValueError(msg)
+
+    def _forbid(self, *, present: object, name: str) -> None:
+        """Raise when a per-kind payload block is set but not allowed."""
+        if present is not None:
+            msg = (
+                f"Brief {self.brief_id!r}: kind={self.kind.value} "
+                f"must not carry a {name!r} block"
+            )
+            raise ValueError(msg)
 
     @model_validator(mode="after")
     def _kind_matches_payload(self) -> Self:
-        """Enforce kind / (checks XOR rubric) consistency."""
+        """Enforce that exactly the kind's payload block is populated."""
         if self.kind is BriefKind.EXECUTABLE:
-            if self.checks is None:
-                msg = (
-                    f"Brief {self.brief_id!r}: kind={self.kind.value} "
-                    "requires a 'checks' block"
-                )
-                raise ValueError(msg)
-            if self.rubric is not None:
-                msg = (
-                    f"Brief {self.brief_id!r}: kind={self.kind.value} "
-                    "must not carry a 'rubric' block"
-                )
-                raise ValueError(msg)
+            self._require(present=self.checks, name="checks")
+            self._forbid(present=self.rubric, name="rubric")
+            self._forbid(present=self.research_spec, name="research_spec")
+        elif self.kind is BriefKind.JUDGED:
+            self._require(present=self.rubric, name="rubric")
+            self._forbid(present=self.checks, name="checks")
+            self._forbid(present=self.research_spec, name="research_spec")
         else:
-            if self.rubric is None:
-                msg = (
-                    f"Brief {self.brief_id!r}: kind={self.kind.value} "
-                    "requires a 'rubric' block"
-                )
-                raise ValueError(msg)
-            if self.checks is not None:
-                msg = (
-                    f"Brief {self.brief_id!r}: kind={self.kind.value} "
-                    "must not carry a 'checks' block"
-                )
-                raise ValueError(msg)
+            self._require(present=self.research_spec, name="research_spec")
+            self._forbid(present=self.checks, name="checks")
+            self._forbid(present=self.rubric, name="rubric")
         return self
 
 
@@ -264,6 +286,7 @@ __all__ = [
     "HiddenCheckSpec",
     "JudgedRubric",
     "LimitsSpec",
+    "ResearchBriefSpec",
     "RubricDimension",
     "RubricGradeType",
 ]
