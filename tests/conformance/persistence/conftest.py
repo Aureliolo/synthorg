@@ -287,7 +287,21 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     the FileLock wait during teardown is on a non-critical path
     (workers are exiting anyway) so it doesn't need to move to
     ``pytest_sessionfinish``.
+
+    The forensic ``sys.stderr.write`` at the top lets us confirm in CI
+    logs whether this hook actually fires on each xdist worker. The
+    fixture below has a matching write; a missing pair tells us
+    conftest discovery is broken on the worker, a present hook write +
+    missing fixture-time state tells us the module instance is split
+    across importers. Stays in production: pytest_sessionstart runs
+    once per session so the cost is one line of stderr per worker.
     """
+    _worker = os.environ.get("PYTEST_XDIST_WORKER", "master")
+    sys.stderr.write(
+        f"[conftest:conformance/persistence] pytest_sessionstart fired "
+        f"(worker={_worker}, state_id={id(_POSTGRES_CONTAINER_STATE)})\n"
+    )
+    sys.stderr.flush()
     if _proxy_from_env() is not None:
         _POSTGRES_CONTAINER_STATE["mode"] = "env"
         return
@@ -345,7 +359,18 @@ def postgres_container() -> Iterator[PostgresContainerProxy]:
       built from the recorded connection info, and on teardown
       decrement the refcount inside the FileLock (the worker that
       drops to zero stops + removes the container by id).
+
+    The forensic ``sys.stderr.write`` at the top is paired with the one
+    in :func:`pytest_sessionstart`; matching the two confirms whether
+    the hook ran in the same module instance the fixture reads from.
     """
+    _worker = os.environ.get("PYTEST_XDIST_WORKER", "master")
+    sys.stderr.write(
+        f"[conftest:conformance/persistence] postgres_container fixture "
+        f"called (worker={_worker}, state_id={id(_POSTGRES_CONTAINER_STATE)}, "
+        f"state_keys={sorted(_POSTGRES_CONTAINER_STATE)})\n"
+    )
+    sys.stderr.flush()
     mode = _POSTGRES_CONTAINER_STATE.get("mode")
     if mode == "env":
         env_proxy = _proxy_from_env()
