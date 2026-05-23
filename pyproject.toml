@@ -866,14 +866,31 @@ filterwarnings = [
 # ---------------------------------------------------------------------------
 [tool.coverage.run]
 source = ["synthorg"]
-branch = true
+# ``branch = true`` combined with ``core = "sysmon"`` triggers a known
+# perf regression in coverage.py 7.x: every branch event during module
+# collection re-runs ``ast.parse`` via ``coverage/sysmon.py``'s
+# ``get_multiline_map`` -> ``coverage/parser.py:parse_source``. With
+# pytest assertion rewriting executing in the same workers, the
+# combined overhead pushes a single xdist worker's collection past
+# 5 minutes and the GHA job timeout reaps the shard with the worker
+# stuck slowly walking ``_pytest/assertion/rewrite.py:traverse_node``.
+# Primary sources: https://coverage.readthedocs.io/en/latest/config.html
+# ("faster for line coverage, but not for branch coverage") and
+# coveragepy issue #1812 (sysmon + branch = ~2x slower in real-world
+# CI runs). Keep sysmon for the line-coverage speedup; drop branch
+# instrumentation -- branch reporting in coverage.xml is a secondary
+# concern compared to a unit shard that consistently completes.
+branch = false
 parallel = true
-# sys.monitoring core is 5-10x faster than the default ctrace core, with
-# full line + branch parity since coverage 7.7. Project pins coverage 7.14,
-# which guarantees that parity. Set as project default so local one-off
-# coverage runs and the CI test arms both benefit; CI also exports
-# COVERAGE_CORE=sysmon per job for redundancy in case future runs move to
-# an environment where this setting is overridden.
+# sys.monitoring core is meaningfully faster than the default ctrace
+# core for LINE coverage in Python 3.14+ (where sysmon is the default
+# anyway). Branch coverage is a separate dimension that interacts
+# badly with assertion-rewriting pytest workers (see ``branch =`` note
+# above); the line-coverage speedup is the win we want here. Set as
+# project default so local one-off coverage runs and the CI test arms
+# both benefit; CI also exports COVERAGE_CORE=sysmon per job for
+# redundancy in case future runs move to an environment where this
+# setting is overridden.
 core = "sysmon"
 
 [tool.coverage.report]
