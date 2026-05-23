@@ -1,4 +1,39 @@
-"""Root test configuration and shared fixtures."""
+"""Root test configuration and shared fixtures.
+
+Cross-worker coordination rule (read before adding a new fixture):
+
+    Any fixture that uses a cross-worker primitive -- ``filelock.FileLock``
+    over a path under ``tmp_path_factory.getbasetemp().parent``, a
+    testcontainers / Docker container shared across workers, or any
+    other off-process lock -- MUST be declared
+    ``@pytest.fixture(scope="session", autouse=True)``.
+
+    Without ``autouse=True``, pytest sets up session-scope fixtures
+    LAZILY on first reference. The cross-worker wait (FileLock poll
+    loop, container start, image pull, readiness polling) then runs
+    INSIDE the per-test 30s ``pytest-timeout`` budget of whichever
+    test triggers the fixture first. Workers queued behind the
+    lock-holder die at exactly t+30s with ``[gwN] node down: Not
+    properly terminated``, no banner reaches the master through
+    xdist IPC because pytest-timeout's ``os._exit(1)`` outruns the
+    Channel flush, and the failures look random across SQLite-
+    touching tests on each run. Verified in PR #2080 via core dump:
+    main thread in ``selectors.select``, background thread in
+    ``filelock/_api.py:517 in acquire`` -- the per-test timer was
+    counting the cross-worker lock wait.
+
+    Existing instances of the pattern, all wrapped per this rule:
+
+    * ``_prebuild_migrated_db_template`` (this file): autouse session
+      fixture that drains the FileLock-coordinated yoyo migration
+      template build before any per-test timer starts.
+    * ``postgres_container`` (tests/conformance/persistence/conftest.py):
+      autouse session fixture that drains the FileLock-coordinated
+      testcontainer start before any per-test timer starts.
+
+    If you add a new cross-worker coordination fixture, follow the
+    same shape and link it to this rule in its docstring.
+"""
 
 import asyncio
 import faulthandler
@@ -831,6 +866,34 @@ def mock_dispatcher() -> Any:
     return AsyncMock(spec=NotificationDispatcher)
 
 
+@pytest.fixture(scope="session", autouse=True)
+async def _prebuild_migrated_db_template(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    """Pre-build the migrated template OUTSIDE the per-test 30s budget.
+
+    The cross-worker FileLock in :func:`_get_template_db` is session-
+    level coordination, not per-test work: every xdist worker that uses
+    ``migrated_db`` must wait behind whichever worker is currently
+    building the template. With 8 workers and a yoyo migration chain
+    that takes 10-30s on Linux CI under coverage sysmon instrumentation,
+    the workers queued behind the lock holder consume their full 30s
+    pytest-timeout budget on the FileLock poll loop and die at exactly
+    t+30s -- the first ``migrated_db`` test on each waiting worker
+    becomes "the worker that didn't get the lock fast enough" (verified
+    in CI via core dumps showing thread X blocked at
+    ``filelock/_api.py:517 in acquire`` while the main thread runs the
+    asyncio loop's ``selectors.select``).
+
+    A session-scoped autouse fixture is the architectural fix: pytest
+    sets up session fixtures BEFORE the first test's per-test timer
+    starts, so the FileLock wait happens outside the 30s budget. The
+    last worker still pays the same wall-clock, but no test ticks
+    against pytest-timeout during the wait.
+    """
+    await _get_template_db(tmp_path_factory)
+
+
 @pytest.fixture
 async def migrated_db(
     tmp_path: Path,
@@ -840,7 +903,10 @@ async def migrated_db(
 
     Copies a session-wide template database instead of re-running
     migrations per test -- amortises the per-revision work across
-    the suite.
+    the suite. The shared template is built by
+    :func:`_prebuild_migrated_db_template` at session start, so by
+    the time any test calls this fixture the template already exists
+    and ``_get_template_db`` short-circuits to the cached path.
     """
     template = await _get_template_db(tmp_path_factory)
     db_path = tmp_path / "test.db"

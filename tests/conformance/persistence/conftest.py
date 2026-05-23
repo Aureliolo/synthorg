@@ -242,12 +242,28 @@ def _release_shared_postgres(state_file: Path) -> None:
         state_file.write_text(json.dumps(current))
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def postgres_container(
     tmp_path_factory: pytest.TempPathFactory,
     worker_id: str,
 ) -> Iterator[PostgresContainerProxy]:
     """Yield ONE Postgres 18 container shared across every xdist worker.
+
+    NOTE: This fixture is ``autouse=True`` at session scope. Without
+    autouse, pytest sets up session-scope fixtures LAZILY on first
+    reference, which means the cross-worker ``FileLock`` wait (potentially
+    long: image pull + container start + readiness polling) lands
+    INSIDE the per-test 30s ``pytest-timeout`` budget of whichever test
+    happens to reference ``postgres_container`` first. Other workers
+    queued behind the lock-holder die at exactly t+30s with no useful
+    diagnostic. The matching pattern fired in PR #2080 on the
+    ``migrated_db`` fixture (also session-coordinated via FileLock);
+    every cross-worker coordination fixture in this repo MUST be
+    ``autouse=True`` at session scope so the lock acquisition runs in
+    the session-setup phase, OUTSIDE any per-test timer. See
+    ``tests/conftest.py::_prebuild_migrated_db_template`` for the
+    sibling fixture applying the same rule to the SQLite template
+    build.
 
     The first worker to acquire the inter-process ``FileLock`` starts
     the container (~5s, image pulls excluded), records its connection
