@@ -72,6 +72,58 @@ def _fast_getfqdn(name: str = "") -> str:
 
 socket.getfqdn = _fast_getfqdn
 
+
+# ── pytest-timeout: guarantee a visible stack on every fire ─────────
+#
+# pytest-timeout in ``thread`` mode (configured in pyproject) writes its
+# pre-kill banner + thread stacks via ``terminal.write(...)`` and then
+# calls ``os._exit(1)`` (see pytest_timeout.py:534-542). That terminal
+# write goes through pytest's TerminalWriter -> xdist Channel ->
+# execnet IPC, all of which buffer. ``os._exit`` 5 lines later kills
+# the worker process before the IPC buffer has drained, so the banner
+# never reaches the master's log. We saw this empirically in PR #2080
+# round 14b/15: three xdist workers died at exactly +30.06s after
+# their last passed test (the per-test timeout) with ZERO ``+++
+# Timeout +++`` banners in the GHA log.
+#
+# ``faulthandler.dump_traceback`` writes raw bytes to the stderr fd via
+# ``os.write``, bypassing all Python and xdist buffering. execnet
+# captures the worker's stderr at the pipe level, so the dump always
+# reaches the master's log before the worker process exits, even
+# under os._exit. Patching pytest_timeout.timeout_timer to fault-dump
+# FIRST and delegate to the original implementation second means
+# every pytest-timeout fire leaves a forensic stack we can read.
+#
+# Why this is safe (vs the ``dump_traceback_later(repeat=True)`` we
+# removed in round 14): this dump runs from Python code holding the
+# GIL, not from faulthandler's dedicated C timer thread without the
+# GIL. Holding the GIL means no other thread can be midway through
+# ``PyThreadState_Delete`` while we walk ``interp->threads.head``;
+# the chain-walk race that crashed CPython in round 13 cannot fire
+# from here.
+try:
+    import pytest_timeout as _pytest_timeout  # type: ignore[import-untyped]
+
+    _orig_timeout_timer = _pytest_timeout.timeout_timer
+
+    def _timeout_timer_with_faulthandler(item: Any, settings: Any) -> None:
+        sys.stderr.write(
+            "\n==== pytest-timeout fired: faulthandler all-threads dump"
+            " (raw stderr write, bypasses pytest/xdist IPC) ====\n"
+        )
+        sys.stderr.flush()
+        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+        sys.stderr.flush()
+        sys.stderr.write("==== end faulthandler dump ====\n")
+        sys.stderr.flush()
+        _orig_timeout_timer(item, settings)
+
+    _pytest_timeout.timeout_timer = _timeout_timer_with_faulthandler
+except ImportError:
+    # pytest-timeout not installed (e.g. minimal environment); the
+    # guard above keeps the broader conftest functional.
+    pass
+
 # Diagnostic instrumentation: dump native + Python tracebacks on every
 # fatal signal (SIGSEGV, SIGFPE, SIGABRT etc.) and on every thread.
 # Enabled at module import so xdist worker subprocesses pick it up at
