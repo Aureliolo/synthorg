@@ -881,7 +881,13 @@ jobs:
           # gives no signal about which shard's coverage was lost.
           ls -laR coverage-data || true
           echo "--- file count by shard prefix ---"
-          ls coverage-data 2>/dev/null \
+          # ``-A`` is required: every per-shard data file is named
+          # ``.coverage.<suite>-<shard>``, leading dot. A plain ``ls``
+          # hides them and the sed/sort/uniq pipe input is empty,
+          # which is what we observed on PR #2080 (the "file count by
+          # shard prefix" line printed and then nothing followed). ``-A``
+          # includes dotfiles but excludes ``.`` and ``..``.
+          ls -A coverage-data 2>/dev/null \
             | sed -E 's/\.[0-9a-f]+\.[0-9]+\.[0-9a-f]+$//' \
             | sort | uniq -c | sort -rn || true
 
