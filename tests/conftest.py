@@ -44,6 +44,20 @@ from synthorg.persistence import migrations
 # and similar root causes apart.
 faulthandler.enable(file=sys.stderr, all_threads=True)
 
+# Hang flight-recorder: dump all-thread tracebacks every 120s while the
+# test session is running. ``faulthandler.enable`` only fires on fatal
+# signals; a silent xdist worker hang (e.g. ``asyncio.Event().wait()``
+# without a deadline; mock kwarg drift on an event-gated method; a
+# coverage.save() teardown stuck on a sysmon/parallel race) produces no
+# signal at all and the process sits idle until reaped by the GHA job
+# timeout, with no clue which test or thread was blocked.  Repeating
+# dumps every 120s give us at least one snapshot of every thread's
+# stack while the hang is live -- the first dump usually identifies
+# the blocked frame, the second confirms it has not moved.  120s is
+# wide enough that normal CI runs (~2-3 min per unit shard) emit at
+# most a single dump; local sub-minute runs see none.
+faulthandler.dump_traceback_later(120, repeat=True, file=sys.stderr)
+
 # ── Windows console-flash suppression ──────────────────────────────
 #
 # On Windows, `subprocess.Popen` (and everything that funnels through

@@ -311,7 +311,17 @@ jobs:
     needs: changes
     if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Healthy wall-clock per shard is ~2-3 min (114-120s observed on the
+    # un-stuck shards). The previous 15-min slack existed only because
+    # ``pytest-timeout method=signal`` could not kill an async hang and
+    # the job had to be reaped by GHA's job timeout. With
+    # ``timeout_method = "thread"`` in pyproject.toml the per-test
+    # timeout (30s) actually fires for blocked awaits, so a runaway
+    # shard now fails fast with a named test instead of burning 12+ min
+    # of compute. 5 min preserves a 2x cushion over the observed normal
+    # runtime; any later regression that legitimately needs more should
+    # land here with the duration data justifying it.
+    timeout-minutes: 5
     permissions:
       contents: read
     strategy:

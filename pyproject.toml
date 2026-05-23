@@ -806,6 +806,18 @@ testpaths = ["tests"]
 pythonpath = ["src", "."]
 asyncio_mode = "auto"
 timeout = 30
+# Linux default for ``pytest-timeout`` is ``signal`` (SIGALRM). That mode
+# only interrupts CPython code between bytecodes, so a test blocked in
+# ``asyncio.Event().wait()`` (or any awaitable without a deadline) is
+# never killed: the loop is dispatching callbacks, not the test function.
+# The xdist worker then sits silent until GHA's job-level timeout reaps
+# the whole runner; the failing test is never named. Windows already
+# defaults to ``thread``; this line aligns Linux + macOS so a hung await
+# raises ``KeyboardInterrupt`` -> ``CancelledError`` and pytest emits a
+# proper ``TIMEOUT`` failure with the test node id. See
+# ``tests/conftest.py`` for the complementary ``dump_traceback_later``
+# watchdog that snapshots all-thread stacks while a hang is in flight.
+timeout_method = "thread"
 markers = [
     "unit: Unit tests (fast, isolated, no I/O)",
     "integration: Integration tests (may use I/O, databases, APIs)",
