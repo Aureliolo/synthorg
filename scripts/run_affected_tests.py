@@ -30,6 +30,7 @@ import contextlib
 import math
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -457,6 +458,37 @@ def _check_timing_regression(
     )
 
 
+def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
+    """Kill *proc* and every xdist worker it spawned.
+
+    ``proc.kill()`` only terminates the pytest master process; the 8
+    xdist workers (each its own python subprocess) survive briefly as
+    orphans until execnet's keepalive notices and they exit. On a
+    watchdog-fired kill we want the whole tree gone immediately so the
+    next push tick does not race against zombie workers still holding
+    file locks / db connections.
+
+    POSIX: ``subprocess.Popen(..., start_new_session=True)`` puts the
+    master and its children in their own process group, then
+    ``os.killpg(getpgid, SIGKILL)`` takes them all out at once.
+
+    Windows: ``CREATE_NEW_PROCESS_GROUP`` plus
+    ``send_signal(CTRL_BREAK_EVENT)`` sends Ctrl+Break to the new group;
+    a 2s wait then ``proc.kill()`` (``TerminateProcess``) covers the
+    children that ignore the break.
+    """
+    if sys.platform == "win32":
+        with contextlib.suppress(ProcessLookupError, OSError):
+            proc.send_signal(signal.CTRL_BREAK_EVENT)
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=2.0)
+        with contextlib.suppress(ProcessLookupError, OSError):
+            proc.kill()
+        return
+    with contextlib.suppress(ProcessLookupError, OSError):
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+
+
 def _stream_pytest(
     cmd: list[str], *, timeout_seconds: float | None = None
 ) -> tuple[int, str]:
@@ -468,14 +500,28 @@ def _stream_pytest(
     We still tee into a buffer so the "N passed" summary line is
     available for the per-test regression rail.
 
-    When ``timeout_seconds`` is set, a watchdog thread kills the
-    pytest process group if it runs longer; this is the safety net
-    for the Windows + Python 3.14 + xdist IOCP teardown hang that
-    can leave a worker silently wedged for hours otherwise. On
-    timeout the function returns ``(_PYTEST_HUNG_EXIT_CODE, captured)``
-    plus a clear stderr banner so the operator sees what happened.
+    When ``timeout_seconds`` is set, a watchdog thread kills the entire
+    pytest process group (master + xdist workers) if the run lasts
+    longer; this is the safety net for the Windows + Python 3.14 +
+    xdist IOCP teardown hang that can leave a worker silently wedged
+    for hours otherwise. On timeout the function returns
+    ``(_PYTEST_HUNG_EXIT_CODE, captured)`` plus a clear stderr banner
+    so the operator sees what happened. Callers MUST short-circuit on
+    ``_PYTEST_HUNG_EXIT_CODE`` rather than forwarding to
+    ``_classify_isolation_outcome``: the classifier would see worker
+    crash markers from the killed run and mis-rate the timeout as a
+    crash-advisory PASS.
     """
     timeout_fired = False
+    # Put the pytest master + every xdist worker in a new process group
+    # so the watchdog can SIGKILL the whole tree atomically. Without
+    # this, ``proc.kill()`` only terminates the master and the workers
+    # survive as orphans for several seconds.
+    popen_extra: dict[str, object] = {}
+    if sys.platform == "win32":
+        popen_extra["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        popen_extra["start_new_session"] = True
 
     with subprocess.Popen(
         cmd,
@@ -484,6 +530,7 @@ def _stream_pytest(
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        **popen_extra,  # type: ignore[arg-type]
     ) as proc:
 
         def _on_timeout() -> None:
@@ -501,8 +548,7 @@ def _stream_pytest(
                 f"{'!' * 60}",
                 file=sys.stderr,
             )
-            with contextlib.suppress(ProcessLookupError):
-                proc.kill()
+            _kill_process_tree(proc)
 
         watchdog: threading.Timer | None = None
         if timeout_seconds is not None and timeout_seconds > 0:
@@ -564,6 +610,14 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
         else _PYTEST_AFFECTED_TIMEOUT_SECONDS
     )
     returncode, captured_stdout = _stream_pytest(cmd, timeout_seconds=timeout_seconds)
+    if returncode == _PYTEST_HUNG_EXIT_CODE:
+        # Watchdog killed the run. Do NOT pass through the classifier:
+        # a killed pytest typically logs worker-crash markers (workers
+        # dying after the master vanishes), which the classifier would
+        # mis-rate as a crash-advisory PASS and let the push through.
+        # Return 124 so the push aborts with the banner ``_on_timeout``
+        # already printed.
+        return _PYTEST_HUNG_EXIT_CODE
     elapsed = time.monotonic() - start
     test_count = _parse_test_count(captured_stdout)
     outcome = _classify_isolation_outcome(returncode, captured_stdout)
@@ -877,6 +931,11 @@ def _run_isolation_gate(paths: list[str]) -> int:
     returncode, captured_stdout = _stream_pytest(
         cmd, timeout_seconds=_PYTEST_FULL_SUITE_TIMEOUT_SECONDS
     )
+    if returncode == _PYTEST_HUNG_EXIT_CODE:
+        # Watchdog kill -- same reasoning as in ``_run_pytest``: don't
+        # let ``_classify_isolation_outcome`` see a killed run's
+        # worker-crash markers and rate it as crash-advisory PASS.
+        return _PYTEST_HUNG_EXIT_CODE
     outcome = _classify_isolation_outcome(returncode, captured_stdout)
     _print_isolation_banner(outcome)
     return outcome.exit_code

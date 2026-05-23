@@ -28,11 +28,23 @@ description: |
 inputs:
   ref:
     description: |
-      Git ref to check out. Defaults to PR head SHA on pull_request
-      events, github.sha otherwise. Override to check out main, a
+      Git ref to check out. Defaults to PR head SHA ONLY on
+      ``pull_request`` events; every other event (push,
+      workflow_dispatch, workflow_run, schedule, AND ``pull_request_target``)
+      falls back to ``github.sha``. ``pull_request_target`` is the
+      load-bearing case: it carries a fully attacker-controlled
+      ``github.event.pull_request.head.sha`` from the fork, so the
+      ``foo || github.sha`` short-circuit (which is true whenever the
+      payload includes a pull_request object regardless of event type)
+      would default a privileged ``pull_request_target`` workflow to
+      run against fork code. Gating the PR SHA branch on
+      ``event_name == 'pull_request'`` keeps the default safe by
+      construction; callers that DO want to check out fork code on
+      ``pull_request_target`` (rare and dangerous) MUST override
+      ``ref`` explicitly. Override also to check out main, a
       release-please branch, etc.
     required: false
-    default: ${{ github.event.pull_request.head.sha || github.sha }}
+    default: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
   fetch-depth:
     description: Forwarded to actions/checkout. Defaults to 1 (shallow).
     required: false
