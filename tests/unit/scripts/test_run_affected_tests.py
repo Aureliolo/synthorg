@@ -802,7 +802,7 @@ def test_run_isolation_gate_passes_through_classifier_pass(
     monkeypatch.setattr(
         _MODULE,
         "_stream_pytest",
-        lambda _cmd: (0, "500 passed in 12.34s\n"),
+        lambda _cmd, **_kwargs: (0, "500 passed in 12.34s\n"),
     )
     assert _MODULE._run_isolation_gate(["tests/unit/foo/"]) == 0
 
@@ -817,7 +817,7 @@ def test_run_isolation_gate_returns_advisory_zero_on_native_crash(
     monkeypatch.setattr(
         _MODULE,
         "_stream_pytest",
-        lambda _cmd: (1, stdout),
+        lambda _cmd, **_kwargs: (1, stdout),
     )
     rc = _MODULE._run_isolation_gate(["tests/unit/api/"])
     assert rc == 0
@@ -833,7 +833,7 @@ def test_run_isolation_gate_returns_nonzero_on_real_regression(
     monkeypatch.setattr(
         _MODULE,
         "_stream_pytest",
-        lambda _cmd: (1, _FAILED_LINE + "499 passed, 1 failed in 12s\n"),
+        lambda _cmd, **_kwargs: (1, _FAILED_LINE + "499 passed, 1 failed in 12s\n"),
     )
     rc = _MODULE._run_isolation_gate(["tests/unit/api/"])
     assert rc == 1
@@ -847,7 +847,7 @@ def test_run_isolation_gate_invokes_pytest_with_correct_flags(
     monkeypatch.delenv("SYNTHORG_SKIP_ISOLATION_GATE", raising=False)
     captured: dict[str, list[str]] = {}
 
-    def _capture(cmd: list[str]) -> tuple[int, str]:
+    def _capture(cmd: list[str], **_kwargs: object) -> tuple[int, str]:
         captured["cmd"] = cmd
         return 0, "1 passed in 0.1s\n"
 
