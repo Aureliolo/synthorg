@@ -856,6 +856,13 @@ filterwarnings = [
 source = ["synthorg"]
 branch = true
 parallel = true
+# sys.monitoring core (Python 3.12+) is 5-10x faster than the default ctrace
+# core with full line + branch parity since coverage 7.7. Project pins
+# coverage 7.14, so the parity guarantee holds. Set as project default so
+# local one-off coverage runs and the CI test arms both benefit; CI also
+# exports COVERAGE_CORE=sysmon per job for redundancy in case future runs
+# move to an environment where this setting is overridden.
+core = "sysmon"
 
 [tool.coverage.report]
 fail_under = 80
