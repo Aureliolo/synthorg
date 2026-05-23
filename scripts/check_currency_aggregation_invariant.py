@@ -187,7 +187,7 @@ def _comp_iter_source(arg: ast.expr) -> str | None:
     return _expr_source_id(iter_node)
 
 
-def _expr_source_id(node: ast.expr) -> str | None:  # noqa: PLR0911 -- four AST shapes
+def _expr_source_id(node: ast.expr) -> str | None:
     """Canonicalise *node* to a stable dotted identifier or ``None``.
 
     Handles the common iter sources: ``records`` (``Name``),

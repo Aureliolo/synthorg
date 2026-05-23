@@ -371,7 +371,7 @@ def _formatted_value_references_exception(node: ast.FormattedValue) -> bool:
     return _expression_evaluates_to_exception(node.value)
 
 
-def _expression_evaluates_to_exception(expr: ast.expr) -> bool:  # noqa: PLR0911
+def _expression_evaluates_to_exception(expr: ast.expr) -> bool:
     """Return ``True`` if *expr* evaluates to an exception-bearing value.
 
     Mirrors the Python evaluation chain rather than a free-form walk:

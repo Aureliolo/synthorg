@@ -372,7 +372,7 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
             )
             return SEARCH_UNEXPECTED
 
-    async def _handle_recall(  # noqa: PLR0911
+    async def _handle_recall(
         self,
         arguments: dict[str, Any],
         agent_id: str,

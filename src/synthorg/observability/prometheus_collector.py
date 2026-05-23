@@ -179,7 +179,7 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
         prefix: Metric name prefix (default ``"synthorg"``).
     """
 
-    def __init__(self, *, prefix: str = "synthorg") -> None:  # noqa: PLR0915 -- single-shot wiring of every metric family
+    def __init__(self, *, prefix: str = "synthorg") -> None:
         self._prefix = prefix
         self.registry = CollectorRegistry()
 

@@ -138,7 +138,7 @@ def _scan_text(gate: Any, text: str, suffix: str = ".py") -> int:
             tmp_path.unlink()
 
 
-def _compute_after(  # noqa: PLR0911 -- shape mirrors the tool envelope
+def _compute_after(
     tool_name: str,
     tool_input: dict[str, Any],
     before: str,
@@ -237,7 +237,7 @@ def _check_gate_file(before: str, after: str) -> int:
     return 0
 
 
-def main() -> int:  # noqa: C901, PLR0911, PLR0912 -- guard cascade is flat by design
+def main() -> int:
     """Read the PreToolUse JSON envelope from stdin and return an exit code."""
     raw = sys.stdin.read()
     if not raw.strip():

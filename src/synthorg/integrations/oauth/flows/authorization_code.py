@@ -256,7 +256,7 @@ class AuthorizationCodeFlow:
             )
             raise TokenRefreshFailedError(safe_error_description(exc)) from exc
 
-    def _parse_token_response(  # noqa: C901, PLR0912, PLR0915
+    def _parse_token_response(
         self,
         data: object,
         operation: str,

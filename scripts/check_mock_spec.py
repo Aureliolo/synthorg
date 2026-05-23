@@ -253,7 +253,7 @@ class _Verdict(Enum):
     SKIP = auto()
 
 
-def _decide_direct(  # noqa: C901, PLR0911, PLR0912 -- rule table reads top-down
+def _decide_direct(
     node: ast.AST,
     parents: _ParentMap,
 ) -> _Verdict:

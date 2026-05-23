@@ -215,7 +215,7 @@ def _prose_run_text(blocks: Sequence[ProseBlock]) -> str:
     return "\n\n".join(b.text for b in blocks)
 
 
-def _block_to_text(block: DocBlock) -> str:  # noqa: PLR0911 -- one branch per block kind
+def _block_to_text(block: DocBlock) -> str:
     """Render a single block to embeddable plain text."""
     if isinstance(block, HeadingBlock):
         return block.text

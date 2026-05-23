@@ -18,6 +18,64 @@ linters:
     - prealloc
     - unconvert
     - unparam
+    # EPIC #2046 PR 1 (issue #2047) tightening. Structural-complexity
+    # checks that catch overgrown functions and nested-control depth.
+    - gocyclo
+    - funlen
+    - gocognit
+    - nestif
+    - revive
+  settings:
+    gocyclo:
+      min-complexity: 10
+    funlen:
+      lines: 80
+      statements: 60
+    gocognit:
+      min-complexity: 15
+    nestif:
+      min-complexity: 4
+    revive:
+      rules:
+        - name: unused-parameter
+        - name: unused-receiver
+        - name: confusing-naming
+        - name: cognitive-complexity
+          arguments: [15]
+  exclusions:
+    # EPIC #2046 PR 1: absorb existing CLI complexity via path-scoped
+    # exclusions. The new linters (gocyclo, funlen, gocognit, nestif,
+    # revive cognitive-complexity / unused-receiver) catch shapes the
+    # existing CLI carries. The compose generator and the doctor /
+    # verify subcommands hit these thresholds today; the rules still
+    # apply to new packages.
+    rules:
+      - path: 'internal/compose/'
+        linters: [gocyclo, funlen, gocognit, nestif, revive]
+      - path: 'internal/verify/'
+        linters: [gocyclo, funlen, gocognit, nestif, revive]
+      - path: 'internal/diagnostics/'
+        linters: [gocyclo, funlen, gocognit, nestif]
+      - path: 'internal/health/'
+        linters: [gocyclo, funlen, gocognit, nestif]
+      - path: 'internal/ui/'
+        linters: [gocyclo, funlen, gocognit, nestif, revive]
+      - path: 'internal/selfupdate/'
+        linters: [gocyclo, funlen, gocognit, nestif, revive]
+      - path: 'internal/backup/'
+        linters: [gocyclo, funlen, gocognit, nestif]
+      - path: 'internal/config/'
+        linters: [gocyclo, funlen, gocognit, nestif, revive]
+      - path: 'internal/scaffold/'
+        linters: [gocyclo, funlen, gocognit, nestif, revive]
+      - path: 'internal/completion/'
+        linters: [gocyclo, funlen, gocognit, nestif, revive]
+      - path: 'internal/docker/'
+        linters: [gocyclo, funlen, gocognit, nestif, revive]
+      - path: 'cmd/'
+        linters: [gocyclo, funlen, gocognit, nestif, revive]
+      - path: '_test\.go$'
+        linters: [gocognit, revive]
 
 formatters:
   enable:

@@ -1,0 +1,6 @@
+# Frozen baseline of callsites annotating with a factory-registered
+# concrete strategy class instead of its Protocol.
+# Each line is `path:lineno:funcname:ConcreteClass`.
+#
+# Regenerate (rare; requires explicit user approval) via the gate's
+# write_baseline() Python API.

@@ -467,7 +467,7 @@ async def _memory_deploy_checkpoint(
     return ok(data=cp.model_dump(mode="json"))
 
 
-async def _memory_rollback_checkpoint(  # noqa: PLR0911
+async def _memory_rollback_checkpoint(
     *,
     app_state: Any,
     arguments: dict[str, Any],
@@ -512,7 +512,7 @@ async def _memory_rollback_checkpoint(  # noqa: PLR0911
     return ok(data=cp.model_dump(mode="json"))
 
 
-async def _memory_delete_checkpoint(  # noqa: PLR0911
+async def _memory_delete_checkpoint(
     *,
     app_state: Any,
     arguments: dict[str, Any],

@@ -1,0 +1,266 @@
+# ADR-0006: Tiered module-size policy + enforced quality stack
+
+## Status
+
+Accepted, implemented in EPIC #2046 PR 1 (issue #2047).
+
+## Context
+
+SynthOrg is 100% AI-written and AI-maintained. The convention-gate
+culture is strong: 51 custom `check_*.py` gates plus 21 `check_*.sh`
+PreToolUse hooks, a meta-gate enforcing MANDATORY-to-gate parity, and
+a manifest-driven ghost-wiring tracker for 118 components. Yet
+architecture-level smells escape every existing gate:
+
+- **54 files >800 lines** in `src/synthorg/`. The `<800` line in
+  `CLAUDE.md` was a guideline, not a gate. `api/state.py` (2313),
+  `api/app.py` (2152), `api/controllers/providers.py` (1530),
+  `meta/mcp/handlers/infrastructure.py` (1345).
+- **God-modules at the centre keep growing** even when periphery
+  features stay clean. PR #2045 (charter feature, just merged) added
+  +113 LOC to `api/app.py`, +16 to `core/enums.py`, +12 to
+  `events/persistence.py`, +2 to `api/state.py`. Every new charter
+  file stayed under ~570 LOC: clean periphery, growing god-modules at
+  the centre.
+- **Junk drawers**: `core/enums.py` (57 unrelated StrEnums across 8
+  domains), `observability/events/persistence.py` (895 LOC of
+  cross-sub-domain event constants).
+- **Ruff thresholds default**: `max-complexity` implicit;
+  `max-statements`, `max-branches`, `max-public-methods` not set.
+  File-level fan-in / cohesion / god-objects invisible to ruff.
+- **No declarative import-layering** beyond three custom gates that
+  partially cover.
+
+This ADR records the tiered module-size policy and the enforced quality
+stack landing alongside it.
+
+## Decision
+
+### Tiered module-size policy
+
+A new `# module-kind: <tier>` header on the first non-blank,
+non-shebang, non-encoding-declaration line of a file declares its
+tier. The header position is strict: headers after the module
+docstring or interleaved with imports are ignored. Tiers:
+
+| Tier | LOC cap | Notes |
+|------|--------:|-------|
+| `controller` | 400 | API controllers, MCP handlers |
+| `service` / `orchestrator` | 600 | Long-lived stateful services, coordinators |
+| `repository` | 500 | Per-entity persistence repos |
+| `adapter` / `integration` | 700 | External-system adapters, browser/sandbox tools |
+| `feature` | 100 | A feature directory's `feature.py` manifest (lands in PR 2) |
+| `code` | 500 | Default for unheadered Python files |
+| `tests` | 800 | Anything under `tests/` |
+| `declarative` | exempt | Enums, event constants, settings definitions, DTO/schema modules |
+| `generated` | glob-exempt | `*.gen.*`, `*_pb2.py` |
+
+LOC counting matches `check_baseline_growth.py::_count_text_entries`:
+physical lines excluding blank lines and `#`-prefixed comment-only
+lines. Inline trailing comments DO count.
+
+The shared helper `scripts/_module_size_lib.py` centralises LOC
+counting, tier resolution, the tier table, and the generated-glob set
+so the gate and the baseline generator cannot drift.
+
+Existing offenders are absorbed via
+`scripts/_module_size_baseline.json`. A baselined file may stay at or
+below its recorded LOC; growth past the baseline fails. New files may
+not exceed their tier cap regardless of baseline. Baselines shrink
+monotonically (enforced by `check_baseline_growth.py`).
+
+In addition, an explicit god-module allowlist (`api/app.py`,
+`api/state.py`, `api/auto_wire.py`, `api/lifecycle.py`,
+`api/lifecycle_builder.py`, `core/enums.py`,
+`observability/events/persistence.py`) must net-shrink on every PR.
+This gate (`check_no_growth_in_god_modules.py`) prevents the central
+files from absorbing more responsibility while PR 2 / PR 3 / PR 4
+decompose them.
+
+### Ten new custom gates
+
+All baseline-driven, all wired into `.pre-commit-config.yaml`:
+
+1. `check_module_size_budget.py` -- the tier-cap enforcer above.
+2. `check_no_growth_in_god_modules.py` -- god-module net-shrink rule.
+3. `check_no_central_junk_drawer.py` -- no new entries in
+   `core/enums.py` / `events/persistence.py` / `AppState.__slots__`.
+   Dissolution tracked in #2051.
+4. `check_no_circular_imports.py` -- AST-driven Tarjan SCC detection
+   across `src/synthorg/`. Excludes `TYPE_CHECKING` and function-local
+   imports.
+5. `check_module_depth.py` -- package-nesting depth ceiling (4 today).
+6. `check_protocol_documented.py` -- every `Protocol` class carries a
+   non-trivial docstring (>=10 chars, not `TODO`/`TBD`/`FIXME`/`...`).
+7. `check_no_module_level_io.py` -- no `open()`/`subprocess`/
+   `requests`/`httpx`/`socket`/`urllib.urlopen`/`Path.{read,write}_*`
+   at import time. Function bodies and `if __name__ == "__main__":`
+   are exempt.
+8. `check_state_slice_immutability.py` -- state-slice classes must
+   declare `ConfigDict(frozen=True, extra="forbid")`. Empty baseline
+   in PR 1 (state slices arrive in PR 2); the gate is in place so PR
+   2 cannot land slices that violate.
+9. `check_strategy_protocol_injection.py` -- factory-registered
+   strategies must be referenced by Protocol type at callsites, not
+   concrete impl.
+10. `check_settings_namespace_complete.py` -- every
+    `SettingNamespace` enum value has a corresponding
+    `settings/definitions/<name>.py` file.
+
+### Ruff tightening
+
+```toml
+[tool.ruff.lint.pylint]
+max-args = 5
+max-public-methods = 12
+max-statements = 30
+max-branches = 10
+max-returns = 5
+max-locals = 15
+max-nested-blocks = 4
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+```
+
+New selects: `BLE`, `G`, `ERA`, `INP`, `DOC`. `DOC201/202/501` carry a
+broad per-file-ignore on `src/synthorg/**` while later docstring PRs
+catch up.
+
+### Mypy strict++
+
+```toml
+disallow_any_explicit = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+no_implicit_reexport = true
+warn_unreachable = true
+extra_checks = true
+strict_concatenate = true
+enable_error_code = [
+    "ignore-without-code", "redundant-cast", "truthy-bool",
+    "narrowed-type-not-subtype", "unused-awaitable", "explicit-override",
+    "possibly-undefined", "deprecated",
+]
+```
+
+Legacy packages with non-trivial `Any` usage carry minimal
+`[[tool.mypy.overrides]]` blocks turning off only the flag that
+fires. The override list is the technical-debt register; later typing
+PRs lift overrides one package at a time.
+
+### Pyright
+
+Added as a CI artefact via `.github/workflows/pyright.yml`. The job
+runs `pyright --outputjson`, uploads the report, and `continue-on-error:
+true`. No pre-push gate.
+
+### New Python tools
+
+Added to `[dependency-groups.dev]` and `.pre-commit-config.yaml`:
+`deptry` (dependency hygiene), `vulture` (dead code), `interrogate`
+(docstring coverage threshold), `codespell` (spelling), `sqlfluff`
+(SQL lint, per-dialect).
+
+**Typeguard intentionally not landed in PR 1.** It surfaces 200-500
+TYPE_CHECKING-import sites that crash at runtime (typeguard resolves
+annotations at runtime; `TYPE_CHECKING`-guarded names are unavailable
+then). Fixing each site requires moving the import to runtime (risking
+circular-import cycles) or rewriting the annotation as a string
+forward-ref. The full fix-volume would blow the 10k LOC / 200 file
+caps that bound this PR. PR 2 (feature-manifest substrate) restructures
+the import graph anyway: feature modules become runtime-importable so
+typeguard has far less to break on. Typeguard is deferred to a
+dedicated typing-coverage PR after PR 2 merges; this is a deliberate
+scope choice, not a TODO.
+
+### New web tools
+
+`web/package.json` gains `knip`, `dpdm`, `madge`, `size-limit`,
+`@lhci/cli`. Per-route bundle cap 200 KB gzipped. Lighthouse
+aggressive budgets (perf >= 90, a11y >= 95, CLS <= 0.05, LCP <=
+2500ms, TBT <= 300ms), hard-blocking from day one. ESLint tightened
+to match Python tier values (complexity 8, max-lines 400,
+max-lines-per-function 80, max-params 5, no-restricted-imports for
+feature isolation).
+
+### Tightened Go lint
+
+`cli/.golangci.yml` enables `gocyclo` (min-complexity 10), `funlen`
+(80/60), `gocognit` (15), `nestif` (4), stricter `revive`.
+
+### New docs / SQL / YAML tools
+
+`lychee` (Markdown link check), `vale` (Google style + British
+dictionary), `markdownlint`, `yamllint`.
+
+## Consequences
+
+### Positive
+
+- Architectural badness has at least one mechanical gate. AI agents
+  cannot grow god-modules unintentionally; the gate fires at pre-push.
+- Baselines absorb today's reality so existing code passes. The day
+  this merges, the bleeding stops.
+- The codebase's enforcement substrate matches the discipline the
+  team already practises in periphery features.
+- PR 2 can land the manifest substrate on top without first having
+  to land its own enforcement layer.
+
+### Negative
+
+- Twelve new tools and ten new gates land in one PR. The pre-push
+  surface grows; CI wall-clock grows by at most the longest new job
+  (Lighthouse, ~2-3 min).
+- Mypy `[[tool.mypy.overrides]]` block list creates explicit
+  technical debt that later typing PRs must drain.
+- DOC per-file-ignore creates implicit technical debt that later
+  docstring PRs must drain.
+- New typeguard instrumentation adds runtime checks during the test
+  suite. All current type/runtime mismatches must be fixed in PR 1
+  (no `@pytest.mark.no_typeguard` escape hatch; no follow-up issues).
+
+### Neutral
+
+- Header rollout in PR 1 covers only a small allowlist of obviously
+  declarative files (`core/enums.py`, `events/persistence.py`,
+  `settings/definitions/*.py` >500 LOC). Group-F audit (#2052) tags
+  the rest.
+- Dissolution of `core/enums.py` and `events/persistence.py` into
+  per-domain files is tracked in #2051 (out of scope of this EPIC).
+
+## Alternatives considered
+
+### Blanket `<N` LOC ceiling
+
+A single global file-size cap was the status quo (`<800` lines in
+CLAUDE.md). It false-positives on legitimate declarative blobs (event
+constants, schema definitions) and forces real services to fragment
+gratuitously. Rejected.
+
+### Tier-less ratchet via baseline alone
+
+Capture today's max LOC per file, lock it, ratchet. Works for
+existing files but provides no signal for new files: a new
+2000-line god-controller passes because nothing baselines it.
+Rejected.
+
+### Ruff config alone
+
+Ruff measures function-level complexity. File-level fan-in / cohesion
+/ god-objects are invisible to it. Tightening ruff is necessary but
+not sufficient; the custom gates fill the gap.
+
+### `<800` guideline kept and enforced via reviewer attention
+
+Existing data refutes this: PR #2045 grew `api/app.py` by 113 LOC
+under reviewer attention. AI-generated code is too high-volume for
+reviewer attention alone to enforce architecture. Rejected.
+
+## Related
+
+- EPIC #2046 -- the umbrella program this PR opens.
+- Sub-issues #2048 (manifest substrate), #2049 (controller
+  decomposition), #2050 (repos/services + import-layering).
+- Follow-up #2051 (dissolve `core/enums.py` and `events/persistence.py`).
+- Follow-up #2052 (audit Group-F legitimately-complex files).

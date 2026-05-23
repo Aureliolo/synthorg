@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Engine namespace setting definitions."""
 
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType

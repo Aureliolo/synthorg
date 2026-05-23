@@ -156,7 +156,7 @@ class A2AClient:
             {"id": task_id},
         )
 
-    async def _call_method(  # noqa: C901, PLR0912, PLR0915
+    async def _call_method(
         self,
         peer_name: str,
         method: str,

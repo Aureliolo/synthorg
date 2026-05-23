@@ -195,7 +195,7 @@ class BrowserTool(BaseTool):
         self._owner_id = owner_id or f"browser-tool-{uuid4()}"
         self._settings = settings or BrowserSettings()
 
-    async def execute(  # noqa: PLR0911 -- mode dispatch is the design
+    async def execute(
         self,
         *,
         arguments: dict[str, Any],

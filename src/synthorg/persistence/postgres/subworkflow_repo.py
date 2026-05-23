@@ -104,7 +104,7 @@ def _deserialize_row(
         raise QueryError(msg) from exc
 
 
-def _extract_references(  # noqa: PLR0913, C901
+def _extract_references(  # noqa: PLR0913
     rows: Iterable[dict[str, Any]],
     subworkflow_id: str,
     version: str | None,

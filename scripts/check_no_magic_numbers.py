@@ -596,7 +596,7 @@ def _classify_module_assign(
     )
 
 
-def _classify_default(  # noqa: PLR0911
+def _classify_default(
     default: ast.expr,
     function_node: ast.FunctionDef | ast.AsyncFunctionDef,
     rel: str,

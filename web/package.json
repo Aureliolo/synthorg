@@ -17,6 +17,9 @@
     "e2e": "playwright test",
     "e2e:update": "playwright test --update-snapshots",
     "lighthouse": "lhci autorun",
+    "lint:knip": "knip --no-progress",
+    "lint:circular": "dpdm --no-warning --no-tree --exit-code circular:1 src/main.tsx --skip-imports=\"stores/auth\\\\.ts:api/client\\\\.ts\"",
+    "report:deps": "madge --exclude \"^(node_modules|dist)/\" src/main.tsx",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build -o storybook-static",
     "generate:api-types": "uv run python ../scripts/generate_dto_types_ts.py",
@@ -103,7 +106,10 @@
     "typescript": "6.0.3",
     "typescript-eslint": "8.59.4",
     "vite": "8.0.13",
-    "vitest": "4.1.6"
+    "vitest": "4.1.6",
+    "knip": "6.14.2",
+    "dpdm": "4.2.0",
+    "madge": "8.0.0"
   },
   "msw": {
     "workerDirectory": [

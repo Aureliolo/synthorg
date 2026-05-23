@@ -236,7 +236,7 @@ def _create_slack_sink(
         return None
 
 
-def _create_email_sink(  # noqa: PLR0911 - each return is a distinct validation guard
+def _create_email_sink(
     params: dict[str, str],
     *,
     bridge_config: NotificationsBridgeConfig | None = None,

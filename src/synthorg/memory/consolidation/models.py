@@ -129,7 +129,7 @@ class ConsolidationResult(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_archival_consistency(self) -> Self:  # noqa: C901
+    def _validate_archival_consistency(self) -> Self:
         """Ensure archival fields are internally consistent."""
         if len(self.removed_ids) != len(set(self.removed_ids)):
             msg = "removed_ids contains duplicates"

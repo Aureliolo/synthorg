@@ -1,0 +1,3 @@
+# Frozen baseline of state-slice classes lacking frozen+extra=forbid.
+# Each line is `path:lineno:ClassName:reason`.
+# Empty in PR 1 (state slices land in PR 2).

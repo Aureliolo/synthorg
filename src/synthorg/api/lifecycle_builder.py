@@ -263,7 +263,7 @@ async def _wire_approval_gate(
     )
 
 
-def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
+def _build_lifecycle(  # noqa: PLR0913
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
@@ -346,7 +346,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
         "Webhook receipt cleanup task died unexpectedly",
     )
 
-    async def on_startup() -> None:  # noqa: C901, PLR0912, PLR0915
+    async def on_startup() -> None:
         nonlocal _ticket_cleanup_task, _audit_retention_task
         nonlocal _webhook_cleanup_task
         nonlocal _auto_wired_dispatcher
@@ -979,7 +979,7 @@ def _build_lifecycle(  # noqa: PLR0913, PLR0915, C901
                     error=safe_error_description(exc),
                 )
 
-    async def on_shutdown() -> None:  # noqa: C901, PLR0912, PLR0915
+    async def on_shutdown() -> None:
         nonlocal _ticket_cleanup_task, _audit_retention_task
         nonlocal _webhook_cleanup_task
         nonlocal _auto_wired_dispatcher

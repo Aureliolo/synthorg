@@ -34,9 +34,9 @@ import ast
 import io
 import re
 import tokenize
-from collections.abc import Iterable  # noqa: TC003 -- runtime use in generators
+from collections.abc import Iterable
 from dataclasses import dataclass
-from pathlib import Path  # noqa: TC003 -- runtime use in helper signatures
+from pathlib import Path
 from typing import Final, Literal
 
 __all__ = (
@@ -229,7 +229,7 @@ def _line_has_trailing_marker(line: str) -> bool:
 # ── Annotation classification ───────────────────────────────────
 
 
-def _annotation_terminal_names(  # noqa: PLR0911, C901 -- one branch per AST node shape
+def _annotation_terminal_names(
     node: ast.AST | None,
 ) -> Iterable[tuple[str | None, str]]:
     """Yield ``(module, terminal)`` pairs for every name in *node*.
@@ -563,7 +563,7 @@ def _discover_repo_classes(protocol_dir: Path) -> set[str]:
     return found
 
 
-def _extract_return_type_name(  # noqa: PLR0911 -- one branch per AST node shape
+def _extract_return_type_name(
     node: ast.AST | None,
 ) -> str | None:
     """Return the bare name of a return-type annotation, or None.

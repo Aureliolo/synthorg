@@ -148,7 +148,7 @@ def resolve_duration_days(
 # -- Trigger evaluation -----------------------------------------------------
 
 
-def evaluate_task_trigger(  # noqa: PLR0911
+def evaluate_task_trigger(
     trigger: str,
     config: Mapping[str, Any],
     context: CeremonyEvalContext,

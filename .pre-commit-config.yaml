@@ -38,7 +38,7 @@ ci:
   # local-only pre-push hook surface) so pre-commit.ci does not pick
   # them up; their CI counterpart is the ``Lint`` job in ``ci.yml``
   # which runs the same scripts on every PR.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, deptry, vulture, interrogate, sqlfluff, yamllint, lychee, web-knip, web-circular]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -127,6 +127,25 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  # EPIC #2046 PR 1 (issue #2047): docs / YAML / Markdown lint.
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.45.0
+    hooks:
+      - id: markdownlint
+        args: [--config, .markdownlint.json]
+        # Top-level + docs/ + cli/ + web/ Markdown is in scope.
+        files: ^(README|CLAUDE|cli/CLAUDE|web/CLAUDE)\.md$|^docs/.*\.md$
+        # ``stages: [pre-commit]`` (the default) so editors get fast
+        # feedback on the docs they're touching.
+
+  - repo: https://github.com/lycheeverse/lychee
+    rev: lychee-v0.20.1
+    hooks:
+      - id: lychee
+        args: [--no-progress, --cache, --max-cache-age=2d, --skip-missing]
+        files: ^(README\.md|CLAUDE\.md|docs/.*\.md|cli/CLAUDE\.md|web/CLAUDE\.md)$
+        stages: [pre-push]
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
@@ -726,3 +745,165 @@ repos:
         files: ^(src/synthorg/(persistence/.*\.py|api/services/.*\.py|.*_service\.py|.*/service(?:/.*)?\.py)|scripts/check_no_api_dto_in_persistence_or_service\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-commit, pre-push]
+
+      # ── EPIC #2046 PR 1: codebase modularity gates ──────────────
+      # Tiered LOC budget per `# module-kind:` header. Baseline-driven.
+      - id: module-size-budget
+        name: module-size budget (tiered LOC caps per # module-kind: header)
+        entry: uv run python scripts/check_module_size_budget.py
+        language: system
+        files: ^(src/synthorg/.*\.py|scripts/check_module_size_budget\.py|scripts/_module_size_lib\.py|scripts/_module_size_baseline\.json|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Allowlisted god-modules must net-shrink on every PR.
+      - id: no-growth-in-god-modules
+        name: god-modules must net-shrink (api/app.py, api/state.py, ...)
+        entry: uv run python scripts/check_no_growth_in_god_modules.py
+        language: system
+        files: ^(src/synthorg/(api/(app|state|auto_wire|lifecycle|lifecycle_builder)\.py|core/enums\.py|observability/events/persistence\.py)|scripts/check_no_growth_in_god_modules\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+      # No new entries in core/enums.py / events/persistence.py / AppState.
+      - id: no-central-junk-drawer
+        name: no new central-junk-drawer entries (#2051 will dissolve)
+        entry: uv run python scripts/check_no_central_junk_drawer.py
+        language: system
+        files: ^(src/synthorg/(core/enums\.py|observability/events/persistence\.py|api/state\.py)|scripts/check_no_central_junk_drawer\.py|scripts/_central_junk_drawer_baseline\.json|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
+      # AST-driven cycle detection across src/synthorg/.
+      - id: no-circular-imports
+        name: no new import cycles in src/synthorg/
+        entry: uv run python scripts/check_no_circular_imports.py
+        language: system
+        files: ^(src/synthorg/.*\.py|scripts/check_no_circular_imports\.py|scripts/_circular_imports_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Package-nesting depth ceiling.
+      - id: module-depth
+        name: module nesting depth ceiling
+        entry: uv run python scripts/check_module_depth.py
+        language: system
+        files: ^(src/synthorg/.*\.py|scripts/check_module_depth\.py|scripts/_module_depth_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Every Protocol class needs a non-trivial docstring.
+      - id: protocol-documented
+        name: every Protocol class carries a non-trivial docstring
+        entry: uv run python scripts/check_protocol_documented.py
+        language: system
+        files: ^(src/synthorg/.*\.py|scripts/check_protocol_documented\.py|scripts/_protocol_doc_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # No open() / network / subprocess at import time.
+      - id: no-module-level-io
+        name: no module-import-time I/O calls
+        entry: uv run python scripts/check_no_module_level_io.py
+        language: system
+        files: ^(src/synthorg/.*\.py|scripts/check_no_module_level_io\.py|scripts/_module_level_io_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # State-slice classes (PR 2) must be frozen + extra="forbid".
+      - id: state-slice-immutability
+        name: state-slice classes must be frozen + extra="forbid"
+        entry: uv run python scripts/check_state_slice_immutability.py
+        language: system
+        files: ^(src/synthorg/.*\.py|scripts/check_state_slice_immutability\.py|scripts/_state_slice_immutability_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Factory-registered strategies referenced by Protocol at callsites.
+      - id: strategy-protocol-injection
+        name: strategy callsites annotate with Protocol, not concrete impl
+        entry: uv run python scripts/check_strategy_protocol_injection.py
+        language: system
+        files: ^(src/synthorg/.*\.py|scripts/check_strategy_protocol_injection\.py|scripts/_strategy_protocol_injection_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Every SettingNamespace value has a settings/definitions/<name>.py file.
+      - id: settings-namespace-complete
+        name: every SettingNamespace value has a definitions/<name>.py file
+        entry: uv run python scripts/check_settings_namespace_complete.py
+        language: system
+        files: ^(src/synthorg/settings/(enums\.py|definitions/.*\.py)|scripts/check_settings_namespace_complete\.py|scripts/_settings_namespace_baseline\.txt|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # ── EPIC #2046 PR 1: cross-stack quality tools ──────────────
+      # Dependency hygiene; configured via [tool.deptry] in pyproject.
+      - id: deptry
+        name: deptry (pyproject dependency hygiene)
+        entry: uv run deptry src/synthorg
+        language: system
+        files: ^(pyproject\.toml|uv\.lock|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Dead-code detection; configured via [tool.vulture] in pyproject.
+      - id: vulture
+        name: vulture (unused code in src/synthorg/)
+        entry: uv run vulture
+        language: system
+        files: ^(src/synthorg/.*\.py|pyproject\.toml|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Docstring coverage threshold; configured via [tool.interrogate].
+      - id: interrogate
+        name: interrogate (docstring coverage)
+        entry: uv run interrogate -c pyproject.toml src/synthorg
+        language: system
+        files: ^(src/synthorg/.*\.py|pyproject\.toml|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # Spelling check; configuration in .codespellrc.
+      - id: codespell
+        name: codespell (spelling)
+        entry: uv run codespell --config .codespellrc
+        language: system
+        files: ^(src/synthorg|tests|scripts|docs|README\.md|CLAUDE\.md|\.codespellrc).*$
+        pass_filenames: false
+
+      # SQL lint for migration revisions.
+      - id: sqlfluff
+        name: sqlfluff (SQLite + Postgres revisions)
+        entry: bash -c "uv run sqlfluff lint --dialect sqlite src/synthorg/persistence/sqlite/revisions/ && uv run sqlfluff lint --dialect postgres src/synthorg/persistence/postgres/revisions/"
+        language: system
+        files: ^(src/synthorg/persistence/(sqlite|postgres)/revisions/.*\.sql|\.sqlfluff|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # YAML lint; configuration in .yamllint.
+      - id: yamllint
+        name: yamllint (YAML style)
+        entry: uv run yamllint
+        language: system
+        files: ^(\.github/workflows/.*\.ya?ml|\.pre-commit-config\.yaml|\.yamllint|docker/.*\.ya?ml|data/.*\.ya?ml)$
+        pass_filenames: true
+
+      # Web: unused-export detection (knip) + circular-deps (dpdm).
+      # Both run pre-push only because they boot the TS project graph.
+      - id: web-knip
+        name: knip (unused exports / files / deps)
+        entry: npm --prefix web run lint:knip
+        language: system
+        files: ^web/.*\.(ts|tsx|json)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: web-circular
+        name: dpdm (circular import detection)
+        entry: npm --prefix web run lint:circular
+        language: system
+        files: ^web/.*\.(ts|tsx)$
+        pass_filenames: false
+        stages: [pre-push]

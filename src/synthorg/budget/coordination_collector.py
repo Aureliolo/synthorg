@@ -656,7 +656,7 @@ class CoordinationMetricsCollector:
             )
             return None
 
-    async def _try_collect_token_speedup(  # noqa: PLR0911
+    async def _try_collect_token_speedup(
         self,
         total_tokens_mas: int,
         agent_durations: tuple[tuple[str, float], ...] | None,

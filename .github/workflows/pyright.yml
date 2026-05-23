@@ -1,0 +1,50 @@
+name: Pyright
+
+# EPIC #2046 PR 1 (issue #2047): second type-checker. Mypy is
+# authoritative (pre-push gate); Pyright runs here as a CI artefact so
+# its narrowing / generics / overload findings are surfaced without
+# blocking. Promote to blocking once disagreements with mypy are
+# resolved in a follow-up typing PR.
+
+on:
+  pull_request:
+    paths:
+      - 'src/**/*.py'
+      - 'tests/**/*.py'
+      - 'scripts/**/*.py'
+      - 'pyproject.toml'
+      - 'pyrightconfig.json'
+      - '.github/workflows/pyright.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  pyright:
+    name: pyright (advisory)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    continue-on-error: true
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-python-uv
+
+      - name: Run pyright (JSON report)
+        # `--outputjson` is the machine-readable form; pyright always
+        # exits non-zero when it finds anything, hence continue-on-error
+        # on the job. The artefact lets reviewers inspect the report
+        # without paying a pre-push tax for every developer push.
+        run: |
+          uv run pyright --outputjson > pyright-report.json || true
+
+      - name: Upload pyright report
+        uses: actions/upload-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: pyright-report
+          path: pyright-report.json
+          retention-days: 14

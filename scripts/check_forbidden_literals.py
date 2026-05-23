@@ -195,7 +195,7 @@ def _line_has_trailing_marker(line: str) -> bool:
     return False
 
 
-def _scan_file(file_path: Path, rel: str) -> list[str]:  # noqa: C901
+def _scan_file(file_path: Path, rel: str) -> list[str]:
     """Return violation messages for a single file.
 
     Read errors (permissions, corrupt encoding) are reported as

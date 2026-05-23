@@ -71,7 +71,7 @@ def identity() -> AgentIdentity:
 
 
 @pytest.fixture
-def app_state(identity: AgentIdentity) -> SimpleNamespace:  # noqa: PLR0915 -- fixture
+def app_state(identity: AgentIdentity) -> SimpleNamespace:
     """Wired AppState double covering every META-MCP-3 facade."""
     ns = SimpleNamespace()
 

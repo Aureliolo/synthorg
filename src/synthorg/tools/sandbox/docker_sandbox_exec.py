@@ -222,7 +222,7 @@ class DockerSandboxExecMixin:
             return f"{prefixed}:img-{digest[:_IMAGE_SEGMENT_HASH_LEN]}"
         return prefixed
 
-    def _resolve_lifecycle(  # noqa: PLR0911 -- each owner source + prefix-validation guard needs its own early return
+    def _resolve_lifecycle(
         self,
         owner_id: str | None,
         *,

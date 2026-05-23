@@ -335,7 +335,7 @@ class SecOpsService(SecOpsServiceSafetyMixin):
 
         return result
 
-    async def _maybe_llm_fallback(  # noqa: PLR0911
+    async def _maybe_llm_fallback(
         self,
         context: SecurityContext,
         verdict: SecurityVerdict,

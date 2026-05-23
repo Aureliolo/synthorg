@@ -1,0 +1,14 @@
+{
+  "counts": {
+    "src/synthorg/api/state.py": {
+      "state_slots": 176
+    },
+    "src/synthorg/core/enums.py": {
+      "top_level_classes": 62
+    },
+    "src/synthorg/observability/events/persistence.py": {
+      "top_level_assignments": 380
+    }
+  },
+  "description": "Frozen counts of central junk-drawer modules. Each entry under `counts` is `<posix_path>: {metric_name: current_count}`. Modules may shrink; growth fails the gate. Dissolution tracked in #2051. Regenerate with the gate's write_baseline() Python API."
+}

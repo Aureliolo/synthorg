@@ -1,0 +1,7 @@
+# Frozen baseline of pre-existing over-deep modules in src/synthorg/.
+# Each line is `path:depth` (POSIX path, integer depth measured from
+# src/synthorg/). The gate compares the current file's depth to the
+# baseline depth; if a file moves deeper, the gate fails.
+#
+# Regenerate (rare; requires explicit user approval) via the gate's
+# write_baseline() Python API.

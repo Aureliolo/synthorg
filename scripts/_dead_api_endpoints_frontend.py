@@ -174,7 +174,7 @@ def _line_col_at(text: str, offset: int) -> tuple[int, int]:
 # of these branches into helpers would fragment the per-character
 # flow and make the parser harder to reason about, so the function
 # keeps its C901 / PLR0912 suppressions rather than being broken up.
-def _iter_top_level_positions(  # noqa: C901, PLR0912
+def _iter_top_level_positions(
     text: str,
     paren_idx: int,
 ) -> Iterator[tuple[str, int]]:
@@ -315,7 +315,7 @@ def _resolve_template_literal(
     return "".join(out)
 
 
-def _find_template_end(body: str, start: int) -> int:  # noqa: C901, PLR0912 -- nested-brace / quote scanner
+def _find_template_end(body: str, start: int) -> int:
     """Find the matching ``}`` for a ``${...}`` opening at *start*.
 
     Tracks nested braces and bracketed expressions inside the

@@ -95,7 +95,7 @@ def _line_has_trailing_marker(line: str) -> bool:
     return False
 
 
-def _normalise_annotation(node: ast.expr | None) -> str:  # noqa: PLR0911
+def _normalise_annotation(node: ast.expr | None) -> str:
     """Return a normalised string form of *node*.
 
     Drops module prefixes from attribute chains

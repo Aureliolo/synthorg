@@ -405,7 +405,7 @@ class BackupServiceArchiveMixin:
             tar.extractall(target_dir, filter="data")
 
     @staticmethod
-    def _read_manifest_from_archive(  # noqa: PLR0911
+    def _read_manifest_from_archive(
         archive_path: Path,
     ) -> BackupManifest | None:
         """Read manifest.json from a tar.gz archive."""

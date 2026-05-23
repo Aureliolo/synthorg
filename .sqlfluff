@@ -1,0 +1,47 @@
+# EPIC #2046 PR 1 (issue #2047): SQL lint for revision files.
+#
+# Two dialects: SQLite migrations under persistence/sqlite/revisions/
+# and Postgres migrations under persistence/postgres/revisions/. The
+# default dialect is SQLite; the postgres path uses a directory-scoped
+# override via .sqlfluffignore + per-path command invocation.
+
+[sqlfluff]
+dialect = sqlite
+templater = raw
+# Keep only the correctness-focused rule groups. Existing migrations
+# are frozen by check_no_edit_migration.sh so layout / capitalisation /
+# alias-naming rules fire on the historical record without value;
+# enabling them on new SQL is a follow-up SQL-style PR.
+rules = ambiguous, references
+# RF04 fires on legitimate column names that happen to be SQL keywords
+# (e.g. `text`, `value`, `key`). These are intentionally chosen for
+# domain clarity; column names quoted by the engine are safe.
+exclude_rules = RF04
+max_line_length = 200
+indent_unit = space
+tab_space_size = 4
+
+[sqlfluff:indentation]
+indented_joins = false
+indented_using_on = true
+template_blocks_indent = false
+
+[sqlfluff:rules]
+allow_scalar = true
+single_table_references = consistent
+unquoted_identifiers_policy = aliases
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.identifiers]
+extended_capitalisation_policy = consistent
+
+[sqlfluff:rules:capitalisation.functions]
+extended_capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = upper
+
+[sqlfluff:rules:capitalisation.types]
+extended_capitalisation_policy = upper

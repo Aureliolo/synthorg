@@ -477,7 +477,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         await record_tool_invocation(self, tool_call, result, started_at=started_at)
         return result
 
-    async def _build_invocation_result(  # noqa: PLR0911
+    async def _build_invocation_result(
         self,
         tool_call: ToolCall,
     ) -> ToolResult:

@@ -282,7 +282,7 @@ def _line_has_python_marker(line: str) -> bool:
     return False
 
 
-def _line_has_js_marker(line: str) -> bool:  # noqa: C901 -- string-literal-aware line scanner
+def _line_has_js_marker(line: str) -> bool:
     """Return True iff a JS/TS *line* carries a trailing ``//`` marker.
 
     Naive single-line `//` scan: locates the rightmost `//` that is

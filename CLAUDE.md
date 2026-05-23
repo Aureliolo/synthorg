@@ -17,6 +17,7 @@ Web: see `web/CLAUDE.md`. CLI: see `cli/CLAUDE.md` (use `go -C cli`, never `cd c
 - **Doc Numeric Claims (MANDATORY)**: numerics in README + public docs sourced from `data/runtime_stats.yaml` via `<!--RS:NAME-->` markers. See `data/README.md`.
 - **Test Regression (MANDATORY)**: timeout/slow failures = source-code regression; never edit `tests/baselines/unit_timing.json` or any `scripts/*_baseline.{txt,json}` / `scripts/_*_baseline.py`. Both families are PreToolUse-blocked. Per-invocation bypass for gate baselines: `ALLOW_BASELINE_GROWTH=1 git commit ...` (requires explicit user approval).
 - **Post-Implementation + Pre-PR Review (MANDATORY)**: after issue: branch + commit + push (no auto-PR); use `/pre-pr-review` (`gh pr create` is blocked by `scripts/check_no_pr_create.sh`). After PR: `/aurelio-review-pr` for external feedback. Fix EVERYTHING valid; no deferring.
+- **Module-Size Budget (MANDATORY)**: tiered LOC caps per `# module-kind:` header on the first non-blank/non-shebang/non-encoding line: `controller` 400, `service`/`orchestrator` 600, `repository` 500, `adapter`/`integration` 700, `feature` 100, `code` 500 (default), `tests` 800, `declarative` exempt, `generated` glob-exempt. Existing offenders baselined in `scripts/_module_size_baseline.json`; no file may grow past its baseline. Allowlisted god-modules (`api/app.py`, `api/state.py`, `api/auto_wire.py`, `api/lifecycle.py`, `api/lifecycle_builder.py`, `core/enums.py`, `observability/events/persistence.py`) must net-shrink. Enforced by `check_module_size_budget.py` + `check_no_growth_in_god_modules.py`. See [docs/decisions/0006-tiered-module-size-policy.md](docs/decisions/0006-tiered-module-size-policy.md).
 
 ## Quick Commands
 
@@ -55,7 +56,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 
 - Comments WHY only; no reviewer citations / issue back-refs / migration framing. Enforced by `check_no_review_origin_in_code.py` + `check_no_migration_framing.py`.
 - No `from __future__ import annotations` (3.14 has PEP 649). PEP 758 except: `except A, B:` no parens unless binding.
-- Type hints on public functions; mypy strict. Google-style docstrings. Line length 88; functions <50 lines; files <800 lines.
+- Type hints on public functions; mypy strict. Google-style docstrings. Line length 88; functions <50 lines. File-size: see the MANDATORY Module-Size Budget paragraph above (tiered per `# module-kind:` header).
 - Errors: `<Domain><Condition>Error` from `DomainError`; never inherit `Exception`/`RuntimeError`/etc directly. Enforced by `check_domain_error_hierarchy.py`.
 - Pydantic v2 frozen + `extra="forbid"` on every frozen model project-wide (gate `check_frozen_model_extra_forbid.py`; `@computed_field` auto-exempt, per-line `# lint-allow: frozen-extra-forbid -- <reason>` for `extra="allow"`/`"ignore"` boundaries); `@computed_field` for derived; `NotBlankStr` for identifiers.
 - Args models at every system boundary; `parse_typed()` for every external dict ingestion. Enforced by `check_boundary_typed.py`.

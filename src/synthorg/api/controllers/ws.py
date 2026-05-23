@@ -145,7 +145,7 @@ async def _reject_auth(
     await socket.close(code=code, reason=close_reason)
 
 
-async def _read_auth_message(  # noqa: PLR0911
+async def _read_auth_message(
     socket: WebSocket[Any, Any, Any],
 ) -> str | None:
     """Read and validate the first-message auth payload.

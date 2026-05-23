@@ -267,7 +267,7 @@ class NotificationDispatcher:
                 error=safe_error_description(exc),
             )
 
-    async def dispatch(self, notification: Notification) -> None:  # noqa: C901
+    async def dispatch(self, notification: Notification) -> None:
         """Deliver a notification to all registered sinks.
 
         Best-effort: individual sink errors are logged and

@@ -355,7 +355,7 @@ def _build_assignment_map(tree: ast.AST) -> dict[str, ast.expr]:
     return assignments
 
 
-def _resolve_event_token(  # noqa: PLR0911
+def _resolve_event_token(
     node: ast.expr,
     aliases: dict[str, str],
     assignments: dict[str, ast.expr],

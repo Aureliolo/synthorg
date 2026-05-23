@@ -493,7 +493,7 @@ def _ok(
     )
 
 
-async def validate_clone_url_host(  # noqa: PLR0911, C901
+async def validate_clone_url_host(
     url: str,
     policy: GitCloneNetworkPolicy,
 ) -> str | DnsValidationOk:

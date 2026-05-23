@@ -33,7 +33,7 @@ import json
 import re
 import sys
 import tokenize
-from collections.abc import Iterable  # noqa: TC003
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Final
 

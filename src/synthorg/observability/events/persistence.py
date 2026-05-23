@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Persistence event constants for structured logging.
 
 Constants follow the ``persistence.<entity>.<action>`` naming convention

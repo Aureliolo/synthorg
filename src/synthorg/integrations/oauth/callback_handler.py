@@ -72,7 +72,7 @@ async def resolve_oauth_http_timeout(
         return None
 
 
-async def handle_oauth_callback(  # noqa: PLR0913, PLR0915, C901, PLR0912
+async def handle_oauth_callback(  # noqa: PLR0913
     *,
     state_param: str,
     code: str,

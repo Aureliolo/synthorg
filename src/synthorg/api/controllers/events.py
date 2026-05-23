@@ -403,7 +403,7 @@ async def _run_revalidation_tick(
     return None
 
 
-async def _sse_event_stream(  # noqa: PLR0915, PLR0912, C901
+async def _sse_event_stream(
     hub: EventStreamHub,
     session_id: str,
     *,

@@ -229,7 +229,7 @@ class MessageBusBridge:
         self._max_errors_fallback_logged = False
         return value
 
-    async def start(self) -> None:  # noqa: C901, PLR0912, PLR0915
+    async def start(self) -> None:
         """Start polling tasks for each channel.
 
         The entire body runs under ``_lifecycle_lock`` so the

@@ -223,7 +223,7 @@ def _pick_distinct_enum(
     raise AssertionError(msg)
 
 
-def _choose_env_value(  # noqa: PLR0911 -- one branch per parser type is clearer than table dispatch
+def _choose_env_value(
     mirror: MirrorField,
     definition: Any,
     cls: type[BaseModel],

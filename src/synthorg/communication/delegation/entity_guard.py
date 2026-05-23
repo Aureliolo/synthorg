@@ -94,7 +94,7 @@ class EntityAlignmentGuard:
         self._ontology = ontology
         self._config = config
 
-    async def check(  # noqa: C901, PLR0911, PLR0912
+    async def check(
         self,
         request: DelegationRequest,
     ) -> EntityGuardOutcome:

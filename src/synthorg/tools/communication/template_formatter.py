@@ -80,7 +80,7 @@ class TemplateFormatterTool(BaseCommunicationTool):
         self._env = SandboxedEnvironment()
         self._env_autoesc = SandboxedEnvironment(autoescape=True)
 
-    async def execute(  # noqa: PLR0911
+    async def execute(
         self,
         *,
         arguments: dict[str, Any],

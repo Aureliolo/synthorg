@@ -147,7 +147,7 @@ class OntologyAwareMemoryBackend:
 
         return await self._inner.store(agent_id, request)
 
-    async def retrieve(  # noqa: C901
+    async def retrieve(
         self,
         agent_id: NotBlankStr,
         query: MemoryQuery,

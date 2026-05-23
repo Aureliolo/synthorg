@@ -162,7 +162,7 @@ async def _try_stop(
     return True
 
 
-async def _cleanup_on_failure(  # noqa: PLR0913, C901
+async def _cleanup_on_failure(  # noqa: PLR0913
     *,
     persistence: PersistenceBackend | None,
     started_persistence: bool,
@@ -405,7 +405,7 @@ async def _rebind_connection_catalog(
     )
 
 
-def _reset_if_tasks_dead(  # noqa: PLR0911
+def _reset_if_tasks_dead(
     obj: object,
     running_attr: str,
     tasks_attr: str,
@@ -449,7 +449,7 @@ def _reset_if_tasks_dead(  # noqa: PLR0911
             return
 
 
-async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
+async def _safe_startup(  # noqa: PLR0913
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
@@ -780,7 +780,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
         raise
 
 
-async def _safe_shutdown(  # noqa: PLR0913, PLR0912, C901
+async def _safe_shutdown(  # noqa: PLR0913
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
