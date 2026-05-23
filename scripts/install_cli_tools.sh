@@ -121,141 +121,158 @@ extract_lychee_version() {
   [ -n "$raw" ] && printf 'v%s' "$raw"
 }
 
-# Pick an install dir on $PATH if one already is, otherwise default to
-# ~/.local/bin and warn if it is not on PATH. Local install dir is the same
-# convention as `pip install --user` / `cargo install` defaults.
-LYCHEE_INSTALL_DIR="${LYCHEE_INSTALL_DIR:-${HOME}/.local/bin}"
-mkdir -p "${LYCHEE_INSTALL_DIR}"
-
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) LYCHEE_BINARY_NAME="lychee.exe" ;;
-  *)                    LYCHEE_BINARY_NAME="lychee" ;;
-esac
-LYCHEE_BINARY_PATH="${LYCHEE_INSTALL_DIR}/${LYCHEE_BINARY_NAME}"
-
-# Skip if the pinned version is already on PATH or already installed in our
-# target directory. `command -v` returns non-zero when the binary is absent;
-# `|| true` neutralises that under `set -e` and lets the caller observe
-# absence via an empty string rather than a script-wide exit.
+# `command -v lychee` returns non-zero when the binary is absent; `|| true`
+# neutralises that under `set -e` so the caller observes absence via an
+# empty string rather than a script-wide exit.
 lychee_on_path() {
   command -v lychee 2>/dev/null || true
 }
-existing_lychee="$(lychee_on_path)"
-if [ -n "${existing_lychee:-}" ]; then
-  current_lychee=$(extract_lychee_version "${existing_lychee}")
-  if [ "${current_lychee:-}" = "${LYCHEE_VERSION}" ]; then
-    echo "lychee ${LYCHEE_VERSION} already installed (${existing_lychee}), skipping"
-    exit 0
-  fi
-fi
-if [ -x "${LYCHEE_BINARY_PATH}" ]; then
-  current_lychee=$(extract_lychee_version "${LYCHEE_BINARY_PATH}")
-  if [ "${current_lychee:-}" = "${LYCHEE_VERSION}" ]; then
-    echo "lychee ${LYCHEE_VERSION} already installed at ${LYCHEE_BINARY_PATH}"
-    if [ -z "${existing_lychee:-}" ]; then
-      echo "warning: ${LYCHEE_INSTALL_DIR} is not on PATH; add it to use lychee directly" >&2
+
+install_lychee() {
+  # Pick an install dir on $PATH if one already is, otherwise default to
+  # ~/.local/bin and warn if it is not on PATH. Local install dir is the
+  # same convention as `pip install --user` / `cargo install` defaults.
+  local install_dir binary_name binary_path
+  install_dir="${LYCHEE_INSTALL_DIR:-${HOME}/.local/bin}"
+  mkdir -p "${install_dir}"
+
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) binary_name="lychee.exe" ;;
+    *)                    binary_name="lychee" ;;
+  esac
+  binary_path="${install_dir}/${binary_name}"
+
+  # Skip if the pinned version is already on PATH or already installed in
+  # our target directory.
+  local existing current
+  existing="$(lychee_on_path)"
+  if [ -n "${existing:-}" ]; then
+    current=$(extract_lychee_version "${existing}")
+    if [ "${current:-}" = "${LYCHEE_VERSION}" ]; then
+      echo "lychee ${LYCHEE_VERSION} already installed (${existing}), skipping"
+      return 0
     fi
-    exit 0
   fi
-fi
-
-# Map host triplet to upstream release asset name. Lychee publishes prebuilt
-# tarballs/zips for the asset triplets enumerated here; unsupported hosts
-# fail loud rather than silently fall back to a cargo install.
-case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64)        LYCHEE_TRIPLET="x86_64-unknown-linux-gnu" ; LYCHEE_EXT="tar.gz" ;;
-  Linux-aarch64)       LYCHEE_TRIPLET="aarch64-unknown-linux-gnu" ; LYCHEE_EXT="tar.gz" ;;
-  Linux-arm64)         LYCHEE_TRIPLET="aarch64-unknown-linux-gnu" ; LYCHEE_EXT="tar.gz" ;;
-  Darwin-x86_64)       LYCHEE_TRIPLET="x86_64-apple-darwin" ; LYCHEE_EXT="tar.gz" ;;
-  Darwin-arm64)        LYCHEE_TRIPLET="aarch64-apple-darwin" ; LYCHEE_EXT="tar.gz" ;;
-  MINGW*-x86_64|MSYS*-x86_64|CYGWIN*-x86_64)
-                       LYCHEE_TRIPLET="x86_64-pc-windows-msvc" ; LYCHEE_EXT="zip" ;;
-  *)
-    echo "error: unsupported host for lychee binary install: $(uname -s)-$(uname -m)" >&2
-    echo "       supported: Linux x86_64/aarch64, macOS x86_64/arm64, Windows x86_64 (Git Bash/MSYS/Cygwin)" >&2
-    exit 1
-    ;;
-esac
-
-LYCHEE_ARCHIVE="lychee-${LYCHEE_TRIPLET}.${LYCHEE_EXT}"
-LYCHEE_BASE_URL="https://github.com/lycheeverse/lychee/releases/download/lychee-${LYCHEE_VERSION}"
-LYCHEE_DOWNLOAD_URL="${LYCHEE_BASE_URL}/${LYCHEE_ARCHIVE}"
-LYCHEE_SHA_URL="${LYCHEE_BASE_URL}/${LYCHEE_ARCHIVE}.sha256"
-
-if ! command -v curl >/dev/null 2>&1; then
-  echo "error: curl is required to install lychee but was not found on PATH" >&2
-  exit 1
-fi
-
-# Pick a checksum tool that ships with the host (Linux: sha256sum, macOS:
-# shasum). Fail loud if neither exists -- silently skipping verification
-# would defeat the whole point of pinning a release artefact.
-if command -v sha256sum >/dev/null 2>&1; then
-  LYCHEE_SHA_CMD="sha256sum"
-elif command -v shasum >/dev/null 2>&1; then
-  LYCHEE_SHA_CMD="shasum -a 256"
-else
-  echo "error: neither sha256sum nor shasum is available; cannot verify lychee download" >&2
-  exit 1
-fi
-
-LYCHEE_TMPDIR="$(mktemp -d -t lychee-install.XXXXXX)"
-trap 'rm -rf "${LYCHEE_TMPDIR}"' EXIT
-
-echo "Installing lychee ${LYCHEE_VERSION} (${LYCHEE_TRIPLET}) to ${LYCHEE_INSTALL_DIR}..."
-curl --fail --silent --show-error --location \
-  --output "${LYCHEE_TMPDIR}/${LYCHEE_ARCHIVE}" "${LYCHEE_DOWNLOAD_URL}"
-curl --fail --silent --show-error --location \
-  --output "${LYCHEE_TMPDIR}/${LYCHEE_ARCHIVE}.sha256" "${LYCHEE_SHA_URL}"
-
-# Upstream `.sha256` files are heterogeneous: Linux/macOS releases ship the
-# GNU `<hex>  <filename>` layout, while the Windows asset uses a multi-line
-# `CertUtil -hashfile` capture. Match the first 64-hex-char token in the
-# file rather than slicing by column so all three layouts work.
-expected_lychee_hash=$(grep -oiE '[a-f0-9]{64}' "${LYCHEE_TMPDIR}/${LYCHEE_ARCHIVE}.sha256" | head -n1 | tr 'A-Z' 'a-z')
-actual_lychee_hash=$(${LYCHEE_SHA_CMD} "${LYCHEE_TMPDIR}/${LYCHEE_ARCHIVE}" | awk '{print $1}' | tr 'A-Z' 'a-z')
-if [ -z "${expected_lychee_hash}" ] || [ "${expected_lychee_hash}" != "${actual_lychee_hash}" ]; then
-  echo "error: lychee archive sha256 mismatch" >&2
-  echo "       expected: ${expected_lychee_hash:-<empty>}" >&2
-  echo "       actual:   ${actual_lychee_hash}" >&2
-  exit 1
-fi
-
-# Extract -- tar.gz on Linux/macOS, zip on Windows. The archive layout for
-# v0.24+ ships a flat `lychee` (or `lychee.exe`) at the root.
-case "${LYCHEE_EXT}" in
-  tar.gz)
-    tar -xzf "${LYCHEE_TMPDIR}/${LYCHEE_ARCHIVE}" -C "${LYCHEE_TMPDIR}"
-    ;;
-  zip)
-    if ! command -v unzip >/dev/null 2>&1; then
-      echo "error: unzip is required to install lychee on Windows but was not found on PATH" >&2
-      exit 1
+  if [ -x "${binary_path}" ]; then
+    current=$(extract_lychee_version "${binary_path}")
+    if [ "${current:-}" = "${LYCHEE_VERSION}" ]; then
+      echo "lychee ${LYCHEE_VERSION} already installed at ${binary_path}"
+      if [ -z "${existing:-}" ]; then
+        echo "warning: ${install_dir} is not on PATH; add it to use lychee directly" >&2
+      fi
+      return 0
     fi
-    unzip -q -o "${LYCHEE_TMPDIR}/${LYCHEE_ARCHIVE}" -d "${LYCHEE_TMPDIR}"
-    ;;
-esac
+  fi
 
-extracted_binary="${LYCHEE_TMPDIR}/${LYCHEE_BINARY_NAME}"
-if [ ! -f "${extracted_binary}" ]; then
-  # Some archives nest one level deep; fall back to a single-result find.
-  extracted_binary=$(find "${LYCHEE_TMPDIR}" -type f -name "${LYCHEE_BINARY_NAME}" -print -quit)
-fi
-if [ -z "${extracted_binary}" ] || [ ! -f "${extracted_binary}" ]; then
-  echo "error: lychee binary not found inside ${LYCHEE_ARCHIVE}" >&2
-  exit 1
-fi
+  # Map host triplet to upstream release asset name. Lychee publishes
+  # prebuilt tarballs/zips for the asset triplets enumerated here;
+  # unsupported hosts fail loud rather than silently fall back to a cargo
+  # install.
+  local triplet ext
+  case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64)        triplet="x86_64-unknown-linux-gnu" ; ext="tar.gz" ;;
+    Linux-aarch64)       triplet="aarch64-unknown-linux-gnu" ; ext="tar.gz" ;;
+    Linux-arm64)         triplet="aarch64-unknown-linux-gnu" ; ext="tar.gz" ;;
+    Darwin-x86_64)       triplet="x86_64-apple-darwin" ; ext="tar.gz" ;;
+    Darwin-arm64)        triplet="aarch64-apple-darwin" ; ext="tar.gz" ;;
+    MINGW*-x86_64|MSYS*-x86_64|CYGWIN*-x86_64)
+                         triplet="x86_64-pc-windows-msvc" ; ext="zip" ;;
+    *)
+      echo "error: unsupported host for lychee binary install: $(uname -s)-$(uname -m)" >&2
+      echo "       supported: Linux x86_64/aarch64, macOS x86_64/arm64, Windows x86_64 (Git Bash/MSYS/Cygwin)" >&2
+      return 1
+      ;;
+  esac
 
-install -m 0755 "${extracted_binary}" "${LYCHEE_BINARY_PATH}"
+  local archive base_url download_url sha_url
+  archive="lychee-${triplet}.${ext}"
+  base_url="https://github.com/lycheeverse/lychee/releases/download/lychee-${LYCHEE_VERSION}"
+  download_url="${base_url}/${archive}"
+  sha_url="${base_url}/${archive}.sha256"
 
-installed_lychee_version=$(extract_lychee_version "${LYCHEE_BINARY_PATH}")
-if [ "${installed_lychee_version:-}" != "${LYCHEE_VERSION}" ]; then
-  echo "error: lychee version mismatch -- expected ${LYCHEE_VERSION}, got '${installed_lychee_version:-unknown}'" >&2
-  exit 1
-fi
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "error: curl is required to install lychee but was not found on PATH" >&2
+    return 1
+  fi
 
-if [ -z "$(lychee_on_path)" ]; then
-  echo "warning: ${LYCHEE_INSTALL_DIR} is not on PATH; add it (e.g. 'export PATH=\"${LYCHEE_INSTALL_DIR}:\$PATH\"' in ~/.bashrc / ~/.zshrc) to use lychee directly" >&2
-fi
+  # Pick a checksum tool that ships with the host (Linux: sha256sum, macOS:
+  # shasum). Fail loud if neither exists -- silently skipping verification
+  # would defeat the whole point of pinning a release artefact.
+  local sha_cmd
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha_cmd="sha256sum"
+  elif command -v shasum >/dev/null 2>&1; then
+    sha_cmd="shasum -a 256"
+  else
+    echo "error: neither sha256sum nor shasum is available; cannot verify lychee download" >&2
+    return 1
+  fi
 
-echo "lychee ready: $(${LYCHEE_BINARY_PATH} --version 2>&1 | head -n1)"
+  local tmpdir
+  tmpdir="$(mktemp -d -t lychee-install.XXXXXX)"
+  trap 'rm -rf "${tmpdir}"' RETURN
+
+  echo "Installing lychee ${LYCHEE_VERSION} (${triplet}) to ${install_dir}..."
+  curl --fail --silent --show-error --location \
+    --output "${tmpdir}/${archive}" "${download_url}"
+  curl --fail --silent --show-error --location \
+    --output "${tmpdir}/${archive}.sha256" "${sha_url}"
+
+  # Upstream `.sha256` files are heterogeneous: Linux/macOS releases ship
+  # the GNU `<hex>  <filename>` layout, while the Windows asset uses a
+  # multi-line `CertUtil -hashfile` capture. Match the first 64-hex-char
+  # token in the file rather than slicing by column so all three layouts
+  # work.
+  local expected_hash actual_hash
+  expected_hash=$(grep -oiE '[a-f0-9]{64}' "${tmpdir}/${archive}.sha256" | head -n1 | tr 'A-Z' 'a-z')
+  actual_hash=$(${sha_cmd} "${tmpdir}/${archive}" | awk '{print $1}' | tr 'A-Z' 'a-z')
+  if [ -z "${expected_hash}" ] || [ "${expected_hash}" != "${actual_hash}" ]; then
+    echo "error: lychee archive sha256 mismatch" >&2
+    echo "       expected: ${expected_hash:-<empty>}" >&2
+    echo "       actual:   ${actual_hash}" >&2
+    return 1
+  fi
+
+  # Extract -- tar.gz on Linux/macOS, zip on Windows. The archive layout
+  # for v0.24+ ships a flat `lychee` (or `lychee.exe`) at the root.
+  case "${ext}" in
+    tar.gz)
+      tar -xzf "${tmpdir}/${archive}" -C "${tmpdir}"
+      ;;
+    zip)
+      if ! command -v unzip >/dev/null 2>&1; then
+        echo "error: unzip is required to install lychee on Windows but was not found on PATH" >&2
+        return 1
+      fi
+      unzip -q -o "${tmpdir}/${archive}" -d "${tmpdir}"
+      ;;
+  esac
+
+  local extracted
+  extracted="${tmpdir}/${binary_name}"
+  if [ ! -f "${extracted}" ]; then
+    # Some archives nest one level deep; fall back to a single-result find.
+    extracted=$(find "${tmpdir}" -type f -name "${binary_name}" -print -quit)
+  fi
+  if [ -z "${extracted}" ] || [ ! -f "${extracted}" ]; then
+    echo "error: lychee binary not found inside ${archive}" >&2
+    return 1
+  fi
+
+  install -m 0755 "${extracted}" "${binary_path}"
+
+  local installed_version
+  installed_version=$(extract_lychee_version "${binary_path}")
+  if [ "${installed_version:-}" != "${LYCHEE_VERSION}" ]; then
+    echo "error: lychee version mismatch -- expected ${LYCHEE_VERSION}, got '${installed_version:-unknown}'" >&2
+    return 1
+  fi
+
+  if [ -z "$(lychee_on_path)" ]; then
+    echo "warning: ${install_dir} is not on PATH; add it (e.g. 'export PATH=\"${install_dir}:\$PATH\"' in ~/.bashrc / ~/.zshrc) to use lychee directly" >&2
+  fi
+
+  echo "lychee ready: $(${binary_path} --version 2>&1 | head -n1)"
+}
+
+install_lychee

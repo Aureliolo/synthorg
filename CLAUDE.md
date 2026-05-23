@@ -24,7 +24,7 @@ Web: see `web/CLAUDE.md`. CLI: see `cli/CLAUDE.md` (use `go -C cli`, never `cd c
 ```bash
 uv sync                                             # all deps
 uv sync --group docs                                # docs toolchain (zensical + D2)
-bash scripts/install_cli_tools.sh                   # one-time per-machine: golangci-lint only (CI installs separately; install d2 via docs/getting_started.md)
+bash scripts/install_cli_tools.sh                   # one-time per-machine: golangci-lint + lychee (CI installs separately; install d2 via docs/getting_started.md)
 uv run ruff check src/ tests/ --fix                 # lint + auto-fix
 uv run ruff format src/ tests/                      # format
 uv run mypy --num-workers=4 src/ tests/             # strict type-check
@@ -37,6 +37,7 @@ HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -k properties
 HYPOTHESIS_PROFILE=fuzz uv run python -m pytest tests/ -m unit --timeout=0
 bash scripts/install_git_hooks.sh                   # one-time per clone: wire core.hooksPath -> scripts/git-hooks (NOT pre-commit install)
 uv run pre-commit run --all-files
+uv run pre-commit run lychee --hook-stage pre-push --all-files                      # local Markdown link-check (lychee, 8-15s)
 uv run python scripts/check_schema_drift_revisions.py --backend sqlite  # or --backend postgres
 PYTHONPATH=. uv run zensical build                  # docs
 ```
