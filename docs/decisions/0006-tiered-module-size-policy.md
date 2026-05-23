@@ -327,7 +327,6 @@ and closed for the project to reach 100% strict enforcement.
 | Go `gocyclo / funlen / gocognit / nestif / revive` path-excluded across `cli/internal/**` + `cmd/**` | Issue #2067: "CLI complexity ratchet: per-package lift" | Medium |
 | `vulture` `ignore_names` (7 entries) | Issue #2073: "Replace vulture ignore_names with explicit unused-marker pattern" | Trivial |
 | `codespell` `ignore-words-list` (~90 entries; some genuine project terms, some false positives) | Issue #2074: "Audit codespell ignore-words: split genuine vocab from false-positives" | Small |
-| `deptry` DEP003 transitive-dep tolerance (6 packages: uvicorn, prometheus_client, annotated_types, httpcore, qdrant_client, referencing) | Issue #2075: "Promote transitive deps to direct deps" | Small |
 | `sqlfluff` `rules = ambiguous, references` (layout/capitalisation/aliasing all disabled) | EPIC #2076: "SQL style cleanup: enable full sqlfluff ruleset" | Large |
 | `sqlfluff` `exclude_rules = RF04` (keywords-as-identifiers) | Same SQL style issue | Trivial |
 | Typeguard never landed | Issue #2068: "Wire typeguard after #2048 lands" | Medium |
