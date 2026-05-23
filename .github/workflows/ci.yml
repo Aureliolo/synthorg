@@ -1110,6 +1110,8 @@ jobs:
         working-directory: web
       - run: npm run lint
         working-directory: web
+      - run: npm run lint:circular
+        working-directory: web
 
   # ── Dashboard: Type Check ──
   dashboard-type-check:
