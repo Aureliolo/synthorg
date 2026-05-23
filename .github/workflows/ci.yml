@@ -331,11 +331,37 @@ jobs:
     env:
       COVERAGE_FILE: .coverage.unit-${{ matrix.shard }}
       COVERAGE_CORE: sysmon
+      # ``PYTHONFAULTHANDLER=1`` arms ``faulthandler`` at interpreter
+      # startup, BEFORE conftest loads. Without this, a crash during
+      # module import or before ``faulthandler.enable`` runs leaves zero
+      # forensic data. ``PYTHONUNBUFFERED=1`` flushes stdout/stderr
+      # line-by-line so a worker that dies (e.g. ``pytest-timeout``
+      # ``thread`` method terminating it on a 30s test hang) cannot
+      # take its last-words stack dump down with it via a half-flushed
+      # buffer. Both add zero runtime cost.
+      PYTHONFAULTHANDLER: "1"
+      PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
+
+      # Enable user-process core dumps. Ubuntu runners ship with
+      # ``ulimit -c 0`` (disabled). With ``-c unlimited`` any SIGSEGV /
+      # SIGABRT / SIGBUS that kills a worker leaves a binary core file
+      # we can later ``gdb -ex bt`` against. ``sysctl
+      # kernel.core_pattern`` writes them to the workspace so the
+      # post-step artifact upload picks them up.
+      - name: Enable core dumps
+        run: |
+          ulimit -c unlimited
+          ulimit -a
+          # ``core_pattern`` must be an absolute path on disk we control;
+          # the default ``|/usr/share/apport/apport ...`` pipes through
+          # apport which is not installed on hosted runners.
+          sudo bash -c 'echo "/home/runner/work/synthorg/synthorg/core.%e.%p.%t" > /proc/sys/kernel/core_pattern'
+          cat /proc/sys/kernel/core_pattern
 
       # --cov-fail-under=0 overrides pyproject's [tool.coverage.report]
       # fail_under=80, which pytest-cov otherwise applies at end-of-session
@@ -346,8 +372,21 @@ jobs:
       # --splits/--group come from pytest-split; --durations-path points
       # at .test_durations.unit (empty {} on first run, falls back to
       # count-based partition until CI populates real timings).
+      #
+      # ``-v`` prints every test's nodeid as it starts, so the LAST
+      # printed test before ``[gwN] node down`` names the suspect.
+      # ``-s`` (``--capture=no``) disables pytest's per-test capture
+      # buffer; without this, the all-threads stack dump that
+      # ``pytest-timeout`` ``thread`` method emits before terminating
+      # the worker is captured into a buffer that is dropped when the
+      # worker process exits. With ``-s`` the dump goes straight
+      # through xdist's worker-stderr channel to the controller log.
       - name: Run unit tests (shard ${{ matrix.shard }}/4)
         run: |
+          # Inherit the parent shell's core-dump rlimit (the previous
+          # step already raised it; ``ulimit`` is per-shell, so we
+          # re-assert here in case GHA respawns the shell).
+          ulimit -c unlimited
           uv run python -m pytest tests/ \
             -m unit \
             -n auto \
@@ -359,7 +398,9 @@ jobs:
             --cov-fail-under=0 \
             --junitxml=junit-unit-${{ matrix.shard }}.xml \
             --durations=20 \
-            --durations-min=1.0
+            --durations-min=1.0 \
+            -v \
+            -s
 
       - name: Upload coverage data
         if: ${{ !cancelled() }}
@@ -376,6 +417,23 @@ jobs:
         with:
           name: test-results-unit-${{ matrix.shard }}
           path: junit-unit-${{ matrix.shard }}.xml
+
+      # Upload any core dumps that landed in the workspace on a worker
+      # crash. Gated on ``failure() || cancelled()`` because the failure
+      # mode we care about is the worker-crash cascade reaped by the
+      # 5-min job timeout (which surfaces as ``cancelled()``, not
+      # ``failure()``). ``if-no-files-found: ignore`` keeps a green
+      # job's tail clean. Retention is short (3 days) because core
+      # dumps can be large and the value decays rapidly once the crash
+      # is diagnosed.
+      - name: Upload core dumps (on failure)
+        if: ${{ failure() || cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: core-dumps-unit-${{ matrix.shard }}
+          path: core.*
+          if-no-files-found: ignore
+          retention-days: 3
 
   # ── Python: Test (Integration) ──
   # Sharded 4-way so 12-minute single-runner wall-clock drops to ~3
