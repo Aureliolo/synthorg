@@ -37,7 +37,7 @@ jobs:
       # Post-merge this SHA needs to be updated to a main-reachable
       # SHA (the squash-merged commit) so the ref survives branch
       # deletion.
-      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false

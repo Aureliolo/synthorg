@@ -49,7 +49,7 @@ jobs:
       # main for Release Please to pick it up on its next run. Keep
       # fetch-depth: 0 so the tag-walk in "Validate target version"
       # has full history.
-      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: main
           fetch-depth: 0

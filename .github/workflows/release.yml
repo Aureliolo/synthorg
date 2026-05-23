@@ -33,7 +33,7 @@ jobs:
       # release-please works via REST API, not the local working tree.
       # The subsequent BSL-date step does its own checkout of the
       # release-please PR branch when applicable.
-      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
@@ -63,7 +63,7 @@ jobs:
       # of the release PR, so it goes through normal review + merge flow.
       - name: Checkout Release PR branch
         if: steps.release.outputs.pr != ''
-        uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
+        uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: release-please--branches--main--components--synthorg
           persist-credentials: false
@@ -345,7 +345,7 @@ jobs:
       contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
       issues: write     # gh issue create / comment / pin
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: ${{ github.sha }}
           persist-credentials: false

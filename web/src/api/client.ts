@@ -16,6 +16,7 @@ import {
   MAX_RATE_LIMIT_RETRIES,
   parseRetryAfterMs,
 } from '@/utils/retry-after'
+import { notifyUnauthorized } from './unauthorized-handler'
 import type { ErrorDetail } from './types/errors'
 import type { ApiResponse, PaginatedResponse } from './types/http'
 
@@ -107,18 +108,10 @@ apiClient.interceptors.response.use(
   ) => {
     if (error.response?.status === 401 && !IS_DEV_AUTH_BYPASS) {
       // The server clears the session cookie via Set-Cookie: Max-Age=0.
-      // We only need to sync the Zustand auth state.
-      import('@/stores/auth').then(({ useAuthStore }) => {
-        useAuthStore.getState().handleUnauthorized()
-      }).catch((importErr: unknown) => {
-        log.error('auth.cleanup_failed', {
-          error: importErr instanceof Error ? importErr.message : String(importErr),
-        })
-        // Fallback if store import fails: redirect directly
-        if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
-          window.location.href = '/login'
-        }
-      })
+      // We only need to sync the Zustand auth state. Routed through the
+      // leaf `unauthorized-handler` module so the client has no static
+      // dependency on the auth store.
+      notifyUnauthorized()
     }
     // Transparent retry for 429 responses when the backend surfaces
     // a Retry-After.  Bounded so a hostile or mis-tuned server can't
