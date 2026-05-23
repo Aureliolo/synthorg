@@ -21,7 +21,7 @@ jobs:
       # label metadata, not files.
       issues: write
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.sha }}
           persist-credentials: false

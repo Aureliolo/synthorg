@@ -38,22 +38,39 @@ from synthorg.persistence import migrations
 
 # ``socket.getfqdn()`` does a reverse-DNS lookup that on GHA Linux runners
 # without configured reverse-DNS can block for 10-30+ seconds on the first
-# call per worker. yoyo's ``log_migration`` calls it to stamp the migration
-# log table with the host name. When the cross-worker template-build
-# FileLock in ``_get_template_db`` serialises 4-8 xdist workers behind one
-# slow build, the workers waiting on the lock have that wait counted
-# against the per-test 30s ``pytest-timeout``: the first ``migrated_db``
-# user on each waiting worker dies at exactly t+30s (verified in CI:
-# three workers, three deltas all 30.07s). Replacing getfqdn with the
-# fast ``gethostname`` (no DNS) for the test session makes the build
-# complete in well under the per-test budget. Patched after the import
-# block (instead of in line with it) because yoyo resolves
-# ``socket.getfqdn`` at CALL time, not at module import, so the patch
-# takes effect as long as it runs before any migration apply. No
-# application or test code uses getfqdn directly; only yoyo (a
-# third-party migration tool) touches it, and only for the cosmetic
-# host column in its log table.
-socket.getfqdn = socket.gethostname  # type: ignore[assignment]
+# call per worker. yoyo's ``log_migration`` calls it (no argument) to
+# stamp the migration log table with the host name. When the cross-worker
+# template-build FileLock in ``_get_template_db`` serialises 4-8 xdist
+# workers behind one slow build, the workers waiting on the lock have
+# that wait counted against the per-test 30s ``pytest-timeout``: the
+# first ``migrated_db`` user on each waiting worker dies at exactly
+# t+30s (verified in CI: three workers, three deltas all 30.07s). The
+# wrapper below short-circuits the no-argument call (the only path yoyo
+# uses) to the local ``gethostname`` (no DNS), and falls back to the
+# real ``getfqdn`` when a specific hostname is passed -- so any future
+# caller that wants the real reverse-DNS resolution of an arbitrary
+# host still gets it. Patched after the import block (instead of in
+# line with it) because yoyo resolves ``socket.getfqdn`` at CALL time,
+# not at module import, so the patch takes effect as long as it runs
+# before any migration apply.
+_orig_getfqdn = socket.getfqdn
+
+
+def _fast_getfqdn(name: str = "") -> str:
+    """Short-circuit the no-arg path that yoyo's migration logger uses.
+
+    ``socket.getfqdn()`` (no argument) on Linux CI without reverse-DNS
+    can block 10-30s. ``socket.gethostname()`` returns the same value
+    yoyo cares about for the migration log table without any DNS work.
+    Pass-through for the rare ``socket.getfqdn(host)`` form so we don't
+    silently break a caller that actually wants the real resolution.
+    """
+    if not name:
+        return socket.gethostname()
+    return _orig_getfqdn(name)
+
+
+socket.getfqdn = _fast_getfqdn
 
 # Diagnostic instrumentation: dump native + Python tracebacks on every
 # fatal signal (SIGSEGV, SIGFPE, SIGABRT etc.) and on every thread.

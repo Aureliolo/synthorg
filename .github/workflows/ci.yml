@@ -44,7 +44,7 @@ jobs:
       # requires push access to the upstream.
       is_release_please: ${{ (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'synthorg-repo-bot[bot]') || (github.event_name != 'pull_request' && startsWith(github.ref, 'refs/heads/release-please--')) }}
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -112,7 +112,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -183,7 +183,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -209,7 +209,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -228,7 +228,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -276,7 +276,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -295,7 +295,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -349,7 +349,7 @@ jobs:
       PYTHONFAULTHANDLER: "1"
       PYTHONUNBUFFERED: "1"
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -490,7 +490,7 @@ jobs:
       SYNTHORG_TEST_POSTGRES_PASSWORD: synthorg-test
       SYNTHORG_TEST_POSTGRES_DB: synthorg
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -580,7 +580,7 @@ jobs:
       SYNTHORG_TEST_POSTGRES_PASSWORD: synthorg-test
       SYNTHORG_TEST_POSTGRES_DB: synthorg
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -642,7 +642,7 @@ jobs:
       COVERAGE_FILE: .coverage.conformance-sqlite
       COVERAGE_CORE: sysmon
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -696,7 +696,7 @@ jobs:
       # Required for tokenless Codecov upload via use_oidc: true.
       id-token: write
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -825,7 +825,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -900,7 +900,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -931,7 +931,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -957,7 +957,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -981,7 +981,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -1010,7 +1010,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -1057,7 +1057,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -1101,7 +1101,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -1126,7 +1126,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -1200,7 +1200,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false

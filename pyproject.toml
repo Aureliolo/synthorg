@@ -722,6 +722,7 @@ DEP002 = [
     "pytest-cov",
     "pytest-mock",
     "pytest-repeat",
+    "pytest-split",
     "pytest-timeout",
     "pytest-xdist",
     "pytest-asyncio",

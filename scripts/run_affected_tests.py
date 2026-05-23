@@ -472,18 +472,22 @@ def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
     master and its children in their own process group, then
     ``os.killpg(getpgid, SIGKILL)`` takes them all out at once.
 
-    Windows: ``CREATE_NEW_PROCESS_GROUP`` plus
-    ``send_signal(CTRL_BREAK_EVENT)`` sends Ctrl+Break to the new group;
-    a 2s wait then ``proc.kill()`` (``TerminateProcess``) covers the
-    children that ignore the break.
+    Windows: ``taskkill /F /T /PID`` walks the parent-child tree
+    (Windows kernel records parent PIDs in EPROCESS) and force-
+    terminates every descendant. More robust than
+    ``send_signal(CTRL_BREAK_EVENT) + proc.kill()``, which only reaches
+    direct children in the new process group and misses any subprocess
+    that started its own group (some C-extensions running aiosqlite /
+    docker calls do exactly that).
     """
     if sys.platform == "win32":
-        with contextlib.suppress(ProcessLookupError, OSError):
-            proc.send_signal(signal.CTRL_BREAK_EVENT)
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            proc.wait(timeout=2.0)
-        with contextlib.suppress(ProcessLookupError, OSError):
-            proc.kill()
+        with contextlib.suppress(subprocess.SubprocessError, OSError):
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                capture_output=True,
+                check=False,
+                timeout=5.0,
+            )
         return
     with contextlib.suppress(ProcessLookupError, OSError):
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
