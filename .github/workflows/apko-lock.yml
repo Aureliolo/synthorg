@@ -53,7 +53,7 @@ jobs:
       # narrowly-scoped Contents + Pull-requests permissions on the
       # apko-bot installation, independent of GITHUB_TOKEN.
     steps:
-      - uses: ./.github/actions/checkout
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
@@ -268,7 +268,7 @@ jobs:
       contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
       issues: write     # gh issue create / comment / pin
     steps:
-      - uses: ./.github/actions/checkout
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
