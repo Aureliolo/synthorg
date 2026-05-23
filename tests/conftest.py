@@ -62,9 +62,19 @@ _WATCHDOG_INTERVAL_SECONDS = 10
 # a pre-crash window of even 15s captures the in-flight stacks, wide
 # enough that normal CI runs (~2-3 min per unit shard) emit ~12-18
 # dumps per worker which is fine for forensic value.
-faulthandler.dump_traceback_later(
-    _WATCHDOG_INTERVAL_SECONDS, repeat=True, file=sys.stderr
-)
+#
+# CodSpeed runs pytest under valgrind callgrind for instruction-count
+# benchmarks. Valgrind does not tolerate the periodic timer signal
+# ``dump_traceback_later`` emits -- two watchdog firings during a
+# benchmarked process were enough to SIGSEGV the valgrind-instrumented
+# Python (exit code 139 observed on ``tests/benchmarks/test_memory_ranking.py``
+# at run 26334096206). Skip the watchdog when ``--codspeed`` is in
+# ``sys.argv`` OR ``CODSPEED_ENV`` is set, so the codspeed arm runs
+# clean while every other arm keeps the diagnostic.
+if "--codspeed" not in sys.argv and not os.environ.get("CODSPEED_ENV"):
+    faulthandler.dump_traceback_later(
+        _WATCHDOG_INTERVAL_SECONDS, repeat=True, file=sys.stderr
+    )
 
 # ── Windows console-flash suppression ──────────────────────────────
 #
