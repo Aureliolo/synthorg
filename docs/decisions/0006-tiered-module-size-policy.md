@@ -277,7 +277,7 @@ follow-ups below is the contract for "100% enforced".**
 | Exemption | Mechanism | Acceptance criterion in PR 3 |
 |-----------|-----------|------------------------------|
 | Mypy override for `synthorg.api.*` (`disallow_any_explicit`, `explicit-override`, `possibly-undefined`, `unused-awaitable`) | PR 3 decomposes 8 multi-controllers + `api/app.py` into per-sub-domain packages; new files written strict-clean | Remove or narrow the `synthorg.api.*` override block to only `synthorg.api.lifecycle*` / `synthorg.api.dto*` |
-| `_module_size_baseline.json` entries for `api/controllers/**`, `api/auth/controller.py`, `meta/mcp/handlers/{infrastructure,communication}.py`, `api/app.py`, `api/auto_wire.py`, `api/lifecycle*.py` | PR 3 shrinks each below tier cap | Drop those entries from the baseline |
+| `_module_size_baseline.json` entries for the 14 PR-3-named files (named multi-controllers + `api/auth/controller.py`, `meta/mcp/handlers/{infrastructure,communication}.py`, `api/app.py`, `api/auto_wire.py`, `api/lifecycle*.py`) | PR 3 shrinks each below tier cap | Drop those 14 entries from the baseline. The remaining ~93 `src/synthorg/api/**`, `meta/mcp/**` entries in the baseline are covered by EPIC #2077 (Section F), not PR 3. |
 | Ruff `BLE001/C901/PLR0911-15/ERA001/DOC*` per-file-ignore for `src/synthorg/**` (partial drain for decomposed packages) | New small files pass strict | Tighten the per-file-ignore from `src/synthorg/**` to only the residual god-modules / undecomposed packages |
 | `check_no_growth_in_god_modules.py` allowlist | PR 3 shrinks `api/app.py` to <200 LOC and `api/state.py` to <150 LOC | Gate flips from "must net-shrink" to "must remain at tier cap"; allowlist drained (mostly empty) |
 
@@ -288,7 +288,7 @@ follow-ups below is the contract for "100% enforced".**
 | Mypy override for `synthorg.persistence.*` | PR 4 decomposes 6 repo factories per-entity; new files strict-clean | Drop persistence override |
 | Mypy override for `synthorg.{communication, engine, observability}.*` (the decomposed subset) | PR 4 decomposes 3 multi-services | Narrow overrides to only the still-undecomposed subset |
 | `_circular_imports_baseline.txt` (3 cycles: 2 in `synthorg.persistence.*`, 1 in `synthorg.{memory, observability}.*`) | PR 4 import-linter contracts + decomposition catches these | Baseline drains to 0 |
-| `_module_size_baseline.json` entries for persistence backends + workers/execution_service + observability/prometheus_recording | PR 4 decomposes these | Drop entries |
+| `_module_size_baseline.json` entries for the 9 PR-4-named files (persistence backends + decision repos + repositories + workers/execution_service + observability/prometheus_recording + infrastructure/services) | PR 4 decomposes these | Drop those 9 entries. The remaining ~22 persistence and engine entries in the baseline are covered by EPIC #2077 (Section F), not PR 4. |
 
 ### D. Lifted by #2051 (junk-drawer dissolution)
 
@@ -311,29 +311,30 @@ and closed for the project to reach 100% strict enforcement.
 
 | Exemption | Required follow-up | Estimated size |
 |-----------|-------------------|----------------|
-| Ruff `BLE001` (1007 sites) on `src/synthorg/**` | Issue: "Typed-except remediation: replace blind-except across src/synthorg/" | Large (multi-PR program by package) |
-| Mypy `explicit-override` (648 sites; per-package disabled) | Issue: "@override decorator backfill across synthorg.*" | Medium (mechanical) |
-| Mypy `unused-awaitable` (108 sites) | Issue: "Async cleanup: await or store every Task" | Medium |
-| Mypy `disallow_any_explicit` (4136 sites; 22 packages overridden) | EPIC: "Mypy strict++ ratchet" with per-package sub-issues | Very large (months) |
-| Mypy `possibly-undefined` (4 sites) | Issue: "Mypy possibly-undefined cleanup" | Trivial |
-| Mypy `deprecated` (3 sites) | Issue: "Mypy deprecated-API cleanup" | Trivial |
-| Mypy strict++ overrides on `tests.*` | Issue: "Lift mypy strict++ overrides for tests/" | Medium |
-| Ruff `ERA001` (49 sites) | Issue: "Remove commented-out code (ERA001)" | Small |
-| Ruff `INP001` (78 sites in tests/) | Issue: "Add `__init__.py` to test directories OR configure pytest namespace packages globally" | Trivial |
-| Ruff `DOC201/202/501` on `src/synthorg/**` | Issue: "Docstring Returns/Raises backfill + interrogate threshold flip" | Large |
+| Ruff `BLE001` (1007 sites) on `src/synthorg/**` | Issue #2062: "Typed-except remediation: replace blind-except across src/synthorg/" | Large (multi-PR program by package) |
+| Mypy `explicit-override` (648 sites; per-package disabled) | Issue #2057: "@override decorator backfill across synthorg.*" | Medium (mechanical) |
+| Mypy `unused-awaitable` (108 sites) | Issue #2058: "Async cleanup: await or store every Task" | Medium |
+| Mypy `disallow_any_explicit` (4136 sites; 22 packages overridden) | EPIC #2056: "Mypy strict++ ratchet" with per-package sub-issues | Very large (months) |
+| Mypy `possibly-undefined` (4 sites) | Issue #2059: "Mypy possibly-undefined cleanup" | Trivial |
+| Mypy `deprecated` (3 sites) | Issue #2060: "Mypy deprecated-API cleanup" | Trivial |
+| Mypy strict++ overrides on `tests.*` | Issue #2061: "Lift mypy strict++ overrides for tests/" | Medium |
+| Ruff `ERA001` (49 sites) | Issue #2063: "Remove commented-out code (ERA001)" | Small |
+| Ruff `INP001` (78 sites in tests/) | Issue #2064: "Add `__init__.py` to test directories OR configure pytest namespace packages globally" | Trivial |
+| Ruff `DOC201/202/501` on `src/synthorg/**` | Issue #2065: "Docstring Returns/Raises backfill + interrogate threshold flip" | Large |
 | Interrogate `fail_under` 90 -> 95 | Same as DOC backfill | Medium |
-| ESLint `complexity / max-lines / max-lines-per-function / max-params` exempted on `src/**/*.{ts,tsx}` | Issue: "Web component-size ratchet: decompose oversized React components" | Large (no existing PR in EPIC) |
-| Go `gocyclo / funlen / gocognit / nestif / revive` path-excluded across `cli/internal/**` + `cmd/**` | Issue: "CLI complexity ratchet: per-package lift" | Medium |
-| `vulture` `ignore_names` (7 entries) | Issue: "Replace vulture ignore_names with explicit unused-marker pattern" | Trivial |
-| `codespell` `ignore-words-list` (~90 entries; some genuine project terms, some false positives) | Issue: "Audit codespell ignore-words: split genuine vocab from false-positives" | Small |
-| `deptry` DEP003 transitive-dep tolerance (6 packages: uvicorn, prometheus_client, annotated_types, httpcore, qdrant_client, referencing) | Issue: "Promote transitive deps to direct deps" | Small |
-| `sqlfluff` `rules = ambiguous, references` (layout/capitalisation/aliasing all disabled) | Issue: "SQL style cleanup: enable full sqlfluff ruleset" | Large |
+| ESLint `complexity / max-lines / max-lines-per-function / max-params` exempted on `src/**/*.{ts,tsx}` | EPIC #2066: "Web component-size ratchet: decompose oversized React components" | Large (no existing PR in EPIC) |
+| Go `gocyclo / funlen / gocognit / nestif / revive` path-excluded across `cli/internal/**` + `cmd/**` | Issue #2067: "CLI complexity ratchet: per-package lift" | Medium |
+| `vulture` `ignore_names` (7 entries) | Issue #2073: "Replace vulture ignore_names with explicit unused-marker pattern" | Trivial |
+| `codespell` `ignore-words-list` (~90 entries; some genuine project terms, some false positives) | Issue #2074: "Audit codespell ignore-words: split genuine vocab from false-positives" | Small |
+| `deptry` DEP003 transitive-dep tolerance (6 packages: uvicorn, prometheus_client, annotated_types, httpcore, qdrant_client, referencing) | Issue #2075: "Promote transitive deps to direct deps" | Small |
+| `sqlfluff` `rules = ambiguous, references` (layout/capitalisation/aliasing all disabled) | EPIC #2076: "SQL style cleanup: enable full sqlfluff ruleset" | Large |
 | `sqlfluff` `exclude_rules = RF04` (keywords-as-identifiers) | Same SQL style issue | Trivial |
-| Typeguard never landed | Issue: "Wire typeguard after #2048 lands" | Medium |
-| Vale prose linter never landed | Issue: "Wire Vale + binary install script" | Small |
-| Lychee CI workflow never landed | Issue: "Wire Lychee CI workflow + scripts/install_cli_tools.sh" | Trivial |
-| `knip --no-exit-code` (report-only, never blocks) | Issue: "Knip blocking: eliminate unused exports surfaced by knip" | Medium |
-| `dpdm --skip-imports` for `stores/auth.ts -> api/client.ts` cycle | Issue: "Fix auth -> client circular dependency" | Small |
+| Typeguard never landed | Issue #2068: "Wire typeguard after #2048 lands" | Medium |
+| Vale prose linter never landed | Issue #2069: "Wire Vale + binary install script" | Small |
+| Lychee CI workflow never landed | Issue #2070: "Wire Lychee CI workflow + scripts/install_cli_tools.sh" | Trivial |
+| `knip --no-exit-code` (report-only, never blocks) | Issue #2071: "Knip blocking: eliminate unused exports surfaced by knip" | Medium |
+| `dpdm --skip-imports` for `stores/auth.ts -> api/client.ts` cycle | Issue #2072: "Fix auth -> client circular dependency" | Small |
+| `_module_size_baseline.json` residue: 109 files not covered by PR 3 / PR 4 / #2051 / #2052 (oversized files in `persistence/`, `engine/`, `api/`, `meta/`, etc. that no existing PR addresses) | Issue #2077: "EPIC: Drain residual module-size baseline" | Very large (per-package decomposition program) |
 
 ### G. Permanent design decisions (NOT exemptions to lift)
 
