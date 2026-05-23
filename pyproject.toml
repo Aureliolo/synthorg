@@ -541,12 +541,12 @@ disallow_any_explicit = false
 [[tool.mypy.overrides]]
 module = "synthorg.api.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "possibly-undefined", "unused-awaitable"]
+disable_error_code = ["explicit-override", "unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.budget.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable", "possibly-undefined"]
+disable_error_code = ["explicit-override", "unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.client.*"
@@ -570,7 +570,7 @@ disable_error_code = ["explicit-override"]
 [[tool.mypy.overrides]]
 module = "synthorg.engine.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "possibly-undefined", "unused-awaitable"]
+disable_error_code = ["explicit-override", "unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.integrations.*"
@@ -669,7 +669,6 @@ disallow_any_generics = false
 disable_error_code = [
     "explicit-override",
     "unused-awaitable",
-    "possibly-undefined",
     "deprecated",
 ]
 

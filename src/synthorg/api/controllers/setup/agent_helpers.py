@@ -159,10 +159,11 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
     worse than a clear error the operator can retry after fixing the
     underlying provider configuration.
     """
+    from synthorg.engine.errors import (  # noqa: PLC0415
+        RuntimeServicesBuildError,
+    )
+
     try:
-        from synthorg.engine.errors import (  # noqa: PLC0415
-            RuntimeServicesBuildError,
-        )
         from synthorg.workers.runtime_builder import (  # noqa: PLC0415
             build_runtime_services,
         )

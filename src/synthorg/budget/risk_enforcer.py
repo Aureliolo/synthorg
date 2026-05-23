@@ -62,8 +62,8 @@ class BudgetEnforcerRiskMixin:
             action_type=action_type,
         )
 
+        projected = 0.0
         try:
-            projected = 0.0
             if self._risk_scorer is not None:
                 projected = self._risk_scorer.score(action_type).risk_units
 
