@@ -26,13 +26,25 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@4f91a55be4084858815c0b35bb691a49e3166946
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Run zizmor
         uses: zizmorcore/zizmor-action@5f14fd08f7cf1cb1609c1e344975f152c7ee938d # v0.5.6
+        env:
+          # zizmor's ``impostor-commit`` audit shells out to git
+          # ls-remote against the upstream repo of every pinned action
+          # to verify the SHA is reachable from a real tag/branch (and
+          # not a force-pushed pointer to a hostile commit). The Rust
+          # git client zizmor uses sends an empty Authorization header
+          # on anonymous fetches, which github.com sometimes 401s
+          # (observed: "couldn't list tags for docker/setup-qemu-action
+          # ... HTTP 401 for git-upload-pack"). Setting GH_TOKEN here
+          # lets zizmor authenticate the ls-remote with the workflow's
+          # default token, sidestepping the anonymous-fetch flake.
+          GH_TOKEN: ${{ github.token }}
         with:
           config: .github/.zizmor.yml
           advanced-security: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
