@@ -411,6 +411,39 @@ jobs:
             -v \
             -s
 
+      # Critical safety net: pytest can exit 0 with zero tests run.
+      # PR #2080 reproduced this -- 3 of 4 xdist workers crashed during
+      # pytest_sessionstart, master saw "no test failures" and exited 0,
+      # the job was marked success despite junit-unit-N.xml showing
+      # tests="0". Without this gate, a CI session that silently runs
+      # ZERO tests passes the green-checkmark check. We MUST surface
+      # that as a hard failure.
+      - name: Sanity check (junit shows tests > 0)
+        if: ${{ !cancelled() }}
+        shell: python
+        run: |
+          import glob
+          import sys
+          import xml.etree.ElementTree as ET
+
+          files = sorted(glob.glob("junit-unit-*.xml"))
+          if not files:
+              print("FAIL: no junit-unit-*.xml files found", file=sys.stderr)
+              sys.exit(1)
+          total = 0
+          for f in files:
+              tree = ET.parse(f)
+              for ts in tree.iter("testsuite"):
+                  total += int(ts.get("tests", 0))
+          print(f"junit total tests: {total} across {len(files)} file(s)")
+          if total == 0:
+              print(
+                  "FAIL: junit reports zero tests across all files; "
+                  "something prevented tests from running.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
       - name: Upload coverage data
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -427,16 +460,18 @@ jobs:
           name: test-results-unit-${{ matrix.shard }}
           path: junit-unit-${{ matrix.shard }}.xml
 
-      # Upload any core dumps that landed in the workspace on a worker
-      # crash. Gated on ``failure() || cancelled()`` because the failure
-      # mode we care about is the worker-crash cascade reaped by the
-      # 5-min job timeout (which surfaces as ``cancelled()``, not
-      # ``failure()``). ``if-no-files-found: ignore`` keeps a green
-      # job's tail clean. Retention is short (3 days) because core
-      # dumps can be large and the value decays rapidly once the crash
-      # is diagnosed.
-      - name: Upload core dumps (on failure)
-        if: ${{ failure() || cancelled() }}
+      # Upload any core dumps that landed in the workspace, on
+      # success OR failure. Previously gated on ``failure() ||
+      # cancelled()`` but PR #2080 demonstrated a "success-with-zero-
+      # tests" failure mode: workers crashed via os.abort (producing
+      # cores), pytest exited 0, GHA marked the step success, the
+      # gated upload was SKIPPED, the cores were lost. ``!cancelled()``
+      # uploads on every non-cancelled exit. ``if-no-files-found:
+      # ignore`` keeps a genuinely-green job's tail clean. Retention is
+      # short (3 days) because core dumps can be large and the value
+      # decays rapidly once the crash is diagnosed.
+      - name: Upload core dumps
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: core-dumps-unit-${{ matrix.shard }}
@@ -528,6 +563,33 @@ jobs:
             --durations=20 \
             --durations-min=1.0
 
+      # See identical step in test-unit for the reason this gate exists.
+      - name: Sanity check (junit shows tests > 0)
+        if: ${{ !cancelled() }}
+        shell: python
+        run: |
+          import glob
+          import sys
+          import xml.etree.ElementTree as ET
+
+          files = sorted(glob.glob("junit-integration-*.xml"))
+          if not files:
+              print("FAIL: no junit-integration-*.xml files found", file=sys.stderr)
+              sys.exit(1)
+          total = 0
+          for f in files:
+              tree = ET.parse(f)
+              for ts in tree.iter("testsuite"):
+                  total += int(ts.get("tests", 0))
+          print(f"junit total tests: {total} across {len(files)} file(s)")
+          if total == 0:
+              print(
+                  "FAIL: junit reports zero tests across all files; "
+                  "something prevented tests from running.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
       - name: Upload coverage data
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -606,6 +668,31 @@ jobs:
             --durations=20 \
             --durations-min=1.0
 
+      # See identical step in test-unit for the reason this gate exists.
+      - name: Sanity check (junit shows tests > 0)
+        if: ${{ !cancelled() }}
+        shell: python
+        run: |
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path("junit-e2e.xml")
+          if not path.exists():
+              print("FAIL: junit-e2e.xml not found", file=sys.stderr)
+              sys.exit(1)
+          total = 0
+          for ts in ET.parse(path).iter("testsuite"):
+              total += int(ts.get("tests", 0))
+          print(f"junit total tests: {total}")
+          if total == 0:
+              print(
+                  "FAIL: junit reports zero tests; "
+                  "something prevented tests from running.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
       - name: Upload coverage data
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -663,6 +750,34 @@ jobs:
             --junitxml=junit-conformance-sqlite.xml \
             --durations=20 \
             --durations-min=1.0
+
+      # See identical step in test-unit for the reason this gate exists.
+      - name: Sanity check (junit shows tests > 0)
+        if: ${{ !cancelled() }}
+        shell: python
+        run: |
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path("junit-conformance-sqlite.xml")
+          if not path.exists():
+              print(
+                  "FAIL: junit-conformance-sqlite.xml not found",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          total = 0
+          for ts in ET.parse(path).iter("testsuite"):
+              total += int(ts.get("tests", 0))
+          print(f"junit total tests: {total}")
+          if total == 0:
+              print(
+                  "FAIL: junit reports zero tests; "
+                  "something prevented tests from running.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
 
       - name: Upload coverage data
         if: ${{ !cancelled() }}

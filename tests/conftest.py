@@ -533,6 +533,40 @@ _BASELINE_PATH = Path(__file__).parent / "baselines" / "unit_timing.json"
 _suite_start: float | None = None
 
 
+def _session_needs_postgres(session: pytest.Session) -> bool:
+    """Return True iff this session is going to run any postgres-backed test.
+
+    The conformance/integration/e2e arms use a real postgres -- either
+    via ``SYNTHORG_TEST_POSTGRES_*`` env vars (CI service-container) or
+    via a per-session testcontainer. Unit shards never touch postgres,
+    so we MUST NOT pre-acquire the testcontainer there: in PR #2080 the
+    unconditional call ran the postgres FileLock + container start on
+    every shard, and unit-shard non-leader workers timed out at 180s
+    waiting on the migrated_db FileLock (3 of 4 workers crashed via
+    the forensic os.abort, pytest reported tests=0, the workflow step
+    still exited 0 because xdist doesn't fail when workers die in
+    pytest_sessionstart).
+
+    Detection (any single match is enough):
+
+    1. ``SYNTHORG_TEST_POSTGRES_HOST`` env var set -- CI integration
+       shard signal, the only authoritative one.
+    2. Marker expression includes ``integration`` or ``e2e`` -- local
+       dev ``-m integration`` or the CI integration / e2e jobs.
+    3. Any session arg path contains ``conformance``, ``integration``,
+       or ``e2e`` -- local dev ``pytest tests/conformance/...`` or
+       ``pytest tests/integration/...`` without an explicit marker.
+    """
+    if os.environ.get("SYNTHORG_TEST_POSTGRES_HOST"):
+        return True
+    markexpr = str(getattr(session.config.option, "markexpr", "") or "").lower()
+    if "integration" in markexpr or "e2e" in markexpr:
+        return True
+    args = [str(a).lower() for a in (session.config.args or [])]
+    needles = ("conformance", "integration", "e2e")
+    return any(needle in arg for arg in args for needle in needles)
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Record suite start time + pre-build the migrated_db template.
@@ -594,13 +628,18 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         # proved this: the fixture writes its diagnostic line but
         # the hook writes nothing. The root conftest IS loaded
         # eagerly (we are it), so we call the conformance helper
-        # from here. Imported lazily so unit-only sessions don't
-        # pay the testcontainers / docker check until we get here.
-        from tests.conformance.persistence.conftest import (
-            _pre_acquire_postgres_container_state,
-        )
+        # from here -- BUT ONLY for sessions that actually run
+        # postgres-backed tests. Unit shards do not need a postgres
+        # testcontainer; the unconditional call previously held the
+        # FileLock long enough for non-leader workers to time out at
+        # 180s (PR #2080: unit shards reported tests=0, gw1/gw2/gw3
+        # crashed via the forensic os.abort() below).
+        if _session_needs_postgres(session):
+            from tests.conformance.persistence.conftest import (
+                _pre_acquire_postgres_container_state,
+            )
 
-        _pre_acquire_postgres_container_state(session)
+            _pre_acquire_postgres_container_state(session)
     except BaseException as exc:
         worker = os.environ.get("PYTEST_XDIST_WORKER", "master")
         sys.stderr.write(
