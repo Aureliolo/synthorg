@@ -35,14 +35,19 @@ jobs:
 
       - name: Run pyright (JSON report)
         # `--outputjson` is the machine-readable form; pyright always
-        # exits non-zero when it finds anything, hence continue-on-error
-        # on the job. The artefact lets reviewers inspect the report
-        # without paying a pre-push tax for every developer push.
+        # exits non-zero when it finds anything. ``continue-on-error``
+        # on the step (advisory job) lets the real exit code through to
+        # the run log while still allowing the upload step to fire.
+        continue-on-error: true
         run: |
-          uv run pyright --outputjson > pyright-report.json || true
+          uv run pyright --outputjson > pyright-report.json
 
       - name: Upload pyright report
-        uses: actions/upload-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        # ``if: always()`` keeps the artefact upload running even when
+        # the pyright step exits non-zero, so reviewers can still pull
+        # the JSON report off a failing advisory run.
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pyright-report
           path: pyright-report.json

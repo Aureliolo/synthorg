@@ -149,8 +149,10 @@ def test_check_passes_on_acyclic_tree(tmp_path: Path) -> None:
     baseline = tmp_path / "scripts" / "_circular_imports_baseline.txt"
     baseline.parent.mkdir(parents=True)
     baseline.write_text("", encoding="utf-8")
-    cycles = _GATE.check(project_root=tmp_path, baseline_path=baseline)
-    assert cycles == []
+    result = _GATE.check(project_root=tmp_path, baseline_path=baseline)
+    assert result.is_clean()
+    assert result.new_cycles == ()
+    assert result.stale_baseline == ()
 
 
 def test_check_finds_two_node_cycle(tmp_path: Path) -> None:
@@ -165,8 +167,9 @@ def test_check_finds_two_node_cycle(tmp_path: Path) -> None:
     baseline = tmp_path / "scripts" / "_circular_imports_baseline.txt"
     baseline.parent.mkdir(parents=True)
     baseline.write_text("", encoding="utf-8")
-    cycles = _GATE.check(project_root=tmp_path, baseline_path=baseline)
-    assert len(cycles) == 1
+    result = _GATE.check(project_root=tmp_path, baseline_path=baseline)
+    assert len(result.new_cycles) == 1
+    assert result.stale_baseline == ()
 
 
 def test_check_baselined_cycle_passes(tmp_path: Path) -> None:
@@ -181,8 +184,51 @@ def test_check_baselined_cycle_passes(tmp_path: Path) -> None:
     baseline = tmp_path / "scripts" / "_circular_imports_baseline.txt"
     baseline.parent.mkdir(parents=True)
     baseline.write_text("synthorg.a -> synthorg.b\n", encoding="utf-8")
-    cycles = _GATE.check(project_root=tmp_path, baseline_path=baseline)
-    assert cycles == []
+    result = _GATE.check(project_root=tmp_path, baseline_path=baseline)
+    assert result.is_clean()
+
+
+def test_check_flags_stale_baseline_entry(tmp_path: Path) -> None:
+    """Baseline cycle no longer in the graph must surface as stale + fail."""
+    _materialise(
+        tmp_path,
+        {
+            "src/synthorg/__init__.py": "",
+            "src/synthorg/a.py": "import synthorg.b\n",
+            "src/synthorg/b.py": "",
+        },
+    )
+    baseline = tmp_path / "scripts" / "_circular_imports_baseline.txt"
+    baseline.parent.mkdir(parents=True)
+    baseline.write_text("synthorg.a -> synthorg.b\n", encoding="utf-8")
+    result = _GATE.check(project_root=tmp_path, baseline_path=baseline)
+    assert result.new_cycles == ()
+    assert result.stale_baseline == (("synthorg.a", "synthorg.b"),)
+    assert not result.is_clean()
+
+
+def test_main_exit_nonzero_on_stale_baseline_only(tmp_path: Path) -> None:
+    """Stale baseline alone is enough to fail; new cycles aren't required."""
+    _materialise(
+        tmp_path,
+        {
+            "src/synthorg/__init__.py": "",
+            "src/synthorg/a.py": "import synthorg.b\n",
+            "src/synthorg/b.py": "",
+        },
+    )
+    baseline = tmp_path / "scripts" / "_circular_imports_baseline.txt"
+    baseline.parent.mkdir(parents=True)
+    baseline.write_text("synthorg.a -> synthorg.b\n", encoding="utf-8")
+    exit_code = _GATE.main(
+        [
+            "--project-root",
+            str(tmp_path),
+            "--baseline",
+            str(baseline),
+        ]
+    )
+    assert exit_code == 1
 
 
 # ── Baseline writer is idempotent ───────────────────────────────

@@ -147,7 +147,12 @@ def _line_carries_suppression(line: str) -> bool:
 
 
 def _is_main_block(stmt: ast.stmt) -> bool:
-    """Return True iff *stmt* is ``if __name__ == "__main__":``."""
+    """Return True iff *stmt* is ``if __name__ == "__main__":``.
+
+    The equality check is explicit: ``if __name__ != "__main__":`` does
+    NOT count as a main guard, so its body keeps being scanned for
+    forbidden module-import-time I/O.
+    """
     if not isinstance(stmt, ast.If):
         return False
     test = stmt.test
@@ -156,27 +161,38 @@ def _is_main_block(stmt: ast.stmt) -> bool:
     return (
         isinstance(test.left, ast.Name)
         and test.left.id == "__name__"
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.Eq)
         and len(test.comparators) == 1
         and isinstance(test.comparators[0], ast.Constant)
         and test.comparators[0].value == "__main__"
     )
 
 
-def _walk_module_body(body: list[ast.stmt], findings: list[ast.Call]) -> None:
-    """Collect Call nodes reachable at module scope.
+def _collect_calls_pruned(node: ast.AST, findings: list[ast.Call]) -> None:
+    """Collect ``ast.Call`` descendants reachable at module scope.
 
-    Descends into ``if`` / ``try`` / ``with`` at module level; stops at
-    ``FunctionDef`` / ``AsyncFunctionDef`` / ``ClassDef`` / ``__main__``
-    block.
+    Stops at ``FunctionDef`` / ``AsyncFunctionDef`` / ``ClassDef`` /
+    ``Lambda`` / ``__main__`` block so a top-level ``if`` that wraps a
+    nested function definition does not flag the function's body as
+    module-scope I/O.
     """
+    if isinstance(
+        node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+    ):
+        return
+    if isinstance(node, ast.If) and _is_main_block(node):
+        return
+    if isinstance(node, ast.Call):
+        findings.append(node)
+    for child in ast.iter_child_nodes(node):
+        _collect_calls_pruned(child, findings)
+
+
+def _walk_module_body(body: list[ast.stmt], findings: list[ast.Call]) -> None:
+    """Collect Call nodes reachable at module scope."""
     for stmt in body:
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            continue
-        if _is_main_block(stmt):
-            continue
-        findings.extend(
-            child for child in ast.walk(stmt) if isinstance(child, ast.Call)
-        )
+        _collect_calls_pruned(stmt, findings)
 
 
 def find_module_io(path: Path) -> list[Finding]:

@@ -272,12 +272,36 @@ def _load_baseline(baseline_path: Path) -> set[tuple[str, ...]]:
     return entries
 
 
-def check(*, project_root: Path, baseline_path: Path) -> list[tuple[str, ...]]:
-    """Run the gate; return cycles not absorbed by the baseline."""
+@dataclasses.dataclass(frozen=True)
+class CheckResult:
+    """Outcome of a gate run.
+
+    Carries both new cycles (present now but not in the baseline) and
+    stale baseline entries (baselined cycles that no longer exist). The
+    gate fails when EITHER list is non-empty: the baseline must shrink
+    monotonically, so a cycle that disappears MUST be removed from the
+    baseline file in the same change.
+    """
+
+    new_cycles: tuple[tuple[str, ...], ...]
+    stale_baseline: tuple[tuple[str, ...], ...]
+
+    def is_clean(self) -> bool:
+        """True iff nothing is left to report."""
+        return not self.new_cycles and not self.stale_baseline
+
+
+def check(*, project_root: Path, baseline_path: Path) -> CheckResult:
+    """Run the gate; return new cycles + stale baseline entries."""
     graph = _build_import_graph(project_root)
     cycles = find_cycles(graph)
     baseline = _load_baseline(baseline_path)
-    return [cycle for cycle in cycles if cycle not in baseline]
+    cycle_set = set(cycles)
+    new_cycles = tuple(cycle for cycle in cycles if cycle not in baseline)
+    stale_baseline = tuple(
+        sorted(cycle for cycle in baseline if cycle not in cycle_set)
+    )
+    return CheckResult(new_cycles=new_cycles, stale_baseline=stale_baseline)
 
 
 def write_baseline(*, project_root: Path, baseline_path: Path) -> None:
@@ -309,7 +333,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entry. ``0`` clean (or all baselined), ``1`` on new cycle."""
+    """CLI entry. ``0`` clean, ``1`` on new cycle OR stale baseline entry."""
     args = _build_arg_parser().parse_args(argv)
     project_root: Path = args.project_root.resolve()
     baseline_path: Path = (
@@ -317,17 +341,27 @@ def main(argv: list[str] | None = None) -> int:
         if args.baseline is not None
         else project_root / _BASELINE_REL
     )
-    cycles = check(project_root=project_root, baseline_path=baseline_path)
-    if not cycles:
+    result = check(project_root=project_root, baseline_path=baseline_path)
+    if result.is_clean():
         return 0
-    print("New import cycles detected in src/synthorg/. Cycles:", file=sys.stderr)
-    for cycle in cycles:
-        print(f"  {_render_cycle(cycle)}", file=sys.stderr)
-    print(
-        "\nBreak the cycle: hoist a shared protocol into a leaf module, "
-        "or lazy-import via TYPE_CHECKING / function-local imports.",
-        file=sys.stderr,
-    )
+    if result.new_cycles:
+        print("New import cycles detected in src/synthorg/. Cycles:", file=sys.stderr)
+        for cycle in result.new_cycles:
+            print(f"  {_render_cycle(cycle)}", file=sys.stderr)
+        print(
+            "\nBreak the cycle: hoist a shared protocol into a leaf module, "
+            "or lazy-import via TYPE_CHECKING / function-local imports.",
+            file=sys.stderr,
+        )
+    if result.stale_baseline:
+        print(
+            "\nBaseline entries that no longer correspond to a real cycle "
+            "(baseline must shrink monotonically -- remove these lines from "
+            f"{_BASELINE_REL.as_posix()}):",
+            file=sys.stderr,
+        )
+        for cycle in result.stale_baseline:
+            print(f"  {_render_cycle(cycle)}", file=sys.stderr)
     return 1
 
 

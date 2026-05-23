@@ -124,14 +124,31 @@ def harvest_registered_classes(project_root: Path) -> list[RegisteredClass]:
     return out
 
 
-def _annotation_name(annotation: ast.expr | None) -> str | None:
-    if isinstance(annotation, ast.Name):
-        return annotation.id
-    return None
+def _annotation_names(annotation: ast.expr | None) -> set[str]:
+    """Return every bare ``Name`` reachable inside *annotation*.
+
+    Walking the annotation subtree lets the gate flag concrete strategy
+    classes that are buried inside Union (``ConcreteFoo | None``),
+    Optional, or generic containers (``list[ConcreteFoo]``) -- a plain
+    ``isinstance(annotation, ast.Name)`` check would only catch the
+    bare-annotation case.
+    """
+    if annotation is None:
+        return set()
+    return {node.id for node in ast.walk(annotation) if isinstance(node, ast.Name)}
 
 
 def _line_carries_suppression(line: str) -> bool:
     return bool(_SUPPRESSION_RE.search(line))
+
+
+def _line_for(lineno: int | None, lines: list[str]) -> str:
+    if lineno is None:
+        return ""
+    idx = lineno - 1
+    if 0 <= idx < len(lines):
+        return lines[idx]
+    return ""
 
 
 def _scan_callsites(
@@ -147,6 +164,11 @@ def _scan_callsites(
         registered_by_class: ``{class_name: {factory_path, ...}}``. A
             callsite is exempt if its containing file appears in the
             factory-path set for the registered class.
+
+    Scans every parameter slot (positional-only, regular, keyword-only)
+    and the function return annotation. A concrete class buried inside
+    Union / Optional / generic containers is still reported because
+    :func:`_annotation_names` walks the annotation subtree.
     """
     try:
         text = path.read_text(encoding="utf-8")
@@ -162,26 +184,47 @@ def _scan_callsites(
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        for arg in (*node.args.args, *node.args.kwonlyargs):
-            class_name = _annotation_name(arg.annotation)
-            if class_name is None or class_name not in registered_by_class:
-                continue
-            if rel in registered_by_class[class_name]:
-                continue
-            arg_line = (
-                lines[arg.lineno - 1]
-                if arg.lineno is not None and 0 <= arg.lineno - 1 < len(lines)
-                else ""
-            )
-            findings.append(
-                Finding(
-                    path=rel,
-                    line=arg.lineno or node.lineno,
-                    funcname=node.name,
-                    class_name=class_name,
-                    suppressed=_line_carries_suppression(arg_line),
+        for arg in (
+            *node.args.posonlyargs,
+            *node.args.args,
+            *node.args.kwonlyargs,
+        ):
+            arg_line = _line_for(arg.lineno, lines)
+            arg_suppressed = _line_carries_suppression(arg_line)
+            for class_name in _annotation_names(arg.annotation):
+                if class_name not in registered_by_class:
+                    continue
+                if rel in registered_by_class[class_name]:
+                    continue
+                findings.append(
+                    Finding(
+                        path=rel,
+                        line=arg.lineno or node.lineno,
+                        funcname=node.name,
+                        class_name=class_name,
+                        suppressed=arg_suppressed,
+                    )
                 )
-            )
+        return_anno = node.returns
+        if return_anno is not None:
+            return_line = _line_for(return_anno.lineno, lines)
+            if not return_line:
+                return_line = _line_for(node.lineno, lines)
+            return_suppressed = _line_carries_suppression(return_line)
+            for class_name in _annotation_names(return_anno):
+                if class_name not in registered_by_class:
+                    continue
+                if rel in registered_by_class[class_name]:
+                    continue
+                findings.append(
+                    Finding(
+                        path=rel,
+                        line=return_anno.lineno or node.lineno,
+                        funcname=node.name,
+                        class_name=class_name,
+                        suppressed=return_suppressed,
+                    )
+                )
     return findings
 
 

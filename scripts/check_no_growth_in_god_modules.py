@@ -101,8 +101,12 @@ def classify_paths(
     return sorted(violations, key=lambda v: v.path)
 
 
-def _git_show(ref: str, path: str) -> str | None:
-    """Return the content of *path* at *ref*, or ``None`` on any failure.
+def _git_show(ref: str, path: str, *, repo_root: Path) -> str | None:
+    """Return the content of *path* at *ref* inside *repo_root*, or ``None``.
+
+    Runs ``git show`` with ``cwd=repo_root`` so the ``--repo-root``
+    override actually selects the repository under test instead of
+    silently falling back to the process CWD.
 
     Treats a missing ``git`` binary, the path not being present at the
     ref, and other OS errors as "no content" so the caller skips
@@ -114,6 +118,7 @@ def _git_show(ref: str, path: str) -> str | None:
             check=False,
             capture_output=True,
             text=True,
+            cwd=repo_root,
         )
     except FileNotFoundError:
         return None
@@ -134,15 +139,15 @@ def _count_loc_from_text(text: str) -> int:
     )
 
 
-def _read_staged_loc(path: str) -> int | None:
-    text = _git_show(":0", path)
+def _read_staged_loc(path: str, *, repo_root: Path) -> int | None:
+    text = _git_show(":0", path, repo_root=repo_root)
     if text is None:
         return None
     return _count_loc_from_text(text)
 
 
-def _read_head_loc(path: str) -> int | None:
-    text = _git_show("HEAD", path)
+def _read_head_loc(path: str, *, repo_root: Path) -> int | None:
+    text = _git_show("HEAD", path, repo_root=repo_root)
     if text is None:
         return None
     return _count_loc_from_text(text)
@@ -175,10 +180,11 @@ def main(argv: list[str] | None = None) -> int:
         for path in sorted(GOD_MODULE_ALLOWLIST):
             print(path)
         return 0
+    repo_root: Path = args.repo_root.resolve()
     violations = classify_paths(
         paths=GOD_MODULE_ALLOWLIST,
-        read_staged_loc=_read_staged_loc,
-        read_head_loc=_read_head_loc,
+        read_staged_loc=lambda p: _read_staged_loc(p, repo_root=repo_root),
+        read_head_loc=lambda p: _read_head_loc(p, repo_root=repo_root),
     )
     if not violations:
         return 0

@@ -101,11 +101,30 @@ def _config_value(call: ast.Call, key: str) -> ast.expr | None:
     return None
 
 
+def _is_config_dict_call(call: ast.Call) -> bool:
+    """Return True iff *call* is an explicit ``ConfigDict(...)`` invocation.
+
+    Accepts bare ``ConfigDict(...)`` (``ast.Name``) and qualified
+    ``pydantic.ConfigDict(...)`` / ``pyd.ConfigDict(...)`` (``ast.Attribute``).
+    Anything else fails the contract: the keyword-only checks below
+    would otherwise pass on a hand-rolled helper that re-emits
+    ``frozen=...`` / ``extra=...`` without actually being a Pydantic
+    config descriptor.
+    """
+    if isinstance(call.func, ast.Name):
+        return call.func.id == "ConfigDict"
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr == "ConfigDict"
+    return False
+
+
 def _violation_reason(node: ast.ClassDef) -> str | None:
     """Return a reason code if *node* violates the contract, else ``None``."""
     config_call = _find_model_config_call(node)
     if config_call is None:
         return "missing_model_config"
+    if not _is_config_dict_call(config_call):
+        return "model_config_not_configdict"
     frozen_node = _config_value(config_call, "frozen")
     if frozen_node is None:
         return "missing_frozen"
