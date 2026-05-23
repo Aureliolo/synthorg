@@ -9,13 +9,6 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from tests._shared import FakeClock
-from tests._shared.scripted_provider import ScriptedProvider
-from tests.unit.research._fakes import (
-    FakeWebSearchProvider,
-    InMemoryResearchRunRepository,
-    scripted_response,
-)
 
 from synthorg.core.enums import ResearchRunStatus, ResearchSourceType
 from synthorg.research.errors import ResearchBudgetExceededError, ResearchRunError
@@ -35,6 +28,13 @@ from synthorg.research.triage.heuristic import HeuristicCredibilityTriage
 from synthorg.research.triage.hybrid import HybridCredibilityTriage
 from synthorg.research.triage.llm import LlmCredibilityTriage
 from synthorg.tools.web.web_search import SearchResult
+from tests._shared import FakeClock
+from tests._shared.scripted_provider import ScriptedProvider
+from tests.unit.research._fakes import (
+    FakeWebSearchProvider,
+    InMemoryResearchRunRepository,
+    scripted_response,
+)
 
 pytestmark = pytest.mark.unit
 

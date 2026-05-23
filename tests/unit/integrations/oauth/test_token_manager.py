@@ -10,7 +10,6 @@ operation) picks up the fresh token on its next push.
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from tests._shared import mock_of
 
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog
@@ -25,6 +24,7 @@ from synthorg.integrations.oauth.flows.authorization_code import (
     AuthorizationCodeFlow,
 )
 from synthorg.integrations.oauth.token_manager import OAuthTokenManager
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 

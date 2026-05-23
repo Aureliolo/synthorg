@@ -18,11 +18,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests._shared import FakeClock
-from tests.unit.knowledge._fakes import (
-    FakeChunkProvenanceRepository,
-    FakeKnowledgeSourceRepository,
-)
 
 from synthorg.core.enums import (
     ContentKind,
@@ -54,6 +49,11 @@ from synthorg.knowledge.retrieval import KnowledgeRetriever
 from synthorg.knowledge.service import KnowledgeService
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.memory.models import MemoryQuery
+from tests._shared import FakeClock
+from tests.unit.knowledge._fakes import (
+    FakeChunkProvenanceRepository,
+    FakeKnowledgeSourceRepository,
+)
 
 pytestmark = pytest.mark.unit
 

@@ -19,7 +19,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from tests._shared import FakeClock, mock_of
 
 from synthorg.core.enums import ConflictType, GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
@@ -40,6 +39,7 @@ from synthorg.engine.workspace.project_workspace_service import (
 )
 from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
 from synthorg.engine.workspace.push_queue import PushQueueCoordinator
+from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.integration
 

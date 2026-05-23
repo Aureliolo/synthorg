@@ -9,11 +9,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from tests._shared import FakeClock
-from tests.unit.knowledge._fakes import (
-    FakeChunkProvenanceRepository,
-    FakeKnowledgeSourceRepository,
-)
 
 from synthorg.core.enums import ActionType, SourceType
 from synthorg.core.types import NotBlankStr
@@ -25,6 +20,11 @@ from synthorg.knowledge.tool_factory import KnowledgeToolFactory
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.tools.knowledge.ingest_knowledge import IngestKnowledgeTool
 from synthorg.tools.knowledge.search_knowledge import SearchKnowledgeTool
+from tests._shared import FakeClock
+from tests.unit.knowledge._fakes import (
+    FakeChunkProvenanceRepository,
+    FakeKnowledgeSourceRepository,
+)
 
 pytestmark = pytest.mark.unit
 

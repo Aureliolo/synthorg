@@ -10,7 +10,6 @@ always <= the flat total cost, and never exceeds it.
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from tests._shared.scripted_provider import make_e2e_identity
 
 from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.core.agent import AgentIdentity, ModelConfig
@@ -20,6 +19,7 @@ from synthorg.core.types import ModelTier
 from synthorg.engine.routing_policy import StakesAwareStrategy
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
+from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER = "example-provider"
 _TIER_MODEL_IDS: dict[ModelTier, str] = {

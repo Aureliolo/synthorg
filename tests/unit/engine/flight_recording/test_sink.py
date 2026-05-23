@@ -1,7 +1,6 @@
 """Unit tests for the flight-recorder sink and frame builder."""
 
 import pytest
-from tests.unit.api.fakes import FakeFlightRecorderFrameRepository
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import TaskStatus
@@ -20,6 +19,7 @@ from synthorg.engine.loop_protocol import (
 )
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage
+from tests.unit.api.fakes import FakeFlightRecorderFrameRepository
 
 pytestmark = pytest.mark.unit
 

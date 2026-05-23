@@ -4,7 +4,6 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from tests._shared import FakeClock, mock_of
 
 from synthorg.core.enums import GitBackendType
 from synthorg.core.project_workspace import ProjectWorkspace
@@ -17,6 +16,7 @@ from synthorg.engine.workspace.git_backend import (
 from synthorg.engine.workspace.project_workspace_service import (
     ProjectWorkspaceService,
 )
+from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.unit
 

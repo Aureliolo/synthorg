@@ -4,13 +4,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from tests._shared import FakeClock, mock_of
-from tests.unit.research._fakes import (
-    FakeAcademicSearchProvider,
-    FakeCodeSearchProvider,
-    FakeWebSearchProvider,
-    knowledge_hit,
-)
 
 from synthorg.core.enums import ResearchSourceType
 from synthorg.knowledge.service import KnowledgeService
@@ -33,6 +26,13 @@ from synthorg.research.retrieval.sources.code import CodeRetrievalSource
 from synthorg.research.retrieval.sources.knowledge import KnowledgeRetrievalSource
 from synthorg.research.retrieval.sources.web import WebRetrievalSource
 from synthorg.tools.web.web_search import SearchResult
+from tests._shared import FakeClock, mock_of
+from tests.unit.research._fakes import (
+    FakeAcademicSearchProvider,
+    FakeCodeSearchProvider,
+    FakeWebSearchProvider,
+    knowledge_hit,
+)
 
 pytestmark = pytest.mark.unit
 

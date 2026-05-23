@@ -8,8 +8,6 @@ re-embed, removed-chunk purge, no-op re-index, and source purge.
 from datetime import UTC, datetime
 
 import pytest
-from tests._shared import FakeClock
-from tests.unit.knowledge._fakes import FakeChunkProvenanceRepository
 
 from synthorg.core.enums import (
     ContentKind,
@@ -30,6 +28,8 @@ from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.memory.models import MemoryQuery
 from synthorg.persistence.knowledge_protocol import ChunkProvenanceFilter
 from synthorg.versioning.hashing import compute_text_hash
+from tests._shared import FakeClock
+from tests.unit.knowledge._fakes import FakeChunkProvenanceRepository
 
 pytestmark = pytest.mark.unit
 
