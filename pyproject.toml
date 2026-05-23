@@ -61,7 +61,7 @@ telemetry = ["logfire==4.33.0"]
 # Opt in with `pip install synthorg[distributed]`. See docs/design/distributed-runtime.md.
 distributed = ["nats-py==2.14.0"]
 postgres = ["psycopg[binary]==3.3.4", "psycopg_pool==3.3.1"]
-# Knowledge + provenance substrate (#1988): structure-aware ingestion.
+# Knowledge + provenance substrate: structure-aware ingestion.
 # Opt in with `pip install synthorg[knowledge]`. pdfplumber (MIT) gives
 # per-page text + word bboxes; tree-sitter + language pack drive AST-aware
 # code chunking. pymupdf is deliberately excluded (AGPL).
@@ -856,12 +856,12 @@ filterwarnings = [
 source = ["synthorg"]
 branch = true
 parallel = true
-# sys.monitoring core (Python 3.12+) is 5-10x faster than the default ctrace
-# core with full line + branch parity since coverage 7.7. Project pins
-# coverage 7.14, so the parity guarantee holds. Set as project default so
-# local one-off coverage runs and the CI test arms both benefit; CI also
-# exports COVERAGE_CORE=sysmon per job for redundancy in case future runs
-# move to an environment where this setting is overridden.
+# sys.monitoring core is 5-10x faster than the default ctrace core, with
+# full line + branch parity since coverage 7.7. Project pins coverage 7.14,
+# which guarantees that parity. Set as project default so local one-off
+# coverage runs and the CI test arms both benefit; CI also exports
+# COVERAGE_CORE=sysmon per job for redundancy in case future runs move to
+# an environment where this setting is overridden.
 core = "sysmon"
 
 [tool.coverage.report]

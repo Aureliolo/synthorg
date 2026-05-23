@@ -272,6 +272,16 @@ def postgres_container(
     yielded. Per-test database isolation still works because the
     ``backend`` fixture creates a unique ``test_<uuid>`` DB on the
     shared server.
+
+    The cross-worker ``FileLock`` + ``state_file`` machinery coordinates
+    xdist workers within a SINGLE pytest invocation. The 4-way matrix
+    shards in CI run as separate pytest processes, so the filelock
+    cannot coordinate across them. This is fine for CI because the
+    env-var bypass above short-circuits before the filelock path runs:
+    every shard connects directly to the same ``services: postgres``
+    instance and creates its own per-test ``test_<uuid>`` DB. The lock
+    path is only exercised in local-dev runs (env vars unset), where a
+    single pytest invocation owns the testcontainer for its lifetime.
     """
     env_proxy = _proxy_from_env()
     if env_proxy is not None:

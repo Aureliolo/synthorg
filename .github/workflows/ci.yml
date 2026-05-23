@@ -658,6 +658,10 @@ jobs:
             exit 1
           fi
           # Assert sharded arms contributed every shard (4 each).
+          # The expected count 4 MUST stay in sync with the
+          # `strategy.matrix.shard: [1, 2, 3, 4]` definitions on the
+          # `test-unit` and `test-integration` jobs above. If a future
+          # change grows or shrinks the matrix, update this number too.
           for sharded in unit integration; do
             count=$(compgen -G "coverage-data/.coverage.${sharded}-*" | wc -l || echo 0)
             if [ "${count}" -lt 4 ]; then
@@ -696,8 +700,15 @@ jobs:
           set -euo pipefail
           # Each sharded arm produces junit-${suite}-${shard}.xml; e2e and
           # conformance-sqlite contribute single files. Build a CSV that
-          # Codecov consumes.
-          files=$(ls test-results/junit-*.xml | paste -sd,)
+          # Codecov consumes. The earlier "Assert all suites contributed
+          # coverage" step already fails the job when any suite or shard
+          # dropped its artifact, so the loop below is a belt-and-braces
+          # guard for the junit upload path specifically.
+          files=$(ls test-results/junit-*.xml 2>/dev/null | paste -sd, || true)
+          if [ -z "${files}" ]; then
+            echo "::error::No junit XML files found under test-results/. Refusing to upload an empty file list to Codecov."
+            exit 1
+          fi
           echo "files=${files}" >> "${GITHUB_OUTPUT}"
           echo "Uploading: ${files}"
 
@@ -976,7 +987,7 @@ jobs:
         uses: ./.github/actions/setup-python-uv
       - run: npm ci
         working-directory: web
-      - name: DTO TypeScript drift gate (#1889)
+      - name: DTO TypeScript drift gate
         run: uv run python scripts/check_dto_types_ts_in_sync.py
       - name: Production build
         run: npm run build

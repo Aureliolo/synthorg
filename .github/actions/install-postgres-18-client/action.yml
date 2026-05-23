@@ -18,10 +18,23 @@ runs:
   steps:
     - name: Install postgresql-client-18 from PGDG
       shell: bash
+      env:
+        # SHA-256 of the PGDG ACCC4CF8.asc signing key as published by
+        # postgresql.org. Pinning the hash defends against a MITM swap
+        # of the key on the runner network; without it, apt would
+        # silently trust any key the runner could fetch.
+        PGDG_KEY_SHA256: 0144068502a1eddd2a0280ede10ef607d1ec592ce819940991203941564e8e76
       run: |
+        set -euo pipefail
         sudo install -d /usr/share/postgresql-common/pgdg
-        sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+        tmp_key=$(mktemp)
+        trap 'rm -f "${tmp_key}"' EXIT
+        sudo curl -fsSL -o "${tmp_key}" \
           https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        echo "${PGDG_KEY_SHA256}  ${tmp_key}" | sha256sum --check --status \
+          || { echo "::error::PGDG signing key SHA-256 mismatch; refusing to trust apt repo."; exit 1; }
+        sudo install -m 0644 "${tmp_key}" \
+          /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
         echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
           | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
         sudo apt-get update
