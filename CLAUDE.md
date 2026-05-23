@@ -101,6 +101,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 - Hypothesis: 10 deterministic CI examples; failures are real bugs (fix + add `@example(...)`).
 - Flaky: NEVER skip/xfail; fix fundamentally. Use `asyncio.Event().wait()` not `sleep(large)`.
 - Dual-backend conformance: `tests/conformance/persistence/` consumes `backend` fixture (SQLite + Postgres). Enforced by `check_dual_backend_test_parity.py`.
+- Postgres fixture (local): defaults to a testcontainers-managed `postgres:18-alpine`. Bypass testcontainers and use a local Postgres (e.g. `docker compose up postgres`) by exporting `SYNTHORG_TEST_POSTGRES_HOST` / `PORT` / `USER` / `PASSWORD` / `DB` before running pytest. The `postgres_container` fixture in `tests/{conformance,integration}/persistence/conftest.py` detects them and yields a connection-info proxy without invoking testcontainers; CI uses the same env vars to point at a `services: postgres` service container.
 
 ## Git
 

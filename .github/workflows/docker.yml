@@ -65,8 +65,9 @@ jobs:
       fine-tune: ${{ steps.filter.outputs.fine-tune }}
       web: ${{ steps.filter.outputs.web }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
@@ -152,8 +153,9 @@ jobs:
       app_version: ${{ steps.version.outputs.app_version }}
       deployment_env: ${{ steps.deployment-env.outputs.deployment_env }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Extract version from pyproject.toml
@@ -214,8 +216,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Validate compose files
@@ -265,8 +268,9 @@ jobs:
       artifact-name: ${{ steps.build.outputs.artifact-name }}
       tarball-name: ${{ steps.build.outputs.tarball-name }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: build
         uses: ./.github/actions/build-apko-base
@@ -300,8 +304,9 @@ jobs:
       digest: ${{ steps.publish.outputs.digest }}
       tag: ${{ steps.publish.outputs.tag }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: publish
         uses: ./.github/actions/publish-apko-base
@@ -329,8 +334,9 @@ jobs:
       artifact-name: ${{ steps.build.outputs.artifact-name }}
       tarball-name: ${{ steps.build.outputs.tarball-name }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: build
         uses: ./.github/actions/build-apko-base
@@ -359,8 +365,9 @@ jobs:
       digest: ${{ steps.publish.outputs.digest }}
       tag: ${{ steps.publish.outputs.tag }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: publish
         uses: ./.github/actions/publish-apko-base
@@ -388,8 +395,9 @@ jobs:
       artifact-name: ${{ steps.build.outputs.artifact-name }}
       tarball-name: ${{ steps.build.outputs.tarball-name }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: build
         uses: ./.github/actions/build-apko-base
@@ -418,8 +426,9 @@ jobs:
       digest: ${{ steps.publish.outputs.digest }}
       tag: ${{ steps.publish.outputs.tag }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: publish
         uses: ./.github/actions/publish-apko-base
@@ -447,8 +456,9 @@ jobs:
       artifact-name: ${{ steps.build.outputs.artifact-name }}
       tarball-name: ${{ steps.build.outputs.tarball-name }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: build
         uses: ./.github/actions/build-apko-base
@@ -477,8 +487,9 @@ jobs:
       digest: ${{ steps.publish.outputs.digest }}
       tag: ${{ steps.publish.outputs.tag }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: publish
         uses: ./.github/actions/publish-apko-base
@@ -515,8 +526,9 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Build and scan backend image
@@ -600,8 +612,9 @@ jobs:
     outputs:
       digest: ${{ steps.publish.outputs.digest }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Publish backend image
@@ -627,8 +640,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Set up Node.js
@@ -761,8 +775,9 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Prepare work directory
@@ -885,8 +900,9 @@ jobs:
     outputs:
       digest: ${{ steps.publish.outputs.digest }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Download web image tarball
@@ -933,8 +949,9 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Build and scan sandbox image
@@ -969,8 +986,9 @@ jobs:
     outputs:
       digest: ${{ steps.publish.outputs.digest }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Publish sandbox image
@@ -996,8 +1014,9 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Build and scan sidecar image
@@ -1032,8 +1051,9 @@ jobs:
     outputs:
       digest: ${{ steps.publish.outputs.digest }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Publish sidecar image
@@ -1078,8 +1098,9 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Build and scan fine-tune image
@@ -1125,8 +1146,9 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       # Fine-tune tarballs are large (~4 GB GPU, ~1.7 GB CPU). Reclaim
@@ -1205,8 +1227,9 @@ jobs:
     outputs:
       digest: ${{ steps.retag.outputs.digest }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: retag
         uses: ./.github/actions/publish-image-retag
@@ -1231,8 +1254,9 @@ jobs:
     outputs:
       digest: ${{ steps.retag.outputs.digest }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: retag
         uses: ./.github/actions/publish-image-retag
@@ -1257,8 +1281,9 @@ jobs:
     outputs:
       digest: ${{ steps.retag.outputs.digest }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: retag
         uses: ./.github/actions/publish-image-retag
@@ -1283,8 +1308,9 @@ jobs:
     outputs:
       digest: ${{ steps.retag.outputs.digest }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: retag
         uses: ./.github/actions/publish-image-retag
@@ -1322,8 +1348,9 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - id: retag
@@ -1407,8 +1434,9 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       # Aggregate the (image, tag) inventory directly from the artifacts

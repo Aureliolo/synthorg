@@ -61,7 +61,7 @@ telemetry = ["logfire==4.33.0"]
 # Opt in with `pip install synthorg[distributed]`. See docs/design/distributed-runtime.md.
 distributed = ["nats-py==2.14.0"]
 postgres = ["psycopg[binary]==3.3.4", "psycopg_pool==3.3.1"]
-# Knowledge + provenance substrate (#1988): structure-aware ingestion.
+# Knowledge + provenance substrate: structure-aware ingestion.
 # Opt in with `pip install synthorg[knowledge]`. pdfplumber (MIT) gives
 # per-page text + word bboxes; tree-sitter + language pack drive AST-aware
 # code chunking. pymupdf is deliberately excluded (AGPL).
@@ -88,6 +88,11 @@ test = [
     "pytest-repeat==0.9.4",
     "pytest-timeout==2.4.0",
     "pytest-xdist==3.8.0",
+    # CI matrix sharding of unit + integration test arms. Partitions tests by
+    # recorded durations in `.test_durations.{unit,integration}` so each shard
+    # ends within ~10% wall-clock of the slowest peer. Falls back to count-based
+    # partition when the durations file is empty.
+    "pytest-split==0.11.0",
     "polyfactory==3.3.0",
     "respx==0.23.1",
     "hypothesis==6.152.9",
@@ -717,6 +722,7 @@ DEP002 = [
     "pytest-cov",
     "pytest-mock",
     "pytest-repeat",
+    "pytest-split",
     "pytest-timeout",
     "pytest-xdist",
     "pytest-asyncio",
@@ -801,6 +807,20 @@ testpaths = ["tests"]
 pythonpath = ["src", "."]
 asyncio_mode = "auto"
 timeout = 30
+# Linux default for ``pytest-timeout`` is ``signal`` (SIGALRM). That mode
+# only interrupts CPython code between bytecodes, so a test blocked in
+# ``asyncio.Event().wait()`` (or any awaitable without a deadline) is
+# never killed: the loop is dispatching callbacks, not the test function.
+# The xdist worker then sits silent until GHA's job-level timeout reaps
+# the whole runner; the failing test is never named. Windows already
+# defaults to ``thread``; this line aligns Linux + macOS so a hung await
+# raises ``KeyboardInterrupt`` -> ``CancelledError`` and pytest emits a
+# proper ``TIMEOUT`` failure with the test node id. ``faulthandler.enable``
+# in ``tests/conftest.py`` covers the SEGV / abort signal cases; the
+# previously-installed periodic ``dump_traceback_later`` watchdog was
+# removed because it races with ``PyThreadState`` teardown and SEGVs
+# CPython itself (see the conftest comment for the full reasoning).
+timeout_method = "thread"
 markers = [
     "unit: Unit tests (fast, isolated, no I/O)",
     "integration: Integration tests (may use I/O, databases, APIs)",
@@ -849,8 +869,32 @@ filterwarnings = [
 # ---------------------------------------------------------------------------
 [tool.coverage.run]
 source = ["synthorg"]
-branch = true
+# ``branch = true`` combined with ``core = "sysmon"`` triggers a known
+# perf regression in coverage.py 7.x: every branch event during module
+# collection re-runs ``ast.parse`` via ``coverage/sysmon.py``'s
+# ``get_multiline_map`` -> ``coverage/parser.py:parse_source``. With
+# pytest assertion rewriting executing in the same workers, the
+# combined overhead pushes a single xdist worker's collection past
+# 5 minutes and the GHA job timeout reaps the shard with the worker
+# stuck slowly walking ``_pytest/assertion/rewrite.py:traverse_node``.
+# Primary sources: https://coverage.readthedocs.io/en/latest/config.html
+# ("faster for line coverage, but not for branch coverage") and
+# coveragepy issue #1812 (sysmon + branch = ~2x slower in real-world
+# CI runs). Keep sysmon for the line-coverage speedup; drop branch
+# instrumentation -- branch reporting in coverage.xml is a secondary
+# concern compared to a unit shard that consistently completes.
+branch = false
 parallel = true
+# sys.monitoring core is meaningfully faster than the default ctrace
+# core for LINE coverage in Python 3.14+ (where sysmon is the default
+# anyway). Branch coverage is a separate dimension that interacts
+# badly with assertion-rewriting pytest workers (see ``branch =`` note
+# above); the line-coverage speedup is the win we want here. Set as
+# project default so local one-off coverage runs and the CI test arms
+# both benefit; CI also exports COVERAGE_CORE=sysmon per job for
+# redundancy in case future runs move to an environment where this
+# setting is overridden.
+core = "sysmon"
 
 [tool.coverage.report]
 fail_under = 80

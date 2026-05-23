@@ -1,0 +1,160 @@
+name: Checkout (retry-wrapped)
+description: |
+  ``actions/checkout`` with explicit 5-attempt retry at the workflow
+  layer. Works around the recurring ``fatal: could not read Username
+  for 'https://github.com': terminal prompts disabled`` flake. Two
+  underlying flake sources are masked by the same misleading error:
+  (a) ``actions/checkout``'s internal three-try fetch silently drops
+  the includeIf-based git auth header on its own retries, and
+  (b) the synthetic merge-ref ``refs/pull/<N>/merge`` (and even a
+  freshly-pushed head SHA on a busy fork) is computed asynchronously
+  by GitHub, so a fast checkout can hit a ref that does not yet
+  exist; git reports the missing ref as a credentials prompt rather
+  than as ``ref not found``.
+
+  Backoff schedule across the 5 attempts: 5s, 15s, 30s, 60s = 110s
+  total wait floor. Previous 3-attempt 20s schedule was too tight to
+  ride out GitHub's merge-ref computation window under load.
+
+  Defaults ``ref`` to the PR head SHA on pull_request events (falls
+  back to ``github.sha`` for push / workflow_dispatch / workflow_run
+  / schedule), bypassing the ``refs/pull/<N>/merge`` synthetic ref
+  that ``actions/checkout`` fetches by default. Tests run against the
+  PR head, not the as-merged commit; branch protection / merge queue
+  are independent enforcement.
+
+  References: actions/checkout#393, actions/checkout#518.
+
+inputs:
+  ref:
+    description: |
+      Git ref to check out. Defaults to PR head SHA ONLY on
+      ``pull_request`` events; every other event (push,
+      workflow_dispatch, workflow_run, schedule, AND ``pull_request_target``)
+      falls back to ``github.sha``. ``pull_request_target`` is the
+      load-bearing case: it carries a fully attacker-controlled
+      ``github.event.pull_request.head.sha`` from the fork, so the
+      ``foo || github.sha`` short-circuit (which is true whenever the
+      payload includes a pull_request object regardless of event type)
+      would default a privileged ``pull_request_target`` workflow to
+      run against fork code. Gating the PR SHA branch on
+      ``event_name == 'pull_request'`` keeps the default safe by
+      construction; callers that DO want to check out fork code on
+      ``pull_request_target`` (rare and dangerous) MUST override
+      ``ref`` explicitly. Override also to check out main, a
+      release-please branch, etc.
+    required: false
+    default: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  fetch-depth:
+    description: Forwarded to actions/checkout. Defaults to 1 (shallow).
+    required: false
+    default: "1"
+  persist-credentials:
+    description: Forwarded to actions/checkout. Defaults to false.
+    required: false
+    default: "false"
+  sparse-checkout:
+    description: Forwarded to actions/checkout.
+    required: false
+    default: ""
+  sparse-checkout-cone-mode:
+    description: Forwarded to actions/checkout.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout (attempt 1/5)
+      id: attempt1
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      continue-on-error: true
+      with:
+        ref: ${{ inputs.ref }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        persist-credentials: ${{ inputs.persist-credentials }}
+        sparse-checkout: ${{ inputs.sparse-checkout }}
+        sparse-checkout-cone-mode: ${{ inputs.sparse-checkout-cone-mode }}
+
+    # Exponential backoff between attempts (5s, 15s, 30s, 60s = 110s
+    # total). The longer tail at the end carries us past GitHub's
+    # async merge-ref computation window under load; the short head
+    # recovers fast from one-off auth/network blips. Each attempt is
+    # a fresh step boundary, sidestepping the documented
+    # actions/checkout includeIf-auth drop on internal retries.
+    - name: Backoff before attempt 2
+      if: steps.attempt1.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::actions/checkout attempt 1 failed; waiting 5s before retry"
+        sleep 5
+
+    - name: Checkout (attempt 2/5)
+      id: attempt2
+      if: steps.attempt1.outcome == 'failure'
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      continue-on-error: true
+      with:
+        ref: ${{ inputs.ref }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        persist-credentials: ${{ inputs.persist-credentials }}
+        sparse-checkout: ${{ inputs.sparse-checkout }}
+        sparse-checkout-cone-mode: ${{ inputs.sparse-checkout-cone-mode }}
+
+    - name: Backoff before attempt 3
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::actions/checkout attempt 2 failed; waiting 15s before retry"
+        sleep 15
+
+    - name: Checkout (attempt 3/5)
+      id: attempt3
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure'
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      continue-on-error: true
+      with:
+        ref: ${{ inputs.ref }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        persist-credentials: ${{ inputs.persist-credentials }}
+        sparse-checkout: ${{ inputs.sparse-checkout }}
+        sparse-checkout-cone-mode: ${{ inputs.sparse-checkout-cone-mode }}
+
+    - name: Backoff before attempt 4
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::actions/checkout attempt 3 failed; waiting 30s before retry"
+        sleep 30
+
+    - name: Checkout (attempt 4/5)
+      id: attempt4
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure'
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      continue-on-error: true
+      with:
+        ref: ${{ inputs.ref }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        persist-credentials: ${{ inputs.persist-credentials }}
+        sparse-checkout: ${{ inputs.sparse-checkout }}
+        sparse-checkout-cone-mode: ${{ inputs.sparse-checkout-cone-mode }}
+
+    - name: Backoff before attempt 5
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure' && steps.attempt4.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::actions/checkout attempt 4 failed; waiting 60s before final retry"
+        sleep 60
+
+    # No ``continue-on-error`` on the final attempt -- if all five
+    # fail the workflow rightly aborts with the underlying error
+    # surfaced.
+    - name: Checkout (attempt 5/5)
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure' && steps.attempt4.outcome == 'failure'
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      with:
+        ref: ${{ inputs.ref }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        persist-credentials: ${{ inputs.persist-credentials }}
+        sparse-checkout: ${{ inputs.sparse-checkout }}
+        sparse-checkout-cone-mode: ${{ inputs.sparse-checkout-cone-mode }}

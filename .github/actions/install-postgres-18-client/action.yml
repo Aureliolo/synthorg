@@ -1,0 +1,51 @@
+name: Install PostgreSQL 18 client (pg_dump / pg_restore)
+description: |
+  Install postgresql-client-18 from the PGDG apt repo and prepend
+  /usr/lib/postgresql/18/bin to $GITHUB_PATH so test steps call v18
+  binaries directly without going through the postgresql-common
+  version-dispatch shim. The backup-conformance suite shells out to
+  pg_dump / pg_restore against a postgres:18-alpine server, and both
+  tools must be the same major version or newer than the server. The
+  Ubuntu runner image ships an older postgresql-client by default, and
+  the /usr/bin/pg_restore shim from postgresql-common does not always
+  dispatch to the newest installed client when reading a dump file
+  (it has been observed to fall back to v16 and reject the 1.16 dump
+  format produced by pg_dump 18). Installing v18 directly and putting
+  it first on PATH sidesteps the shim entirely.
+
+runs:
+  using: composite
+  steps:
+    - name: Install postgresql-client-18 from PGDG
+      shell: bash
+      env:
+        # SHA-256 of the PGDG ACCC4CF8.asc signing key as published by
+        # postgresql.org. Pinning the hash defends against a MITM swap
+        # of the key on the runner network; without it, apt would
+        # silently trust any key the runner could fetch.
+        PGDG_KEY_SHA256: 0144068502a1eddd2a0280ede10ef607d1ec592ce819940991203941564e8e76
+      run: |
+        set -euo pipefail
+        sudo install -d /usr/share/postgresql-common/pgdg
+        tmp_key=$(mktemp)
+        trap 'rm -f "${tmp_key}"' EXIT
+        # Download as the runner user: the temp file is user-owned, so
+        # ``sudo curl -o "${tmp_key}"`` is unnecessary and was observed
+        # to fail with ``curl: (23) Failure writing output to
+        # destination`` on the hosted Ubuntu image (the AppArmor profile
+        # for sudo-launched curl blocks writes back into the runner's
+        # owned tmp path). Root is still required for placing the key in
+        # /usr/share via the subsequent ``sudo install`` step.
+        curl -fsSL -o "${tmp_key}" \
+          https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        echo "${PGDG_KEY_SHA256}  ${tmp_key}" | sha256sum --check --status \
+          || { echo "::error::PGDG signing key SHA-256 mismatch; refusing to trust apt repo."; exit 1; }
+        sudo install -m 0644 "${tmp_key}" \
+          /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+        echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+          | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client-18
+        echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
+        /usr/lib/postgresql/18/bin/pg_dump --version
+        /usr/lib/postgresql/18/bin/pg_restore --version

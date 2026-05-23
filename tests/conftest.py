@@ -1,10 +1,60 @@
-"""Root test configuration and shared fixtures."""
+"""Root test configuration and shared fixtures.
+
+Cross-worker coordination rule (read before adding a new fixture):
+
+    Any setup that uses a cross-worker primitive -- ``filelock.FileLock``
+    over a path under ``tmp_path_factory.getbasetemp().parent``, a
+    testcontainers / Docker container shared across workers, or any
+    other off-process lock -- MUST run in a ``pytest_sessionstart``
+    hook, NOT in a fixture (not even ``scope="session", autouse=True``).
+
+    Why not autouse session fixtures: pytest resolves session-scope
+    fixtures (including autouse ones) during the FIRST referencing
+    test's ``pytest_runtest_setup`` phase, which IS covered by
+    ``pytest-timeout``. Autouse just MARKS every test as a referencer;
+    it does not move setup outside the per-test phase. We verified
+    this in PR #2080: an autouse session fixture for the migrated_db
+    template build still killed 3 workers at +30s on UNRELATED tests
+    (whichever test happened to be the first one dispatched to each
+    worker).
+
+    Why pytest_sessionstart works: the hook runs in ``pytest_collection``
+    BEFORE any test, is NOT covered by ``pytest-timeout``, and runs
+    once per xdist worker subprocess. The lock wait + container start
+    + readiness polling all happen there; by the time any test starts,
+    the cached state is ready and the fixture is a trivial cache read.
+
+    Symptoms when this rule is broken: workers die at exactly
+    ``last-passed + 30.0x s`` with ``[gwN] node down: Not properly
+    terminated``, no banner reaches the master through xdist IPC
+    because pytest-timeout's ``os._exit(1)`` outruns the Channel
+    flush, and the dying tests look random across runs. Core dump
+    (after we patched pytest-timeout to ``os.abort()``) showed the
+    main thread in ``selectors.select`` and a background thread in
+    ``filelock/_api.py:517 in acquire``: the per-test timer was
+    counting the cross-worker lock wait.
+
+    Existing instances of the pattern, all following this rule:
+
+    * ``pytest_sessionstart`` (this file): drains the FileLock-
+      coordinated yoyo migration template build via
+      ``_get_template_db`` before any per-test timer starts.
+    * ``pytest_sessionstart`` in
+      ``tests/conformance/persistence/conftest.py``: drains the
+      FileLock-coordinated testcontainer start, caches the result
+      in a module-level state dict; the ``postgres_container``
+      fixture reads from that cache without any lock work.
+
+    If you add a new cross-worker coordination point, follow the
+    same shape and link to this rule in its hook docstring.
+"""
 
 import asyncio
 import faulthandler
 import logging
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -35,13 +85,152 @@ from hypothesis.database import (
 
 from synthorg.persistence import migrations
 
+# ``socket.getfqdn()`` does a reverse-DNS lookup that on GHA Linux runners
+# without configured reverse-DNS can block for 10-30+ seconds on the first
+# call per worker. yoyo's ``log_migration`` calls it (no argument) to
+# stamp the migration log table with the host name. When the cross-worker
+# template-build FileLock in ``_get_template_db`` serialises 4-8 xdist
+# workers behind one slow build, the workers waiting on the lock have
+# that wait counted against the per-test 30s ``pytest-timeout``: the
+# first ``migrated_db`` user on each waiting worker dies at exactly
+# t+30s (verified in CI: three workers, three deltas all 30.07s). The
+# wrapper below short-circuits the no-argument call (the only path yoyo
+# uses) to the local ``gethostname`` (no DNS), and falls back to the
+# real ``getfqdn`` when a specific hostname is passed -- so any future
+# caller that wants the real reverse-DNS resolution of an arbitrary
+# host still gets it. Patched after the import block (instead of in
+# line with it) because yoyo resolves ``socket.getfqdn`` at CALL time,
+# not at module import, so the patch takes effect as long as it runs
+# before any migration apply.
+_orig_getfqdn = socket.getfqdn
+
+
+def _fast_getfqdn(name: str = "") -> str:
+    """Short-circuit the no-arg path that yoyo's migration logger uses.
+
+    ``socket.getfqdn()`` (no argument) on Linux CI without reverse-DNS
+    can block 10-30s. ``socket.gethostname()`` returns the same value
+    yoyo cares about for the migration log table without any DNS work.
+    Pass-through for the rare ``socket.getfqdn(host)`` form so we don't
+    silently break a caller that actually wants the real resolution.
+    """
+    if not name:
+        return socket.gethostname()
+    return _orig_getfqdn(name)
+
+
+socket.getfqdn = _fast_getfqdn
+
+
+# ── pytest-timeout: guarantee a visible stack on every fire ─────────
+#
+# pytest-timeout in ``thread`` mode (configured in pyproject) writes its
+# pre-kill banner + thread stacks via ``terminal.write(...)`` and then
+# calls ``os._exit(1)`` (see pytest_timeout.py:534-542). That terminal
+# write goes through pytest's TerminalWriter -> xdist Channel ->
+# execnet IPC, all of which buffer. ``os._exit`` 5 lines later kills
+# the worker process before the IPC buffer has drained, so the banner
+# never reaches the master's log. We saw this empirically in PR #2080
+# round 14b/15: three xdist workers died at exactly +30.06s after
+# their last passed test (the per-test timeout) with ZERO ``+++
+# Timeout +++`` banners in the GHA log.
+#
+# ``faulthandler.dump_traceback`` writes raw bytes to the stderr fd via
+# ``os.write``, bypassing all Python and xdist buffering. execnet
+# captures the worker's stderr at the pipe level, so the dump always
+# reaches the master's log before the worker process exits.
+#
+# Our patched ``pytest_timeout.timeout_timer`` (1) dumps every thread's
+# Python stack via ``faulthandler.dump_traceback(all_threads=True)``,
+# and then (2) calls ``os.abort()`` to force SIGABRT. It does NOT
+# delegate to the original ``timeout_timer`` -- abort takes the process
+# down directly, skipping the original's ``os._exit(1)`` path entirely.
+# The reason for ``abort`` over ``os._exit``: SIGABRT (under
+# ``ulimit -c unlimited``, already set by the CI workflow's "Enable
+# core dumps" step) writes a core file at the runner's
+# ``kernel.core_pattern`` path, which the "Upload core dumps" step
+# then surfaces as a build artefact. That core lets pystack/gdb
+# resolve the C-level frames for threads blocked in sqlite3 /
+# aiosqlite executor / etc. that faulthandler shows by name only.
+#
+# Why this is safe (vs the ``dump_traceback_later(repeat=True)`` we
+# removed in round 14): this dump runs from Python code holding the
+# GIL, not from faulthandler's dedicated C timer thread without the
+# GIL. Holding the GIL means no other thread can be midway through
+# ``PyThreadState_Delete`` while we walk ``interp->threads.head``;
+# the chain-walk race that crashed CPython in round 13 cannot fire
+# from here.
+try:
+    import pytest_timeout as _pytest_timeout  # type: ignore[import-untyped]
+
+    def _timeout_timer_with_faulthandler(item: Any, settings: Any) -> None:
+        # 1) Dump Python frames for every thread via faulthandler (raw
+        #    fd write, bypasses pytest/xdist IPC -> always reaches log).
+        sys.stderr.write(
+            "\n==== pytest-timeout fired: faulthandler all-threads dump"
+            " (raw stderr write, bypasses pytest/xdist IPC) ====\n"
+        )
+        sys.stderr.flush()
+        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+        sys.stderr.write("==== end faulthandler dump ====\n")
+        sys.stderr.flush()
+        # 2) ``os.abort()`` instead of pytest-timeout's stock
+        #    ``os._exit(1)``: abort sends SIGABRT, which (with the
+        #    ``ulimit -c unlimited`` already set in the CI workflow)
+        #    generates a core file at ``core.%e.%p.%t``. The "Upload
+        #    core dumps" step then surfaces it as a build artefact we
+        #    can ``pystack core <core> <python-bin>`` to recover the
+        #    C-level frames that faulthandler cannot see (threads
+        #    blocked in sqlite3 / aiosqlite executor / etc. show their
+        #    name but no Python frame in the faulthandler dump above).
+        sys.stderr.write(
+            "==== forcing SIGABRT for core dump (gdb/pystack reveals"
+            " the C-level stack faulthandler cannot show) ====\n"
+        )
+        sys.stderr.flush()
+        os.abort()
+
+    _pytest_timeout.timeout_timer = _timeout_timer_with_faulthandler
+except ImportError:
+    # pytest-timeout not installed (e.g. minimal environment); the
+    # guard above keeps the broader conftest functional.
+    pass
+
 # Diagnostic instrumentation: dump native + Python tracebacks on every
 # fatal signal (SIGSEGV, SIGFPE, SIGABRT etc.) and on every thread.
 # Enabled at module import so xdist worker subprocesses pick it up at
-# their own conftest load.  Without this, "worker crashed" signals
-# carry no stack trace, leaving us unable to tell ProactorEventLoop
-# IOCP races, native sqlite faults, antivirus-process termination,
-# and similar root causes apart.
+# their own conftest load. ``faulthandler.enable`` installs signal
+# handlers only -- it never runs unless a real signal arrives, so it
+# is safe.
+#
+# ``faulthandler.dump_traceback_later(..., repeat=True)`` (a periodic
+# watchdog timer) is INTENTIONALLY NOT installed here. The timer runs
+# in its own dedicated C thread that walks the interpreter's
+# ``PyThreadState`` chain WITHOUT holding the GIL (the whole point of
+# the timer is to work even when the GIL is wedged). On a busy test
+# worker, threads are created and destroyed continuously -- aiosqlite
+# spawns a per-connection executor thread, ``logging.handlers``
+# QueueListener threads come and go per worker, every async test
+# briefly spawns its own loop thread. Between
+# ``_Py_DumpTracebackThreads`` reading ``interp->threads.head`` and
+# walking the ``tstate->next`` chain, another thread can complete
+# ``PyThreadState_Delete`` and free the next tstate; the timer reads
+# a dangling pointer and segfaults on ``tstate_is_freed(tstate=<small
+# garbage>)`` inside ``Python/traceback.c``. We confirmed this with
+# pystack + gdb on a CI core dump: SEGV at NULL+0x211, frame
+# ``tstate_is_freed`` -> ``_Py_DumpTracebackThreads`` ->
+# ``faulthandler_thread`` (see CPython issue 103619 family for the
+# upstream-known race class). Crashes were random across SQLite-touching
+# tests, matching the statistical signature of a teardown race.
+#
+# Per-test hang detection still works: ``timeout_method = "thread"``
+# in pyproject.toml plus the 30s ``timeout`` marker fire a real
+# ``KeyboardInterrupt`` into the worker on a hung test, which xdist
+# turns into a named test failure (``--max-worker-restart=0`` keeps
+# crashed workers reported, not silently restarted). What we lose is
+# the periodic all-thread stack dump while a hang is live; that
+# trade-off is mandatory because the watchdog itself was the cause of
+# the worker SEGVs we were trying to diagnose.
 faulthandler.enable(file=sys.stderr, all_threads=True)
 
 # ── Windows console-flash suppression ──────────────────────────────
@@ -344,12 +533,134 @@ _BASELINE_PATH = Path(__file__).parent / "baselines" / "unit_timing.json"
 _suite_start: float | None = None
 
 
+def _session_needs_postgres(session: pytest.Session) -> bool:
+    """Return True iff this session is going to run any postgres-backed test.
+
+    The conformance/integration/e2e arms use a real postgres -- either
+    via ``SYNTHORG_TEST_POSTGRES_*`` env vars (CI service-container) or
+    via a per-session testcontainer. Unit shards never touch postgres,
+    so we MUST NOT pre-acquire the testcontainer there: in PR #2080 the
+    unconditional call ran the postgres FileLock + container start on
+    every shard, and unit-shard non-leader workers timed out at 180s
+    waiting on the migrated_db FileLock (3 of 4 workers crashed via
+    the forensic os.abort, pytest reported tests=0, the workflow step
+    still exited 0 because xdist doesn't fail when workers die in
+    pytest_sessionstart).
+
+    Detection (any single match is enough):
+
+    1. ``SYNTHORG_TEST_POSTGRES_HOST`` env var set -- CI integration
+       shard signal, the only authoritative one.
+    2. Marker expression includes ``integration`` or ``e2e`` -- local
+       dev ``-m integration`` or the CI integration / e2e jobs.
+    3. Any session arg path contains ``conformance``, ``integration``,
+       or ``e2e`` -- local dev ``pytest tests/conformance/...`` or
+       ``pytest tests/integration/...`` without an explicit marker.
+    """
+    if os.environ.get("SYNTHORG_TEST_POSTGRES_HOST"):
+        return True
+    # ``-k "not postgres"`` is an explicit "deselect all postgres
+    # parametrisations" signal -- the conformance-sqlite CI job uses
+    # exactly this to run only the sqlite arm of the dual-backend
+    # ``backend`` fixture. Pre-acquiring a postgres testcontainer
+    # there is wasted work AND introduces FileLock contention that
+    # blocks the migrated_db builder for a multi-process xdist run.
+    keywordexpr = str(getattr(session.config.option, "keyword", "") or "").lower()
+    if "not postgres" in keywordexpr:
+        return False
+    markexpr = str(getattr(session.config.option, "markexpr", "") or "").lower()
+    if "integration" in markexpr or "e2e" in markexpr:
+        return True
+    args = [str(a).lower() for a in (session.config.args or [])]
+    needles = ("conformance", "integration", "e2e")
+    return any(needle in arg for arg in args for needle in needles)
+
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session: pytest.Session) -> None:
-    """Record suite start time + reset the unit-elapsed accumulator."""
-    global _suite_start, _unit_elapsed_secs  # noqa: PLW0603
-    _suite_start = time.monotonic()
-    _unit_elapsed_secs = 0.0
+    """Record suite start time + pre-build the migrated_db template.
+
+    Two unrelated things happen here, both required to run BEFORE the
+    first test's per-test timer starts:
+
+    1. Reset the suite-timing accumulator.
+
+    2. Pre-build the migrated_db template via the cross-worker
+       FileLock in :func:`_get_template_db`. The lock is session-level
+       coordination, not per-test work, and the wait MUST NOT count
+       against ``pytest-timeout``'s 30s per-test budget.
+
+       Initial attempt was a ``@pytest.fixture(scope="session",
+       autouse=True)``; that doesn't move the work out of the per-test
+       phase because pytest resolves session-scope fixtures during the
+       FIRST referencing test's ``pytest_runtest_setup``, which IS
+       covered by ``pytest-timeout``. Verified in PR #2080: three
+       workers killed at +30s on UNRELATED tests (the first dispatched
+       to each worker), with faulthandler showing only the wrapper
+       frame because every other thread was blocked in C code waiting
+       on the FileLock.
+
+       ``pytest_sessionstart`` runs before any test, is NOT covered by
+       ``pytest-timeout``, and runs once per xdist worker subprocess.
+       Doing the FileLock-coordinated build here is the correct
+       architectural fix.
+    """
+    # Wrap the entire body in a forensic try/except. If anything raises
+    # in pytest_sessionstart on an xdist worker, pluggy propagates the
+    # exception through the IPC channel -- but the worker often dies
+    # before the master receives the formatted traceback (we have
+    # observed `[gwN] node down: Not properly terminated` with no
+    # banner). Writing the traceback to the raw stderr fd via
+    # ``faulthandler.dump_traceback`` bypasses TerminalWriter/xdist
+    # buffering, and ``os.abort()`` produces SIGABRT so a core dump
+    # lands at ``/proc/sys/kernel/core_pattern`` (set to the workspace
+    # in the CI "Enable core dumps" step). Without this, a death here
+    # is silent: no banner, no core, no diagnosis path.
+    import traceback as _traceback
+
+    try:
+        global _suite_start, _unit_elapsed_secs  # noqa: PLW0603
+        _suite_start = time.monotonic()
+        _unit_elapsed_secs = 0.0
+        # ``session.config._tmp_path_factory`` is the underlying
+        # _pytest.tmpdir.TempPathFactory pytest uses to back the
+        # ``tmp_path_factory`` fixture. At sessionstart no fixtures
+        # are resolved yet, so we read the private attribute
+        # (canonical workaround used inside pytest's own test suite).
+        tmp_path_factory = session.config._tmp_path_factory  # type: ignore[attr-defined]
+        asyncio.run(_get_template_db(tmp_path_factory))
+
+        # Issue 1 fix: the conformance/persistence conftest's
+        # ``pytest_sessionstart`` does NOT fire on xdist workers
+        # because that conftest is loaded lazily during collection
+        # (after sessionstart). Forensic diagnostic on PR #2080
+        # proved this: the fixture writes its diagnostic line but
+        # the hook writes nothing. The root conftest IS loaded
+        # eagerly (we are it), so we call the conformance helper
+        # from here -- BUT ONLY for sessions that actually run
+        # postgres-backed tests. Unit shards do not need a postgres
+        # testcontainer; the unconditional call previously held the
+        # FileLock long enough for non-leader workers to time out at
+        # 180s (PR #2080: unit shards reported tests=0, gw1/gw2/gw3
+        # crashed via the forensic os.abort() below).
+        if _session_needs_postgres(session):
+            from tests.conformance.persistence.conftest import (
+                _pre_acquire_postgres_container_state,
+            )
+
+            _pre_acquire_postgres_container_state(session)
+    except BaseException as exc:
+        worker = os.environ.get("PYTEST_XDIST_WORKER", "master")
+        sys.stderr.write(
+            f"\n==== pytest_sessionstart FAILED on worker={worker} ====\n"
+            f"Exception: {type(exc).__name__}: {exc}\n"
+        )
+        sys.stderr.flush()
+        _traceback.print_exc(file=sys.stderr)
+        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+        sys.stderr.write("==== aborting for core dump ====\n")
+        sys.stderr.flush()
+        os.abort()
 
 
 def _load_baseline_for_conftest() -> tuple[float, int, float] | None:
@@ -652,10 +963,24 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     lock_path = shared_dir / "template.lock"
     from filelock import FileLock
 
+    # Fast path: template already built by another process. Skip the
+    # FileLock acquire entirely -- a 5-process xdist session would
+    # otherwise serialise all 5 processes behind the lock just to
+    # confirm the file exists, and any one of them stalling
+    # (e.g. master holding the lock for its 30+s sysmon-instrumented
+    # yoyo build) blocks the others up to ``_FILE_LOCK_TIMEOUT_SECONDS``.
+    # The existence check is a read-only stat; concurrent readers do
+    # not race because we never PARTIAL-WRITE the template file (the
+    # build below writes to a temp path implicit in migrate_apply and
+    # the SQLite file rename is atomic).
+    if await asyncio.to_thread(db_path.exists):
+        _TEMPLATE_DB = db_path
+        return _TEMPLATE_DB
+
     # ``FileLock`` is sync; ``asyncio.to_thread`` keeps the event loop
     # responsive while waiting for the cross-worker lock. Generation
-    # itself only happens once per session; subsequent workers find
-    # the file already present and skip the migrate_apply call.
+    # itself only happens once per session; the lock serialises only
+    # the builders (not the readers above).
     def _acquire() -> FileLock:
         lock = FileLock(str(lock_path), timeout=_FILE_LOCK_TIMEOUT_SECONDS)
         lock.acquire()
@@ -664,6 +989,9 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     global _template_build_secs  # noqa: PLW0603
     lock = await asyncio.to_thread(_acquire)
     try:
+        # Re-check existence under the lock: another worker may have
+        # built it between our fast-path check above and our acquire
+        # below.
         if not await asyncio.to_thread(db_path.exists):
             build_start = time.monotonic()
             rev_path = migrations.copy_revisions(shared_dir / "revisions")
@@ -710,7 +1038,10 @@ async def migrated_db(
 
     Copies a session-wide template database instead of re-running
     migrations per test -- amortises the per-revision work across
-    the suite.
+    the suite. The shared template is built by
+    :func:`_prebuild_migrated_db_template` at session start, so by
+    the time any test calls this fixture the template already exists
+    and ``_get_template_db`` short-circuits to the cached path.
     """
     template = await _get_template_db(tmp_path_factory)
     db_path = tmp_path / "test.db"

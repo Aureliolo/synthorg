@@ -27,6 +27,7 @@ Postgres arm:
 import asyncio
 import contextlib
 import json
+import os
 import sys
 import uuid
 import warnings
@@ -46,6 +47,8 @@ from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from tests._shared.postgres_proxy import PostgresContainerProxy
+from tests._shared.postgres_proxy import from_env as _proxy_from_env
 
 logger = get_logger(__name__)
 
@@ -91,41 +94,6 @@ def _docker_available() -> bool:
     except Exception:
         return False
     return True
-
-
-class _PostgresContainerProxy:
-    """Connection-info handle for a Postgres container shared across xdist workers.
-
-    Exposes the subset of the ``testcontainers.postgres.PostgresContainer``
-    surface this conftest actually consumes (``get_container_host_ip``,
-    ``get_exposed_port``, ``username``, ``password``, ``dbname``). Holding
-    a proxy rather than the real ``PostgresContainer`` object lets every
-    xdist worker treat the container as an opaque dependency without
-    each worker carrying its own per-process Docker SDK handle.
-    """
-
-    __slots__ = ("_host", "_port", "dbname", "password", "username")
-
-    def __init__(
-        self,
-        *,
-        host: str,
-        port: int,
-        username: str,
-        password: str,
-        dbname: str,
-    ) -> None:
-        self._host = host
-        self._port = port
-        self.username = username
-        self.password = password
-        self.dbname = dbname
-
-    def get_container_host_ip(self) -> str:
-        return self._host
-
-    def get_exposed_port(self, _internal_port: int) -> str:
-        return str(self._port)
 
 
 def _stop_container_by_id(container_id: str) -> None:
@@ -275,49 +243,159 @@ def _release_shared_postgres(state_file: Path) -> None:
         state_file.write_text(json.dumps(current))
 
 
-@pytest.fixture(scope="session")
-def postgres_container(
-    tmp_path_factory: pytest.TempPathFactory,
-    worker_id: str,
-) -> Iterator[_PostgresContainerProxy]:
-    """Yield ONE Postgres 18 container shared across every xdist worker.
+# Module-level cache for the postgres container handle, populated by
+# ``pytest_sessionstart`` BEFORE any per-test timer starts. ``None``
+# means "not yet resolved" (sessionstart hook didn't run -- should
+# not happen) or "env-var bypass active" depending on which key is
+# set. See the ``postgres_container`` fixture and the
+# ``pytest_sessionstart`` hook below for the contract.
+_POSTGRES_CONTAINER_STATE: dict[str, Any] = {}
 
-    The first worker to acquire the inter-process ``FileLock`` starts
-    the container (~5s, image pulls excluded), records its connection
-    info under ``tmp_path_factory.getbasetemp().parent``, and bumps a
-    ``refcount`` field. Later workers acquire the same lock, see the
-    state file, and just increment ``refcount``. On teardown each
-    worker decrements; the worker that drops the count to zero stops
-    and removes the container by id. The starter's local container
-    handle is intentionally not the cleanup hook because xdist can
-    schedule the starter to exit first.
 
-    Skips when Docker is unavailable or when container startup fails
-    for any reason. When the first worker into the lock can't start
-    the container, it records the failure in the state file so peers
-    skip cleanly too (rather than each peer trying the same start in
-    sequence and emitting 8 different skip reasons).
+def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
+    """Pre-acquire the shared Postgres container BEFORE any per-test timer.
+
+    The cross-worker ``FileLock`` in :func:`_acquire_shared_postgres` is
+    session-level coordination, not per-test work. If we leave it in the
+    fixture's setup phase (even as ``scope="session"``, even with
+    ``autouse=True``), pytest will run the setup during the FIRST
+    referencing test's ``pytest_runtest_setup`` -- which IS covered by
+    ``pytest-timeout``. Workers queued behind the container starter
+    spend their wait in the FileLock poll loop; if total wait exceeds
+    the per-test 30s budget the worker dies with no useful diagnostic.
+    Verified in PR #2080 on the sibling ``migrated_db`` template build
+    where the autouse-session-fixture attempt killed 3 unrelated tests
+    at exactly t+30s.
+
+    ``pytest_sessionstart`` runs before any test, is NOT covered by
+    ``pytest-timeout``, and runs once per xdist worker subprocess.
+    Resolving the lock + container start here is the correct shape;
+    the ``postgres_container`` fixture below just reads the cached
+    state and yields a proxy.
+
+    Layered short-circuits (preserved from the previous fixture):
+
+    1. CI sets ``SYNTHORG_TEST_POSTGRES_*`` env vars to point at the
+       ``services: postgres`` instance -- no FileLock, no Docker.
+    2. Local dev without Docker -- record a ``skip_reason`` so the
+       fixture's pytest.skip surfaces a clean cause.
+    3. Local dev with Docker -- acquire the FileLock, run
+       ``_acquire_shared_postgres``, record the resulting data.
+
+    The fixture-level teardown (refcount decrement + container stop on
+    the last worker) stays inside the fixture's ``finally`` clause;
+    the FileLock wait during teardown is on a non-critical path
+    (workers are exiting anyway) so it doesn't need to move to
+    ``pytest_sessionfinish``.
+
+    The forensic ``sys.stderr.write`` at the top lets us confirm in CI
+    logs whether this hook actually fires on each xdist worker. The
+    fixture below has a matching write; a missing pair tells us
+    conftest discovery is broken on the worker, a present hook write +
+    missing fixture-time state tells us the module instance is split
+    across importers. Stays in production: pytest_sessionstart runs
+    once per session so the cost is one line of stderr per worker.
     """
-    if not _docker_available():
-        pytest.skip("Docker is required for the postgres conformance arm")
+    _worker = os.environ.get("PYTEST_XDIST_WORKER", "master")
+    sys.stderr.write(
+        f"[conftest:conformance/persistence] pytest_sessionstart fired "
+        f"(worker={_worker}, state_id={id(_POSTGRES_CONTAINER_STATE)})\n"
+    )
+    sys.stderr.flush()
+    if _proxy_from_env() is not None:
+        _POSTGRES_CONTAINER_STATE["mode"] = "env"
+        return
 
+    if not _docker_available():
+        _POSTGRES_CONTAINER_STATE["mode"] = "skip"
+        _POSTGRES_CONTAINER_STATE["skip_reason"] = (
+            "Docker is required for the postgres conformance arm"
+        )
+        return
+
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER", "master")
+    tmp_path_factory = session.config._tmp_path_factory  # type: ignore[attr-defined]
     if worker_id == "master":
         shared_dir = tmp_path_factory.getbasetemp()
     else:
         shared_dir = tmp_path_factory.getbasetemp().parent
     state_file = shared_dir / "postgres_container_state.json"
     lock_path = str(shared_dir / "postgres_container.lock")
-    # The starter holds the lock through PostgresContainer.start(),
-    # which blocks on the postgres:18-alpine image pull on cold caches
-    # and on readiness polling once the container is up. 180s gives
-    # peers enough headroom to wait through both without timing out
-    # while still bounding a worker that dies mid-acquire.
+    # 180s matches the previous fixture timeout: gives peers enough
+    # headroom to wait through the image pull + readiness polling on
+    # cold caches without timing out, while still bounding a worker
+    # that dies mid-acquire.
     lock_timeout: Final[int] = 180
-
     with FileLock(lock_path, timeout=lock_timeout):
-        data = _acquire_shared_postgres(state_file)
+        try:
+            data = _acquire_shared_postgres(state_file)
+        except pytest.skip.Exception as exc:  # pragma: no cover -- skip path
+            _POSTGRES_CONTAINER_STATE["mode"] = "skip"
+            _POSTGRES_CONTAINER_STATE["skip_reason"] = str(exc)
+            return
+    _POSTGRES_CONTAINER_STATE["mode"] = "container"
+    _POSTGRES_CONTAINER_STATE["data"] = data
+    _POSTGRES_CONTAINER_STATE["state_file"] = state_file
+    _POSTGRES_CONTAINER_STATE["lock_path"] = lock_path
+    _POSTGRES_CONTAINER_STATE["lock_timeout"] = lock_timeout
 
-    proxy = _PostgresContainerProxy(
+
+@pytest.fixture(scope="session")
+def postgres_container() -> Iterator[PostgresContainerProxy]:
+    """Yield the Postgres container handle pre-acquired in pytest_sessionstart.
+
+    The fixture itself does NO cross-worker coordination -- all of it
+    happens in the :func:`pytest_sessionstart` hook so the FileLock
+    wait stays out of the per-test 30s ``pytest-timeout`` budget. This
+    fixture simply reads the cached state populated by the hook.
+
+    Three modes mirroring the hook's short-circuits:
+
+    * ``"env"``  -- CI ``services: postgres``; yield env-derived proxy.
+    * ``"skip"`` -- Docker unavailable or container start failed;
+      ``pytest.skip`` with the recorded reason so every test that
+      depends on this fixture skips cleanly.
+    * ``"container"`` -- local-dev testcontainer is up; yield a proxy
+      built from the recorded connection info, and on teardown
+      decrement the refcount inside the FileLock (the worker that
+      drops to zero stops + removes the container by id).
+
+    The forensic ``sys.stderr.write`` at the top is paired with the one
+    in :func:`pytest_sessionstart`; matching the two confirms whether
+    the hook ran in the same module instance the fixture reads from.
+    """
+    _worker = os.environ.get("PYTEST_XDIST_WORKER", "master")
+    sys.stderr.write(
+        f"[conftest:conformance/persistence] postgres_container fixture "
+        f"called (worker={_worker}, state_id={id(_POSTGRES_CONTAINER_STATE)}, "
+        f"state_keys={sorted(_POSTGRES_CONTAINER_STATE)})\n"
+    )
+    sys.stderr.flush()
+    mode = _POSTGRES_CONTAINER_STATE.get("mode")
+    if mode == "env":
+        env_proxy = _proxy_from_env()
+        assert env_proxy is not None
+        yield env_proxy
+        return
+    if mode == "skip":
+        pytest.skip(
+            _POSTGRES_CONTAINER_STATE.get(
+                "skip_reason", "postgres_container unavailable"
+            )
+        )
+    if mode != "container":
+        msg = (
+            "postgres_container called before pytest_sessionstart hook ran; "
+            "this should be impossible -- check that conftest discovery is "
+            "intact."
+        )
+        raise RuntimeError(msg)
+
+    data = _POSTGRES_CONTAINER_STATE["data"]
+    state_file = _POSTGRES_CONTAINER_STATE["state_file"]
+    lock_path = _POSTGRES_CONTAINER_STATE["lock_path"]
+    lock_timeout = _POSTGRES_CONTAINER_STATE["lock_timeout"]
+    proxy = PostgresContainerProxy(
         host=data["host"],
         port=data["port"],
         username=data["username"],
@@ -327,11 +405,15 @@ def postgres_container(
     try:
         yield proxy
     finally:
+        # Teardown lock-wait is on the worker-exit path: the only thing
+        # we're contending for is refcount bookkeeping, and a slow wait
+        # here doesn't trip any per-test timer because tests have all
+        # completed by the time session-scope teardown runs.
         with FileLock(lock_path, timeout=lock_timeout):
             _release_shared_postgres(state_file)
 
 
-def _container_host_ipv4(container: _PostgresContainerProxy) -> str:
+def _container_host_ipv4(container: PostgresContainerProxy) -> str:
     """Return the container's host as an IPv4 literal.
 
     ``PostgresContainer.get_container_host_ip()`` returns ``"localhost"``
@@ -348,7 +430,7 @@ def _container_host_ipv4(container: _PostgresContainerProxy) -> str:
 
 
 async def _create_postgres_backend(
-    container: _PostgresContainerProxy,
+    container: PostgresContainerProxy,
     db_name: str,
 ) -> PostgresPersistenceBackend:
     """Create a test database on *container* and return a migrated backend.
@@ -402,7 +484,7 @@ async def _create_postgres_backend(
 
 
 async def _drop_postgres_database(
-    container: _PostgresContainerProxy,
+    container: PostgresContainerProxy,
     db_name: str,
 ) -> None:
     """Terminate remaining sessions on *db_name* and drop it."""

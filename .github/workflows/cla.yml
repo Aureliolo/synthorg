@@ -91,7 +91,15 @@ jobs:
                 return 0
               fi
               rc=$?
-              if grep -qE 'HTTP 4(00|01|03|04|09|22)' /tmp/gh-api-err; then
+              # 401 is intentionally NOT in this list. On ``pull_request_target``
+              # the workflow runs against ``GITHUB_TOKEN`` from the repo, which
+              # has full scope -- a true credentials failure is impossible.
+              # Empirically the GHA auth service occasionally returns 401 on
+              # the very first API call right after a job starts, and the
+              # next attempt with the same freshly-issued token succeeds. So
+              # 401 here means "GitHub auth-service hiccup", same backoff
+              # ladder as 5xx.
+              if grep -qE 'HTTP 4(00|03|04|09|22)' /tmp/gh-api-err; then
                 echo "::error::gh api definitive 4xx (no retry): $(cat /tmp/gh-api-err)" >&2
                 return "$rc"
               fi
@@ -229,7 +237,7 @@ jobs:
       # behaviour the bundled action provides on its issue_comment path.
       actions: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
           ref: main
           persist-credentials: false

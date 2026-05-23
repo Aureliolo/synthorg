@@ -43,8 +43,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      # Pin to main so PARENT_SHA computed via `git rev-parse HEAD`
+      # below targets main's tip, not whatever branch the operator
+      # dispatched from. The signed empty commit MUST be parented on
+      # main for Release Please to pick it up on its next run. Keep
+      # fetch-depth: 0 so the tag-walk in "Validate target version"
+      # has full history.
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
 

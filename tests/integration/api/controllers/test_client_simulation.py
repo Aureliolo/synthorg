@@ -4,6 +4,7 @@ Covers ``/clients``, ``/requests``, ``/simulations``, ``/reviews``
 endpoints using the in-memory fake persistence + message bus.
 """
 
+import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -115,9 +116,30 @@ class _StubEntryAdapter:
         )
 
 
+class _SlowStubEntryAdapter(_StubEntryAdapter):
+    """``_StubEntryAdapter`` variant with a deterministic in-flight gap.
+
+    ``test_approve_accepts_and_spawns_pipeline`` asserts that the
+    detached pipeline task is still in
+    ``sim_state.background_tasks`` after the ``/approve`` POST
+    returns. With the default stub, ``process_intake_pipeline``
+    finishes synchronously (fake persistence + immediate stub
+    submit), so the ``done_callback`` discards the task from the set
+    before the test reads it -- the assertion fails ``0 >= 1``. A
+    short ``asyncio.sleep`` keeps the task suspended past the
+    response, making the observation deterministic without coupling
+    the test to a specific timing budget elsewhere.
+    """
+
+    async def submit(self, request: Any) -> WorkPipelineResult:
+        await asyncio.sleep(0.5)
+        return await super().submit(request)
+
+
 def _build_client_with_adapter(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
+    intake_entry_adapter: _StubEntryAdapter | None = None,
 ) -> tuple[TestClient[Any], ClientSimulationState]:
     config = RootConfig(company_name="test")
     auth_service = _make_test_auth_service()
@@ -130,7 +152,7 @@ def _build_client_with_adapter(
         cost_tracker=CostTracker(),
         auth_service=auth_service,
         client_simulation_state=sim_state,
-        intake_entry_adapter=_StubEntryAdapter(),
+        intake_entry_adapter=intake_entry_adapter or _StubEntryAdapter(),
     )
     return TestClient(app), sim_state
 
@@ -309,6 +331,7 @@ class TestRequestController:
         client, sim_state = _build_client_with_adapter(
             fake_persistence,
             fake_message_bus,
+            intake_entry_adapter=_SlowStubEntryAdapter(),
         )
         with client:
             client.headers.update(make_auth_headers("ceo"))

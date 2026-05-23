@@ -18,6 +18,9 @@ from synthorg.persistence import migrations
 from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from tests._shared.postgres_proxy import PostgresContainerProxy
+from tests._shared.postgres_proxy import from_env as _proxy_from_env
+from tests._shared.postgres_proxy import from_testcontainer as _proxy_from_testcontainer
 
 if TYPE_CHECKING:
     from testcontainers.postgres import PostgresContainer
@@ -109,8 +112,21 @@ def _docker_available() -> bool:
 
 
 @pytest.fixture(scope="session")
-def postgres_container() -> Iterator[PostgresContainer]:
-    """Start one shared Postgres 18 container per pytest session."""
+def postgres_container() -> Iterator[PostgresContainerProxy]:
+    """Start one shared Postgres 18 container per pytest session.
+
+    In CI ``services: postgres`` exposes a server-managed instance via
+    ``SYNTHORG_TEST_POSTGRES_HOST`` / ``PORT`` / ``USER`` / ``PASSWORD``
+    / ``DB``; when those env vars are set the testcontainers start-up
+    is skipped entirely and a proxy built directly from env is yielded.
+    Per-test database isolation still works because ``postgres_backend``
+    creates a unique ``test_<uuid>`` DB on the shared server.
+    """
+    env_proxy = _proxy_from_env()
+    if env_proxy is not None:
+        yield env_proxy
+        return
+
     if not _docker_available():
         pytest.skip("Docker is required for postgres integration tests")
 
@@ -119,14 +135,14 @@ def postgres_container() -> Iterator[PostgresContainer]:
     container = PostgresContainer("postgres:18-alpine")
     container.start()
     try:
-        yield container
+        yield _proxy_from_testcontainer(container)
     finally:
         container.stop()
 
 
 @pytest.fixture
 async def postgres_backend(
-    postgres_container: PostgresContainer,
+    postgres_container: PostgresContainerProxy,
 ) -> AsyncIterator[PostgresPersistenceBackend]:
     """Yield a connected, migrated PostgresPersistenceBackend.
 

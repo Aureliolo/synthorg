@@ -49,8 +49,9 @@ jobs:
     steps:
       # Full-history checkout: Compute dev version step below uses
       # `git tag --sort` + `git rev-list` to compute the dev build number.
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -284,8 +285,9 @@ jobs:
       contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
       issues: write     # gh issue create / comment / pin
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Compose body

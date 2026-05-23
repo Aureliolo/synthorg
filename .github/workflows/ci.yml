@@ -44,8 +44,9 @@ jobs:
       # requires push access to the upstream.
       is_release_please: ${{ (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'synthorg-repo-bot[bot]') || (github.event_name != 'pull_request' && startsWith(github.ref, 'refs/heads/release-please--')) }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
@@ -111,8 +112,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
@@ -181,8 +183,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
@@ -206,8 +209,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
@@ -224,8 +228,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
@@ -271,8 +276,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
@@ -289,8 +295,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
@@ -298,50 +305,151 @@ jobs:
         run: uv run python scripts/check_openapi_liveness.py
 
   # ── Python: Test (Unit) ──
-  # Fast-signal arm: -m unit, no Docker, no Postgres. Lands first (~3 min)
-  # so a trivial unit break is red long before the integration / e2e
-  # testcontainer tax is paid. Collects coverage only (no per-suite gate,
-  # no Codecov upload); the 80% gate runs once on the combined aggregate
-  # in test-coverage-aggregate.
+  # Fast-signal arm: -m unit, no Docker, no Postgres. Sharded 4-way
+  # via pytest-split so a hung worker only cancels its own shard (the
+  # other three still upload junit + durations, preserving forensic
+  # data for the recurring xdist-hang flake). Each shard collects
+  # coverage; the 80% gate runs once on the combined aggregate in
+  # test-coverage-aggregate. COVERAGE_CORE=sysmon switches coverage.py
+  # to its sys.monitoring core (5-10x faster tracer; full line + branch
+  # parity since coverage 7.7 -- pinned 7.14.0).
   test-unit:
-    name: Test Unit
+    name: Test Unit (shard ${{ matrix.shard }})
     needs: changes
     if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Healthy wall-clock per shard is ~2-3 min (114-120s observed on the
+    # un-stuck shards). The previous 15-min slack existed only because
+    # ``pytest-timeout method=signal`` could not kill an async hang and
+    # the job had to be reaped by GHA's job timeout. With
+    # ``timeout_method = "thread"`` in pyproject.toml the per-test
+    # timeout (30s) actually fires for blocked awaits, so a runaway
+    # shard now fails fast with a named test instead of burning 12+ min
+    # of compute. 5 min preserves a 2x cushion over the observed normal
+    # runtime; any later regression that legitimately needs more should
+    # land here with the duration data justifying it.
+    timeout-minutes: 5
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     env:
-      COVERAGE_FILE: .coverage.unit
+      COVERAGE_FILE: .coverage.unit-${{ matrix.shard }}
+      COVERAGE_CORE: sysmon
+      # ``PYTHONFAULTHANDLER=1`` arms ``faulthandler`` at interpreter
+      # startup, BEFORE conftest loads. Without this, a crash during
+      # module import or before ``faulthandler.enable`` runs leaves zero
+      # forensic data. ``PYTHONUNBUFFERED=1`` flushes stdout/stderr
+      # line-by-line so a worker that dies (e.g. ``pytest-timeout``
+      # ``thread`` method terminating it on a 30s test hang) cannot
+      # take its last-words stack dump down with it via a half-flushed
+      # buffer. Both add zero runtime cost.
+      PYTHONFAULTHANDLER: "1"
+      PYTHONUNBUFFERED: "1"
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
+
+      # Enable user-process core dumps. Ubuntu runners ship with
+      # ``ulimit -c 0`` (disabled). With ``-c unlimited`` any SIGSEGV /
+      # SIGABRT / SIGBUS that kills a worker leaves a binary core file
+      # we can later ``gdb -ex bt`` against. ``sysctl
+      # kernel.core_pattern`` writes them to the workspace so the
+      # post-step artifact upload picks them up.
+      - name: Enable core dumps
+        run: |
+          ulimit -c unlimited
+          ulimit -a
+          # ``core_pattern`` must be an absolute path on disk we control;
+          # the default ``|/usr/share/apport/apport ...`` pipes through
+          # apport which is not installed on hosted runners.
+          sudo bash -c 'echo "/home/runner/work/synthorg/synthorg/core.%e.%p.%t" > /proc/sys/kernel/core_pattern'
+          cat /proc/sys/kernel/core_pattern
 
       # --cov-fail-under=0 overrides pyproject's [tool.coverage.report]
       # fail_under=80, which pytest-cov otherwise applies at end-of-session
       # even with an empty --cov-report=. A single marker slice never reaches
       # 80% alone; the gate belongs solely to test-coverage-aggregate. Every
       # per-suite arm below carries the same override for the same reason.
-      - name: Run unit tests
+      #
+      # --splits/--group come from pytest-split; --durations-path points
+      # at .test_durations.unit (empty {} on first run, falls back to
+      # count-based partition until CI populates real timings).
+      #
+      # ``-v`` prints every test's nodeid as it starts, so the LAST
+      # printed test before ``[gwN] node down`` names the suspect.
+      # ``-s`` (``--capture=no``) disables pytest's per-test capture
+      # buffer; without this, the all-threads stack dump that
+      # ``pytest-timeout`` ``thread`` method emits before terminating
+      # the worker is captured into a buffer that is dropped when the
+      # worker process exits. With ``-s`` the dump goes straight
+      # through xdist's worker-stderr channel to the controller log.
+      - name: Run unit tests (shard ${{ matrix.shard }}/4)
         run: |
+          # Inherit the parent shell's core-dump rlimit (the previous
+          # step already raised it; ``ulimit`` is per-shell, so we
+          # re-assert here in case GHA respawns the shell).
+          ulimit -c unlimited
           uv run python -m pytest tests/ \
             -m unit \
             -n auto \
+            --max-worker-restart=0 \
+            --splits 4 \
+            --group ${{ matrix.shard }} \
+            --durations-path .test_durations.unit \
             --cov=synthorg \
             --cov-report= \
             --cov-fail-under=0 \
-            --junitxml=junit-unit.xml \
+            --junitxml=junit-unit-${{ matrix.shard }}.xml \
             --durations=20 \
-            --durations-min=1.0
+            --durations-min=1.0 \
+            -v \
+            -s
+
+      # Critical safety net: pytest can exit 0 with zero tests run.
+      # PR #2080 reproduced this -- 3 of 4 xdist workers crashed during
+      # pytest_sessionstart, master saw "no test failures" and exited 0,
+      # the job was marked success despite junit-unit-N.xml showing
+      # tests="0". Without this gate, a CI session that silently runs
+      # ZERO tests passes the green-checkmark check. We MUST surface
+      # that as a hard failure.
+      - name: Sanity check (junit shows tests > 0)
+        if: ${{ !cancelled() }}
+        shell: python
+        run: |
+          import glob
+          import sys
+          import xml.etree.ElementTree as ET
+
+          files = sorted(glob.glob("junit-unit-*.xml"))
+          if not files:
+              print("FAIL: no junit-unit-*.xml files found", file=sys.stderr)
+              sys.exit(1)
+          total = 0
+          for f in files:
+              tree = ET.parse(f)
+              for ts in tree.iter("testsuite"):
+                  total += int(ts.get("tests", 0))
+          print(f"junit total tests: {total} across {len(files)} file(s)")
+          if total == 0:
+              print(
+                  "FAIL: junit reports zero tests across all files; "
+                  "something prevented tests from running.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
 
       - name: Upload coverage data
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: coverage-data-unit
-          path: .coverage.unit*
+          name: coverage-data-unit-${{ matrix.shard }}
+          path: .coverage.unit-${{ matrix.shard }}*
           include-hidden-files: true
           if-no-files-found: error
 
@@ -349,74 +457,145 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: test-results-unit
-          path: junit-unit.xml
+          name: test-results-unit-${{ matrix.shard }}
+          path: junit-unit-${{ matrix.shard }}.xml
+
+      # Upload any core dumps that landed in the workspace, on
+      # success OR failure. Previously gated on ``failure() ||
+      # cancelled()`` but PR #2080 demonstrated a "success-with-zero-
+      # tests" failure mode: workers crashed via os.abort (producing
+      # cores), pytest exited 0, GHA marked the step success, the
+      # gated upload was SKIPPED, the cores were lost. ``!cancelled()``
+      # uploads on every non-cancelled exit. ``if-no-files-found:
+      # ignore`` keeps a genuinely-green job's tail clean. Retention is
+      # short (3 days) because core dumps can be large and the value
+      # decays rapidly once the crash is diagnosed.
+      - name: Upload core dumps
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: core-dumps-unit-${{ matrix.shard }}
+          path: core.*
+          if-no-files-found: ignore
+          retention-days: 3
 
   # ── Python: Test (Integration) ──
+  # Sharded 4-way so 12-minute single-runner wall-clock drops to ~3
+  # minutes critical path. A GitHub Actions ``services: postgres``
+  # block exposes postgres:18-alpine to each shard via TCP localhost
+  # plus the SYNTHORG_TEST_POSTGRES_* env vars; the conftest fixtures
+  # (``tests/conformance/persistence/conftest.py`` and
+  # ``tests/integration/persistence/conftest.py``) detect those env
+  # vars and bypass the local testcontainers start-up dance. Local-dev
+  # test runs leave the env vars unset and keep using testcontainers.
+  # TimescaleDB tests still use testcontainers because the service
+  # container path cannot host the timescale/timescaledb image.
   test-integration:
-    name: Test Integration
+    name: Test Integration (shard ${{ matrix.shard }})
     needs: changes
     if: (needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: synthorg
+          POSTGRES_PASSWORD: synthorg-test
+          POSTGRES_DB: synthorg
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U synthorg"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
-      COVERAGE_FILE: .coverage.integration
+      COVERAGE_FILE: .coverage.integration-${{ matrix.shard }}
+      COVERAGE_CORE: sysmon
+      SYNTHORG_TEST_POSTGRES_HOST: localhost
+      SYNTHORG_TEST_POSTGRES_PORT: "5432"
+      SYNTHORG_TEST_POSTGRES_USER: synthorg
+      SYNTHORG_TEST_POSTGRES_PASSWORD: synthorg-test
+      SYNTHORG_TEST_POSTGRES_DB: synthorg
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
-      # The backup-conformance suite shells out to ``pg_dump`` and
-      # ``pg_restore`` against a postgres:18-alpine testcontainer; both
-      # tools must be the same major version or newer than the server.
-      # The Ubuntu runner image ships an older postgresql-client by
-      # default, and the ``/usr/bin/pg_restore`` shim from
-      # ``postgresql-common`` does not always dispatch to the newest
-      # installed client when reading a dump file (it fell back to v16
-      # and rejected the 1.16 dump format produced by pg_dump 18).
-      # Install postgresql-client-18 from the PGDG apt repo and prepend
-      # ``/usr/lib/postgresql/18/bin`` to ``$GITHUB_PATH`` so the test
-      # step calls v18 binaries directly without going through the
-      # version-dispatch shim.
-      - name: Install PostgreSQL 18 client (pg_dump / pg_restore)
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-            https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
-            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client-18
-          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
-          /usr/lib/postgresql/18/bin/pg_dump --version
-          /usr/lib/postgresql/18/bin/pg_restore --version
+      - uses: ./.github/actions/install-postgres-18-client
 
       - name: Postgres drift detection
         run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
 
-      - name: Run integration tests
+      # ``-k "not [sqlite-"`` drops the SQLite parametrisation of the
+      # dual-backend ``backend`` fixture in tests/conformance/persistence/;
+      # the dedicated ``test-conformance-sqlite`` job already covers that
+      # arm, so running it again here is pure duplicate work.
+      #
+      # ``--splits/--group`` come from pytest-split with .test_durations.integration
+      # (empty {} on first run, falls back to count-based partition until
+      # CI populates real timings).
+      - name: Run integration tests (shard ${{ matrix.shard }}/4)
         env:
           RUN_INTEGRATION_TESTS: "1"
         run: |
           uv run python -m pytest tests/ \
             -m integration \
+            -k "not [sqlite-" \
             -n auto \
+            --max-worker-restart=0 \
+            --splits 4 \
+            --group ${{ matrix.shard }} \
+            --durations-path .test_durations.integration \
             --cov=synthorg \
             --cov-report= \
             --cov-fail-under=0 \
-            --junitxml=junit-integration.xml \
+            --junitxml=junit-integration-${{ matrix.shard }}.xml \
             --durations=20 \
             --durations-min=1.0
+
+      # See identical step in test-unit for the reason this gate exists.
+      - name: Sanity check (junit shows tests > 0)
+        if: ${{ !cancelled() }}
+        shell: python
+        run: |
+          import glob
+          import sys
+          import xml.etree.ElementTree as ET
+
+          files = sorted(glob.glob("junit-integration-*.xml"))
+          if not files:
+              print("FAIL: no junit-integration-*.xml files found", file=sys.stderr)
+              sys.exit(1)
+          total = 0
+          for f in files:
+              tree = ET.parse(f)
+              for ts in tree.iter("testsuite"):
+                  total += int(ts.get("tests", 0))
+          print(f"junit total tests: {total} across {len(files)} file(s)")
+          if total == 0:
+              print(
+                  "FAIL: junit reports zero tests across all files; "
+                  "something prevented tests from running.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
 
       - name: Upload coverage data
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: coverage-data-integration
-          path: .coverage.integration*
+          name: coverage-data-integration-${{ matrix.shard }}
+          path: .coverage.integration-${{ matrix.shard }}*
           include-hidden-files: true
           if-no-files-found: error
 
@@ -424,10 +603,14 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: test-results-integration
-          path: junit-integration.xml
+          name: test-results-integration-${{ matrix.shard }}
+          path: junit-integration-${{ matrix.shard }}.xml
 
   # ── Python: Test (E2E) ──
+  # Same service-container Postgres path as test-integration so the
+  # conftest fixtures bypass testcontainers. Not sharded; e2e is small
+  # (~3 min historically) and matrix overhead would mostly cancel the
+  # wall-clock saving.
   test-e2e:
     name: Test E2E
     needs: changes
@@ -436,29 +619,36 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: synthorg
+          POSTGRES_PASSWORD: synthorg-test
+          POSTGRES_DB: synthorg
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U synthorg"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       COVERAGE_FILE: .coverage.e2e
+      COVERAGE_CORE: sysmon
+      SYNTHORG_TEST_POSTGRES_HOST: localhost
+      SYNTHORG_TEST_POSTGRES_PORT: "5432"
+      SYNTHORG_TEST_POSTGRES_USER: synthorg
+      SYNTHORG_TEST_POSTGRES_PASSWORD: synthorg-test
+      SYNTHORG_TEST_POSTGRES_DB: synthorg
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
-      # E2E exercises the full system including the Postgres path, so it
-      # needs the same v18 client setup as the integration arm. See the
-      # integration job for the rationale on the PGDG client install.
-      - name: Install PostgreSQL 18 client (pg_dump / pg_restore)
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-            https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
-            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client-18
-          echo "/usr/lib/postgresql/18/bin" >> "$GITHUB_PATH"
-          /usr/lib/postgresql/18/bin/pg_dump --version
-          /usr/lib/postgresql/18/bin/pg_restore --version
+      - uses: ./.github/actions/install-postgres-18-client
 
       - name: Postgres drift detection
         run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
@@ -470,12 +660,38 @@ jobs:
           uv run python -m pytest tests/ \
             -m e2e \
             -n auto \
+            --max-worker-restart=0 \
             --cov=synthorg \
             --cov-report= \
             --cov-fail-under=0 \
             --junitxml=junit-e2e.xml \
             --durations=20 \
             --durations-min=1.0
+
+      # See identical step in test-unit for the reason this gate exists.
+      - name: Sanity check (junit shows tests > 0)
+        if: ${{ !cancelled() }}
+        shell: python
+        run: |
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path("junit-e2e.xml")
+          if not path.exists():
+              print("FAIL: junit-e2e.xml not found", file=sys.stderr)
+              sys.exit(1)
+          total = 0
+          for ts in ET.parse(path).iter("testsuite"):
+              total += int(ts.get("tests", 0))
+          print(f"junit total tests: {total}")
+          if total == 0:
+              print(
+                  "FAIL: junit reports zero tests; "
+                  "something prevented tests from running.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
 
       - name: Upload coverage data
         if: ${{ !cancelled() }}
@@ -511,9 +727,11 @@ jobs:
       contents: read
     env:
       COVERAGE_FILE: .coverage.conformance-sqlite
+      COVERAGE_CORE: sysmon
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
@@ -525,12 +743,41 @@ jobs:
             -m integration \
             -k "not postgres" \
             -n auto \
+            --max-worker-restart=0 \
             --cov=synthorg \
             --cov-report= \
             --cov-fail-under=0 \
             --junitxml=junit-conformance-sqlite.xml \
             --durations=20 \
             --durations-min=1.0
+
+      # See identical step in test-unit for the reason this gate exists.
+      - name: Sanity check (junit shows tests > 0)
+        if: ${{ !cancelled() }}
+        shell: python
+        run: |
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path("junit-conformance-sqlite.xml")
+          if not path.exists():
+              print(
+                  "FAIL: junit-conformance-sqlite.xml not found",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          total = 0
+          for ts in ET.parse(path).iter("testsuite"):
+              total += int(ts.get("tests", 0))
+          print(f"junit total tests: {total}")
+          if total == 0:
+              print(
+                  "FAIL: junit reports zero tests; "
+                  "something prevented tests from running.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
 
       - name: Upload coverage data
         if: ${{ !cancelled() }}
@@ -564,8 +811,9 @@ jobs:
       # Required for tokenless Codecov upload via use_oidc: true.
       id-token: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
@@ -585,8 +833,15 @@ jobs:
 
       # Hard no-missed-coverage assertion. Every split arm MUST have
       # contributed a data file before the gate runs; a silently dropped
-      # suite would shrink the report yet could still clear --fail-under
-      # on the remaining suites (a false green). Fail loudly instead.
+      # suite (or all shards of a sharded suite) would shrink the report
+      # yet could still clear --fail-under on the remaining suites (a
+      # false green). Fail loudly instead.
+      #
+      # Sharded arms (unit, integration) contribute multiple files like
+      # .coverage.unit-1, .coverage.unit-2, ... -- the glob ``unit*``
+      # matches all of them. We also assert an EXPECTED shard count so
+      # a silently-dropped single shard (e.g. one matrix cell cancelled
+      # by a hang) still fails the gate.
       - name: Assert all suites contributed coverage
         run: |
           set -euo pipefail
@@ -601,10 +856,48 @@ jobs:
             ls -la coverage-data || true
             exit 1
           fi
-          echo "All four suites contributed coverage data."
+          # Assert sharded arms contributed every shard (4 each).
+          # The expected count 4 MUST stay in sync with the
+          # `strategy.matrix.shard: [1, 2, 3, 4]` definitions on the
+          # `test-unit` and `test-integration` jobs above. If a future
+          # change grows or shrinks the matrix, update this number too.
+          for sharded in unit integration; do
+            count=$(compgen -G "coverage-data/.coverage.${sharded}-*" | wc -l || echo 0)
+            if [ "${count}" -lt 4 ]; then
+              echo "::error::Sharded suite ${sharded} contributed ${count} shard(s); expected 4. Refusing to compute the 80% gate on partial data."
+              ls -la coverage-data || true
+              exit 1
+            fi
+          done
+          echo "All four suites contributed coverage data (unit + integration sharded 4/4)."
+
+      - name: Inspect coverage data files (forensic)
+        run: |
+          # List every downloaded .coverage* file with its size so we can
+          # see at a glance which shards produced data and how much. The
+          # aggregate gate has been silently dropping per-shard files
+          # (PR #2080: "Combined 7 files, skipped 3" -> 70% on a suite
+          # that should be ~90%); without this listing, the combine step
+          # gives no signal about which shard's coverage was lost.
+          ls -laR coverage-data || true
+          echo "--- file count by shard prefix ---"
+          # ``-A`` is required: every per-shard data file is named
+          # ``.coverage.<suite>-<shard>``, leading dot. A plain ``ls``
+          # hides them and the sed/sort/uniq pipe input is empty,
+          # which is what we observed on PR #2080 (the "file count by
+          # shard prefix" line printed and then nothing followed). ``-A``
+          # includes dotfiles but excludes ``.`` and ``..``.
+          ls -A coverage-data 2>/dev/null \
+            | sed -E 's/\.[0-9a-f]+\.[0-9]+\.[0-9a-f]+$//' \
+            | sort | uniq -c | sort -rn || true
 
       - name: Combine coverage
-        run: uv run coverage combine coverage-data
+        # ``--debug=dataio,process`` writes the path of each file
+        # combined or skipped to stderr; without it the bare ``Combined
+        # N files, skipped M`` message hides which file was rejected and
+        # why. Each line is a single forensic record we can read out of
+        # the GHA log.
+        run: uv run coverage combine --debug=dataio,process coverage-data
 
       - name: Enforce 80% aggregate coverage gate
         run: uv run coverage report --show-missing --fail-under=80
@@ -625,11 +918,29 @@ jobs:
           fail_ci_if_error: false
           use_oidc: true
 
+      - name: Collect junit file list
+        id: junit
+        run: |
+          set -euo pipefail
+          # Each sharded arm produces junit-${suite}-${shard}.xml; e2e and
+          # conformance-sqlite contribute single files. Build a CSV that
+          # Codecov consumes. The earlier "Assert all suites contributed
+          # coverage" step already fails the job when any suite or shard
+          # dropped its artifact, so the loop below is a belt-and-braces
+          # guard for the junit upload path specifically.
+          files=$(ls test-results/junit-*.xml 2>/dev/null | paste -sd, || true)
+          if [ -z "${files}" ]; then
+            echo "::error::No junit XML files found under test-results/. Refusing to upload an empty file list to Codecov."
+            exit 1
+          fi
+          echo "files=${files}" >> "${GITHUB_OUTPUT}"
+          echo "Uploading: ${files}"
+
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
         with:
-          files: test-results/junit-unit.xml,test-results/junit-integration.xml,test-results/junit-e2e.xml,test-results/junit-conformance-sqlite.xml
+          files: ${{ steps.junit.outputs.files }}
           fail_ci_if_error: false
           report_type: test_results
           use_oidc: true
@@ -654,8 +965,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
@@ -728,8 +1040,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Lint backend Dockerfile
@@ -742,6 +1055,38 @@ jobs:
         with:
           dockerfile: docker/sandbox/Dockerfile
 
+  # ── OpenAPI: export once, share with dashboard arm ──
+  # scripts/export_openapi.py was previously re-run in dashboard-type-check,
+  # dashboard-test, AND dashboard-build, each paying for a fresh uv sync.
+  # The export is deterministic given pinned backend code, so a single
+  # upstream job + actions/upload-artifact lets the downstream Node-only
+  # jobs skip the Python env spin-up entirely. Runs on python OR dashboard
+  # changes (the dashboard filter already includes src/synthorg/api/**).
+  export-openapi:
+    name: Export OpenAPI Schema
+    needs: changes
+    if: (needs.changes.outputs.python == 'true' || needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-python-uv
+
+      - name: Export OpenAPI schema
+        run: uv run python scripts/export_openapi.py
+
+      - name: Upload OpenAPI schema artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openapi-schema
+          path: docs/openapi/openapi.json
+          if-no-files-found: error
+
   # ── Dashboard: Lint ──
   dashboard-lint:
     name: Dashboard Lint
@@ -752,8 +1097,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -768,25 +1114,27 @@ jobs:
   # ── Dashboard: Type Check ──
   dashboard-type-check:
     name: Dashboard Type Check
-    needs: changes
+    needs: [changes, export-openapi]
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Set up Python + uv (OpenAPI export)
-        uses: ./.github/actions/setup-python-uv
-      - name: Export OpenAPI schema for type codegen
-        run: uv run python scripts/export_openapi.py
+      - name: Download OpenAPI schema artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: openapi-schema
+          path: docs/openapi
       - run: npm ci
         working-directory: web
       - run: npm run type-check
@@ -795,25 +1143,27 @@ jobs:
   # ── Dashboard: Test ──
   dashboard-test:
     name: Dashboard Test
-    needs: changes
+    needs: [changes, export-openapi]
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Set up Python + uv (OpenAPI export)
-        uses: ./.github/actions/setup-python-uv
-      - name: Export OpenAPI schema for type codegen
-        run: uv run python scripts/export_openapi.py
+      - name: Download OpenAPI schema artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: openapi-schema
+          path: docs/openapi
       - run: npm ci
         working-directory: web
       - name: Run Vitest (active-handle detection is part of the test run)
@@ -840,28 +1190,35 @@ jobs:
   # ── Dashboard: Build ──
   dashboard-build:
     name: Dashboard Build
-    needs: changes
+    needs: [changes, export-openapi]
     if: (needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.is_release_please != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 24.15.0
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: Set up Python + uv (OpenAPI export)
+      - name: Download OpenAPI schema artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: openapi-schema
+          path: docs/openapi
+      # The DTO drift gate (check_dto_types_ts_in_sync.py) is the
+      # only step in this job that needs the Python env; type-check
+      # and test don't.
+      - name: Set up Python + uv (DTO drift gate)
         uses: ./.github/actions/setup-python-uv
-      - name: Export OpenAPI schema for type codegen
-        run: uv run python scripts/export_openapi.py
       - run: npm ci
         working-directory: web
-      - name: DTO TypeScript drift gate (#1889)
+      - name: DTO TypeScript drift gate
         run: uv run python scripts/check_dto_types_ts_in_sync.py
       - name: Production build
         run: npm run build
@@ -884,8 +1241,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -908,8 +1266,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -981,8 +1340,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Release runner setup
         id: setup
@@ -1029,7 +1389,7 @@ jobs:
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [changes, lint, doc-drift, runtime-stats-freshness, schema-validate, type-check, openapi-liveness, test-unit, test-integration, test-e2e, test-conformance-sqlite, test-coverage-aggregate, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
+    needs: [changes, lint, doc-drift, runtime-stats-freshness, schema-validate, type-check, openapi-liveness, export-openapi, test-unit, test-integration, test-e2e, test-conformance-sqlite, test-coverage-aggregate, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit, dashboard-storybook-build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -1046,6 +1406,7 @@ jobs:
             ${{ needs.schema-validate.result }}
             ${{ needs.type-check.result }}
             ${{ needs.openapi-liveness.result }}
+            ${{ needs.export-openapi.result }}
             ${{ needs.test-unit.result }}
             ${{ needs.test-integration.result }}
             ${{ needs.test-e2e.result }}

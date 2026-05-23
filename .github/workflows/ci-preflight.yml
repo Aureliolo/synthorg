@@ -27,8 +27,19 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      # Cross-repo ref to the local checkout-retry composite. GHA
+      # pre-fetches cross-repo composites via its action-resolver
+      # (different code path from the in-step git-fetch that's been
+      # flaking); the composite internally retries actions/checkout
+      # 3x with backoff. Pinned to the SHA on this branch that added
+      # the composite, since the repo policy requires sha_pinning and
+      # the allowlist permits Aureliolo/synthorg/.github/actions/*.
+      # Post-merge this SHA needs to be updated to a main-reachable
+      # SHA (the squash-merged commit) so the ref survives branch
+      # deletion.
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Run preflight checks
