@@ -562,16 +562,57 @@ def pytest_sessionstart(session: pytest.Session) -> None:
        Doing the FileLock-coordinated build here is the correct
        architectural fix.
     """
-    global _suite_start, _unit_elapsed_secs  # noqa: PLW0603
-    _suite_start = time.monotonic()
-    _unit_elapsed_secs = 0.0
-    # ``session.config._tmp_path_factory`` is the underlying
-    # _pytest.tmpdir.TempPathFactory pytest uses to back the
-    # ``tmp_path_factory`` fixture. At sessionstart no fixtures are
-    # resolved yet, so we read the private attribute (canonical
-    # workaround used inside pytest's own test suite).
-    tmp_path_factory = session.config._tmp_path_factory  # type: ignore[attr-defined]
-    asyncio.run(_get_template_db(tmp_path_factory))
+    # Wrap the entire body in a forensic try/except. If anything raises
+    # in pytest_sessionstart on an xdist worker, pluggy propagates the
+    # exception through the IPC channel -- but the worker often dies
+    # before the master receives the formatted traceback (we have
+    # observed `[gwN] node down: Not properly terminated` with no
+    # banner). Writing the traceback to the raw stderr fd via
+    # ``faulthandler.dump_traceback`` bypasses TerminalWriter/xdist
+    # buffering, and ``os.abort()`` produces SIGABRT so a core dump
+    # lands at ``/proc/sys/kernel/core_pattern`` (set to the workspace
+    # in the CI "Enable core dumps" step). Without this, a death here
+    # is silent: no banner, no core, no diagnosis path.
+    import traceback as _traceback
+
+    try:
+        global _suite_start, _unit_elapsed_secs  # noqa: PLW0603
+        _suite_start = time.monotonic()
+        _unit_elapsed_secs = 0.0
+        # ``session.config._tmp_path_factory`` is the underlying
+        # _pytest.tmpdir.TempPathFactory pytest uses to back the
+        # ``tmp_path_factory`` fixture. At sessionstart no fixtures
+        # are resolved yet, so we read the private attribute
+        # (canonical workaround used inside pytest's own test suite).
+        tmp_path_factory = session.config._tmp_path_factory  # type: ignore[attr-defined]
+        asyncio.run(_get_template_db(tmp_path_factory))
+
+        # Issue 1 fix: the conformance/persistence conftest's
+        # ``pytest_sessionstart`` does NOT fire on xdist workers
+        # because that conftest is loaded lazily during collection
+        # (after sessionstart). Forensic diagnostic on PR #2080
+        # proved this: the fixture writes its diagnostic line but
+        # the hook writes nothing. The root conftest IS loaded
+        # eagerly (we are it), so we call the conformance helper
+        # from here. Imported lazily so unit-only sessions don't
+        # pay the testcontainers / docker check until we get here.
+        from tests.conformance.persistence.conftest import (
+            _pre_acquire_postgres_container_state,
+        )
+
+        _pre_acquire_postgres_container_state(session)
+    except BaseException as exc:
+        worker = os.environ.get("PYTEST_XDIST_WORKER", "master")
+        sys.stderr.write(
+            f"\n==== pytest_sessionstart FAILED on worker={worker} ====\n"
+            f"Exception: {type(exc).__name__}: {exc}\n"
+        )
+        sys.stderr.flush()
+        _traceback.print_exc(file=sys.stderr)
+        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+        sys.stderr.write("==== aborting for core dump ====\n")
+        sys.stderr.flush()
+        os.abort()
 
 
 def _load_baseline_for_conftest() -> tuple[float, int, float] | None:

@@ -252,7 +252,7 @@ def _release_shared_postgres(state_file: Path) -> None:
 _POSTGRES_CONTAINER_STATE: dict[str, Any] = {}
 
 
-def pytest_sessionstart(session: pytest.Session) -> None:
+def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
     """Pre-acquire the shared Postgres container BEFORE any per-test timer.
 
     The cross-worker ``FileLock`` in :func:`_acquire_shared_postgres` is
