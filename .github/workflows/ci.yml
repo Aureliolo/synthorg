@@ -398,6 +398,7 @@ jobs:
           uv run python -m pytest tests/ \
             -m unit \
             -n auto \
+            --max-worker-restart=0 \
             --splits 4 \
             --group ${{ matrix.shard }} \
             --durations-path .test_durations.unit \
@@ -516,6 +517,7 @@ jobs:
             -m integration \
             -k "not [sqlite-" \
             -n auto \
+            --max-worker-restart=0 \
             --splits 4 \
             --group ${{ matrix.shard }} \
             --durations-path .test_durations.integration \
@@ -596,6 +598,7 @@ jobs:
           uv run python -m pytest tests/ \
             -m e2e \
             -n auto \
+            --max-worker-restart=0 \
             --cov=synthorg \
             --cov-report= \
             --cov-fail-under=0 \
@@ -653,6 +656,7 @@ jobs:
             -m integration \
             -k "not postgres" \
             -n auto \
+            --max-worker-restart=0 \
             --cov=synthorg \
             --cov-report= \
             --cov-fail-under=0 \
