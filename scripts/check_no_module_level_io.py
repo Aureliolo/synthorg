@@ -173,15 +173,20 @@ def _collect_calls_pruned(node: ast.AST, findings: list[ast.Call]) -> None:
     """Collect ``ast.Call`` descendants reachable at module scope.
 
     Stops at ``FunctionDef`` / ``AsyncFunctionDef`` / ``ClassDef`` /
-    ``Lambda`` / ``__main__`` block so a top-level ``if`` that wraps a
-    nested function definition does not flag the function's body as
-    module-scope I/O.
+    ``Lambda`` so a top-level ``if`` that wraps a nested function
+    definition does not flag the function's body as module-scope I/O.
+
+    For a ``__main__`` guard the body is skipped (script entry point,
+    never reached on import) but ``node.orelse`` still executes on
+    import, so its else / elif branches are traversed normally.
     """
     if isinstance(
         node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
     ):
         return
     if isinstance(node, ast.If) and _is_main_block(node):
+        for stmt in node.orelse:
+            _collect_calls_pruned(stmt, findings)
         return
     if isinstance(node, ast.Call):
         findings.append(node)

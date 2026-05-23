@@ -120,6 +120,23 @@ def test_call_inside_main_block_allowed(tmp_path: Path) -> None:
     assert findings == []
 
 
+def test_call_in_else_of_main_block_flagged(tmp_path: Path) -> None:
+    """Else of a ``__main__`` guard executes on import; it must be scanned."""
+    findings = _GATE.find_module_io(
+        _write(
+            tmp_path,
+            (
+                'if __name__ == "__main__":\n'
+                '    open("ok-main-body")\n'
+                "else:\n"
+                '    open("flag-me")\n'
+            ),
+        )
+    )
+    assert len(findings) == 1
+    assert findings[0].line == 4
+
+
 # ── Suppression marker ──────────────────────────────────────────
 
 
