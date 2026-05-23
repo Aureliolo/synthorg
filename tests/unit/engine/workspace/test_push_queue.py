@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from tests._shared import FakeClock, mock_of
 
 from synthorg.core.enums import ConflictType
 from synthorg.core.types import NotBlankStr
@@ -18,6 +17,7 @@ from synthorg.engine.workspace.models import (
 )
 from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
 from synthorg.engine.workspace.push_queue import PushQueueCoordinator
+from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.unit
 

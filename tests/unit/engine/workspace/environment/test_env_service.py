@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from tests._shared import FakeClock
 
 from synthorg.core.enums import EnvironmentType
 from synthorg.core.project_environment import ProjectEnvironment
@@ -19,6 +18,7 @@ from synthorg.engine.workspace.environment.protocol import (
     ProvisionedEnvironment,
 )
 from synthorg.engine.workspace.environment.service import EnvironmentService
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 

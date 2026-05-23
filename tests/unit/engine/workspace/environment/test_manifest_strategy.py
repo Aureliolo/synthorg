@@ -4,7 +4,6 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
-from tests._shared import FakeClock
 
 from synthorg.core.enums import EnvironmentType
 from synthorg.core.types import NotBlankStr
@@ -17,6 +16,7 @@ from synthorg.engine.workspace.environment.protocol import (
     CommandOutcome,
     EnvironmentStrategy,
 )
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 

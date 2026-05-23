@@ -18,7 +18,6 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
-from tests._shared import FakeClock
 
 from synthorg.core.enums import GitBackendType
 from synthorg.core.project_environment import ProjectEnvironment
@@ -39,6 +38,7 @@ from synthorg.engine.workspace.git_backend import (
 from synthorg.engine.workspace.project_workspace_service import (
     ProjectWorkspaceService,
 )
+from tests._shared import FakeClock
 
 pytestmark = [
     pytest.mark.integration,

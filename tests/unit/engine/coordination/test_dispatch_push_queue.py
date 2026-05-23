@@ -10,7 +10,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from tests._shared import FakeClock, mock_of
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination._dispatch_helpers import merge_workspaces
@@ -25,6 +24,7 @@ from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
 from synthorg.engine.workspace.service import WorkspaceIsolationService
 from synthorg.observability import metrics_hub
 from synthorg.observability.prometheus_collector import PrometheusCollector
+from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.unit
 

@@ -18,7 +18,6 @@ is fully reproducible without any LLM spend.
 from typing import Final
 
 import pytest
-from tests._shared.scripted_provider import make_e2e_identity
 
 from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.core.agent import AgentIdentity, ModelConfig
@@ -40,6 +39,7 @@ from synthorg.engine.routing_policy import (
 from synthorg.engine.routing_policy.config import QualityFloors
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
+from tests._shared.scripted_provider import make_e2e_identity
 
 _PROVIDER: Final[str] = "example-provider"
 _TIER_MODEL_IDS: Final[dict[ModelTier, str]] = {
