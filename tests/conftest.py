@@ -2,37 +2,51 @@
 
 Cross-worker coordination rule (read before adding a new fixture):
 
-    Any fixture that uses a cross-worker primitive -- ``filelock.FileLock``
+    Any setup that uses a cross-worker primitive -- ``filelock.FileLock``
     over a path under ``tmp_path_factory.getbasetemp().parent``, a
     testcontainers / Docker container shared across workers, or any
-    other off-process lock -- MUST be declared
-    ``@pytest.fixture(scope="session", autouse=True)``.
+    other off-process lock -- MUST run in a ``pytest_sessionstart``
+    hook, NOT in a fixture (not even ``scope="session", autouse=True``).
 
-    Without ``autouse=True``, pytest sets up session-scope fixtures
-    LAZILY on first reference. The cross-worker wait (FileLock poll
-    loop, container start, image pull, readiness polling) then runs
-    INSIDE the per-test 30s ``pytest-timeout`` budget of whichever
-    test triggers the fixture first. Workers queued behind the
-    lock-holder die at exactly t+30s with ``[gwN] node down: Not
-    properly terminated``, no banner reaches the master through
-    xdist IPC because pytest-timeout's ``os._exit(1)`` outruns the
-    Channel flush, and the failures look random across SQLite-
-    touching tests on each run. Verified in PR #2080 via core dump:
-    main thread in ``selectors.select``, background thread in
-    ``filelock/_api.py:517 in acquire`` -- the per-test timer was
+    Why not autouse session fixtures: pytest resolves session-scope
+    fixtures (including autouse ones) during the FIRST referencing
+    test's ``pytest_runtest_setup`` phase, which IS covered by
+    ``pytest-timeout``. Autouse just MARKS every test as a referencer;
+    it does not move setup outside the per-test phase. We verified
+    this in PR #2080: an autouse session fixture for the migrated_db
+    template build still killed 3 workers at +30s on UNRELATED tests
+    (whichever test happened to be the first one dispatched to each
+    worker).
+
+    Why pytest_sessionstart works: the hook runs in ``pytest_collection``
+    BEFORE any test, is NOT covered by ``pytest-timeout``, and runs
+    once per xdist worker subprocess. The lock wait + container start
+    + readiness polling all happen there; by the time any test starts,
+    the cached state is ready and the fixture is a trivial cache read.
+
+    Symptoms when this rule is broken: workers die at exactly
+    ``last-passed + 30.0x s`` with ``[gwN] node down: Not properly
+    terminated``, no banner reaches the master through xdist IPC
+    because pytest-timeout's ``os._exit(1)`` outruns the Channel
+    flush, and the dying tests look random across runs. Core dump
+    (after we patched pytest-timeout to ``os.abort()``) showed the
+    main thread in ``selectors.select`` and a background thread in
+    ``filelock/_api.py:517 in acquire``: the per-test timer was
     counting the cross-worker lock wait.
 
-    Existing instances of the pattern, all wrapped per this rule:
+    Existing instances of the pattern, all following this rule:
 
-    * ``_prebuild_migrated_db_template`` (this file): autouse session
-      fixture that drains the FileLock-coordinated yoyo migration
-      template build before any per-test timer starts.
-    * ``postgres_container`` (tests/conformance/persistence/conftest.py):
-      autouse session fixture that drains the FileLock-coordinated
-      testcontainer start before any per-test timer starts.
+    * ``pytest_sessionstart`` (this file): drains the FileLock-
+      coordinated yoyo migration template build via
+      ``_get_template_db`` before any per-test timer starts.
+    * ``pytest_sessionstart`` in
+      ``tests/conformance/persistence/conftest.py``: drains the
+      FileLock-coordinated testcontainer start, caches the result
+      in a module-level state dict; the ``postgres_container``
+      fixture reads from that cache without any lock work.
 
-    If you add a new cross-worker coordination fixture, follow the
-    same shape and link it to this rule in its docstring.
+    If you add a new cross-worker coordination point, follow the
+    same shape and link to this rule in its hook docstring.
 """
 
 import asyncio
@@ -124,10 +138,20 @@ socket.getfqdn = _fast_getfqdn
 # ``faulthandler.dump_traceback`` writes raw bytes to the stderr fd via
 # ``os.write``, bypassing all Python and xdist buffering. execnet
 # captures the worker's stderr at the pipe level, so the dump always
-# reaches the master's log before the worker process exits, even
-# under os._exit. Patching pytest_timeout.timeout_timer to fault-dump
-# FIRST and delegate to the original implementation second means
-# every pytest-timeout fire leaves a forensic stack we can read.
+# reaches the master's log before the worker process exits.
+#
+# Our patched ``pytest_timeout.timeout_timer`` (1) dumps every thread's
+# Python stack via ``faulthandler.dump_traceback(all_threads=True)``,
+# and then (2) calls ``os.abort()`` to force SIGABRT. It does NOT
+# delegate to the original ``timeout_timer`` -- abort takes the process
+# down directly, skipping the original's ``os._exit(1)`` path entirely.
+# The reason for ``abort`` over ``os._exit``: SIGABRT (under
+# ``ulimit -c unlimited``, already set by the CI workflow's "Enable
+# core dumps" step) writes a core file at the runner's
+# ``kernel.core_pattern`` path, which the "Upload core dumps" step
+# then surfaces as a build artefact. That core lets pystack/gdb
+# resolve the C-level frames for threads blocked in sqlite3 /
+# aiosqlite executor / etc. that faulthandler shows by name only.
 #
 # Why this is safe (vs the ``dump_traceback_later(repeat=True)`` we
 # removed in round 14): this dump runs from Python code holding the
@@ -511,10 +535,43 @@ _suite_start: float | None = None
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session: pytest.Session) -> None:
-    """Record suite start time + reset the unit-elapsed accumulator."""
+    """Record suite start time + pre-build the migrated_db template.
+
+    Two unrelated things happen here, both required to run BEFORE the
+    first test's per-test timer starts:
+
+    1. Reset the suite-timing accumulator.
+
+    2. Pre-build the migrated_db template via the cross-worker
+       FileLock in :func:`_get_template_db`. The lock is session-level
+       coordination, not per-test work, and the wait MUST NOT count
+       against ``pytest-timeout``'s 30s per-test budget.
+
+       Initial attempt was a ``@pytest.fixture(scope="session",
+       autouse=True)``; that doesn't move the work out of the per-test
+       phase because pytest resolves session-scope fixtures during the
+       FIRST referencing test's ``pytest_runtest_setup``, which IS
+       covered by ``pytest-timeout``. Verified in PR #2080: three
+       workers killed at +30s on UNRELATED tests (the first dispatched
+       to each worker), with faulthandler showing only the wrapper
+       frame because every other thread was blocked in C code waiting
+       on the FileLock.
+
+       ``pytest_sessionstart`` runs before any test, is NOT covered by
+       ``pytest-timeout``, and runs once per xdist worker subprocess.
+       Doing the FileLock-coordinated build here is the correct
+       architectural fix.
+    """
     global _suite_start, _unit_elapsed_secs  # noqa: PLW0603
     _suite_start = time.monotonic()
     _unit_elapsed_secs = 0.0
+    # ``session.config._tmp_path_factory`` is the underlying
+    # _pytest.tmpdir.TempPathFactory pytest uses to back the
+    # ``tmp_path_factory`` fixture. At sessionstart no fixtures are
+    # resolved yet, so we read the private attribute (canonical
+    # workaround used inside pytest's own test suite).
+    tmp_path_factory = session.config._tmp_path_factory  # type: ignore[attr-defined]
+    asyncio.run(_get_template_db(tmp_path_factory))
 
 
 def _load_baseline_for_conftest() -> tuple[float, int, float] | None:
@@ -864,34 +921,6 @@ def mock_dispatcher() -> Any:
     )
 
     return AsyncMock(spec=NotificationDispatcher)
-
-
-@pytest.fixture(scope="session", autouse=True)
-async def _prebuild_migrated_db_template(
-    tmp_path_factory: pytest.TempPathFactory,
-) -> None:
-    """Pre-build the migrated template OUTSIDE the per-test 30s budget.
-
-    The cross-worker FileLock in :func:`_get_template_db` is session-
-    level coordination, not per-test work: every xdist worker that uses
-    ``migrated_db`` must wait behind whichever worker is currently
-    building the template. With 8 workers and a yoyo migration chain
-    that takes 10-30s on Linux CI under coverage sysmon instrumentation,
-    the workers queued behind the lock holder consume their full 30s
-    pytest-timeout budget on the FileLock poll loop and die at exactly
-    t+30s -- the first ``migrated_db`` test on each waiting worker
-    becomes "the worker that didn't get the lock fast enough" (verified
-    in CI via core dumps showing thread X blocked at
-    ``filelock/_api.py:517 in acquire`` while the main thread runs the
-    asyncio loop's ``selectors.select``).
-
-    A session-scoped autouse fixture is the architectural fix: pytest
-    sets up session fixtures BEFORE the first test's per-test timer
-    starts, so the FileLock wait happens outside the 30s budget. The
-    last worker still pays the same wall-clock, but no test ticks
-    against pytest-timeout during the wait.
-    """
-    await _get_template_db(tmp_path_factory)
 
 
 @pytest.fixture

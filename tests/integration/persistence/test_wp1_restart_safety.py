@@ -113,26 +113,24 @@ async def backend_factory(
         raise ValueError(msg)
 
 
-@pytest.fixture(scope="session")
-def postgres_container(
-    tmp_path_factory: pytest.TempPathFactory,
-    worker_id: str,
-) -> Any:
-    """Delegate to the shared postgres-container fixture in conformance/.
-
-    Re-using the conformance container avoids running two parallel
-    test containers when this suite and the conformance suite both
-    execute under xdist; both share the same lockfile-coordinated
-    Postgres instance.
-    """
-    from tests.conformance.persistence.conftest import (
-        postgres_container as _conformance_postgres_container,
-    )
-
-    yield from _conformance_postgres_container.__wrapped__(  # type: ignore[attr-defined]
-        tmp_path_factory,
-        worker_id,
-    )
+# The previous override here delegated to the conformance suite's
+# ``postgres_container`` via ``__wrapped__(tmp_path_factory,
+# worker_id)`` to share one testcontainer across both suites in local
+# dev. That coupling broke when the conformance fixture's setup was
+# moved into a ``pytest_sessionstart`` hook to keep the cross-worker
+# FileLock wait out of the per-test ``pytest-timeout`` budget (see
+# ``tests/conformance/persistence/conftest.py::pytest_sessionstart``):
+# the hook only fires for sessions where the conformance conftest is
+# loaded, and integration-only sessions never see it, so the
+# delegation path would consume the empty module-level cache and
+# raise ``RuntimeError`` at fixture resolution time.
+#
+# The integration suite's own ``postgres_container`` fixture (in
+# ``tests/integration/persistence/conftest.py``) is the supported
+# entry point. In CI, ``SYNTHORG_TEST_POSTGRES_*`` env vars bypass
+# testcontainers entirely so cross-suite container sharing is moot.
+# In local dev, both suites starting their own container costs ~150 MB
+# of duplicated container state -- annoying, not broken.
 
 
 async def _sqlite_backend_factory(
