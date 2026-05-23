@@ -814,9 +814,11 @@ timeout = 30
 # the whole runner; the failing test is never named. Windows already
 # defaults to ``thread``; this line aligns Linux + macOS so a hung await
 # raises ``KeyboardInterrupt`` -> ``CancelledError`` and pytest emits a
-# proper ``TIMEOUT`` failure with the test node id. See
-# ``tests/conftest.py`` for the complementary ``dump_traceback_later``
-# watchdog that snapshots all-thread stacks while a hang is in flight.
+# proper ``TIMEOUT`` failure with the test node id. ``faulthandler.enable``
+# in ``tests/conftest.py`` covers the SEGV / abort signal cases; the
+# previously-installed periodic ``dump_traceback_later`` watchdog was
+# removed because it races with ``PyThreadState`` teardown and SEGVs
+# CPython itself (see the conftest comment for the full reasoning).
 timeout_method = "thread"
 markers = [
     "unit: Unit tests (fast, isolated, no I/O)",
