@@ -756,8 +756,27 @@ jobs:
           done
           echo "All four suites contributed coverage data (unit + integration sharded 4/4)."
 
+      - name: Inspect coverage data files (forensic)
+        run: |
+          # List every downloaded .coverage* file with its size so we can
+          # see at a glance which shards produced data and how much. The
+          # aggregate gate has been silently dropping per-shard files
+          # (PR #2080: "Combined 7 files, skipped 3" -> 70% on a suite
+          # that should be ~90%); without this listing, the combine step
+          # gives no signal about which shard's coverage was lost.
+          ls -laR coverage-data || true
+          echo "--- file count by shard prefix ---"
+          ls coverage-data 2>/dev/null \
+            | sed -E 's/\.[0-9a-f]+\.[0-9]+\.[0-9a-f]+$//' \
+            | sort | uniq -c | sort -rn || true
+
       - name: Combine coverage
-        run: uv run coverage combine coverage-data
+        # ``--debug=dataio,process`` writes the path of each file
+        # combined or skipped to stderr; without it the bare ``Combined
+        # N files, skipped M`` message hides which file was rejected and
+        # why. Each line is a single forensic record we can read out of
+        # the GHA log.
+        run: uv run coverage combine --debug=dataio,process coverage-data
 
       - name: Enforce 80% aggregate coverage gate
         run: uv run coverage report --show-missing --fail-under=80
