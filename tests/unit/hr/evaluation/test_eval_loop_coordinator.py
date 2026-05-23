@@ -181,9 +181,10 @@ def _make_pillar_score(pillar: str, score: float) -> Any:
     """Build a concrete test double with the shape ``_identify_patterns`` reads.
 
     Using ``SimpleNamespace`` (not ``MagicMock``) means a misspelled
-    attribute name on the accessor side raises ``AttributeError``
-    instead of silently returning another MagicMock, catching contract
-    drift in the tests themselves.
+    accessor (e.g. ``score.scoree`` instead of ``score.score``, or
+    ``score.pillar.values`` instead of ``score.pillar.value``) raises
+    ``AttributeError`` immediately instead of silently returning
+    another MagicMock, catching contract drift in the tests themselves.
     """
     return SimpleNamespace(
         pillar=SimpleNamespace(value=pillar),

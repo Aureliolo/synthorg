@@ -331,10 +331,12 @@ def _create_email_sink(
     username = params.get("username")
     password = params.get("password")
     # Strict ``use_tls`` parsing: the previous ``.lower() == "true"`` form
-    # silently coerced misspelled tokens like ``"on"``/``"1"`` (and any
-    # value that was not literally ``"true"``) to ``False``, which flipped
-    # the intended transport without warning. Accept only the literal
-    # ``true``/``false`` strings (case-insensitive, trimmed).
+    # silently coerced every value that was not literally ``"true"`` to
+    # ``False``: alternative truthy spellings (``"on"``, ``"1"``) AND
+    # genuine misspellings AND outright garbage were all collapsed to
+    # the same insecure default, flipping the intended transport without
+    # warning. Accept only the literal ``true``/``false`` strings
+    # (case-insensitive, trimmed).
     use_tls_raw = normalize_ascii_lowercase_or_default(
         params.get("use_tls"),
         default="true",
