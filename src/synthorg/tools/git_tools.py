@@ -248,7 +248,7 @@ class GitDiffTool(_BaseGitTool):
             sandbox=sandbox,
         )
 
-    async def execute(  # noqa: C901
+    async def execute(
         self,
         *,
         arguments: dict[str, Any],
@@ -356,7 +356,7 @@ class GitBranchTool(_BaseGitTool):
             args.append(start_point)
         return await self._run_git(args)
 
-    async def execute(  # noqa: PLR0911
+    async def execute(
         self,
         *,
         arguments: dict[str, Any],

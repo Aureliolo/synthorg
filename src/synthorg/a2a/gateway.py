@@ -179,7 +179,7 @@ class A2AGatewayController(Controller):
             per_op_rate_limit_from_policy("a2a.gateway", key="user_or_ip"),
         ],
     )
-    async def handle_jsonrpc(  # noqa: PLR0911
+    async def handle_jsonrpc(
         self,
         state: State,
         request: Request[Any, Any, Any],
@@ -519,7 +519,7 @@ def _credentials_match(stored: str, presented: str) -> bool:
     )
 
 
-async def _verify_peer_credentials(  # noqa: PLR0911
+async def _verify_peer_credentials(
     app_state: Any,
     request: Request[Any, Any, Any],
     peer_name: str,

@@ -1,0 +1,6 @@
+# Frozen baseline of SettingNamespace values lacking a corresponding
+# settings/definitions/<name>.py file. One namespace per line.
+#
+# Regenerate (rare; requires explicit user approval) via the gate's
+# write_baseline() Python API.
+settings

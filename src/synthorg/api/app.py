@@ -493,7 +493,7 @@ def _build_default_approval_timeout_scheduler(
 # construction; runtime DB changes only affect code calling get_api_config().
 
 
-def create_app(  # noqa: C901, PLR0912, PLR0913, PLR0915
+def create_app(  # noqa: PLR0913
     *,
     config: RootConfig | None = None,
     persistence: PersistenceBackend | None = None,

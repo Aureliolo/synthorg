@@ -156,7 +156,7 @@ def _resolve_project_root(repo_root: Path | None) -> Path:
     return Path(__file__).resolve().parent.parent
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911 -- distinct exit codes per CLI failure mode
+def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(

@@ -91,6 +91,30 @@ mandatory_rules:
         prevention lives in .claude/hookify.block-pr-create.md
         rather than scripts/.
 
+  - id: claude-md::module-size-budget
+    file: CLAUDE.md
+    header: Module-Size Budget
+    gate: scripts/check_module_size_budget.py
+    # Sibling gates documented in docs/reference/convention-gates.md
+    # but not independently mapped here (the inventory tracks one
+    # primary gate per MANDATORY paragraph):
+    #
+    #   scripts/check_no_growth_in_god_modules.py
+    #     - operational corollary of the size budget: explicit
+    #       allowlist (api/app.py, api/state.py, api/auto_wire.py,
+    #       api/lifecycle.py, api/lifecycle_builder.py, core/enums.py,
+    #       observability/events/persistence.py) must net-shrink.
+    #   scripts/check_no_central_junk_drawer.py
+    #     - blocks new entries in core/enums.py, events/persistence.py,
+    #       AppState __slots__ pending dissolution in #2051.
+    #   scripts/check_no_circular_imports.py
+    #   scripts/check_module_depth.py
+    #   scripts/check_protocol_documented.py
+    #   scripts/check_no_module_level_io.py
+    #   scripts/check_state_slice_immutability.py
+    #   scripts/check_strategy_protocol_injection.py
+    #   scripts/check_settings_namespace_complete.py
+
   # ---------------------------------------------------------------
   # web/CLAUDE.md
   # ---------------------------------------------------------------

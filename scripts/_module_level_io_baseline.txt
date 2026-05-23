@@ -1,0 +1,5 @@
+# Frozen baseline of module-import-time I/O calls.
+# Each line is `path:lineno:funcname` (POSIX path, 1-indexed line).
+#
+# Regenerate (rare; requires explicit user approval) via the gate's
+# write_baseline() Python API.

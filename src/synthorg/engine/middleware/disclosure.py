@@ -47,7 +47,7 @@ class DisclosureMiddleware(BaseAgentMiddleware):
         super().__init__(name="disclosure")
         self._config = config or ToolDisclosureConfig()
 
-    async def wrap_tool_call(  # noqa: C901, PLR0912
+    async def wrap_tool_call(
         self,
         ctx: AgentMiddlewareContext,
         call: ToolCallable,

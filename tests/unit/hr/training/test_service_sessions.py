@@ -58,7 +58,7 @@ def _result(plan_id: str = "plan-1", new_agent_id: str = "agent-new") -> Trainin
 class _NoopSelector:
     """Minimal selector protocol stub -- never invoked in session tests."""
 
-    async def select_sources(self, plan: TrainingPlan) -> tuple:  # type: ignore[type-arg]
+    async def select_sources(self, plan: TrainingPlan) -> tuple:
         return ()
 
 

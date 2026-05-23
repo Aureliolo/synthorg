@@ -429,7 +429,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
     # ── Request building ─────────────────────────────────────────
 
-    def _build_kwargs(  # noqa: C901, PLR0912
+    def _build_kwargs(
         self,
         messages: list[ChatMessage],
         litellm_model: str,

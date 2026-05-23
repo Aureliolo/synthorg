@@ -1,0 +1,54 @@
+name: Pyright
+
+# Second type-checker. Mypy is authoritative (pre-push gate); Pyright
+# runs here as a CI artefact so its narrowing / generics / overload
+# findings are surfaced without blocking. Promote to blocking once
+# disagreements with mypy are resolved.
+
+on:
+  pull_request:
+    paths:
+      - 'src/**/*.py'
+      - 'tests/**/*.py'
+      - 'scripts/**/*.py'
+      - 'pyproject.toml'
+      - 'pyrightconfig.json'
+      - '.github/workflows/pyright.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  pyright:
+    name: pyright (advisory)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    continue-on-error: true
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-python-uv
+
+      - name: Run pyright (JSON report)
+        # `--outputjson` is the machine-readable form; pyright always
+        # exits non-zero when it finds anything. ``continue-on-error``
+        # on the step (advisory job) lets the real exit code through to
+        # the run log while still allowing the upload step to fire.
+        continue-on-error: true
+        run: |
+          uv run pyright --outputjson > pyright-report.json
+
+      - name: Upload pyright report
+        # ``if: always()`` keeps the artefact upload running even when
+        # the pyright step exits non-zero, so reviewers can still pull
+        # the JSON report off a failing advisory run.
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pyright-report
+          path: pyright-report.json
+          retention-days: 14

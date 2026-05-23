@@ -176,7 +176,7 @@ async def workflow_executions_get(
     return ok(data=execution.model_dump(mode="json"))
 
 
-async def workflow_executions_start(  # noqa: PLR0911 -- error mapping
+async def workflow_executions_start(
     *,
     app_state: Any,
     arguments: dict[str, Any],
@@ -218,7 +218,7 @@ async def workflow_executions_start(  # noqa: PLR0911 -- error mapping
     return ok(data=execution.model_dump(mode="json"))
 
 
-async def workflow_executions_cancel(  # noqa: PLR0911 -- error mapping
+async def workflow_executions_cancel(
     *,
     app_state: Any,
     arguments: dict[str, Any],

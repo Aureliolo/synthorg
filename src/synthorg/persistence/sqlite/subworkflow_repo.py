@@ -113,7 +113,7 @@ def _deserialize_row(
         raise QueryError(msg) from exc
 
 
-def _extract_references(  # noqa: C901, PLR0913
+def _extract_references(  # noqa: PLR0913
     rows: Iterable[Any],
     subworkflow_id: str,
     version: str | None,

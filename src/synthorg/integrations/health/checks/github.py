@@ -131,7 +131,7 @@ class GitHubHealthCheck:
         """Bind a catalog after construction (see prober registry)."""
         self._catalog = catalog
 
-    async def check(self, connection: Connection) -> HealthReport:  # noqa: PLR0911
+    async def check(self, connection: Connection) -> HealthReport:
         """Verify the GitHub token is valid via /user endpoint."""
         now = datetime.now(UTC)
         if self._catalog is None:

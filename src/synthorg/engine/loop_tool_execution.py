@@ -208,7 +208,7 @@ async def _park_for_approval(
     )
 
 
-async def execute_tool_calls(  # noqa: PLR0913, C901
+async def execute_tool_calls(  # noqa: PLR0913
     ctx: AgentContext,
     tool_invoker: ToolInvokerProtocol | None,
     response: CompletionResponse,

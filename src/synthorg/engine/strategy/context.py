@@ -127,7 +127,7 @@ class MemoryContextProvider:
         self._fallback = fallback
         self._memory_backend = memory_backend
 
-    async def provide(self, *, config: StrategyConfig) -> StrategicContext:  # noqa: PLR0911
+    async def provide(self, *, config: StrategyConfig) -> StrategicContext:
         """Layer memory-stored overrides on top of the fallback context."""
         if self._memory_backend is None:
             return await self._fallback.provide(config=config)

@@ -126,7 +126,7 @@ class MetricCollectorTool(BaseAnalyticsTool):
         )
         self._sink = sink
 
-    async def execute(  # noqa: PLR0911
+    async def execute(
         self,
         *,
         arguments: dict[str, Any],

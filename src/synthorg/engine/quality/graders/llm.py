@@ -602,7 +602,7 @@ class LLMRubricGrader:
         payload_text = wrap_untrusted(TAG_UNTRUSTED_ARTIFACT, raw_payload)
         return payload_text, payload_truncated, original_len
 
-    def _parse_tool_arguments(  # noqa: PLR0911
+    def _parse_tool_arguments(
         self,
         arguments: Mapping[str, Any],
         *,

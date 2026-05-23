@@ -275,7 +275,7 @@ class DeviceFlow:
             expires_in=expires_in_value,
         )
 
-    async def poll_for_token(  # noqa: C901, PLR0912, PLR0915
+    async def poll_for_token(
         self,
         *,
         token_url: str,

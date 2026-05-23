@@ -104,7 +104,7 @@ class ReportGeneratorTool(BaseAnalyticsTool):
         )
         self._provider = provider
 
-    async def execute(  # noqa: PLR0911, PLR0912, C901
+    async def execute(
         self,
         *,
         arguments: dict[str, Any],

@@ -111,7 +111,7 @@ def _format_violation(v: Violation) -> str:
     )
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911 -- distinct exit-code branches per CLI failure mode
+def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(

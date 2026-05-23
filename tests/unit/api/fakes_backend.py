@@ -601,7 +601,7 @@ def _clear_attr(value: object) -> None:
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
-    def __init__(self) -> None:  # noqa: PLR0915 -- one assignment per repo; splitting blurs the inventory
+    def __init__(self) -> None:
         self._artifacts = FakeArtifactRepository()
         self._projects = FakeProjectRepository()
         self._project_workspaces = FakeProjectWorkspaceRepository()

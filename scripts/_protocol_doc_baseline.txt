@@ -1,0 +1,6 @@
+# Frozen baseline of Protocol classes lacking a non-trivial docstring.
+# Each line is `path:lineno:ClassName` (POSIX path, 1-indexed line).
+# The gate suppresses these exact entries; new sites NOT listed fail.
+#
+# Regenerate (rare; requires explicit user approval) via the gate's
+# write_baseline() Python API.

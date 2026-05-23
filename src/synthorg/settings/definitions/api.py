@@ -1,3 +1,4 @@
+# module-kind: declarative
 """API namespace setting definitions.
 
 Registers settings covering server, TLS, CORS, rate limiting (global

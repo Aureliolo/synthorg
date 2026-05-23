@@ -116,7 +116,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         """Return *service* or raise (implemented on concrete ``AppState``)."""
         raise NotImplementedError
 
-    def _init_facade_service_slots(self) -> None:  # noqa: PLR0915 -- flat slot-init list, one None assignment per facade slot
+    def _init_facade_service_slots(self) -> None:
         """Initialise every facade-service slot attribute to ``None``.
 
         Concrete :class:`AppState` calls this once from ``__init__`` so

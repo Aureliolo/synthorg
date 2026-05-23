@@ -514,7 +514,7 @@ async def _subworkflows_create(
     return ok(data=created.model_dump(mode="json"))
 
 
-async def _subworkflows_delete(  # noqa: PLR0911 -- error mapping fans out
+async def _subworkflows_delete(
     *,
     app_state: Any,
     arguments: dict[str, Any],

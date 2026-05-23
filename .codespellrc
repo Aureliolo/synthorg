@@ -1,0 +1,8 @@
+[codespell]
+# Codespell configuration: project-wide spelling gate.
+# Skip generated, vendored, and binary content.
+skip = .venv,.git,.mypy_cache,.ruff_cache,.pytest_cache,node_modules,build,dist,htmlcov,.coverage,*.lock,*.png,*.svg,*.jpg,*.jpeg,*.ico,*.gif,*.webp,*.pdf,*.bin,*_pb2.py,*.gen.*,*.min.js,_vendor,web/dist,web/build,site,_audit,*.svg.gz,scripts/_codespell_baseline.txt,web/package-lock.json,uv.lock
+# Project-specific vocabulary that must not be flagged as typos.
+ignore-words-list = synthorg,busl,mcp,oauth,litestar,structlog,pydantic,asyncio,mem0,opentelemetry,otel,otp,opencode,dependabot,coderabbit,polyfactory,sqlfluff,typeguard,deptry,vulture,interrogate,codespell,knip,dpdm,madge,lychee,markdownlint,yamllint,sonarqube,tarjan,scc,nats,litellm,langfuse,langsmith,langchain,zensical,axe,lhci,vale,nd,inh,fo,nin,uptodate,intoto,iif,ans,recuse,recused,strat,inout,wee,ned,assertin,acn,doesnt,htmlfor,wronly,acknowledgement,acknowledgements,te,coo,zar,zars,unparseable,bject,failer,re-use,re-used,re-uses,re-using,re-usable,pre-empt,pre-emptive,bloc,cripts,disjointness,scroe,levle,earch,yse,valye,tru,implementors,overrideable,clen,onw,wantin,re-declaring,re-declared,bve,vew,afterall,acount,uncomplete,alledges,hace,pre-selected
+quiet-level = 3
+check-hidden = false

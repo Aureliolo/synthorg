@@ -86,7 +86,7 @@ class EmailSenderTool(BaseCommunicationTool):
             config=config,
         )
 
-    async def execute(  # noqa: PLR0911, C901
+    async def execute(
         self,
         *,
         arguments: dict[str, Any],

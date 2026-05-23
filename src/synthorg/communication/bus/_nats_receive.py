@@ -88,7 +88,7 @@ async def resolve_consumer(
     return sub
 
 
-async def _maybe_log_overflow(  # noqa: C901, PLR0912, PLR0915  -- linear flow, not branching
+async def _maybe_log_overflow(
     state: _NatsState,
     sub: Any,
     *,

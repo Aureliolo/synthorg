@@ -132,7 +132,7 @@ class ImageGeneratorTool(BaseDesignTool):
         )
         self._provider = provider
 
-    async def execute(  # noqa: PLR0911
+    async def execute(
         self,
         *,
         arguments: dict[str, Any],

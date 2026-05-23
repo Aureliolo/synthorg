@@ -133,7 +133,7 @@ class SystemPrompt(BaseModel):
 # ── Public API ───────────────────────────────────────────────────
 
 
-def build_system_prompt(  # noqa: PLR0913, C901, PLR0912
+def build_system_prompt(  # noqa: PLR0913
     *,
     agent: AgentIdentity,
     role: Role | None = None,

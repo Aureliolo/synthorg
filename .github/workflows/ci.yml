@@ -704,12 +704,19 @@ jobs:
         #   addresses the disputed concern. The pre-flight assertion above
         #   keeps this ignore safe by failing if MIN_SECRET_LENGTH drops
         #   below 32 (the project's enforced minimum).
+        # - PYSEC-2022-42969: regex DoS in py.path. py is unmaintained
+        #   upstream with no fix version available, pulled in as a transitive
+        #   of the modularity-gate dev tooling. synthorg never imports py
+        #   directly and the vulnerable py.path.svnurl / svnwc surfaces are
+        #   not reachable through anything we ship; ignoring is the only path
+        #   to a green pip-audit until the consuming tool drops py as a dep.
         run: |
           uv run pip-audit \
             --ignore-vuln GHSA-xqmj-j6mv-4862 \
             --ignore-vuln CVE-2026-3219 \
             --ignore-vuln PYSEC-2026-89 \
-            --ignore-vuln PYSEC-2025-183
+            --ignore-vuln PYSEC-2025-183 \
+            --ignore-vuln PYSEC-2022-42969
 
   # ── Docker: Dockerfile Lint ──
   dockerfile-lint:

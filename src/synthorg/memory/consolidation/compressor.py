@@ -140,7 +140,7 @@ class LLMExperienceCompressor:
         self._config = config
         self._cost_tracker = cost_tracker
 
-    async def compress(  # noqa: PLR0912, PLR0913, PLR0915, C901
+    async def compress(  # noqa: PLR0913
         self,
         prompt: NotBlankStr,
         output: NotBlankStr,

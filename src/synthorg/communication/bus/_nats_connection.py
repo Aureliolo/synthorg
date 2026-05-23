@@ -183,7 +183,7 @@ async def ensure_kv_bucket(state: _NatsState) -> None:
         ) from exc
 
 
-async def stop(state: _NatsState) -> None:  # noqa: C901
+async def stop(state: _NatsState) -> None:
     """Stop the bus gracefully. Idempotent.
 
     Per ``docs/reference/lifecycle-sync.md``, holds ``state.lock`` across

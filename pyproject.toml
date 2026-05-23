@@ -137,6 +137,19 @@ dev = [
     "types-defusedxml==0.7.0.20260504",
     "bandit==1.9.4",
     "pytest-randomly==4.1.0",
+    # Second type-checker. Runs as a CI artefact via
+    # .github/workflows/pyright.yml (continue-on-error: true). No
+    # pre-push gate. Mypy remains authoritative.
+    "pyright==1.1.409",
+    # Quality tools: dependency hygiene, dead-code, docstring coverage,
+    # spelling, SQL and YAML lint. Each ships with a baseline absorbing
+    # today's reality so existing code passes; baselines ratchet shrink.
+    "deptry==0.25.1",
+    "vulture==2.16",
+    "interrogate==1.7.0",
+    "codespell==2.4.2",
+    "sqlfluff==4.2.1",
+    "yamllint==1.38.0",
     {include-group = "test"},
     {include-group = "docs"},
 ]
@@ -255,6 +268,11 @@ select = [
     "TRY",    # tryceratops
     "FLY",    # flynt
     "D",      # pydocstyle
+    "BLE",    # flake8-blind-except
+    "G",      # flake8-logging-format
+    "ERA",    # flake8-eradicate (commented-out code)
+    "INP",    # flake8-no-pep420 (implicit namespace packages)
+    "DOC",    # pydocstyle extensions (preview)
 ]
 ignore = [
     "D100",   # missing docstring in public module
@@ -277,6 +295,22 @@ extend-select = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+# Pylint thresholds: defaults are too permissive for AI-generated code
+# which trends toward god-functions when unbounded. Functions or methods
+# exceeding these caps usually signal a missing decomposition into
+# helpers or per-strategy variants.
+[tool.ruff.lint.pylint]
+max-args = 5
+max-public-methods = 12
+max-statements = 30
+max-branches = 10
+max-returns = 5
+max-locals = 15
+max-nested-blocks = 4
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
     "S101",    # assert allowed in tests
@@ -289,6 +323,18 @@ convention = "google"
     "SLF001",  # private member access in tests
     "PLC0415", # local imports in test functions
     "TC",      # type-checking imports (fixture type hints)
+    # Tests carry parametrize values, fixtures, and scaffolding that the
+    # tightened ruff rules don't fit; relaxations below.
+    "BLE001",  # blind-except in tests (acceptable in test infra)
+    "DOC201",  # missing return docstring (not enforced in tests)
+    "DOC202",  # extraneous return docstring
+    "DOC501",  # missing raises docstring
+    "INP001",  # implicit namespace packages: pytest discovery does not require __init__
+    "C901",    # complex parametrised tests
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+    "ERA001",  # commented-out scaffold in some test fixtures
 ]
 "__init__.py" = ["F401"]
 "scripts/**/*.py" = [
@@ -297,6 +343,43 @@ convention = "google"
     "PLC0415", # deferred imports in scripts
     "S603",    # subprocess calls expected in hook scripts
     "S607",    # partial executable paths (git, pytest, mypy)
+    # AST-walking gates branch widely over node types (high return and
+    # branch counts), and many hook scripts must not crash on unexpected
+    # input. New scripts must still adhere to good practice; the
+    # existing infra is exempt via the relaxations below.
+    "BLE001",  # blind-except acceptable in hook scripts that must not crash
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+    "ERA001",
+    "DOC201",
+    "DOC202",
+    "DOC501",
+    "D102",    # missing docstring on render() helper-dataclass methods is acceptable
+    "TC003",   # ModuleType imports used at runtime by importlib loaders
+    "TRY004",  # ValueError preferred for JSON validation messages
+    "INP001",  # scripts/ is intentionally a flat directory, not a package
+    "SIM108",  # ternary-vs-if-else: explicit form is sometimes clearer
+]
+# The src/synthorg/** tree carries function-level complexity that the
+# tightened thresholds catch but cannot resolve without a real
+# decomposition. The function-complexity items (C901, PLR0915, PLR0911,
+# PLR0912) measure structure that only a controller / service
+# decomposition can satisfy; the docstring items (DOC201/202/501) and
+# INP001 are documentation / packaging chores. Tracked separately in
+# the exemption ledger in docs/decisions/0006-tiered-module-size-policy.md.
+"src/synthorg/**/*.py" = [
+    "BLE001",  # broad-except boundary code (logger.exception sites)
+    "C901",    # complex-structure (function-level cyclomatic)
+    "PLR0911", # too-many-return-statements
+    "PLR0912", # too-many-branches
+    "PLR0915", # too-many-statements
+    "ERA001",  # commented-out code (cleanup in a dedicated docs sweep)
+    "INP001",  # implicit namespace packages (some directories lack __init__)
+    "DOC201",  # missing return docstring (covered in a dedicated docs sweep)
+    "DOC202",  # extraneous return docstring
+    "DOC501",  # missing raises docstring
 ]
 "src/synthorg/tools/browser/**/*.py" = [
     # The BrowserTool catches its own BrowserDomainError chain at the
@@ -345,7 +428,26 @@ warn_return_any = true
 warn_unused_configs = true
 warn_unreachable = true
 show_error_codes = true
-enable_error_code = ["ignore-without-code", "redundant-cast", "truthy-bool"]
+# Strict++ knobs. Per-package [[tool.mypy.overrides]] blocks below
+# relax flags for packages still carrying explicit ``Any`` and missing
+# ``@override``; the overrides ratchet off as each package's surface
+# code is typed more precisely.
+disallow_any_explicit = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+no_implicit_reexport = true
+extra_checks = true
+strict_concatenate = true
+enable_error_code = [
+    "ignore-without-code",
+    "redundant-cast",
+    "truthy-bool",
+    "narrowed-type-not-subtype",
+    "unused-awaitable",
+    "explicit-override",
+    "possibly-undefined",
+    "deprecated",
+]
 local_partial_types = true
 strict_bytes = true
 plugins = ["pydantic.mypy"]
@@ -410,10 +512,268 @@ ignore_missing_imports = true
 module = "synthorg.tools.html_parse_guard"
 warn_unused_ignores = false
 
+# ──────────────────────────────────────────────────────────────────────
+# Per-package mypy overrides for strict++ rollout. Each block absorbs
+# the explicit-Any volume and missing-@override sites that already
+# existed in a given package; the override lifts when the package's
+# surface code is decomposed and typed more precisely. The exemption
+# ledger in docs/decisions/0006-tiered-module-size-policy.md is the
+# authoritative catalogue of which override unlocks what.
+#
+# Order: keep alphabetised for grep-discoverability. Each block lists
+# only the flags / error codes actually firing.
+# ──────────────────────────────────────────────────────────────────────
+
+[[tool.mypy.overrides]]
+module = "synthorg.a2a.*"
+disallow_any_explicit = false
+
+[[tool.mypy.overrides]]
+module = "synthorg.api.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "possibly-undefined", "unused-awaitable"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.budget.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "unused-awaitable", "possibly-undefined"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.client.*"
+disallow_any_explicit = false
+
+[[tool.mypy.overrides]]
+module = "synthorg.communication.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "unused-awaitable"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.config.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.core.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.engine.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "possibly-undefined", "unused-awaitable"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.integrations.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "unused-awaitable"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.knowledge.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "unused-awaitable"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.memory.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "unused-awaitable"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.meta.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "unused-awaitable"]
+
+
+[[tool.mypy.overrides]]
+module = "synthorg.observability.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.ontology.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "unused-awaitable"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.persistence.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.providers.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "unused-awaitable"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.research.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.security.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "unused-awaitable"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.settings.*"
+disallow_any_explicit = false
+
+[[tool.mypy.overrides]]
+module = "synthorg.templates.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.tools.*"
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "unused-awaitable", "deprecated"]
+
+[[tool.mypy.overrides]]
+module = "synthorg.workers.*"
+disallow_any_explicit = false
+disable_error_code = ["unused-awaitable"]
+
+# Packages without explicit per-package overrides above that nonetheless
+# carry small amounts of pre-existing explicit-Any usage. Lifted alongside
+# the broader typing PRs.
+[[tool.mypy.overrides]]
+module = [
+    "synthorg.backup.*",
+    "synthorg.coordination.*",
+    "synthorg.docs_engine.*",
+    "synthorg.hr.*",
+    "synthorg.infrastructure.*",
+    "synthorg.notifications.*",
+    "synthorg.organization.*",
+]
+disallow_any_explicit = false
+disable_error_code = ["explicit-override", "unused-awaitable"]
+
+# Test code carries explicit Any (fixture types, parametrize values) and
+# missing @override (test subclasses) that does not block strict++ in
+# the source tree. Lifted only when the source code's typing stabilises
+# enough that test fixtures can re-tighten.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_any_explicit = false
+disallow_any_generics = false
+disable_error_code = [
+    "explicit-override",
+    "unused-awaitable",
+    "possibly-undefined",
+    "deprecated",
+]
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
+
+# ---------------------------------------------------------------------------
+# deptry: pyproject dependency hygiene
+# ---------------------------------------------------------------------------
+[tool.deptry]
+known_first_party = ["synthorg", "evals"]
+extend_exclude = [
+    "scripts",
+    "site",
+    "_audit",
+    "docker",
+    "docs",
+    "evals",
+    "tests",
+]
+package_module_name_map = { "pyjwt" = "jwt", "tree-sitter-language-pack" = "tree_sitter_language_pack" }
+
+[tool.deptry.per_rule_ignores]
+# DEP003: transitive imports. These packages are used directly today
+# but reach the project transitively through Litestar (uvicorn,
+# prometheus_client, annotated_types, referencing), httpx (httpcore),
+# mem0 (qdrant_client). Promoting them to direct dependencies is a
+# follow-up dependency-hygiene PR.
+DEP003 = [
+    "uvicorn",
+    "prometheus_client",
+    "annotated_types",
+    "httpcore",
+    "qdrant_client",
+    "referencing",
+]
+# DEP002: declared-but-not-imported. The mismatch is intentional for
+# transitive type-stub packages and optional runtime extras.
+DEP002 = [
+    "types-pyyaml",
+    "types-defusedxml",
+    "pre-commit-uv",
+    "psycopg",
+    "psycopg_pool",
+    "testcontainers",
+    "pdfplumber",
+    "tree-sitter",
+    "tree-sitter-language-pack",
+    "pip-audit",
+    "pytest-randomly",
+    "polyfactory",
+    "pytest-codspeed",
+    "pytest-cov",
+    "pytest-mock",
+    "pytest-repeat",
+    "pytest-timeout",
+    "pytest-xdist",
+    "pytest-asyncio",
+    "respx",
+    "hypothesis",
+    "bandit",
+    "commitizen",
+    "pre-commit",
+    "nats-py",
+    "torch",
+    "sentence-transformers",
+    "logfire",
+    "griffe-pydantic",
+    "mkdocs-d2-plugin",
+    "mkdocs-redirects",
+    "mkdocstrings",
+    "zensical",
+    "defusedxml",
+    "sqlglot",
+]
+
+# ---------------------------------------------------------------------------
+# vulture: dead-code detection
+# ---------------------------------------------------------------------------
+[tool.vulture]
+paths = ["src/synthorg"]
+min_confidence = 80
+ignore_names = [
+    "judge_agent_id",  # Protocol method param (conflict_resolution)
+    "agent_output",    # Protocol method param (hr/evaluation)
+    "ticket_uri",      # Protocol method param (knowledge/loaders)
+    "epoch",           # Training-loop counter referenced via tqdm callback
+    "tb",              # Context-manager __exit__ traceback
+    "exc_val",         # Context-manager __exit__ exception value
+    "exc_tb",          # Context-manager __exit__ traceback
+]
+
+# ---------------------------------------------------------------------------
+# interrogate: docstring coverage
+# ---------------------------------------------------------------------------
+[tool.interrogate]
+ignore-init-method = true
+ignore-init-module = true
+ignore-magic = true
+ignore-semiprivate = false
+ignore-private = true
+ignore-property-decorators = true
+ignore-module = false
+ignore-nested-functions = true
+ignore-nested-classes = true
+ignore-setters = true
+fail-under = 90
+exclude = ["build", "dist", ".venv", "tests", "evals"]
+verbose = 0
+quiet = false
+whitelist-regex = []
+ignore-regex = []
 
 # ---------------------------------------------------------------------------
 # pyright: IDE type checking only (not used in CI)

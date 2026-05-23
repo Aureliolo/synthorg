@@ -206,7 +206,7 @@ class RetentionManager:
             return None
 
     @staticmethod
-    def _load_archive_manifest(entry: Path) -> BackupManifest | None:  # noqa: PLR0911
+    def _load_archive_manifest(entry: Path) -> BackupManifest | None:
         """Load a manifest from a compressed tar.gz archive."""
         try:
             with tarfile.open(entry, "r:gz") as tar:

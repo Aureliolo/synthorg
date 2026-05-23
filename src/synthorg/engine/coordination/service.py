@@ -180,7 +180,7 @@ class MultiAgentCoordinator:
         # historical default) when no provider is supplied.
         self._default_topology_provider = default_topology_provider
 
-    async def coordinate(  # noqa: PLR0912, PLR0915, C901
+    async def coordinate(
         self,
         context: CoordinationContext,
     ) -> CoordinationResultWithAttribution:

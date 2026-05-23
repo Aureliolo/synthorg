@@ -123,7 +123,7 @@ def positive_int(raw: object) -> int | None:
     return candidate if candidate > 0 else None
 
 
-def load_baseline_snapshot(path: Path) -> BaselineSnapshot | None:  # noqa: C901
+def load_baseline_snapshot(path: Path) -> BaselineSnapshot | None:
     """Parse and validate the baseline file at *path*.
 
     Returns ``None`` only when the file does not exist (legitimate "no

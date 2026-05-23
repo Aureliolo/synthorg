@@ -382,7 +382,7 @@ class AppState(AppStateServicesMixin):
         "startup_time",
     )
 
-    def __init__(  # noqa: PLR0913, PLR0915
+    def __init__(  # noqa: PLR0913
         self,
         *,
         config: RootConfig,

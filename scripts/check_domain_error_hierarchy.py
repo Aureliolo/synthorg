@@ -155,7 +155,7 @@ def _build_alias_map(tree: ast.Module) -> dict[str, tuple[str, str | None]]:
     return aliases
 
 
-def _resolve_base(  # noqa: C901, PLR0911 -- AST base-class resolver covers Name, Attribute (head + dotted-tail), forbidden stdlib, alias-as-module, and aliased-symbol cases; collapsing the branches would obscure each case
+def _resolve_base(
     node: ast.expr,
     alias_map: dict[str, tuple[str, str | None]],
     current_module: str,
@@ -373,7 +373,7 @@ def _git_tracked_python_files(
     return [((project_root / rel_path), rel_path) for rel_path in paths]
 
 
-def _scan_tree(  # noqa: C901 -- two-pass closure + violation collection + drift detection
+def _scan_tree(
     project_root: Path,
     scan_root: Path,
     baseline: set[str] | None = None,

@@ -50,7 +50,7 @@ def extract_subworkflow_config(
     return subworkflow_id, version, ib, ob
 
 
-def _literal_matches_type(  # noqa: C901, PLR0911
+def _literal_matches_type(
     value: object,
     value_type: WorkflowValueType,
 ) -> bool:

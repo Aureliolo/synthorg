@@ -676,7 +676,7 @@ def _is_within(candidate: Path, root: Path) -> bool:
     return True
 
 
-def _revert_single_change(  # noqa: C901 -- linear branch tree per CodeOperation, splitting hides the parallel structure
+def _revert_single_change(
     change: CodeChange,
     path: Path,
     *,

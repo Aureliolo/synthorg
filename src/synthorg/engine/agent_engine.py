@@ -156,7 +156,7 @@ class AgentEngine(
 ):
     """Top-level orchestrator for agent execution."""
 
-    def __init__(  # noqa: PLR0913, PLR0915
+    def __init__(  # noqa: PLR0913
         self,
         *,
         provider: CompletionProvider,
@@ -379,7 +379,7 @@ class AgentEngine(
             return identity
         return identity.model_copy(update={"model": decision.selected_model})
 
-    async def run(  # noqa: PLR0913, C901
+    async def run(  # noqa: PLR0913
         self,
         *,
         identity: AgentIdentity,

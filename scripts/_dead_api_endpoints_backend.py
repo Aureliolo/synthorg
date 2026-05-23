@@ -122,7 +122,7 @@ def _resolve_string(node: ast.expr) -> str | None:
     return None
 
 
-def _decorator_method_and_path(  # noqa: C901, PLR0912 -- decorator-shape decision tree
+def _decorator_method_and_path(
     deco: ast.expr,
 ) -> tuple[str, str] | None:
     """Return ``(method, path)`` for an HTTP / WebSocket decorator.
@@ -280,7 +280,7 @@ def _resolve_imports(tree: ast.Module) -> dict[str, Path]:
 # ── Orchestration ──────────────────────────────────────────────
 
 
-def _walk_controller_module(  # noqa: C901 -- one branch per Controller / module-level / decorator shape
+def _walk_controller_module(
     module_path: Path,
     project_root: Path,
     api_prefix: str,

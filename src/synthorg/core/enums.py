@@ -1,3 +1,4 @@
+# module-kind: declarative
 """Domain enumerations for the SynthOrg framework."""
 
 from enum import StrEnum

@@ -109,7 +109,17 @@ jobs:
           # pyngrok (MIT), tokenizers (Apache-2.0), typer (MIT). All have null
           # SPDX metadata on PyPI but their upstream LICENSE files declare the
           # licenses listed; manually verified against each project's repo.
+          #
+          # codespell (GPL-2.0) and yamllint (GPL family): dev-time linters
+          # invoked only via pre-commit / pre-push hooks. Neither is imported
+          # by runtime synthorg code nor bundled into Docker images, so the
+          # GPL terms do not propagate to distributed artefacts. Exempting
+          # them here keeps the BUSL-1.1 / Apache-2.0 distribution clean
+          # while still allowing the modularity-gate quality tooling to run
+          # locally and in CI.
           allow-dependencies-licenses: >-
+            pkg:pypi/codespell@2.4.2,
+            pkg:pypi/yamllint@1.38.0,
             pkg:pypi/mem0ai@2.0.1,
             pkg:pypi/numpy@2.4.4,
             pkg:pypi/qdrant-client@1.17.1,

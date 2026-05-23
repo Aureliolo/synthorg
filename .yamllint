@@ -1,0 +1,38 @@
+# yamllint configuration: extends the default rule set with line-length
+# and document-start disabled (the project doesn't wrap YAML).
+
+extends: default
+
+rules:
+  line-length: disable
+  document-start: disable
+  # Windows checkouts mix CRLF / LF. Don't fail on platform-specific line
+  # endings; .gitattributes governs the canonical encoding.
+  new-lines: disable
+  truthy:
+    allowed-values: ['true', 'false', 'on', 'off']
+    check-keys: false
+  comments:
+    require-starting-space: false
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  braces:
+    max-spaces-inside: 1
+  brackets:
+    max-spaces-inside: 1
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+    check-multi-line-strings: false
+
+ignore: |
+  .venv/
+  node_modules/
+  dist/
+  build/
+  htmlcov/
+  src/synthorg/tools/browser/_vendor/
+  src/synthorg/templates/
+  web/dist/
+  site/
+  _audit/

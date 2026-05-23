@@ -238,7 +238,7 @@ class DataAggregatorTool(BaseAnalyticsTool):
 
         return None
 
-    async def execute(  # noqa: PLR0911
+    async def execute(
         self,
         *,
         arguments: dict[str, Any],

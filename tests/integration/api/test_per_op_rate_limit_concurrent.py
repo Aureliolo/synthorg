@@ -270,7 +270,7 @@ class TestRateLimitMetaTriggerCycle:
 class TestConcurrencyGuardAgainstFinetunePreflight:
     """5 concurrent POSTs to a concurrency-guarded op yield 1 ok + 4 denied."""
 
-    def test_inflight_cap_fires_5002(  # noqa: C901 -- barrier orchestration
+    def test_inflight_cap_fires_5002(
         self,
         fake_persistence: FakePersistenceBackend,
         fake_message_bus: FakeMessageBus,

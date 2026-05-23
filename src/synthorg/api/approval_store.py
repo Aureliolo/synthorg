@@ -308,7 +308,7 @@ class ApprovalStore(ApprovalExpirationMixin):
                 action_type=action_type,
             )
 
-    async def _list_from_repo(  # noqa: C901, PLR0912
+    async def _list_from_repo(
         self,
         *,
         status: ApprovalStatus | None,

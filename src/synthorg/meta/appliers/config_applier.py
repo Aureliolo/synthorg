@@ -113,7 +113,7 @@ class ConfigApplier:
                 changes_applied=0,
             )
 
-    async def dry_run(  # noqa: C901
+    async def dry_run(
         self,
         proposal: ImprovementProposal,
     ) -> ApplyResult:

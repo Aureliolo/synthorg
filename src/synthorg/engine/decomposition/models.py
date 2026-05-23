@@ -246,7 +246,7 @@ class SubtaskStatusRollup(BaseModel):
         description="Derived parent task status from subtask statuses",
     )
     @property
-    def derived_parent_status(self) -> TaskStatus:  # noqa: PLR0911
+    def derived_parent_status(self) -> TaskStatus:
         """Derive the parent task status from subtask statuses."""
         if self.total == 0:
             return TaskStatus.CREATED

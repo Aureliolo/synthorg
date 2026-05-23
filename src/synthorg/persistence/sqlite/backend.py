@@ -215,7 +215,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         config: SQLite-specific configuration.
     """
 
-    def __init__(self, config: SQLiteConfig) -> None:  # noqa: PLR0915 -- repo registry setup intentionally enumerates every attribute
+    def __init__(self, config: SQLiteConfig) -> None:
         self._config = config
         self._lifecycle_lock = asyncio.Lock()
         # Serializes multi-statement transactions on the single
@@ -297,7 +297,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         self._oauth_states: SQLiteOAuthStateRepository | None = None
         self._webhook_receipts: SQLiteWebhookReceiptRepository | None = None
 
-    def _clear_state(self) -> None:  # noqa: PLR0915 -- repo registry reset intentionally enumerates every attribute
+    def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
         self._db = None
         self._artifacts = None
@@ -454,7 +454,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         async with self._write_lock:
             yield
 
-    def _create_repositories(self) -> None:  # noqa: PLR0915
+    def _create_repositories(self) -> None:
         """Instantiate all repository objects from the active connection."""
         assert self._db is not None  # noqa: S101
         self._artifacts = SQLiteArtifactRepository(

@@ -1,0 +1,13 @@
+# Frozen baseline of pre-existing import cycles in src/synthorg/.
+# Each line is `mod_a -> mod_b -> ... -> mod_a`, sorted by the
+# lexicographically smallest module in the cycle.
+#
+# scripts/check_no_circular_imports.py reads this file to suppress
+# violations at these exact cycles. New cycles NOT in this list
+# will fail the pre-push hook.
+#
+# Regenerate (rare; requires explicit user approval) by calling
+# write_baseline() via the gate's Python API.
+synthorg.memory -> synthorg.memory.retriever
+synthorg.observability -> synthorg.observability.correlation
+synthorg.persistence -> synthorg.persistence.factory -> synthorg.persistence.sqlite.backend

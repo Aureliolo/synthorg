@@ -459,7 +459,7 @@ def _print_policy_summary(count: int) -> None:
     )
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0912 -- CLI entry point with distinct exit-code branches (argv / policy / I/O)
+def main(argv: list[str] | None = None) -> int:
     """CLI entry point.
 
     Exit codes:

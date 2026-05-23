@@ -377,7 +377,7 @@ def _ok(
     )
 
 
-async def validate_url_host(  # noqa: PLR0911, PLR0912, C901
+async def validate_url_host(
     url: str,
     policy: NetworkPolicy,
 ) -> str | DnsValidationOk:

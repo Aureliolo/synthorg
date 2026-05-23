@@ -99,7 +99,7 @@ class LLMQuerySpecificReranker:
         self._cache = cache
         self._cost_tracker = cost_tracker
 
-    async def rerank(  # noqa: C901
+    async def rerank(
         self,
         query: RetrievalQuery,
         candidates: tuple[RetrievalCandidate, ...],

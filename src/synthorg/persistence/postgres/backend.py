@@ -315,7 +315,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         config: Postgres-specific configuration.
     """
 
-    def __init__(self, config: PostgresConfig) -> None:  # noqa: PLR0915 -- repo registry setup intentionally enumerates every attribute
+    def __init__(self, config: PostgresConfig) -> None:
         self._config = config
         self._lifecycle_lock = asyncio.Lock()
         self._pool: AsyncConnectionPool | None = None
@@ -387,7 +387,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._fine_tune_runs: PostgresFineTuneRunRepository | None = None
         self._fine_tune_checkpoints: PostgresFineTuneCheckpointRepository | None = None
 
-    def _clear_state(self) -> None:  # noqa: PLR0915 -- repo registry reset intentionally enumerates every attribute
+    def _clear_state(self) -> None:
         """Reset pool and repository references to ``None``."""
         self._pool = None
         self._artifacts = None
@@ -453,7 +453,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         self._oauth_states = None
         self._webhook_receipts = None
 
-    def _create_repositories(self) -> None:  # noqa: PLR0915
+    def _create_repositories(self) -> None:
         """Instantiate all repository objects from the active pool."""
         assert self._pool is not None  # noqa: S101
         pool = self._pool

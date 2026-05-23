@@ -99,7 +99,7 @@ def _resolve_expression(
     return expression
 
 
-def _validate_value_type(  # noqa: C901, PLR0911, PLR0912
+def _validate_value_type(
     name: str,
     value: object,
     expected: WorkflowValueType,
