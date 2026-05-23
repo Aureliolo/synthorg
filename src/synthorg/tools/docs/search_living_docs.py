@@ -27,6 +27,7 @@ from synthorg.tools.docs._args import SearchLivingDocsArgs
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
+    from synthorg.docs_engine.models import DocSearchHit
     from synthorg.docs_engine.service import DocsService
 
 logger = get_logger(__name__)
@@ -128,7 +129,7 @@ class SearchLivingDocsTool(BaseTool):
         )
 
 
-def _format_hits(hits: tuple) -> str:  # type: ignore[type-arg] -- runtime tuple of DocSearchHit
+def _format_hits(hits: tuple[DocSearchHit, ...]) -> str:
     if not hits:
         return "No matching living docs for this project."
     lines: list[str] = []

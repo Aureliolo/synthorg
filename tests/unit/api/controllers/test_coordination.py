@@ -59,7 +59,7 @@ def _insert_task(task_engine: TaskEngine, *, task_id: str = _TEST_TASK_ID) -> st
     # internal ``_tasks`` dict is the in-memory store coordinator's
     # ``get_task`` reads through.
     repo = persistence.tasks
-    repo._tasks[task.id] = task  # type: ignore[attr-defined] -- fake repo
+    repo._tasks[task.id] = task  # type: ignore[attr-defined]  # fake repo
     return task.id
 
 

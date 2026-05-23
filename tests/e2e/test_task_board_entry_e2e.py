@@ -349,7 +349,7 @@ async def test_board_filing_propagates_memory_error(
 
     with pytest.raises(MemoryError, match="simulated OOM"):
         await process_task_board_pipeline(
-            adapter=_OOMAdapter(),  # type: ignore[arg-type] -- test seam
+            adapter=_OOMAdapter(),  # type: ignore[arg-type]  # test seam
             filing=filing,
         )
 
