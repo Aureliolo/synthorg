@@ -12,11 +12,10 @@ export default {
       },
     },
     assert: {
-      // EPIC #2046 PR 1 (issue #2047): aggressive budget.
+      // Aggressive performance / a11y / best-practices / SEO budget.
       // perf >= 0.90, a11y >= 0.95, best-practices >= 0.90, seo >= 0.90.
       // Web Vitals: CLS <= 0.05, LCP <= 2.5s, TBT <= 300ms.
-      // Hard-blocking from day one. If today's dashboard fails, the web
-      // perf fixes ship in this PR.
+      // Hard-blocking from day one.
       assertions: {
         'categories:performance': ['error', { minScore: 0.9 }],
         'categories:accessibility': ['error', { minScore: 0.95 }],

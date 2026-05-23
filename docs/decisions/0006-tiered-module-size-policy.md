@@ -191,8 +191,9 @@ feature isolation).
 
 ### New docs / SQL / YAML tools
 
-`lychee` (Markdown link check), `vale` (Google style + British
-dictionary), `markdownlint`, `yamllint`.
+Landed: `markdownlint`, `yamllint`, `sqlfluff`. Deferred (see Exemption
+ledger): `lychee` (Markdown link check) and `vale` (Google style +
+British dictionary).
 
 ## Consequences
 

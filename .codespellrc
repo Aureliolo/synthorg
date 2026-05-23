@@ -1,5 +1,5 @@
 [codespell]
-# EPIC #2046 PR 1 (issue #2047): spelling gate.
+# Codespell configuration: project-wide spelling gate.
 # Skip generated, vendored, and binary content.
 skip = .venv,.git,.mypy_cache,.ruff_cache,.pytest_cache,node_modules,build,dist,htmlcov,.coverage,*.lock,*.png,*.svg,*.jpg,*.jpeg,*.ico,*.gif,*.webp,*.pdf,*.bin,*_pb2.py,*.gen.*,*.min.js,_vendor,web/dist,web/build,site,_audit,*.svg.gz,scripts/_codespell_baseline.txt,web/package-lock.json,uv.lock
 # Project-specific vocabulary that must not be flagged as typos.

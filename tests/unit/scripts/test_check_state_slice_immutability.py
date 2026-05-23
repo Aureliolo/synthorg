@@ -1,7 +1,7 @@
 """Unit tests for ``scripts/check_state_slice_immutability.py``.
 
-The gate is empty-baseline today (state slices land in PR 2). These
-tests exercise the synthetic-input pass/fail behaviour.
+The gate ships with an empty baseline; these tests exercise the
+synthetic-input pass / fail behaviour on tmp_path trees.
 """
 
 import importlib.util

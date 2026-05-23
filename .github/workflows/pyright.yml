@@ -1,10 +1,9 @@
 name: Pyright
 
-# EPIC #2046 PR 1 (issue #2047): second type-checker. Mypy is
-# authoritative (pre-push gate); Pyright runs here as a CI artefact so
-# its narrowing / generics / overload findings are surfaced without
-# blocking. Promote to blocking once disagreements with mypy are
-# resolved in a follow-up typing PR.
+# Second type-checker. Mypy is authoritative (pre-push gate); Pyright
+# runs here as a CI artefact so its narrowing / generics / overload
+# findings are surfaced without blocking. Promote to blocking once
+# disagreements with mypy are resolved.
 
 on:
   pull_request:

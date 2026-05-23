@@ -37,7 +37,7 @@ _GATE: Any = cast("Any", _load_gate())
 
 
 def test_allowlist_contains_expected_modules() -> None:
-    """The seven modules from EPIC #2046 PR 1 must be in the allowlist."""
+    """All seven allowlisted god-modules (api/app.py, api/state.py, ...) are present."""
     expected = {
         "src/synthorg/api/app.py",
         "src/synthorg/api/state.py",

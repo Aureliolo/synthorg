@@ -95,10 +95,9 @@ mandatory_rules:
     file: CLAUDE.md
     header: Module-Size Budget
     gate: scripts/check_module_size_budget.py
-    # Sibling gates landing in EPIC #2046 PR 1 (issue #2047) and
-    # documented in docs/reference/convention-gates.md but not
-    # independently mapped here (the inventory tracks one primary gate
-    # per MANDATORY paragraph):
+    # Sibling gates documented in docs/reference/convention-gates.md
+    # but not independently mapped here (the inventory tracks one
+    # primary gate per MANDATORY paragraph):
     #
     #   scripts/check_no_growth_in_god_modules.py
     #     - operational corollary of the size budget: explicit

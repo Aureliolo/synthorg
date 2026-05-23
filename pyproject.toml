@@ -137,13 +137,13 @@ dev = [
     "types-defusedxml==0.7.0.20260504",
     "bandit==1.9.4",
     "pytest-randomly==4.1.0",
-    # EPIC #2046 PR 1: second type-checker. Runs as a CI artefact via
+    # Second type-checker. Runs as a CI artefact via
     # .github/workflows/pyright.yml (continue-on-error: true). No
     # pre-push gate. Mypy remains authoritative.
     "pyright==1.1.409",
-    # EPIC #2046 PR 1 quality tools (issue #2047). Each ships with a
-    # baseline absorbing today's reality so existing code passes; the
-    # baselines shrink monotonically.
+    # Quality tools: dependency hygiene, dead-code, docstring coverage,
+    # spelling, SQL and YAML lint. Each ships with a baseline absorbing
+    # today's reality so existing code passes; baselines ratchet shrink.
     "deptry==0.25.1",
     "vulture==2.16",
     "interrogate==1.7.0",
@@ -295,10 +295,10 @@ extend-select = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
-# EPIC #2046 PR 1: tightened thresholds. Defaults are too permissive for
-# AI-generated code which trends toward god-functions when unbounded.
-# Functions / methods exceeding these caps usually signal a missing
-# decomposition into helpers or per-strategy variants.
+# Pylint thresholds: defaults are too permissive for AI-generated code
+# which trends toward god-functions when unbounded. Functions or methods
+# exceeding these caps usually signal a missing decomposition into
+# helpers or per-strategy variants.
 [tool.ruff.lint.pylint]
 max-args = 5
 max-public-methods = 12
@@ -323,7 +323,8 @@ max-complexity = 8
     "SLF001",  # private member access in tests
     "PLC0415", # local imports in test functions
     "TC",      # type-checking imports (fixture type hints)
-    # EPIC #2046 PR 1: tests are not yet covered by these tightened rules.
+    # Tests carry parametrize values, fixtures, and scaffolding that the
+    # tightened ruff rules don't fit; relaxations below.
     "BLE001",  # blind-except in tests (acceptable in test infra)
     "DOC201",  # missing return docstring (not enforced in tests)
     "DOC202",  # extraneous return docstring
@@ -342,9 +343,10 @@ max-complexity = 8
     "PLC0415", # deferred imports in scripts
     "S603",    # subprocess calls expected in hook scripts
     "S607",    # partial executable paths (git, pytest, mypy)
-    # EPIC #2046 PR 1: scripts/ infra patterns. AST gates branch widely
-    # over node types (high return / branch counts). New scripts MUST
-    # adhere to good practice; existing infra is exempt.
+    # AST-walking gates branch widely over node types (high return and
+    # branch counts), and many hook scripts must not crash on unexpected
+    # input. New scripts must still adhere to good practice; the
+    # existing infra is exempt via the relaxations below.
     "BLE001",  # blind-except acceptable in hook scripts that must not crash
     "C901",
     "PLR0911",
@@ -360,21 +362,22 @@ max-complexity = 8
     "INP001",  # scripts/ is intentionally a flat directory, not a package
     "SIM108",  # ternary-vs-if-else: explicit form is sometimes clearer
 ]
-# EPIC #2046 PR 1: tightened thresholds absorb existing src/synthorg
-# technical debt via these per-file-ignores. PRs 2/3/4 decompose god-
-# modules and lift these rules per refactored package. The bigger
-# rule-count items (C901, PLR0915, PLR0911, PLR0912) measure function-
-# level complexity that requires the controller / service decomposition
-# in PR 3 / PR 4 before the source code can satisfy them.
+# The src/synthorg/** tree carries function-level complexity that the
+# tightened thresholds catch but cannot resolve without a real
+# decomposition. The function-complexity items (C901, PLR0915, PLR0911,
+# PLR0912) measure structure that only a controller / service
+# decomposition can satisfy; the docstring items (DOC201/202/501) and
+# INP001 are documentation / packaging chores. Tracked separately in
+# the exemption ledger in docs/decisions/0006-tiered-module-size-policy.md.
 "src/synthorg/**/*.py" = [
     "BLE001",  # broad-except boundary code (logger.exception sites)
-    "C901",    # complex-structure (function-level cyclomatic) - PR 3/4
-    "PLR0911", # too-many-return-statements - PR 3/4
-    "PLR0912", # too-many-branches - PR 3/4
-    "PLR0915", # too-many-statements - PR 3/4
-    "ERA001",  # commented-out code (cleanup in dedicated docs PR)
+    "C901",    # complex-structure (function-level cyclomatic)
+    "PLR0911", # too-many-return-statements
+    "PLR0912", # too-many-branches
+    "PLR0915", # too-many-statements
+    "ERA001",  # commented-out code (cleanup in a dedicated docs sweep)
     "INP001",  # implicit namespace packages (some directories lack __init__)
-    "DOC201",  # missing return docstring (covered later in docs PRs)
+    "DOC201",  # missing return docstring (covered in a dedicated docs sweep)
     "DOC202",  # extraneous return docstring
     "DOC501",  # missing raises docstring
 ]
@@ -425,9 +428,10 @@ warn_return_any = true
 warn_unused_configs = true
 warn_unreachable = true
 show_error_codes = true
-# EPIC #2046 PR 1 strict++ knobs. Per-package [[tool.mypy.overrides]]
-# blocks below relax flags for legacy packages still carrying `Any`;
-# later typing PRs lift the overrides one package at a time.
+# Strict++ knobs. Per-package [[tool.mypy.overrides]] blocks below
+# relax flags for packages still carrying explicit ``Any`` and missing
+# ``@override``; the overrides ratchet off as each package's surface
+# code is typed more precisely.
 disallow_any_explicit = true
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -509,11 +513,12 @@ module = "synthorg.tools.html_parse_guard"
 warn_unused_ignores = false
 
 # ──────────────────────────────────────────────────────────────────────
-# EPIC #2046 PR 1: strict++ rollout. Per-package overrides absorb the
-# Any-volume and missing-@override sites that already existed. Each
-# block is its own technical-debt entry: later PRs (typing backfills,
-# PR 3 controller decomposition, PR 4 architectural feedback) lift
-# the override when the package's surface code is decomposed.
+# Per-package mypy overrides for strict++ rollout. Each block absorbs
+# the explicit-Any volume and missing-@override sites that already
+# existed in a given package; the override lifts when the package's
+# surface code is decomposed and typed more precisely. The exemption
+# ledger in docs/decisions/0006-tiered-module-size-policy.md is the
+# authoritative catalogue of which override unlocks what.
 #
 # Order: keep alphabetised for grep-discoverability. Each block lists
 # only the flags / error codes actually firing.

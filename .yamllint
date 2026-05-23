@@ -1,6 +1,5 @@
-# EPIC #2046 PR 1 (issue #2047): YAML lint configuration.
-# Extends the default rule set with line-length and document-start
-# disabled (the project doesn't wrap YAML).
+# yamllint configuration: extends the default rule set with line-length
+# and document-start disabled (the project doesn't wrap YAML).
 
 extends: default
 

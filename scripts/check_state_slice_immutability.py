@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """State-slice-immutability gate.
 
-PR 2 introduces ``BaseFeatureStateSlice`` (frozen Pydantic) and decomposes
-``api/state.py``'s god-attribute-bag into per-feature slices. Each slice
-must be FROZEN and reject EXTRA fields so controllers can't mutate state
-through the slice handle.
+State slices are per-feature frozen Pydantic models that decompose
+``api/state.py``'s god-attribute-bag. Each slice must be FROZEN and
+reject EXTRA fields so controllers cannot mutate state through the
+slice handle.
 
-This gate ships in PR 1 so PR 2 cannot land slices that violate the
-contract. Today the codebase has no slices; the empty baseline lets
-the gate run cleanly from merge.
+The gate runs against today's tree with an empty baseline; new slices
+introduced anywhere in ``src/synthorg/`` must satisfy the contract.
 
 Detection: any class whose name ends in ``StateSlice`` OR whose base
 list includes a name in :data:`_SLICE_BASE_NAMES` must declare::
@@ -18,8 +17,8 @@ list includes a name in :data:`_SLICE_BASE_NAMES` must declare::
 Anything else (missing ``model_config``, ``frozen=False``,
 ``extra="allow"``/``"ignore"``, missing one of the keys) fails the gate.
 
-Existing offenders absorbed via
-``scripts/_state_slice_immutability_baseline.txt`` (empty in PR 1).
+Pre-existing offenders are absorbed via the frozen baseline at
+``scripts/_state_slice_immutability_baseline.txt``.
 
 Usage::
 

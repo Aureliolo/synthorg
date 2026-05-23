@@ -7,8 +7,8 @@ Protocol, not the concrete class. Concrete-impl annotations defeat
 dependency inversion: they couple the consumer to the specific impl
 and prevent swapping via configuration.
 
-Detection (heuristic for PR 1; the full architectural-feedback version
-lands in PR 4):
+Detection (heuristic; a richer architectural-feedback variant may
+supersede this once it lands):
 
 1. Walk ``src/synthorg/`` for calls matching
    ``<Anything>.register(...)`` / ``register_strategy(...)`` /

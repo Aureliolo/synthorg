@@ -1,4 +1,4 @@
-# EPIC #2046 PR 1 (issue #2047): SQL lint for revision files.
+# sqlfluff configuration: SQL lint for migration revision files.
 #
 # Two dialects: SQLite migrations under persistence/sqlite/revisions/
 # and Postgres migrations under persistence/postgres/revisions/. The

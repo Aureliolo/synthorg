@@ -97,11 +97,10 @@ export default tseslint.config(
         'error',
         { checksVoidReturn: { attributes: false } },
       ],
-      // EPIC #2046 PR 1 (issue #2047): tier-matched function / file
-      // size and complexity caps. Mirrors the Python pylint thresholds
-      // (max-args 5, max-statements 30, max-complexity 8) and the
-      // module-size tier table from docs/decisions/0006-tiered-
-      // module-size-policy.md.
+      // Tier-matched function / file size and complexity caps. Mirrors
+      // the Python pylint thresholds (max-args 5, max-statements 30,
+      // max-complexity 8) and the module-size tier table from
+      // docs/decisions/0006-tiered-module-size-policy.md.
       complexity: ['error', 8],
       'max-lines': [
         'error',
@@ -140,13 +139,12 @@ export default tseslint.config(
     },
   },
   {
-    // EPIC #2046 PR 1: existing src/ files exceed the new caps in 500+
-    // sites. Mirroring the Python ruff per-file-ignore pattern for
-    // src/synthorg/**, the same rules are absorbed here until later
-    // decomposition PRs (controllers, store slicing) bring the surface
-    // under the tier limits. New components landing in clean modules
-    // can re-enable locally; PR 1's role is to declare the cap, not
-    // fix every existing violation.
+    // Existing src/ files exceed the new caps in 500+ sites. Mirroring
+    // the Python ruff per-file-ignore pattern for src/synthorg/**, the
+    // same rules are absorbed here until later decomposition (controllers,
+    // store slicing) brings the surface under the tier limits. New
+    // components landing in clean modules can re-enable locally; the
+    // top-level config block declares the cap globally.
     files: ['src/**/*.{ts,tsx}'],
     rules: {
       complexity: 'off',
