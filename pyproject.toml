@@ -88,6 +88,11 @@ test = [
     "pytest-repeat==0.9.4",
     "pytest-timeout==2.4.0",
     "pytest-xdist==3.8.0",
+    # CI matrix sharding of unit + integration test arms. Partitions tests by
+    # recorded durations in `.test_durations.{unit,integration}` so each shard
+    # ends within ~10% wall-clock of the slowest peer. Falls back to count-based
+    # partition when the durations file is empty.
+    "pytest-split==0.11.0",
     "polyfactory==3.3.0",
     "respx==0.23.1",
     "hypothesis==6.152.9",

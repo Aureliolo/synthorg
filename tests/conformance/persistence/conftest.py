@@ -46,6 +46,8 @@ from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.postgres.backend import PostgresPersistenceBackend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from tests._shared.postgres_proxy import PostgresContainerProxy
+from tests._shared.postgres_proxy import from_env as _proxy_from_env
 
 logger = get_logger(__name__)
 
@@ -91,41 +93,6 @@ def _docker_available() -> bool:
     except Exception:
         return False
     return True
-
-
-class _PostgresContainerProxy:
-    """Connection-info handle for a Postgres container shared across xdist workers.
-
-    Exposes the subset of the ``testcontainers.postgres.PostgresContainer``
-    surface this conftest actually consumes (``get_container_host_ip``,
-    ``get_exposed_port``, ``username``, ``password``, ``dbname``). Holding
-    a proxy rather than the real ``PostgresContainer`` object lets every
-    xdist worker treat the container as an opaque dependency without
-    each worker carrying its own per-process Docker SDK handle.
-    """
-
-    __slots__ = ("_host", "_port", "dbname", "password", "username")
-
-    def __init__(
-        self,
-        *,
-        host: str,
-        port: int,
-        username: str,
-        password: str,
-        dbname: str,
-    ) -> None:
-        self._host = host
-        self._port = port
-        self.username = username
-        self.password = password
-        self.dbname = dbname
-
-    def get_container_host_ip(self) -> str:
-        return self._host
-
-    def get_exposed_port(self, _internal_port: int) -> str:
-        return str(self._port)
 
 
 def _stop_container_by_id(container_id: str) -> None:
@@ -279,7 +246,7 @@ def _release_shared_postgres(state_file: Path) -> None:
 def postgres_container(
     tmp_path_factory: pytest.TempPathFactory,
     worker_id: str,
-) -> Iterator[_PostgresContainerProxy]:
+) -> Iterator[PostgresContainerProxy]:
     """Yield ONE Postgres 18 container shared across every xdist worker.
 
     The first worker to acquire the inter-process ``FileLock`` starts
@@ -297,7 +264,20 @@ def postgres_container(
     the container, it records the failure in the state file so peers
     skip cleanly too (rather than each peer trying the same start in
     sequence and emitting 8 different skip reasons).
+
+    In CI ``services: postgres`` exposes a server-managed instance via
+    ``SYNTHORG_TEST_POSTGRES_HOST`` / ``PORT`` / ``USER`` / ``PASSWORD``
+    / ``DB``; when those env vars are set the testcontainers start-up
+    dance is skipped entirely and a proxy built directly from env is
+    yielded. Per-test database isolation still works because the
+    ``backend`` fixture creates a unique ``test_<uuid>`` DB on the
+    shared server.
     """
+    env_proxy = _proxy_from_env()
+    if env_proxy is not None:
+        yield env_proxy
+        return
+
     if not _docker_available():
         pytest.skip("Docker is required for the postgres conformance arm")
 
@@ -317,7 +297,7 @@ def postgres_container(
     with FileLock(lock_path, timeout=lock_timeout):
         data = _acquire_shared_postgres(state_file)
 
-    proxy = _PostgresContainerProxy(
+    proxy = PostgresContainerProxy(
         host=data["host"],
         port=data["port"],
         username=data["username"],
@@ -331,7 +311,7 @@ def postgres_container(
             _release_shared_postgres(state_file)
 
 
-def _container_host_ipv4(container: _PostgresContainerProxy) -> str:
+def _container_host_ipv4(container: PostgresContainerProxy) -> str:
     """Return the container's host as an IPv4 literal.
 
     ``PostgresContainer.get_container_host_ip()`` returns ``"localhost"``
@@ -348,7 +328,7 @@ def _container_host_ipv4(container: _PostgresContainerProxy) -> str:
 
 
 async def _create_postgres_backend(
-    container: _PostgresContainerProxy,
+    container: PostgresContainerProxy,
     db_name: str,
 ) -> PostgresPersistenceBackend:
     """Create a test database on *container* and return a migrated backend.
@@ -402,7 +382,7 @@ async def _create_postgres_backend(
 
 
 async def _drop_postgres_database(
-    container: _PostgresContainerProxy,
+    container: PostgresContainerProxy,
     db_name: str,
 ) -> None:
     """Terminate remaining sessions on *db_name* and drop it."""
