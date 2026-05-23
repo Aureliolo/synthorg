@@ -559,6 +559,15 @@ def _session_needs_postgres(session: pytest.Session) -> bool:
     """
     if os.environ.get("SYNTHORG_TEST_POSTGRES_HOST"):
         return True
+    # ``-k "not postgres"`` is an explicit "deselect all postgres
+    # parametrisations" signal -- the conformance-sqlite CI job uses
+    # exactly this to run only the sqlite arm of the dual-backend
+    # ``backend`` fixture. Pre-acquiring a postgres testcontainer
+    # there is wasted work AND introduces FileLock contention that
+    # blocks the migrated_db builder for a multi-process xdist run.
+    keywordexpr = str(getattr(session.config.option, "keyword", "") or "").lower()
+    if "not postgres" in keywordexpr:
+        return False
     markexpr = str(getattr(session.config.option, "markexpr", "") or "").lower()
     if "integration" in markexpr or "e2e" in markexpr:
         return True
@@ -954,10 +963,24 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     lock_path = shared_dir / "template.lock"
     from filelock import FileLock
 
+    # Fast path: template already built by another process. Skip the
+    # FileLock acquire entirely -- a 5-process xdist session would
+    # otherwise serialise all 5 processes behind the lock just to
+    # confirm the file exists, and any one of them stalling
+    # (e.g. master holding the lock for its 30+s sysmon-instrumented
+    # yoyo build) blocks the others up to ``_FILE_LOCK_TIMEOUT_SECONDS``.
+    # The existence check is a read-only stat; concurrent readers do
+    # not race because we never PARTIAL-WRITE the template file (the
+    # build below writes to a temp path implicit in migrate_apply and
+    # the SQLite file rename is atomic).
+    if await asyncio.to_thread(db_path.exists):
+        _TEMPLATE_DB = db_path
+        return _TEMPLATE_DB
+
     # ``FileLock`` is sync; ``asyncio.to_thread`` keeps the event loop
     # responsive while waiting for the cross-worker lock. Generation
-    # itself only happens once per session; subsequent workers find
-    # the file already present and skip the migrate_apply call.
+    # itself only happens once per session; the lock serialises only
+    # the builders (not the readers above).
     def _acquire() -> FileLock:
         lock = FileLock(str(lock_path), timeout=_FILE_LOCK_TIMEOUT_SECONDS)
         lock.acquire()
@@ -966,6 +989,9 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     global _template_build_secs  # noqa: PLW0603
     lock = await asyncio.to_thread(_acquire)
     try:
+        # Re-check existence under the lock: another worker may have
+        # built it between our fast-path check above and our acquire
+        # below.
         if not await asyncio.to_thread(db_path.exists):
             build_start = time.monotonic()
             rev_path = migrations.copy_revisions(shared_dir / "revisions")
