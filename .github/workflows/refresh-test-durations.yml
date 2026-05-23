@@ -55,10 +55,26 @@ jobs:
       SYNTHORG_TEST_POSTGRES_PASSWORD: synthorg-test
       SYNTHORG_TEST_POSTGRES_DB: synthorg
     steps:
+      # Pin to ``main`` rather than ``github.sha`` so a workflow_dispatch
+      # from an arbitrary branch (e.g. a developer running the
+      # "Refresh Test Durations" button from a feature branch's tag
+      # picker) does not base the bot PR on that branch's HEAD; the
+      # durations file MUST track main, not whatever ref happened to
+      # trigger the run.
       - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
         with:
-          ref: ${{ github.sha }}
+          ref: refs/heads/main
           persist-credentials: false
+
+      # Capture the actual checked-out main HEAD as the immutable base
+      # SHA for the bot PR. github.sha is the dispatch ref; that ref
+      # could be a feature branch on workflow_dispatch, which would
+      # produce a PR whose base SHA points into unrelated branch
+      # history.
+      - name: Capture main HEAD as PR base SHA
+        id: base
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/setup-python-uv
 
@@ -134,7 +150,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ci/refresh-test-durations
-          BASE_SHA: ${{ github.sha }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
           CHANGED_FILES: ${{ steps.diff.outputs.files }}
         run: |
           set -euo pipefail
