@@ -27,6 +27,7 @@ env/
 .ruff_cache/
 .pytest_cache/
 .hypothesis/
+.lycheecache
 
 # Coverage
 htmlcov/

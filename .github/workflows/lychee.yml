@@ -1,0 +1,75 @@
+name: Link Check (lychee)
+
+# Markdown link-checker for README, every CLAUDE.md tier, and every
+# Markdown under docs/. Configured via ``lychee.toml`` at the repo root,
+# which is the same source of truth the local pre-push hook consumes.
+# Strict preset: any non-200 response fails the run (rate-limit and
+# anti-bot hosts are excluded by ``lychee.toml``).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "CLAUDE.md"
+      - "cli/CLAUDE.md"
+      - "web/CLAUDE.md"
+      - "docs/**/*.md"
+      - ".github/workflows/lychee.yml"
+      - "lychee.toml"
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "CLAUDE.md"
+      - "cli/CLAUDE.md"
+      - "web/CLAUDE.md"
+      - "docs/**/*.md"
+      - ".github/workflows/lychee.yml"
+      - "lychee.toml"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lychee:
+    name: lychee
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@31a45a7083a7244c27b6f745dd79d35b526741fd
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Restore lychee cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .lycheecache
+          key: cache-lychee-${{ github.sha }}
+          restore-keys: cache-lychee-
+
+      - name: Run lychee
+        uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2.8.0
+        with:
+          # renovate: datasource=github-releases depName=lycheeverse/lychee
+          version: v0.24.2
+          args: >-
+            --config lychee.toml
+            --no-progress
+            './README.md'
+            './CLAUDE.md'
+            './cli/CLAUDE.md'
+            './web/CLAUDE.md'
+            './docs/**/*.md'
+          fail: true
+        env:
+          # Authenticated GitHub requests get a higher rate-limit budget,
+          # which matters because docs reference many github.com URLs.
+          GITHUB_TOKEN: ${{ github.token }}

@@ -14,7 +14,7 @@ sources:
   - "https://docs.fireworks.ai"
   - "https://platform.moonshot.ai"
   - "https://platform.deepseek.com"
-  - "https://dashscope.aliyuncs.com"
+  - "https://www.alibabacloud.com/help/en/model-studio"
   - "https://docs.cohere.com"
   - "https://docs.perplexity.ai"
   - "https://inference-docs.cerebras.ai"
@@ -310,7 +310,7 @@ Primary sources, retrieved 2026-04-27:
 11. [Fireworks AI docs](https://docs.fireworks.ai)
 12. [Moonshot AI platform](https://platform.moonshot.ai)
 13. [DeepSeek platform](https://platform.deepseek.com)
-14. [Alibaba DashScope](https://dashscope.aliyuncs.com)
+14. [Alibaba DashScope](https://www.alibabacloud.com/help/en/model-studio)
 15. [Cohere docs](https://docs.cohere.com)
 16. [Perplexity docs](https://docs.perplexity.ai)
 17. [Cerebras inference docs](https://inference-docs.cerebras.ai)

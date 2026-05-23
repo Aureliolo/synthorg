@@ -98,4 +98,4 @@ Events emitted on every record:
 - `budget.cost.record_rejected`: at currency mismatch.
 - `budget.enforcement.check`: pre-flight budget check (allow / downgrade / deny).
 
-See [docs/design/cost-control.md](../design/cost-control.md) for the full design.
+See [docs/design/budget.md](../design/budget.md) for the full design.

@@ -338,7 +338,7 @@ groups:
 
 ## Logfire
 
-Logfire's Prometheus integration can scrape the same `/metrics` endpoint directly; no additional wiring is required on the SynthOrg side. Follow the [Logfire Prometheus setup](https://logfire.pydantic.dev/docs/integrations/metrics/prometheus/) and point it at `http://synthorg:8000/metrics`. All metrics documented above will appear under the same names in Logfire dashboards.
+Logfire's Prometheus integration can scrape the same `/metrics` endpoint directly; no additional wiring is required on the SynthOrg side. Follow the [Logfire documentation](https://pydantic.dev/docs/logfire/) for the Prometheus setup and point it at `http://synthorg:8000/metrics`. All metrics documented above will appear under the same names in Logfire dashboards.
 
 ## Further reading
 

@@ -22,7 +22,7 @@ Litestar REST + WebSocket API: controllers, authentication, guards, and channels
 ## Errors
 
 The error taxonomy and exception classes live in
-[`synthorg.core`](../core/index.md):
+[`synthorg.core`](core.md):
 
 - `synthorg.core.error_taxonomy` -- `ErrorCategory`, `ErrorCode`,
   RFC 9457 helpers

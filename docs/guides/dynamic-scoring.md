@@ -127,4 +127,4 @@ The `scoring_context_factory` fixture lives in `tests/unit/engine/scoring/confte
 
 Every score emission fires `scoring.score.computed` with `strategy`, `score`, and the `details` payload. The dashboard `Scoring` panel charts the rolling p50/p95/p99 score per strategy so operators can detect drift.
 
-For the broader scoring architecture and the existing strategies (composite, weighted, ranked, multi-objective), see [docs/design/scoring.md](../design/scoring.md) and [docs/reference/scoring-hyperparameters.md](../reference/scoring-hyperparameters.md).
+For the broader scoring architecture and the existing strategies (composite, weighted, ranked, multi-objective), see [docs/reference/scoring-hyperparameters.md](../reference/scoring-hyperparameters.md).
