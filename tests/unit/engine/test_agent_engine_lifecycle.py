@@ -46,9 +46,9 @@ class TestAgentEnginePostExecutionTransitions:
             task=sample_task_with_criteria,
         )
 
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.IN_REVIEW
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.IN_REVIEW
 
     async def test_completed_transition_log_has_two_entries(
         self,
@@ -66,13 +66,13 @@ class TestAgentEnginePostExecutionTransitions:
             task=sample_task_with_criteria,
         )
 
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert len(te.transition_log) == 2
-        assert te.transition_log[0].from_status == TaskStatus.ASSIGNED
-        assert te.transition_log[0].to_status == TaskStatus.IN_PROGRESS
-        assert te.transition_log[1].from_status == TaskStatus.IN_PROGRESS
-        assert te.transition_log[1].to_status == TaskStatus.IN_REVIEW
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert len(task_execution.transition_log) == 2
+        assert task_execution.transition_log[0].from_status == TaskStatus.ASSIGNED
+        assert task_execution.transition_log[0].to_status == TaskStatus.IN_PROGRESS
+        assert task_execution.transition_log[1].from_status == TaskStatus.IN_PROGRESS
+        assert task_execution.transition_log[1].to_status == TaskStatus.IN_REVIEW
 
     async def test_completed_does_not_set_completed_at(
         self,
@@ -90,10 +90,10 @@ class TestAgentEnginePostExecutionTransitions:
             task=sample_task_with_criteria,
         )
 
-        te = result.execution_result.context.task_execution
-        assert te is not None
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
         # completed_at is only set on COMPLETED transition
-        assert te.completed_at is None
+        assert task_execution.completed_at is None
 
     async def test_max_turns_stays_in_progress(
         self,
@@ -127,9 +127,9 @@ class TestAgentEnginePostExecutionTransitions:
             task=sample_task_with_criteria,
         )
 
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.IN_PROGRESS
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.IN_PROGRESS
 
     async def test_budget_exhausted_stays_in_progress(
         self,
@@ -162,9 +162,9 @@ class TestAgentEnginePostExecutionTransitions:
             task=sample_task_with_criteria,
         )
 
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.IN_PROGRESS
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.IN_PROGRESS
 
     async def test_error_transitions_to_failed(
         self,
@@ -198,9 +198,9 @@ class TestAgentEnginePostExecutionTransitions:
             task=sample_task_with_criteria,
         )
 
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.FAILED
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.FAILED
 
     async def test_shutdown_transitions_to_interrupted(
         self,
@@ -234,9 +234,9 @@ class TestAgentEnginePostExecutionTransitions:
             task=sample_task_with_criteria,
         )
 
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.INTERRUPTED
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.INTERRUPTED
 
     async def test_shutdown_from_assigned_transitions_to_interrupted(
         self,
@@ -268,12 +268,12 @@ class TestAgentEnginePostExecutionTransitions:
             task=sample_task_with_criteria,
         )
 
-        te = result.execution_result.context.task_execution
-        assert te is not None
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
         # The engine's _prepare_context transitions ASSIGNED→IP,
         # but the mock loop returns a context still at ASSIGNED.
         # The engine's _apply_post_execution_transitions handles this.
-        assert te.status == TaskStatus.INTERRUPTED
+        assert task_execution.status == TaskStatus.INTERRUPTED
 
     async def test_no_task_execution_passes_through(
         self,
@@ -508,10 +508,12 @@ class TestAgentEnginePostExecutionResilience:
             TaskStatus.IN_PROGRESS,
             reason="Engine starting execution",
         )
-        te = ctx.task_execution
-        assert te is not None
-        bad_te = te.model_copy(update={"status": TaskStatus.CANCELLED})
-        ctx_bad = ctx.model_copy(update={"task_execution": bad_te})
+        task_execution = ctx.task_execution
+        assert task_execution is not None
+        bad_task_execution = task_execution.model_copy(
+            update={"status": TaskStatus.CANCELLED}
+        )
+        ctx_bad = ctx.model_copy(update={"task_execution": bad_task_execution})
 
         mock_result = ExecutionResult(
             context=ctx_bad,
@@ -530,9 +532,9 @@ class TestAgentEnginePostExecutionResilience:
             task=sample_task_with_criteria,
         )
 
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.CANCELLED
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.CANCELLED
 
     async def test_interrupted_transition_failure_preserves_result(
         self,
@@ -549,11 +551,13 @@ class TestAgentEnginePostExecutionResilience:
             TaskStatus.IN_PROGRESS,
             reason="Engine starting execution",
         )
-        te = ctx.task_execution
-        assert te is not None
+        task_execution = ctx.task_execution
+        assert task_execution is not None
         # Force into COMPLETED (terminal) -- INTERRUPTED transition should fail
-        bad_te = te.model_copy(update={"status": TaskStatus.COMPLETED})
-        ctx_bad = ctx.model_copy(update={"task_execution": bad_te})
+        bad_task_execution = task_execution.model_copy(
+            update={"status": TaskStatus.COMPLETED}
+        )
+        ctx_bad = ctx.model_copy(update={"task_execution": bad_task_execution})
 
         mock_result = ExecutionResult(
             context=ctx_bad,
@@ -572,7 +576,7 @@ class TestAgentEnginePostExecutionResilience:
             task=sample_task_with_criteria,
         )
 
-        te = result.execution_result.context.task_execution
-        assert te is not None
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
         # Transition failed, so status stays as COMPLETED
-        assert te.status == TaskStatus.COMPLETED
+        assert task_execution.status == TaskStatus.COMPLETED

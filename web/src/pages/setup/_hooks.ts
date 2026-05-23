@@ -6,10 +6,10 @@ export interface StepCompletionSyncOptions {
    * When ``true``, the sync only ever marks the step complete; an
    * ``isValid === false`` after a previous ``true`` does NOT flip
    * ``stepsCompleted[step]`` back. Used by the Agents step so an
-   * upstream Providers edit does not silently uncomplete a step that
-   * the user already cleared. The on-page ErrorBanner plus the
-   * progress-bar revalidation glyph carry the "needs review" signal
-   * instead.
+   * upstream Providers edit does not silently flip a step from
+   * complete back to incomplete after the user already cleared it.
+   * The on-page ErrorBanner plus the progress-bar revalidation glyph
+   * carry the "needs review" signal instead.
    *
    * Default ``false`` keeps the reactive behaviour the Company and
    * Providers steps rely on (erasing a required field still demotes

@@ -27,7 +27,7 @@ from synthorg.observability.events.workers import (
 )
 from synthorg.workers.dead_letter import (
     DeadLetterConsumer,
-    make_engine_task_failer,
+    make_engine_task_fail_handler,
 )
 from synthorg.workers.heartbeat_subscriber import WorkerHeartbeatSubscriber
 from synthorg.workers.seen_claims_pruner import SeenClaimsPruner
@@ -152,7 +152,7 @@ def build_distributed_backend_services(
     """
     dead_letter = DeadLetterConsumer(
         task_queue=task_queue,
-        task_failer=make_engine_task_failer(engine),
+        task_fail_handler=make_engine_task_fail_handler(engine),
         queue_config=queue_config,
         seen_claims=seen_claims,
         clock=clock,

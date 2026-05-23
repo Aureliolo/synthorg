@@ -180,10 +180,10 @@ class TestEvalLoopCoordinatorCollectAgentIds:
 def _make_pillar_score(pillar: str, score: float) -> Any:
     """Build a concrete test double with the shape ``_identify_patterns`` reads.
 
-    Using ``SimpleNamespace`` (not ``MagicMock``) means a typo on the
-    accessor side (``score.pillar.valye``, ``score.scroe``) raises
-    ``AttributeError`` instead of silently returning another MagicMock,
-    catching contract drift in the tests themselves.
+    Using ``SimpleNamespace`` (not ``MagicMock``) means a misspelled
+    attribute name on the accessor side raises ``AttributeError``
+    instead of silently returning another MagicMock, catching contract
+    drift in the tests themselves.
     """
     return SimpleNamespace(
         pillar=SimpleNamespace(value=pillar),

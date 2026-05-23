@@ -609,22 +609,22 @@ def test_client(  # noqa: PLR0913
     # further async interaction with the queue.  Recreate the queues
     # and reset the running flag so the next startup creates fresh
     # processing tasks on the new loop.
-    te = app_state._task_engine
-    if te is not None:
+    task_engine = app_state._task_engine
+    if task_engine is not None:
         import asyncio as _aio
 
-        te._running = False
+        task_engine._running = False
         # asyncio.Queue (Python 3.10+) lazily binds to the running
         # event loop on first ``put``/``get``; constructing it here
         # in sync context does *not* bind it to this thread's loop,
         # so the next async consumer inside the new TestClient picks
         # up the fresh loop correctly.
-        te._queue = _aio.Queue(maxsize=te._config.max_queue_size)
-        te._observer_queue = _aio.Queue(
-            maxsize=te._config.effective_observer_queue_size,
+        task_engine._queue = _aio.Queue(maxsize=task_engine._config.max_queue_size)
+        task_engine._observer_queue = _aio.Queue(
+            maxsize=task_engine._config.effective_observer_queue_size,
         )
-        te._versions = type(te._versions)()
-        te._observers.clear()
+        task_engine._versions = type(task_engine._versions)()
+        task_engine._observers.clear()
 
     # 3. Clear AppState-internal stores and caches.
     #    Session and lockout stores are kept (rebuilding them from

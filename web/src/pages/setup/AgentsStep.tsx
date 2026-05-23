@@ -73,10 +73,10 @@ export function AgentsStep() {
   // Single source of truth for step completion: reads the same
   // unresolvedAgents value that drives the user-visible banner so the
   // wizard nav and the page never disagree about whether the step can
-  // advance. ``forwardOnly`` so the step does not silently uncomplete
-  // when an upstream Providers edit invalidates an agent's model ref;
-  // the progress-bar revalidation glyph plus the ErrorBanner below
-  // carry that signal instead.
+  // advance. ``forwardOnly`` so the step does not silently revert to
+  // incomplete when an upstream Providers edit invalidates an agent's
+  // model ref; the progress-bar revalidation glyph plus the
+  // ErrorBanner below carry that signal instead.
   useStepCompletionSync(
     'agents',
     agents.length > 0 && unresolvedAgents.length === 0,

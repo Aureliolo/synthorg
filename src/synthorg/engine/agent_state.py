@@ -161,11 +161,11 @@ class AgentRuntimeState(BaseModel):
         if status == ExecutionStatus.IDLE:
             msg = "Cannot create from_context with IDLE status; use idle() instead"
             raise ValueError(msg)
-        te = context.task_execution
+        task_execution = context.task_execution
         return cls(
             agent_id=str(context.identity.id),
             execution_id=context.execution_id,
-            task_id=te.task.id if te is not None else None,
+            task_id=task_execution.task.id if task_execution is not None else None,
             status=status,
             turn_count=context.turn_count,
             accumulated_cost=context.accumulated_cost.cost,

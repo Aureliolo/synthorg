@@ -178,10 +178,11 @@ export function formatTodayLabel(locale: string = getLocale()): string {
 }
 
 /**
- * Format a date as locale-aware relative time (e.g. "5 minutes ago",
- * "il y a 5 minutes", "hace 5 minutos"). Uses `Intl.RelativeTimeFormat`
- * with `numeric: 'auto'` so near boundaries render as "yesterday" /
- * "tomorrow" rather than "1 day ago" / "in 1 day".
+ * Format a date as locale-aware relative time (e.g. "5 minutes ago"
+ * in English, "il y a 5 minutes" in French). Uses
+ * `Intl.RelativeTimeFormat` with `numeric: 'auto'` so near boundaries
+ * render as "yesterday" / "tomorrow" rather than "1 day ago" /
+ * "in 1 day".
  *
  * Falls back to {@link formatDateTime} for dates older than a week, for
  * future dates, and for invalid/missing input.

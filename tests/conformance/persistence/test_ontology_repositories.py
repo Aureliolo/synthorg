@@ -157,7 +157,7 @@ class TestOntologyEntityRepository:
         await backend.ontology_entities.register(
             _entity("OtherEntity", definition="unrelated"),
         )
-        by_name = await backend.ontology_entities.search("earch")
+        by_name = await backend.ontology_entities.search("rch")
         by_def = await backend.ontology_entities.search("findme")
         assert "Searchable" in {e.name for e in by_name}
         assert "Searchable" in {e.name for e in by_def}
