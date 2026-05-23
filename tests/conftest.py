@@ -38,43 +38,39 @@ from synthorg.persistence import migrations
 # Diagnostic instrumentation: dump native + Python tracebacks on every
 # fatal signal (SIGSEGV, SIGFPE, SIGABRT etc.) and on every thread.
 # Enabled at module import so xdist worker subprocesses pick it up at
-# their own conftest load.  Without this, "worker crashed" signals
-# carry no stack trace, leaving us unable to tell ProactorEventLoop
-# IOCP races, native sqlite faults, antivirus-process termination,
-# and similar root causes apart.
-faulthandler.enable(file=sys.stderr, all_threads=True)
-
-_WATCHDOG_INTERVAL_SECONDS = 10
-# Hang flight-recorder: dump all-thread tracebacks every 10s while the
-# test session is running. ``faulthandler.enable`` only fires on fatal
-# signals; a silent xdist worker hang (e.g. ``asyncio.Event().wait()``
-# without a deadline; mock kwarg drift on an event-gated method; a
-# coverage.save() teardown stuck on a sysmon/parallel race) produces no
-# signal at all and the process sits idle until reaped by the GHA job
-# timeout, with no clue which test or thread was blocked. Equally, the
-# ``pytest-timeout`` ``thread`` method terminates the worker process on
-# a 30s test timeout; the stack dump it emits before termination only
-# survives if the worker's stderr was flushed first, which requires
-# ``PYTHONUNBUFFERED=1`` plus pytest ``-s`` (both set in CI). Repeating
-# dumps every 10s mean any hang that survives past 10s gets at least
-# one full all-thread snapshot in the log -- the previous 120s interval
-# missed the 40s worker-crash window entirely. 10s is short enough that
-# a pre-crash window of even 15s captures the in-flight stacks, wide
-# enough that normal CI runs (~2-3 min per unit shard) emit ~12-18
-# dumps per worker which is fine for forensic value.
+# their own conftest load. ``faulthandler.enable`` installs signal
+# handlers only -- it never runs unless a real signal arrives, so it
+# is safe.
 #
-# CodSpeed runs pytest under valgrind callgrind for instruction-count
-# benchmarks. Valgrind does not tolerate the periodic timer signal
-# ``dump_traceback_later`` emits -- two watchdog firings during a
-# benchmarked process were enough to SIGSEGV the valgrind-instrumented
-# Python (exit code 139 observed on ``tests/benchmarks/test_memory_ranking.py``
-# at run 26334096206). Skip the watchdog when ``--codspeed`` is in
-# ``sys.argv`` OR ``CODSPEED_ENV`` is set, so the codspeed arm runs
-# clean while every other arm keeps the diagnostic.
-if "--codspeed" not in sys.argv and not os.environ.get("CODSPEED_ENV"):
-    faulthandler.dump_traceback_later(
-        _WATCHDOG_INTERVAL_SECONDS, repeat=True, file=sys.stderr
-    )
+# ``faulthandler.dump_traceback_later(..., repeat=True)`` (a periodic
+# watchdog timer) is INTENTIONALLY NOT installed here. The timer runs
+# in its own dedicated C thread that walks the interpreter's
+# ``PyThreadState`` chain WITHOUT holding the GIL (the whole point of
+# the timer is to work even when the GIL is wedged). On a busy test
+# worker, threads are created and destroyed continuously -- aiosqlite
+# spawns a per-connection executor thread, ``logging.handlers``
+# QueueListener threads come and go per worker, every async test
+# briefly spawns its own loop thread. Between
+# ``_Py_DumpTracebackThreads`` reading ``interp->threads.head`` and
+# walking the ``tstate->next`` chain, another thread can complete
+# ``PyThreadState_Delete`` and free the next tstate; the timer reads
+# a dangling pointer and segfaults on ``tstate_is_freed(tstate=<small
+# garbage>)`` inside ``Python/traceback.c``. We confirmed this with
+# pystack + gdb on a CI core dump: SEGV at NULL+0x211, frame
+# ``tstate_is_freed`` -> ``_Py_DumpTracebackThreads`` ->
+# ``faulthandler_thread`` (see CPython issue 103619 family for the
+# upstream-known race class). Crashes were random across SQLite-touching
+# tests, matching the statistical signature of a teardown race.
+#
+# Per-test hang detection still works: ``timeout_method = "thread"``
+# in pyproject.toml plus the 30s ``timeout`` marker fire a real
+# ``KeyboardInterrupt`` into the worker on a hung test, which xdist
+# turns into a named test failure (``--max-worker-restart=0`` keeps
+# crashed workers reported, not silently restarted). What we lose is
+# the periodic all-thread stack dump while a hang is live; that
+# trade-off is mandatory because the watchdog itself was the cause of
+# the worker SEGVs we were trying to diagnose.
+faulthandler.enable(file=sys.stderr, all_threads=True)
 
 # ── Windows console-flash suppression ──────────────────────────────
 #

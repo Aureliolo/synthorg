@@ -26,16 +26,27 @@ Exit codes match pytest: 0 (passed/nothing to run / advisory), 1 (failures),
 etc.  Git command failures fall back to running the full unit suite.
 """
 
+import contextlib
 import math
 import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Literal
+from typing import Final, Literal
+
+# Hard wall-clock caps so a Windows + Python 3.14 + xdist IOCP teardown
+# hang in pytest cannot indefinitely block a push. Empirical baseline is
+# ~3 min for the full unit suite; a 12 min cap leaves 4x headroom while
+# still failing fast when the suite genuinely wedges. Affected-only runs
+# rarely exceed 2 min, so 6 min keeps the same 3x headroom shape.
+_PYTEST_FULL_SUITE_TIMEOUT_SECONDS: Final[float] = 12 * 60
+_PYTEST_AFFECTED_TIMEOUT_SECONDS: Final[float] = 6 * 60
+_PYTEST_HUNG_EXIT_CODE: Final[int] = 124  # matches GNU coreutils ``timeout(1)``
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -446,7 +457,9 @@ def _check_timing_regression(
     )
 
 
-def _stream_pytest(cmd: list[str]) -> tuple[int, str]:
+def _stream_pytest(
+    cmd: list[str], *, timeout_seconds: float | None = None
+) -> tuple[int, str]:
     """Run *cmd* as pytest, tee stdout, and return ``(returncode, stdout)``.
 
     Streams pytest stdout line-by-line so users see live progress
@@ -454,7 +467,16 @@ def _stream_pytest(cmd: list[str]) -> tuple[int, str]:
     the process exits, which hides the ~90s full suite behind silence).
     We still tee into a buffer so the "N passed" summary line is
     available for the per-test regression rail.
+
+    When ``timeout_seconds`` is set, a watchdog thread kills the
+    pytest process group if it runs longer; this is the safety net
+    for the Windows + Python 3.14 + xdist IOCP teardown hang that
+    can leave a worker silently wedged for hours otherwise. On
+    timeout the function returns ``(_PYTEST_HUNG_EXIT_CODE, captured)``
+    plus a clear stderr banner so the operator sees what happened.
     """
+    timeout_fired = False
+
     with subprocess.Popen(
         cmd,
         cwd=_REPO_ROOT,
@@ -463,20 +485,47 @@ def _stream_pytest(cmd: list[str]) -> tuple[int, str]:
         text=True,
         bufsize=1,
     ) as proc:
-        stdout_lines: list[str] = []
-        if proc.stdout is None:
-            # subprocess.Popen with stdout=PIPE guarantees a pipe; this
-            # branch would only fire if the Popen construction itself
-            # silently produced no pipe handle, which indicates a
-            # platform-level failure worth surfacing rather than
-            # silencing with an assert.
+
+        def _on_timeout() -> None:
+            nonlocal timeout_fired
+            timeout_fired = True
+            print(
+                f"\n{'!' * 60}\n"
+                f"run_affected_tests: pytest exceeded "
+                f"{timeout_seconds:.0f}s wall-clock cap -- killing.\n"
+                f"This is almost always the Windows + Python 3.14 + xdist\n"
+                f"IOCP teardown hang. Locally: re-run pre-push (it usually\n"
+                f"clears on retry); if it sticks, narrow the change so the\n"
+                f"affected selector picks fewer tests, or set\n"
+                f"SYNTHORG_SKIP_PREPUSH_TESTS=1 for an emergency push.\n"
+                f"{'!' * 60}",
+                file=sys.stderr,
+            )
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+
+        watchdog: threading.Timer | None = None
+        if timeout_seconds is not None and timeout_seconds > 0:
+            watchdog = threading.Timer(timeout_seconds, _on_timeout)
+            watchdog.daemon = True
+            watchdog.start()
+
+        try:
+            stdout_lines: list[str] = []
+            if proc.stdout is None:
+                returncode = proc.wait()
+                return returncode, ""
+            for line in proc.stdout:
+                sys.stdout.write(line)
+                sys.stdout.flush()
+                stdout_lines.append(line)
             returncode = proc.wait()
-            return returncode, ""
-        for line in proc.stdout:
-            sys.stdout.write(line)
-            sys.stdout.flush()
-            stdout_lines.append(line)
-        returncode = proc.wait()
+        finally:
+            if watchdog is not None:
+                watchdog.cancel()
+
+    if timeout_fired:
+        return _PYTEST_HUNG_EXIT_CODE, "".join(stdout_lines)
     return returncode, "".join(stdout_lines)
 
 
@@ -509,7 +558,12 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
         "-q",
     ]
     start = time.monotonic()
-    returncode, captured_stdout = _stream_pytest(cmd)
+    timeout_seconds = (
+        _PYTEST_FULL_SUITE_TIMEOUT_SECONDS
+        if run_all
+        else _PYTEST_AFFECTED_TIMEOUT_SECONDS
+    )
+    returncode, captured_stdout = _stream_pytest(cmd, timeout_seconds=timeout_seconds)
     elapsed = time.monotonic() - start
     test_count = _parse_test_count(captured_stdout)
     outcome = _classify_isolation_outcome(returncode, captured_stdout)
@@ -818,7 +872,11 @@ def _run_isolation_gate(paths: list[str]) -> int:
         "2",
         "-q",
     ]
-    returncode, captured_stdout = _stream_pytest(cmd)
+    # ``--count 2`` runs every affected test twice, so the cap is the
+    # full-suite ceiling regardless of selection size.
+    returncode, captured_stdout = _stream_pytest(
+        cmd, timeout_seconds=_PYTEST_FULL_SUITE_TIMEOUT_SECONDS
+    )
     outcome = _classify_isolation_outcome(returncode, captured_stdout)
     _print_isolation_banner(outcome)
     return outcome.exit_code
