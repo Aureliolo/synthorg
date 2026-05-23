@@ -257,10 +257,100 @@ Existing data refutes this: PR #2045 grew `api/app.py` by 113 LOC
 under reviewer attention. AI-generated code is too high-volume for
 reviewer attention alone to enforce architecture. Rejected.
 
+## Exemption ledger
+
+PR 1 declares many rules but cannot fix every existing violation in
+one PR. Each exemption below carries which subsequent PR or follow-up
+issue lifts it. **Completing the EPIC #2046 sub-issues + the
+follow-ups below is the contract for "100% enforced".**
+
+### A. Lifted naturally by PR 2 (#2048)
+
+| Exemption | Mechanism | Acceptance |
+|-----------|-----------|------------|
+| `_state_slice_immutability_baseline.txt` (empty) | PR 2 introduces every state slice; baseline must stay empty | Gate green after every PR 2 slice lands |
+| `_settings_namespace_baseline.txt` (1: `settings` namespace lacks definitions file) | PR 2 may file the missing `settings/definitions/settings.py` | Baseline drains to 0 |
+| Typeguard wiring | PR 2's manifest substrate eliminates most `TYPE_CHECKING`-only imports by re-organising imports through `feature.py` runtime modules | New follow-up issue: "Wire typeguard after PR 2" (filed below) |
+
+### B. Lifted naturally by PR 3 (#2049)
+
+| Exemption | Mechanism | Acceptance criterion in PR 3 |
+|-----------|-----------|------------------------------|
+| Mypy override for `synthorg.api.*` (`disallow_any_explicit`, `explicit-override`, `possibly-undefined`, `unused-awaitable`) | PR 3 decomposes 8 multi-controllers + `api/app.py` into per-sub-domain packages; new files written strict-clean | Remove or narrow the `synthorg.api.*` override block to only `synthorg.api.lifecycle*` / `synthorg.api.dto*` |
+| `_module_size_baseline.json` entries for `api/controllers/**`, `api/auth/controller.py`, `meta/mcp/handlers/{infrastructure,communication}.py`, `api/app.py`, `api/auto_wire.py`, `api/lifecycle*.py` | PR 3 shrinks each below tier cap | Drop those entries from the baseline |
+| Ruff `BLE001/C901/PLR0911-15/ERA001/DOC*` per-file-ignore for `src/synthorg/**` (partial drain for decomposed packages) | New small files pass strict | Tighten the per-file-ignore from `src/synthorg/**` to only the residual god-modules / undecomposed packages |
+| `check_no_growth_in_god_modules.py` allowlist | PR 3 shrinks `api/app.py` to <200 LOC and `api/state.py` to <150 LOC | Gate flips from "must net-shrink" to "must remain at tier cap"; allowlist drained (mostly empty) |
+
+### C. Lifted naturally by PR 4 (#2050)
+
+| Exemption | Mechanism | Acceptance criterion in PR 4 |
+|-----------|-----------|------------------------------|
+| Mypy override for `synthorg.persistence.*` | PR 4 decomposes 6 repo factories per-entity; new files strict-clean | Drop persistence override |
+| Mypy override for `synthorg.{communication, engine, observability}.*` (the decomposed subset) | PR 4 decomposes 3 multi-services | Narrow overrides to only the still-undecomposed subset |
+| `_circular_imports_baseline.txt` (3 cycles: 2 in `synthorg.persistence.*`, 1 in `synthorg.{memory, observability}.*`) | PR 4 import-linter contracts + decomposition catches these | Baseline drains to 0 |
+| `_module_size_baseline.json` entries for persistence backends + workers/execution_service + observability/prometheus_recording | PR 4 decomposes these | Drop entries |
+
+### D. Lifted by #2051 (junk-drawer dissolution)
+
+| Exemption | Mechanism |
+|-----------|-----------|
+| `_central_junk_drawer_baseline.json` (62 enums + 380 events + 176 AppState slots) | #2051 dissolves the three files per-domain |
+| `# module-kind: declarative` headers on `core/enums.py` and `events/persistence.py` | Files deleted by #2051 |
+
+### E. Lifted by #2052 (Group-F audit)
+
+| Exemption | Mechanism |
+|-----------|-----------|
+| ~30 `_module_size_baseline.json` entries for the Group-F legitimately-complex files | #2052 tags each with `# module-kind: service` (or appropriate tier); confirmed-cohesive files drop from baseline, reclassified files become new decomposition issues |
+
+### F. Requires NEW follow-up issues (no existing PR lifts)
+
+These exemptions are not addressed by any existing PR in the EPIC.
+Each entry below maps to a separate tracking issue that must be filed
+and closed for the project to reach 100% strict enforcement.
+
+| Exemption | Required follow-up | Estimated size |
+|-----------|-------------------|----------------|
+| Ruff `BLE001` (1007 sites) on `src/synthorg/**` | Issue: "Typed-except remediation: replace blind-except across src/synthorg/" | Large (multi-PR program by package) |
+| Mypy `explicit-override` (648 sites; per-package disabled) | Issue: "@override decorator backfill across synthorg.*" | Medium (mechanical) |
+| Mypy `unused-awaitable` (108 sites) | Issue: "Async cleanup: await or store every Task" | Medium |
+| Mypy `disallow_any_explicit` (4136 sites; 22 packages overridden) | EPIC: "Mypy strict++ ratchet" with per-package sub-issues | Very large (months) |
+| Mypy `possibly-undefined` (4 sites) | Issue: "Mypy possibly-undefined cleanup" | Trivial |
+| Mypy `deprecated` (3 sites) | Issue: "Mypy deprecated-API cleanup" | Trivial |
+| Mypy strict++ overrides on `tests.*` | Issue: "Lift mypy strict++ overrides for tests/" | Medium |
+| Ruff `ERA001` (49 sites) | Issue: "Remove commented-out code (ERA001)" | Small |
+| Ruff `INP001` (78 sites in tests/) | Issue: "Add `__init__.py` to test directories OR configure pytest namespace packages globally" | Trivial |
+| Ruff `DOC201/202/501` on `src/synthorg/**` | Issue: "Docstring Returns/Raises backfill + interrogate threshold flip" | Large |
+| Interrogate `fail_under` 90 -> 95 | Same as DOC backfill | Medium |
+| ESLint `complexity / max-lines / max-lines-per-function / max-params` exempted on `src/**/*.{ts,tsx}` | Issue: "Web component-size ratchet: decompose oversized React components" | Large (no existing PR in EPIC) |
+| Go `gocyclo / funlen / gocognit / nestif / revive` path-excluded across `cli/internal/**` + `cmd/**` | Issue: "CLI complexity ratchet: per-package lift" | Medium |
+| `vulture` `ignore_names` (7 entries) | Issue: "Replace vulture ignore_names with explicit unused-marker pattern" | Trivial |
+| `codespell` `ignore-words-list` (~90 entries; some genuine project terms, some false positives) | Issue: "Audit codespell ignore-words: split genuine vocab from false-positives" | Small |
+| `deptry` DEP003 transitive-dep tolerance (6 packages: uvicorn, prometheus_client, annotated_types, httpcore, qdrant_client, referencing) | Issue: "Promote transitive deps to direct deps" | Small |
+| `sqlfluff` `rules = ambiguous, references` (layout/capitalisation/aliasing all disabled) | Issue: "SQL style cleanup: enable full sqlfluff ruleset" | Large |
+| `sqlfluff` `exclude_rules = RF04` (keywords-as-identifiers) | Same SQL style issue | Trivial |
+| Typeguard never landed | Issue: "Wire typeguard after #2048 lands" | Medium |
+| Vale prose linter never landed | Issue: "Wire Vale + binary install script" | Small |
+| Lychee CI workflow never landed | Issue: "Wire Lychee CI workflow + scripts/install_cli_tools.sh" | Trivial |
+| `knip --no-exit-code` (report-only, never blocks) | Issue: "Knip blocking: eliminate unused exports surfaced by knip" | Medium |
+| `dpdm --skip-imports` for `stores/auth.ts -> api/client.ts` cycle | Issue: "Fix auth -> client circular dependency" | Small |
+
+### G. Permanent design decisions (NOT exemptions to lift)
+
+- God-module net-shrink rule (`check_no_growth_in_god_modules.py`).
+  The allowlist itself is permanent; entries drain as PR 3 decomposes
+  each file.
+- Generated-glob exemption (`*.gen.*`, `*_pb2.py`): generated code is
+  by definition out of scope for source-level lint.
+- `declarative` tier exemption: declarative data files don't have a
+  meaningful LOC ceiling; junk-drawer growth is gated separately.
+
 ## Related
 
-- EPIC #2046 -- the umbrella program this PR opens.
+- EPIC #2046: the umbrella program this PR opens.
 - Sub-issues #2048 (manifest substrate), #2049 (controller
   decomposition), #2050 (repos/services + import-layering).
 - Follow-up #2051 (dissolve `core/enums.py` and `events/persistence.py`).
 - Follow-up #2052 (audit Group-F legitimately-complex files).
+- Follow-ups required by Section F of the Exemption Ledger above;
+  filed under the EPIC #2046 master ledger.
