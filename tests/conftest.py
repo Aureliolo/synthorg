@@ -104,19 +104,32 @@ socket.getfqdn = _fast_getfqdn
 try:
     import pytest_timeout as _pytest_timeout  # type: ignore[import-untyped]
 
-    _orig_timeout_timer = _pytest_timeout.timeout_timer
-
     def _timeout_timer_with_faulthandler(item: Any, settings: Any) -> None:
+        # 1) Dump Python frames for every thread via faulthandler (raw
+        #    fd write, bypasses pytest/xdist IPC -> always reaches log).
         sys.stderr.write(
             "\n==== pytest-timeout fired: faulthandler all-threads dump"
             " (raw stderr write, bypasses pytest/xdist IPC) ====\n"
         )
         sys.stderr.flush()
         faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
-        sys.stderr.flush()
         sys.stderr.write("==== end faulthandler dump ====\n")
         sys.stderr.flush()
-        _orig_timeout_timer(item, settings)
+        # 2) ``os.abort()`` instead of pytest-timeout's stock
+        #    ``os._exit(1)``: abort sends SIGABRT, which (with the
+        #    ``ulimit -c unlimited`` already set in the CI workflow)
+        #    generates a core file at ``core.%e.%p.%t``. The "Upload
+        #    core dumps" step then surfaces it as a build artefact we
+        #    can ``pystack core <core> <python-bin>`` to recover the
+        #    C-level frames that faulthandler cannot see (threads
+        #    blocked in sqlite3 / aiosqlite executor / etc. show their
+        #    name but no Python frame in the faulthandler dump above).
+        sys.stderr.write(
+            "==== forcing SIGABRT for core dump (gdb/pystack reveals"
+            " the C-level stack faulthandler cannot show) ====\n"
+        )
+        sys.stderr.flush()
+        os.abort()
 
     _pytest_timeout.timeout_timer = _timeout_timer_with_faulthandler
 except ImportError:
