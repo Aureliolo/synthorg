@@ -29,7 +29,14 @@ runs:
         sudo install -d /usr/share/postgresql-common/pgdg
         tmp_key=$(mktemp)
         trap 'rm -f "${tmp_key}"' EXIT
-        sudo curl -fsSL -o "${tmp_key}" \
+        # Download as the runner user: the temp file is user-owned, so
+        # ``sudo curl -o "${tmp_key}"`` is unnecessary and was observed
+        # to fail with ``curl: (23) Failure writing output to
+        # destination`` on the hosted Ubuntu image (the AppArmor profile
+        # for sudo-launched curl blocks writes back into the runner's
+        # owned tmp path). Root is still required for placing the key in
+        # /usr/share via the subsequent ``sudo install`` step.
+        curl -fsSL -o "${tmp_key}" \
           https://www.postgresql.org/media/keys/ACCC4CF8.asc
         echo "${PGDG_KEY_SHA256}  ${tmp_key}" | sha256sum --check --status \
           || { echo "::error::PGDG signing key SHA-256 mismatch; refusing to trust apt repo."; exit 1; }
