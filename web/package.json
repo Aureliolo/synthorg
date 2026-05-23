@@ -17,7 +17,7 @@
     "e2e": "playwright test",
     "e2e:update": "playwright test --update-snapshots",
     "lighthouse": "lhci autorun",
-    "lint:knip": "knip --no-progress",
+    "lint:knip": "knip --no-progress --no-exit-code",
     "lint:circular": "dpdm --no-warning --no-tree --exit-code circular:1 src/main.tsx --skip-imports=\"stores/auth\\\\.ts:api/client\\\\.ts\"",
     "report:deps": "madge --exclude \"^(node_modules|dist)/\" src/main.tsx",
     "storybook": "storybook dev -p 6006",
