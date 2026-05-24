@@ -51,11 +51,21 @@ from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.timeout.parked_context import ParkedContext
 
 if TYPE_CHECKING:
+    # Type-only re-export of ``FakePersistenceBackend`` so callers can
+    # write ``from tests.unit.api.fakes import FakePersistenceBackend``
+    # and have mypy resolve the symbol to its real type. At runtime the
+    # name resolves via ``__getattr__`` below (PEP 562 lazy attribute
+    # access), preserving the historical circular-import workaround
+    # without forcing 36 call sites onto a direct ``fakes_backend``
+    # import path.
     from synthorg.core.codebase_structure_map import CodebaseStructureMap
     from synthorg.core.project_environment import ProjectEnvironment
     from synthorg.core.project_workspace import ProjectWorkspace
     from synthorg.docs_engine.models import DocMetadata
     from synthorg.persistence.settings_protocol import SettingRow
+    from tests.unit.api.fakes_backend import FakePersistenceBackend
+
+    __all__ = ["FakePersistenceBackend"]
 
 
 class FakeTaskRepository:
