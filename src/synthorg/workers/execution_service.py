@@ -1,3 +1,4 @@
+# module-kind: service
 """Backend-side service called by the worker-callable execute endpoint.
 
 When the worker pool fetches a JetStream claim, it posts to
