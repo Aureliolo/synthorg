@@ -12,7 +12,6 @@ All significant design and architecture decisions in force today, organized by d
 
 **Context:** 16+ agent memory solutions evaluated. After gate checks (local-first, license, Docker, Python 3.14+, per-agent isolation), three candidates passed: Mem0, Graphiti, and Custom Stack. <!-- lint-allow: doc-numeric-macros -- frozen historical evaluation count, not a build-time stat -->
 
-
 | Candidate | Score | Why chosen / rejected |
 |-----------|-------|----------------------|
 | **Mem0** (chosen) | 70/100 | Production-ready (v1.0+, <!--RS:mem0_stars-->56k+<!--/RS--> stars). In-process deployment (Qdrant embedded + SQLite). Python 3.14 compatible (`>=3.9,<4.0`). Async client available. Low adapter overhead (~500-1k lines). Known gap: flat fact model doesn't natively map to 5-type memory taxonomy (acceptable for initial backend) |
@@ -114,27 +113,68 @@ All significant design and architecture decisions in force today, organized by d
 
 ## NATS Client Library
 
-**Decision:** Stay on `nats-py` (pinned `==2.14.0`). File upstream PR to replace deprecated `asyncio.iscoroutinefunction` with `inspect.iscoroutinefunction`. Maintain scoped `filterwarnings` as workaround until upstream fix lands.
+> **Correction note:** the 2026-04-11 evaluation rejected `nats-core` on the basis that it "lacks JetStream, KV store, and durable consumers". That was a misread of the modular `nats-io/nats.py` client family (see caspervonb's [PR #1228 comment](https://github.com/Aureliolo/synthorg/pull/1228#issuecomment-4271799539) and issue [#2037](https://github.com/Aureliolo/synthorg/issues/2037)). The conclusion (stay on `nats-py`) holds; the reasoning below is the corrected evaluation.
 
-**Context:** PR #1214 (distributed runtime) introduced `nats-py==2.14.0` for the JetStream message bus and task queue. Python 3.14 CI fails because `nats-py` calls `asyncio.iscoroutinefunction` in `nats/aio/client.py:476`, deprecated in Python 3.14 and slated for removal in 3.16. Upstream (`nats-io/nats.py`) has no open issue or fix in progress; classifiers top out at Python 3.13. A separate library, `nats-core`, was evaluated as a potential replacement.
+**Decision:** Stay on `nats-py==2.14.0` with the scoped `filterwarnings` entry. Bump the pin to `nats-py==2.15.0` and drop the filter the moment that release ships (`nats-io/nats.py` PR [#932](https://github.com/nats-io/nats.py/pull/932), merged 2026-05-13, contains the `inspect.iscoroutinefunction` swap).
 
-| Candidate | Why chosen / rejected |
-|-----------|----------------------|
-| **nats-py** (stay) | Only Python NATS client with JetStream support (streams, KV store, durable pull consumers, work-queue retention). Official `nats-io` project, Apache 2.0, asyncio-native. The `asyncio.iscoroutinefunction` deprecation is a one-line fix (`inspect.iscoroutinefunction` is a drop-in replacement, backward-compatible to Python 3.5+). All SynthOrg distributed features depend on JetStream primitives |
-| nats-core v0.1.0 | Lean, zero-dependency client (63x faster for core ops). **Does not support JetStream, KV store, pull consumers, or durable consumers**: only core pub/sub, request/reply, and queue groups. Migration would require rewriting the entire message bus and task queue, losing persistence, durability, history, and KV-backed channel discovery. Also v0.1.0 with no API stability commitment |
+**Context:** `nats-py==2.14.0` backs the JetStream message bus and task queue (`SYNTHORG_BUS`, `SYNTHORG_TASKS`). Python 3.14 CI fails because `nats-py` calls `asyncio.iscoroutinefunction`, deprecated in 3.14 and slated for removal in 3.16. The fix has landed on `nats-py` main but has not yet been tagged for release: latest is still 2.14.0 (2026-02-23).
 
-**Eliminated:** No other Python NATS clients exist. Custom JetStream client over raw NATS protocol was not considered (substantial effort, no ecosystem benefit).
+In parallel, the `nats-io/nats.py` repository is publishing a modular client family that mirrors the `nats.js` v3 split. The protocol layer (`nats-core`), the JetStream layer (`nats-jetstream`), and the KV layer (`nats-key-value`) are separate packages. The original ADR evaluated only the protocol layer in isolation and concluded the new family was missing JetStream/KV/consumers. It is not -- those surfaces live in the companion packages.
 
-**SynthOrg JetStream usage** (verified in `bus/nats.py` facade and `workers/claim.py`): `SYNTHORG_BUS` stream (LimitsPolicy, `_nats_connection`), `SYNTHORG_TASKS` stream (WorkQueuePolicy, `claim.py`), `SYNTHORG_BUS_CHANNELS` KV bucket (`_nats_kv`), durable pull consumers with `ConsumerConfig` (`_nats_consumers`), stream management via `stream_info`/`add_stream`/`update_stream` (`_nats_connection`), history scanning with ephemeral consumers using `DeliverPolicy.ALL`/`AckPolicy.NONE` (`_nats_history`), connection lifecycle callbacks (`_nats_connection`).
+**Live package state (verified 2026-05-24 against PyPI JSON API and `nats-io/nats.py` main):**
 
-**Mitigation plan:** (1) File upstream PR against `nats-io/nats.py` with the one-line `inspect.iscoroutinefunction` fix; upstream PR status is tracked in the project issue queue (search `nats-py` label); the scoped `filterwarnings` entry in `pyproject.toml` remains the active workaround until a fixed upstream release is available. (2) If upstream is unresponsive by **2026-06-10** (60 days from the 2026-04-11 review), maintain a local monkey-patch in `bus/_nats_compat.py`. (3) Monitor `nats-core` for future JetStream support.
+| Package | Latest version | Released | Requires-Python | Dev status | Depends on |
+|---|---|---|---|---|---|
+| `nats-py` | 2.14.0 | 2026-02-23 | `>=3.7` | (none) | n/a |
+| `nats-core` | 0.2.0 | 2026-04-14 | `>=3.13` | Beta | `nkeys>=0.1.0; extra=="nkeys"` |
+| `nats-jetstream` | 0.3.0 | 2026-05-10 | `>=3.11` | Beta | `nats-core` (no version pin) |
+| `nats-key-value` | 0.1.0 (workspace only) | 2026-05-08 | `>=3.13` | Beta | `nats-jetstream` (workspace ref) |
+| `nats-kv` | -- (HTTP 404 on PyPI) | -- | -- | -- | -- |
 
-**Verification checkpoint (2026-06-10):** on this date run the checklist below and update this section with the outcome (mark each item Done / Not done / Outcome).
+`nats-key-value` lives in `nats-io/nats.py/nats-key-value/` and is wired into the workspace via `tool.uv.sources`; it is **not yet published to PyPI**. Adopting it today means a `git+https://github.com/nats-io/nats.py.git#subdirectory=nats-key-value` dependency, which breaks dependency-scanner ergonomics and offers no semver discipline.
 
-1. Inspect `nats-io/nats.py` open PRs and recent releases on GitHub for the `inspect.iscoroutinefunction` fix.
-2. If a fixed release is available: bump the `nats-py` pin in `pyproject.toml`, drop the matching `filterwarnings` entry, run `uv run python -m pytest tests/ -m integration -k nats` to confirm warnings are gone, and replace this checkpoint section with the resolution outcome.
-3. If no fixed release exists: implement the local monkey-patch in `src/synthorg/communication/bus/_nats_compat.py` (one-line `nats.aio.client.iscoroutinefunction = inspect.iscoroutinefunction`), import it at bus initialisation, and extend this section with the patch landing date.
-4. Re-evaluate `nats-core` JetStream support: a maintained alternative removes the entire mitigation requirement.
+| Candidate | Verdict | Reasoning |
+|---|---|---|
+| **`nats-py 2.14.0`** (chosen) | stay | Mature 2.x line, still maintained in parallel (PR #932 merged 2026-05-13). Single dependency, full feature coverage of every SynthOrg JetStream + KV use today, no API churn risk. Python 3.14 deprecation is bridged by a scoped `filterwarnings` entry until 2.15 ships. |
+| `nats-core 0.2.0` + `nats-jetstream 0.3.0` + git-pinned `nats-key-value 0.1.0` | rejected for now | All three required surfaces (protocol, JetStream, KV) are technically available, so migration is viable. Cost: rewriting ~1700 LOC across nine `bus/` submodules; vendoring `nats-key-value` from a git subdirectory; three 0.x Beta dependencies with no API-stability commitment; confirmed regression on `publish_batch` (see API delta below). The benefits do not yet outweigh the cost while `nats-py` is healthy. |
+| `nats-core 0.2.0` + `nats-jetstream 0.3.0` only (drop KV) | rejected | Drops the channel-discovery KV bucket (`SYNTHORG_BUS_CHANNELS`); would force a rewrite to a stream-based channel registry. Larger blast radius than the full migration for no net benefit. |
+| Custom JetStream client over raw NATS protocol | rejected | Substantial effort, no ecosystem benefit. |
+
+**SynthOrg NATS surface inventory** (verified in `src/synthorg/communication/bus/` and `src/synthorg/workers/claim.py`): `SYNTHORG_BUS` stream (LimitsPolicy, `_nats_connection`), `SYNTHORG_TASKS` stream (WorkQueuePolicy, `claim.py`), `SYNTHORG_BUS_CHANNELS` KV bucket (`_nats_kv`), durable pull consumers with `ConsumerConfig` (`_nats_consumers`), stream management via `stream_info`/`add_stream`/`update_stream` (`_nats_connection`), history scanning with ephemeral consumers using `DeliverPolicy.ALL` / `AckPolicy.NONE` (`_nats_history`), pipelined batch publish via `publish_async` + `publish_async_completed` (`_nats_publish`), connection lifecycle callbacks and `client.flush()` health probe (`_nats_connection`, `bus/nats.py`).
+
+**API-surface delta (`nats-py` -> modular family), recorded for the future migration trigger:**
+
+| Concern | `nats-py 2.14.0` | Modular family (`nats-core 0.2.0` / `nats-jetstream 0.3.0` / `nats-key-value 0.1.0`) | Notes |
+|---|---|---|---|
+| Connect + callbacks | `nats.connect(servers, disconnected_cb=, reconnected_cb=, error_cb=, ...)` | `nats.client.connect(...)`; callbacks attached via `client.add_disconnected_callback()` etc. (`nats-core/src/nats/client/__init__.py`) | Wiring shape change. |
+| JetStream context | `client.jetstream()` | `nats.jetstream.new(client)` (`nats-jetstream/src/nats/jetstream/__init__.py`) | Module-level factory. |
+| Stream lifecycle | `js.add_stream(StreamConfig(...))` / `js.update_stream(StreamConfig(...))` / `js.stream_info(name)` | `js.create_stream(StreamConfig(...))` / `js.update_stream(**config)` / `js.get_stream_info(name)` | Method renames + signature change on `update_stream`. |
+| Durable pull consumer | `js.pull_subscribe(subject, durable, stream, config)` returning a `Subscription` | `js.create_or_update_consumer(stream_name, durable_name=, name=, **config)` returning a `Consumer` (async context manager) | Storage/lifetime pattern changes; `Consumer` must be entered with `async with`. |
+| Consumer probe | `sub.consumer_info()` | `js.get_consumer_info(stream, consumer_name)` | Probe call moves from `sub` to `js`. |
+| Consumer teardown | `sub.unsubscribe()` | `js.delete_consumer(stream, consumer_name)` | Teardown call moves from `sub` to `js`. |
+| Synchronous publish | `js.publish(subject, payload, msg_ttl=)` | `js.publish(subject, payload, ttl=)` | Kwarg rename. |
+| Pipelined batch publish | `js.publish_async(subject, payload)` + `js.publish_async_completed()` | **absent** from both `JetStream` (`nats-jetstream/src/nats/jetstream/__init__.py`) and `Stream` (`nats-jetstream/src/nats/jetstream/stream.py`) in 0.3.0 | Confirmed regression: a migrated `publish_batch` would lose native pipelining and fall back to `asyncio.gather` over per-message round-trips. Throughput penalty must be benchmarked at migration time. |
+| Health probe | `client.flush(timeout=)` | `client.flush(timeout=None)` | Identical. |
+| Drain | `client.drain()` | `client.drain(timeout=30.0)` | Identical. |
+| Error hierarchy | `nats.errors.{NoServersError, TimeoutError, Error}`, `nats.js.errors.{NotFoundError, ...}` | `nats.client.errors`, `nats.jetstream.errors.{JetStreamError, MessageNotFoundError, StreamNotFoundError, StatusError}` | Hierarchy rename across every `except` clause in all nine `bus/` submodules. |
+
+**KV surface delta** (`nats-py 2.14.0` `nats.js.KV` -> `nats-key-value 0.1.0` `nats.key_value.KeyValue`, source: `nats-io/nats.py/nats-key-value/src/nats/key_value/__init__.py` and `errors.py`):
+
+| Concern | `nats-py 2.14.0` | `nats-key-value 0.1.0` | Notes |
+|---|---|---|---|
+| Bootstrap | `js.create_key_value(bucket=...)` / `js.key_value(name)` | `create_key_value(js, KeyValueConfig(bucket=...))` / `key_value(js, name)` | Module-level functions, not methods on `js`. |
+| Atomic create-if-not-exists | `kv.create(key, value)` raises `KeyWrongLastSequenceError` on conflict | `KeyValue.create(key, value, ttl=None)` raises `KeyExistsError` | Cleaner semantics; every callsite of the rename must be updated. |
+| Plain put / get | `kv.put(key, value)` / `kv.get(key)` returning entry with `.value` | `KeyValue.put(key, value)` / `KeyValue.get(key, revision=None)` returning `KeyValueEntry(.value, .revision, ...)` | Identical shape. |
+| List keys | `await kv.keys()` returning `list[str]`; raises `NoKeysError` when empty | `await KeyValue.keys(">")` returning `KeyLister` (async iterator); empty case is an empty iterator, no `NoKeysError` | Caller-facing shape change: `async for k in await kv.keys():` instead of `for k in await kv.keys():`. |
+| Error types caught today | `KeyNotFoundError`, `KeyWrongLastSequenceError`, `NoKeysError`, `BucketNotFoundError` (from `nats.js.errors`) | `KeyNotFoundError`, `KeyExistsError`, `BucketNotFoundError` (from `nats.key_value.errors`); `NoKeysError` does not exist | `NoKeysError` handler becomes dead code; `KeyWrongLastSequenceError` handler becomes `KeyExistsError`. |
+
+**Trigger-based revisit** (replaces the prior fixed 2026-06-10 checkpoint):
+
+1. **Trigger A -- `nats-py 2.15+` is released:** bump the pin in `pyproject.toml` to `nats-py==2.15.0`, drop the scoped `filterwarnings` entry, run `uv run python -m pytest tests/ -m integration -k nats` to confirm no deprecation warnings fire, and update this section with the resolution outcome. This closes the Python 3.14 thread without any further migration consideration.
+2. **Trigger B -- `nats-key-value` is published to PyPI AND the modular family reaches 1.0:** re-evaluate migration. The API delta tables above are the starting scope; re-verify them at the published versions. If migration is decided, file the implementation as a separate issue, expand the scope with the `publish_batch` benchmark plan, and execute against PyPI-published packages only (no git subdirectory pins).
+3. **Trigger C -- `nats-py` releases nothing for six months:** the parallel-maintenance assumption breaks. Re-evaluate migration urgency regardless of family stability.
+
+**Calendar revisit: 2026-08-01.** `nats-py`'s release cadence is roughly quarterly and `nats-py 2.15` is overdue by then; if none of the triggers above have fired by that date, re-check upstream and refresh this section.
 
 ## Tooling & Developer Enforcement
 
