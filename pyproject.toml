@@ -741,7 +741,15 @@ DEP002 = [
 [tool.vulture]
 paths = ["src/synthorg"]
 min_confidence = 80
-ignore_names = []
+ignore_names = [
+    # Protocol method params whose names leak into the public call ABI.
+    # An ``_``-prefix rename at the declaration site would force every
+    # keyword caller and every implementation to write the underscored
+    # form, putting vulture-suppression syntax inside the contract.
+    "judge_agent_id",  # JudgeEvaluator.evaluate (conflict_resolution)
+    "agent_output",    # ExternalBenchmark.grade (hr/evaluation)
+    "ticket_uri",      # TicketFetcher.fetch (knowledge/loaders)
+]
 
 # ---------------------------------------------------------------------------
 # interrogate: docstring coverage

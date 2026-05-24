@@ -41,6 +41,8 @@ from synthorg.tools.mcp.errors import (
 from synthorg.tools.mcp.models import MCPRawResult, MCPToolInfo
 
 if TYPE_CHECKING:
+    from types import TracebackType
+
     from synthorg.tools.mcp.config import MCPServerConfig
 
 logger = get_logger(__name__)
@@ -397,8 +399,8 @@ class MCPClient:
     async def __aexit__(
         self,
         exc_type: type[BaseException] | None,
-        _exc: BaseException | None,
-        _tb: object,
+        exc: BaseException | None,
+        _tb: TracebackType | None,
     ) -> None:
         """Exit async context: disconnect from server."""
         await self.disconnect()

@@ -75,9 +75,9 @@ def _fake_pdf_opener(_path: str) -> Iterator[Any]:
 class _FakeTicketFetcher:
     """Returns a deterministic two-comment thread keyed by uri."""
 
-    async def fetch(self, _ticket_uri: str) -> TicketThread:
+    async def fetch(self, ticket_uri: str) -> TicketThread:
         return TicketThread(
-            ticket_id=NotBlankStr(_ticket_uri),
+            ticket_id=NotBlankStr(ticket_uri),
             comments=(
                 TicketComment(
                     comment_id=NotBlankStr("c1"),

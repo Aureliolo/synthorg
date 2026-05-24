@@ -112,7 +112,7 @@ class ExternalBenchmarkRegistry:
             try:
                 grade: BenchmarkGrade = await benchmark.grade(
                     case=case,
-                    _agent_output=case.expected_output,
+                    agent_output=case.expected_output,
                 )
             except Exception as exc:
                 log_exception_redacted(

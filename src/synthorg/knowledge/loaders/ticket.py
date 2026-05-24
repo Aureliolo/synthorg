@@ -84,7 +84,7 @@ class TicketFetcher(Protocol):
       source row is marked ``FAILED`` and a clear cause is logged.
     """
 
-    async def fetch(self, _ticket_uri: str) -> TicketThread:
+    async def fetch(self, ticket_uri: str) -> TicketThread:
         """Return the ticket thread identified by the provided URI."""
         ...
 
