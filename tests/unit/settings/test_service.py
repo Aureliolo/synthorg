@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from cryptography.fernet import Fernet
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, JsonValue
 
 from synthorg.communication.bus_protocol import MessageBus
 from synthorg.core.types import NotBlankStr
@@ -105,8 +105,8 @@ def registry() -> SettingsRegistry:
 
 
 @pytest.fixture
-def mock_repo() -> Any:
-    repo = mock_of[SettingsRepository](
+def mock_repo() -> AsyncMock:
+    repo: AsyncMock = mock_of[SettingsRepository](
         get=AsyncMock(return_value=None),
         save=AsyncMock(),
         set_if_unchanged=AsyncMock(return_value=True),
@@ -277,7 +277,7 @@ class TestValidation:
         ],
         ids=["non-float", "below-min", "above-max", "bad-enum", "bad-bool"],
     )
-    async def test_rejects_invalid_value(  # noqa: PLR0913
+    async def test_rejects_invalid_value(  # type: ignore[explicit-any]  # noqa: PLR0913 -- defn_kwargs accepts heterogeneous SettingDefinition field types (enum, bool, tuple, float | None, str | None) which don't fit JsonValue
         self,
         mock_repo: AsyncMock,
         config: _FakeConfig,
@@ -927,7 +927,7 @@ class TestValidatorPattern:
 
 
 @contextmanager
-def _logger_info_spy(module: Any) -> Iterator[list[str]]:
+def _logger_info_spy(module: Any) -> Iterator[list[str]]:  # type: ignore[explicit-any]  # accepts any module whose `logger` attribute is a structlog BoundLoggerLazyProxy
     """Spy on *module*'s ``logger.info`` and yield the captured events.
 
     structlog routes events through a custom processor pipeline that
@@ -959,7 +959,7 @@ def _logger_info_spy(module: Any) -> Iterator[list[str]]:
     proxy = module.logger
     original_info = proxy.info
 
-    def _spy(event: str, **kwargs: Any) -> Any:
+    def _spy(event: str, **kwargs: JsonValue) -> object:
         captured.append(event)
         return original_info(event, **kwargs)
 

@@ -4,7 +4,6 @@ Watches ``security.timeout_check_interval_seconds`` and reschedules
 the approval-timeout scheduler on operator changes.
 """
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -33,7 +32,7 @@ def _make_subscriber(
 
     settings_service = MagicMock(spec=SettingsService)
 
-    async def _mock_get(namespace: str, key: str) -> Any:
+    async def _mock_get(namespace: str, key: str) -> MagicMock:
         del namespace, key
         if raise_on_get:
             msg = "settings backend down"

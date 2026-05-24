@@ -15,7 +15,7 @@ parallel ``asyncio.TaskGroup`` resolution are covered by the
 lower-level ``tests/unit/settings/test_resolver.py`` suite.
 """
 
-from typing import Any
+from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock
 
 import pytest
@@ -64,7 +64,7 @@ def _value(namespace: SettingNamespace, key: str, value: str) -> SettingValue:
 
 def _static_responses(
     mapping: dict[tuple[str, str], str],
-) -> Any:
+) -> Callable[[str, str], Awaitable[SettingValue]]:
     """Build an AsyncMock side-effect that returns values from ``mapping``."""
 
     async def _side_effect(namespace: str, key: str) -> SettingValue:

@@ -7,7 +7,6 @@ existing config), and boundary-case override coercion
 (list-of-pairs -> tuple-of-ints).
 """
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -31,7 +30,7 @@ def _settings_map_to_async_mock(values: dict[tuple[str, str], str]) -> AsyncMock
     ``SettingsService.get`` call should return as ``.value``.
     """
 
-    async def _get(namespace: str, key: str) -> Any:
+    async def _get(namespace: str, key: str) -> MagicMock:
         result = MagicMock()
         result.value = values.get((namespace, key), "")
         return result

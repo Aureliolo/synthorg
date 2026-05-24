@@ -1,8 +1,7 @@
 """Unit tests for the SettingType validator registry."""
 
-from typing import Any
-
 import pytest
+from pydantic import JsonValue
 
 from synthorg.core.registry import StrategyFactoryNotFoundError
 from synthorg.settings.enums import SettingNamespace, SettingType
@@ -317,7 +316,7 @@ class TestValidateJson:
     ) -> None:
         """Per-setting shape validator runs after json.loads succeeds."""
 
-        def _shape(value: Any) -> None:
+        def _shape(value: JsonValue) -> None:
             if not isinstance(value, dict):
                 msg = "expected object"
                 raise ValueError(msg)  # noqa: TRY004 -- dispatcher contract requires ValueError
@@ -350,7 +349,7 @@ class TestValidateJson:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        def _always_fails(_value: Any) -> None:
+        def _always_fails(_value: JsonValue) -> None:
             msg = "shape mismatch"
             raise ValueError(msg)
 

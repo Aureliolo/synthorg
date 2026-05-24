@@ -7,11 +7,13 @@ supplied each value at startup.
 """
 
 import asyncio
-from typing import Any
+from collections.abc import Sequence
 from unittest.mock import AsyncMock
 
 import pytest
 import structlog
+from pydantic import JsonValue
+from structlog.typing import EventDict
 
 from synthorg.core.types import NotBlankStr
 from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
@@ -50,7 +52,7 @@ def service() -> SettingsService:
     )
 
 
-def _resolved(logs: Any) -> list[dict[str, Any]]:
+def _resolved(logs: Sequence[EventDict]) -> list[dict[str, JsonValue]]:
     return [dict(log) for log in logs if log["event"] == SETTINGS_VALUE_RESOLVED]
 
 
@@ -86,7 +88,7 @@ async def test_concurrent_first_reads_emit_info_at_most_once(
     with structlog.testing.capture_logs() as logs:
         async with asyncio.TaskGroup() as tg:
             for _ in range(10):
-                tg.create_task(service.get("observability", "root_log_level"))
+                _ = tg.create_task(service.get("observability", "root_log_level"))
     events = _resolved(logs)
     info_events = [e for e in events if e["log_level"] == "info"]
     # ``_resolution_lock`` gates the membership-test + set-add window
