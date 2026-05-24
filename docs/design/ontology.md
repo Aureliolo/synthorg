@@ -5,10 +5,6 @@ description: Shared entity vocabulary, versioned definitions, drift detection, a
 
 # Semantic Ontology
 
-!!! warning "Designed behaviour; runtime in active development"
-
-    This page is the source of truth for the **designed** behaviour of this subsystem. The autonomous agent runtime that exercises it end to end is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
-
 The ontology subsystem provides a shared, versioned vocabulary of entity
 definitions that agents use to communicate unambiguously. Every core concept
 (Task, Agent, Role, etc.) has a canonical definition registered at startup,

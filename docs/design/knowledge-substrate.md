@@ -5,13 +5,6 @@ description: Heavy-duty document/knowledge RAG with citation tracking, distinct 
 
 # Knowledge and Provenance Substrate
 
-!!! warning "Designed behaviour; runtime in active development"
-
-    This page is the source of truth for the **designed** behaviour of this
-    subsystem. The components are built and unit-tested; the ingestion and
-    retrieval pipeline runs inside a live agent, which is in active development
-    (see the [Roadmap](../roadmap/index.md)).
-
 SynthOrg separates three storage concerns:
 
 - **Agent memory** (Mem0): what an agent remembers about a run. See

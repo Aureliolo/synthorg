@@ -1,9 +1,5 @@
 # Self-Improving Company
 
-!!! warning "Designed behaviour; runtime in active development"
-
-    This page is the source of truth for the **designed** behaviour of this subsystem. The self-improvement loop runs only when agents run; it is in active development (see the [Roadmap](../roadmap/index.md)). The code described here is built and unit-tested as components but not yet exercised end to end.
-
 The self-improvement meta-loop observes company-wide signals from 7 existing subsystems and produces deployment and product-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval.
 
 Company autonomy ships at `supervised` so most state-mutating agent actions queue for approval before execution; raise to `semi` or `full` via `company.autonomy_level` (or `config.autonomy.level` in the company YAML) once operators trust the organization. Rank order: `full` > `semi` > `supervised` > `locked`.

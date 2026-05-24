@@ -5,10 +5,6 @@ description: Agent execution status, execution loops (ReAct, Plan-and-Execute, H
 
 # Agent Execution
 
-!!! warning "Designed behaviour; runtime in active development"
-
-    This page is the source of truth for the **designed** behaviour of this subsystem. The autonomous agent runtime that exercises it end to end is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
-
 This page covers the agent-side execution plane: how a single agent runs a task. The engine dispatches work via the [TaskEngine](engine.md#taskengine-centralized-state-coordination); the agent receives it, enters an execution loop, and iterates through LLM turns and tool calls until completion or handoff. The loop type, prompt profile, stagnation guards, and context-budget policies are all pluggable per agent.
 
 ## Agent Execution Status
