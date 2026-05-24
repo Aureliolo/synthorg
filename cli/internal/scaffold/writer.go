@@ -85,8 +85,10 @@ func resolveTargets(files []RenderedFile, absRoot string) ([]string, error) {
 // resolveOneTarget validates a single rendered file and returns its
 // absolute path. Empty content is rejected up front so a malformed
 // template fails with a clear message naming the path. Path-escape is
-// checked both lexically (rejecting "..", absolute paths) and after
-// joining against absRoot (defence in depth).
+// checked lexically (rejecting "..", absolute paths), against absRoot
+// after joining, AND -- when the candidate's deepest existing parent
+// is a symlink -- against the symlink-resolved parent so a sub-path
+// linking outside the scaffold root cannot escape at write time.
 func resolveOneTarget(f RenderedFile, absRoot string) (string, error) {
 	if len(f.Contents) == 0 {
 		return "", fmt.Errorf("rendered file %q has empty content", f.Path)
@@ -96,10 +98,52 @@ func resolveOneTarget(f RenderedFile, absRoot string) (string, error) {
 		return "", fmt.Errorf("scaffold path escapes root: %q", f.Path)
 	}
 	abs := filepath.Join(absRoot, clean)
-	if !strings.HasPrefix(abs+string(filepath.Separator), absRoot+string(filepath.Separator)) && abs != absRoot {
+	if !pathHasRoot(abs, absRoot) {
 		return "", fmt.Errorf("scaffold path escapes root: %q", f.Path)
 	}
+	resolvedParent, err := resolveExistingAncestor(filepath.Dir(abs))
+	if err != nil {
+		return "", fmt.Errorf("resolving scaffold parent %q: %w", f.Path, err)
+	}
+	if !pathHasRoot(resolvedParent, absRoot) {
+		return "", fmt.Errorf("scaffold path escapes root via symlink: %q", f.Path)
+	}
 	return abs, nil
+}
+
+// pathHasRoot reports whether candidate is contained within root using
+// path-component containment (so "/tmp/foo-bar" is NOT inside "/tmp/foo").
+func pathHasRoot(candidate, root string) bool {
+	if candidate == root {
+		return true
+	}
+	return strings.HasPrefix(candidate+string(filepath.Separator), root+string(filepath.Separator))
+}
+
+// resolveExistingAncestor walks up dir until it finds an ancestor that
+// exists on disk, then resolves its symlinks. Sub-paths inside the
+// scaffold tree typically do not exist yet (the writer creates them);
+// the deepest existing ancestor is the right boundary to check against
+// because any symlink in the parent chain would route subsequent writes
+// outside absRoot. EvalSymlinks on a missing path errors, so we walk
+// up only as far as needed.
+func resolveExistingAncestor(dir string) (string, error) {
+	for {
+		if _, err := os.Lstat(dir); err == nil {
+			resolved, evalErr := filepath.EvalSymlinks(dir)
+			if evalErr != nil {
+				return "", evalErr
+			}
+			return resolved, nil
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return dir, nil
+		}
+		dir = parent
+	}
 }
 
 // rejectExisting returns an error if any path already exists on disk.

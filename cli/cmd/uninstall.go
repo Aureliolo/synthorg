@@ -78,7 +78,7 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 	}
 	out.Blank()
 	out.Success("SynthOrg uninstalled")
-	out.HintGuidance("Reinstall from GitHub Releases: https://github.com/Aureliolo/synthorg/releases")
+	out.HintNextStep("Reinstall from GitHub Releases: https://github.com/Aureliolo/synthorg/releases")
 	return nil
 }
 
@@ -96,7 +96,7 @@ func uninstallContainers(cmd *cobra.Command, ctx context.Context, safeDir string
 	}
 	if uninstallKeepImages {
 		out.Success("Container images preserved (--keep-images)")
-		out.HintGuidance("Container images still on disk. Run 'docker rmi' to free space later.")
+		out.HintNextStep("Container images still on disk. Run 'docker rmi' to free space later.")
 		return nil
 	}
 	return confirmAndRemoveImages(cmd, info, out, errUI, autoAccept)

@@ -113,13 +113,13 @@ var configReaders = map[string]configReader{
 	"web_port":              func(s config.State) string { return strconv.Itoa(s.WebPort) },
 	"changelog_view":        func(s config.State) string { return s.ChangelogViewOrDefault() },
 	"channel":               func(s config.State) string { return s.DisplayChannel() },
-	"color":                 func(s config.State) string { return s.Color },
+	"color":                 func(s config.State) string { return s.ColorOrDefault() },
 	"docker_sock":           func(s config.State) string { return s.DockerSock },
-	"hints":                 func(s config.State) string { return s.Hints },
+	"hints":                 func(s config.State) string { return s.HintsOrDefault() },
 	"image_tag":             func(s config.State) string { return s.ImageTag },
 	"log_level":             func(s config.State) string { return s.LogLevel },
 	"memory_backend":        func(s config.State) string { return s.MemoryBackend },
-	"output":                func(s config.State) string { return s.Output },
+	"output":                func(s config.State) string { return s.OutputOrDefault() },
 	"persistence_backend":   func(s config.State) string { return s.PersistenceBackend },
 	"sandbox":               func(s config.State) string { return strconv.FormatBool(s.Sandbox) },
 	"fine_tuning":           func(s config.State) string { return strconv.FormatBool(s.FineTuning) },
@@ -129,7 +129,7 @@ var configReaders = map[string]configReader{
 	// need the effective variant call FineTuneVariantOrDefault() themselves.
 	"fine_tuning_variant": func(s config.State) string { return s.FineTuningVariant },
 	"telemetry_opt_in":    func(s config.State) string { return strconv.FormatBool(s.TelemetryOptIn) },
-	"timestamps":          func(s config.State) string { return s.Timestamps },
+	"timestamps":          func(s config.State) string { return s.TimestampsOrDefault() },
 }
 
 // setterBool returns a configSetter that parses value as a bool and

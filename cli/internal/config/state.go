@@ -245,6 +245,44 @@ func (s State) DisplayChannel() string {
 	return s.Channel
 }
 
+// ColorOrDefault returns the persisted color mode, or "auto" when empty.
+// "auto" matches the runtime auto-detect (TTY + NO_COLOR + CLICOLOR
+// inspection in GlobalOpts) that fires when Color is unset.
+func (s State) ColorOrDefault() string {
+	if s.Color == "" {
+		return "auto"
+	}
+	return s.Color
+}
+
+// HintsOrDefault returns the persisted hints mode, or "auto" when empty.
+// "auto" matches the runtime default (once-per-session for HintTip,
+// suppressed for HintGuidance) applied when Hints is unset.
+func (s State) HintsOrDefault() string {
+	if s.Hints == "" {
+		return "auto"
+	}
+	return s.Hints
+}
+
+// OutputOrDefault returns the persisted output mode, or "text" when empty.
+func (s State) OutputOrDefault() string {
+	if s.Output == "" {
+		return "text"
+	}
+	return s.Output
+}
+
+// TimestampsOrDefault returns the persisted timestamp mode, or "relative"
+// when empty (the canonical default rendered by the logs command when
+// the operator has not opted into iso8601).
+func (s State) TimestampsOrDefault() string {
+	if s.Timestamps == "" {
+		return "relative"
+	}
+	return s.Timestamps
+}
+
 // ChangelogViewOrDefault returns the configured changelog view for the
 // `synthorg update` walk, defaulting to "highlights" when empty or unknown.
 // "highlights" -> AI summary block (per stable release); "commits" -> the
@@ -264,6 +302,24 @@ func StatePath(dataDir string) string {
 // Load reads State from disk. Returns a default state with the given dataDir
 // if the file does not exist (so --data-dir is respected on bootstrap).
 func Load(dataDir string) (State, error) {
+	return loadWith(dataDir, State.Validate)
+}
+
+// LoadAllowMissingMasterKey is Load but runs ValidateAllowMissingMasterKey
+// instead of Validate, so a legacy persisted config can be read even
+// when EncryptSecrets is true and MasterKey is empty. Used by the init
+// reinit flow to recover such installs; callers MUST regenerate or
+// hand-provide a master_key before persisting the returned state back
+// (the strict Validate runs again on the next normal Load).
+func LoadAllowMissingMasterKey(dataDir string) (State, error) {
+	return loadWith(dataDir, State.ValidateAllowMissingMasterKey)
+}
+
+// loadWith is the shared body of Load and LoadAllowMissingMasterKey.
+// validate is the per-state validator the caller wants applied to the
+// unmarshalled State; both wrappers pass a method value so the dispatch
+// cost is a single function call rather than a per-call branch.
+func loadWith(dataDir string, validate func(State) error) (State, error) {
 	safeDir, err := SecurePath(dataDir)
 	if err != nil {
 		return State{}, err
@@ -286,7 +342,7 @@ func Load(dataDir string) (State, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return State{}, fmt.Errorf("%w %s: %w", ErrParsing, path, err)
 	}
-	if err := s.Validate(); err != nil {
+	if err := validate(s); err != nil {
 		return State{}, fmt.Errorf("config %s: %w", path, err)
 	}
 	// Canonicalize and validate DataDir.
@@ -403,6 +459,22 @@ func IsValidHintsMode(name string) bool { return validHintsModes[name] }
 // HintsModeNames returns the allowed hints mode names.
 func HintsModeNames() string { return sortedKeys(validHintsModes) }
 
+// stateValidations is the ordered list of per-section State validators
+// invoked by both Validate and ValidateAllowMissingMasterKey.
+// validateMasterKey is NOT in this slice; both wrappers call it (or
+// skip it) separately so the migration-recovery path does not need
+// pointer comparison or per-iteration skip logic to omit it.
+// Package-level so the slice header is allocated once at init rather
+// than on every Validate call (LoadExisting is a hot path).
+var stateValidations = []func(State) error{
+	validatePorts,
+	validateBackends,
+	validateDisplayModes,
+	validatePostgres,
+	validateFineTuning,
+	validateVerifiedDigests,
+}
+
 // Validate runs State invariants (cross-field constraints such as
 // fine_tuning requires sandbox, variant must be gpu|cpu, valid JWT /
 // master-key formats) and returns the first failure. Callers that mutate
@@ -411,20 +483,30 @@ func HintsModeNames() string { return sortedKeys(validHintsModes) }
 // fail at `config set` time rather than at the next `start`. Load also
 // runs Validate on every read.
 func (s State) Validate() error {
-	checks := []func(State) error{
-		validatePorts,
-		validateBackends,
-		validateDisplayModes,
-		validatePostgres,
-		validateMasterKey,
-		validateFineTuning,
-		validateVerifiedDigests,
-	}
-	for _, check := range checks {
+	for _, check := range stateValidations {
 		if err := check(s); err != nil {
 			return err
 		}
 	}
+	if err := validateMasterKey(s); err != nil {
+		return err
+	}
+	return s.validateTunables()
+}
+
+// ValidateAllowMissingMasterKey is Validate but skips the
+// "master_key required when encrypt_secrets is true" check. Used by
+// LoadAllowMissingMasterKey (and ultimately by the init reinit flow)
+// so a legacy persisted config can be read into memory even though it
+// fails the strict invariant; the caller MUST regenerate or
+// hand-provide a master_key before persisting the returned state back.
+func (s State) ValidateAllowMissingMasterKey() error {
+	for _, check := range stateValidations {
+		if err := check(s); err != nil {
+			return err
+		}
+	}
+	// validateMasterKey deliberately skipped here.
 	return s.validateTunables()
 }
 
@@ -450,17 +532,21 @@ func FineTuneVariantFromIndex(idx int) string {
 	return FineTuneVariantGPU
 }
 
+// tunablesValidations is the ordered list of per-section tunables
+// validators. Package-level for the same reason as stateValidations:
+// avoid a per-call slice header allocation on the LoadExisting hot path.
+var tunablesValidations = []func(State) error{
+	validateRegistryFields,
+	validateDurationFields,
+	validateIntegerFields,
+	validateByteFields,
+}
+
 // validateTunables checks that the optional registry/tunable fields
 // parse and fall within sane ranges. Empty fields are treated as "use
 // default" and skipped. Per-section validators live in validate.go.
 func (s State) validateTunables() error {
-	checks := []func(State) error{
-		validateRegistryFields,
-		validateDurationFields,
-		validateIntegerFields,
-		validateByteFields,
-	}
-	for _, check := range checks {
+	for _, check := range tunablesValidations {
 		if err := check(s); err != nil {
 			return err
 		}

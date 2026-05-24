@@ -170,6 +170,13 @@ func (wc *wipeContext) runOptionalBackup() (proceed bool, err error) {
 // requireComposeFile asserts the compose.yml under safeDir exists and
 // returns its path. A missing file produces the canonical "run init
 // first" hint; any other stat error is surfaced as-is.
+//
+// safeDir is the output of safeStateDir -> config.SecurePath, which
+// canonicalises and validates the operator-supplied --data-dir before
+// it reaches this helper. CodeQL alert #516 (go/path-injection) flagged
+// the os.Stat below because the data-flow tracer cannot see through
+// the helper boundary -- dismissed as false-positive on the strength
+// of the upstream sanitiser.
 func requireComposeFile(safeDir string) (string, error) {
 	composePath := filepath.Join(safeDir, "compose.yml")
 	if _, err := os.Stat(composePath); err != nil {

@@ -143,6 +143,12 @@ func loadStartState(dataDir string) (config.State, error) {
 }
 
 func assertComposeExists(safeDir string) error {
+	// safeDir is the output of safeStateDir -> config.SecurePath, which
+	// canonicalises and validates the operator-supplied --data-dir before
+	// it reaches this helper. CodeQL alert #515 (go/path-injection)
+	// flagged the os.Stat below because the data-flow tracer cannot see
+	// through the helper boundary -- dismissed as false-positive on the
+	// strength of the upstream sanitiser.
 	composePath := filepath.Join(safeDir, "compose.yml")
 	_, err := os.Stat(composePath)
 	if err == nil {
@@ -374,7 +380,7 @@ func emitFineTuneSizeHint(state config.State, out *ui.UI) {
 	if state.FineTuneVariantOrDefault() == config.FineTuneVariantCPU {
 		sizeHint = "~1.7 GB"
 	}
-	out.HintTip(fmt.Sprintf(
+	out.HintGuidance(fmt.Sprintf(
 		"Fine-tune image is %s -- first pull can take a few minutes on typical connections.",
 		sizeHint,
 	))

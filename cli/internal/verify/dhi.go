@@ -481,15 +481,24 @@ func verifyCosignLayer(layer v1.Layer, desc v1.Descriptor, attDigest string, pub
 }
 
 // readCosignPayload reads the layer content (capped at maxBundleBytes),
-// closing the reader before returning.
+// closing the reader before returning. Reads up to maxBundleBytes+1 and
+// rejects exact-cap+1 so an oversize payload surfaces as an explicit
+// error instead of being silently truncated (mirrors the
+// readAttestationStatement contract).
 func readCosignPayload(layer v1.Layer) ([]byte, error) {
 	reader, err := layer.Uncompressed()
 	if err != nil {
 		return nil, err
 	}
-	payload, err := io.ReadAll(io.LimitReader(reader, maxBundleBytes))
+	payload, err := io.ReadAll(io.LimitReader(reader, maxBundleBytes+1))
 	_ = reader.Close()
-	return payload, err
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(payload)) > maxBundleBytes {
+		return nil, fmt.Errorf("cosign payload too large")
+	}
+	return payload, nil
 }
 
 // ── Rekor verification ─────────────────────────────────────────────

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -98,7 +97,7 @@ func runScaffoldKind(cmd *cobra.Command, domain string, kind scaffold.Kind, useN
 		DryRun:    dryRun,
 	})
 	if writeErr != nil {
-		warnPartialScaffoldWrite(out.Writer(), root, written)
+		warnPartialScaffoldWrite(out, root, written)
 		return fmt.Errorf("writing %s scaffold: %w", useName, writeErr)
 	}
 	printScaffoldResult(out, root, written, useName, params.Domain, dryRun)
@@ -120,12 +119,15 @@ func scaffoldRoot() (string, error) {
 
 // warnPartialScaffoldWrite prints the cleanup hint when scaffold.Write
 // returned an error with a non-empty written slice (some files landed
-// on disk before the failure).
-func warnPartialScaffoldWrite(w io.Writer, root string, written []string) {
+// on disk before the failure). The recovery guidance is emitted via
+// HintError so it stays visible under every hint mode except --quiet
+// (the failed-write context is critical for the operator to clean up).
+func warnPartialScaffoldWrite(out *ui.UI, root string, written []string) {
 	if len(written) == 0 {
 		return
 	}
-	_, _ = fmt.Fprintln(w, "WARNING: scaffold partially written before failure; remove these files and re-run:")
+	out.HintError("Scaffold partially written before failure; remove these files and re-run.")
+	w := out.Writer()
 	for _, abs := range written {
 		_, _ = fmt.Fprintf(w, "  %s\n", relOrAbs(root, abs))
 	}

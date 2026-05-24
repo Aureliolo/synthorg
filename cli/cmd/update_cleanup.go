@@ -70,27 +70,32 @@ func autoCleanupOldImages(cmd *cobra.Command, info docker.Info, state config.Sta
 
 	out.Blank()
 	out.Step(fmt.Sprintf("Auto-cleaning %d old image(s)...", len(old)))
-	removed, freedB := runAutoCleanupRemovals(ctx, info, out, errOut, old)
+	removed, freedB, cleanupErr := runAutoCleanupRemovals(ctx, info, out, errOut, old)
 	if removed > 0 && freedB > 0 {
 		out.Success(fmt.Sprintf("Freed %s (%d image(s) removed)", formatBytes(freedB), removed))
 	} else if removed > 0 {
 		out.Success(fmt.Sprintf("Removed %d image(s)", removed))
 	}
+	if cleanupErr != nil {
+		_, _ = fmt.Fprintf(errOut, "Warning: auto-cleanup did not complete: %v\n", cleanupErr)
+	}
 	if removed > 0 {
-		out.HintGuidance("Run 'synthorg cleanup --keep N' to preserve recent previous versions.")
+		out.HintNextStep("Run 'synthorg cleanup --keep N' to preserve recent previous versions.")
 	}
 }
 
 // runAutoCleanupRemovals iterates docker rmi one image at a time
-// without --force. Returns (removed-count, bytes-freed). In-use images
-// are warned but do not abort the loop; ctx cancellation does.
-func runAutoCleanupRemovals(ctx context.Context, info docker.Info, out *ui.UI, errOut io.Writer, old []oldImage) (int, float64) {
+// without --force. Returns (removed-count, bytes-freed, ctxErr). In-use
+// images are warned but do not abort the loop; ctx cancellation aborts
+// the loop and is surfaced as ctxErr so the caller can decide whether
+// to suppress or report it (auto-cleanup currently logs a warning).
+func runAutoCleanupRemovals(ctx context.Context, info docker.Info, out *ui.UI, errOut io.Writer, old []oldImage) (int, float64, error) {
 	var freedB float64
 	var removed int
 	for _, img := range old {
-		if ctx.Err() != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
 			_, _ = fmt.Fprintf(errOut, "Warning: auto-cleanup interrupted\n")
-			return removed, freedB
+			return removed, freedB, ctxErr
 		}
 		if _, rmiErr := docker.RunCmd(ctx, info.DockerPath, "rmi", img.id); rmiErr != nil {
 			if isImageInUse(rmiErr) {
@@ -104,7 +109,7 @@ func runAutoCleanupRemovals(ctx context.Context, info docker.Info, out *ui.UI, e
 		removed++
 		freedB += img.sizeB
 	}
-	return removed, freedB
+	return removed, freedB, nil
 }
 
 // mergeKeepIDs combines current and previous image ID sets into a single

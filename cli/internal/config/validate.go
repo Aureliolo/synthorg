@@ -1,12 +1,20 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// ErrMissingMasterKey is returned (wrapped) by Validate when
+// EncryptSecrets is true and MasterKey is empty. Exported as a sentinel
+// so the init reinit flow can distinguish this recoverable legacy-config
+// case from a hard validation failure and route through the
+// LoadAllowMissingMasterKey path to regenerate the key on save.
+var ErrMissingMasterKey = errors.New("master_key is required when encrypt_secrets is true")
 
 // Per-section validators called by State.Validate. Each returns the first
 // failure for the section it covers; Validate runs them in order and
@@ -25,28 +33,22 @@ func validatePorts(s State) error {
 	return nil
 }
 
-// enumCheck describes a config-field-against-allowlist check. emptyOK
-// means an empty value is allowed (the field defaults at read time).
-type enumCheck struct {
-	name    string
-	value   string
-	valid   func(string) bool
-	options string
-	emptyOK bool
-}
-
-// runEnumChecks returns the first failing check, or nil. Empty values
-// for checks with emptyOK=true are skipped.
-func runEnumChecks(checks []enumCheck) error {
-	for _, c := range checks {
-		if c.emptyOK && c.value == "" {
-			continue
-		}
-		if !c.valid(c.value) {
-			return fmt.Errorf("invalid %s %q: must be one of %s", c.name, c.value, c.options)
-		}
+// checkEnumRequired returns an "invalid …" error when value is not in
+// the allowlist tested by valid. Empty values are rejected.
+func checkEnumRequired(name, value string, valid func(string) bool, options string) error {
+	if !valid(value) {
+		return fmt.Errorf("invalid %s %q: must be one of %s", name, value, options)
 	}
 	return nil
+}
+
+// checkEnumOptional behaves like checkEnumRequired but treats an empty
+// value as "use default" and skips it.
+func checkEnumOptional(name, value string, valid func(string) bool, options string) error {
+	if value == "" {
+		return nil
+	}
+	return checkEnumRequired(name, value, valid, options)
 }
 
 func validateBackends(s State) error {
@@ -56,23 +58,35 @@ func validateBackends(s State) error {
 	if s.ImageTag != "" && !IsValidImageTag(s.ImageTag) {
 		return fmt.Errorf("invalid image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", s.ImageTag)
 	}
-	return runEnumChecks([]enumCheck{
-		{"persistence_backend", s.PersistenceBackend, IsValidPersistenceBackend, sortedKeys(validPersistenceBackends), false},
-		{"memory_backend", s.MemoryBackend, IsValidMemoryBackend, sortedKeys(validMemoryBackends), false},
-		{"bus_backend", s.BusBackend, IsValidBusBackend, sortedKeys(validBusBackends), true},
-		{"channel", s.Channel, IsValidChannel, sortedKeys(validChannels), true},
-		{"log_level", s.LogLevel, IsValidLogLevel, sortedKeys(validLogLevels), true},
-	})
+	if err := checkEnumRequired("persistence_backend", s.PersistenceBackend, IsValidPersistenceBackend, sortedKeys(validPersistenceBackends)); err != nil {
+		return err
+	}
+	if err := checkEnumRequired("memory_backend", s.MemoryBackend, IsValidMemoryBackend, sortedKeys(validMemoryBackends)); err != nil {
+		return err
+	}
+	if err := checkEnumOptional("bus_backend", s.BusBackend, IsValidBusBackend, sortedKeys(validBusBackends)); err != nil {
+		return err
+	}
+	if err := checkEnumOptional("channel", s.Channel, IsValidChannel, sortedKeys(validChannels)); err != nil {
+		return err
+	}
+	return checkEnumOptional("log_level", s.LogLevel, IsValidLogLevel, sortedKeys(validLogLevels))
 }
 
 func validateDisplayModes(s State) error {
-	return runEnumChecks([]enumCheck{
-		{"color", s.Color, IsValidColorMode, ColorModeNames(), true},
-		{"output", s.Output, IsValidOutputMode, OutputModeNames(), true},
-		{"timestamps", s.Timestamps, IsValidTimestampMode, TimestampModeNames(), true},
-		{"hints", s.Hints, IsValidHintsMode, HintsModeNames(), true},
-		{"changelog_view", s.ChangelogView, IsValidChangelogView, ChangelogViewNames(), true},
-	})
+	if err := checkEnumOptional("color", s.Color, IsValidColorMode, ColorModeNames()); err != nil {
+		return err
+	}
+	if err := checkEnumOptional("output", s.Output, IsValidOutputMode, OutputModeNames()); err != nil {
+		return err
+	}
+	if err := checkEnumOptional("timestamps", s.Timestamps, IsValidTimestampMode, TimestampModeNames()); err != nil {
+		return err
+	}
+	if err := checkEnumOptional("hints", s.Hints, IsValidHintsMode, HintsModeNames()); err != nil {
+		return err
+	}
+	return checkEnumOptional("changelog_view", s.ChangelogView, IsValidChangelogView, ChangelogViewNames())
 }
 
 // validatePostgres validates Postgres-specific fields when the backend
@@ -102,8 +116,11 @@ func validatePostgres(s State) error {
 }
 
 func validateMasterKey(s State) error {
-	if !s.EncryptSecrets || strings.TrimSpace(s.MasterKey) == "" {
+	if !s.EncryptSecrets {
 		return nil
+	}
+	if strings.TrimSpace(s.MasterKey) == "" {
+		return ErrMissingMasterKey
 	}
 	if err := validateFernetKey(s.MasterKey); err != nil {
 		return fmt.Errorf("invalid master_key: %w", err)
@@ -139,35 +156,39 @@ func validateVerifiedDigests(s State) error {
 	return nil
 }
 
-// validateRegistryFields checks the registry/tag string fields against
-// their per-field format rules. Empty fields are skipped (treated as
-// "use default"). Unlike the enum-mode checks the error message includes
-// a regex-like rule rather than an allowlist, so the table records the
-// rule alongside the predicate.
-func validateRegistryFields(s State) error {
-	type formatCheck struct {
-		name  string
-		value string
-		valid func(string) bool
-		rule  string
+// checkFormat returns an "invalid …" error when value fails valid.
+// Empty values are skipped (treated as "use default"). Unlike the
+// enum-mode helpers the message embeds a regex-like rule rather than
+// an allowlist.
+func checkFormat(name, value string, valid func(string) bool, rule string) error {
+	if value == "" {
+		return nil
 	}
-	checks := []formatCheck{
-		{"registry_host", s.RegistryHost, IsValidRegistryHost, "must be a DNS hostname (optionally with :port)"},
-		{"dhi_registry", s.DHIRegistry, IsValidRegistryHost, "must be a DNS hostname (optionally with :port)"},
-		{"image_repo_prefix", s.ImageRepoPrefix, IsValidImageRepoPrefix, "must match [a-z0-9][a-z0-9._/-]*"},
-		{"postgres_image_tag", s.PostgresImageTag, IsValidImageTag, "must match [a-zA-Z0-9][a-zA-Z0-9._-]*"},
-		{"nats_image_tag", s.NATSImageTag, IsValidImageTag, "must match [a-zA-Z0-9][a-zA-Z0-9._-]*"},
-		{"default_nats_stream_prefix", s.DefaultNATSStreamPrefix, IsValidStreamPrefix, "must match [A-Z0-9][A-Z0-9_-]*"},
-	}
-	for _, c := range checks {
-		if c.value == "" {
-			continue
-		}
-		if !c.valid(c.value) {
-			return fmt.Errorf("invalid %s %q: %s", c.name, c.value, c.rule)
-		}
+	if !valid(value) {
+		return fmt.Errorf("invalid %s %q: %s", name, value, rule)
 	}
 	return nil
+}
+
+// validateRegistryFields checks the registry/tag string fields against
+// their per-field format rules.
+func validateRegistryFields(s State) error {
+	if err := checkFormat("registry_host", s.RegistryHost, IsValidRegistryHost, "must be a DNS hostname (optionally with :port)"); err != nil {
+		return err
+	}
+	if err := checkFormat("dhi_registry", s.DHIRegistry, IsValidRegistryHost, "must be a DNS hostname (optionally with :port)"); err != nil {
+		return err
+	}
+	if err := checkFormat("image_repo_prefix", s.ImageRepoPrefix, IsValidImageRepoPrefix, "must match [a-z0-9][a-z0-9._/-]*"); err != nil {
+		return err
+	}
+	if err := checkFormat("postgres_image_tag", s.PostgresImageTag, IsValidImageTag, "must match [a-zA-Z0-9][a-zA-Z0-9._-]*"); err != nil {
+		return err
+	}
+	if err := checkFormat("nats_image_tag", s.NATSImageTag, IsValidImageTag, "must match [a-zA-Z0-9][a-zA-Z0-9._-]*"); err != nil {
+		return err
+	}
+	return checkFormat("default_nats_stream_prefix", s.DefaultNATSStreamPrefix, IsValidStreamPrefix, "must match [A-Z0-9][A-Z0-9_-]*")
 }
 
 // validateDurationFields parses each duration string and checks the
@@ -175,25 +196,31 @@ func validateRegistryFields(s State) error {
 // (MinImageVerifyTimeout) because shorter values silently bypass
 // cosign/SLSA verification.
 func validateDurationFields(s State) error {
-	durations := []struct {
-		name, value string
-	}{
-		{"backup_create_timeout", s.BackupCreateTimeout},
-		{"backup_restore_timeout", s.BackupRestoreTimeout},
-		{"health_check_timeout", s.HealthCheckTimeout},
-		{"self_update_http_timeout", s.SelfUpdateHTTPTimeout},
-		{"self_update_api_timeout", s.SelfUpdateAPITimeout},
-		{"tuf_fetch_timeout", s.TUFFetchTimeout},
-		{"attestation_http_timeout", s.AttestationHTTPTimeout},
-		{"image_verify_timeout", s.ImageVerifyTimeout},
-		{"image_pull_retry_delay", s.ImagePullRetryDelay},
+	if err := validateOneDuration("backup_create_timeout", s.BackupCreateTimeout); err != nil {
+		return err
 	}
-	for _, d := range durations {
-		if err := validateOneDuration(d.name, d.value); err != nil {
-			return err
-		}
+	if err := validateOneDuration("backup_restore_timeout", s.BackupRestoreTimeout); err != nil {
+		return err
 	}
-	return nil
+	if err := validateOneDuration("health_check_timeout", s.HealthCheckTimeout); err != nil {
+		return err
+	}
+	if err := validateOneDuration("self_update_http_timeout", s.SelfUpdateHTTPTimeout); err != nil {
+		return err
+	}
+	if err := validateOneDuration("self_update_api_timeout", s.SelfUpdateAPITimeout); err != nil {
+		return err
+	}
+	if err := validateOneDuration("tuf_fetch_timeout", s.TUFFetchTimeout); err != nil {
+		return err
+	}
+	if err := validateOneDuration("attestation_http_timeout", s.AttestationHTTPTimeout); err != nil {
+		return err
+	}
+	if err := validateOneDuration("image_verify_timeout", s.ImageVerifyTimeout); err != nil {
+		return err
+	}
+	return validateOneDuration("image_pull_retry_delay", s.ImagePullRetryDelay)
 }
 
 func validateOneDuration(name, value string) error {
@@ -230,25 +257,28 @@ func validateIntegerFields(s State) error {
 	return nil
 }
 
-func validateByteFields(s State) error {
-	byteFields := []struct {
-		name  string
-		value int64
-	}{
-		{"max_api_response_bytes", s.MaxAPIResponseBytes},
-		{"max_binary_bytes", s.MaxBinaryBytes},
-		{"max_archive_entry_bytes", s.MaxArchiveEntryBytes},
+// checkByteField returns an "invalid …" error when value is negative
+// or above MaxBytesCeiling. Zero is treated as "use default" and
+// skipped (the byte tunables are int64 with a sentinel-zero default).
+func checkByteField(name string, value int64) error {
+	if value == 0 {
+		return nil
 	}
-	for _, b := range byteFields {
-		if b.value == 0 {
-			continue
-		}
-		if b.value < 0 {
-			return fmt.Errorf("invalid %s %d: must be positive", b.name, b.value)
-		}
-		if b.value > MaxBytesCeiling {
-			return fmt.Errorf("invalid %s %d: exceeds ceiling %d (1 GiB)", b.name, b.value, MaxBytesCeiling)
-		}
+	if value < 0 {
+		return fmt.Errorf("invalid %s %d: must be positive", name, value)
+	}
+	if value > MaxBytesCeiling {
+		return fmt.Errorf("invalid %s %d: exceeds ceiling %d (1 GiB)", name, value, MaxBytesCeiling)
 	}
 	return nil
+}
+
+func validateByteFields(s State) error {
+	if err := checkByteField("max_api_response_bytes", s.MaxAPIResponseBytes); err != nil {
+		return err
+	}
+	if err := checkByteField("max_binary_bytes", s.MaxBinaryBytes); err != nil {
+		return err
+	}
+	return checkByteField("max_archive_entry_bytes", s.MaxArchiveEntryBytes)
 }

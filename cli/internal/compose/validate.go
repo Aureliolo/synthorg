@@ -2,6 +2,7 @@ package compose
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -192,9 +193,16 @@ func validateSecrets(p Params) error {
 }
 
 func validateDigestPins(p Params) error {
-	for name, d := range p.DigestPins {
-		if !verify.IsValidDigest(d) {
-			return fmt.Errorf("invalid digest pin for %q: %q is not a valid sha256 digest", name, d)
+	// Sort keys so the returned error is deterministic when more than
+	// one pin is malformed (range over a map is randomised in Go).
+	keys := make([]string, 0, len(p.DigestPins))
+	for name := range p.DigestPins {
+		keys = append(keys, name)
+	}
+	sort.Strings(keys)
+	for _, name := range keys {
+		if !verify.IsValidDigest(p.DigestPins[name]) {
+			return fmt.Errorf("invalid digest pin for %q: %q is not a valid sha256 digest", name, p.DigestPins[name])
 		}
 	}
 	return nil

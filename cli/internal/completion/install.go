@@ -254,7 +254,9 @@ func probeShellProfile(ctx context.Context, shell, resolvedHome string) (string,
 	}
 	resolved := resolveProfileDir(cleaned)
 	rel, relErr := filepath.Rel(resolvedHome, resolved)
-	if relErr != nil || strings.HasPrefix(rel, "..") {
+	// "..foo" is a valid filename and stays inside resolvedHome; reject
+	// only bare ".." or any prefix-with-separator that walks the parent.
+	if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", false
 	}
 	return resolved, true
@@ -362,6 +364,15 @@ const maxSnippetLines = 5
 // Only the first occurrence is removed to avoid greedy deletion.
 // The original file permissions are preserved.
 // If the file does not exist or has no marker, this is a no-op.
+//
+// path is resolved by the per-shell helpers (bashRCPath,
+// zshrcPath, fishConfigPath, powershellProfilePath) from a fixed
+// allowlist of shell-specific config locations under the operator's
+// home directory; writing to those files is the entire purpose of the
+// completion uninstall flow. CodeQL alert #517 (go/path-injection)
+// flagged the os.WriteFile below because the data-flow tracer cannot
+// distinguish that allowlist from an arbitrary attacker-controlled
+// string -- dismissed as false-positive.
 func removeMarkerBlock(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {

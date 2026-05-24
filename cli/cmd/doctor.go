@@ -228,23 +228,75 @@ func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, st
 
 // classifyDoctorIssues sorts issues into the two fixable buckets
 // (compose-regeneration and restart) plus an unfixable remainder.
-// Check filter (--checks) gates whether a bucket is touched.
+// Check filter (--checks) gates whether a bucket is touched AND whether
+// an unmatched issue is surfaced as an "unfixable" auto-fix hint.
+// Without the filter on the default branch, a `--checks=compose` run
+// would still emit "No auto-fix available for: <unrelated issue>" hints
+// for categories the operator deliberately excluded.
 func classifyDoctorIssues(issues []string) (needComposeFix, needRestart bool, unfixable []string) {
+	unfixableEnabled := anyFixableCheckEnabled()
 	for _, issue := range issues {
-		switch {
-		case strings.Contains(issue, "compose.yml") && (strings.Contains(issue, "not found") || strings.Contains(issue, "invalid")):
+		switch classifyDoctorIssue(issue) {
+		case doctorIssueComposeFix:
 			if doctorCheckEnabled("compose") {
 				needComposeFix = true
 			}
-		case strings.Contains(issue, "unhealthy") || strings.Contains(issue, "exited"):
+		case doctorIssueRestart:
 			if doctorCheckEnabled("containers") || doctorCheckEnabled("health") {
 				needRestart = true
 			}
-		default:
-			unfixable = append(unfixable, issue)
+		case doctorIssueUnfixable:
+			if unfixableEnabled {
+				unfixable = append(unfixable, issue)
+			}
 		}
 	}
 	return needComposeFix, needRestart, unfixable
+}
+
+// doctorIssueKind identifies which auto-fix bucket an issue belongs to.
+type doctorIssueKind int
+
+const (
+	doctorIssueUnfixable doctorIssueKind = iota
+	doctorIssueComposeFix
+	doctorIssueRestart
+)
+
+// classifyDoctorIssue inspects one issue string and returns its bucket.
+// The string-match heuristics live here so classifyDoctorIssues stays
+// flat (one case per bucket) instead of inlining the substring chains.
+func classifyDoctorIssue(issue string) doctorIssueKind {
+	if strings.Contains(issue, "compose.yml") &&
+		(strings.Contains(issue, "not found") || strings.Contains(issue, "invalid")) {
+		return doctorIssueComposeFix
+	}
+	if strings.Contains(issue, "unhealthy") || strings.Contains(issue, "exited") {
+		return doctorIssueRestart
+	}
+	return doctorIssueUnfixable
+}
+
+// anyFixableCheckEnabled reports whether ANY category that produces
+// fixable / unfixable diagnostics is currently selected (--checks empty
+// means "all selected"). Used to suppress unfixable hints when the
+// operator deliberately scoped --checks away from them.
+func anyFixableCheckEnabled() bool {
+	for _, name := range fixableDoctorCheckNames {
+		if doctorCheckEnabled(name) {
+			return true
+		}
+	}
+	return false
+}
+
+// fixableDoctorCheckNames is the set of --checks categories that
+// produce diagnostics classifyDoctorIssues routes through the auto-fix
+// path. Kept in one place so adding a new doctor category that emits
+// such diagnostics has a single edit site.
+var fixableDoctorCheckNames = []string{
+	"errors", "health", "containers", "images",
+	"compose", "config", "disk", "environment",
 }
 
 func runDoctorComposeFix(out, errOut *ui.UI, state config.State, safeDir string) {

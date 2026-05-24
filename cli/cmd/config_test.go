@@ -119,6 +119,7 @@ func TestConfigSetChannel(t *testing.T) {
 	dir := t.TempDir()
 	// Create initial config.
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -145,6 +146,7 @@ func TestConfigSetChannel(t *testing.T) {
 func TestConfigSetImageTag_ClearsVerifiedDigestsAndImageTag(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	state.VerifiedDigests = map[string]string{
 		"backend":                  "sha256:1111111111111111111111111111111111111111111111111111111111111111",
@@ -182,6 +184,7 @@ func TestConfigSetImageTag_ClearsVerifiedDigestsAndImageTag(t *testing.T) {
 func TestConfigSetRejectsInvalidChannel(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -212,6 +215,7 @@ func TestConfigSetAutoCleanup(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			state := config.DefaultState()
+			state.EncryptSecrets = false
 			state.DataDir = dir
 			state.AutoCleanup = tt.initial
 			if err := config.Save(state); err != nil {
@@ -248,6 +252,7 @@ func FuzzConfigSetAutoCleanup(f *testing.F) {
 	f.Fuzz(func(t *testing.T, value string) {
 		dir := t.TempDir()
 		state := config.DefaultState()
+		state.EncryptSecrets = false
 		state.DataDir = dir
 		if err := config.Save(state); err != nil {
 			t.Fatalf("Save: %v", err)
@@ -272,6 +277,7 @@ func FuzzConfigSetAutoCleanup(f *testing.F) {
 func TestConfigSetRejectsInvalidAutoCleanup(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -292,6 +298,7 @@ func TestConfigSetRejectsInvalidAutoCleanup(t *testing.T) {
 func TestConfigShowAutoCleanup(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -337,6 +344,7 @@ func TestConfigSetLogLevel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			state := config.DefaultState()
+			state.EncryptSecrets = false
 			state.DataDir = dir
 			if err := config.Save(state); err != nil {
 				t.Fatal(err)
@@ -364,6 +372,7 @@ func TestConfigSetLogLevel(t *testing.T) {
 func TestConfigSetRejectsInvalidLogLevel(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -402,6 +411,7 @@ func FuzzConfigSetLogLevel(f *testing.F) {
 	f.Fuzz(func(t *testing.T, value string) {
 		dir := t.TempDir()
 		state := config.DefaultState()
+		state.EncryptSecrets = false
 		state.DataDir = dir
 		if err := config.Save(state); err != nil {
 			t.Fatalf("Save: %v", err)
@@ -426,6 +436,7 @@ func FuzzConfigSetLogLevel(f *testing.F) {
 func TestConfigGet(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	state.Channel = "dev"
 	state.ImageTag = "0.5.0-dev.9"
@@ -487,6 +498,7 @@ func TestConfigGetUnknownKey(t *testing.T) {
 	})
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -510,6 +522,7 @@ func TestConfigGetRejectsSecretKeys(t *testing.T) {
 	})
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -545,6 +558,10 @@ func TestConfigGetDefaultChannel(t *testing.T) {
 		"log_level":           "info",
 		"persistence_backend": "sqlite",
 		"memory_backend":      "mem0",
+		// encrypt_secrets defaults to true (DefaultState), which now
+		// requires master_key. This test targets channel-default
+		// resolution, so opt out of the encrypt-secrets invariant.
+		"encrypt_secrets": false,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -569,6 +586,7 @@ func TestConfigGetDefaultChannel(t *testing.T) {
 func TestConfigSetRejectsUnknownKey(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)

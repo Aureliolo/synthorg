@@ -64,7 +64,7 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("detecting docker: %w", err)
 	}
-	old, err := collectCleanupCandidates(ctx, cmd, info, state, errOut)
+	old, err := collectCleanupCandidates(ctx, cmd, info, state, out, errOut)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 // applied. Returns nil (no error) when the call would be a no-op so
 // the caller can short-circuit; nil also covers the "fewer than --keep
 // images exist" early-return shape.
-func collectCleanupCandidates(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, errOut *ui.UI) ([]oldImage, error) {
+func collectCleanupCandidates(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, out, errOut *ui.UI) ([]oldImage, error) {
 	var old []oldImage
 	var err error
 	if cleanupAll {
@@ -106,7 +106,6 @@ func collectCleanupCandidates(ctx context.Context, cmd *cobra.Command, info dock
 		return nil, fmt.Errorf("finding images: %w", err)
 	}
 	if len(old) == 0 {
-		out := ui.NewUIWithOptions(cmd.OutOrStdout(), GetGlobalOpts(ctx).UIOptions())
 		out.Success("No images found -- nothing to clean up")
 		return nil, nil
 	}
@@ -116,7 +115,6 @@ func collectCleanupCandidates(ctx context.Context, cmd *cobra.Command, info dock
 		return old[cleanupKeep:], nil
 	}
 	if cleanupKeep > 0 {
-		out := ui.NewUIWithOptions(cmd.OutOrStdout(), GetGlobalOpts(ctx).UIOptions())
 		out.Success(fmt.Sprintf("Only %d image(s) found, keeping all (--keep %d)", len(old), cleanupKeep))
 		return nil, nil
 	}
@@ -171,8 +169,14 @@ func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info
 	if !confirmed {
 		return false, nil
 	}
-	removed, freedB := removeOldImages(ctx, info, out, old)
+	removed, freedB, hardFailures, ctxErr := removeOldImages(ctx, info, out, old)
 	emitCleanupSummary(out, old, removed, freedB)
+	if ctxErr != nil {
+		return removed > 0, ctxErr
+	}
+	if hardFailures > 0 {
+		return removed > 0, fmt.Errorf("%d image removal(s) failed", hardFailures)
+	}
 	return removed > 0, nil
 }
 
@@ -196,14 +200,17 @@ func confirmCleanupPrompt(cmd *cobra.Command, opts *GlobalOpts, old []oldImage) 
 
 // removeOldImages iterates `docker rmi` one image at a time without
 // --force (gentle cleanup: only untagged/unused images come off; tagged
-// images need 'synthorg uninstall'). Returns the count removed and the
-// total bytes freed.
-func removeOldImages(ctx context.Context, info docker.Info, out *ui.UI, old []oldImage) (int, float64) {
+// images need 'synthorg uninstall'). Returns the count removed, the
+// total bytes freed, the number of hard `docker rmi` failures (non
+// "in use" errors, which should surface as a runtime-failure exit code),
+// and ctx.Err() if the loop was interrupted by cancellation. The caller
+// surfaces the summary first, then propagates whichever signal is set.
+func removeOldImages(ctx context.Context, info docker.Info, out *ui.UI, old []oldImage) (int, float64, int, error) {
 	var freedB float64
-	var removed int
+	var removed, hardFailures int
 	for _, img := range old {
-		if ctx.Err() != nil {
-			return removed, freedB
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return removed, freedB, hardFailures, ctxErr
 		}
 		_, rmiErr := docker.RunCmd(ctx, info.DockerPath, "rmi", img.id)
 		if rmiErr != nil {
@@ -211,6 +218,7 @@ func removeOldImages(ctx context.Context, info docker.Info, out *ui.UI, old []ol
 				out.Warn(fmt.Sprintf("%-12s skipped (in use)", img.id))
 			} else {
 				out.Error(fmt.Sprintf("%-12s failed: %v", img.id, rmiErr))
+				hardFailures++
 			}
 			continue
 		}
@@ -218,7 +226,7 @@ func removeOldImages(ctx context.Context, info docker.Info, out *ui.UI, old []ol
 		removed++
 		freedB += img.sizeB
 	}
-	return removed, freedB
+	return removed, freedB, hardFailures, nil
 }
 
 // emitCleanupSummary prints the post-cleanup totals + hints.

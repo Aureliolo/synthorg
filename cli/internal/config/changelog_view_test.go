@@ -51,6 +51,10 @@ func TestChangelogViewNames(t *testing.T) {
 
 func TestChangelogViewValidation(t *testing.T) {
 	base := DefaultState()
+	// encrypt_secrets defaults to true; the master-key invariant now
+	// rejects an empty key in that combination. This test only targets
+	// changelog_view validation, so opt out of the encrypt-secrets path.
+	base.EncryptSecrets = false
 
 	t.Run("empty_passes", func(t *testing.T) {
 		s := base

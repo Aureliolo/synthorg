@@ -148,33 +148,53 @@ func resolveRegistryTunables(t *Tunables, s State) error {
 	return nil
 }
 
+// resolveDurationField looks up env > stateValue > current *dst, parses
+// the chosen value into a duration, and writes it back through dst.
+// Using a pointer instead of a setter closure keeps the per-call alloc
+// count at zero (the closure pattern allocates one func value per
+// duration, which is hot on the ResolveTunables path).
+func resolveDurationField(key, envName, stateValue string, dst *time.Duration) error {
+	d, err := resolveDuration(envName, stateValue, *dst)
+	if err != nil {
+		return fmt.Errorf("%s: %w", key, err)
+	}
+	*dst = d
+	return nil
+}
+
+// durationBinding describes a single duration tunable: its display
+// name, env-var name, getter for the persisted string on State, and
+// getter for the destination field on Tunables. The getters are
+// non-capturing function literals so they are statically allocated at
+// package init -- the slice header itself is allocated once on
+// durationBindings, and per-call iteration does zero work on the heap.
+type durationBinding struct {
+	key     string
+	envName string
+	state   func(State) string
+	dst     func(*Tunables) *time.Duration
+}
+
+var durationBindings = []durationBinding{
+	{"backup_create_timeout", EnvBackupCreateTimeout, func(s State) string { return s.BackupCreateTimeout }, func(t *Tunables) *time.Duration { return &t.BackupCreateTimeout }},
+	{"backup_restore_timeout", EnvBackupRestoreTimeout, func(s State) string { return s.BackupRestoreTimeout }, func(t *Tunables) *time.Duration { return &t.BackupRestoreTimeout }},
+	{"health_check_timeout", EnvHealthCheckTimeout, func(s State) string { return s.HealthCheckTimeout }, func(t *Tunables) *time.Duration { return &t.HealthCheckTimeout }},
+	{"self_update_http_timeout", EnvSelfUpdateHTTPTimeout, func(s State) string { return s.SelfUpdateHTTPTimeout }, func(t *Tunables) *time.Duration { return &t.SelfUpdateHTTPTimeout }},
+	{"self_update_api_timeout", EnvSelfUpdateAPITimeout, func(s State) string { return s.SelfUpdateAPITimeout }, func(t *Tunables) *time.Duration { return &t.SelfUpdateAPITimeout }},
+	{"tuf_fetch_timeout", EnvTUFFetchTimeout, func(s State) string { return s.TUFFetchTimeout }, func(t *Tunables) *time.Duration { return &t.TUFFetchTimeout }},
+	{"attestation_http_timeout", EnvAttestationHTTPTimeout, func(s State) string { return s.AttestationHTTPTimeout }, func(t *Tunables) *time.Duration { return &t.AttestationHTTPTimeout }},
+	{"image_verify_timeout", EnvImageVerifyTimeout, func(s State) string { return s.ImageVerifyTimeout }, func(t *Tunables) *time.Duration { return &t.ImageVerifyTimeout }},
+	{"image_pull_retry_delay", EnvImagePullRetryDelay, func(s State) string { return s.ImagePullRetryDelay }, func(t *Tunables) *time.Duration { return &t.ImagePullRetryDelay }},
+}
+
 // resolveDurationTunables fills every duration field on t, plus the
 // image-verify floor and image_pull_attempts integer (kept together
 // because both gate image-pull behaviour).
 func resolveDurationTunables(t *Tunables, s State) error {
-	bindings := []struct {
-		key   string
-		env   string
-		state string
-		def   time.Duration
-		set   func(time.Duration)
-	}{
-		{"backup_create_timeout", EnvBackupCreateTimeout, s.BackupCreateTimeout, t.BackupCreateTimeout, func(d time.Duration) { t.BackupCreateTimeout = d }},
-		{"backup_restore_timeout", EnvBackupRestoreTimeout, s.BackupRestoreTimeout, t.BackupRestoreTimeout, func(d time.Duration) { t.BackupRestoreTimeout = d }},
-		{"health_check_timeout", EnvHealthCheckTimeout, s.HealthCheckTimeout, t.HealthCheckTimeout, func(d time.Duration) { t.HealthCheckTimeout = d }},
-		{"self_update_http_timeout", EnvSelfUpdateHTTPTimeout, s.SelfUpdateHTTPTimeout, t.SelfUpdateHTTPTimeout, func(d time.Duration) { t.SelfUpdateHTTPTimeout = d }},
-		{"self_update_api_timeout", EnvSelfUpdateAPITimeout, s.SelfUpdateAPITimeout, t.SelfUpdateAPITimeout, func(d time.Duration) { t.SelfUpdateAPITimeout = d }},
-		{"tuf_fetch_timeout", EnvTUFFetchTimeout, s.TUFFetchTimeout, t.TUFFetchTimeout, func(d time.Duration) { t.TUFFetchTimeout = d }},
-		{"attestation_http_timeout", EnvAttestationHTTPTimeout, s.AttestationHTTPTimeout, t.AttestationHTTPTimeout, func(d time.Duration) { t.AttestationHTTPTimeout = d }},
-		{"image_verify_timeout", EnvImageVerifyTimeout, s.ImageVerifyTimeout, t.ImageVerifyTimeout, func(d time.Duration) { t.ImageVerifyTimeout = d }},
-		{"image_pull_retry_delay", EnvImagePullRetryDelay, s.ImagePullRetryDelay, t.ImagePullRetryDelay, func(d time.Duration) { t.ImagePullRetryDelay = d }},
-	}
-	for _, b := range bindings {
-		d, err := resolveDuration(b.env, b.state, b.def)
-		if err != nil {
-			return fmt.Errorf("%s: %w", b.key, err)
+	for _, b := range durationBindings {
+		if err := resolveDurationField(b.key, b.envName, b.state(s), b.dst(t)); err != nil {
+			return err
 		}
-		b.set(d)
 	}
 	if t.ImageVerifyTimeout < MinImageVerifyTimeout {
 		return fmt.Errorf(
@@ -182,6 +202,18 @@ func resolveDurationTunables(t *Tunables, s State) error {
 			t.ImageVerifyTimeout, MinImageVerifyTimeout,
 		)
 	}
+	return nil
+}
+
+// resolveBytesField looks up env > stateValue > current *dst, parses the
+// chosen value into a byte count, and writes it back through dst.
+// Pointer-based for the same zero-alloc reason as resolveDurationField.
+func resolveBytesField(key, envName string, stateValue int64, dst *int64) error {
+	n, err := resolveBytes(envName, stateValue, *dst)
+	if err != nil {
+		return fmt.Errorf("%s: %w", key, err)
+	}
+	*dst = n
 	return nil
 }
 
@@ -195,25 +227,13 @@ func resolveCountTunables(t *Tunables, s State) error {
 	}
 	t.ImagePullAttempts = attempts
 
-	bytes := []struct {
-		key string
-		env string
-		st  int64
-		def int64
-		set func(int64)
-	}{
-		{"max_api_response_bytes", EnvMaxAPIResponseBytes, s.MaxAPIResponseBytes, t.MaxAPIResponseBytes, func(n int64) { t.MaxAPIResponseBytes = n }},
-		{"max_binary_bytes", EnvMaxBinaryBytes, s.MaxBinaryBytes, t.MaxBinaryBytes, func(n int64) { t.MaxBinaryBytes = n }},
-		{"max_archive_entry_bytes", EnvMaxArchiveEntryBytes, s.MaxArchiveEntryBytes, t.MaxArchiveEntryBytes, func(n int64) { t.MaxArchiveEntryBytes = n }},
+	if err := resolveBytesField("max_api_response_bytes", EnvMaxAPIResponseBytes, s.MaxAPIResponseBytes, &t.MaxAPIResponseBytes); err != nil {
+		return err
 	}
-	for _, b := range bytes {
-		n, err := resolveBytes(b.env, b.st, b.def)
-		if err != nil {
-			return fmt.Errorf("%s: %w", b.key, err)
-		}
-		b.set(n)
+	if err := resolveBytesField("max_binary_bytes", EnvMaxBinaryBytes, s.MaxBinaryBytes, &t.MaxBinaryBytes); err != nil {
+		return err
 	}
-	return nil
+	return resolveBytesField("max_archive_entry_bytes", EnvMaxArchiveEntryBytes, s.MaxArchiveEntryBytes, &t.MaxArchiveEntryBytes)
 }
 
 // firstNonEmpty returns the first whitespace-trimmed non-empty string

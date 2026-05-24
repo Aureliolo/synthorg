@@ -461,7 +461,7 @@ func hintComposeRestart(out *ui.UI, dataDir, what string) {
 		return
 	}
 	if _, statErr := os.Stat(filepath.Join(safeDir, "compose.yml")); statErr == nil {
-		out.HintGuidance(fmt.Sprintf("Restart containers with 'synthorg stop && synthorg start' to apply the %s.", what))
+		out.HintNextStep(fmt.Sprintf("Restart containers with 'synthorg stop && synthorg start' to apply the %s.", what))
 	}
 }
 
