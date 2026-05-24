@@ -48,20 +48,26 @@ const ITEM_REQUIRED_STRING_FIELDS = [
   'timestamp',
 ] as const
 
+function isValidDispatchedTo(value: unknown): boolean {
+  if (!Array.isArray(value)) return false
+  // Validate each entry is a known route string; corrupt
+  // localStorage entries shouldn't rehydrate into NotificationItem.
+  return value.every(
+    (entry) => typeof entry === 'string' && VALID_ROUTES.has(entry),
+  )
+}
+
 function isValidItem(item: unknown): item is NotificationItem {
   if (typeof item !== 'object' || item === null) return false
   const obj = item as Record<string, unknown>
   for (const field of ITEM_REQUIRED_STRING_FIELDS) {
     if (typeof obj[field] !== 'string') return false
   }
-  if (!VALID_CATEGORIES.has(obj.category as string)) return false
-  if (!VALID_SEVERITIES.has(obj.severity as string)) return false
-  if (typeof obj.read !== 'boolean') return false
-  // Validate each dispatchedTo entry is a known route string; corrupt
-  // localStorage entries shouldn't rehydrate into NotificationItem.
-  if (!Array.isArray(obj.dispatchedTo)) return false
-  return obj.dispatchedTo.every(
-    (entry) => typeof entry === 'string' && VALID_ROUTES.has(entry),
+  return (
+    VALID_CATEGORIES.has(obj.category as string)
+    && VALID_SEVERITIES.has(obj.severity as string)
+    && typeof obj.read === 'boolean'
+    && isValidDispatchedTo(obj.dispatchedTo)
   )
 }
 
