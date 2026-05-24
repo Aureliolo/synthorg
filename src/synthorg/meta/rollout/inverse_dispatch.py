@@ -11,7 +11,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_ROLLBACK_ARCHITECTURE_REVERTED,
     META_ROLLBACK_CODE_REVERTED,
@@ -114,12 +114,12 @@ class RevertConfigHandler:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 META_ROLLBACK_OPERATION_FAILED,
+                exc,
                 operation_type="revert_config",
                 target=str(operation.target),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         logger.info(
@@ -159,12 +159,12 @@ class RestorePromptHandler:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 META_ROLLBACK_OPERATION_FAILED,
+                exc,
                 operation_type="restore_prompt",
                 target=str(operation.target),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         logger.info(
@@ -190,12 +190,12 @@ class RevertArchitectureHandler:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 META_ROLLBACK_OPERATION_FAILED,
+                exc,
                 operation_type="revert_architecture",
                 target=str(operation.target),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         logger.info(
@@ -235,12 +235,12 @@ class RevertCodeHandler:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 META_ROLLBACK_OPERATION_FAILED,
+                exc,
                 operation_type="revert_code",
                 target=str(operation.target),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         logger.info(

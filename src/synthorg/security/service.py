@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, AutonomyLevel
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.autonomy import (
     AUTONOMY_ACTION_AUTO_APPROVED,
     AUTONOMY_ACTION_HUMAN_REQUIRED,
@@ -194,12 +194,12 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 SECURITY_INTERCEPTOR_ERROR,
+                exc,
                 tool_name=context.tool_name,
                 note="Rule engine evaluation failed (fail-closed)",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             verdict = SecurityVerdict(
                 verdict=SecurityVerdictType.DENY,
@@ -308,12 +308,12 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     SECURITY_AUDIT_RECORD_ERROR,
+                    exc,
                     tool_name=context.tool_name,
                     note="Output scan audit recording failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
 
         # Apply the output scan response policy.  On failure, fall back
@@ -327,8 +327,10 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 SECURITY_INTERCEPTOR_ERROR,
+                exc,
                 tool_name=context.tool_name,
                 policy=policy_name,
                 fallback_outcome=result.outcome.value,
@@ -336,8 +338,6 @@ class SecOpsService(SecOpsServiceSafetyMixin):
                     "Output scan policy application failed; returning raw "
                     "scan result (may be less strict than intended policy)"
                 ),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
 
         return result
@@ -384,12 +384,12 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 SECURITY_INTERCEPTOR_ERROR,
+                exc,
                 tool_name=context.tool_name,
                 note="LLM security evaluation failed (applying error policy)",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             # Respect the configured error policy rather than
             # unconditionally returning the rule verdict.
@@ -510,12 +510,12 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 SECURITY_AUDIT_RECORD_ERROR,
+                exc,
                 tool_name=context.tool_name,
                 note="Audit recording failed -- verdict still returned",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
 
     async def _handle_escalation(
@@ -620,13 +620,13 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 SECURITY_ESCALATION_STORE_ERROR,
+                exc,
                 approval_id=approval_id,
                 tool_name=context.tool_name,
                 agent_id=context.agent_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return verdict.model_copy(
                 update={

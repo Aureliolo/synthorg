@@ -40,7 +40,11 @@ from synthorg.integrations.webhooks.event_bus_bridge import (
 )
 from synthorg.integrations.webhooks.replay_protection import MAX_NONCE_CHARS
 from synthorg.integrations.webhooks.verifiers.factory import get_verifier
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.idempotency import IDEMPOTENCY_CLAIM_IN_FLIGHT
 from synthorg.observability.events.integrations import (
@@ -538,13 +542,13 @@ async def _retry_publish_and_transition(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             WEBHOOK_REJECTED,
+            exc,
             receipt_id=str(receipt.id),
             connection_name=str(receipt.connection_name),
             reason="retry_publish_failed",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         await _transition_webhook_receipt_status(
             persistence,

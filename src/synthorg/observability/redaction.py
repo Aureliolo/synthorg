@@ -12,7 +12,7 @@ request body contains credentials.  Two risks combine there:
   frame variables, so a request-payload ``dict`` sitting on the stack
   ends up serialized into the log record.
 
-This module provides two helpers:
+This module provides three helpers:
 
 ``scrub_secret_tokens(text)``
     Pattern-replace well-known credential shapes (URL-encoded form
@@ -26,6 +26,13 @@ This module provides two helpers:
     Suitable as the value of ``error=`` on any ``logger.warning`` /
     ``logger.error`` call on a secret-bearing code path.
 
+``log_exception_redacted(logger, event, exc, **kwargs)``
+    Single-call replacement for the manual SEC-1 boilerplate
+    ``logger.error(EVENT, ..., error_type=type(exc).__name__,
+    error=safe_error_description(exc))``.  Use anywhere an ``except``
+    branch needs to emit a redacted-error log without attaching the
+    traceback (the ``logger.exception`` shape forbidden by SEC-1).
+
 Callers that need to remove traceback attachment as well as scrub the
 message should pair this helper with ``logger.warning`` (which does not
 attach ``exc_info``) instead of ``logger.exception``.  The exception
@@ -33,7 +40,7 @@ chain is still preserved for callers via ``raise ... from exc``.
 """
 
 import re
-from typing import Final
+from typing import Any, Final, Protocol
 
 MAX_SCRUBBED_LENGTH: Final[int] = 512
 """Hard cap on the length of the output of :func:`safe_error_description`.
@@ -244,3 +251,66 @@ def safe_error_description(exc: BaseException) -> str:
     # Truncate to leave room for the marker without exceeding the cap.
     keep = MAX_SCRUBBED_LENGTH - len(_TRUNCATION_MARKER)
     return candidate[:keep] + _TRUNCATION_MARKER
+
+
+class _ErrorLogger(Protocol):
+    """Minimal logger surface used by :func:`log_exception_redacted`.
+
+    Structural typing so any structlog ``BoundLogger`` (the project's
+    ``get_logger`` return type) and test doubles both satisfy the
+    contract without an explicit base class. The signature mirrors
+    structlog's permissive ``error`` (event optional, ``*args``,
+    arbitrary kwargs, opaque return) so a real ``BoundLogger`` passes
+    the structural check.
+    """
+
+    def error(self, event: str | None = ..., *args: Any, **kwargs: Any) -> Any:
+        """Emit an ERROR-severity record under *event*."""
+        ...
+
+
+def log_exception_redacted(
+    logger: _ErrorLogger,
+    event: str,
+    exc: BaseException,
+    /,
+    **kwargs: Any,
+) -> None:
+    """Emit an ERROR log for *exc* with SEC-1 redaction kwargs applied.
+
+    Single-call replacement for the canonical SEC-1 boilerplate::
+
+        logger.error(
+            EVENT,
+            ...,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+
+    Use anywhere an ``except`` branch needs a redacted-error log
+    without attaching the traceback (the ``logger.exception`` shape
+    that SEC-1 forbids; see ``check_logger_exception_str_exc.py``).
+    Caller-supplied ``error_type`` / ``error`` kwargs are rejected at
+    runtime to keep the redaction pair authoritative.
+
+    Args:
+        logger: A structlog (or compatible) logger with an ``error()``
+            method.
+        event: The event-name constant (from
+            ``synthorg.observability.events.<domain>``).
+        exc: The exception instance being logged.
+        **kwargs: Additional structured fields. ``error_type`` and
+            ``error`` are reserved and cannot be supplied here.
+    """
+    if "error_type" in kwargs or "error" in kwargs:
+        msg = (
+            "log_exception_redacted owns 'error_type' and 'error'; "
+            "remove them from the kwargs."
+        )
+        raise TypeError(msg)
+    logger.error(
+        event,
+        **kwargs,
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )

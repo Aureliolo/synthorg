@@ -15,7 +15,11 @@ from synthorg.communication.errors import (
     CommunicationError,
 )
 from synthorg.core.normalization import compare_ci
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.settings import (
     SETTINGS_CHANNEL_CREATED,
     SETTINGS_DISPATCHER_CHANNEL_DEAD,
@@ -360,15 +364,15 @@ class SettingsChangeDispatcher:
                     # TRY400: logger.exception here would append a
                     # TimeoutError traceback with no actionable
                     # diagnostic beyond the structured fields below.
-                    logger.error(
+                    log_exception_redacted(
+                        logger,
                         SETTINGS_DISPATCHER_STOP_FAILED,
+                        exc,
                         note=(
-                            "stop exceeded hard deadline; "
-                            "dispatcher marked unrestartable"
+                            "stop exceeded hard deadline; dispatcher "
+                            "marked unrestartable"
                         ),
                         timeout_seconds=drain_timeout,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
                     )
                     raise
                 except asyncio.CancelledError:
@@ -412,13 +416,13 @@ class SettingsChangeDispatcher:
                 # so a subsequent ``stop()`` still runs the clean-
                 # stop unsubscribe instead of early-returning.
                 self._stop_failed = True
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     SETTINGS_DISPATCHER_STOP_FAILED,
+                    exc,
                     note=(
                         "clean-stop unsubscribe failed; dispatcher marked unrestartable"
                     ),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
                 raise
 
@@ -453,11 +457,11 @@ class SettingsChangeDispatcher:
             return
         exc = task.exception()
         if exc is not None:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 SETTINGS_DISPATCHER_CHANNEL_DEAD,
+                exc,
                 note="Settings dispatcher poll loop died unexpectedly",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
         else:
             logger.warning(
@@ -646,11 +650,11 @@ class SettingsChangeDispatcher:
                 consecutive_errors += 1
                 max_errors = await self._resolve_max_consecutive_errors()
                 if consecutive_errors >= max_errors:
-                    logger.error(
+                    log_exception_redacted(
+                        logger,
                         SETTINGS_DISPATCHER_CHANNEL_DEAD,
+                        exc,
                         consecutive_errors=consecutive_errors,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
                     )
                     break
                 logger.warning(
@@ -661,11 +665,7 @@ class SettingsChangeDispatcher:
                 )
                 await asyncio.sleep(_ERROR_BACKOFF)
             except Exception as exc:
-                logger.error(
-                    SETTINGS_DISPATCHER_CHANNEL_DEAD,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+                log_exception_redacted(logger, SETTINGS_DISPATCHER_CHANNEL_DEAD, exc)
                 break
 
     async def _dispatch(self, message: Message) -> None:
@@ -698,13 +698,13 @@ class SettingsChangeDispatcher:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     SETTINGS_SUBSCRIBER_ERROR,
+                    exc,
                     subscriber=getattr(subscriber, "subscriber_name", "unknown"),
                     namespace=namespace,
                     key=key,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
 
 

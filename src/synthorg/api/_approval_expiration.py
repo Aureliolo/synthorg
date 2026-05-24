@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import (
     API_APPROVAL_EXPIRE_CALLBACK_FAILED,
     API_APPROVAL_EXPIRED,
@@ -191,11 +191,11 @@ class ApprovalExpirationMixin:
                 # meaningful and operators must be able to alert
                 # on it. Both paths emit at ERROR so alerting is
                 # not sensitive to which expiration path fired.
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     API_APPROVAL_EXPIRE_CALLBACK_FAILED,
+                    exc,
                     approval_id=item.id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
         return expired
 
@@ -238,9 +238,6 @@ class ApprovalExpirationMixin:
             # propagate, but a failed downstream side effect (webhook,
             # audit dispatch, workflow resume) is operationally
             # meaningful and operators must be able to alert on it.
-            logger.error(
-                API_APPROVAL_EXPIRE_CALLBACK_FAILED,
-                approval_id=expired.id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, API_APPROVAL_EXPIRE_CALLBACK_FAILED, exc, approval_id=expired.id
             )

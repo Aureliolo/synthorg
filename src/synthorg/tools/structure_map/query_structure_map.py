@@ -16,7 +16,11 @@ from synthorg.api.boundary import parse_typed
 from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.core.persistence_errors import QueryError
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.brownfield import (
     BROWNFIELD_STRUCTURE_QUERY_FAILED,
 )
@@ -77,11 +81,11 @@ class QueryStructureMapTool(BaseTool):
         except builtins.MemoryError, RecursionError:
             raise
         except QueryError as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 BROWNFIELD_STRUCTURE_QUERY_FAILED,
+                exc,
                 project_id=self._project_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return ToolExecutionResult(
                 content=f"Query failed: {safe_error_description(exc)}",

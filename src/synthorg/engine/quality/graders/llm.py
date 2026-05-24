@@ -33,7 +33,7 @@ from synthorg.engine.quality.verification import (
     VerificationVerdict,
 )
 from synthorg.engine.workflow.handoff import HandoffArtifact  # noqa: TC001
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.verification import (
     VERIFICATION_GRADER_CONFIG_INVALID,
     VERIFICATION_GRADER_FAILED,
@@ -309,8 +309,10 @@ class LLMRubricGrader:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 VERIFICATION_GRADER_FAILED,
+                exc,
                 rubric_name=rubric.name,
                 grader=self.name,
                 model_id=self._model_id,
@@ -319,8 +321,6 @@ class LLMRubricGrader:
                 generator_agent_id=generator_agent_id,
                 evaluator_agent_id=evaluator_agent_id,
                 stage="build_messages",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
 
@@ -427,8 +427,10 @@ class LLMRubricGrader:
         except MemoryError, RecursionError:
             raise
         except RetryExhaustedError as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 VERIFICATION_GRADER_FAILED,
+                exc,
                 rubric_name=rubric.name,
                 grader=self.name,
                 model_id=self._model_id,
@@ -437,13 +439,13 @@ class LLMRubricGrader:
                 generator_agent_id=generator_agent_id,
                 evaluator_agent_id=evaluator_agent_id,
                 reason="retry_exhausted",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 VERIFICATION_GRADER_FAILED,
+                exc,
                 rubric_name=rubric.name,
                 grader=self.name,
                 model_id=self._model_id,
@@ -451,8 +453,6 @@ class LLMRubricGrader:
                 probe_count=len(probes),
                 generator_agent_id=generator_agent_id,
                 evaluator_agent_id=evaluator_agent_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
 

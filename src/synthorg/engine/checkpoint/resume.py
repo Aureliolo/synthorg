@@ -16,7 +16,7 @@ from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.sanitization import sanitize_message
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.checkpoint import (
     CHECKPOINT_DELETE_FAILED,
     CHECKPOINT_DELETED,
@@ -70,13 +70,13 @@ def deserialize_and_reconcile(  # noqa: PLR0913
     try:
         checkpoint_ctx = AgentContext.model_validate_json(checkpoint_json)
     except ValueError as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             CHECKPOINT_RECOVERY_DESERIALIZE_FAILED,
+            exc,
             agent_id=agent_id,
             task_id=task_id,
             reason="Failed to deserialize checkpoint context",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         raise
 

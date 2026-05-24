@@ -22,7 +22,11 @@ from synthorg.core.domain_errors import (
     NotFoundError,
     ProviderTierCoverageInsufficientError,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.setup import (
     SETUP_AGENT_BOOTSTRAP_FAILED,
     SETUP_AGENT_INDEX_OUT_OF_RANGE,
@@ -211,11 +215,11 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
         # wire. ERROR (not WARNING) so monitoring/operator dashboards
         # alert; wrapped in a domain error so the /setup/complete
         # controller can map it to an actionable status.
-        logger.error(
+        log_exception_redacted(
+            logger,
             SETUP_AGENT_BOOTSTRAP_FAILED,
+            exc,
             context="runtime_services_rebuild",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         msg = "Runtime services failed to rebuild after provider config"
         raise RuntimeServicesBuildError(msg) from exc

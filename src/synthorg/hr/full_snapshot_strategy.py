@@ -22,7 +22,11 @@ from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
 from synthorg.memory.org.protocol import OrgMemoryBackend  # noqa: TC001
 from synthorg.memory.protocol import MemoryBackend  # noqa: TC001
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.hr import (
     HR_ARCHIVAL_ENTRY_FAILED,
     HR_FIRING_MEMORY_ARCHIVED,
@@ -98,12 +102,12 @@ class FullSnapshotStrategy:
             )
         except (OSError, ValueError, MemoryArchivalError) as exc:
             msg = f"Failed to retrieve memories for agent {agent_id!r}"
-            logger.error(
+            log_exception_redacted(
+                logger,
                 HR_ARCHIVAL_ENTRY_FAILED,
+                exc,
                 agent_id=agent_id,
                 phase="retrieve",
-                error=safe_error_description(exc),
-                error_type=type(exc).__name__,
             )
             raise MemoryArchivalError(msg) from exc
 

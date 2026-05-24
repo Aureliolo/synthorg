@@ -18,7 +18,7 @@ from synthorg.engine.prompt_safety import (
     wrap_untrusted,
 )
 from synthorg.engine.task_engine_models import CreateTaskData
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.review_pipeline import (
     INTAKE_AGENT_EMPTY_RESPONSE,
     INTAKE_AGENT_PARSE_FAILED,
@@ -126,13 +126,13 @@ class AgentIntake:
                     config=self._completion_config,
                 )
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 INTAKE_AGENT_PARSE_FAILED,
+                exc,
                 request_id=request.request_id,
                 client_id=request.client_id,
                 stage="provider_call",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         content = response.content

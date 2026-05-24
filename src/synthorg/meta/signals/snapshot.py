@@ -18,7 +18,7 @@ from synthorg.meta.models import (
     OrgSignalSnapshot,
     OrgTelemetrySummary,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
@@ -134,11 +134,8 @@ class SnapshotBuilder:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
-                    META_SIGNAL_AGGREGATION_FAILED,
-                    domain=name,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                log_exception_redacted(
+                    logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain=name
                 )
 
         async with asyncio.TaskGroup() as tg:

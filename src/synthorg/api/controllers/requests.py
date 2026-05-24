@@ -29,7 +29,11 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.pipeline.errors import WorkIntakeRejectedError
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.client import (
     CLIENT_REQUEST_INTAKE_PIPELINE_FAILED,
@@ -241,11 +245,11 @@ async def process_intake_pipeline(
         if not isinstance(exc, WorkIntakeRejectedError):
             # Intake declining the work is a normal outcome, not a
             # defect; only non-rejection paths warrant ERROR.
-            logger.error(
+            log_exception_redacted(
+                logger,
                 CLIENT_REQUEST_INTAKE_PIPELINE_FAILED,
+                exc,
                 request_id=request_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
         await _safe_finalize(
             _reconcile_cancel,
@@ -296,12 +300,12 @@ async def _safe_finalize(  # noqa: PLR0913 -- keyword-only DI + passthrough
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             CLIENT_REQUEST_INTAKE_PIPELINE_FAILED,
+            exc,
             request_id=request_id,
             operation=operation,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         if operation == "reconcile_success":
             await _safe_finalize(

@@ -20,7 +20,11 @@ from synthorg.integrations.errors import TokenRefreshFailedError
 from synthorg.integrations.oauth.flows.authorization_code import (
     AuthorizationCodeFlow,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.integrations import (
     OAUTH_TOKEN_EXPIRED,
     OAUTH_TOKEN_REFRESH_FAILED,
@@ -199,10 +203,10 @@ class OAuthTokenManager:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     OAUTH_TOKEN_REFRESH_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                    exc,
                     reason="unexpected error in refresh loop",
                 )
             await asyncio.sleep(self._interval)

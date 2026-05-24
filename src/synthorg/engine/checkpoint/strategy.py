@@ -23,7 +23,7 @@ from synthorg.engine.recovery import (
     infer_failure_category_without_evidence,
 )
 from synthorg.engine.task_execution import TaskExecution  # noqa: TC001
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.checkpoint import (
     CHECKPOINT_LOAD_FAILED,
     CHECKPOINT_LOADED,
@@ -188,12 +188,12 @@ class CheckpointRecoveryStrategy:
         except MemoryError, RecursionError:
             raise
         except PersistenceError as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 CHECKPOINT_LOAD_FAILED,
+                exc,
                 execution_id=execution_id,
                 task_id=task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return None
 

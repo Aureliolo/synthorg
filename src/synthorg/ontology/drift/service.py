@@ -3,7 +3,7 @@
 import asyncio
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.ontology import (
     ONTOLOGY_DRIFT_CHECK_COMPLETED,
     ONTOLOGY_DRIFT_CHECK_STARTED,
@@ -83,12 +83,12 @@ class DriftDetectionService:
             # ``exc_info=True`` would attach the full traceback to
             # the log record and bypass ``safe_error_description``,
             # reintroducing secret / PII leakage on this error path.
-            logger.error(
+            log_exception_redacted(
+                logger,
                 ONTOLOGY_DRIFT_DETECT_FAILED,
+                exc,
                 entity_name=entity_name,
                 agent_count=len(agent_ids),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
 
@@ -108,12 +108,12 @@ class DriftDetectionService:
             except Exception as exc:
                 # full traceback on a persistence-error path can
                 # leak backend metadata; stick to the redacted form.
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     ONTOLOGY_DRIFT_STORE_FAILED,
+                    exc,
                     entity_name=entity_name,
                     divergence_score=report.divergence_score,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
                 raise
 
@@ -171,11 +171,11 @@ class DriftDetectionService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     ONTOLOGY_DRIFT_ENTITY_CHECK_FAILED,
+                    exc,
                     entity_name=entity_name,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
                 return
             slots[index] = report

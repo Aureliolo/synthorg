@@ -26,7 +26,11 @@ from synthorg.backup.models import (
 from synthorg.backup.retention import RetentionManager
 from synthorg.backup.scheduler import BackupScheduler
 from synthorg.backup.service_archive import BackupServiceArchiveMixin
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.backup import (
     BACKUP_COMPLETED,
     BACKUP_FAILED,
@@ -190,12 +194,7 @@ class BackupService(BackupServiceArchiveMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
-                BACKUP_FAILED,
-                backup_id=backup_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+            log_exception_redacted(logger, BACKUP_FAILED, exc, backup_id=backup_id)
             if backup_dir.exists():
                 await asyncio.to_thread(shutil.rmtree, backup_dir)
             raise
@@ -313,12 +312,12 @@ class BackupService(BackupServiceArchiveMixin):
             # Drop exc_info on retention failure so the filesystem
             # path / connection details that ``str(exc)`` would
             # carry don't leak via the traceback frame-locals.
-            logger.error(
+            log_exception_redacted(
+                logger,
                 BACKUP_RETENTION_FAILED,
+                exc,
                 backup_id=backup_id,
                 reason="retention_pruning_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
 
     async def restore_from_backup(
@@ -375,11 +374,8 @@ class BackupService(BackupServiceArchiveMixin):
                 safety_backup_id=safety_manifest.backup_id,
             )
         except RestoreError as exc:
-            logger.error(
-                BACKUP_RESTORE_FAILED,
-                backup_id=backup_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, BACKUP_RESTORE_FAILED, exc, backup_id=backup_id
             )
             raise
         finally:

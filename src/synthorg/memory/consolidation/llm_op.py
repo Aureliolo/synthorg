@@ -37,7 +37,11 @@ from synthorg.memory.models import (
     MemoryQuery,
     MemoryStoreRequest,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.consolidation import (
     LLM_STRATEGY_ERROR,
     LLM_STRATEGY_FALLBACK,
@@ -437,14 +441,14 @@ class LLMSynthesisOp:
                 reason="retryable_provider_error",
             )
             return None
-        logger.error(
+        log_exception_redacted(
+            logger,
             LLM_STRATEGY_ERROR,
+            exc,
             agent_id=agent_id,
             category=category.value,
             entry_count=entry_count,
             model=self._model,
-            error=safe_error_description(exc),
-            error_type=type(exc).__name__,
             reason="non_retryable_provider_error",
         )
         raise exc

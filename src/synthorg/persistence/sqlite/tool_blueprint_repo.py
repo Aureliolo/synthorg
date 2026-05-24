@@ -16,7 +16,11 @@ from synthorg.meta.toolsmith.models import (
     ToolSandboxBackend,
     ToolValidationResult,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.persistence import (
     PERSISTENCE_DYNAMIC_TOOL_DELETE_FAILED,
     PERSISTENCE_DYNAMIC_TOOL_DESERIALIZE_FAILED,
@@ -428,11 +432,8 @@ class SQLiteDynamicToolRepository:
         except MemoryError, RecursionError:
             raise
         except (sqlite3.Error, aiosqlite.Error) as exc:
-            logger.error(
-                PERSISTENCE_DYNAMIC_TOOL_SAVE_FAILED,
-                phase="rollback",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, PERSISTENCE_DYNAMIC_TOOL_SAVE_FAILED, exc, phase="rollback"
             )
 
 

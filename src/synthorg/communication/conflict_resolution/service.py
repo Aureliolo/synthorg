@@ -36,7 +36,7 @@ from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: T
 from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.communication.message import DataPart, Message
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.communication import (
     COMM_DISSENT_EMITTED,
     COMM_DISSENT_PUBLISH_FAILED,
@@ -200,12 +200,12 @@ class ConflictResolutionService:
         try:
             resolution = await resolver.resolve(conflict)
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 CONFLICT_RESOLUTION_FAILED,
+                exc,
                 conflict_id=conflict.id,
                 strategy=strategy,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
 

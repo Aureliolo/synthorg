@@ -23,7 +23,11 @@ from typing import TYPE_CHECKING, Any, Final
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.workers import (
     WORKERS_ACK_EXTEND_FAILED,
     WORKERS_CLAIM_DEAD_LETTERED,
@@ -276,12 +280,12 @@ class Worker:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 WORKERS_DEAD_LETTER_PUBLISH_FAILED,
+                exc,
                 worker_id=self._worker_id,
                 task_id=claim.task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         await self._finalize_claim(raw, TaskClaimStatus.SUCCESS)
@@ -391,12 +395,12 @@ class Worker:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 WORKERS_EXECUTOR_FAILED,
+                exc,
                 worker_id=self._worker_id,
                 task_id=claim.task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return TaskClaimStatus.RETRY
 
@@ -492,12 +496,12 @@ class Worker:
             else:
                 await JetStreamTaskQueue.nack(raw)
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 WORKERS_FINALIZE_FAILED,
+                exc,
                 worker_id=self._worker_id,
                 status=str(status),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
 

@@ -27,7 +27,11 @@ from synthorg.engine.errors import (
     TaskNotFoundError,
     TaskVersionConflictError,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_CONVERSATIONAL_EXECUTED,
     APPROVAL_GATE_CONVERSATIONAL_FAILED,
@@ -172,11 +176,11 @@ async def try_mid_execution_resume(
         # intact -- resume_context has not run on this path -- so the
         # operator can re-trigger). Distinct from the hard
         # runtime-misconfiguration case re-raised above.
-        logger.error(
+        log_exception_redacted(
+            logger,
             APPROVAL_GATE_RESUME_FAILED,
+            exc,
             approval_id=approval_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
             note="resume dispatch failed",
         )
     return True
@@ -339,19 +343,15 @@ async def _execute_conversational_proposal(
             ConversationalProposalStatus.EXECUTING,
             ConversationalProposalStatus.PENDING,
         )
-        logger.error(
+        log_exception_redacted(
+            logger,
             APPROVAL_GATE_CONVERSATIONAL_FAILED,
+            exc,
             approval_id=approval_id,
             proposal_id=proposal_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-            note=(
-                "pipeline run failed; proposal reverted to pending"
-                if reverted
-                else (
-                    "pipeline run failed; proposal left in EXECUTING (revert lost race)"
-                )
-            ),
+            note="pipeline run failed; proposal reverted to pending"
+            if reverted
+            else "pipeline run failed; proposal left in EXECUTING (revert lost race)",
         )
         return
 

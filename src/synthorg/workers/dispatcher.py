@@ -15,7 +15,11 @@ reacts to successful mutations and publishes the enqueue signal.
 from typing import TYPE_CHECKING
 
 from synthorg.core.resilience import GeneralRetryHandler
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.workers import (
     WORKERS_DISPATCHER_CLAIM_ENQUEUED,
     WORKERS_DISPATCHER_PUBLISH_EXHAUSTED,
@@ -225,12 +229,12 @@ class DistributedDispatcher:
                 error_type=type(root_exc).__name__,
                 error=safe_error_description(root_exc),
             )
-            logger.error(
+            log_exception_redacted(
+                logger,
                 WORKERS_DISPATCHER_PUBLISH_EXHAUSTED,
+                root_exc,
                 task_id=task_id,
                 attempts=max_attempts,
-                error_type=type(root_exc).__name__,
-                error=safe_error_description(root_exc),
             )
             return False
         else:

@@ -11,7 +11,7 @@ from synthorg.client.protocols import (
     FeedbackStrategy,  # noqa: TC001
     RequirementGenerator,  # noqa: TC001
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.client import (
     CLIENT_REQUEST_SUBMITTED,
     CLIENT_REVIEW_STARTED,
@@ -67,13 +67,13 @@ class AIClient:
         try:
             produced = await self._generator.generate(single)
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 CLIENT_REQUEST_SUBMITTED,
+                exc,
                 client_id=self._profile.client_id,
                 domain=context.domain,
                 stage="generate",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         logger.info(
@@ -101,12 +101,12 @@ class AIClient:
         try:
             return await self._feedback.evaluate(context)
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 CLIENT_REVIEW_STARTED,
+                exc,
                 client_id=self._profile.client_id,
                 task_id=context.task_id,
                 stage="evaluate",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise

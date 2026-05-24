@@ -35,7 +35,11 @@ from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.domain_errors import ValidationError as DomainValidationError
 from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.config import DEFAULT_SINKS, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.events.api import (
@@ -534,12 +538,8 @@ class SettingsController(Controller):
             msg = "Invalid setting value"
             raise DomainValidationError(msg) from exc
         except SettingsEncryptionError as exc:
-            logger.error(
-                SETTINGS_ENCRYPTION_ERROR,
-                namespace=namespace,
-                key=key,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, SETTINGS_ENCRYPTION_ERROR, exc, namespace=namespace, key=key
             )
             msg = "Internal error processing sensitive setting"
             raise SettingsEncryptionFailedError(msg) from None
@@ -694,10 +694,8 @@ class SettingsController(Controller):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
-                SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, SETTINGS_OBSERVABILITY_VALIDATION_FAILED, exc
             )
             msg = "Internal error validating sink configuration"
             raise SinkConfigValidationError(msg) from None

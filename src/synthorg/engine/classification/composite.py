@@ -17,7 +17,7 @@ from synthorg.engine.classification.models import (
     ErrorFinding,
     ErrorSeverity,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.classification import (
     CLASSIFICATION_FINDING_DEDUPLICATED,
     DETECTOR_COMPLETE,
@@ -138,14 +138,14 @@ async def _run_detector_safely(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             DETECTOR_ERROR,
+            exc,
             detector=type(detector).__name__,
             agent_id=context.agent_id,
             task_id=context.task_id,
             message_count=len(context.execution_result.context.conversation),
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         return ()
 

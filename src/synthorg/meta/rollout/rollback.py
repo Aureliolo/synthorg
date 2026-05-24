@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     from synthorg.core.types import NotBlankStr
     from synthorg.meta.rollout.inverse_dispatch import RollbackHandler
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_ROLLBACK_COMPLETED,
     META_ROLLBACK_FAILED,
@@ -90,24 +90,24 @@ class RollbackExecutor:
             try:
                 changes = await handler.revert(operation)
             except (MemoryError, RecursionError) as exc:
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     META_ROLLBACK_OPERATION_FAILED,
+                    exc,
                     proposal_id=str(proposal.id),
                     operation_type=operation.operation_type,
                     target=operation.target,
                     reason="catastrophic_error",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
                 raise
             except Exception as exc:
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     META_ROLLBACK_OPERATION_FAILED,
+                    exc,
                     proposal_id=str(proposal.id),
                     operation_type=operation.operation_type,
                     target=operation.target,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
                 return _fail(proposal, str(exc), total_changes)
             total_changes += changes

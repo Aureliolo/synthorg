@@ -27,7 +27,11 @@ from typing import Any, Final
 
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.observability.events.fine_tune import (
     FINE_TUNE_HEALTH_SERVER_BIND_FAILED,
@@ -65,13 +69,13 @@ def _resolve_health_port() -> int:
     try:
         port = int(raw)
     except ValueError as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             CONFIG_VALIDATION_FAILED,
+            exc,
             env_var=_HEALTH_PORT_ENV_VAR,
             value=safe_raw,
             reason="not-an-integer",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         msg = f"{_HEALTH_PORT_ENV_VAR}={safe_raw!r} is not a valid integer"
         raise ValueError(msg) from exc

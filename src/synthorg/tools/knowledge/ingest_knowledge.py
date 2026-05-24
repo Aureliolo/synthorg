@@ -15,7 +15,11 @@ from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.knowledge.errors import KnowledgeError
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_INGEST_FAILED,
     KNOWLEDGE_SOURCE_INGESTED,
@@ -79,11 +83,8 @@ class IngestKnowledgeTool(BaseTool):
         except builtins.MemoryError, RecursionError:
             raise
         except KnowledgeError as exc:
-            logger.error(
-                KNOWLEDGE_INGEST_FAILED,
-                project_id=self._project_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, KNOWLEDGE_INGEST_FAILED, exc, project_id=self._project_id
             )
             safe_err = wrap_untrusted(TAG_TASK_DATA, safe_error_description(exc))
             return ToolExecutionResult(

@@ -20,7 +20,7 @@ from synthorg.client.protocols import (
 )
 from synthorg.engine.intake.engine import IntakeEngine  # noqa: TC001
 from synthorg.engine.intake.models import IntakeResult  # noqa: TC001
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.client import (
     CLIENT_FEEDBACK_SINK_FAILED,
     CLIENT_REQUEST_SUBMITTED,
@@ -300,13 +300,13 @@ class SimulationRunner:
                 try:
                     await self._feedback_sink(feedback)
                 except Exception as exc:
-                    logger.error(
+                    log_exception_redacted(
+                        logger,
                         CLIENT_FEEDBACK_SINK_FAILED,
+                        exc,
                         client_id=client_id,
                         task_id=result.task_id,
                         accepted=feedback.accepted,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
                     )
             return feedback.accepted
 

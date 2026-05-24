@@ -11,7 +11,7 @@ from synthorg.meta.models import (
     RuleMatch,
     RuleSeverity,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_RULE_EVALUATED,
     META_RULE_EVALUATION_FAILED,
@@ -79,11 +79,8 @@ class RuleEngine:
                     )
                     matches.append(match)
             except Exception as exc:
-                logger.error(
-                    META_RULE_EVALUATION_FAILED,
-                    rule=rule.name,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                log_exception_redacted(
+                    logger, META_RULE_EVALUATION_FAILED, exc, rule=rule.name
                 )
 
         return tuple(

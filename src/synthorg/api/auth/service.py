@@ -23,7 +23,11 @@ from synthorg.core.domain_errors import (
     ServiceUnavailableError,
 )
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.security import (
     SECURITY_AUTH_FAILED,
     SECURITY_AUTH_REFRESH_CREATED,
@@ -194,11 +198,8 @@ class AuthService:
             )
             raise
         except argon2.exceptions.InvalidHashError as exc:
-            logger.error(
-                SECURITY_AUTH_FAILED,
-                reason="invalid_hash_data_corruption",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, SECURITY_AUTH_FAILED, exc, reason="invalid_hash_data_corruption"
             )
             raise
 

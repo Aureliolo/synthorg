@@ -18,7 +18,11 @@ from synthorg.memory.tool_retriever_helpers import (
     _parse_search_args,
 )
 from synthorg.memory.tool_retriever_reformulation import ToolBasedReformulationMixin
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.memory import (
     MEMORY_RETRIEVAL_COMPLETE,
     MEMORY_RETRIEVAL_DEGRADED,
@@ -363,12 +367,12 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
             )
             return SEARCH_UNAVAILABLE
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 MEMORY_RETRIEVAL_DEGRADED,
+                exc,
                 source=SEARCH_MEMORY_TOOL_NAME,
                 agent_id=agent_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return SEARCH_UNEXPECTED
 
@@ -425,12 +429,12 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
             )
             return RECALL_UNAVAILABLE
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 MEMORY_RETRIEVAL_DEGRADED,
+                exc,
                 source=RECALL_MEMORY_TOOL_NAME,
                 agent_id=agent_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return RECALL_UNEXPECTED
 

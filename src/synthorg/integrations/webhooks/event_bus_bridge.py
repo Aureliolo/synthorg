@@ -13,7 +13,7 @@ from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType, MessageType
 from synthorg.communication.message import DataPart, Message
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.integrations import (
     WEBHOOK_EVENT_PUBLISH_FAILED,
     WEBHOOK_EVENT_PUBLISHED,
@@ -68,12 +68,12 @@ async def publish_webhook_event(
     try:
         await bus.publish(message)
     except Exception as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             WEBHOOK_EVENT_PUBLISH_FAILED,
+            exc,
             connection_name=connection_name,
             event_type=event_type,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         raise
     logger.info(

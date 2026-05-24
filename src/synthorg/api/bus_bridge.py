@@ -15,7 +15,11 @@ from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.errors import CommunicationError
 from synthorg.communication.message import Message  # noqa: TC001
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
@@ -644,12 +648,12 @@ class MessageBusBridge:
                 # hiccup.
                 consecutive_errors += 1
                 if consecutive_errors >= max_errors:
-                    logger.error(
+                    log_exception_redacted(
+                        logger,
                         API_BRIDGE_CHANNEL_DEAD,
+                        exc,
                         channel=channel_name,
                         consecutive_errors=consecutive_errors,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
                     )
                     break
                 logger.warning(
@@ -663,11 +667,8 @@ class MessageBusBridge:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
-                    API_BRIDGE_CHANNEL_DEAD,
-                    channel=channel_name,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                log_exception_redacted(
+                    logger, API_BRIDGE_CHANNEL_DEAD, exc, channel=channel_name
                 )
                 break
 

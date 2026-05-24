@@ -8,7 +8,7 @@ from enum import StrEnum
 from synthorg.communication.config import CircuitBreakerConfig  # noqa: TC001
 from synthorg.communication.loop_prevention._pair_key import pair_key
 from synthorg.communication.loop_prevention.models import GuardCheckOutcome
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.delegation import (
     DELEGATION_LOOP_CIRCUIT_BACKOFF,
     DELEGATION_LOOP_CIRCUIT_OPEN,
@@ -319,11 +319,11 @@ class DelegationCircuitBreaker:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED,
+                exc,
                 note="load_state failed; circuit breaker starting with empty state",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         # Hot-path may already be running by the time persistence
@@ -401,12 +401,12 @@ class DelegationCircuitBreaker:
                 raise
             except Exception as exc:
                 # Key stays in _dirty for retry on next persist cycle.
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED,
+                    exc,
                     delegator=key[0],
                     delegatee=key[1],
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
                 continue
             with self._state_lock:

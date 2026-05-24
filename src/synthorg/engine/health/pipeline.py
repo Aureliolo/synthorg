@@ -18,7 +18,7 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.health import HEALTH_PIPELINE_ERROR
 
 if TYPE_CHECKING:
@@ -100,12 +100,8 @@ class HealthMonitoringPipeline:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
-                HEALTH_PIPELINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, HEALTH_PIPELINE_ERROR, exc, agent_id=agent_id, task_id=task_id
             )
             return None
 
@@ -143,14 +139,14 @@ class HealthMonitoringPipeline:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 HEALTH_PIPELINE_ERROR,
+                exc,
                 agent_id=ticket.agent_id,
                 task_id=ticket.task_id,
                 ticket_id=ticket.id,
                 detail="notification delivery failed, ticket still returned",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
         return ticket
 

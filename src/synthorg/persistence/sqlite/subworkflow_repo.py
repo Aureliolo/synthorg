@@ -30,7 +30,11 @@ from synthorg.engine.workflow.subworkflow_models import (
     ParentReference,
     SubworkflowSummary,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.persistence import (
     PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
     PERSISTENCE_SUBWORKFLOW_DESERIALIZE_FAILED,
@@ -610,12 +614,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 try:
                     await self._db.rollback()
                 except sqlite3.Error as rollback_exc:
-                    logger.error(
+                    log_exception_redacted(
+                        logger,
                         PERSISTENCE_SUBWORKFLOW_DELETE_FAILED,
+                        rollback_exc,
                         subworkflow_id=subworkflow_id,
                         version=version,
-                        error_type=type(rollback_exc).__name__,
-                        error=safe_error_description(rollback_exc),
                         primary_error_type=type(exc).__name__,
                         primary_error=safe_error_description(exc),
                         note="Rollback failed after primary error",

@@ -1479,7 +1479,7 @@ class TestLoggerExceptionCallRule:
             )
             """,
         )
-        assert not hits, "the canonical SEC-1 replacement must be permitted"
+        assert not hits, "the canonical redacted-error replacement must be permitted"
 
     def test_non_logger_exception_method_not_flagged(self) -> None:
         """A method named ``exception`` on a non-logger receiver is fine."""
