@@ -1,9 +1,14 @@
-"""Unit tests for ``GitBackend.seed`` (brownfield source import).
+"""Integration tests for ``GitBackend.seed`` (brownfield source import).
 
 The embedded and local-path backends run real git in ``tmp_path`` so the
 shared fetch/reset import mechanics are exercised end-to-end offline. The
 external-remote backend mocks ``run_git_subprocess`` (no live forge) and
 asserts seed imports the source then pushes.
+
+Marked ``integration`` (not ``unit``) because every test shells out to
+the system ``git`` binary multiple times via
+``asyncio.create_subprocess_exec``; on Windows under xdist contention
+that legitimately exceeds the unit-tier wall-clock budget.
 """
 
 import asyncio
@@ -24,7 +29,7 @@ from synthorg.engine.workspace.git_backend.protocol import (
 )
 from tests._shared import FakeClock
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
 def _clean_env() -> dict[str, str]:
