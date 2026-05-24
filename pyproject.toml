@@ -658,20 +658,6 @@ module = [
 disallow_any_explicit = false
 disable_error_code = ["explicit-override", "unused-awaitable"]
 
-# Test code carries explicit Any (fixture types, parametrize values) and
-# missing @override (test subclasses) that does not block strict++ in
-# the source tree. Lifted only when the source code's typing stabilises
-# enough that test fixtures can re-tighten.
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_any_explicit = false
-disallow_any_generics = false
-disable_error_code = [
-    "explicit-override",
-    "unused-awaitable",
-    "deprecated",
-]
-
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
