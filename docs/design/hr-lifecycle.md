@@ -5,10 +5,6 @@ description: Seniority and authority levels, role catalog, dynamic roles, hiring
 
 # HR & Agent Lifecycle
 
-!!! warning "Designed behaviour; runtime in active development"
-
-    This page is the source of truth for the **designed** behaviour of this subsystem. The autonomous agent runtime that exercises it end to end is in active development (see the [Roadmap](../roadmap/index.md)); the code described here is built and unit-tested as components but not yet run by a live agent.
-
 This page covers the operational lifecycle of every agent in a synthetic organisation, from hiring through performance tracking, promotion, evolution, and offboarding. The HR subsystem is how SynthOrg simulates a workforce: closed-loop hiring when new skills are needed, performance-driven pruning when agents fail to deliver, and pluggable evolution for agents that need to adapt their identity.
 
 See [Agents](agents.md) for the identity layer (personality, skills, tool namespaces, identity versioning).
@@ -162,8 +158,8 @@ human review required. Idempotent by plan ID.
 The pruning service automates performance-driven agent removal with mandatory human approval.
 
 - **`PruningPolicy`** protocol with two implementations:
-    - `ThresholdPruningPolicy`: prunes agents with quality AND collaboration below thresholds for N+ consecutive windows (7d/30d/90d).
-    - `TrendPruningPolicy`: prunes agents with declining Theil-Sen trend across all three windows.
+  - `ThresholdPruningPolicy`: prunes agents with quality AND collaboration below thresholds for N+ consecutive windows (7d/30d/90d).
+  - `TrendPruningPolicy`: prunes agents with declining Theil-Sen trend across all three windows.
 - **`PruningService`** runs as a periodic background task, evaluates all active agents, and creates CRITICAL-risk approval items for eligible candidates.
 - On human approval, delegates to `OffboardingService` with `FiringReason.PERFORMANCE`.
 - Approval deduplication prevents multiple pending approvals per agent.

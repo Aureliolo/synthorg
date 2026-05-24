@@ -5,10 +5,6 @@ description: Agent crash recovery, graceful shutdown protocol, concurrent worksp
 
 # Coordination & Resilience
 
-!!! warning "Designed behaviour; runtime in active development"
-
-    This page is the source of truth for the **designed** behaviour of this subsystem. The multi-agent coordinator is wired at boot behind the provider-present switch: with a provider configured, `/coordinate` runs decompose, route, parallel execution, then rollup end to end; an empty company (no provider) still returns 503. The surrounding resilience features on this page (crash recovery with checkpoint resume, graceful shutdown, the self-improvement loop) remain in active development (see the [Roadmap](../roadmap/index.md)).
-
 This page covers system-level features that span multiple agents and protect against failure: crash recovery with checkpoint resume, graceful shutdown strategies, concurrent workspace isolation (Git worktrees / virtual filesystem / per-branch), and multi-agent coordination topology (centralized, decentralized, context-dependent dispatchers).
 
 ## Agent Crash Recovery
@@ -423,6 +419,7 @@ Events emitted: `PROJECT_WORKSPACE_PROVISIONED`,
 `WORKSPACE_PUSH_QUEUE_FAILED`, `WORKSPACE_PUSH_QUEUE_WORKER_FAILED`.
 
 **Modules**:
+
 - `src/synthorg/engine/workspace/project_workspace_service.py`
 - `src/synthorg/engine/workspace/git_backend/` (protocol + 3 strategies + factory)
 - `src/synthorg/engine/workspace/push_queue.py`
@@ -471,6 +468,7 @@ Events emitted: `ENVIRONMENT_PROVISION_START`, `ENVIRONMENT_PROVISIONED`,
 `ENVIRONMENT_IMAGE_BUILD_RETRY`.
 
 **Modules**:
+
 - `src/synthorg/engine/workspace/environment/` (protocol + 3 strategies +
   factory + service + committer + hash cache + image builder + templates)
 - `src/synthorg/tools/sandbox/active_environment.py` (ambient contextvar)

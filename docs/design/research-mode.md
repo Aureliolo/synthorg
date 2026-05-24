@@ -5,13 +5,6 @@ description: A real research subsystem for synthetic organisations. A research b
 
 # Research Mode
 
-!!! warning "Designed behaviour; runtime in active development"
-    Research mode is wired at boot behind the `research.enabled` setting and a
-    configured provider plus model. Like the rest of the agent capability
-    layer, the per-task tool loader that surfaces the `research` tool to a
-    running agent lands with the broader runtime-wiring programme; the
-    subsystem, its MCP surface, and its eval lane are complete and tested.
-
 Today "an agent does research" is a curl in a sandbox. Research mode replaces
 that with a real pipeline: a research **brief** becomes a synthesised,
 citation-backed **report** whose every claim resolves to a retrievable

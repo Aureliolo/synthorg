@@ -5,10 +5,6 @@ description: Pluggable distributed bus backend design, NATS JetStream first impl
 
 # Distributed Runtime
 
-!!! warning "Designed behaviour; runtime in active development"
-
-    This page is the source of truth for the **designed** behaviour of this subsystem. The dispatch plumbing (NATS JetStream queue and worker pool) exists, but the task-execute endpoint currently advances task state without invoking an agent; end-to-end distributed execution depends on the agent runtime, which is in active development (see the [Roadmap](../roadmap/index.md)).
-
 SynthOrg runs in a single Python process by default. Agents communicate over an in-memory `MessageBus` (per-(channel, subscriber) `asyncio.Queue`) and the `TaskEngine` dispatches work through its own single-writer mutation queue inside that same process. For a laptop running one synthetic org, this is the right answer: lowest latency, no extra containers, nothing to operate.
 
 This page describes the **first distributed backend** that plugs into the existing `MessageBus` protocol without changing it, and the **distributed task queue** that sits on top of that backend. Both are opt-in. The in-memory path stays the default and must remain byte-identical in behavior for users who do not turn on distribution.
@@ -112,8 +108,8 @@ A single JetStream stream named `SYNTHORG_BUS` holds all message bus traffic.
 
 - **Retention policy**: `LimitsPolicy` with `MaxMsgsPerSubject = config.retention.max_messages_per_channel`. This preserves the existing per-channel history-bound semantic natively, without application-level bookkeeping. The in-memory backend bounds each channel's `deque`; the NATS backend bounds each subject's retained messages. Same semantic, different mechanism.
 - **Subject taxonomy**:
-    - `synthorg.bus.channel.<sanitized_name>` for `TOPIC` and `BROADCAST` channels
-    - `synthorg.bus.direct.<a>:<b>` for lazily-created `DIRECT` channels (where `a < b` are the sorted agent IDs, matching the in-memory `@a:b` convention)
+  - `synthorg.bus.channel.<sanitized_name>` for `TOPIC` and `BROADCAST` channels
+  - `synthorg.bus.direct.<a>:<b>` for lazily-created `DIRECT` channels (where `a < b` are the sorted agent IDs, matching the in-memory `@a:b` convention)
 - **Sanitization**: JetStream subject tokens accept alphanumerics, `-`, `_`, and `.` as a separator. Channel names with any other character get a stable sanitization pass before they become subject tokens. The original channel name stays in the `Channel` registry so protocol callers see the names they passed in.
 
 The Phase 4 task queue uses a **separate** stream `SYNTHORG_TASKS` with `WorkQueuePolicy` retention. Separation matters because the two streams have incompatible retention requirements: the bus retains the last N messages per subject, the task queue deletes messages after ack.
