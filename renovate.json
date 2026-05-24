@@ -66,6 +66,11 @@
       "enabled": false
     },
     {
+      "description": "Lycheeverse/lychee upstream tags are `lychee-v<x.y.z>`; the bare `v<x.y.z>` form is what `lycheeverse/lychee-action`'s `version:` input expects and what `scripts/install_cli_tools.sh` stores. Strip the prefix from upstream so Renovate's semver comparator lines up with the stored value.",
+      "matchDepNames": ["lycheeverse/lychee"],
+      "extractVersion": "^lychee-(?<version>.+)$"
+    },
+    {
       "description": "Block Python 3.15+ in Docker images (policy decision)",
       "matchDepNames": ["python"],
       "matchManagers": ["dockerfile"],
@@ -99,10 +104,10 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Binary tool version env vars in CI workflows (Trivy, Grype, Gitleaks, D2, apko, melange, etc.)",
-      "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/"],
+      "description": "Binary tool version env vars in CI workflows and local dev install scripts (Trivy, Grype, Gitleaks, D2, apko, melange, lychee, etc.)",
+      "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/", "/scripts/install_.*\\.sh$/"],
       "matchStrings": [
-        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+[A-Z0-9_]+_VERSION:\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s*[A-Z0-9_]+_VERSION[:=]\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
       ],
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver"

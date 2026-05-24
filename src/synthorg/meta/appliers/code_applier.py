@@ -22,7 +22,11 @@ from synthorg.meta.models import (
     ImprovementProposal,
     ProposalAltitude,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
     META_APPLY_CREATE_TARGET_EXISTS,
@@ -142,12 +146,12 @@ class CodeApplier:
             # runs after the ``_write_changes`` / GitHub-client
             # paths, and the traceback carries full proposal payload
             # + branch / commit metadata in frame-locals.
-            logger.error(
+            log_exception_redacted(
+                logger,
                 META_APPLY_FAILED,
+                outer_exc,
                 altitude="code_modification",
                 proposal_id=str(proposal.id),
-                error_type=type(outer_exc).__name__,
-                error=safe_error_description(outer_exc),
             )
             # Revert ONLY the changes that were actually written. If
             # the failure surfaced from ``_write_changes`` it carries

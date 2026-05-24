@@ -20,18 +20,18 @@ export interface ClipboardData {
  *
  * @param selectedIds - IDs of selected nodes
  * @param allNodes - All nodes in the graph
- * @param allEdges - All edges in the graph
+ * @param graphEdges - All edges in the graph
  * @returns Clipboard data with only the selected nodes and internal edges
  */
 export function copyNodes(
   selectedIds: ReadonlySet<string>,
   allNodes: readonly Node[],
-  allEdges: readonly Edge[],
+  graphEdges: readonly Edge[],
 ): ClipboardData | null {
   if (selectedIds.size === 0) return null
 
   const nodes = allNodes.filter((n) => selectedIds.has(n.id))
-  const edges = allEdges.filter(
+  const edges = graphEdges.filter(
     (e) => selectedIds.has(e.source) && selectedIds.has(e.target),
   )
 

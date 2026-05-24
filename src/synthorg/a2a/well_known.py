@@ -20,7 +20,11 @@ from litestar.response import Response
 from synthorg.a2a.agent_card import AgentCardBuilder  # noqa: TC001
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.normalization import strip_trailing_slash
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.a2a import (
     A2A_AGENT_CARD_CACHE_HIT,
     A2A_AGENT_CARD_CACHE_MISS,
@@ -268,11 +272,11 @@ class WellKnownAgentCardController(Controller):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 A2A_AGENT_CARD_SERVED,
+                exc,
                 card_type="company",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
                 reason="company_agent_card_build_failed",
             )
             return _service_unavailable_response()
@@ -317,12 +321,12 @@ class WellKnownAgentCardController(Controller):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 A2A_AGENT_CARD_SERVED,
+                exc,
                 card_type="agent",
                 agent_id=agent_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
                 reason="agent_identity_resolution_failed",
             )
             return _service_unavailable_response()
@@ -348,12 +352,12 @@ class WellKnownAgentCardController(Controller):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 A2A_AGENT_CARD_SERVED,
+                exc,
                 card_type="agent",
                 agent_id=agent_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
                 reason="agent_card_build_failed",
             )
             return _service_unavailable_response()

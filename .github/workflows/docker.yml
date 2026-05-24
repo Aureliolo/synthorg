@@ -65,9 +65,12 @@ jobs:
       fine-tune: ${{ steps.filter.outputs.fine-tune }}
       web: ${{ steps.filter.outputs.web }}
     steps:
+      # fetch-depth: 0. See ci.yml Detect Changes for full rationale:
+      # paths-filter on push: events races on shallow checkouts.
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: "0"
           persist-credentials: false
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
@@ -648,7 +651,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: "24.15.0"
+          node-version: "24.16.0"
           package-manager-cache: false
 
       - name: Set up Python + uv (OpenAPI export + docs build)
@@ -858,7 +861,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security (web)
         if: always()
-        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # v4.35.5
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
         with:
           sarif_file: trivy-web.sarif
           category: trivy-web

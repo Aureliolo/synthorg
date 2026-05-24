@@ -17,7 +17,11 @@ from synthorg.core.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatu
 from synthorg.core.evidence import EvidencePackage
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import (
     API_APPROVAL_REPO_FAILED,
     API_APPROVAL_REPO_FETCHED,
@@ -92,12 +96,12 @@ async def _safe_rollback(
     except MemoryError, RecursionError:
         raise
     except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             API_APPROVAL_REPO_FAILED,
+            rollback_exc,
             phase="rollback",
             operation=operation,
-            error_type=type(rollback_exc).__name__,
-            error=safe_error_description(rollback_exc),
             **log_context,
         )
 
@@ -374,12 +378,12 @@ class SQLiteApprovalRepository:
                     # the rollback failure is a structured event, not
                     # a stack-trace dump. ``rollback_exc`` is captured
                     # in ``error_type`` + ``error`` already.
-                    logger.error(
+                    log_exception_redacted(
+                        logger,
                         API_APPROVAL_REPO_FAILED,
+                        rollback_exc,
                         batch_size=len(ids),
                         phase="rollback",
-                        error_type=type(rollback_exc).__name__,
-                        error=safe_error_description(rollback_exc),
                     )
                 msg = f"Failed to expire approval batch (size={len(ids)})"
                 logger.warning(

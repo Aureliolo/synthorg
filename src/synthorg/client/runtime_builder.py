@@ -26,7 +26,11 @@ from synthorg.client.simulation_state import ClientSimulationState
 from synthorg.engine.intake.engine import IntakeEngine
 from synthorg.engine.review.pipeline import ReviewPipeline
 from synthorg.engine.review.stages.internal import InternalReviewStage
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.settings.bootstrap_resolver import resolve_init_value
 from synthorg.settings.enums import SettingNamespace
@@ -116,13 +120,13 @@ def _build_intake_with_fallback(  # noqa: PLR0913 -- keyword-only DI
         )
     except UnknownStrategyError as exc:
         if requested_strategy == _DEFAULT_STRATEGY:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 CLIENT_SIMULATION_RUNTIME_WIRED,
+                exc,
                 requested_strategy=requested_strategy,
                 effective_strategy=_DEFAULT_STRATEGY,
                 reason="default direct strategy failed during boot",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         logger.warning(

@@ -70,3 +70,34 @@ class TestEvolutionSignalAggregator:
             until=now,
         )
         assert summary.total_proposals == 0
+
+    @pytest.mark.parametrize("exc_cls", [MemoryError, RecursionError])
+    async def test_propagates_catastrophic_interpreter_errors(
+        self,
+        exc_cls: type[BaseException],
+    ) -> None:
+        """Catastrophic interpreter errors must escape the ``Exception`` net."""
+
+        class _CatastrophicStore:
+            async def record(self, **_kwargs: object) -> None:
+                return None
+
+            async def query(self, **_kwargs: object) -> tuple[object, ...]:
+                return ()
+
+            async def summarize(self, **_kwargs: object) -> object:
+                raise exc_cls
+
+            async def count(self) -> int:
+                return 0
+
+            async def clear(self) -> None:
+                return None
+
+        agg = EvolutionSignalAggregator(_CatastrophicStore())  # type: ignore[arg-type]
+        now = datetime.now(UTC)
+        with pytest.raises(exc_cls):
+            await agg.aggregate(
+                since=now - timedelta(hours=1),
+                until=now,
+            )

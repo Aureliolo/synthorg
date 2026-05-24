@@ -15,7 +15,7 @@ from synthorg.engine.checkpoint.models import (
     Heartbeat,
 )
 from synthorg.engine.context import AgentContext  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.checkpoint import (
     CHECKPOINT_SAVE_FAILED,
     CHECKPOINT_SAVED,
@@ -94,9 +94,11 @@ def make_checkpoint_callback(
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 CHECKPOINT_SAVE_FAILED,
+                exc,
                 execution_id=ctx.execution_id,
                 turn_number=turn,
             )
@@ -124,10 +126,9 @@ def make_checkpoint_callback(
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
-                HEARTBEAT_UPDATE_FAILED,
-                execution_id=ctx.execution_id,
+        except Exception as exc:
+            log_exception_redacted(
+                logger, HEARTBEAT_UPDATE_FAILED, exc, execution_id=ctx.execution_id
             )
 
     return _checkpoint_callback

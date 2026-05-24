@@ -24,7 +24,7 @@ Web: see `web/CLAUDE.md`. CLI: see `cli/CLAUDE.md` (use `go -C cli`, never `cd c
 ```bash
 uv sync                                             # all deps
 uv sync --group docs                                # docs toolchain (zensical + D2)
-bash scripts/install_cli_tools.sh                   # one-time per-machine: golangci-lint only (CI installs separately; install d2 via docs/getting_started.md)
+bash scripts/install_cli_tools.sh                   # one-time per-machine: golangci-lint + lychee (CI installs separately; install d2 via docs/getting_started.md)
 uv run ruff check src/ tests/ --fix                 # lint + auto-fix
 uv run ruff format src/ tests/                      # format
 uv run mypy --num-workers=4 src/ tests/             # strict type-check
@@ -37,6 +37,7 @@ HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -k properties
 HYPOTHESIS_PROFILE=fuzz uv run python -m pytest tests/ -m unit --timeout=0
 bash scripts/install_git_hooks.sh                   # one-time per clone: wire core.hooksPath -> scripts/git-hooks (NOT pre-commit install)
 uv run pre-commit run --all-files
+uv run pre-commit run lychee --hook-stage pre-push --all-files                      # local Markdown link-check (lychee, 8-15s)
 uv run python scripts/check_schema_drift_revisions.py --backend sqlite  # or --backend postgres
 PYTHONPATH=. uv run zensical build                  # docs
 ```
@@ -73,7 +74,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 - Event names from `observability.events.<domain>` constants; structured kwargs (`logger.info(EVENT, key=value)`).
 - Error paths log WARNING/ERROR with context before raising; state transitions log INFO via `*_STATUS_TRANSITIONED` AFTER persistence write.
 - Sink pipeline (level + event filtering): `synthorg.log` excludes routine HTTP-request events; `debug.log` pins specific events to exact levels. See [`.claude/skills/analyse-logs/SKILL.md`](.claude/skills/analyse-logs/SKILL.md) for `SINK_EVENT_EXCLUDES` / `SINK_EXACT_LEVELS` when correlating across logs.
-- **Secret-log redaction (SEC-1)**: never `error=str(exc)` or interpolate `{exc}`; use `error_type=type(exc).__name__` + `error=safe_error_description(exc)`. Never `exc_info=True`. OTel: `span.record_exception(exc)` forbidden; use `span.set_attribute("exception.message", safe_error_description(exc))` + `record_exception=False, set_status_on_exception=False`. Enforced by `check_logger_exception_str_exc.py`.
+- **Secret-log redaction (SEC-1)**: never `error=str(exc)` or interpolate `{exc}`; use `error_type=type(exc).__name__` + `error=safe_error_description(exc)`. Never `exc_info=True`. Never `logger.exception(...)` (attaches traceback whose frame-locals serialise in-scope `client_secret` / `refresh_token` / Fernet ciphertext); replace with `except ... as exc: logger.error(EVENT, ..., error_type=type(exc).__name__, error=safe_error_description(exc))`. OTel: `span.record_exception(exc)` forbidden; use `span.set_attribute("exception.message", safe_error_description(exc))` + `record_exception=False, set_status_on_exception=False`. Enforced by `check_logger_exception_str_exc.py`.
 
 ## API startup lifecycle
 

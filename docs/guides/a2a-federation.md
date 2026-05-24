@@ -109,4 +109,4 @@ To add a new method:
 4. Add the method name to the per-peer `a2a.methods_enabled` allowlist.
 5. Cover the wire shape in `tests/unit/a2a/test_<method>.py`.
 
-See [docs/reference/typed-boundaries.md](../reference/typed-boundaries.md) for the boundary contract and [docs/design/a2a.md](../design/a2a.md) for the full protocol design.
+See [docs/reference/typed-boundaries.md](../reference/typed-boundaries.md) for the boundary contract and [docs/design/a2a-protocol.md](../design/a2a-protocol.md) for the full protocol design.

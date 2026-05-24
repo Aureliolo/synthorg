@@ -448,14 +448,14 @@ class AgentContext(BaseModel):
         Returns:
             Frozen ``AgentContextSnapshot`` with current state.
         """
-        te = self.task_execution
+        task_execution = self.task_execution
         snapshot = AgentContextSnapshot(
             execution_id=self.execution_id,
             agent_id=str(self.identity.id),
-            task_id=te.task.id if te is not None else None,
+            task_id=task_execution.task.id if task_execution is not None else None,
             turn_count=self.turn_count,
             accumulated_cost=self.accumulated_cost,
-            task_status=te.status if te is not None else None,
+            task_status=task_execution.status if task_execution is not None else None,
             started_at=self.started_at,
             snapshot_at=datetime.now(UTC),
             message_count=len(self.conversation),

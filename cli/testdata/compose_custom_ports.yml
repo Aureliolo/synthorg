@@ -8,7 +8,7 @@ services:
   # cannot self-chown, so this one-shot container sets ownership on first start.
   data-init:
     # renovate: datasource=docker depName=busybox
-    image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138
+    image: busybox:1.38-musl@sha256:f36701e0a15a97186ccc59bbe9a6217b649edecb36ce32d07fa31bf5ad15e56d
     volumes:
       - synthorg-data:/data
     command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory; chown -R 65532:65532 /data"]

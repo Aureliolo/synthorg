@@ -217,7 +217,7 @@ async def test_max_deliver_dead_letters_to_failed_no_loss(
     """A claim that always RETRYs ends FAILED via the DLQ, never lost."""
     failed: list[str] = []
 
-    async def failer(task_id: str, reason: str) -> DeadLetterOutcome:
+    async def fail_handler(task_id: str, reason: str) -> DeadLetterOutcome:
         failed.append(task_id)
         return DeadLetterOutcome.TRANSITIONED
 
@@ -227,7 +227,7 @@ async def test_max_deliver_dead_letters_to_failed_no_loss(
     async with make_sqlite_seen_claims() as repo:
         consumer = DeadLetterConsumer(
             task_queue=task_queue,
-            task_failer=failer,
+            task_fail_handler=fail_handler,
             queue_config=task_queue._queue_config,
             seen_claims=repo,
         )

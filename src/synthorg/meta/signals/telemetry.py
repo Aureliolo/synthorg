@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.signal_models import OrgTelemetrySummary
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
@@ -66,10 +66,11 @@ class TelemetrySignalAggregator:
                 domain="telemetry",
                 event_count=summary.event_count,
             )
-        except Exception:
-            logger.exception(
-                META_SIGNAL_AGGREGATION_FAILED,
-                domain="telemetry",
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            log_exception_redacted(
+                logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain="telemetry"
             )
             return OrgTelemetrySummary()
         return summary

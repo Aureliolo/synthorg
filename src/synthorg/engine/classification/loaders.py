@@ -11,7 +11,7 @@ from synthorg.budget.coordination_config import DetectionScope
 from synthorg.communication.delegation.models import DelegationRequest
 from synthorg.engine.classification.protocol import DetectionContext
 from synthorg.engine.sanitization import sanitize_message
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.classification import (
     CONTEXT_LOADER_ERROR,
 )
@@ -145,9 +145,11 @@ class TaskTreeLoader:
             all_tasks: tuple[Task, ...] = tuple(collected)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 CONTEXT_LOADER_ERROR,
+                exc,
                 loader="task_tree_loader",
                 agent_id=agent_id,
                 task_id=root_task_id,

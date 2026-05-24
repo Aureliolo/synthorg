@@ -16,7 +16,11 @@ from synthorg.engine.workflow.strategies.external_trigger import (
     ExternalTriggerStrategy,
 )
 from synthorg.integrations.webhooks.event_bus_bridge import WEBHOOK_CHANNEL
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.integrations import (
     WEBHOOK_BRIDGE_EVENT_FORWARDED,
@@ -316,10 +320,10 @@ class WebhookEventBridge:
                 # triage without the credential-leak surface.
                 consecutive_errors += 1
                 if consecutive_errors >= max_errors:
-                    logger.error(
+                    log_exception_redacted(
+                        logger,
                         WEBHOOK_BRIDGE_POLL_ERROR,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
+                        exc,
                         consecutive_errors=consecutive_errors,
                         note="too many consecutive errors, stopping",
                     )

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.audit_chain.chain import HashChain
 from synthorg.observability.audit_chain.payloads import AuditChainEventPayload
 from synthorg.observability.events.audit_chain import (
@@ -387,11 +387,11 @@ class AuditChainSink(logging.Handler):
             # audit-chain side of the same incident, distinguishing
             # schema-reject from signing-timeout from JSON-encode
             # failure.
-            logger.error(
+            log_exception_redacted(
+                logger,
                 AUDIT_CHAIN_EMIT_VALIDATION_FAILED,
+                exc,
                 audited_event=msg,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
                 error_count=len(exc.errors()),
             )
             self._invoke_append_callback("error", 0, 0.0)

@@ -26,7 +26,11 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.participant import (
     ParticipantResolver,  # noqa: TC001
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.meeting import (
     MEETING_EVENT_COOLDOWN_SKIPPED,
@@ -408,11 +412,11 @@ class MeetingScheduler:
             if isinstance(result, MemoryError | RecursionError):
                 raise result
             if isinstance(result, Exception):
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     MEETING_SCHEDULER_ERROR,
+                    result,
                     note="periodic task error during shutdown",
-                    error_type=type(result).__name__,
-                    error=safe_error_description(result),
                 )
 
     def _drop_cross_loop_tasks(self, current_loop: asyncio.AbstractEventLoop) -> bool:

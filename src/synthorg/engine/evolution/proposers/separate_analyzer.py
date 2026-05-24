@@ -26,7 +26,11 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.evolution import (
     EVOLUTION_PROPOSER_ANALYZE,
     EVOLUTION_PROPOSER_INIT,
@@ -339,11 +343,11 @@ class SeparateAnalyzerProposer:
                 # operators with context before propagating; otherwise
                 # a downstream catch-and-translate would hide the
                 # error path entirely.
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     EVOLUTION_PROPOSER_PARSE_ERROR,
+                    exc,
                     agent_id=str(agent_id),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                     reason="provider_error_non_retryable",
                     is_retryable=False,
                 )

@@ -210,7 +210,7 @@ ws.onopen = () => {
 }
 ```
 
-The first frame the server sends is `{"event_type":"auth_ok"}`; once seen, the channels you subscribed to deliver events in real time. See [docs/reference/websocket-protocol.md](../reference/websocket-protocol.md) for the full handshake and event-type catalogue.
+The first frame the server sends is `{"event_type":"auth_ok"}`; once seen, the channels you subscribed to deliver events in real time. See the [WebSocket Models](../api/layer.md#websocket-models) section of the API reference for the full handshake and event-type catalogue.
 
 ## Pagination
 

@@ -26,7 +26,11 @@ from synthorg.budget.forecast_models import (
     HaltContext,
 )
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.persistence import (
     PERSISTENCE_COST_FORECAST_FAILED,
     PERSISTENCE_COST_FORECAST_FETCHED,
@@ -90,12 +94,12 @@ async def _safe_rollback(
     except MemoryError, RecursionError:
         raise
     except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             PERSISTENCE_COST_FORECAST_FAILED,
+            rollback_exc,
             phase="rollback",
             operation=operation,
-            error_type=type(rollback_exc).__name__,
-            error=safe_error_description(rollback_exc),
             **log_context,
         )
 

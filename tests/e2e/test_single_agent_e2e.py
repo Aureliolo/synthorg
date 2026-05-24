@@ -102,12 +102,12 @@ class TestFileToolAgent:
         assert "Created output.txt" in tool_msgs[0].tool_result.content
 
         # Task lifecycle: ASSIGNED -> IN_PROGRESS -> IN_REVIEW (review gate)
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.IN_REVIEW
-        assert len(te.transition_log) == 2
-        assert te.transition_log[0].to_status == TaskStatus.IN_PROGRESS
-        assert te.transition_log[1].to_status == TaskStatus.IN_REVIEW
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.IN_REVIEW
+        assert len(task_execution.transition_log) == 2
+        assert task_execution.transition_log[0].to_status == TaskStatus.IN_PROGRESS
+        assert task_execution.transition_log[1].to_status == TaskStatus.IN_REVIEW
 
         # Cost tracking matches result
         total_cost = await cost_tracker.get_total_cost()
@@ -168,10 +168,10 @@ class TestTextOnlyAgent:
         assert len(tool_msgs) == 0
 
         # Task lifecycle: ASSIGNED -> IN_PROGRESS -> IN_REVIEW (review gate)
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.IN_REVIEW
-        assert len(te.transition_log) == 2
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.IN_REVIEW
+        assert len(task_execution.transition_log) == 2
 
         # Cost tracking
         total_cost = await cost_tracker.get_total_cost()
@@ -258,9 +258,9 @@ class TestPermissionDeniedRecovery:
         assert not (e2e_workspace / "output.txt").exists()
 
         # Task at IN_REVIEW (agent completed, awaiting review)
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.IN_REVIEW
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.IN_REVIEW
 
         # Cost tracking records both turns
         assert await cost_tracker.get_record_count() == 2
@@ -343,9 +343,9 @@ class TestMaxTurnsExhausted:
         assert result.total_turns == 2
 
         # Task stays IN_PROGRESS (only COMPLETED/SHUTDOWN/ERROR trigger transitions)
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.IN_PROGRESS
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.IN_PROGRESS
 
         # No error message for MAX_TURNS
         assert result.execution_result.error_message is None

@@ -20,7 +20,7 @@ from synthorg.core.concurrency import CASRetryHandler
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.normalization import find_by_name_ci
 from synthorg.core.persistence_errors import PersistenceError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import (
     API_COMPANY_UPDATED,
     API_VALIDATION_FAILED,
@@ -96,9 +96,11 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
                 snapshot=budget,
                 saved_by=saved_by,
             )
-        except PersistenceError, SettingNotFoundError, ValueError:
-            logger.exception(
+        except (PersistenceError, SettingNotFoundError, ValueError) as exc:
+            log_exception_redacted(
+                logger,
                 VERSION_SNAPSHOT_FAILED,
+                exc,
                 entity_type="BudgetConfig",
                 entity_id="default",
             )
@@ -119,9 +121,11 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
                 snapshot=company,
                 saved_by=saved_by,
             )
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 VERSION_SNAPSHOT_FAILED,
+                exc,
                 entity_type="Company",
                 entity_id="default",
             )

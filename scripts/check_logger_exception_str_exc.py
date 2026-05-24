@@ -448,6 +448,7 @@ def _is_logger_receiver(value: ast.expr) -> bool:
 
 _RULE_STR_EXC = "error_str_exc"
 _RULE_EXC_INFO = "exc_info_true"
+_RULE_LOGGER_EXCEPTION = "logger_exception_call"
 
 
 class _LoggerExceptionFinder(ast.NodeVisitor):
@@ -662,6 +663,10 @@ class _LoggerExceptionFinder(ast.NodeVisitor):
             and func.attr in _LOGGER_METHODS
             and _is_logger_receiver(func.value)
         ):
+            if func.attr == "exception":
+                self.hits.append(
+                    (node.lineno, node.col_offset, _RULE_LOGGER_EXCEPTION),
+                )
             if _has_error_str_exc_kwarg(node.keywords) or _has_error_alias_kwarg(
                 node.keywords,
                 self._leak_aliases,
@@ -936,6 +941,10 @@ def _rel(path: Path) -> str:
 _RULE_MESSAGES: dict[str, str] = {
     _RULE_STR_EXC: "logger.<method>(..., error=str(exc)) site",
     _RULE_EXC_INFO: "logger.<method>(..., exc_info=True) site",
+    _RULE_LOGGER_EXCEPTION: (
+        "logger.exception(...) call -- attaches traceback whose"
+        " frame-locals can leak credentials"
+    ),
 }
 
 
@@ -982,16 +991,20 @@ def _report(violations: list[str]) -> int:
         "\n`logger.<method>(..., error=str(exc))` and"
         ' `error=f"...{exc}..."` leak credential material via'
         " str(exc)-embedded URLs / form bodies."
-        " `logger.<method>(..., exc_info=True)` leaks via traceback"
-        " frame-locals (any in-scope client_secret / refresh_token)."
+        " `logger.<method>(..., exc_info=True)` and"
+        " `logger.exception(...)` both attach a traceback whose"
+        " frame-locals serialise any in-scope credential"
+        " (client_secret / refresh_token / Fernet ciphertext)"
+        " into the log record."
         "\n"
-        "\nReplace error=str(exc) / f-string-exc with:"
-        "\n    logger.warning("
-        "\n        EVENT_NAME,"
-        "\n        ...,"
-        "\n        error_type=type(exc).__name__,"
-        "\n        error=safe_error_description(exc),"
-        "\n    )"
+        "\nReplace logger.exception(...) and error=str(exc) / f-string-exc with:"
+        "\n    except Exception as exc:"
+        "\n        logger.error("
+        "\n            EVENT_NAME,"
+        "\n            ...,"
+        "\n            error_type=type(exc).__name__,"
+        "\n            error=safe_error_description(exc),"
+        "\n        )"
         "\n"
         "\nAdd: from synthorg.observability import safe_error_description"
         "\n"

@@ -572,7 +572,7 @@ class TestParseBool:
     def test_valid_values(self, raw: str, expected: bool) -> None:
         assert _parse_bool(raw) is expected
 
-    @pytest.mark.parametrize("raw", ["yes", "no", "maybe", "", "2", "tru"])
+    @pytest.mark.parametrize("raw", ["yes", "no", "maybe", "", "2", "yep"])
     def test_invalid_values(self, raw: str) -> None:
         with pytest.raises(ValueError, match="not a recognized boolean"):
             _parse_bool(raw)

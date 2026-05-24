@@ -191,8 +191,8 @@ feature isolation).
 
 ### New docs / SQL / YAML tools
 
-Landed: `markdownlint`, `yamllint`, `sqlfluff`. Deferred (see Exemption
-ledger): `lychee` (Markdown link check) and `vale` (Google style +
+Landed: `markdownlint`, `yamllint`, `sqlfluff`, `lychee` (Markdown link
+check). Deferred (see Exemption ledger): `vale` (Google style +
 British dictionary).
 
 ## Consequences
@@ -325,13 +325,10 @@ and closed for the project to reach 100% strict enforcement.
 | ESLint `complexity / max-lines / max-lines-per-function / max-params` exempted on `src/**/*.{ts,tsx}` | EPIC #2066: "Web component-size ratchet: decompose oversized React components" | Large (no existing PR in EPIC) |
 | Go `gocyclo / funlen / gocognit / nestif / revive` path-excluded across `cli/internal/**` + `cmd/**` | Issue #2067: "CLI complexity ratchet: per-package lift" | Medium |
 | `vulture` `ignore_names` (7 entries) | Issue #2073: "Replace vulture ignore_names with explicit unused-marker pattern" | Trivial |
-| `codespell` `ignore-words-list` (~90 entries; some genuine project terms, some false positives) | Issue #2074: "Audit codespell ignore-words: split genuine vocab from false-positives" | Small |
-| `deptry` DEP003 transitive-dep tolerance (6 packages: uvicorn, prometheus_client, annotated_types, httpcore, qdrant_client, referencing) | Issue #2075: "Promote transitive deps to direct deps" | Small |
 | `sqlfluff` `rules = ambiguous, references` (layout/capitalisation/aliasing all disabled) | EPIC #2076: "SQL style cleanup: enable full sqlfluff ruleset" | Large |
 | `sqlfluff` `exclude_rules = RF04` (keywords-as-identifiers) | Same SQL style issue | Trivial |
 | Typeguard never landed | Issue #2068: "Wire typeguard after #2048 lands" | Medium |
 | Vale prose linter never landed | Issue #2069: "Wire Vale + binary install script" | Small |
-| Lychee CI workflow never landed | Issue #2070: "Wire Lychee CI workflow + scripts/install_cli_tools.sh" | Trivial |
 | `knip --no-exit-code` (report-only, never blocks) | Issue #2071: "Knip blocking: eliminate unused exports surfaced by knip" | Medium |
 | `dpdm --skip-imports` for `stores/auth.ts -> api/client.ts` cycle | Issue #2072: "Fix auth -> client circular dependency" | Small |
 | `_module_size_baseline.json` residue: 109 files not covered by PR 3 / PR 4 / #2051 / #2052 (oversized files in `persistence/`, `engine/`, `api/`, `meta/`, etc. that no existing PR addresses) | Issue #2077: "EPIC: Drain residual module-size baseline" | Very large (per-package decomposition program) |

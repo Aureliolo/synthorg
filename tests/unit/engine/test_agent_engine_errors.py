@@ -487,9 +487,9 @@ class TestAgentEngineRecovery:
         )
 
         assert result.termination_reason == TerminationReason.ERROR
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status is TaskStatus.FAILED
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status is TaskStatus.FAILED
 
     async def test_recovery_strategy_invoked_on_failure(
         self,
@@ -557,11 +557,11 @@ class TestAgentEngineRecovery:
         )
 
         assert result.termination_reason == TerminationReason.ERROR
-        te = result.execution_result.context.task_execution
-        assert te is not None
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
         # Without recovery, task stays at IN_PROGRESS (engine transitions
         # ASSIGNED->IN_PROGRESS before the loop runs)
-        assert te.status is TaskStatus.IN_PROGRESS
+        assert task_execution.status is TaskStatus.IN_PROGRESS
 
     async def test_loop_timeout_triggers_recovery(
         self,
@@ -600,9 +600,9 @@ class TestAgentEngineRecovery:
         )
 
         assert result.termination_reason == TerminationReason.ERROR
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status is TaskStatus.FAILED
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status is TaskStatus.FAILED
 
     async def test_custom_recovery_strategy_used(
         self,

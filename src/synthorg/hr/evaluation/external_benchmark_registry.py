@@ -18,7 +18,7 @@ from synthorg.hr.evaluation.external_benchmark_models import (
 from synthorg.hr.evaluation.external_benchmark_protocol import (
     ExternalBenchmark,  # noqa: TC001
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.eval_loop import (
     EVAL_LOOP_BENCHMARK_EXECUTED,
 )
@@ -114,9 +114,11 @@ class ExternalBenchmarkRegistry:
                     case=case,
                     agent_output=case.expected_output,
                 )
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                log_exception_redacted(
+                    logger,
                     EVAL_LOOP_BENCHMARK_EXECUTED,
+                    exc,
                     benchmark_name=name,
                     case_id=getattr(case, "id", "unknown"),
                     context="grading_error",

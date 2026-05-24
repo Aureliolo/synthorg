@@ -31,7 +31,7 @@ from synthorg.engine.workflow.strategy_migration import (
     StrategyMigrationInfo,
     detect_strategy_migration,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.workflow import (
     SPRINT_AUTO_TRANSITION,
     SPRINT_CEREMONY_BUDGET_SNAPSHOT_FAILED,
@@ -287,9 +287,11 @@ class CeremonyScheduler:
                 await self._save_state_unlocked(sprint.id)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                log_exception_redacted(
+                    logger,
                     SPRINT_CEREMONY_SCHEDULER_START_FAILED,
+                    exc,
                     sprint_id=sprint.id,
                     note="activation failed, deactivating",
                 )
@@ -478,12 +480,14 @@ class CeremonyScheduler:
                 await self._active_strategy.on_sprint_deactivated()
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                log_exception_redacted(
+                    logger,
                     SPRINT_CEREMONY_DEACTIVATION_HOOK_FAILED,
-                    sprint_id=(
-                        self._active_sprint.id if self._active_sprint else "unknown"
-                    ),
+                    exc,
+                    sprint_id=self._active_sprint.id
+                    if self._active_sprint
+                    else "unknown",
                 )
 
         sprint_id = self._active_sprint.id if self._active_sprint else "unknown"
@@ -563,9 +567,11 @@ class CeremonyScheduler:
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                log_exception_redacted(
+                    logger,
                     SPRINT_CEREMONY_STRATEGY_HOOK_FAILED,
+                    exc,
                     task_id=task_id,
                     sprint_id=sprint.id,
                 )
@@ -819,9 +825,11 @@ class CeremonyScheduler:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 SPRINT_CEREMONY_TRIGGER_FAILED,
+                exc,
                 ceremony=ceremony_name,
                 sprint_id=sprint.id,
                 note="trigger_event failed",

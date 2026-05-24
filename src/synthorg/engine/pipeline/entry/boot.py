@@ -33,7 +33,7 @@ from synthorg.engine.pipeline.entry.factory import (
 )
 from synthorg.engine.pipeline.forecast_gate import ForecastGate
 from synthorg.engine.pipeline.models import WorkSource
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.brownfield import BROWNFIELD_ENTRY_WIRED
 from synthorg.observability.events.client import CLIENT_SIMULATION_RUNTIME_WIRED
 from synthorg.observability.events.objectives import OBJECTIVE_ENTRY_WIRED
@@ -237,13 +237,13 @@ async def _ensure_project(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             event,
+            exc,
             service=service,
             note="failed to create default project",
             project=project_id,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         raise
     logger.info(

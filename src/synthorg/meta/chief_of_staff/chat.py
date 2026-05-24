@@ -35,7 +35,7 @@ from synthorg.meta.models import (  # noqa: TC001
     ImprovementProposal,
     OrgSignalSnapshot,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.chief_of_staff import (
     COS_CHAT_FAILED,
     COS_CHAT_QUERY,
@@ -249,12 +249,10 @@ class ChiefOfStaffChat:
                     self._config.chat_model,
                     config=config,
                 )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
-            logger.error(
-                COS_CHAT_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+            log_exception_redacted(logger, COS_CHAT_FAILED, exc)
             raise
         answer = (response.content or "").strip()
         if not answer:

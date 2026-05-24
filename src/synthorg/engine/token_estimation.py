@@ -15,7 +15,7 @@ from synthorg.providers.models import ChatMessage  # noqa: TC001
 class PromptTokenEstimator(Protocol):
     """Runtime-checkable protocol for estimating token count from text.
 
-    Implementors must define ``estimate_tokens`` and
+    Implementers must define ``estimate_tokens`` and
     ``estimate_conversation_tokens`` methods.
     """
 

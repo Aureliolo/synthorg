@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING
 
 from synthorg.core.normalization import compare_ci
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
 
 if TYPE_CHECKING:
@@ -99,14 +99,14 @@ class BackupSettingsSubscriber:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 SETTINGS_SUBSCRIBER_NOTIFIED,
+                exc,
                 subscriber=self.subscriber_name,
                 namespace="backup",
                 key="enabled",
                 note="failed to read setting",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return
 
@@ -126,14 +126,14 @@ class BackupSettingsSubscriber:
                 # gives the operator the namespace/key plus the
                 # scrubbed error before re-raising so the dispatcher
                 # still records the failure.
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     SETTINGS_SUBSCRIBER_NOTIFIED,
+                    exc,
                     subscriber=self.subscriber_name,
                     namespace="backup",
                     key="enabled",
                     note="scheduler.start() failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
                 raise
             logger.info(
@@ -160,14 +160,14 @@ class BackupSettingsSubscriber:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 SETTINGS_SUBSCRIBER_NOTIFIED,
+                exc,
                 subscriber=self.subscriber_name,
                 namespace="backup",
                 key="schedule_hours",
                 note="failed to read setting",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return
 

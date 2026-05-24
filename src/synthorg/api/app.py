@@ -104,7 +104,11 @@ from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
 from synthorg.notifications.factory import build_notification_dispatcher
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_BRIDGE_CONFIG_RESOLVE_FAILED,
@@ -637,11 +641,11 @@ def create_app(  # noqa: PLR0913
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     API_APP_STARTUP,
+                    exc,
                     note="Postgres persistence creation failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
                 raise
             assert pg_persistence_config.postgres is not None  # noqa: S101
@@ -673,11 +677,11 @@ def create_app(  # noqa: PLR0913
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     API_APP_STARTUP,
+                    exc,
                     note="Failed to create persistence backend from env",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
                 raise
             logger.info(
@@ -1352,13 +1356,13 @@ def create_app(  # noqa: PLR0913
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 API_APP_STARTUP,
+                exc,
                 service="runtime_services",
                 note="failed to build the runtime services at boot",
                 provider_present=app_state.has_active_provider,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             msg = "Runtime services failed to build at boot"
             raise RuntimeServicesBuildError(msg) from exc

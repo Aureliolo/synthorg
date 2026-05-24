@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, AutonomyLevel
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.autonomy import (
     AUTONOMY_ACTION_AUTO_APPROVED,
     AUTONOMY_ACTION_HUMAN_REQUIRED,
@@ -193,9 +193,11 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             verdict = self._rule_engine.evaluate(context)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 SECURITY_INTERCEPTOR_ERROR,
+                exc,
                 tool_name=context.tool_name,
                 note="Rule engine evaluation failed (fail-closed)",
             )
@@ -305,9 +307,11 @@ class SecOpsService(SecOpsServiceSafetyMixin):
                 self._audit_log.record(entry)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                log_exception_redacted(
+                    logger,
                     SECURITY_AUDIT_RECORD_ERROR,
+                    exc,
                     tool_name=context.tool_name,
                     note="Output scan audit recording failed",
                 )
@@ -322,15 +326,18 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             result = self._output_scan_policy.apply(result, context)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 SECURITY_INTERCEPTOR_ERROR,
+                exc,
                 tool_name=context.tool_name,
                 policy=policy_name,
                 fallback_outcome=result.outcome.value,
-                note="Output scan policy application failed "
-                "-- returning raw scan result "
-                "(may be less strict than intended policy)",
+                note=(
+                    "Output scan policy application failed; returning raw "
+                    "scan result (may be less strict than intended policy)"
+                ),
             )
 
         return result
@@ -376,9 +383,11 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             return await self._llm_evaluator.evaluate(context, verdict)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 SECURITY_INTERCEPTOR_ERROR,
+                exc,
                 tool_name=context.tool_name,
                 note="LLM security evaluation failed (applying error policy)",
             )
@@ -500,9 +509,11 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             self._audit_log.record(entry)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 SECURITY_AUDIT_RECORD_ERROR,
+                exc,
                 tool_name=context.tool_name,
                 note="Audit recording failed -- verdict still returned",
             )
@@ -608,9 +619,11 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             await self._approval_store.add(item)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 SECURITY_ESCALATION_STORE_ERROR,
+                exc,
                 approval_id=approval_id,
                 tool_name=context.tool_name,
                 agent_id=context.agent_id,

@@ -14,7 +14,7 @@ from typing import Final
 from synthorg.engine.loop_protocol import BehaviorTag
 from synthorg.engine.middleware.models import AgentMiddlewareContext  # noqa: TC001
 from synthorg.engine.middleware.protocol import BaseAgentMiddleware
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.behavior_tagging import (
     BEHAVIOR_TAG_INFERRED,
     BEHAVIOR_TAGGER_ERROR,
@@ -98,9 +98,13 @@ class BehaviorTaggerMiddleware(BaseAgentMiddleware):
         """
         try:
             tags = self._infer_tags(ctx)
-        except Exception:
-            logger.exception(
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 BEHAVIOR_TAGGER_ERROR,
+                exc,
                 agent_id=ctx.agent_id,
                 task_id=ctx.task_id,
             )

@@ -30,7 +30,11 @@ from synthorg.core.persistence_errors import (
 )
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.service import ArtifactService
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import API_VALIDATION_FAILED
 from synthorg.observability.events.persistence import (
     PERSISTENCE_ARTIFACT_CONTENT_MISSING,
@@ -535,12 +539,12 @@ class ArtifactController(Controller):
             # storage-retrieve cardinality) so blob-store outages are
             # visible alongside metadata-fetch failures without sharing
             # a counter.
-            logger.error(
+            log_exception_redacted(
+                logger,
                 PERSISTENCE_ARTIFACT_RETRIEVE_FAILED,
+                exc,
                 artifact_id=artifact_id,
                 operation="download",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
                 note="artifact_retrieve_unexpected",
             )
             raise

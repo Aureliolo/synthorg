@@ -22,7 +22,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg import __version__
 from synthorg.api.dto import ApiResponse
 from synthorg.api.state import AppState  # noqa: TC001
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import API_HEALTH_CHECK
 
 logger = get_logger(__name__)
@@ -269,11 +273,8 @@ class ReadinessController(Controller):
             # sanitized description but never attach frame locals
             # that could serialize connection state from the failing
             # probe.
-            logger.error(
-                API_HEALTH_CHECK,
-                component="readiness",
-                error_type=type(group).__name__,
-                error=safe_error_description(group),
+            log_exception_redacted(
+                logger, API_HEALTH_CHECK, group, component="readiness"
             )
             return _unavailable_response(app_state)
         persistence_ok = persistence_task.result()

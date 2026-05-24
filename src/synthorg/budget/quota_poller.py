@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.budget.quota import QuotaSnapshot, QuotaWindow
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.quota import (
     QUOTA_ALERT_COOLDOWN_ACTIVE,
     QUOTA_POLL_COMPLETED,
@@ -120,10 +120,7 @@ class QuotaPoller:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.exception(
-                QUOTA_POLL_FAILED,
-                error=type(exc).__name__,
-            )
+            log_exception_redacted(logger, QUOTA_POLL_FAILED, exc)
             return
 
         for provider_snapshots in snapshots.values():
@@ -145,10 +142,7 @@ class QuotaPoller:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.exception(
-                    QUOTA_POLL_FAILED,
-                    error=type(exc).__name__,
-                )
+                log_exception_redacted(logger, QUOTA_POLL_FAILED, exc)
             await self._clock.sleep(self._config.poll_interval_seconds)
 
     async def _check_snapshot(self, snap: QuotaSnapshot) -> None:
@@ -199,10 +193,9 @@ class QuotaPoller:
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
-                    QUOTA_POLL_FAILED,
-                    error="quota_alert_dispatch_failed",
+            except Exception as exc:
+                log_exception_redacted(
+                    logger, QUOTA_POLL_FAILED, exc, reason="quota_alert_dispatch_failed"
                 )
 
 

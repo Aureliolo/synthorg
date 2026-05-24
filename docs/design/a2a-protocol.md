@@ -5,7 +5,7 @@ description: Agent-to-Agent protocol integration. Status, architecture, implemen
 
 # A2A Protocol
 
-The [A2A (Agent-to-Agent) protocol](https://agent-protocol.ai) is a standard for heterogeneous agent communication. SynthOrg exposes an A2A gateway that lets external agent systems discover, invoke, and receive updates from the internal roster, without either side needing to understand the other's internal shape.
+The [A2A (Agent-to-Agent) protocol](https://a2a-protocol.org/) is a standard for heterogeneous agent communication. SynthOrg exposes an A2A gateway that lets external agent systems discover, invoke, and receive updates from the internal roster, without either side needing to understand the other's internal shape.
 
 This page is the status-and-architecture reference: what ships today, how it maps onto SynthOrg's internal model, and what's next.
 

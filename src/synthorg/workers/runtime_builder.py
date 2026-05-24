@@ -41,7 +41,11 @@ from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
 from synthorg.engine.routing_policy import build_stakes_router
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
 from synthorg.engine.workspace.git_worktree import PlannerWorktreeStrategy
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.resolver import AutonomyResolver
@@ -331,13 +335,13 @@ async def _build_external_api_runtime(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             API_APP_STARTUP,
+            exc,
             service="external_api",
             context="external_api_runtime_resolve",
             note="external-access misconfigured; tool not registered",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         return None
 

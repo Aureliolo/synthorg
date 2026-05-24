@@ -12,7 +12,11 @@ from pathlib import Path  # noqa: TC003
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.backup import (
     BACKUP_COMPONENT_COMPLETED,
     BACKUP_COMPONENT_FAILED,
@@ -74,11 +78,8 @@ class SQLitePersistenceComponentHandler:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
-                BACKUP_COMPONENT_FAILED,
-                component=self.component.value,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
             )
             msg = f"Failed to back up persistence DB: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
@@ -121,21 +122,15 @@ class SQLitePersistenceComponentHandler:
                 self._atomic_swap, self._db_path, source_file, bak_path
             )
         except ComponentBackupError as exc:
-            logger.error(
-                BACKUP_COMPONENT_FAILED,
-                component=self.component.value,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
             )
             raise
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
-                BACKUP_COMPONENT_FAILED,
-                component=self.component.value,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
             )
             msg = f"Failed to restore persistence DB: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
@@ -169,17 +164,19 @@ class SQLitePersistenceComponentHandler:
                 str(source_file),
             )
         except IntegrityCheckError as exc:
-            # Using ``logger.error`` (not ``logger.exception``) is
-            # deliberate: structlog's exc-info processor serialises
-            # traceback frame-locals into the event, leaking any
-            # in-scope credential. We pass the redacted exception
-            # description via ``safe_error_description`` instead.
-            logger.error(
+            # Route through ``log_exception_redacted`` rather than
+            # ``logger.exception``: the helper centralises the
+            # error_type + scrubbed-message pair AND skips traceback
+            # attachment, so frame-locals (potentially carrying any
+            # in-scope credential) cannot reach the structured log
+            # sink. The raised ComponentBackupError below carries the
+            # same scrubbed description for the caller.
+            log_exception_redacted(
+                logger,
                 BACKUP_COMPONENT_FAILED,
+                exc,
                 component=self.component.value,
                 phase="integrity_check",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             msg = f"Failed to run integrity check on backup: {safe_error_description(exc)}"  # noqa: E501
             raise ComponentBackupError(msg) from exc

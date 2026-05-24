@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import OrgBudgetSummary
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
@@ -78,9 +78,10 @@ class BudgetSignalAggregator:
                 META_SIGNAL_AGGREGATION_COMPLETED,
                 domain="budget",
             )
-        except Exception:
-            logger.exception(
-                META_SIGNAL_AGGREGATION_FAILED,
-                domain="budget",
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            log_exception_redacted(
+                logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain="budget"
             )
         return _EMPTY

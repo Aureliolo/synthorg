@@ -101,7 +101,7 @@ class CoordinationSectionConfig(BaseModel):
         description=(
             "LLM model identifier used by the coordinator's task "
             "decomposition strategy. Resolved against the first "
-            "registered provider at boot. Overrideable via the "
+            "registered provider at boot. Overridable via the "
             "SYNTHORG_COORDINATION_DECOMPOSITION_MODEL environment "
             "variable (precedence: DB > env > this code default), "
             "applied on the next coordinator rebuild."

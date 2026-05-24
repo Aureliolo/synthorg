@@ -24,7 +24,11 @@ from synthorg.engine.middleware.registry import (
     get_agent_middleware_factory,
     get_coordination_middleware_factory,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.middleware import (
     MIDDLEWARE_CHAIN_BUILT,
     MIDDLEWARE_COORDINATION_CHAIN_BUILT,
@@ -96,12 +100,8 @@ def build_agent_middleware_chain(
         try:
             mw = factory(**effective_deps)
         except TypeError as exc:
-            logger.error(
-                MIDDLEWARE_SKIPPED,
-                middleware=name,
-                reason="factory_error",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, MIDDLEWARE_SKIPPED, exc, middleware=name, reason="factory_error"
             )
             raise
 
@@ -171,12 +171,12 @@ def build_coordination_middleware_chain(
         try:
             mw = factory(**effective_deps)
         except TypeError as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 MIDDLEWARE_COORDINATION_SKIPPED,
+                exc,
                 middleware=name,
                 reason="factory_error",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
 

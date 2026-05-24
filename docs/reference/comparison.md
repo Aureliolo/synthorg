@@ -66,7 +66,7 @@ Last updated: 2026-05-15
 | [OpenHands](https://openhands.dev) | Developer Tool | MIT | Open-core | ✔ | - | ✔ | ✔ | ✔ |
 | [Rivet](https://rivet.ironcladapp.com) | Developer Tool | MIT | Free | ✔ | - | ~ | ~ | ~ |
 | [Vercel AI SDK](https://ai-sdk.dev) | Developer Tool | Apache-2.0 | Open-core | ✔ | - | ~ | ~ | ~ |
-| [Llama Stack](https://llamastack.github.io/) | Developer Tool | MIT | Free | ✔ | - | - | - | ~ |
+| [OGX (formerly Llama Stack)](https://ogx-ai.github.io/docs) | Developer Tool | MIT | Free | ✔ | - | - | - | ~ |
 | [Atomic Agents](https://github.com/BrainBlend-AI/atomic-agents) | Developer Tool | MIT | Free | ✔ | - | ~ | ~ | ~ |
 
 ## Technical Capabilities
@@ -116,7 +116,7 @@ Last updated: 2026-05-15
 | [OpenHands](https://openhands.dev) | Developer Tool | MIT | Open-core | ✔ | ~ | ✔ | ~ | ~ |
 | [Rivet](https://rivet.ironcladapp.com) | Developer Tool | MIT | Free | ✔ | ~ | ✔ | - | ~ |
 | [Vercel AI SDK](https://ai-sdk.dev) | Developer Tool | Apache-2.0 | Open-core | ✔ | ~ | ✔ | ~ | ~ |
-| [Llama Stack](https://llamastack.github.io/) | Developer Tool | MIT | Free | ✔ | ~ | ✔ | ~ | - |
+| [OGX (formerly Llama Stack)](https://ogx-ai.github.io/docs) | Developer Tool | MIT | Free | ✔ | ~ | ✔ | ~ | - |
 | [Atomic Agents](https://github.com/BrainBlend-AI/atomic-agents) | Developer Tool | MIT | Free | ✔ | ~ | ✔ | ~ | ~ |
 
 ## Operations & Tooling
@@ -166,7 +166,7 @@ Last updated: 2026-05-15
 | [OpenHands](https://openhands.dev) | Developer Tool | MIT | Open-core | ✔ | ~ | ✔ | ~ | ✔ |
 | [Rivet](https://rivet.ironcladapp.com) | Developer Tool | MIT | Free | ✔ | - | ~ | - | ~ |
 | [Vercel AI SDK](https://ai-sdk.dev) | Developer Tool | Apache-2.0 | Open-core | ✔ | - | ~ | ~ | - |
-| [Llama Stack](https://llamastack.github.io/) | Developer Tool | MIT | Free | ✔ | - | ~ | ~ | ~ |
+| [OGX (formerly Llama Stack)](https://ogx-ai.github.io/docs) | Developer Tool | MIT | Free | ✔ | - | ~ | ~ | ~ |
 | [Atomic Agents](https://github.com/BrainBlend-AI/atomic-agents) | Developer Tool | MIT | Free | ✔ | - | ~ | - | ~ |
 
 ## Maturity
@@ -216,7 +216,7 @@ Last updated: 2026-05-15
 | [OpenHands](https://openhands.dev) | Developer Tool | MIT | Open-core | ✔ | ~ | ~ |
 | [Rivet](https://rivet.ironcladapp.com) | Developer Tool | MIT | Free | ✔ | ~ | ~ |
 | [Vercel AI SDK](https://ai-sdk.dev) | Developer Tool | Apache-2.0 | Open-core | ✔ | ~ | - |
-| [Llama Stack](https://llamastack.github.io/) | Developer Tool | MIT | Free | ✔ | ~ | ~ |
+| [OGX (formerly Llama Stack)](https://ogx-ai.github.io/docs) | Developer Tool | MIT | Free | ✔ | ~ | ~ |
 | [Atomic Agents](https://github.com/BrainBlend-AI/atomic-agents) | Developer Tool | MIT | Free | ✔ | ~ | - |
 
 ## Project Links
@@ -264,5 +264,5 @@ Last updated: 2026-05-15
 - **OpenHands** -- [Website](https://openhands.dev) -- [Repository](https://github.com/OpenHands/OpenHands)
 - **Rivet** -- [Website](https://rivet.ironcladapp.com) -- [Repository](https://github.com/Ironclad/rivet)
 - **Vercel AI SDK** -- [Website](https://ai-sdk.dev) -- [Repository](https://github.com/vercel/ai)
-- **Llama Stack** -- [Website](https://llamastack.github.io/) -- [Repository](https://github.com/meta-llama/llama-stack)
+- **OGX (formerly Llama Stack)** -- [Docs](https://ogx-ai.github.io/docs) -- [Repository](https://github.com/meta-llama/llama-stack)
 - **Atomic Agents** -- [Website](https://github.com/BrainBlend-AI/atomic-agents) -- [Repository](https://github.com/BrainBlend-AI/atomic-agents)

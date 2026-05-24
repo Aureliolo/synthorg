@@ -34,15 +34,21 @@ uv sync
 
 ## Install external CLI tools (one-time per machine)
 
-Some gates and the docs build rely on external binaries that are not Python packages: `golangci-lint` (Go linter, used by the CLI) and `d2` (architecture diagram renderer).
+Some gates and the docs build rely on external binaries that are not Python packages: `golangci-lint` (Go linter, used by the CLI), `lychee` (Markdown link-checker), and `d2` (architecture diagram renderer).
 
-Install `golangci-lint` once per machine:
+Install `golangci-lint` and `lychee` once per machine:
 
 ```bash
 bash scripts/install_cli_tools.sh
 ```
 
-The script downloads the pinned `golangci-lint` version that matches CI (`.github/workflows/cli.yml`). Re-run only after bumping the pinned version; subsequent `uv sync` invocations do NOT re-run the script. CI uses its own action-based install step, so this is strictly a local-developer convenience.
+The script downloads the pinned `golangci-lint` version that matches CI (`.github/workflows/cli.yml`) and the pinned `lychee` version that matches CI (`.github/workflows/lychee.yml`). Re-run only after bumping a pinned version; subsequent `uv sync` invocations do NOT re-run the script. CI uses its own action-based install steps, so this is strictly a local-developer convenience. The `lychee` binary lands in `~/.local/bin/`; if that directory is not already on `PATH`, the script will print the export line you need to add to `~/.bashrc` / `~/.zshrc`.
+
+To run the link-checker locally:
+
+```bash
+uv run pre-commit run lychee --hook-stage pre-push --all-files
+```
 
 Install `d2` separately (the docs job pins `v0.7.1`). The fastest path is the upstream installer:
 

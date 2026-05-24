@@ -33,7 +33,11 @@ from synthorg.engine.evolution.models import (
     AdaptationDecision,
     AdaptationProposal,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.evolution import (
     EVOLUTION_GUARDS_PASSED,
     EVOLUTION_GUARDS_REJECTED,
@@ -325,13 +329,13 @@ class ShadowEvaluationGuard:
                         RecursionError,
                         RetryExhaustedError,
                     ) as exc:
-                        logger.error(
+                        log_exception_redacted(
+                            logger,
                             EVOLUTION_SHADOW_TASK_FAILED,
+                            exc,
                             proposal_id=proposal_id,
                             pass_label=label,
                             task_id=task.id,
-                            error_type=type(exc).__name__,
-                            error=safe_error_description(exc),
                             failure_category="infrastructure",
                         )
                         raise

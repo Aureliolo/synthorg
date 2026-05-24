@@ -29,7 +29,11 @@ from synthorg.memory.embedding.fine_tune_models import (
     FineTuneStatus,
 )
 from synthorg.memory.errors import FineTuneCancelledError
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_CANCELLED,
     MEMORY_FINE_TUNE_COMPLETED,
@@ -365,12 +369,12 @@ class FineTuneOrchestrator:
                 # record on this path. ``noqa: TRY400`` because
                 # ``logger.exception`` would auto-attach a traceback
                 # whose frame-locals can carry credentials.
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     MEMORY_FINE_TUNE_FAILED,
+                    persist_exc,
                     run_id=run.id,
                     stage="persist_failed_state",
-                    error_type=type(persist_exc).__name__,
-                    error=safe_error_description(persist_exc),
                     underlying_error_type=type(exc).__name__,
                     underlying_error=safe_error,
                 )
@@ -698,10 +702,10 @@ class FineTuneOrchestrator:
             return
         exc = task.exception()
         if exc is not None:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 MEMORY_FINE_TUNE_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                exc,
                 note="unhandled exception in pipeline task",
             )
 

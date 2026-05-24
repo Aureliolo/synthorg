@@ -1,8 +1,14 @@
 [codespell]
 # Codespell configuration: project-wide spelling gate.
-# Skip generated, vendored, and binary content.
-skip = .venv,.git,.mypy_cache,.ruff_cache,.pytest_cache,.cache,.claude,node_modules,build,dist,htmlcov,coverage,.coverage,logs,*.log,*.log.*,*.lock,*.png,*.svg,*.jpg,*.jpeg,*.ico,*.gif,*.webp,*.pdf,*.bin,*_pb2.py,*.gen.*,*.min.js,_vendor,web/dist,web/build,storybook-static,site,_site,_audit,*.svg.gz,scripts/_codespell_baseline.txt,web/package-lock.json,uv.lock
-# Project-specific vocabulary that must not be flagged as typos.
-ignore-words-list = synthorg,busl,mcp,oauth,litestar,structlog,pydantic,asyncio,mem0,opentelemetry,otel,otp,opencode,dependabot,coderabbit,polyfactory,sqlfluff,typeguard,deptry,vulture,interrogate,codespell,knip,dpdm,madge,lychee,markdownlint,yamllint,sonarqube,tarjan,scc,nats,litellm,langfuse,langsmith,langchain,zensical,axe,lhci,vale,nd,inh,fo,nin,uptodate,intoto,iif,ans,recuse,recused,strat,inout,wee,ned,assertin,acn,doesnt,htmlfor,wronly,acknowledgement,acknowledgements,te,coo,zar,zars,unparseable,bject,failer,re-use,re-used,re-uses,re-using,re-usable,pre-empt,pre-emptive,bloc,cripts,disjointness,scroe,levle,earch,yse,valye,tru,implementors,overrideable,clen,onw,wantin,re-declaring,re-declared,bve,vew,afterall,acount,uncomplete,alledges,hace,pre-selected
+# Skip generated, vendored, and binary content. Patterns are fnmatch on the
+# real filename, so we use ``*package-lock.json`` (path-separator agnostic)
+# to match the lock files on both POSIX and Windows. ``.codespellrc`` is
+# self-skipped so this file's own directives are never scanned as content.
+skip = .venv,.git,.mypy_cache,.ruff_cache,.pytest_cache,.cache,.claude,node_modules,build,dist,htmlcov,coverage,.coverage,logs,*.log,*.log.*,*.lock,*.png,*.svg,*.jpg,*.jpeg,*.ico,*.gif,*.webp,*.pdf,*.bin,*_pb2.py,*.gen.*,*.min.js,_vendor,web/dist,web/build,storybook-static,site,_site,_audit,*.svg.gz,scripts/_codespell_baseline.txt,*package-lock.json,uv.lock,.codespellrc
+# Project vocabulary lives in .vale/styles/Vocab/SynthOrg/accept.txt (one term per line).
+# Vale (when wired) consumes the same file; sharing it keeps the two spellers in lock-step.
+ignore-words = .vale/styles/Vocab/SynthOrg/accept.txt
+# URL citations (e.g. an external blog slug ``...doesnt-work.html``) should not pollute the identifier vocab.
+uri-ignore-words-list = doesnt
 quiet-level = 3
 check-hidden = false

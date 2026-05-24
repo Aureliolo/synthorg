@@ -9,8 +9,9 @@ here; the mock-spec gate excludes the package via
 are not scanned for the bare-mock convention they implement.
 """
 
+from tests._shared.capturing_logger import CapturingErrorLogger
 from tests._shared.fake_clock import FakeClock
 from tests._shared.mock_of import mock_of
 from tests._shared.trust import NoOpTrustStrategy
 
-__all__ = ["FakeClock", "NoOpTrustStrategy", "mock_of"]
+__all__ = ["CapturingErrorLogger", "FakeClock", "NoOpTrustStrategy", "mock_of"]

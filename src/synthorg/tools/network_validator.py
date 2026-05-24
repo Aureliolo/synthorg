@@ -21,7 +21,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.web import (
     WEB_DNS_FAILED,
     WEB_SSRF_BLOCKED,
@@ -286,12 +290,12 @@ async def resolve_dns(
     except Exception as exc:
         if isinstance(exc, MemoryError | RecursionError):
             raise
-        logger.error(
+        log_exception_redacted(
+            logger,
             WEB_DNS_FAILED,
+            exc,
             hostname=hostname,
             reason="unexpected_dns_resolution_error",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         return f"DNS resolution for {hostname!r} failed: {safe_error_description(exc)}"
 

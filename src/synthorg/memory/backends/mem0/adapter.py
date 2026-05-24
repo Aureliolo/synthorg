@@ -44,7 +44,11 @@ from synthorg.memory.errors import (
     MemoryError as DomainMemoryError,
 )
 from synthorg.memory.sparse import BM25Tokenizer
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_AGENT_ID_REJECTED,
     MEMORY_BACKEND_CONFIG_INVALID,
@@ -166,11 +170,8 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 config_dict = build_mem0_config_dict(self._mem0_config)
                 client = await asyncio.to_thread(Memory.from_config, config_dict)
             except (builtins.MemoryError, RecursionError) as exc:
-                logger.error(
-                    MEMORY_BACKEND_SYSTEM_ERROR,
-                    operation="connect",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                log_exception_redacted(
+                    logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="connect"
                 )
                 raise
             except Exception as exc:
@@ -258,11 +259,8 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 top_k=1,
             )
         except (builtins.MemoryError, RecursionError) as exc:
-            logger.error(
-                MEMORY_BACKEND_SYSTEM_ERROR,
-                operation="health_check",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="health_check"
             )
             raise
         except Exception as exc:
@@ -434,11 +432,8 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             )
             raise
         except (builtins.MemoryError, RecursionError) as exc:
-            logger.error(
-                MEMORY_BACKEND_SYSTEM_ERROR,
-                operation="store",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="store"
             )
             raise
         except Exception as exc:
@@ -509,11 +504,8 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             )
             raise
         except (builtins.MemoryError, RecursionError) as exc:
-            logger.error(
-                MEMORY_BACKEND_SYSTEM_ERROR,
-                operation="retrieve",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="retrieve"
             )
             raise
         except Exception as exc:
@@ -605,11 +597,8 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             )
             raise
         except (builtins.MemoryError, RecursionError) as exc:
-            logger.error(
-                MEMORY_BACKEND_SYSTEM_ERROR,
-                operation="get",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="get"
             )
             raise
         except Exception as exc:
@@ -670,11 +659,8 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         except MemoryStoreError:
             raise
         except (builtins.MemoryError, RecursionError) as exc:
-            logger.error(
-                MEMORY_BACKEND_SYSTEM_ERROR,
-                operation="delete",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="delete"
             )
             raise
         except Exception as exc:
@@ -753,11 +739,8 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             )
             raise
         except (builtins.MemoryError, RecursionError) as exc:
-            logger.error(
-                MEMORY_BACKEND_SYSTEM_ERROR,
-                operation="count",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="count"
             )
             raise
         except Exception as exc:

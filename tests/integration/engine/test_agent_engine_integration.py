@@ -224,9 +224,9 @@ class TestAgentEngineToolCallIntegration:
         assert "HELLO WORLD" in wrapped
 
         # Verify task parks at IN_REVIEW: ASSIGNED -> IP -> IR
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.IN_REVIEW
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.IN_REVIEW
 
 
 class TestAgentEngineFullLifecycle:
@@ -293,15 +293,15 @@ class TestAgentEngineFullLifecycle:
         assert result.termination_reason == TerminationReason.COMPLETED
 
         # Verify transition log: ASSIGNED->IP, IP->IR (review gate)
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.IN_REVIEW
-        assert len(te.transition_log) == 2
-        assert te.transition_log[0].to_status == TaskStatus.IN_PROGRESS
-        assert te.transition_log[1].to_status == TaskStatus.IN_REVIEW
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.IN_REVIEW
+        assert len(task_execution.transition_log) == 2
+        assert task_execution.transition_log[0].to_status == TaskStatus.IN_PROGRESS
+        assert task_execution.transition_log[1].to_status == TaskStatus.IN_REVIEW
 
         # completed_at is NOT set -- task awaits human review
-        assert te.completed_at is None
+        assert task_execution.completed_at is None
 
         # Verify completion_summary is non-empty
         assert result.completion_summary is not None

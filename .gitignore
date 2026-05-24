@@ -27,6 +27,7 @@ env/
 .ruff_cache/
 .pytest_cache/
 .hypothesis/
+.lycheecache
 
 # Coverage
 htmlcov/
@@ -93,8 +94,8 @@ _site/
 docs/openapi/reference.html
 docs/openapi/openapi.json
 
-# Intermediate i18n catalog built by scripts/extract_web_strings.py
-# (hand-off artefact for issue #1417; regenerate locally as needed).
+# Intermediate i18n string catalog built by scripts/extract_web_strings.py
+# from web/src/. Regenerated on demand; not source-of-truth.
 web/src/i18n/_extracted_catalog.json
 
 # Astro / Node.js (landing page)

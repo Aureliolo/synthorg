@@ -15,7 +15,11 @@ from synthorg.api.boundary import parse_typed
 from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY, wrap_untrusted
 from synthorg.knowledge.errors import KnowledgeError
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.knowledge import (
     KNOWLEDGE_SEARCH_FAILED,
     KNOWLEDGE_SEARCHED,
@@ -81,11 +85,8 @@ class SearchKnowledgeTool(BaseTool):
         except builtins.MemoryError, RecursionError:
             raise
         except KnowledgeError as exc:
-            logger.error(
-                KNOWLEDGE_SEARCH_FAILED,
-                project_id=self._project_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, KNOWLEDGE_SEARCH_FAILED, exc, project_id=self._project_id
             )
             return ToolExecutionResult(
                 content=f"Search failed: {safe_error_description(exc)}",

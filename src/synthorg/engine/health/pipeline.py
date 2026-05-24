@@ -18,7 +18,7 @@ from synthorg.notifications.models import (
     NotificationCategory,
     NotificationSeverity,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.health import HEALTH_PIPELINE_ERROR
 
 if TYPE_CHECKING:
@@ -99,11 +99,9 @@ class HealthMonitoringPipeline:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
-                HEALTH_PIPELINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
+        except Exception as exc:
+            log_exception_redacted(
+                logger, HEALTH_PIPELINE_ERROR, exc, agent_id=agent_id, task_id=task_id
             )
             return None
 
@@ -140,9 +138,11 @@ class HealthMonitoringPipeline:
             await self._sink.send(notification)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 HEALTH_PIPELINE_ERROR,
+                exc,
                 agent_id=ticket.agent_id,
                 task_id=ticket.task_id,
                 ticket_id=ticket.id,

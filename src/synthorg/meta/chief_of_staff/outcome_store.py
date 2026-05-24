@@ -12,7 +12,7 @@ from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
 from synthorg.meta.chief_of_staff.models import OutcomeStats, ProposalOutcome
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.chief_of_staff import (
     COS_OUTCOME_RECORD_FAILED,
     COS_OUTCOME_RECORDED,
@@ -80,9 +80,13 @@ class MemoryBackendOutcomeStore:
         )
         try:
             memory_id = await self._backend.store(self._agent_id, request)
-        except Exception:
-            logger.exception(
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 COS_OUTCOME_RECORD_FAILED,
+                exc,
                 proposal_id=str(outcome.proposal_id),
             )
             raise

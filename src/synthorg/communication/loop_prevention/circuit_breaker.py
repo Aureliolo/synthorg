@@ -8,7 +8,7 @@ from enum import StrEnum
 from synthorg.communication.config import CircuitBreakerConfig  # noqa: TC001
 from synthorg.communication.loop_prevention._pair_key import pair_key
 from synthorg.communication.loop_prevention.models import GuardCheckOutcome
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.delegation import (
     DELEGATION_LOOP_CIRCUIT_BACKOFF,
     DELEGATION_LOOP_CIRCUIT_OPEN,
@@ -318,9 +318,11 @@ class DelegationCircuitBreaker:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED,
+                exc,
                 note="load_state failed; circuit breaker starting with empty state",
             )
             raise
@@ -397,10 +399,12 @@ class DelegationCircuitBreaker:
                 await self._state_repo.save(record)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 # Key stays in _dirty for retry on next persist cycle.
-                logger.exception(
+                log_exception_redacted(
+                    logger,
                     DELEGATION_LOOP_CIRCUIT_PERSIST_FAILED,
+                    exc,
                     delegator=key[0],
                     delegatee=key[1],
                 )

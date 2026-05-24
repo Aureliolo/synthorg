@@ -44,45 +44,45 @@ class _FixedBudget:
 
 class TestHumanOnlyDefault:
     def test_default_is_bare_human_only(self) -> None:
-        strat = build_autonomy_change_strategy(
+        strategy = build_autonomy_change_strategy(
             AutonomyStrategyConfig(),
             AutonomyStrategyDeps(),
         )
-        assert isinstance(strat, HumanOnlyPromotionStrategy)
-        assert isinstance(strat, AutonomyChangeStrategy)
-        assert strat.request_promotion(_AGENT, AutonomyLevel.FULL) is False
-        assert strat.request_recovery(_AGENT) is False
+        assert isinstance(strategy, HumanOnlyPromotionStrategy)
+        assert isinstance(strategy, AutonomyChangeStrategy)
+        assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
+        assert strategy.request_recovery(_AGENT) is False
 
 
 class TestPerformanceGated:
     def test_grants_above_threshold(self) -> None:
-        strat = build_autonomy_change_strategy(
+        strategy = build_autonomy_change_strategy(
             AutonomyStrategyConfig(
                 kind=AutonomyStrategyType.PERFORMANCE_GATED,
                 promotion_success_threshold=0.8,
             ),
             AutonomyStrategyDeps(performance_signal=_FixedPerf(0.95)),
         )
-        assert strat.request_promotion(_AGENT, AutonomyLevel.FULL) is True
+        assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is True
 
     def test_defers_below_threshold(self) -> None:
-        strat = build_autonomy_change_strategy(
+        strategy = build_autonomy_change_strategy(
             AutonomyStrategyConfig(
                 kind=AutonomyStrategyType.PERFORMANCE_GATED,
                 promotion_success_threshold=0.8,
             ),
             AutonomyStrategyDeps(performance_signal=_FixedPerf(0.5)),
         )
-        assert strat.request_promotion(_AGENT, AutonomyLevel.FULL) is False
+        assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
 
     def test_none_history_defers(self) -> None:
-        strat = build_autonomy_change_strategy(
+        strategy = build_autonomy_change_strategy(
             AutonomyStrategyConfig(
                 kind=AutonomyStrategyType.PERFORMANCE_GATED,
             ),
             AutonomyStrategyDeps(performance_signal=_FixedPerf(None)),
         )
-        assert strat.request_promotion(_AGENT, AutonomyLevel.FULL) is False
+        assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
 
     def test_missing_signal_raises(self) -> None:
         with pytest.raises(AutonomyStrategyConfigError, match="performance_signal"):
@@ -94,13 +94,13 @@ class TestPerformanceGated:
             )
 
     def test_downgrade_delegates_to_base(self) -> None:
-        strat = build_autonomy_change_strategy(
+        strategy = build_autonomy_change_strategy(
             AutonomyStrategyConfig(
                 kind=AutonomyStrategyType.PERFORMANCE_GATED,
             ),
             AutonomyStrategyDeps(performance_signal=_FixedPerf(0.99)),
         )
-        level = strat.auto_downgrade(
+        level = strategy.auto_downgrade(
             _AGENT,
             DowngradeReason.SECURITY_INCIDENT,
             AutonomyLevel.FULL,
@@ -110,26 +110,26 @@ class TestPerformanceGated:
 
 class TestBudgetAware:
     def test_denies_under_budget_stress(self) -> None:
-        strat = build_autonomy_change_strategy(
+        strategy = build_autonomy_change_strategy(
             AutonomyStrategyConfig(
                 kind=AutonomyStrategyType.BUDGET_AWARE,
                 budget_warn_fraction=0.3,
             ),
             AutonomyStrategyDeps(risk_budget_signal=_FixedBudget(0.1)),
         )
-        assert strat.request_promotion(_AGENT, AutonomyLevel.FULL) is False
+        assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
 
     def test_delegates_when_headroom_ok(self) -> None:
         # Headroom OK -> delegates to base HumanOnly -> still False,
         # but via the base path (not the budget short-circuit).
-        strat = build_autonomy_change_strategy(
+        strategy = build_autonomy_change_strategy(
             AutonomyStrategyConfig(
                 kind=AutonomyStrategyType.BUDGET_AWARE,
                 budget_warn_fraction=0.3,
             ),
             AutonomyStrategyDeps(risk_budget_signal=_FixedBudget(0.9)),
         )
-        assert strat.request_promotion(_AGENT, AutonomyLevel.FULL) is False
+        assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
 
     def test_missing_signal_raises(self) -> None:
         with pytest.raises(AutonomyStrategyConfigError, match="risk_budget_signal"):
@@ -141,32 +141,32 @@ class TestBudgetAware:
 
 class TestEscalationChain:
     def test_always_pending(self) -> None:
-        strat = build_autonomy_change_strategy(
+        strategy = build_autonomy_change_strategy(
             AutonomyStrategyConfig(
                 kind=AutonomyStrategyType.ESCALATION_CHAIN,
                 escalation_chain=("supervisor", "manager", "ceo"),
             ),
             AutonomyStrategyDeps(),
         )
-        assert strat.request_promotion(_AGENT, AutonomyLevel.FULL) is False
+        assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
 
     def test_recovery_and_override_delegate(self) -> None:
         base = HumanOnlyPromotionStrategy()
-        strat = build_autonomy_change_strategy(
+        strategy = build_autonomy_change_strategy(
             AutonomyStrategyConfig(
                 kind=AutonomyStrategyType.ESCALATION_CHAIN,
             ),
             AutonomyStrategyDeps(base=base),
         )
         # Downgrade via the wrapper records the override on the base.
-        strat.auto_downgrade(
+        strategy.auto_downgrade(
             _AGENT,
             DowngradeReason.HIGH_ERROR_RATE,
             AutonomyLevel.FULL,
         )
         assert base.get_override(_AGENT) is not None
         # The wrapper exposes the delegated override-store ops too.
-        wrapper = cast("BaseDelegatingStrategy", strat)
+        wrapper = cast("BaseDelegatingStrategy", strategy)
         assert wrapper.get_override(_AGENT) is not None
         assert wrapper.clear_override(_AGENT) is True
 

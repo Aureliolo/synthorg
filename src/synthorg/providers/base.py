@@ -15,7 +15,11 @@ from opentelemetry.trace import Status, StatusCode
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.provider import (
     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
     PROVIDER_CALL_ERROR,
@@ -188,12 +192,8 @@ class BaseCompletionProvider(ABC):
                 # connection URLs with user:pass). Use ``logger.error``
                 # with the structured ``error_type`` + scrubbed
                 # ``error`` fields instead.
-                logger.error(
-                    PROVIDER_CALL_ERROR,
-                    model=model,
-                    latency_ms=latency_ms,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                log_exception_redacted(
+                    logger, PROVIDER_CALL_ERROR, exc, model=model, latency_ms=latency_ms
                 )
                 span.set_attribute("exception.type", type(exc).__name__)
                 span.set_attribute(
@@ -322,12 +322,7 @@ class BaseCompletionProvider(ABC):
             # + scrubbed fields instead of ``logger.exception``
             # prevents traceback frame-locals from leaking provider
             # credentials.
-            logger.error(
-                PROVIDER_CALL_ERROR,
-                model=model,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+            log_exception_redacted(logger, PROVIDER_CALL_ERROR, exc, model=model)
             record_provider_error(
                 provider=self._provider_label(),
                 model=model,
@@ -376,12 +371,12 @@ class BaseCompletionProvider(ABC):
             # ``stream()``. ``record_provider_error`` keeps the
             # provider-error metric in sync with the other call paths
             # so dashboards do not under-count capability failures.
-            logger.error(
+            log_exception_redacted(
+                logger,
                 PROVIDER_CALL_ERROR,
+                exc,
                 model=model,
                 phase="get_model_capabilities",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             record_provider_error(
                 provider=self._provider_label(),

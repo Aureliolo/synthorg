@@ -1,3 +1,4 @@
+# module-kind: adapter
 """External-remote git backend: GitHub/GitLab/Gitea/Forgejo via catalog.
 
 Resolves the forge connection from the connection catalog, injects a
@@ -94,8 +95,24 @@ _AUTH_MARKERS: Final[tuple[str, ...]] = (
 _RATE_LIMIT_MARKERS: Final[tuple[str, ...]] = (
     "rate limit",
     "too many requests",
-    "429",
 )
+
+# Word-bounded HTTP-429 detector. The previous bare ``"429"`` substring
+# false-positive-matched any URL whose port happened to contain "429"
+# (e.g. a stray random ``localhost:42919`` echoed in git's clone/push
+# stderr), classifying a clean "repo not found" as a rate-limit and
+# burning the retry budget. The (?<!\d)/(?!\d) guards keep "429"
+# matching the HTTP status code in any surrounding context ("429 Too
+# Many Requests", "HTTP 429", "status: 429", "429:") while rejecting
+# adjacent-digit substrings like "42919", "4290", "1429".
+_RATE_LIMIT_STATUS_RE: Final[re.Pattern[str]] = re.compile(r"(?<!\d)429(?!\d)")
+
+
+def _is_rate_limit(haystack: str) -> bool:
+    """True iff *haystack* (lowered git stderr) looks like a rate-limit."""
+    return _matches(haystack, _RATE_LIMIT_MARKERS) or bool(
+        _RATE_LIMIT_STATUS_RE.search(haystack)
+    )
 
 
 def _is_retryable_git_op(exc: Exception) -> bool:
@@ -430,7 +447,7 @@ class ExternalRemoteGitBackend:
         if _matches(lowered, _AUTH_MARKERS):
             msg = f"forge authentication failed pushing project {pid!r}"
             raise GitBackendForgeAuthError(msg)
-        if _matches(lowered, _RATE_LIMIT_MARKERS):
+        if _is_rate_limit(lowered):
             msg = f"forge rate-limited pushing project {pid!r}"
             raise GitBackendRateLimitError(msg)
         if self._forge_provisioning_enabled and not await self._remote_repo_exists(pid):
@@ -489,7 +506,7 @@ class ExternalRemoteGitBackend:
         if _matches(lowered, _AUTH_MARKERS):
             msg = f"forge authentication failed fetching project {pid!r}"
             raise GitBackendForgeAuthError(msg)
-        if _matches(lowered, _RATE_LIMIT_MARKERS):
+        if _is_rate_limit(lowered):
             msg = f"forge rate-limited fetching project {pid!r}"
             raise GitBackendRateLimitError(msg)
         msg = f"git fetch failed for project {pid!r} (rc={rc})"

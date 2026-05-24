@@ -33,7 +33,11 @@ from synthorg.api.lifecycle_helpers.ticket_cleanup import (
     _ticket_cleanup_loop,
 )
 from synthorg.api.webhook_cleanup import _webhook_receipt_cleanup_loop
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_SHUTDOWN_TIMEOUT,
@@ -111,12 +115,12 @@ async def _cancel_with_timeout(
     except MemoryError, RecursionError:
         raise
     except TimeoutError as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             API_APP_SHUTDOWN_TIMEOUT,
+            exc,
             service=service,
             timeout_seconds=timeout,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
             context=f"Failed to cancel {service} within shutdown budget",
         )
     except Exception as exc:
@@ -130,12 +134,12 @@ async def _cancel_with_timeout(
         # operator sees the underlying cause, then continue with
         # downstream services (the helper's contract is "never block
         # the whole shutdown window").
-        logger.error(
+        log_exception_redacted(
+            logger,
             API_APP_SHUTDOWN,
+            exc,
             service=service,
             phase="task_cancellation",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
             context=f"{service} task crashed during cancellation",
         )
 
@@ -324,12 +328,7 @@ def _build_lifecycle(  # noqa: PLR0913
                 return
             exc = task.exception()
             if exc is not None:
-                logger.error(
-                    event,
-                    note=message,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+                log_exception_redacted(logger, event, exc, note=message)
 
         return _callback
 
@@ -648,11 +647,8 @@ def _build_lifecycle(  # noqa: PLR0913
                 # secret-bearing config). Avoid logger.exception here
                 # so traceback frame-locals never serialize raw
                 # secrets to the log sink.
-                logger.error(
-                    API_APP_STARTUP,
-                    detail="settings_auto_wire_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                log_exception_redacted(
+                    logger, API_APP_STARTUP, exc, detail="settings_auto_wire_failed"
                 )
                 await _safe_shutdown(
                     task_engine,
@@ -678,11 +674,11 @@ def _build_lifecycle(  # noqa: PLR0913
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     API_APP_STARTUP,
+                    exc,
                     detail="workflow_observer_auto_wire_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
                 await _safe_shutdown(
                     task_engine,

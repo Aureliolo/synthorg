@@ -44,9 +44,15 @@ jobs:
       # requires push access to the upstream.
       is_release_please: ${{ (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.login == 'synthorg-repo-bot[bot]') || (github.event_name != 'pull_request' && startsWith(github.ref, 'refs/heads/release-please--')) }}
     steps:
+      # fetch-depth: 0 needed by paths-filter on push: events. With a shallow
+      # checkout it falls back to two back-to-back `git fetch --depth=1` calls
+      # (base SHA + main) that both rewrite `.git/shallow`; the second races
+      # the first and dies with `fatal: shallow file has changed since we
+      # read it`. Full history skips the remote fetches entirely.
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: "0"
           persist-credentials: false
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
@@ -228,9 +234,17 @@ jobs:
     permissions:
       contents: read
     steps:
+      # fetch-depth: 0 needed by the "Enforce at most one new revision per
+      # PR" step below: `git diff base...HEAD` uses the three-dot merge-base
+      # form, which is undefined on a shallow clone (no shared ancestry).
+      # Without full history the rule either misses additions or fires
+      # false positives, depending on which commit happens to be the
+      # shallow root. The cost (one checkout) is small; this job already
+      # runs full schema-drift validation.
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: "0"
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
@@ -239,7 +253,7 @@ jobs:
         env:
           GH_BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch origin "$GH_BASE_REF" --depth=1
+          git fetch origin "$GH_BASE_REF"
           base_ref="origin/$GH_BASE_REF"
           mapfile -t new_revs < <(
             git diff --name-only --diff-filter=A "$base_ref"...HEAD -- \
@@ -504,7 +518,7 @@ jobs:
         shard: [1, 2, 3, 4]
     services:
       postgres:
-        image: postgres:18-alpine
+        image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
         env:
           POSTGRES_USER: synthorg
           POSTGRES_PASSWORD: synthorg-test
@@ -621,7 +635,7 @@ jobs:
       contents: read
     services:
       postgres:
-        image: postgres:18-alpine
+        image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
         env:
           POSTGRES_USER: synthorg
           POSTGRES_PASSWORD: synthorg-test
@@ -1103,7 +1117,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 24.15.0
+          node-version: 24.16.0
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
@@ -1129,7 +1143,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 24.15.0
+          node-version: 24.16.0
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Download OpenAPI schema artifact
@@ -1158,7 +1172,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 24.15.0
+          node-version: 24.16.0
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Download OpenAPI schema artifact
@@ -1205,7 +1219,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 24.15.0
+          node-version: 24.16.0
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Download OpenAPI schema artifact
@@ -1249,7 +1263,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 24.15.0
+          node-version: 24.16.0
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
@@ -1274,7 +1288,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 24.15.0
+          node-version: 24.16.0
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci

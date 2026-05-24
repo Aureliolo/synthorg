@@ -16,7 +16,11 @@ from synthorg.core.enums import (
     ActionType,
     ToolCategory,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.docs import (
     DOC_SEARCH_COMPLETE,
     DOC_SEARCH_FAILED,
@@ -27,6 +31,7 @@ from synthorg.tools.docs._args import SearchLivingDocsArgs
 
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
+    from synthorg.docs_engine.models import DocSearchHit
     from synthorg.docs_engine.service import DocsService
 
 logger = get_logger(__name__)
@@ -94,11 +99,8 @@ class SearchLivingDocsTool(BaseTool):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
-                DOC_SEARCH_FAILED,
-                project_id=self._project_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, DOC_SEARCH_FAILED, exc, project_id=self._project_id
             )
             return ToolExecutionResult(
                 content=(
@@ -128,7 +130,7 @@ class SearchLivingDocsTool(BaseTool):
         )
 
 
-def _format_hits(hits: tuple) -> str:  # type: ignore[type-arg] -- runtime tuple of DocSearchHit
+def _format_hits(hits: tuple[DocSearchHit, ...]) -> str:
     if not hits:
         return "No matching living docs for this project."
     lines: list[str] = []

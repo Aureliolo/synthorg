@@ -213,6 +213,46 @@ class TestResolve:
         with pytest.raises(ConflictResolutionError, match="No resolver"):
             await service.resolve(conflict)
 
+    @pytest.mark.parametrize("exc_cls", [MemoryError, RecursionError])
+    async def test_resolver_catastrophic_error_propagates(
+        self,
+        hierarchy: HierarchyResolver,
+        exc_cls: type[BaseException],
+    ) -> None:
+        """Catastrophic interpreter errors from the resolver escape the
+        broad redacted-logging handler."""
+
+        class _CatastrophicResolver:
+            async def resolve(self, conflict: object) -> object:
+                raise exc_cls
+
+            def build_dissent_records(
+                self,
+                conflict: object,
+                resolution: object,
+            ) -> tuple[object, ...]:
+                return ()
+
+        config = ConflictResolutionConfig(
+            strategy=ConflictResolutionStrategy.AUTHORITY,
+        )
+        service = ConflictResolutionService(
+            config=config,
+            resolvers={
+                ConflictResolutionStrategy.AUTHORITY: _CatastrophicResolver(),  # type: ignore[dict-item]
+            },
+        )
+        conflict = service.create_conflict(
+            conflict_type=ConflictType.ARCHITECTURE,
+            subject="Design",
+            positions=[
+                make_position(agent_id="sr_dev"),
+                make_position(agent_id="jr_dev", position="Other"),
+            ],
+        )
+        with pytest.raises(exc_cls):
+            await service.resolve(conflict)
+
 
 @pytest.mark.unit
 class TestAuditTrail:

@@ -46,8 +46,8 @@ async def backend(
         # the persistence-boundary regex (which matches the keyword
         # inside a single literal) does not flag this test bootstrap.
         ddl = (
-            "CREA"
-            "TE TABLE connection_secrets ("
+            "CREATE"
+            " TABLE connection_secrets ("
             "secret_id TEXT PRIMARY KEY, "
             "encrypted_value BLOB, "
             "key_version INTEGER, "

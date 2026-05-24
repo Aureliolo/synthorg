@@ -1,0 +1,107 @@
+name: Link Check (lychee)
+
+# Markdown link-checker for README, every CLAUDE.md tier, and every
+# Markdown under docs/. Configured via ``lychee.toml`` at the repo root,
+# which is the same source of truth the local pre-push hook consumes.
+# Strict preset: any non-200 response fails the run (rate-limit and
+# anti-bot hosts are excluded by ``lychee.toml``).
+#
+# Install path: ``scripts/install_cli_tools.sh lychee`` is the single
+# source of truth for the lychee binary (the local pre-push hook and
+# this CI job use the byte-identical binary). The previous integration
+# via ``lycheeverse/lychee-action`` was dropped because the action's
+# release cadence trailed lychee's archive-layout change in v0.24
+# (action issue #332 still open at the time of writing), and we already
+# maintain a robust nested-archive-aware install in the script. The
+# Renovate marker on ``LYCHEE_VERSION`` in that script is the single
+# version pin.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "CLAUDE.md"
+      - "cli/CLAUDE.md"
+      - "web/CLAUDE.md"
+      - "docs/**/*.md"
+      - ".github/workflows/lychee.yml"
+      - "lychee.toml"
+      - "scripts/install_cli_tools.sh"
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "CLAUDE.md"
+      - "cli/CLAUDE.md"
+      - "web/CLAUDE.md"
+      - "docs/**/*.md"
+      - ".github/workflows/lychee.yml"
+      - "lychee.toml"
+      - "scripts/install_cli_tools.sh"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lychee:
+    name: lychee
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Restore lychee cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .lycheecache
+          key: cache-lychee-${{ github.sha }}
+          restore-keys: cache-lychee-
+
+      - name: Install lychee
+        shell: bash
+        # ``runner.temp`` is only available at step-level env; job-level
+        # env limits context to github/inputs/matrix/needs/secrets/strategy/vars
+        # (actionlint enforces this). Same install dir is reused by the
+        # following PATH step.
+        env:
+          LYCHEE_INSTALL_DIR: ${{ runner.temp }}/lychee-bin
+        run: bash scripts/install_cli_tools.sh lychee
+
+      - name: Add lychee to PATH
+        shell: bash
+        env:
+          LYCHEE_INSTALL_DIR: ${{ runner.temp }}/lychee-bin
+        run: echo "${LYCHEE_INSTALL_DIR}" >> "${GITHUB_PATH}"
+
+      - name: Run lychee
+        shell: bash
+        env:
+          # Authenticated GitHub requests get a higher rate-limit budget,
+          # which matters because docs reference many github.com URLs.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          # lychee accepts glob patterns natively (it handles ** without
+          # needing bash globstar). Markdown output is appended to the
+          # GitHub job summary so the report shows up in the run UI; the
+          # same content also lands in the step log via tee.
+          lychee \
+            --config lychee.toml \
+            --no-progress \
+            --format markdown \
+            './README.md' \
+            './CLAUDE.md' \
+            './cli/CLAUDE.md' \
+            './web/CLAUDE.md' \
+            './docs/**/*.md' \
+            | tee -a "${GITHUB_STEP_SUMMARY}"

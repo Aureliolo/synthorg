@@ -28,7 +28,11 @@ from synthorg.engine.coordination.models import (
     CoordinationResult,
 )
 from synthorg.engine.errors import CoordinationPhaseError
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import (
     API_COORDINATION_AGENT_RESOLVE_FAILED,
     API_COORDINATION_COMPLETED,
@@ -288,11 +292,8 @@ class CoordinationController(Controller):
             # Drop ``logger.exception`` -- frame-locals on the
             # unexpected-coordination traceback can carry the full
             # coordination context (task body, agent rosters).
-            logger.error(
-                API_COORDINATION_FAILED,
-                task_id=task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, API_COORDINATION_FAILED, exc, task_id=task_id
             )
             _publish_ws_event(
                 request,

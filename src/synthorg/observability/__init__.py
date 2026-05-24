@@ -41,6 +41,7 @@ from synthorg.observability.processors import (
     scrub_event_fields,
 )
 from synthorg.observability.redaction import (
+    log_exception_redacted,
     safe_error_description,
     scrub_secret_tokens,
 )
@@ -61,6 +62,7 @@ __all__ = [
     "configure_logging",
     "generate_correlation_id",
     "get_logger",
+    "log_exception_redacted",
     "safe_error_description",
     "sanitize_sensitive_fields",
     "scrub_event_fields",

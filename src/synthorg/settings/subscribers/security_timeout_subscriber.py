@@ -9,7 +9,11 @@ startup-time application of the same setting lives in
 
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
 
 if TYPE_CHECKING:
@@ -81,14 +85,14 @@ class SecurityTimeoutSettingsSubscriber:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 SETTINGS_SUBSCRIBER_NOTIFIED,
+                exc,
                 subscriber=self.subscriber_name,
                 namespace=namespace,
                 key=key,
                 note="failed to read setting",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return
 

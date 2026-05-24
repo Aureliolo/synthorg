@@ -222,12 +222,12 @@ class TestOverrideValidation:
             _build(overrides="not-json")
 
     def test_non_object_top_level_raises(self) -> None:
-        with pytest.raises(ValueError, match=r"[Oo]bject"):
+        with pytest.raises(ValueError, match=r"(?i)object"):
             _build(overrides="[]")
 
     def test_override_value_must_be_object(self) -> None:
         overrides = json.dumps({"audit.log": "not-an-object"})
-        with pytest.raises(ValueError, match=r"[Oo]bject"):
+        with pytest.raises(ValueError, match=r"(?i)object"):
             _build(overrides=overrides)
 
 
@@ -338,7 +338,7 @@ class TestCustomSinksValidation:
             _build(custom="{}")
 
     def test_non_object_entry_raises(self) -> None:
-        with pytest.raises(ValueError, match=r"[Oo]bject"):
+        with pytest.raises(ValueError, match=r"(?i)object"):
             _build(custom='["not-an-object"]')
 
     def test_invalid_routing_prefix_raises(self) -> None:
@@ -477,12 +477,12 @@ class TestStrictTypeValidation:
 
     def test_rotation_non_object_raises(self) -> None:
         overrides = json.dumps({"audit.log": {"rotation": "disabled"}})
-        with pytest.raises(ValueError, match=r"[Oo]bject"):
+        with pytest.raises(ValueError, match=r"(?i)object"):
             _build(overrides=overrides)
 
     def test_rotation_array_raises(self) -> None:
         overrides = json.dumps({"audit.log": {"rotation": []}})
-        with pytest.raises(ValueError, match=r"[Oo]bject"):
+        with pytest.raises(ValueError, match=r"(?i)object"):
             _build(overrides=overrides)
 
     def test_invalid_max_bytes_raises(self) -> None:
@@ -508,7 +508,7 @@ class TestUnknownFieldRejection:
     """Unknown fields in override/custom sink dicts are rejected."""
 
     def test_unknown_override_field_raises(self) -> None:
-        overrides = json.dumps({"audit.log": {"levle": "debug"}})
+        overrides = json.dumps({"audit.log": {"unknown_field_name": "debug"}})
         with pytest.raises(ValueError, match=r"Unknown fields"):
             _build(overrides=overrides)
 

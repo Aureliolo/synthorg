@@ -21,7 +21,11 @@ from synthorg.engine.errors import (
     WorkspaceMergeError,
     WorkspacePushError,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.workspace import (
     WORKSPACE_PUSH_QUEUE_ENQUEUED,
     WORKSPACE_PUSH_QUEUE_FAILED,
@@ -174,11 +178,11 @@ class PushQueueCoordinator:
                     # A bug in _process must not kill the worker and strand
                     # every later caller; surface it to this caller and
                     # keep draining.
-                    logger.error(
+                    log_exception_redacted(
+                        logger,
                         WORKSPACE_PUSH_QUEUE_WORKER_FAILED,
+                        exc,
                         project_id=self._project_id,
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
                     )
                     if not item.future.done():
                         item.future.set_exception(exc)

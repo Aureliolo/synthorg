@@ -7,11 +7,13 @@ import pytest
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.errors import RiskBudgetExhaustedError
+from synthorg.budget.risk_check import RiskCheckResult
 from synthorg.budget.risk_config import RiskBudgetConfig
 from synthorg.budget.risk_record import RiskRecord
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker import CostTracker
 from synthorg.security.risk_scorer import DefaultRiskScorer, RiskScore
+from tests._shared import CapturingErrorLogger
 
 
 def _make_risk_record(
@@ -312,6 +314,159 @@ class TestRecordRisk:
         await enforcer.record_risk("agent-1", "task-1", "code:write")
         total = await risk_tracker.get_task_risk("task-1")
         assert total > 0.0
+
+
+class _RaisingRiskScorer:
+    """``RiskScorer``-shaped double whose ``score()`` always raises.
+
+    Used to exercise the ``except Exception as exc:`` branch in
+    ``check_risk_budget`` / ``record_risk`` where the scorer call
+    fails mid-enforcement. Implements the protocol structurally (no
+    base class) so a ``runtime_checkable`` isinstance check is
+    irrelevant here -- the enforcer calls ``score(action_type)``
+    directly.
+    """
+
+    def __init__(self, *, exc: Exception) -> None:
+        self._exc = exc
+
+    def score(self, action_type: str) -> RiskScore:
+        raise self._exc
+
+
+@pytest.mark.unit
+class TestRiskEnforcerExceptionPaths:
+    """The except-Exception branches in check_risk_budget / record_risk.
+
+    These tests pin the redacted-logging contract on the risk
+    enforcer: any unexpected exception raised by the scorer or tracker
+    must be swallowed (returning a neutral RiskCheckResult / None) and
+    logged via ``log_exception_redacted`` rather than propagated. The
+    helper guarantees the credential-bearing ``str(exc)`` never reaches
+    the structured log record.
+    """
+
+    async def test_check_risk_budget_swallows_scorer_exception(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Scorer that raises => check returns neutral result, logs redacted."""
+        risk_config = RiskBudgetConfig(enabled=True)
+        budget_config = BudgetConfig(risk_budget=risk_config)
+        cost_tracker = CostTracker(budget_config=budget_config)
+        risk_tracker = RiskTracker(risk_budget_config=risk_config)
+        # Scorer raises a ValueError whose message embeds a credential-
+        # looking substring so the redaction round-trip is exercised
+        # end-to-end -- the substring must NOT survive into any log
+        # record emitted via log_exception_redacted.
+        scorer = _RaisingRiskScorer(
+            exc=ValueError("scoring failed: client_secret=cs-leak-xyz"),
+        )
+        # Swap the module-level structlog logger for a capturing
+        # double. structlog does not route through stdlib ``logging``
+        # (so ``caplog`` would not see these records), and asserting
+        # the logger was invoked at all is what pins the redaction
+        # SIDE-EFFECT -- the value matters as much as the return.
+        from synthorg.budget import risk_enforcer as _risk_enforcer_module
+
+        capturing = CapturingErrorLogger()
+        monkeypatch.setattr(_risk_enforcer_module, "logger", capturing)
+        enforcer = BudgetEnforcer(
+            budget_config=budget_config,
+            cost_tracker=cost_tracker,
+            risk_tracker=risk_tracker,
+            risk_scorer=scorer,
+        )
+
+        result = await enforcer.check_risk_budget(
+            "agent-1",
+            "task-1",
+            "code:write",
+        )
+
+        # Failure is swallowed; the caller still gets a usable result.
+        # ``projected`` is initialised to 0.0 BEFORE the try block, so
+        # the returned ``RiskCheckResult`` carries 0.0 risk units, not
+        # None -- a scorer failure must not poison downstream callers
+        # that read ``result.risk_units``.
+        assert isinstance(result, RiskCheckResult)
+        assert result.risk_units == 0.0
+        # Verify the redacted-logging SIDE-EFFECT: a structured ERROR
+        # record was emitted via ``log_exception_redacted`` (which
+        # routes through ``logger.error``), the credential substring
+        # was scrubbed from the rendered ``error`` kwarg, and the
+        # exception type is captured for downstream alerting. Without
+        # this assertion a regression that drops the log call (or logs
+        # the unsanitised ``str(exc)``) would still pass.
+        error_calls = [
+            kwargs
+            for event, kwargs in capturing.calls
+            if event == "risk_budget.enforcement.check"
+        ]
+        assert error_calls, (
+            "expected log_exception_redacted to emit a redacted error record "
+            "from the scorer-exception except branch"
+        )
+        rendered_error = str(error_calls[0]["error"])
+        assert "cs-leak-xyz" not in rendered_error, (
+            "credential substring must be scrubbed by safe_error_description"
+        )
+        assert error_calls[0]["error_type"] == "ValueError"
+
+    async def test_record_risk_swallows_scorer_exception_returns_none(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Scorer that raises during record_risk => returns None, redacted log."""
+        risk_config = RiskBudgetConfig(enabled=True)
+        budget_config = BudgetConfig(risk_budget=risk_config)
+        cost_tracker = CostTracker(budget_config=budget_config)
+        risk_tracker = RiskTracker(risk_budget_config=risk_config)
+        # A scorer that fails on ``score()`` triggers the except block
+        # in ``record_risk`` (the call is the first statement inside
+        # the ``try``). The same redaction-via-helper contract applies.
+        scorer = _RaisingRiskScorer(
+            exc=RuntimeError("upstream model down: api_key=sk-prod-secret"),
+        )
+        from synthorg.budget import risk_enforcer as _risk_enforcer_module
+
+        capturing = CapturingErrorLogger()
+        monkeypatch.setattr(_risk_enforcer_module, "logger", capturing)
+        enforcer = BudgetEnforcer(
+            budget_config=budget_config,
+            cost_tracker=cost_tracker,
+            risk_tracker=risk_tracker,
+            risk_scorer=scorer,
+        )
+
+        record = await enforcer.record_risk(
+            "agent-1",
+            "task-1",
+            "code:write",
+        )
+
+        # The except-Exception branch returns None and DOES NOT raise.
+        # The non-None return path requires a successful score; a
+        # raising scorer cannot reach it.
+        assert record is None
+        # Same redacted-logging SIDE-EFFECT assertion as the
+        # ``check_risk_budget`` test: the RECORD_FAILED event must
+        # fire AND the api_key substring must not survive into the
+        # ``error`` kwarg.
+        record_failed_calls = [
+            kwargs
+            for event, kwargs in capturing.calls
+            if event == "risk_budget.record.failed"
+        ]
+        assert record_failed_calls, (
+            "expected log_exception_redacted to emit a redacted error record "
+            "from the record_risk scorer-exception except branch"
+        )
+        rendered_error = str(record_failed_calls[0]["error"])
+        assert "sk-prod-secret" not in rendered_error, (
+            "credential substring must be scrubbed by safe_error_description"
+        )
+        assert record_failed_calls[0]["error_type"] == "RuntimeError"
 
 
 @pytest.mark.unit
