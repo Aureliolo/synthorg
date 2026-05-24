@@ -17,7 +17,7 @@ export const useWebSocketStore = create<WebSocketState>()((set, get) => ({
   subscribedChannels: [],
 
   ...createTransportSlice(set, get),
-  ...createSubscriptionsSlice(),
+  ...createSubscriptionsSlice(get),
 
   teardown() {
     teardownTransport()

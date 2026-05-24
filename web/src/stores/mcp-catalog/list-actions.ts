@@ -6,12 +6,15 @@ import {
 import type { McpCatalogEntry } from '@/api/types/integrations'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
+import {
+  bumpSearchGeneration,
+  cancelPendingMcpCatalogSearch,
+  currentSearchGeneration,
+  setSearchDebounceHandle,
+} from './_state'
 import type { McpCatalogSet, McpCatalogState } from './types'
 
 const log = createLogger('mcp-catalog')
-
-let _searchDebounceHandle: ReturnType<typeof setTimeout> | null = null
-let _searchGeneration = 0
 
 export function createListActions(set: McpCatalogSet) {
   return {
@@ -56,33 +59,35 @@ export function createListActions(set: McpCatalogSet) {
 
     setSearchQuery: async (q: string) => {
       set({ searchQuery: q })
-      if (_searchDebounceHandle !== null) {
-        clearTimeout(_searchDebounceHandle)
-        _searchDebounceHandle = null
-      }
+      // Cancellation also bumps the generation, so the existing
+      // generation guard below short-circuits any pending timer
+      // callback that has already been dispatched by the runtime.
+      cancelPendingMcpCatalogSearch()
       if (!q.trim()) {
         set({ searchResults: null, searchLoading: false })
         return
       }
       set({ searchLoading: true })
-      const generation = ++_searchGeneration
-      _searchDebounceHandle = setTimeout(() => {
-        void (async () => {
-          if (generation !== _searchGeneration) return
-          try {
-            const page = await searchMcpCatalog(q, { limit: 100 })
-            if (generation !== _searchGeneration) return
-            set({
-              searchResults: page.data as readonly McpCatalogEntry[],
-              searchLoading: false,
-            })
-          } catch (err) {
-            if (generation !== _searchGeneration) return
-            log.warn('MCP search failed:', getErrorMessage(err))
-            set({ searchResults: [], searchLoading: false })
-          }
-        })()
-      }, 200)
+      const generation = bumpSearchGeneration()
+      setSearchDebounceHandle(
+        setTimeout(() => {
+          void (async () => {
+            if (generation !== currentSearchGeneration()) return
+            try {
+              const page = await searchMcpCatalog(q, { limit: 100 })
+              if (generation !== currentSearchGeneration()) return
+              set({
+                searchResults: page.data as readonly McpCatalogEntry[],
+                searchLoading: false,
+              })
+            } catch (err) {
+              if (generation !== currentSearchGeneration()) return
+              log.warn('MCP search failed:', getErrorMessage(err))
+              set({ searchResults: [], searchLoading: false })
+            }
+          })()
+        }, 200),
+      )
     },
 
     selectEntry: (entry: McpCatalogState['selectedEntry']) =>

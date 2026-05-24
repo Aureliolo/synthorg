@@ -7,6 +7,7 @@ import type {
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { getCurrentSocket } from './transport-shared'
+import type { WsGet } from './types'
 
 const log = createLogger('ws')
 
@@ -226,48 +227,55 @@ function offChannelEvent(
   channelHandlers.get(channel)?.delete(handler)
 }
 
-function rollbackSubscriptions(
-  channels: readonly WsChannel[],
-  bindings: readonly { channel: WsChannel; handler: WsEventHandler }[],
-  options?: { unsubscribe?: boolean },
-): void {
-  // Best-effort teardown. Each leg is independently safe:
-  // ``offChannelEvent`` is a Map/Set delete (cannot throw) and
-  // ``unsubscribe`` swallows its own send failures via ``log.error``.
-  // A ``try``/``catch`` around each leg defends against future
-  // store actions that may throw without forcing callers (the hook)
-  // to own store error UX.
-  for (const binding of bindings) {
-    try {
-      offChannelEvent(binding.channel, binding.handler)
-    } catch (err) {
-      log.error('rollbackSubscriptions: offChannelEvent failed:', err)
-    }
-  }
-  if (options?.unsubscribe !== false && channels.length > 0) {
-    // Only unsubscribe channels that no longer have any handler
-    // registrations. Multiple ``useWebSocket`` hooks can share a
-    // channel, so an unmount that blindly unsubscribes every
-    // channel in its own binding set would cut off broadcast
-    // traffic for sibling hooks that are still mounted. Consult
-    // the module-scope ``channelHandlers`` map after the per-
-    // binding ``offChannelEvent`` calls above have pruned this
-    // hook's own entries; any channel with a non-empty Set is
-    // still in use by another subscriber.
-    const channelsToUnsubscribe = [...new Set(channels)].filter(
-      (channel) => (channelHandlers.get(channel)?.size ?? 0) === 0,
-    )
-    if (channelsToUnsubscribe.length > 0) {
+export function createSubscriptionsSlice(get: WsGet) {
+  // Route teardown through the store accessor so callers (tests) that
+  // ``vi.spyOn(store, 'offChannelEvent' | 'unsubscribe')`` continue to
+  // intercept the rollback path. Calling the module-local closures
+  // directly would bypass the store's action surface and silently break
+  // the spy contract every external consumer of ``rollbackSubscriptions``
+  // depends on.
+  function rollbackSubscriptions(
+    channels: readonly WsChannel[],
+    bindings: readonly { channel: WsChannel; handler: WsEventHandler }[],
+    options?: { unsubscribe?: boolean },
+  ): void {
+    // Best-effort teardown. Each leg is independently safe:
+    // ``offChannelEvent`` is a Map/Set delete (cannot throw) and
+    // ``unsubscribe`` swallows its own send failures via ``log.error``.
+    // A ``try``/``catch`` around each leg defends against future
+    // store actions that may throw without forcing callers (the hook)
+    // to own store error UX.
+    const self = get()
+    for (const binding of bindings) {
       try {
-        unsubscribe(channelsToUnsubscribe)
+        self.offChannelEvent(binding.channel, binding.handler)
       } catch (err) {
-        log.error('rollbackSubscriptions: unsubscribe failed:', err)
+        log.error('rollbackSubscriptions: offChannelEvent failed:', err)
+      }
+    }
+    if (options?.unsubscribe !== false && channels.length > 0) {
+      // Only unsubscribe channels that no longer have any handler
+      // registrations. Multiple ``useWebSocket`` hooks can share a
+      // channel, so an unmount that blindly unsubscribes every
+      // channel in its own binding set would cut off broadcast
+      // traffic for sibling hooks that are still mounted. Consult
+      // the module-scope ``channelHandlers`` map after the per-
+      // binding ``offChannelEvent`` calls above have pruned this
+      // hook's own entries; any channel with a non-empty Set is
+      // still in use by another subscriber.
+      const channelsToUnsubscribe = [...new Set(channels)].filter(
+        (channel) => (channelHandlers.get(channel)?.size ?? 0) === 0,
+      )
+      if (channelsToUnsubscribe.length > 0) {
+        try {
+          self.unsubscribe(channelsToUnsubscribe)
+        } catch (err) {
+          log.error('rollbackSubscriptions: unsubscribe failed:', err)
+        }
       }
     }
   }
-}
 
-export function createSubscriptionsSlice() {
   return {
     subscribe,
     unsubscribe,

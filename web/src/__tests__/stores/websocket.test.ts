@@ -280,7 +280,7 @@ describe('websocket store', () => {
     })
 
     it('deduplicates concurrent connect calls', async () => {
-const p1 = useWebSocketStore.getState().connect()
+      const p1 = useWebSocketStore.getState().connect()
       const p2 = useWebSocketStore.getState().connect()
 
       await vi.runAllTimersAsync()
@@ -373,7 +373,7 @@ const p1 = useWebSocketStore.getState().connect()
 
   describe('event dispatch', () => {
     it('dispatches events to channel handlers', async () => {
-const handler = vi.fn()
+      const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
 
       const connectPromise = useWebSocketStore.getState().connect()
@@ -395,7 +395,7 @@ const handler = vi.fn()
     })
 
     it('dispatches to wildcard handlers', async () => {
-const wildcardHandler = vi.fn()
+      const wildcardHandler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('*', wildcardHandler)
 
       const connectPromise = useWebSocketStore.getState().connect()
@@ -417,7 +417,7 @@ const wildcardHandler = vi.fn()
     })
 
     it('removes handler with offChannelEvent', async () => {
-const handler = vi.fn()
+      const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
       useWebSocketStore.getState().offChannelEvent('tasks', handler)
 
@@ -439,7 +439,7 @@ const handler = vi.fn()
     })
 
     it('rejects malformed messages that fail isWsEvent validation', async () => {
-const handler = vi.fn()
+      const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
 
       const connectPromise = useWebSocketStore.getState().connect()
@@ -564,7 +564,7 @@ const handler = vi.fn()
 
   describe('message size gating', () => {
     it('discards oversized messages', async () => {
-const handler = vi.fn()
+      const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
 
       const connectPromise = useWebSocketStore.getState().connect()
@@ -846,28 +846,28 @@ const handler = vi.fn()
   })
 
   describe('protocol version handling', () => {
-    it('discards events whose version does not match', async () => {
-      const handler = vi.fn()
-      useWebSocketStore.getState().onChannelEvent('tasks', handler)
+    // Refactor-safety invariant for the ``WS_PROTOCOL_VERSION`` and
+    // ``WS_PROTOCOL_VERSION + 1`` cases: the version-check uses the
+    // imported constant rather than a hardcoded literal. If a future
+    // refactor inlines the literal (e.g. ``if (version !== 1)``) and the
+    // constant is later bumped to 2, the rejector would let v2 events
+    // through while still rejecting the bumped value at acceptance.
+    // Pinning both boundary cases to the imported constant keeps the
+    // dispatch boundary tied to ``WS_PROTOCOL_VERSION`` rather than to
+    // any specific numeric value.
+    const versionCases: ReadonlyArray<{
+      label: string
+      version: number | 'absent'
+      shouldDispatch: boolean
+    }> = [
+      { label: 'mismatched version (999) is discarded', version: 999, shouldDispatch: false },
+      { label: 'absent version is treated as v1', version: 'absent', shouldDispatch: true },
+      { label: 'explicit version=1 is accepted', version: 1, shouldDispatch: true },
+      { label: 'WS_PROTOCOL_VERSION + 1 is rejected', version: WS_PROTOCOL_VERSION + 1, shouldDispatch: false },
+      { label: 'exactly WS_PROTOCOL_VERSION is accepted', version: WS_PROTOCOL_VERSION, shouldDispatch: true },
+    ]
 
-      const connectPromise = useWebSocketStore.getState().connect()
-      await vi.runAllTimersAsync()
-      await connectPromise
-      const ws = MockWebSocket.latest()!
-      ws.simulateOpen()
-      ws.simulateMessage({ action: 'auth_ok' })
-
-      ws.simulateMessage({
-        version: 999,
-        event_type: 'task.created',
-        channel: 'tasks',
-        timestamp: new Date().toISOString(),
-        payload: { task_id: 'x' },
-      })
-      expect(handler).not.toHaveBeenCalled()
-    })
-
-    it('treats absent version as v1 (backwards compatible)', async () => {
+    it.each(versionCases)('$label', async ({ version, shouldDispatch }) => {
       const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
 
@@ -884,84 +884,16 @@ const handler = vi.fn()
         timestamp: new Date().toISOString(),
         payload: { task_id: 'x' },
       }
-      ws.simulateMessage(event)
-      expect(handler).toHaveBeenCalledWith(event)
-    })
+      const dispatched =
+        version === 'absent' ? event : { ...event, version }
+      ws.simulateMessage(dispatched)
 
-    it('accepts events with explicit version=1', async () => {
-      const handler = vi.fn()
-      useWebSocketStore.getState().onChannelEvent('tasks', handler)
-
-      const connectPromise = useWebSocketStore.getState().connect()
-      await vi.runAllTimersAsync()
-      await connectPromise
-      const ws = MockWebSocket.latest()!
-      ws.simulateOpen()
-      ws.simulateMessage({ action: 'auth_ok' })
-
-      ws.simulateMessage({
-        version: 1,
-        event_type: 'task.created',
-        channel: 'tasks',
-        timestamp: new Date().toISOString(),
-        payload: { task_id: 'x' },
-      })
-      expect(handler).toHaveBeenCalledTimes(1)
-    })
-
-    it('rejects events at WS_PROTOCOL_VERSION + 1 (rejector uses the imported constant)', async () => {
-      // Refactor-safety invariant: the version-check uses the imported
-      // `WS_PROTOCOL_VERSION` constant rather than a hardcoded literal.
-      // If a future refactor inlines the literal (e.g. `if (version !== 1)`)
-      // and the constant is later bumped to 2, that buggy code would
-      // pass v2 events through. This test pins the rejection to "one
-      // above whatever the imported constant happens to be", so a
-      // constant bump without updating the rejector would surface here.
-      const handler = vi.fn()
-      useWebSocketStore.getState().onChannelEvent('tasks', handler)
-
-      const connectPromise = useWebSocketStore.getState().connect()
-      await vi.runAllTimersAsync()
-      await connectPromise
-      const ws = MockWebSocket.latest()!
-      ws.simulateOpen()
-      ws.simulateMessage({ action: 'auth_ok' })
-
-      ws.simulateMessage({
-        version: WS_PROTOCOL_VERSION + 1,
-        event_type: 'task.created',
-        channel: 'tasks',
-        timestamp: new Date().toISOString(),
-        payload: { task_id: 'x' },
-      })
-      expect(handler).not.toHaveBeenCalled()
-    })
-
-    it('accepts events at exactly WS_PROTOCOL_VERSION (acceptor uses the imported constant)', async () => {
-      // Paired with the rejection test above: a future inlined-literal
-      // refactor would surface here if the constant is bumped (the
-      // acceptor would still match the old literal and pass v1 events
-      // through, but reject events at the new bumped value). Together,
-      // the two tests pin the dispatch boundary to the imported
-      // constant rather than to any specific numeric value.
-      const handler = vi.fn()
-      useWebSocketStore.getState().onChannelEvent('tasks', handler)
-
-      const connectPromise = useWebSocketStore.getState().connect()
-      await vi.runAllTimersAsync()
-      await connectPromise
-      const ws = MockWebSocket.latest()!
-      ws.simulateOpen()
-      ws.simulateMessage({ action: 'auth_ok' })
-
-      ws.simulateMessage({
-        version: WS_PROTOCOL_VERSION,
-        event_type: 'task.created',
-        channel: 'tasks',
-        timestamp: new Date().toISOString(),
-        payload: { task_id: 'x' },
-      })
-      expect(handler).toHaveBeenCalledTimes(1)
+      if (shouldDispatch) {
+        expect(handler).toHaveBeenCalledTimes(1)
+        expect(handler).toHaveBeenCalledWith(dispatched)
+      } else {
+        expect(handler).not.toHaveBeenCalled()
+      }
     })
   })
 

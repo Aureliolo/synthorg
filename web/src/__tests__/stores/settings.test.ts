@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { SettingEntry } from '@/api/types/settings'
 import { buildSettingEntry } from '@/mocks/handlers/settings'
 import { apiError, apiSuccess, paginatedFor, voidSuccess } from '@/mocks/handlers'
@@ -67,13 +67,11 @@ function deferred<T>(): Deferred<T> {
 }
 
 describe('useSettingsStore', () => {
+  // Toast cleanup is handled by the global ``afterEach`` in
+  // ``test-setup.tsx`` (``useToastStore.getState().dismissAll()``); no
+  // file-local beforeEach/afterEach needed beyond store state reset.
   beforeEach(() => {
     resetSettingsStore()
-    useToastStore.getState().dismissAll()
-  })
-
-  afterEach(() => {
-    useToastStore.getState().dismissAll()
   })
 
   describe('fetchSettingsData', () => {
