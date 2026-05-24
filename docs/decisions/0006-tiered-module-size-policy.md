@@ -324,7 +324,6 @@ and closed for the project to reach 100% strict enforcement.
 | Interrogate `fail_under` 90 -> 95 | Same as DOC backfill | Medium |
 | ESLint `complexity / max-lines / max-lines-per-function / max-params` exempted on `src/**/*.{ts,tsx}` | EPIC #2066: "Web component-size ratchet: decompose oversized React components", sliced into 4 sub-issues: #2092 (Foundation: utils + hooks + lib), #2093 (Stores incl. websocket), #2094 (Components + API types/endpoints), #2095 (Pages + override deletion). The override block at `web/eslint.config.js:141-167` grows an `ignores:` list per sub-issue; PR D deletes the block. | Large (4 PRs filed) |
 | Go `gocyclo / funlen / gocognit / nestif / revive` path-excluded across `cli/internal/**` + `cmd/**` | Issue #2067: "CLI complexity ratchet: per-package lift" | Medium |
-| `vulture` `ignore_names` (7 entries) | Issue #2073: "Replace vulture ignore_names with explicit unused-marker pattern" | Trivial |
 | `sqlfluff` `rules = ambiguous, references` (layout/capitalisation/aliasing all disabled) | EPIC #2076: "SQL style cleanup: enable full sqlfluff ruleset" | Large |
 | `sqlfluff` `exclude_rules = RF04` (keywords-as-identifiers) | Same SQL style issue | Trivial |
 | Typeguard never landed | Issue #2068: "Wire typeguard after #2048 lands" | Medium |

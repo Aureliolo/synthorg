@@ -85,7 +85,7 @@ class TicketFetcher(Protocol):
     """
 
     async def fetch(self, _ticket_uri: str) -> TicketThread:
-        """Return the ticket thread identified by *_ticket_uri*."""
+        """Return the ticket thread identified by the provided URI."""
         ...
 
 
