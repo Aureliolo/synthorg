@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from synthorg.tools.mcp.client import MCPClient
@@ -337,22 +338,39 @@ class TestMCPClientHTTPTransport:
             name="test-http",
             transport="streamable_http",
             url="http://localhost:8080/mcp",
+            headers={"Authorization": "Bearer test-token"},
         )
         client = MCPClient(config)
         mock_session = AsyncMock()
         mock_session.initialize = AsyncMock()
+        mock_http_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_read_stream = AsyncMock()
+        mock_write_stream = AsyncMock()
+        mock_session_id_cb = AsyncMock()
 
         with (
             patch(
-                "synthorg.tools.mcp.client.streamablehttp_client",
+                "synthorg.tools.mcp.client.create_mcp_http_client",
+            ) as mock_factory,
+            patch(
+                "synthorg.tools.mcp.client.streamable_http_client",
             ) as mock_http,
             patch(
                 "synthorg.tools.mcp.client.ClientSession",
             ) as mock_cls,
         ):
+            factory_cm = AsyncMock()
+            factory_cm.__aenter__ = AsyncMock(return_value=mock_http_client)
+            factory_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_factory.return_value = factory_cm
+
             mock_cm = AsyncMock()
             mock_cm.__aenter__ = AsyncMock(
-                return_value=(AsyncMock(), AsyncMock(), AsyncMock()),
+                return_value=(
+                    mock_read_stream,
+                    mock_write_stream,
+                    mock_session_id_cb,
+                ),
             )
             mock_cm.__aexit__ = AsyncMock(return_value=False)
             mock_http.return_value = mock_cm
@@ -366,4 +384,137 @@ class TestMCPClientHTTPTransport:
 
             await client.connect()
 
+        mock_factory.assert_called_once_with(
+            headers={"Authorization": "Bearer test-token"},
+        )
+        # Migrated code copies via ``dict(self._config.headers)``; the
+        # dict passed to the factory must be a fresh object, not aliased
+        # to the frozen-config field.
+        passed_headers = mock_factory.call_args.kwargs["headers"]
+        assert passed_headers is not config.headers
+        mock_http.assert_called_once_with(
+            url="http://localhost:8080/mcp",
+            http_client=mock_http_client,
+        )
+        mock_cls.assert_called_once_with(mock_read_stream, mock_write_stream)
+        mock_session.initialize.assert_called_once()
         assert client.is_connected
+
+    async def test_connect_http_with_empty_headers_passes_none(self) -> None:
+        # The migrated code path is ``dict(...) if self._config.headers
+        # else None``; empty headers (the default factory value) must
+        # become ``None`` at the factory call site, not ``{}``.
+        config = MCPServerConfig(
+            name="test-http-empty",
+            transport="streamable_http",
+            url="http://localhost:8080/mcp",
+        )
+        assert config.headers == {}
+        client = MCPClient(config)
+        mock_session = AsyncMock()
+        mock_session.initialize = AsyncMock()
+        mock_http_client = AsyncMock(spec=httpx.AsyncClient)
+
+        with (
+            patch(
+                "synthorg.tools.mcp.client.create_mcp_http_client",
+            ) as mock_factory,
+            patch(
+                "synthorg.tools.mcp.client.streamable_http_client",
+            ) as mock_http,
+            patch(
+                "synthorg.tools.mcp.client.ClientSession",
+            ) as mock_cls,
+        ):
+            factory_cm = AsyncMock()
+            factory_cm.__aenter__ = AsyncMock(return_value=mock_http_client)
+            factory_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_factory.return_value = factory_cm
+
+            mock_cm = AsyncMock()
+            mock_cm.__aenter__ = AsyncMock(
+                return_value=(AsyncMock(), AsyncMock(), AsyncMock()),
+            )
+            mock_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_http.return_value = mock_cm
+
+            session_cm = AsyncMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = session_cm
+
+            await client.connect()
+
+        mock_factory.assert_called_once_with(headers=None)
+        assert client.is_connected
+
+    async def test_connect_http_cleans_up_when_transport_fails(self) -> None:
+        # When ``streamable_http_client.__aenter__`` raises after the
+        # factory's client has been entered, the exit stack must invoke
+        # the factory's ``__aexit__`` so the httpx client is released.
+        config = MCPServerConfig(
+            name="test-http-transport-fail",
+            transport="streamable_http",
+            url="http://localhost:8080/mcp",
+            headers={"Authorization": "Bearer test-token"},
+        )
+        client = MCPClient(config)
+        mock_http_client = AsyncMock(spec=httpx.AsyncClient)
+
+        with (
+            patch(
+                "synthorg.tools.mcp.client.create_mcp_http_client",
+            ) as mock_factory,
+            patch(
+                "synthorg.tools.mcp.client.streamable_http_client",
+            ) as mock_http,
+        ):
+            factory_cm = AsyncMock()
+            factory_cm.__aenter__ = AsyncMock(return_value=mock_http_client)
+            factory_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_factory.return_value = factory_cm
+
+            transport_cm = AsyncMock()
+            transport_cm.__aenter__ = AsyncMock(
+                side_effect=RuntimeError("transport setup failed"),
+            )
+            transport_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_http.return_value = transport_cm
+
+            with pytest.raises(MCPConnectionError):
+                await client.connect()
+
+        factory_cm.__aenter__.assert_awaited_once()
+        factory_cm.__aexit__.assert_awaited_once()
+        assert not client.is_connected
+
+    async def test_connect_http_propagates_factory_failure(self) -> None:
+        # When the factory's ``__aenter__`` raises, no http client was
+        # produced; ``streamable_http_client`` must NOT be invoked.
+        config = MCPServerConfig(
+            name="test-http-factory-fail",
+            transport="streamable_http",
+            url="http://localhost:8080/mcp",
+        )
+        client = MCPClient(config)
+
+        with (
+            patch(
+                "synthorg.tools.mcp.client.create_mcp_http_client",
+            ) as mock_factory,
+            patch(
+                "synthorg.tools.mcp.client.streamable_http_client",
+            ) as mock_http,
+        ):
+            factory_cm = AsyncMock()
+            factory_cm.__aenter__ = AsyncMock(
+                side_effect=RuntimeError("factory setup failed"),
+            )
+            factory_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_factory.return_value = factory_cm
+
+            with pytest.raises(MCPConnectionError):
+                await client.connect()
+
+        mock_http.assert_not_called()
+        assert not client.is_connected

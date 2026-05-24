@@ -7,11 +7,12 @@ tool discovery and invocation through the MCP protocol.
 import asyncio
 import copy
 from contextlib import AsyncExitStack
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, NoReturn, Self
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
+from mcp.shared._httpx_utils import create_mcp_http_client
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -80,6 +81,11 @@ class MCPClient:
     async def connect(self) -> None:
         """Establish a connection to the MCP server.
 
+        Uses ``AsyncExitStack`` for guaranteed cleanup on any
+        exception (including ``CancelledError``); ``stack.pop_all()``
+        transfers ownership to ``self._exit_stack`` on the success
+        path only, so ``disconnect()`` controls the eventual close.
+
         Raises:
             MCPConnectionError: If the connection fails.
             RuntimeError: If already connected.
@@ -98,79 +104,82 @@ class MCPClient:
                 server=self._config.name,
                 transport=self._config.transport,
             )
-            stack = AsyncExitStack()
-            await stack.__aenter__()
-            try:
-                coro = self._connect_with_stack(stack)
-                session = await asyncio.wait_for(
-                    coro,
-                    timeout=self._config.connect_timeout_seconds,
-                )
+            async with AsyncExitStack() as stack:
+                session = await self._establish_session(stack)
+                # ``_exit_stack`` first so a CancelledError between
+                # these two assignments cannot leave a zombie state
+                # (``is_connected`` true, transport closed): once
+                # ``pop_all()`` lands on ``self``, ``disconnect()``
+                # owns cleanup regardless of which line is interrupted.
+                self._exit_stack = stack.pop_all()
                 self._session = session
-                self._exit_stack = stack
-                logger.info(
-                    MCP_CLIENT_CONNECTED,
-                    server=self._config.name,
-                )
-            except TimeoutError as exc:
-                await stack.aclose()
-                msg = (
-                    f"Connection to {self._config.name!r} timed out "
-                    f"after {self._config.connect_timeout_seconds}s"
-                )
-                logger.warning(
-                    MCP_CLIENT_CONNECTION_FAILED,
-                    server=self._config.name,
-                    error=msg,
-                )
-                raise MCPConnectionError(
-                    msg,
-                    context={
-                        "server": self._config.name,
-                        "transport": self._config.transport,
-                    },
-                ) from exc
-            except MCPConnectionError:
-                await stack.aclose()
-                raise
-            except Exception as exc:
-                await stack.aclose()
-                # WARNING (not ERROR/EXCEPTION) per CLAUDE.md
-                # ``## Logging``: the policy prescribes
-                # ``logger.warning`` on credential-bearing paths so
-                # ``exc_info`` cannot re-bind ``str(exc)`` and
-                # bypass the ``safe_error_description`` scrub. The
-                # raise below propagates the failure for ops
-                # alerting on ``MCPConnectionError`` rather than
-                # relying on log severity to gate ops triage.
-                logger.warning(
-                    MCP_CLIENT_CONNECTION_FAILED,
-                    server=self._config.name,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                # Never embed raw ``str(exc)`` in error messages --
-                # the same scrubbing applied to log output via
-                # ``safe_error_description`` must apply to the
-                # message text that propagates back to API surfaces.
-                # Raw exception args can leak credentials
-                # for OAuth-token / Bearer-header / connection-string
-                # paths.
-                msg = (
-                    f"Failed to connect to {self._config.name!r}: "
-                    f"{safe_error_description(exc)}"
-                )
-                raise MCPConnectionError(
-                    msg,
-                    context={
-                        "server": self._config.name,
-                        "transport": self._config.transport,
-                    },
-                ) from exc
-            except BaseException:
-                # CancelledError, KeyboardInterrupt -- still close the stack
-                await stack.aclose()
-                raise
+            logger.info(
+                MCP_CLIENT_CONNECTED,
+                server=self._config.name,
+            )
+
+    async def _establish_session(
+        self,
+        stack: AsyncExitStack,
+    ) -> ClientSession:
+        """Run the timeout-bounded connect and translate exceptions.
+
+        Failures are logged at WARNING (not EXCEPTION) so ``exc_info``
+        cannot re-bind ``str(exc)`` and bypass the
+        ``safe_error_description`` scrub on credential-bearing paths.
+        """
+        try:
+            return await asyncio.wait_for(
+                self._connect_with_stack(stack),
+                timeout=self._config.connect_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            msg = (
+                f"Connection to {self._config.name!r} timed out "
+                f"after {self._config.connect_timeout_seconds}s"
+            )
+            logger.warning(
+                MCP_CLIENT_CONNECTION_FAILED,
+                server=self._config.name,
+                error=msg,
+            )
+            self._raise_connection_error(msg, exc)
+        except MCPConnectionError:
+            raise
+        except MemoryError, RecursionError:
+            # Interpreter-state failures bypass the broad-Exception
+            # wrapper so the orchestrator can surface them as
+            # catastrophic rather than transient transport errors.
+            raise
+        except Exception as exc:
+            logger.warning(
+                MCP_CLIENT_CONNECTION_FAILED,
+                server=self._config.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            # ``safe_error_description`` also scrubs the propagated
+            # message: raw exc args can leak OAuth tokens / Bearer
+            # headers / connection strings to upstream callers.
+            msg = (
+                f"Failed to connect to {self._config.name!r}: "
+                f"{safe_error_description(exc)}"
+            )
+            self._raise_connection_error(msg, exc)
+
+    def _raise_connection_error(
+        self,
+        message: str,
+        exc: BaseException,
+    ) -> NoReturn:
+        """Raise ``MCPConnectionError`` with the server context attached."""
+        raise MCPConnectionError(
+            message,
+            context={
+                "server": self._config.name,
+                "transport": self._config.transport,
+            },
+        ) from exc
 
     async def _connect_with_stack(
         self,
@@ -476,10 +485,15 @@ class MCPClient:
                 msg,
                 context={"server": self._config.name},
             )
+        http_client = await stack.enter_async_context(
+            create_mcp_http_client(
+                headers=dict(self._config.headers) if self._config.headers else None,
+            ),
+        )
         read_stream, write_stream, _ = await stack.enter_async_context(
-            streamablehttp_client(
+            streamable_http_client(
                 url=self._config.url,
-                headers=(dict(self._config.headers) if self._config.headers else None),
+                http_client=http_client,
             ),
         )
         return await stack.enter_async_context(
