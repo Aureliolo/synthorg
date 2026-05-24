@@ -107,8 +107,8 @@ def _git(*args: str, strip: bool = True) -> str:
             space for worktree-only modifications (`` M path``).
             Stripping the blob eats that leading space on the first
             line, shifting every fixed-index slice by one (e.g. a
-            ``[3:]`` slice that should read ``scripts/foo.py`` instead
-            yields the truncated path ``ripts/foo.py``) and the
+            ``[3:]`` slice that should read ``tests/foo.py`` instead
+            yields the truncated path ``ests/foo.py``) and the
             subsequent ``git restore`` then fails on a bogus pathspec.
 
     Raises:
