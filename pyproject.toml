@@ -15,9 +15,11 @@ classifiers = [
 dependencies = [
     "aiodocker==0.26.0",
     "aiosqlite==0.22.1",
+    "annotated-types==0.7.0",
     "argon2-cffi==25.1.0",
     "cryptography==48.0.0",
     "faker==40.18.0",
+    "httpcore==1.0.9",
     "httpx==0.28.1",
     "jinja2==3.1.6",
     "jsonschema==4.26.0",
@@ -29,10 +31,13 @@ dependencies = [
     "mem0ai==2.0.2",
     "mmh3==5.2.1",
     "packaging==26.2",
+    "prometheus-client==0.25.0",
     "pydantic==2.13.4",
     "pyjwt[crypto]==2.12.1",
     "pyngrok==8.1.2",
     "pyyaml==6.0.3",
+    "qdrant-client==1.18.0",
+    "referencing==0.37.0",
     "structlog==25.5.0",
     "rfc3161-client==1.0.6",
     "opentelemetry-api==1.40.0",
@@ -42,6 +47,7 @@ dependencies = [
     "scikit-image==0.26.0",
     "pillow==12.2.0",
     "numpy==2.3.4",
+    "uvicorn==0.47.0",
     "yoyo-migrations==9.0.0",
 ]
 
@@ -689,19 +695,6 @@ extend_exclude = [
 package_module_name_map = { "pyjwt" = "jwt", "tree-sitter-language-pack" = "tree_sitter_language_pack" }
 
 [tool.deptry.per_rule_ignores]
-# DEP003: transitive imports. These packages are used directly today
-# but reach the project transitively through Litestar (uvicorn,
-# prometheus_client, annotated_types, referencing), httpx (httpcore),
-# mem0 (qdrant_client). Promoting them to direct dependencies is a
-# follow-up dependency-hygiene PR.
-DEP003 = [
-    "uvicorn",
-    "prometheus_client",
-    "annotated_types",
-    "httpcore",
-    "qdrant_client",
-    "referencing",
-]
 # DEP002: declared-but-not-imported. The mismatch is intentional for
 # transitive type-stub packages and optional runtime extras.
 DEP002 = [
