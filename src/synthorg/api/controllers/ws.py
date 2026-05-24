@@ -43,7 +43,11 @@ from synthorg.api.guards import _READ_ROLES
 from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import (
     API_WS_AUTH_OK,
     API_WS_AUTH_STAGE,
@@ -498,11 +502,7 @@ async def _outbound_consumer(
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
-                    API_WS_SEND_FAILED,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
+                log_exception_redacted(logger, API_WS_SEND_FAILED, exc)
                 await socket.close(code=1011, reason="Internal error")
                 return
         finally:

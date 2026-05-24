@@ -92,19 +92,22 @@ if _missing_statuses:
     )
     raise ValueError(_msg)
 
-# Verify that on-board statuses in STATUS_TO_COLUMN are consistent with
-# COLUMN_TO_STATUSES (every status that maps to a column must appear in
-# that column's status set).
-for _status, _column in STATUS_TO_COLUMN.items():
-    if _column is not None and _status not in COLUMN_TO_STATUSES[_column]:
-        _msg = (
-            f"STATUS_TO_COLUMN maps {_status.value!r} to "
-            f"{_column.value!r}, but COLUMN_TO_STATUSES[{_column.value!r}] "
-            f"does not include {_status.value!r}"
-        )
-        raise ValueError(_msg)
 
-del _missing_columns, _missing_statuses, _status, _column
+def _validate_status_column_consistency() -> None:
+    """Verify on-board STATUS_TO_COLUMN entries match COLUMN_TO_STATUSES."""
+    for status, column in STATUS_TO_COLUMN.items():
+        if column is not None and status not in COLUMN_TO_STATUSES[column]:
+            msg = (
+                f"STATUS_TO_COLUMN maps {status.value!r} to "
+                f"{column.value!r}, but COLUMN_TO_STATUSES[{column.value!r}] "
+                f"does not include {status.value!r}"
+            )
+            raise ValueError(msg)
+
+
+_validate_status_column_consistency()
+
+del _missing_columns, _missing_statuses
 
 
 # -- Column transitions -----------------------------------------------------
@@ -193,17 +196,20 @@ _COLUMN_MOVE_STATUS_PATH: MappingProxyType[
     }
 )
 
-# Guard: every valid column transition must have a status path entry.
-for _from_col, _targets in VALID_COLUMN_TRANSITIONS.items():
-    for _to_col in _targets:
-        if (_from_col, _to_col) not in _COLUMN_MOVE_STATUS_PATH:
-            _msg = (
-                f"Missing _COLUMN_MOVE_STATUS_PATH entry for "
-                f"{_from_col.value!r} -> {_to_col.value!r}"
-            )
-            raise ValueError(_msg)
 
-del _from_col, _targets, _to_col
+def _validate_status_path_coverage() -> None:
+    """Verify every valid column transition has a status-path entry."""
+    for from_col, targets in VALID_COLUMN_TRANSITIONS.items():
+        for to_col in targets:
+            if (from_col, to_col) not in _COLUMN_MOVE_STATUS_PATH:
+                msg = (
+                    f"Missing _COLUMN_MOVE_STATUS_PATH entry for "
+                    f"{from_col.value!r} -> {to_col.value!r}"
+                )
+                raise ValueError(msg)
+
+
+_validate_status_path_coverage()
 
 
 def validate_column_transition(

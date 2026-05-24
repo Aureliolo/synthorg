@@ -9,7 +9,7 @@ declared on the concrete service.
 
 from typing import TYPE_CHECKING
 
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.security import (
     SECURITY_SAFETY_CLASSIFY_BLOCKED,
     SECURITY_SAFETY_CLASSIFY_ERROR,
@@ -92,9 +92,11 @@ class SecOpsServiceSafetyMixin:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 SECURITY_SAFETY_CLASSIFY_ERROR,
+                exc,
                 tool_name=context.tool_name,
                 note="Safety classifier failed -- proceeding without classification",
             )
@@ -210,9 +212,11 @@ class SecOpsServiceSafetyMixin:
                 )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 SECURITY_UNCERTAINTY_CHECK_ERROR,
+                exc,
                 note="Uncertainty check failed -- proceeding without score",
             )
             metadata["uncertainty_check_error"] = "true"

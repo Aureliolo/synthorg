@@ -19,7 +19,11 @@ from synthorg.meta.charter.config import CharterConfig  # noqa: TC001 -- runtime
 from synthorg.meta.charter.models import InterviewDecision
 from synthorg.meta.charter.prompts import CHARTER_INTERVIEW_PROMPT
 from synthorg.meta.errors import CharterInterviewResponseInvalidError
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.charter import (
     CHARTER_INTERVIEW_FAILED,
     CHARTER_INTERVIEW_RESPONSE_INVALID,
@@ -137,11 +141,7 @@ class LLMCharterInterviewer:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
-                CHARTER_INTERVIEW_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+            log_exception_redacted(logger, CHARTER_INTERVIEW_FAILED, exc)
             raise
         raw = (response.content or "").strip()
         parsed = extract_json_from_llm_response(

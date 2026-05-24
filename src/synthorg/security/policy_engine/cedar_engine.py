@@ -5,7 +5,11 @@ import time
 
 import cedarpy
 
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.security import (
     SECURITY_POLICY_DECISION_ALLOW,
     SECURITY_POLICY_DECISION_DENY,
@@ -118,10 +122,10 @@ class CedarPolicyEngine:
             raise
         except Exception as exc:
             latency_ms = (time.perf_counter() - start) * 1000
-            logger.error(
+            log_exception_redacted(
+                logger,
                 SECURITY_POLICY_ENGINE_ERROR,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                exc,
                 action_type=request.action_type,
                 principal=request.principal,
                 resource=request.resource,

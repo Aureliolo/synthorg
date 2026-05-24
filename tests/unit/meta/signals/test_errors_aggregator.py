@@ -110,3 +110,39 @@ class TestErrorSignalAggregatorWithStore:
             until=now,
         )
         assert summary.total_findings == 0
+
+    @pytest.mark.parametrize("exc_cls", [MemoryError, RecursionError])
+    async def test_propagates_catastrophic_interpreter_errors(
+        self,
+        exc_cls: type[BaseException],
+    ) -> None:
+        """Catastrophic interpreter errors must escape the ``Exception`` net."""
+
+        class _CatastrophicStore:
+            async def on_classification(self, result: object) -> None:
+                return None
+
+            async def query_findings(
+                self,
+                *,
+                since: datetime,
+                until: datetime,
+            ) -> tuple[ErrorFinding, ...]:
+                return ()
+
+            async def summarize(self, *, since: datetime, until: datetime) -> object:
+                raise exc_cls
+
+            async def count(self) -> int:
+                return 0
+
+            async def clear(self) -> None:
+                return None
+
+        agg = ErrorSignalAggregator(_CatastrophicStore())  # type: ignore[arg-type]
+        now = datetime.now(UTC)
+        with pytest.raises(exc_cls):
+            await agg.aggregate(
+                since=now - timedelta(hours=1),
+                until=now,
+            )

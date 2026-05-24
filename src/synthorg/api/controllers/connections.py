@@ -38,7 +38,11 @@ from synthorg.integrations.errors import (
     InvalidConnectionAuthError,
     SecretRetrievalError,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import (
     API_RESOURCE_CONFLICT,
     API_RESOURCE_NOT_FOUND,
@@ -507,13 +511,13 @@ class ConnectionsController(Controller):
             # for a credential-bearing operation can leak backend
             # secret metadata via wrapped causes; the redacted
             # ``safe_error_description`` is the only message emitted.
-            logger.error(
+            log_exception_redacted(
+                logger,
                 SECURITY_CONNECTION_SECRET_REVEAL_FAILED,
+                exc,
                 connection=name,
                 field=field,
                 reason="secret_retrieval_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise NotFoundError(_REVEAL_GENERIC_ERROR) from exc
 

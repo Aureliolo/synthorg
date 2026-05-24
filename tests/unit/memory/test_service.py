@@ -519,6 +519,54 @@ class TestMemoryServiceReReadFailure:
             await service.deploy_checkpoint(NotBlankStr("a"))
 
 
+class TestRollbackStepCatastrophicErrors:
+    """``MemoryService._rollback_step`` propagates catastrophic interpreter errors.
+
+    The rollback helper deliberately swallows broad ``Exception`` so a
+    rollback-stage failure cannot shadow the original deploy error
+    (which is already propagating up the call stack). ``MemoryError``
+    and ``RecursionError`` are catastrophic interpreter state and MUST
+    escape that net so the surrounding executor sees the failure.
+    """
+
+    @pytest.mark.parametrize("exc_cls", [MemoryError, RecursionError])
+    async def test_rollback_step_propagates_catastrophic(
+        self,
+        exc_cls: type[BaseException],
+    ) -> None:
+        async def _raiser() -> None:
+            raise exc_cls
+
+        with pytest.raises(exc_cls):
+            await MemoryService._rollback_step(
+                _raiser(),
+                checkpoint_id="ckpt-1",
+                step="restore_active",
+            )
+
+    async def test_rollback_step_swallows_application_exception(self) -> None:
+        """Sanity check: the broad ``Exception`` arm still absorbs everything else.
+
+        This pins the contract the catastrophic carve-out is layered on
+        top of -- a regression that removes the ``except Exception``
+        branch would surface here.
+        """
+
+        async def _raiser() -> None:
+            msg = "non-catastrophic"
+            raise RuntimeError(msg)
+
+        # No exception escapes for ordinary failures. ``_rollback_step``
+        # returns None implicitly; the assertion is "this call did not
+        # raise" -- if a regression removed the broad ``except`` arm,
+        # the RuntimeError would propagate here and fail the test.
+        await MemoryService._rollback_step(
+            _raiser(),
+            checkpoint_id="ckpt-1",
+            step="restore_active",
+        )
+
+
 class _FakeMemoryBackend:
     """Minimal :class:`MemoryBackend` fake exposing only ``delete``."""
 

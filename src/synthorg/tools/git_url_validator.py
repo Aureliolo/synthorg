@@ -41,7 +41,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.collections import dedupe_preserving_order
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.git import (
     GIT_CLONE_DNS_FAILED,
     GIT_CLONE_DNS_REBINDING_DETECTED,
@@ -352,12 +356,8 @@ async def _resolve_dns(
             f"DNS resolution for {hostname!r} failed: {safe_error_description(exc)}",
         )
     except Exception as exc:
-        logger.error(
-            GIT_CLONE_DNS_FAILED,
-            hostname=hostname,
-            reason="unexpected",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+        log_exception_redacted(
+            logger, GIT_CLONE_DNS_FAILED, exc, hostname=hostname, reason="unexpected"
         )
         return f"DNS resolution for {hostname!r} failed: {safe_error_description(exc)}"
 

@@ -27,6 +27,7 @@ from synthorg.engine.prompt_safety import (
 )
 from synthorg.observability import (
     get_logger,
+    log_exception_redacted,
     safe_error_description,
     scrub_secret_tokens,
 )
@@ -248,12 +249,12 @@ async def execute_tool_calls(  # noqa: PLR0913
         raise
     except Exception as exc:
         error_msg = f"Tool execution failed on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
-        logger.error(
+        log_exception_redacted(
+            logger,
             EXECUTION_LOOP_ERROR,
+            exc,
             execution_id=ctx.execution_id,
             turn=turn_number,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
             tools=tool_names,
         )
         return _build_error_result(ctx, turns, error_msg)

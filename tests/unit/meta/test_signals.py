@@ -179,6 +179,22 @@ class TestPerformanceSignalAggregator:
         result = await agg.aggregate(since=_week_ago(), until=_now())
         assert result.agent_count == 0
 
+    @pytest.mark.parametrize("exc_cls", [MemoryError, RecursionError])
+    async def test_propagates_catastrophic_interpreter_errors(
+        self,
+        exc_cls: type[BaseException],
+    ) -> None:
+        """Catastrophic interpreter errors escape the broad ``Exception`` net."""
+        tracker = mock_of[PerformanceTracker](
+            get_snapshot=AsyncMock(side_effect=exc_cls),
+        )
+        agg = PerformanceSignalAggregator(
+            tracker=tracker,
+            agent_ids_provider=lambda: ["agent-1"],
+        )
+        with pytest.raises(exc_cls):
+            await agg.aggregate(since=_week_ago(), until=_now())
+
 
 # ── Other aggregators ──────────────────────────────────────────────
 
@@ -194,6 +210,32 @@ class TestBudgetSignalAggregator:
         agg = BudgetSignalAggregator(cost_record_provider=list)
         result = await agg.aggregate(since=_week_ago(), until=_now())
         assert isinstance(result, OrgBudgetSummary)
+
+    @pytest.mark.parametrize("exc_cls", [MemoryError, RecursionError])
+    async def test_propagates_catastrophic_interpreter_errors(
+        self,
+        exc_cls: type[BaseException],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Catastrophic interpreter errors escape the broad ``Exception`` net.
+
+        The placeholder ``aggregate()`` body only calls ``logger.info``,
+        so a real production trigger for the carve-out requires the
+        logger itself to raise. Monkeypatching the module-level logger
+        is the supported pattern; once the real implementation lands
+        (bucket_cost_records / project_daily_spend / etc.) those calls
+        become the natural injection point and this test will be
+        rewritten against them.
+        """
+        from synthorg.meta.signals import budget as _budget_module
+
+        def _raise(*_args: object, **_kwargs: object) -> None:
+            raise exc_cls
+
+        monkeypatch.setattr(_budget_module.logger, "info", _raise)
+        agg = BudgetSignalAggregator(cost_record_provider=list)
+        with pytest.raises(exc_cls):
+            await agg.aggregate(since=_week_ago(), until=_now())
 
 
 class TestCoordinationSignalAggregator:

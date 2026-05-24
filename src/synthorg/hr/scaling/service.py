@@ -26,7 +26,11 @@ from synthorg.hr.scaling.models import (
     ScalingContext,
     ScalingDecision,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.hr import (
     HR_SCALING_CYCLE_COMPLETE,
     HR_SCALING_CYCLE_STARTED,
@@ -484,13 +488,13 @@ class ScalingService:
                 except MemoryError, RecursionError:
                     raise
                 except Exception as exc:
-                    logger.error(
+                    log_exception_redacted(
+                        logger,
                         HR_SCALING_EXECUTION_FAILED,
+                        exc,
                         action="guard_record_failed",
                         guard=str(inner.name),
                         decision_id=str(decision.id),
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
                     )
 
     async def _release_guard_reservations(
@@ -505,13 +509,13 @@ class ScalingService:
                 except MemoryError, RecursionError:
                     raise
                 except Exception as exc:
-                    logger.error(
+                    log_exception_redacted(
+                        logger,
                         HR_SCALING_EXECUTION_FAILED,
+                        exc,
                         action="guard_release_failed",
                         guard=str(inner.name),
                         decision_id=str(decision.id),
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
                     )
 
     def record_action(self, record: ScalingActionRecord) -> None:

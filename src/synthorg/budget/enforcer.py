@@ -34,7 +34,11 @@ from synthorg.budget.quota import (
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.budget import (
     BUDGET_BASELINE_ERROR,
@@ -211,11 +215,8 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
-                BUDGET_UTILIZATION_ERROR,
-                reason="falling_back_to_none",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, BUDGET_UTILIZATION_ERROR, exc, reason="falling_back_to_none"
             )
             return None
         else:
@@ -274,12 +275,12 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 BUDGET_PREFLIGHT_ERROR,
+                exc,
                 agent_id=agent_id,
                 reason="falling_back_to_allow_execution",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return PreFlightResult()
 
@@ -633,12 +634,12 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         except MemoryError, RecursionError:  # builtin MemoryError (OOM)
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 BUDGET_RESOLVE_MODEL_ERROR,
+                exc,
                 agent_id=str(identity.id),
                 reason="cost_tracker_query_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return identity
 
@@ -753,12 +754,12 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 BUDGET_BASELINE_ERROR,
+                exc,
                 agent_id=agent_id,
                 reason="falling_back_to_zero_baselines",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return 0.0, 0.0
 
@@ -803,12 +804,12 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     error_event,
+                    exc,
                     project_id=project_id,
                     reason="project_cost_aggregate_query_failed",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
             else:
                 raw = aggregate.total_cost if aggregate else 0.0
@@ -828,12 +829,12 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 error_event,
+                exc,
                 project_id=project_id,
                 reason="project_cost_query_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return None
         else:

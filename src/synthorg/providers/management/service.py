@@ -12,7 +12,11 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.provider import (
     PROVIDER_ALREADY_EXISTS,
     PROVIDER_CONNECTION_TESTED,
@@ -499,13 +503,13 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 PROVIDER_CONNECTION_TESTED,
+                exc,
                 provider=name,
                 model=model_id,
                 success=False,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             return TestConnectionResponse(
                 success=False,

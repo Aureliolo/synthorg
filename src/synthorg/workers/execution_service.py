@@ -43,7 +43,11 @@ from synthorg.core.enums import TaskStatus
 from synthorg.core.task import (
     Task,  # noqa: TC001 -- runtime Protocol/return-type annotation
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.background_tasks import BackgroundTaskRegistry
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_NO_PARKED_CONTEXT,
@@ -390,13 +394,13 @@ class AgentEngineExecutionService:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 WORKERS_EXECUTION_SERVICE_FAILED,
+                exc,
                 task_id=task_id,
                 project_id=project_id,
                 reason="project_environment_provision_failed",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         return ActiveSandboxEnvironment(
@@ -488,12 +492,12 @@ class AgentEngineExecutionService:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 WORKERS_EXECUTION_SERVICE_FAILED,
+                exc,
                 task_id=task_id,
                 agent_id=str(identity.id),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         finally:

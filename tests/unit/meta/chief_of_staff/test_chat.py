@@ -169,6 +169,28 @@ class TestExplainProposal:
         with pytest.raises(RuntimeError, match="LLM unavailable"):
             await chat.explain_proposal(_proposal(), _snap())
 
+    @pytest.mark.parametrize("exc_cls", [MemoryError, RecursionError])
+    async def test_provider_catastrophic_error_propagates(
+        self,
+        exc_cls: type[BaseException],
+    ) -> None:
+        """Catastrophic interpreter errors escape the broad ``Exception`` net.
+
+        The chat path catches ``Exception`` to emit a redacted ERROR log
+        before re-raising; ``MemoryError`` / ``RecursionError`` must
+        bypass that handler so they propagate without log-handler work
+        (which may itself allocate or recurse) running first.
+        """
+        provider = mock_of[CompletionProvider](
+            complete=AsyncMock(side_effect=exc_cls),
+        )
+        chat = ChiefOfStaffChat(
+            provider=provider,
+            config=ChiefOfStaffConfig(),
+        )
+        with pytest.raises(exc_cls):
+            await chat.explain_proposal(_proposal(), _snap())
+
 
 class TestExplainAlert:
     """ChiefOfStaffChat.explain_alert tests."""

@@ -16,7 +16,7 @@ from synthorg.meta.models import (
     ImprovementProposal,
     ProposalAltitude,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
     META_APPLY_FAILED,
@@ -246,9 +246,11 @@ class ArchitectureApplier:
             return ApplyResult(success=True, changes_applied=count)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            log_exception_redacted(
+                logger,
                 META_APPLY_FAILED,
+                exc,
                 altitude="architecture",
                 proposal_id=str(proposal.id),
             )

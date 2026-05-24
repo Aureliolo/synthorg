@@ -16,7 +16,11 @@ import asyncio
 from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
 from synthorg.core.clock import SystemClock
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.persistence import (
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP,
     PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
@@ -140,16 +144,17 @@ async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
         # ``logger.exception`` would attach a traceback that could leak
         # secret-bearing frame state into structured logs; use
         # ``logger.error`` with ``safe_error_description`` instead.
-        logger.error(
+        log_exception_redacted(
+            logger,
             PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
+            exc,
             message=(
-                "Failed to resolve integrations.webhook_receipt_retention_days;"
-                f" falling back to {fallback} days."
-                " If an operator set the value to 0 (disable sweep) it will"
-                " NOT take effect until the settings backend recovers."
+                "Failed to resolve "
+                "integrations.webhook_receipt_retention_days; falling back "
+                f"to {fallback} days. If an operator set the value to 0 "
+                "(disable sweep) it will NOT take effect until the settings "
+                "backend recovers."
             ),
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
             fallback_days=fallback,
         )
         return fallback

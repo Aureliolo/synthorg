@@ -31,7 +31,11 @@ from synthorg.communication.meeting.protocol import (  # noqa: TC001
     MeetingProtocol,
     TaskCreator,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.meeting import (
     MEETING_ACTION_ITEM_EXTRACTED,
     MEETING_BUDGET_EXHAUSTED,
@@ -526,13 +530,13 @@ class MeetingOrchestrator:
                 raise
             except Exception as exc:
                 failures += 1
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     MEETING_TASK_CREATION_FAILED,
+                    exc,
                     meeting_id=meeting_id,
                     description=action_item.description,
                     assignee=action_item.assignee_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
         if failures:
             logger.warning(

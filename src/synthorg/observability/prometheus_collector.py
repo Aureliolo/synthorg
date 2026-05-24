@@ -24,7 +24,7 @@ from prometheus_client import Counter as PromCounter
 
 from synthorg import __version__
 from synthorg.budget.billing import billing_period_start
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.metrics import (
     METRICS_COLLECTOR_INITIALIZED,
     METRICS_SCRAPE_COMPLETED,
@@ -148,17 +148,17 @@ async def _fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
         return frozenset(registry.list_tools())
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         # ``_fetch_tool_names`` runs inside a ``TaskGroup`` alongside
         # the workflow / department fetchers; an uncaught exception
         # here would cancel its siblings via the structured-concurrency
         # contract and lose their snapshot updates too. Catch broadly,
-        # log via ``logger.exception`` so the traceback survives, and
-        # fall back to ``None`` so the merge step preserves the prior
-        # tool-name allowlist.
-        logger.exception(
-            METRICS_SCRAPE_FAILED,
-            component="tool_registry",
+        # emit a redacted structured error (the helper logs WITHOUT
+        # attaching the traceback so frame-locals stay out of the
+        # event), and fall back to ``None`` so the merge step preserves
+        # the prior tool-name allowlist.
+        log_exception_redacted(
+            logger, METRICS_SCRAPE_FAILED, exc, component="tool_registry"
         )
         return None
 

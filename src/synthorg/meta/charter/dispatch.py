@@ -40,7 +40,11 @@ from synthorg.meta.errors import (
     CharterNotFoundError,
     CharterStateInconsistentError,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.charter import (
     CHARTER_APPROVED,
     CHARTER_DISPATCH_FAILED,
@@ -205,11 +209,8 @@ class CharterDispatcher:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
-                CHARTER_DISPATCH_FAILED,
-                charter_id=charter_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, CHARTER_DISPATCH_FAILED, exc, charter_id=charter_id
             )
             raise
 

@@ -5,6 +5,7 @@ credential material embedded inside exception ``str(exc)`` output.
 """
 
 import json
+from typing import Any
 
 import httpx
 import pytest
@@ -14,6 +15,7 @@ from hypothesis import strategies as st
 
 from synthorg.observability.redaction import (
     MAX_SCRUBBED_LENGTH,
+    log_exception_redacted,
     safe_error_description,
     scrub_secret_tokens,
 )
@@ -354,3 +356,157 @@ class TestScrubIdempotent:
         # possible replacement. 32 is a conservative upper bound.
         out = scrub_secret_tokens(text)
         assert len(out) <= len(text) + 32 * (len(text) // 16 + 1)
+
+
+class _CapturingLogger:
+    """Minimal ``_ErrorLogger``-shaped double for ``log_exception_redacted``.
+
+    Records the single ``error()`` call so tests can assert the event
+    name, the ``error_type`` / ``error`` redaction pair, and any
+    extra structured kwargs the caller passed through. Structural
+    typing via the Protocol means we do not need to subclass anything.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def error(self, event: str | None = None, *args: Any, **kwargs: Any) -> None:
+        # ``*args`` is part of the structural surface but unused by
+        # ``log_exception_redacted``; record kwargs only. The Any-typed
+        # ``**kwargs`` mirrors the production ``_ErrorLogger`` Protocol
+        # (structlog's ``BoundLogger.error`` is Any-typed); narrowing
+        # to ``object`` would force every ``"x" in kwargs["error"]``
+        # assertion below to cast first even though the runtime values
+        # the redaction helper writes are always strings.
+        del args
+        assert isinstance(event, str)
+        self.calls.append((event, dict(kwargs)))
+
+
+@pytest.mark.unit
+class TestLogExceptionRedacted:
+    """Direct unit tests for the ``log_exception_redacted`` helper."""
+
+    def test_emits_error_with_redaction_pair(self) -> None:
+        """Happy path: ``error()`` is called with event + redaction pair."""
+        logger = _CapturingLogger()
+        exc = ValueError("client_secret=cs-leak-123 in message")
+
+        log_exception_redacted(logger, "TEST_EVENT", exc)
+
+        assert len(logger.calls) == 1
+        event, kwargs = logger.calls[0]
+        assert event == "TEST_EVENT"
+        assert kwargs["error_type"] == "ValueError"
+        # The helper routes through ``safe_error_description`` so the
+        # credential substring must NOT survive into the log record.
+        assert "cs-leak-123" not in kwargs["error"]
+        assert "client_secret" not in kwargs["error"] or "***" in kwargs["error"]
+
+    def test_passes_through_extra_kwargs(self) -> None:
+        """Caller-supplied structured kwargs are forwarded verbatim."""
+        logger = _CapturingLogger()
+        exc = RuntimeError("boom")
+
+        log_exception_redacted(
+            logger,
+            "TEST_EVENT",
+            exc,
+            agent_id="a-1",
+            task_id=42,
+        )
+
+        _, kwargs = logger.calls[0]
+        assert kwargs["agent_id"] == "a-1"
+        assert kwargs["task_id"] == 42
+        # Redaction pair still present alongside the extras.
+        assert kwargs["error_type"] == "RuntimeError"
+        # ``safe_error_description`` prepends the exception class name,
+        # so the rendered string is ``"<ClassName>: <msg>"``.
+        assert kwargs["error"] == "RuntimeError: boom"
+
+    def test_rejects_caller_error_type_kwarg(self) -> None:
+        """``error_type=`` in kwargs raises TypeError -- helper owns this field."""
+        logger = _CapturingLogger()
+        exc = ValueError("v")
+
+        with pytest.raises(TypeError, match="error_type"):
+            log_exception_redacted(logger, "E", exc, error_type="OverrideAttempt")
+        assert logger.calls == [], "no log emitted when the call is rejected"
+
+    def test_rejects_caller_error_kwarg(self) -> None:
+        """``error=`` in kwargs raises TypeError -- helper owns this field."""
+        logger = _CapturingLogger()
+        exc = ValueError("v")
+
+        with pytest.raises(TypeError, match="error_type"):
+            log_exception_redacted(logger, "E", exc, error="manual override")
+        assert logger.calls == []
+
+    @pytest.mark.parametrize("exc_info_value", [True, False, None, 1, "x"])
+    def test_rejects_caller_exc_info_kwarg(
+        self,
+        exc_info_value: object,
+    ) -> None:
+        """``exc_info=`` in kwargs raises TypeError, regardless of truthiness.
+
+        Even ``exc_info=False`` is rejected: the helper deliberately does
+        not pass ``exc_info`` to ``logger.error``, so accepting a False
+        value would mislead callers into thinking the kwarg is supported
+        and break the guarantee the moment the value flips to truthy.
+        Both `True` and `False` must raise; `None` and odd types too.
+        """
+        logger = _CapturingLogger()
+        exc = ValueError("v")
+
+        with pytest.raises(TypeError, match="exc_info"):
+            log_exception_redacted(logger, "E", exc, exc_info=exc_info_value)
+        assert logger.calls == [], "no log emitted when the call is rejected"
+
+    def test_event_and_exc_are_positional_only(self) -> None:
+        """Signature pins the first three params as positional-only."""
+        logger = _CapturingLogger()
+        exc = ValueError("v")
+
+        with pytest.raises(TypeError):
+            # ``event`` is positional-only; passing as keyword must
+            # raise TypeError at call time so callers cannot shadow
+            # the param with an extra structured field of the same name.
+            log_exception_redacted(logger, event="E", exc=exc)  # type: ignore[call-arg]
+
+    def test_chained_exception_uses_outer_type(self) -> None:
+        """``raise X from Y`` sees ``type(exc).__name__`` as the OUTER class."""
+        logger = _CapturingLogger()
+        # Build the chained exception out-of-line so ruff TRY301 /
+        # EM101 don't flag a string-literal raise nested in a try
+        # block. Functional shape is identical to the natural
+        # ``raise A from B`` form used in production callers.
+        inner_exc = ValueError("inner-msg")
+        outer_exc = RuntimeError("outer-msg")
+        outer_exc.__cause__ = inner_exc
+
+        log_exception_redacted(logger, "CHAINED", outer_exc)
+
+        _, kwargs = logger.calls[0]
+        assert kwargs["error_type"] == "RuntimeError"
+        # ``safe_error_description`` only stringifies ``exc`` (not
+        # ``exc.__cause__``), so the inner message must not appear.
+        assert "inner-msg" not in kwargs["error"]
+
+    def test_redacts_credential_in_exception_message(self) -> None:
+        """End-to-end: a credential embedded in ``str(exc)`` is scrubbed."""
+        logger = _CapturingLogger()
+        # An ``httpx``-style error message that embeds a secret in a
+        # URL is the canonical leak shape this helper exists to
+        # prevent: ``str(exc)`` carries the URL verbatim, including
+        # the credential substring, into any downstream log sink that
+        # serialises the kwargs.
+        exc = ValueError(
+            "POST /token failed: client_secret=cs-supersecret-789 in body",
+        )
+
+        log_exception_redacted(logger, "OAUTH_FAILED", exc)
+
+        _, kwargs = logger.calls[0]
+        assert "cs-supersecret-789" not in kwargs["error"]
+        assert kwargs["error_type"] == "ValueError"

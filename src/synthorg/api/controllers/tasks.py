@@ -39,7 +39,11 @@ from synthorg.engine.pipeline.entry.task_board_adapter import (
 )
 from synthorg.engine.pipeline.errors import WorkIntakeRejectedError
 from synthorg.engine.pipeline.models import WorkSource
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.api import (
     API_AUTH_FALLBACK,
@@ -106,13 +110,13 @@ async def process_task_board_pipeline(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             API_TASK_BOARD_PIPELINE_FAILED,
+            exc,
             correlation_id=filing.correlation_id,
             project=filing.project,
             outcome="pipeline_error",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
 
 

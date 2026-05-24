@@ -15,7 +15,11 @@ from pydantic import ValidationError as PydanticValidationError
 from referencing import Registry as JsonSchemaRegistry
 from referencing.exceptions import NoSuchResource
 
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.tool import (
     TOOL_INVOKE_DEEPCOPY_ERROR,
     TOOL_INVOKE_NON_RECOVERABLE,
@@ -117,12 +121,12 @@ class ToolInvokerValidationMixin:
             )
             return self._param_error_result(tool_call, detail)
         except (MemoryError, RecursionError) as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 TOOL_INVOKE_NON_RECOVERABLE,
+                exc,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         except Exception as exc:
@@ -150,12 +154,12 @@ class ToolInvokerValidationMixin:
         except jsonschema.ValidationError as exc:
             return self._param_error_result(tool_call, exc.message)
         except (MemoryError, RecursionError) as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 TOOL_INVOKE_NON_RECOVERABLE,
+                exc,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         except Exception as exc:
@@ -238,12 +242,12 @@ class ToolInvokerValidationMixin:
         try:
             return copy.deepcopy(tool_call.arguments)
         except (MemoryError, RecursionError) as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 TOOL_INVOKE_NON_RECOVERABLE,
+                exc,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         except Exception as exc:

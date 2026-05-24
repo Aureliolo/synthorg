@@ -11,7 +11,11 @@ from pydantic import ValidationError
 
 from synthorg.backup.errors import RetentionError
 from synthorg.backup.models import BackupManifest, BackupTrigger
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.backup import (
     BACKUP_MANIFEST_INVALID,
     BACKUP_RETENTION_FAILED,
@@ -58,11 +62,7 @@ class RetentionManager:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
-                BACKUP_RETENTION_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+            log_exception_redacted(logger, BACKUP_RETENTION_FAILED, exc)
             msg = f"Failed to load manifests: {safe_error_description(exc)}"
             raise RetentionError(msg) from exc
 
@@ -142,11 +142,8 @@ class RetentionManager:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
-                    BACKUP_RETENTION_FAILED,
-                    backup_id=manifest.backup_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                log_exception_redacted(
+                    logger, BACKUP_RETENTION_FAILED, exc, backup_id=manifest.backup_id
                 )
         return tuple(pruned)
 

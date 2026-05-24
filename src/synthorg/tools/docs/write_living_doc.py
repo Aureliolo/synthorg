@@ -14,7 +14,11 @@ from synthorg.core.enums import (
     ActionType,
     ToolCategory,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.docs import (
     DOC_WRITE_FAILED,
     DOC_WRITTEN,
@@ -107,11 +111,8 @@ class WriteLivingDocTool(BaseTool):
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
-                DOC_WRITE_FAILED,
-                project_id=self._project_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, DOC_WRITE_FAILED, exc, project_id=self._project_id
             )
             return ToolExecutionResult(
                 content=(

@@ -27,7 +27,11 @@ from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_SERVICE_AUTO_WIRED,
@@ -197,11 +201,8 @@ def _wire_cost_tracker(effective_config: RootConfig) -> CostTracker:
     try:
         tracker = CostTracker(budget_config=effective_config.budget)
     except Exception as exc:
-        logger.error(
-            API_APP_STARTUP,
-            note="Failed to auto-wire cost tracker",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+        log_exception_redacted(
+            logger, API_APP_STARTUP, exc, note="Failed to auto-wire cost tracker"
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="cost_tracker")
@@ -249,11 +250,11 @@ def _wire_provider_registry(
             cassette=_resolve_cassette_config(),
         )
     except Exception as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             API_APP_STARTUP,
+            exc,
             note="Failed to build provider registry from config",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="provider_registry")
@@ -299,11 +300,8 @@ def _wire_task_engine(
             message_bus=message_bus,
         )
     except Exception as exc:
-        logger.error(
-            API_APP_STARTUP,
-            note="Failed to auto-wire task engine",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+        log_exception_redacted(
+            logger, API_APP_STARTUP, exc, note="Failed to auto-wire task engine"
         )
         raise
 
@@ -442,11 +440,8 @@ def _auto_wire_message_bus(
             )
         bus = build_message_bus(bus_config)
     except Exception as exc:
-        logger.error(
-            API_APP_STARTUP,
-            note="Failed to auto-wire message bus",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+        log_exception_redacted(
+            logger, API_APP_STARTUP, exc, note="Failed to auto-wire message bus"
         )
         raise
     logger.info(
@@ -576,11 +571,8 @@ def auto_wire_meetings(  # noqa: PLR0913 -- meeting wiring needs the full dep se
             ),
         )
     except Exception as exc:
-        logger.error(
-            API_APP_STARTUP,
-            note="Failed to auto-wire ceremony scheduler",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+        log_exception_redacted(
+            logger, API_APP_STARTUP, exc, note="Failed to auto-wire ceremony scheduler"
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="ceremony_scheduler")
@@ -709,11 +701,11 @@ def _wire_meeting_orchestrator(
             agent_caller=agent_caller,
         )
     except Exception as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             API_APP_STARTUP,
+            exc,
             note="Failed to auto-wire meeting orchestrator",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="meeting_orchestrator")
@@ -783,11 +775,8 @@ def _wire_meeting_scheduler(
             ),
         )
     except Exception as exc:
-        logger.error(
-            API_APP_STARTUP,
-            note="Failed to auto-wire meeting scheduler",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+        log_exception_redacted(
+            logger, API_APP_STARTUP, exc, note="Failed to auto-wire meeting scheduler"
         )
         raise
     logger.info(API_SERVICE_AUTO_WIRED, service="meeting_scheduler")
@@ -840,13 +829,13 @@ async def auto_wire_settings(  # noqa: PLR0913
             message_bus=message_bus,
         )
     except Exception as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             API_APP_STARTUP,
+            exc,
             note=(
-                "Failed to create SettingsService -- check encryption key configuration"
+                "Failed to create SettingsService; check encryption key configuration"
             ),
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         raise
 
@@ -863,11 +852,8 @@ async def auto_wire_settings(  # noqa: PLR0913
             approval_timeout_scheduler,
         )
     except Exception as exc:
-        logger.error(
-            API_APP_STARTUP,
-            note="Failed to build settings dispatcher",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+        log_exception_redacted(
+            logger, API_APP_STARTUP, exc, note="Failed to build settings dispatcher"
         )
         raise
 
@@ -875,11 +861,11 @@ async def auto_wire_settings(  # noqa: PLR0913
         try:
             await dispatcher.start()
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 API_APP_STARTUP,
+                exc,
                 note="Failed to start auto-wired settings dispatcher",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         logger.info(API_SERVICE_AUTO_WIRED, service="settings_dispatcher")

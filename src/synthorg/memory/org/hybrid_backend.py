@@ -21,7 +21,7 @@ from synthorg.memory.org.models import (
     OrgFactWriteRequest,
     OrgMemoryQuery,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.org_memory import (
     ORG_MEMORY_BACKEND_CONNECTED,
     ORG_MEMORY_BACKEND_DISCONNECTED,
@@ -149,12 +149,12 @@ class HybridPromptRetrievalBackend:
         try:
             dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)
         except OrgMemoryQueryError as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 ORG_MEMORY_QUERY_FAILED,
+                exc,
                 operation="list_policies",
                 category=OrgFactCategory.CORE_POLICY.value,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         facts = static + dynamic
@@ -173,12 +173,12 @@ class HybridPromptRetrievalBackend:
         try:
             dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)
         except OrgMemoryQueryError as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 ORG_MEMORY_QUERY_FAILED,
+                exc,
                 operation="count_policies",
                 category=OrgFactCategory.CORE_POLICY.value,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         return len(self._core_policies) + len(dynamic)
@@ -211,8 +211,8 @@ class HybridPromptRetrievalBackend:
                 text=query.context,
                 limit=query.limit,
             )
-        except OrgMemoryQueryError:
-            logger.exception(ORG_MEMORY_QUERY_FAILED)
+        except OrgMemoryQueryError as exc:
+            log_exception_redacted(logger, ORG_MEMORY_QUERY_FAILED, exc)
             raise
         else:
             logger.info(ORG_MEMORY_QUERY_COMPLETE, count=len(results))
@@ -265,10 +265,9 @@ class HybridPromptRetrievalBackend:
 
         try:
             await self._store.save(fact)
-        except OrgMemoryWriteError:
-            logger.exception(
-                ORG_MEMORY_WRITE_FAILED,
-                fact_id=fact_id,
+        except OrgMemoryWriteError as exc:
+            log_exception_redacted(
+                logger, ORG_MEMORY_WRITE_FAILED, exc, fact_id=fact_id
             )
             raise
         else:

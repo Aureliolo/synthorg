@@ -33,7 +33,11 @@ from synthorg.engine.loop_protocol import make_budget_checker
 from synthorg.engine.loop_selector import AutoLoopConfig  # noqa: TC001
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.engine.run_result import AgentRunResult  # noqa: TC001
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.correlation import correlation_scope
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_LOOP_WIRING_WARNING,
@@ -534,12 +538,14 @@ class AgentEngine(
                     provider=provider,
                     project_budget=_project_budget,
                 )
-            except MemoryError, RecursionError:
-                logger.exception(
+            except (MemoryError, RecursionError) as exc:
+                log_exception_redacted(
+                    logger,
                     EXECUTION_ENGINE_ERROR,
+                    exc,
                     agent_id=agent_id,
                     task_id=task_id,
-                    error="non-recoverable error in run()",
+                    reason="non-recoverable error in run()",
                 )
                 raise
             except ProjectNotFoundError, ProjectAgentNotMemberError:

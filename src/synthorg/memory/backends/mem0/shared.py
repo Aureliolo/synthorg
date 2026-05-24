@@ -28,7 +28,11 @@ from synthorg.memory.errors import (
     MemoryRetrievalError,
     MemoryStoreError,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.memory import (
     MEMORY_BACKEND_AGENT_ID_REJECTED,
     MEMORY_BACKEND_SYSTEM_ERROR,
@@ -153,11 +157,8 @@ async def publish_shared(
         )
         raise
     except (builtins.MemoryError, RecursionError) as exc:
-        logger.error(
-            MEMORY_BACKEND_SYSTEM_ERROR,
-            operation="publish",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+        log_exception_redacted(
+            logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="publish"
         )
         raise
     except Exception as exc:
@@ -251,11 +252,8 @@ async def search_shared_memories(
         )
         raise
     except (builtins.MemoryError, RecursionError) as exc:
-        logger.error(
-            MEMORY_BACKEND_SYSTEM_ERROR,
-            operation="search_shared",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+        log_exception_redacted(
+            logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="search_shared"
         )
         raise
     except Exception as exc:
@@ -317,11 +315,8 @@ async def retract_shared(
         # without duplicate logging.
         raise
     except (builtins.MemoryError, RecursionError) as exc:
-        logger.error(
-            MEMORY_BACKEND_SYSTEM_ERROR,
-            operation="retract",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+        log_exception_redacted(
+            logger, MEMORY_BACKEND_SYSTEM_ERROR, exc, operation="retract"
         )
         raise
     except Exception as exc:

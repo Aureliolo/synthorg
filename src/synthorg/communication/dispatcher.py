@@ -20,7 +20,11 @@ from synthorg.communication.handler import (
 from synthorg.communication.message import (
     Message,  # noqa: TC001 -- required at runtime by Pydantic
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.communication import (
     COMM_DISPATCH_COMPLETE,
     COMM_DISPATCH_HANDLER_ERROR,
@@ -251,18 +255,19 @@ class MessageDispatcher:
             # errors[index] -- they must propagate through the wrapping
             # TaskGroup so sibling handlers cancel and the process can
             # surface the failure rather than silently degrading. Log
-            # at ERROR with exc_info=True before re-raising so the
-            # traceback is captured for diagnostics, per the
-            # carve-out for catastrophic interpreter state in
-            # CLAUDE.md ``## Logging``.
-            logger.error(
+            # via ``log_exception_redacted`` (no traceback attachment,
+            # so frame-locals stay out of the event) before re-raising,
+            # per the redacted-error logging discipline in CLAUDE.md
+            # ``## Logging`` -- never ``logger.exception`` /
+            # ``exc_info=True`` / ``span.record_exception``.
+            log_exception_redacted(
+                logger,
                 COMM_DISPATCH_HANDLER_ERROR,
+                exc,
                 agent_id=self._agent_id,
                 message_id=str(message.id),
                 handler_id=registration.handler_id,
                 handler_name=registration.name,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
         except Exception as exc:

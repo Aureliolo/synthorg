@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Final, Literal, Self
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- Pydantic runtime
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.hr import (
     HR_AGENT_HEALTH_COMPUTED,
     HR_AGENT_HEALTH_FAILED,
@@ -167,12 +167,12 @@ class AgentHealthService:
             snapshot = await self._performance_tracker.get_snapshot(agent_id)
             report = _report_from_snapshot(agent_id, snapshot)
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 HR_AGENT_HEALTH_FAILED,
+                exc,
                 agent_id=agent_id,
-                stage=("snapshot" if "snapshot" not in locals() else "report"),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+                stage="snapshot" if "snapshot" not in locals() else "report",
             )
             raise
         logger.info(

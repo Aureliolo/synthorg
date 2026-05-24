@@ -12,7 +12,11 @@ from synthorg.api.auth.secret import resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import ensure_system_user
 from synthorg.backup.models import BackupTrigger
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.api import API_APP_SHUTDOWN, API_APP_STARTUP
 from synthorg.persistence.auth_protocol import (
     LockoutRepository,  # noqa: TC001
@@ -141,12 +145,12 @@ async def _try_stop(
         # logger.error rather than logger.exception so TimeoutError
         # frame-locals never serialize the awaited coroutine's state
         # (which may include secret-bearing shutdown objects).
-        logger.error(
+        log_exception_redacted(
+            logger,
             API_APP_SHUTDOWN_TIMEOUT,
+            exc,
             service=service,
             timeout_seconds=timeout,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
             context=error_msg,
         )
         return False
@@ -321,11 +325,11 @@ async def _init_persistence(
             # in-memory stub does not survive into a real boot. If the
             # wire-up fails, the app would serve traffic with no MCP
             # installations repo wired at all -- fail closed instead.
-            logger.error(
+            log_exception_redacted(
+                logger,
                 API_APP_STARTUP,
+                exc,
                 note="Failed to wire persistence-backed MCP installations repo",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
 
@@ -390,12 +394,12 @@ async def _rebind_connection_catalog(
     except MemoryError, RecursionError:
         raise
     except Exception as exc:
-        logger.error(
+        log_exception_redacted(
+            logger,
             API_APP_STARTUP,
+            exc,
             note="Failed to re-bind ConnectionCatalog to persistence-backed repo",
             backend=type(persistence).__name__,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         raise
     logger.info(
@@ -536,11 +540,11 @@ async def _safe_startup(  # noqa: PLR0913
                 except MemoryError, RecursionError:
                     raise
                 except Exception as exc:
-                    logger.error(
+                    log_exception_redacted(
+                        logger,
                         API_APP_STARTUP,
+                        exc,
                         note="Lockout store initialization failed",
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
                     )
 
             if not app_state.has_refresh_store:
@@ -555,11 +559,11 @@ async def _safe_startup(  # noqa: PLR0913
                 except MemoryError, RecursionError:
                     raise
                 except Exception as exc:
-                    logger.error(
+                    log_exception_redacted(
+                        logger,
                         API_APP_STARTUP,
+                        exc,
                         note="Refresh-token store initialization failed",
-                        error_type=type(exc).__name__,
-                        error=safe_error_description(exc),
                     )
 
         if message_bus is not None:
@@ -739,10 +743,10 @@ async def _safe_startup(  # noqa: PLR0913
                 # instance rule applies: log without the stack trace
                 # (the underlying cause was already logged at stop
                 # time) and propagate so startup fails closed.
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     API_APP_STARTUP,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
+                    exc,
                     note="Approval timeout scheduler is unrestartable",
                 )
                 raise

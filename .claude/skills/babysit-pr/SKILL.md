@@ -1,6 +1,6 @@
 ---
 description: "Watch a PR after creation. Polls CI + external reviewer state + open code-scanning/Dependabot/secret-scanning alerts, auto-fixes valid feedback (one push per round), dismisses justified security alerts via API with reason, handles CodeRabbit rate-limit by reposting `@coderabbitai review`, runs until convergence or merged. No local-agent invocation, no approval gate."
-argument-hint: "[PR# or blank] [cadence default 15m] [max-rounds default 24]"
+argument-hint: "[PR# or blank] [cadence default 5m] [max-rounds default 24]"
 allowed-tools:
   - Bash
   - Read
@@ -41,7 +41,7 @@ Self-contained watchdog for the post-PR-creation phase. Sits between you and a P
      "owner_repo": "OWNER/REPO",
      "self_login": "<gh api user --jq .login, cached>",
      "round": 0,
-     "cadence_seconds": 900,
+     "cadence_seconds": 300,
      "max_rounds": 24,
      "last_head_sha": "",
      "last_review_id": 0,
@@ -62,7 +62,7 @@ Self-contained watchdog for the post-PR-creation phase. Sits between you and a P
 
    `self_login` is cached on the first invocation so subsequent ticks don't re-call `gh api user`. `last_ci_state` is the cached overall CI verdict (e.g. `"success"`, `"failure"`, `"pending"`) used for the Phase 5 `ci_state_change` delta. `scanners_available` starts with all three scanners optimistically true; Phase 1 flips an entry to `false` if the corresponding endpoint returns 404 / 403, and Phase 1 reads the map on subsequent ticks to skip endpoints already proven unavailable on this repo.
 
-5. Apply `$2` / `$3` overrides if given (parse `15m` -> 900, `30m` -> 1800, plain int -> seconds; max-rounds is plain int).
+5. Apply `$2` / `$3` overrides if given (parse `5m` -> 300, `15m` -> 900, `30m` -> 1800, plain int -> seconds; max-rounds is plain int).
 6. Use `Write` (not `cat >`) to create / update the state file. Read it first if it exists (Read tool requirement).
 
 ## Phase 1: fetch current PR state (cheap, parallel)
@@ -214,13 +214,28 @@ Inspect the most recent CodeRabbit-authored item across reviews + issue comments
 | `i'll be back` / `back online` / `try again later` | CodeRabbit deferred review | Ping + sleep |
 | `you've reached your` / `quota` | Quota exhaustion | Ping + sleep |
 
-**Ping action:** post `@coderabbitai review` as an issue comment via the GitHub API:
+**Refill-time parsing (mandatory before deciding ping vs. defer).** CodeRabbit's `Review limit reached` body explicitly states the refill ETA: `Refill in <N> minutes (and <M> seconds)?`. Parse this against the rolling-summary comment's `created_at` (or `updated_at` if the comment was edited after the limit was hit) to compute an absolute `refill_at_iso` in UTC. Regex: `/Refill in (?:(\d+) minutes?(?: and (\d+) seconds?)?|(\d+) seconds?)/i` -- accept either "X minutes [and Y seconds]" or bare "Z seconds". If parsing succeeds:
+
+- `refill_at_iso = comment.updated_at + parsed_duration` (treat the comment timestamp as the moment the limit was reported; updated_at handles edits).
+- `seconds_until_refill = refill_at_iso - now()` (clamp negatives to 0).
+
+Decision table:
+
+| Condition | Action |
+|---|---|
+| `seconds_until_refill > 0` (still inside the rate-limited window) | **Do NOT ping** -- the ping would just be eaten and CodeRabbit re-posts the same limit message. Skip the API call. Schedule wakeup for `max(60, seconds_until_refill + 60)` (60s buffer past refill). Append history `{round, action: "rate_limit_defer", refill_at: refill_at_iso, sleep_seconds: K}`. |
+| `seconds_until_refill <= 0` (refill window has already passed) | Ping `@coderabbitai review` and schedule the default `cadence_seconds`. The ping should now actually trigger a review. |
+| Refill regex did not match (CodeRabbit changed wording, or marker came from a non-rate-limit message like "currently processing" / "I'll be back") | Fall back to the legacy behaviour: ping immediately and schedule `cadence_seconds`. |
+
+The "no ping during rate-limit window" rule matters because pinging inside the window does not stack -- CodeRabbit doesn't queue your `@coderabbitai review` for later, it just rejects it with another rate-limit comment, which then becomes the *new* most-recent marker on the next tick and resets the perceived refill window. The loop ends up looking busy without making progress.
+
+**Ping action (when the decision table says ping):** post `@coderabbitai review` as an issue comment via the GitHub API:
 
 ```bash
 gh api "repos/$OWNER_REPO/issues/$PR/comments" -X POST -f body='@coderabbitai review'
 ```
 
-Then increment `rate_limit_pings`, append history `{round, action: "rate_limit_ping", ping_count: K}`, ScheduleWakeup, exit.
+Then increment `rate_limit_pings`, append history `{round, action: "rate_limit_ping", ping_count: K, refill_at: <iso-or-null>}`, ScheduleWakeup, exit.
 
 **Important:** when scanning issue comments later, exclude any comment authored by `synthorg-repo-bot[bot]` OR with body exactly `@coderabbitai review` so the skill doesn't trip on its own pings.
 
@@ -362,7 +377,7 @@ The sweep mechanic is uniform. The only thing that varies between rounds is the 
 
 Steps:
 
-1. **Re-fetch reviews / inline comments / issue comments / security alerts** with the same queries as Phase 1. Use `body` verbatim (no truncation) and no author allowlist; same hard rules as the initial fetch.
+1. **Re-fetch reviews / inline comments / issue comments / security alerts AND CI rollup** with the same queries as Phase 1. Use `body` verbatim (no truncation) and no author allowlist; same hard rules as the initial fetch. The CI rollup re-fetch (`gh pr view N --json statusCheckRollup`) is non-negotiable: CI state changes asynchronously while Phase 8 / Phase 9 run, and a check that flipped to `FAILURE` after the Phase 1 snapshot MUST be folded into this round, not the next one. Without this, the loop ships a "fix" while a brand-new CI failure on the same head sits unaddressed -- the very thrash this phase exists to prevent.
 
 2. **Diff against the working set** Phase 7 was triaged from. Compute:
 
@@ -370,18 +385,20 @@ Steps:
    - `new_inline_comments_since_phase1` = inline comments with id greater than the Phase 1 maximum.
    - `new_issue_comments_since_phase1` = issue comments with id greater than the Phase 1 maximum, excluding self-pings (the same exclusions Phase 5 uses).
    - `new_security_alerts_since_phase1` = open alerts (per scanner) whose `number` is not in the Phase 1 set.
+   - `new_ci_failures_since_phase1` = `statusCheckRollup` entries whose `conclusion == "FAILURE"` (or `CANCELLED` / `TIMED_OUT` / `ACTION_REQUIRED`) AND whose `(name, conclusion)` tuple is not in the Phase 1 set. A check that was `IN_PROGRESS` at Phase 1 and is now `FAILURE` counts as new. A check that was `FAILURE` at Phase 1 and is still `FAILURE` does NOT recount (it was already triaged in Phase 6).
+   - `flipped_ci_recoveries_since_phase1` = checks that were `FAILURE` at Phase 1 and are now `SUCCESS` / `NEUTRAL` / `SKIPPED`. These are NOT new findings, but log them in the sweep entry as `recovered: [name, ...]` so the audit trail captures the transition (useful when a fix turns out to have resolved a flake transitively).
 
    Self-authored items (the cached `state.self_login` from Phase 0) and items the loop posted itself (e.g. rate-limit pings) are excluded the same way Phase 5 / Phase 6 exclude them. Bot items are NOT excluded -- bots are first-class reviewers.
 
 3. **Author roster verification.** Build a set of `(author_login, item_type)` tuples across the re-fetched data. Print this set as a one-line summary in the chat output so the operator can see which authors were considered before the push lands (e.g. `pre-push roster: [(<bot-A>, inline), (<bot-B>, review), (<human-X>, review), ...]`; do not hardcode names). If any author appears that was NOT in the Phase 1 roster, that's a signal new feedback arrived; treat it as new findings even if no specific item id grew (e.g. a reviewer dismissed and resubmitted).
 
-4. **If anything new is in scope:** loop back to Phase 7 (triage) with the additional items folded into the working set, then Phase 8 (fix), then Phase 9 (verify), then re-enter Phase 9b. Do NOT advance to Phase 10 with newly-arrived feedback unaddressed -- that's the exact failure mode this phase exists to prevent.
+4. **If anything new is in scope** (any of `new_reviews_since_phase1`, `new_inline_comments_since_phase1`, `new_issue_comments_since_phase1`, `new_security_alerts_since_phase1`, or `new_ci_failures_since_phase1` is non-empty)**:** loop back to Phase 6 (collect actionable feedback) with the additional items folded into the working set -- not Phase 7 directly, because new CI failures still need their `--log-failed` output pulled by the Phase 6 collector before triage. Then Phase 7 (triage), Phase 8 (fix), Phase 9 (verify), then re-enter Phase 9b. Do NOT advance to Phase 10 with newly-arrived feedback OR a newly-failed CI check unaddressed -- that's the exact failure mode this phase exists to prevent.
 
-5. **If nothing new arrived:** proceed to Phase 10. Append history `{round, action: "pre_push_sweep_clean", checked_at: <ISO-now>, authors: [...]}` so the audit trail records that the sweep ran.
+5. **If nothing new arrived:** proceed to Phase 10. Append history `{round, action: "pre_push_sweep_clean", checked_at: <ISO-now>, authors: [...], ci_recovered: [...]}` so the audit trail records that the sweep ran and any opportunistic CI recoveries.
 
-6. **Iteration cap.** If Phase 9b loops more than 3 times in a single round (i.e. every fix attempt races a new comment), stop and `AskUserQuestion`: "Pre-push sweep has loop-bounced 3 times on PR #N; reviewer is posting faster than fixes ship. Push current batch / wait / pause loop?" The user picks. This prevents pathological live-review situations from blocking the loop indefinitely.
+6. **Iteration cap.** If Phase 9b loops more than 3 times in a single round (i.e. every fix attempt races a new comment or CI failure), stop and `AskUserQuestion`: "Pre-push sweep has loop-bounced 3 times on PR #N; reviewer / CI is moving faster than fixes ship. Push current batch / wait / pause loop?" The user picks. This prevents pathological live-review situations from blocking the loop indefinitely.
 
-The sweep is read-only -- no API mutations, no commits, no pushes -- so it costs only the API budget of the four `gh api` calls already familiar from Phase 1. Time budget on a quiet PR: under 5 seconds.
+The sweep is read-only -- no API mutations, no commits, no pushes -- so it only consumes the API budget for the same fetch set as Phase 1 (reviews, inline comments, issue comments, both code-scanning refs, the dependency-graph compare endpoint, secret-scanning, plus one `gh pr view` for the CI rollup). Time budget on a quiet PR: under 5 seconds.
 
 ## Phase 10: commit + push
 
@@ -459,7 +476,7 @@ Render the full triage table only when there's something to fix.
 - **Never invoke `/aurelio-review-pr` or any Task agent.** This is a watchdog, not a re-reviewer.
 - **One push per round.** Bundle CI fixes + reviewer fixes + security-alert fixes + alert dismissals into a single commit. Multiple pushes burn CodeRabbit re-review rate limits and fragment threads. (`feedback_push_and_review_discipline.md` §4.)
 - **Check CI and external reviewers TOGETHER every cycle.** Never push a CodeRabbit-only fix and leave CI red, or vice versa. (`feedback_push_and_review_discipline.md` §5.)
-- **Default cadence is 900s (15 min).** CodeRabbit usually re-reviews within 5 to 10 min of a push. (`feedback_push_and_review_discipline.md` §7.)
+- **Default cadence is 300s (5 min).** CodeRabbit usually re-reviews within 5 to 10 min of a push; a 5 min poll catches the typical case on the second tick and CI shard transitions in close to real time. Pass `15m` / `30m` explicitly when you want longer slack (e.g. a known-slow image-pull job blocking the rollup). (`feedback_push_and_review_discipline.md` §7.)
 - **Default push immediately after committing.** No "ready to push?" prompt. (`feedback_push_and_review_discipline.md` §1.)
 
 ### Completeness, the only sanctioned exits

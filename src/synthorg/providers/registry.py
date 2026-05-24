@@ -8,7 +8,11 @@ provider's ``driver`` field to select the appropriate factory.
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.provider import (
     PROVIDER_CASSETTE_DRIVER_WRAPPED,
     PROVIDER_DRIVER_FACTORY_MISSING,
@@ -286,12 +290,12 @@ def _build_driver(
         raise
     except Exception as exc:
         msg = f"Failed to instantiate driver {driver_type!r} for provider {name!r}"
-        logger.error(
+        log_exception_redacted(
+            logger,
             PROVIDER_DRIVER_FACTORY_MISSING,
+            exc,
             provider=name,
             driver=driver_type,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
         )
         raise DriverFactoryNotFoundError(
             msg,

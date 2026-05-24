@@ -229,7 +229,7 @@ repos:
         stages: [pre-commit, pre-push]
 
       - id: no-new-logger-exception-str-exc
-        name: block new logger.exception(..., error=str(exc)) sites
+        name: block logger.exception(...) calls and error=str(exc) sites
         entry: uv
         args: [run, python, scripts/check_logger_exception_str_exc.py]
         language: system

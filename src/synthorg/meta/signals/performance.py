@@ -14,7 +14,7 @@ from synthorg.meta.models import (
     MetricSummary,
     OrgPerformanceSummary,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
@@ -179,10 +179,11 @@ class PerformanceSignalAggregator:
                 avg_quality=avg_quality,
                 windows=len(metrics),
             )
-        except Exception:
-            logger.exception(
-                META_SIGNAL_AGGREGATION_FAILED,
-                domain="performance",
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            log_exception_redacted(
+                logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain="performance"
             )
             return _EMPTY
         else:

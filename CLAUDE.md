@@ -74,7 +74,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 - Event names from `observability.events.<domain>` constants; structured kwargs (`logger.info(EVENT, key=value)`).
 - Error paths log WARNING/ERROR with context before raising; state transitions log INFO via `*_STATUS_TRANSITIONED` AFTER persistence write.
 - Sink pipeline (level + event filtering): `synthorg.log` excludes routine HTTP-request events; `debug.log` pins specific events to exact levels. See [`.claude/skills/analyse-logs/SKILL.md`](.claude/skills/analyse-logs/SKILL.md) for `SINK_EVENT_EXCLUDES` / `SINK_EXACT_LEVELS` when correlating across logs.
-- **Secret-log redaction (SEC-1)**: never `error=str(exc)` or interpolate `{exc}`; use `error_type=type(exc).__name__` + `error=safe_error_description(exc)`. Never `exc_info=True`. OTel: `span.record_exception(exc)` forbidden; use `span.set_attribute("exception.message", safe_error_description(exc))` + `record_exception=False, set_status_on_exception=False`. Enforced by `check_logger_exception_str_exc.py`.
+- **Secret-log redaction (SEC-1)**: never `error=str(exc)` or interpolate `{exc}`; use `error_type=type(exc).__name__` + `error=safe_error_description(exc)`. Never `exc_info=True`. Never `logger.exception(...)` (attaches traceback whose frame-locals serialise in-scope `client_secret` / `refresh_token` / Fernet ciphertext); replace with `except ... as exc: logger.error(EVENT, ..., error_type=type(exc).__name__, error=safe_error_description(exc))`. OTel: `span.record_exception(exc)` forbidden; use `span.set_attribute("exception.message", safe_error_description(exc))` + `record_exception=False, set_status_on_exception=False`. Enforced by `check_logger_exception_str_exc.py`.
 
 ## API startup lifecycle
 

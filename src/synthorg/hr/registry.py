@@ -24,7 +24,11 @@ from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
     AgentNotFoundError,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.hr import (
     HR_AGENT_STATUS_TRANSITIONED,
     HR_REGISTRY_AGENT_REGISTERED,
@@ -766,15 +770,15 @@ class AgentRegistryService:
             except MemoryError, RecursionError:
                 raise
             except Exception as exc:
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED,
+                    exc,
                     agent_id=key,
                     approval_id=approval_id,
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                     note=(
                         "autonomy promotion applied; audit row write "
-                        "failed -- promotion is the source of truth"
+                        "failed; promotion is the source of truth"
                     ),
                 )
         result_id = approval_id if approval_enqueued else None

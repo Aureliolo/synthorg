@@ -26,7 +26,11 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.core.workers_errors import WorkerDeadLetterError
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.workers import (
     WORKERS_DEAD_LETTER_ALREADY_TERMINAL,
     WORKERS_DEAD_LETTER_CONSUMER_STARTED,
@@ -206,12 +210,12 @@ class DeadLetterConsumer:
                 # One unresolved poison claim must not kill the loop and
                 # disable every later dead claim until restart. The
                 # message stays un-acked, so JetStream redelivers it.
-                logger.error(
+                log_exception_redacted(
+                    logger,
                     WORKERS_DEAD_LETTER_FAILED,
+                    exc,
                     task_id=claim.task_id,
                     reason="dead_claim_unresolved",
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
                 )
                 continue
 
@@ -230,11 +234,8 @@ class DeadLetterConsumer:
         except Exception as exc:
             # An unmapped failure means we cannot prove the task was
             # failed; raising loudly beats acking and losing it.
-            logger.error(
-                WORKERS_DEAD_LETTER_FAILED,
-                task_id=claim.task_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, WORKERS_DEAD_LETTER_FAILED, exc, task_id=claim.task_id
             )
             msg = f"Dead-letter handling failed for task {claim.task_id}"
             raise WorkerDeadLetterError(msg) from exc

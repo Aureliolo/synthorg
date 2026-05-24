@@ -12,7 +12,11 @@ from typing import TYPE_CHECKING, Final
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.backup import (
     BACKUP_COMPONENT_COMPLETED,
     BACKUP_COMPONENT_FAILED,
@@ -74,11 +78,8 @@ class PostgresPersistenceComponentHandler:
         try:
             size = await pg_dump_to_file(self._config, target_file)
         except (PgToolUnavailableError, PgToolFailedError) as exc:
-            logger.error(
-                BACKUP_COMPONENT_FAILED,
-                component=self.component.value,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
             )
             msg = f"Failed to back up Postgres DB: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
@@ -123,11 +124,8 @@ class PostgresPersistenceComponentHandler:
         try:
             await pg_restore_from_file(self._config, source_file)
         except (PgToolUnavailableError, PgToolFailedError) as exc:
-            logger.error(
-                BACKUP_COMPONENT_FAILED,
-                component=self.component.value,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, BACKUP_COMPONENT_FAILED, exc, component=self.component.value
             )
             msg = f"Failed to restore Postgres DB: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc
@@ -164,12 +162,12 @@ class PostgresPersistenceComponentHandler:
         try:
             entry_count = await pg_restore_list(source_file)
         except (PgToolUnavailableError, PgToolFailedError) as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 BACKUP_COMPONENT_FAILED,
+                exc,
                 component=self.component.value,
                 phase="validate_source",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             msg = f"Failed to validate Postgres dump: {safe_error_description(exc)}"
             raise ComponentBackupError(msg) from exc

@@ -46,7 +46,11 @@ from synthorg.meta.errors import (
     ConversationClosedError,
     ConversationNotFoundError,
 )
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.chief_of_staff import (
     COS_CONVERSATION_STATUS_TRANSITIONED,
     COS_PROPOSE_CAP_REACHED,
@@ -362,11 +366,7 @@ class ChiefOfStaffProposer:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.error(
-                COS_PROPOSE_FAILED,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+            log_exception_redacted(logger, COS_PROPOSE_FAILED, exc)
             raise
         raw = (response.content or "").strip()
         parsed = extract_json_from_llm_response(

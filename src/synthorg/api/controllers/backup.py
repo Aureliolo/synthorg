@@ -45,7 +45,11 @@ from synthorg.core.domain_errors import (
     ValidationError,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.backup import (
     BACKUP_FAILED,
     BACKUP_NOT_FOUND,
@@ -177,14 +181,14 @@ class BackupController(Controller):
             # the raw pydantic ValidationError. Surface a 5xx instead
             # so the operator gets a stable error and the failure is
             # visible in logs.
-            logger.error(
+            log_exception_redacted(
+                logger,
                 BACKUP_FAILED,
+                exc,
                 scope="backup",
                 idempotency_key=idempotency_key,
                 endpoint="backup.create",
                 stage="cached_manifest_validate",
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             msg = "Cached backup manifest failed validation; rerun the backup"
             raise InternalServerException(msg) from exc
@@ -383,11 +387,8 @@ class BackupController(Controller):
             msg_in_progress = "A backup operation is already in progress"
             raise ConflictError(msg_in_progress) from exc
         except RestoreError as exc:
-            logger.error(
-                BACKUP_RESTORE_FAILED,
-                backup_id=data.backup_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
+            log_exception_redacted(
+                logger, BACKUP_RESTORE_FAILED, exc, backup_id=data.backup_id
             )
             msg = "Restore operation failed"
             raise InternalServerException(msg) from exc

@@ -21,7 +21,11 @@ from typing import TYPE_CHECKING
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.hr.activity import ActivityEvent, merge_activity_timeline
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.hr import (
     HR_ACTIVITY_AGENT_FETCHED,
     HR_ACTIVITY_INVALID_REQUEST,
@@ -74,11 +78,8 @@ def _collect_result[ResultT](
     try:
         return task.result()
     except Exception as exc:
-        logger.error(
-            HR_ACTIVITY_SOURCE_FETCH_FAILED,
-            source=source,
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
+        log_exception_redacted(
+            logger, HR_ACTIVITY_SOURCE_FETCH_FAILED, exc, source=source
         )
         raise
 
@@ -536,14 +537,14 @@ class ActivityFeedService:
             # surfaces the failure instead of silently dropping the
             # entire activity window. The log gives operators enough
             # context to triage.
-            logger.error(
+            log_exception_redacted(
+                logger,
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                exc,
                 source="lifecycle_repo",
                 agent_id=agent_id,
                 since=since.isoformat(),
                 until=now.isoformat(),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
 
@@ -568,14 +569,14 @@ class ActivityFeedService:
                 until=now,
             )
         except Exception as exc:
-            logger.error(
+            log_exception_redacted(
+                logger,
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
+                exc,
                 source="performance_tracker",
                 agent_id=agent_id,
                 since=since.isoformat(),
                 until=now.isoformat(),
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
             )
             raise
 
