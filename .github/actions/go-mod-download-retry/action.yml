@@ -61,13 +61,18 @@ runs:
           attempt=$((attempt + 1))
           # ``-x`` prints the underlying HTTP fetches, making any
           # retry visible in the log with the exact failing URL.
-          if go mod download -x; then
+          # Capture rc via ``|| rc=$?`` so ``set -e`` does not abort on
+          # failure, and so ``$?`` reflects the command -- after an
+          # ``if cmd; then ...; fi`` with no else clause, ``$?`` is 0
+          # regardless of whether ``cmd`` succeeded.
+          rc=0
+          go mod download -x || rc=$?
+          if [ "$rc" -eq 0 ]; then
             if [ "$attempt" -gt 1 ]; then
               echo "::notice::go mod download succeeded on attempt $attempt"
             fi
             exit 0
           fi
-          rc=$?
           if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
             echo "::error::go mod download failed after $attempt attempts" >&2
             exit "$rc"
