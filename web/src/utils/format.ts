@@ -52,11 +52,39 @@ function resolveLocale(locale: string): string {
 }
 
 /**
- * Parse {@link DateInput} to a ``Date`` (or ``null`` on invalid input).
+ * Parse a `YYYY-MM-DD` string as the local-timezone midnight of that
+ * calendar day. Returns null when the string is not in the recognised
+ * shape or when it overflows (e.g. `2025-02-30`).
  *
- * Date-only ISO strings (``YYYY-MM-DD``) are parsed into the local
+ * `new Date(2025, 1, 30)` silently wraps to 2025-03-02; reject
+ * overflowed inputs by comparing the round-tripped year/month/day
+ * against the parsed digits.
+ */
+function _parseDateOnlyToLocal(value: string): Date | null {
+  const match = DATE_ONLY_RE.exec(value)
+  if (!match) return null
+  const [, y, m, d] = match
+  const year = Number(y)
+  const monthIdx = Number(m) - 1
+  const day = Number(d)
+  const local = new Date(year, monthIdx, day)
+  if (
+    Number.isNaN(local.getTime())
+    || local.getFullYear() !== year
+    || local.getMonth() !== monthIdx
+    || local.getDate() !== day
+  ) {
+    return null
+  }
+  return local
+}
+
+/**
+ * Parse {@link DateInput} to a `Date` (or `null` on invalid input).
+ *
+ * Date-only ISO strings (`YYYY-MM-DD`) are parsed into the local
  * midnight of that calendar day rather than the UTC midnight
- * ``new Date(string)`` would produce -- the latter can shift the
+ * `new Date(string)` would produce: the latter can shift the
  * displayed day backward for viewers in negative-UTC timezones.
  */
 function toDate(value: DateInput): Date | null {
@@ -65,26 +93,8 @@ function toDate(value: DateInput): Date | null {
     return Number.isNaN(value.getTime()) ? null : value
   }
   if (typeof value === 'string') {
-    const match = DATE_ONLY_RE.exec(value)
-    if (match) {
-      const [, y, m, d] = match
-      const year = Number(y)
-      const monthIdx = Number(m) - 1
-      const day = Number(d)
-      const local = new Date(year, monthIdx, day)
-      // ``new Date(2025, 1, 30)`` silently wraps to 2025-03-02; reject
-      // overflowed inputs (e.g. ``2025-02-30``) so only true calendar
-      // days are accepted.
-      if (
-        Number.isNaN(local.getTime()) ||
-        local.getFullYear() !== year ||
-        local.getMonth() !== monthIdx ||
-        local.getDate() !== day
-      ) {
-        return null
-      }
-      return local
-    }
+    const local = _parseDateOnlyToLocal(value)
+    if (local !== null) return local
   }
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : date
@@ -187,34 +197,46 @@ export function formatTodayLabel(locale: string = getLocale()): string {
  * Falls back to {@link formatDateTime} for dates older than a week, for
  * future dates, and for invalid/missing input.
  */
+/**
+ * Pick the appropriate `(value, unit)` pair for `Intl.RelativeTimeFormat`
+ * given a backward-looking delta in seconds. Caller is responsible for
+ * making sure `diffSec < SEC_PER_WEEK` (the "older than a week" fallback
+ * to absolute time is done at the call site).
+ */
+function _relativeUnit(diffSec: number): {
+  value: number
+  unit: Intl.RelativeTimeFormatUnit
+} {
+  if (diffSec < SEC_PER_MIN) return { value: diffSec, unit: 'second' }
+  if (diffSec < SEC_PER_HOUR) {
+    return { value: Math.floor(diffSec / SEC_PER_MIN), unit: 'minute' }
+  }
+  if (diffSec < SEC_PER_DAY) {
+    return { value: Math.floor(diffSec / SEC_PER_HOUR), unit: 'hour' }
+  }
+  return { value: Math.floor(diffSec / SEC_PER_DAY), unit: 'day' }
+}
+
 export function formatRelativeTime(
   iso: string | null | undefined,
   locale: string = getLocale(),
 ): string {
   if (!iso) return '--'
-  // Route through ``toDate`` so ``YYYY-MM-DD`` strings are read as
-  // local midnight (same parsing contract as ``formatDateTime`` and
-  // siblings). ``new Date(iso)`` would read them as UTC midnight and
+  // Route through `toDate` so `YYYY-MM-DD` strings are read as
+  // local midnight (same parsing contract as `formatDateTime` and
+  // siblings). `new Date(iso)` would read them as UTC midnight and
   // shift the displayed day in negative-UTC timezones.
   const date = toDate(iso)
   if (!date) return '--'
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
+  const diffMs = Date.now() - date.getTime()
   if (diffMs < 0) return formatDateTime(iso, locale)
   const diffSec = Math.floor(diffMs / MS_PER_SECOND)
   if (diffSec >= SEC_PER_WEEK) return formatDateTime(iso, locale)
-
   const rtf = new Intl.RelativeTimeFormat(resolveLocale(locale), {
     numeric: 'auto',
   })
-  if (diffSec < SEC_PER_MIN) return rtf.format(-diffSec, 'second')
-  if (diffSec < SEC_PER_HOUR) {
-    return rtf.format(-Math.floor(diffSec / SEC_PER_MIN), 'minute')
-  }
-  if (diffSec < SEC_PER_DAY) {
-    return rtf.format(-Math.floor(diffSec / SEC_PER_HOUR), 'hour')
-  }
-  return rtf.format(-Math.floor(diffSec / SEC_PER_DAY), 'day')
+  const { value, unit } = _relativeUnit(diffSec)
+  return rtf.format(-value, unit)
 }
 
 /**
@@ -224,23 +246,54 @@ export function formatRelativeTime(
  * `NaNs`. The components are written in British English with single-
  * letter unit suffixes for monospace columns.
  */
+interface ElapsedTier {
+  /** Divisor for the major component (e.g. SEC_PER_MIN for "m s" output). */
+  readonly major: number
+  /** Divisor for the minor component (e.g. 1 for "m s", SEC_PER_MIN for "h m"). */
+  readonly minor: number
+  readonly majorUnit: 'm' | 'h' | 'd'
+  readonly minorUnit: 's' | 'm' | 'h'
+}
+
+/**
+ * Format the major/minor split of an elapsed-seconds value using a
+ * shared tier descriptor. Omitting the minor component when zero keeps
+ * the "5h" / "3d" shape rather than the noisier "5h 0m" / "3d 0h".
+ */
+function _formatElapsedTier(total: number, tier: ElapsedTier): string {
+  const major = Math.floor(total / tier.major)
+  const minor = Math.floor((total % tier.major) / tier.minor)
+  return minor === 0
+    ? `${major}${tier.majorUnit}`
+    : `${major}${tier.majorUnit} ${minor}${tier.minorUnit}`
+}
+
+const ELAPSED_TIER_MINUTES: ElapsedTier = {
+  major: SEC_PER_MIN,
+  minor: 1,
+  majorUnit: 'm',
+  minorUnit: 's',
+}
+const ELAPSED_TIER_HOURS: ElapsedTier = {
+  major: SEC_PER_HOUR,
+  minor: SEC_PER_MIN,
+  majorUnit: 'h',
+  minorUnit: 'm',
+}
+const ELAPSED_TIER_DAYS: ElapsedTier = {
+  major: SEC_PER_DAY,
+  minor: SEC_PER_HOUR,
+  majorUnit: 'd',
+  minorUnit: 'h',
+}
+
 export function formatElapsed(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '--'
   const total = Math.floor(seconds)
   if (total < SEC_PER_MIN) return `${total}s`
-  if (total < SEC_PER_HOUR) {
-    const minutes = Math.floor(total / SEC_PER_MIN)
-    const remainingSeconds = total % SEC_PER_MIN
-    return remainingSeconds === 0 ? `${minutes}m` : `${minutes}m ${remainingSeconds}s`
-  }
-  if (total < SEC_PER_DAY) {
-    const hours = Math.floor(total / SEC_PER_HOUR)
-    const remainingMinutes = Math.floor((total % SEC_PER_HOUR) / SEC_PER_MIN)
-    return remainingMinutes === 0 ? `${hours}h` : `${hours}h ${remainingMinutes}m`
-  }
-  const days = Math.floor(total / SEC_PER_DAY)
-  const remainingHours = Math.floor((total % SEC_PER_DAY) / SEC_PER_HOUR)
-  return remainingHours === 0 ? `${days}d` : `${days}d ${remainingHours}h`
+  if (total < SEC_PER_HOUR) return _formatElapsedTier(total, ELAPSED_TIER_MINUTES)
+  if (total < SEC_PER_DAY) return _formatElapsedTier(total, ELAPSED_TIER_HOURS)
+  return _formatElapsedTier(total, ELAPSED_TIER_DAYS)
 }
 
 /** ISO 4217 currencies that use zero decimal places. */

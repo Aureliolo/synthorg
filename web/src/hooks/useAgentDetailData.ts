@@ -51,17 +51,32 @@ export interface UseAgentDetailDataReturn {
   fetchMoreActivity: () => void
 }
 
-export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn {
-  const agent = useAgentsStore((s) => s.selectedAgent)
-  const performance = useAgentsStore((s) => s.performance)
-  const agentTasks = useAgentsStore((s) => s.agentTasks)
-  const activity = useAgentsStore((s) => s.activity)
-  const activityTotal = useAgentsStore((s) => s.activityTotal)
-  const careerHistory = useAgentsStore((s) => s.careerHistory)
-  const loading = useAgentsStore((s) => s.detailLoading)
-  const error = useAgentsStore((s) => s.detailError)
+interface DetailStoreSlice {
+  readonly agent: AgentConfig | null
+  readonly performance: AgentPerformanceSummary | null
+  readonly agentTasks: readonly Task[]
+  readonly activity: readonly AgentActivityEvent[]
+  readonly activityTotal: number
+  readonly careerHistory: readonly CareerEvent[]
+  readonly loading: boolean
+  readonly error: string | null
+}
 
-  // Initial fetch -- skip when agentName is empty (missing route param)
+function useDetailStoreSlice(): DetailStoreSlice {
+  return {
+    agent: useAgentsStore((s) => s.selectedAgent),
+    performance: useAgentsStore((s) => s.performance),
+    agentTasks: useAgentsStore((s) => s.agentTasks),
+    activity: useAgentsStore((s) => s.activity),
+    activityTotal: useAgentsStore((s) => s.activityTotal),
+    careerHistory: useAgentsStore((s) => s.careerHistory),
+    loading: useAgentsStore((s) => s.detailLoading),
+    error: useAgentsStore((s) => s.detailError),
+  }
+}
+
+function useDetailLifecycle(agentName: string): void {
+  // Initial fetch / cleanup. Skip when agentName is empty (missing route param).
   useEffect(() => {
     if (!agentName) {
       useAgentsStore.getState().clearDetail()
@@ -73,13 +88,11 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
     }
   }, [agentName])
 
-  // Polling for refreshes -- only when agentName is truthy
   const pollFn = useCallback(async () => {
     if (!agentName) return
     await useAgentsStore.getState().fetchAgentDetail(agentName)
   }, [agentName])
   const polling = usePolling(pollFn, DETAIL_POLL_INTERVAL)
-
   useEffect(() => {
     if (!agentName) return
     polling.start()
@@ -88,8 +101,14 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
     // including it would restart polling on every render
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [agentName])
+}
 
-  // WebSocket -- debounce to coalesce burst events into a single refetch
+interface DetailWsState {
+  readonly wsConnected: boolean
+  readonly wsSetupError: string | null
+}
+
+function useDetailWebSocket(agentName: string): DetailWsState {
   const wsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const agentNameRef = useRef(agentName)
   agentNameRef.current = agentName
@@ -123,23 +142,27 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
     [agentName],
   )
 
-  const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })
+  const { connected, setupError } = useWebSocket({ bindings })
+  return { wsConnected: connected, wsSetupError: setupError }
+}
 
-  // Derived data
+export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn {
+  const slice = useDetailStoreSlice()
+  useDetailLifecycle(agentName)
+  const { wsConnected, wsSetupError } = useDetailWebSocket(agentName)
+
   const performanceCards = useMemo(
-    () => (performance ? computePerformanceCards(performance) : []),
-    [performance],
+    () => (slice.performance ? computePerformanceCards(slice.performance) : []),
+    [slice.performance],
   )
-
   const insights = useMemo(
-    () => (agent ? generateInsights(agent, performance) : []),
-    [agent, performance],
+    () => (slice.agent ? generateInsights(slice.agent, slice.performance) : []),
+    [slice.agent, slice.performance],
   )
 
-  // Load more activity -- store-level activityLoading prevents duplicates.
-  // Cursor state is held on the store (``activityNextCursor`` /
-  // ``activityHasMore``); the hook just kicks off the fetch when
-  // invoked by the UI.
+  // Load more activity. Store-level activityLoading prevents duplicates.
+  // Cursor state is held on the store (`activityNextCursor` /
+  // `activityHasMore`); the hook just kicks off the fetch when invoked.
   const fetchMoreActivity = useCallback(() => {
     if (!agentName) return
     void useAgentsStore.getState().fetchMoreActivity(agentName)
@@ -148,16 +171,9 @@ export function useAgentDetailData(agentName: string): UseAgentDetailDataReturn 
   if (!agentName) return EMPTY_RETURN
 
   return {
-    agent,
-    performance,
+    ...slice,
     performanceCards,
     insights,
-    agentTasks,
-    activity,
-    activityTotal,
-    careerHistory,
-    loading,
-    error,
     wsConnected,
     wsSetupError,
     fetchMoreActivity,

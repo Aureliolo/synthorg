@@ -110,34 +110,33 @@ const STATUS_RANK: Record<AgentStatus, number> = {
   active: 0, onboarding: 1, on_leave: 2, terminated: 3,
 }
 
+/**
+ * Pull the comparison key for one agent given a sort field. Ordinal
+ * fields (`level`, `status`) are resolved through their semantic rank
+ * tables so the sort respects the documented order rather than alpha.
+ */
+function _sortValue(agent: DashboardAgentConfig, sortBy: AgentSortKey): string | number {
+  if (sortBy === 'level') return LEVEL_RANK[agent.level]
+  if (sortBy === 'status') return STATUS_RANK[agent.status ?? 'active']
+  return agent[sortBy] ?? ''
+}
+
+function _compare(a: string | number, b: string | number, dir: number): number {
+  if (a < b) return -1 * dir
+  if (a > b) return 1 * dir
+  return 0
+}
+
 /** Sort agents by a given key. Does not mutate the input. */
 export function sortAgents(
   agents: readonly DashboardAgentConfig[],
   sortBy: AgentSortKey,
   direction: 'asc' | 'desc' = 'asc',
 ): DashboardAgentConfig[] {
-  const sorted = [...agents]
   const dir = direction === 'asc' ? 1 : -1
-
-  sorted.sort((a, b) => {
-    let va: string | number = a[sortBy] ?? ''
-    let vb: string | number = b[sortBy] ?? ''
-
-    // Use semantic rank for ordinal fields
-    if (sortBy === 'level') {
-      va = LEVEL_RANK[a.level]
-      vb = LEVEL_RANK[b.level]
-    } else if (sortBy === 'status') {
-      va = STATUS_RANK[a.status ?? 'active']
-      vb = STATUS_RANK[b.status ?? 'active']
-    }
-
-    if (va < vb) return -1 * dir
-    if (va > vb) return 1 * dir
-    return 0
-  })
-
-  return sorted
+  return [...agents].sort((a, b) =>
+    _compare(_sortValue(a, sortBy), _sortValue(b, sortBy), dir),
+  )
 }
 
 // ── Formatting ─────────────────────────────────────────────
@@ -162,50 +161,71 @@ export function formatCostPerTask(cost: number | null): string {
 
 type PerformanceCardData = Omit<MetricCardProps, 'className'>
 
+type PerformanceWindow = AgentPerformanceSummary['windows'][number]
+
+/**
+ * Project sparkline arrays from a performance summary. Returns
+ * `undefined` per series when there are fewer than 2 windows so the
+ * downstream MetricCard renders a value-only tile rather than a flat
+ * line. Nullable per-window metrics are coerced to 0 / 100 as
+ * appropriate so the sparkline area never collapses on a sparse window.
+ */
+function _buildSparklines(perf: AgentPerformanceSummary): {
+  readonly task?: number[]
+  readonly time?: number[]
+  readonly success?: number[]
+  readonly cost?: number[]
+} {
+  if (perf.windows.length < 2) return {}
+  const w = perf.windows
+  return {
+    task: w.map((x: PerformanceWindow) => x.tasks_completed),
+    time: w.map((x: PerformanceWindow) => x.avg_completion_time_seconds ?? 0),
+    success: w.map((x: PerformanceWindow) =>
+      x.success_rate != null ? x.success_rate * 100 : 0,
+    ),
+    cost: w.map((x: PerformanceWindow) => x.avg_cost_per_task ?? 0),
+  }
+}
+
+function _successRateText(perf: AgentPerformanceSummary): string {
+  return perf.success_rate_percent != null
+    ? `${perf.success_rate_percent.toFixed(1)}%`
+    : '--'
+}
+
+function _successSubText(perf: AgentPerformanceSummary): string | undefined {
+  if (perf.tasks_completed_30d <= 0) return undefined
+  return `across ${perf.tasks_completed_30d} tasks (30d)`
+}
+
 /** Map an AgentPerformanceSummary to 4 MetricCard props. */
 export function computePerformanceCards(
   perf: AgentPerformanceSummary,
 ): PerformanceCardData[] {
-  const hasSparkline = perf.windows.length >= 2
-
-  // Build sparkline arrays from window metrics (nullable fields filtered to numbers)
-  const taskSparkline = hasSparkline
-    ? perf.windows.map((w) => w.tasks_completed)
-    : undefined
-  const timeSparkline = hasSparkline
-    ? perf.windows.map((w) => w.avg_completion_time_seconds ?? 0)
-    : undefined
-  const successSparkline = hasSparkline
-    ? perf.windows.map((w) => w.success_rate != null ? w.success_rate * 100 : 0)
-    : undefined
-  const costSparkline = hasSparkline
-    ? perf.windows.map((w) => w.avg_cost_per_task ?? 0)
-    : undefined
-
+  const sparklines = _buildSparklines(perf)
   return [
     {
       label: 'TASKS COMPLETED',
       value: perf.tasks_completed_total,
       subText: `${perf.tasks_completed_7d} this week`,
-      sparklineData: taskSparkline,
+      sparklineData: sparklines.task,
     },
     {
       label: 'AVG COMPLETION TIME',
       value: formatCompletionTime(perf.avg_completion_time_seconds ?? null),
-      sparklineData: timeSparkline,
+      sparklineData: sparklines.time,
     },
     {
       label: 'SUCCESS RATE',
-      value: perf.success_rate_percent != null ? `${perf.success_rate_percent.toFixed(1)}%` : '--',
-      subText: perf.tasks_completed_30d > 0
-        ? `across ${perf.tasks_completed_30d} tasks (30d)`
-        : undefined,
-      sparklineData: successSparkline,
+      value: _successRateText(perf),
+      subText: _successSubText(perf),
+      sparklineData: sparklines.success,
     },
     {
       label: 'COST PER TASK',
       value: formatCostPerTask(perf.cost_per_task ?? null),
-      sparklineData: costSparkline,
+      sparklineData: sparklines.cost,
     },
   ]
 }

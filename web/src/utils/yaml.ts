@@ -24,6 +24,35 @@ export function parseYaml(yamlStr: string): Record<string, unknown> {
   return result as Record<string, unknown>
 }
 
+type CompanyYamlValidator = (parsed: Record<string, unknown>) => string | null
+
+/**
+ * Per-field validators run in order until one returns a non-null
+ * message. Splitting out per-field validators keeps the dispatcher
+ * under the complexity cap and lets each rule read as a single
+ * declarative statement.
+ */
+const COMPANY_YAML_VALIDATORS: readonly CompanyYamlValidator[] = [
+  (p) => (typeof p.company_name !== 'string' || p.company_name.trim() === '')
+    ? 'company_name must be a non-empty string'
+    : null,
+  (p) => ('agents' in p && !Array.isArray(p.agents))
+    ? 'agents must be an array'
+    : null,
+  (p) => ('departments' in p && !Array.isArray(p.departments))
+    ? 'departments must be an array'
+    : null,
+  (p) => ('autonomy_level' in p && typeof p.autonomy_level !== 'string')
+    ? 'autonomy_level must be a string'
+    : null,
+  (p) => ('budget_monthly' in p && typeof p.budget_monthly !== 'number')
+    ? 'budget_monthly must be a number'
+    : null,
+  (p) => ('communication_pattern' in p && typeof p.communication_pattern !== 'string')
+    ? 'communication_pattern must be a string'
+    : null,
+]
+
 /**
  * Validate that a parsed YAML object has the expected CompanyConfig shape.
  *
@@ -34,23 +63,9 @@ export function parseYaml(yamlStr: string): Record<string, unknown> {
  * Returns an error message string, or null if valid.
  */
 export function validateCompanyYaml(parsed: Record<string, unknown>): string | null {
-  if (typeof parsed.company_name !== 'string' || parsed.company_name.trim() === '') {
-    return 'company_name must be a non-empty string'
-  }
-  if ('agents' in parsed && !Array.isArray(parsed.agents)) {
-    return 'agents must be an array'
-  }
-  if ('departments' in parsed && !Array.isArray(parsed.departments)) {
-    return 'departments must be an array'
-  }
-  if ('autonomy_level' in parsed && typeof parsed.autonomy_level !== 'string') {
-    return 'autonomy_level must be a string'
-  }
-  if ('budget_monthly' in parsed && typeof parsed.budget_monthly !== 'number') {
-    return 'budget_monthly must be a number'
-  }
-  if ('communication_pattern' in parsed && typeof parsed.communication_pattern !== 'string') {
-    return 'communication_pattern must be a string'
+  for (const validate of COMPANY_YAML_VALIDATORS) {
+    const err = validate(parsed)
+    if (err !== null) return err
   }
   return null
 }

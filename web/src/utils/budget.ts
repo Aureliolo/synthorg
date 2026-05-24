@@ -315,6 +315,69 @@ export function filterCfoEvents(
   return activities.filter((a) => CFO_EVENT_TYPES.has(a.action_type))
 }
 
+interface BudgetCardContext {
+  readonly overview: OverviewMetrics
+  readonly budgetConfig: BudgetConfig | null
+  readonly forecast: ForecastResponse | null
+  readonly currency: string | undefined
+}
+
+function _buildSpendCard(ctx: BudgetCardContext): BudgetMetricCardData {
+  const { overview, currency } = ctx
+  const totalMonthly = ctx.budgetConfig?.total_monthly ?? 0
+  const hasBudget = totalMonthly > 0
+  return {
+    label: 'SPEND THIS PERIOD',
+    value: formatCurrency(overview.total_cost, currency),
+    sparklineData: overview.cost_7d_trend.map((p) => p.value),
+    change: computeSpendTrend(overview.cost_7d_trend),
+    ...(hasBudget && {
+      progress: { current: overview.total_cost, total: totalMonthly },
+      subText: `of ${formatCurrency(totalMonthly, currency)} budget`,
+    }),
+  }
+}
+
+function _buildRemainingCard(ctx: BudgetCardContext): BudgetMetricCardData {
+  const { overview, currency } = ctx
+  const remainingPct = Math.round(Math.max(0, 100 - overview.budget_used_percent))
+  return {
+    label: 'BUDGET REMAINING',
+    value: formatCurrency(overview.budget_remaining, currency),
+    subText: `${remainingPct}% of budget`,
+  }
+}
+
+function _buildAvgDayCard(ctx: BudgetCardContext): BudgetMetricCardData {
+  return {
+    label: 'AVG DAILY SPEND',
+    value: formatCurrency(ctx.forecast?.avg_daily_spend ?? 0, ctx.currency),
+  }
+}
+
+/**
+ * Pick the sub-text line for the "days until exhausted" card. When the
+ * forecast knows the exhaustion horizon we render its calendar date;
+ * otherwise we fall back to the next budget-reset countdown.
+ */
+function _daysLeftSubText(ctx: BudgetCardContext): string | undefined {
+  const days = ctx.forecast?.days_until_exhausted
+  if (days != null) {
+    return computeExhaustionDate(days) ?? undefined
+  }
+  if (ctx.budgetConfig === null) return undefined
+  return `Resets in ${daysUntilBudgetReset(ctx.budgetConfig.reset_day)} days`
+}
+
+function _buildDaysLeftCard(ctx: BudgetCardContext): BudgetMetricCardData {
+  const days = ctx.forecast?.days_until_exhausted
+  return {
+    label: 'DAYS UNTIL EXHAUSTED',
+    value: days != null ? String(days) : 'N/A',
+    subText: _daysLeftSubText(ctx),
+  }
+}
+
 /**
  * Compute metric card data for the Budget page header.
  *
@@ -325,44 +388,18 @@ export function computeBudgetMetricCards(
   budgetConfig: BudgetConfig | null,
   forecast: ForecastResponse | null,
 ): BudgetMetricCardData[] {
-  const currency = overview.currency ?? budgetConfig?.currency
-  const totalMonthly = budgetConfig?.total_monthly ?? 0
-
-  const spendCard: BudgetMetricCardData = {
-    label: 'SPEND THIS PERIOD',
-    value: formatCurrency(overview.total_cost, currency),
-    sparklineData: overview.cost_7d_trend.map((p) => p.value),
-    change: computeSpendTrend(overview.cost_7d_trend),
-    ...(totalMonthly > 0 && {
-      progress: { current: overview.total_cost, total: totalMonthly },
-      subText: `of ${formatCurrency(totalMonthly, currency)} budget`,
-    }),
+  const ctx: BudgetCardContext = {
+    overview,
+    budgetConfig,
+    forecast,
+    currency: overview.currency ?? budgetConfig?.currency,
   }
-
-  const remainingCard: BudgetMetricCardData = {
-    label: 'BUDGET REMAINING',
-    value: formatCurrency(overview.budget_remaining, currency),
-    subText: `${Math.round(Math.max(0, 100 - overview.budget_used_percent))}% of budget`,
-  }
-
-  const avgDayCard: BudgetMetricCardData = {
-    label: 'AVG DAILY SPEND',
-    value: formatCurrency(forecast?.avg_daily_spend ?? 0, currency),
-  }
-
-  const daysLeftCard: BudgetMetricCardData = {
-    label: 'DAYS UNTIL EXHAUSTED',
-    value: forecast?.days_until_exhausted != null
-      ? String(forecast.days_until_exhausted)
-      : 'N/A',
-    subText: forecast?.days_until_exhausted != null
-      ? computeExhaustionDate(forecast.days_until_exhausted) ?? undefined
-      : budgetConfig
-        ? `Resets in ${daysUntilBudgetReset(budgetConfig.reset_day)} days`
-        : undefined,
-  }
-
-  return [spendCard, remainingCard, avgDayCard, daysLeftCard]
+  return [
+    _buildSpendCard(ctx),
+    _buildRemainingCard(ctx),
+    _buildAvgDayCard(ctx),
+    _buildDaysLeftCard(ctx),
+  ]
 }
 
 // ── Pack-Apply Budget Preview ─────────────────────────────

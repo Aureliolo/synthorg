@@ -63,6 +63,133 @@ function buildCommunicationEdges(
   }))
 }
 
+type OrgTree = ReturnType<typeof buildOrgTree>
+
+/**
+ * Strip child agents whose parent department is collapsed, mark the
+ * collapsed dept nodes with `isCollapsed: true`, and prune edges that
+ * pointed at removed nodes. Mutates the tree in place so the dagre
+ * pass that follows sees the smaller set.
+ */
+function _applyCollapse(tree: OrgTree, collapsedDeptIds: ReadonlySet<string>): void {
+  tree.nodes = tree.nodes
+    .filter((n) => !(n.parentId && collapsedDeptIds.has(n.parentId)))
+    .map((n) =>
+      n.type === 'department' && collapsedDeptIds.has(n.id)
+        ? { ...n, data: { ...n.data, isCollapsed: true } }
+        : n,
+    )
+  const remainingNodeIds = new Set(tree.nodes.map((n) => n.id))
+  tree.edges = tree.edges.filter(
+    (e) => remainingNodeIds.has(e.source) && remainingNodeIds.has(e.target),
+  )
+}
+
+/**
+ * Force view: only agent/ceo nodes (no department groups, no owner
+ * nodes, no hidden layout edges). Communication view is about agent-
+ * to-agent message flow, so the hierarchy scaffold is intentionally
+ * stripped.
+ */
+function _buildForceView(
+  tree: OrgTree,
+  commLinks: CommunicationLink[],
+): { nodes: Node[]; edges: Edge[] } {
+  const agentNodes = tree.nodes.filter((n) => n.type === 'agent' || n.type === 'ceo')
+  const freeNodes = agentNodes.map((n) => ({ ...n, parentId: undefined }))
+  const visibleIds = new Set(freeNodes.map((n) => n.id))
+  const filteredLinks = commLinks.filter(
+    (l) => visibleIds.has(l.source) && visibleIds.has(l.target),
+  )
+  return {
+    nodes: computeForceLayout(freeNodes, filteredLinks),
+    edges: buildCommunicationEdges(filteredLinks),
+  }
+}
+
+interface DagrePrefs {
+  readonly showBudgetBar: boolean
+  readonly showStatusDots: boolean
+  readonly showAddAgentButton: boolean
+}
+
+interface DeriveViewArgs {
+  readonly tree: OrgTree
+  readonly viewMode: ViewMode
+  readonly collapsedDeptIds?: ReadonlySet<string>
+  readonly commLinks: CommunicationLink[]
+  readonly prefs: DagrePrefs
+}
+
+/**
+ * Derive the rendered React Flow nodes/edges from a built org tree.
+ * Returns `allNodes` snapshot BEFORE collapse filtering so consumers
+ * (e.g. search) can index every node regardless of which departments
+ * are collapsed.
+ */
+function _deriveView(args: DeriveViewArgs): {
+  nodes: Node[]
+  edges: Edge[]
+  allNodes: Node[]
+} {
+  const allNodes = [...args.tree.nodes]
+  if (
+    args.viewMode === 'hierarchy'
+    && args.collapsedDeptIds
+    && args.collapsedDeptIds.size > 0
+  ) {
+    _applyCollapse(args.tree, args.collapsedDeptIds)
+  }
+  if (args.viewMode === 'force') {
+    const force = _buildForceView(args.tree, args.commLinks)
+    return { ...force, allNodes }
+  }
+  const layoutNodes = applyDagreLayout(args.tree.nodes, args.tree.edges, args.prefs)
+  return { nodes: layoutNodes, edges: args.tree.edges, allNodes }
+}
+
+/**
+ * Sequential initial fetch: department health depends on config being
+ * loaded. Polling starts only after the initial fetch completes (or
+ * fails) so we never race the first response.
+ */
+function useOrgInitialFetch(start: () => void, stop: () => void): void {
+  useEffect(() => {
+    // Mounted flag prevents `start()` from arming a polling timer
+    // after the component has unmounted (the fetch promises resolve
+    // asynchronously, so without the guard a quick navigation away
+    // orphans the polling loop). Cleanup also calls `stop()` so any
+    // in-flight schedule is torn down even on the happy path.
+    let mounted = true
+    const companyStore = useCompanyStore.getState()
+    void companyStore.fetchCompanyData()
+      .then(async () => {
+        if (!mounted) return
+        // Await the initial health fetch BEFORE arming polling, so
+        // the first polling tick cannot overlap the initial health
+        // load and produce out-of-order store writes.
+        if (useCompanyStore.getState().config) {
+          try {
+            await companyStore.fetchDepartmentHealths()
+          } catch (err: unknown) {
+            log.warn('fetchDepartmentHealths failed:', err)
+          }
+        }
+      })
+      .catch((err: unknown) => {
+        log.warn('fetchCompanyData failed:', err)
+      })
+      .finally(() => {
+        if (mounted) start()
+      })
+    return () => {
+      mounted = false
+      stop()
+    }
+    // eslint-disable-next-line @eslint-react/exhaustive-deps -- mount-only effect; start / stop are stable
+  }, [])
+}
+
 export function useOrgChartData(
   viewMode: ViewMode = 'hierarchy',
   collapsedDeptIds?: ReadonlySet<string>,
@@ -92,30 +219,11 @@ export function useOrgChartData(
     return [{ id: currentUser.id, displayName: currentUser.username }]
   }, [currentUser])
 
-  // Polling for department health refresh
   const pollFn = useCallback(async () => {
     await useCompanyStore.getState().fetchDepartmentHealths()
   }, [])
   const polling = usePolling(pollFn, ORG_POLL_INTERVAL)
-
-  // Initial data fetch (sequential: health depends on config being loaded)
-  // Polling starts only after initial fetch completes to avoid racing
-  useEffect(() => {
-    const companyStore = useCompanyStore.getState()
-    companyStore.fetchCompanyData().then(() => {
-      if (useCompanyStore.getState().config) {
-        companyStore.fetchDepartmentHealths().catch((err: unknown) => {
-          log.warn('fetchDepartmentHealths failed:', err)
-        })
-      }
-      polling.start()
-    }).catch((err: unknown) => {
-      log.warn('fetchCompanyData failed:', err)
-      polling.start()
-    })
-    return () => polling.stop()
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- mount-only effect; polling ref identity is stable
-  }, [])
+  useOrgInitialFetch(polling.start, polling.stop)
 
   // WebSocket bindings for real-time updates
   const bindings: ChannelBinding[] = useMemo(
@@ -139,73 +247,21 @@ export function useOrgChartData(
     viewMode === 'force',
   )
 
-  // Derive React Flow nodes/edges from store data
   const { nodes, edges, allNodes } = useMemo(() => {
     if (!config) return { nodes: [], edges: [], allNodes: [] }
-
-    const tree = buildOrgTree(config, runtimeStatuses, departmentHealths, owners, [], currentUser?.id)
-
-    // Snapshot the full tree BEFORE collapse filtering so consumers
-    // (e.g. search) can index every node regardless of which
-    // departments are collapsed.
-    const allNodes = [...tree.nodes]
-
-    // Filter out child agents of collapsed departments BEFORE layout
-    // so the dagre pass computes correct (smaller) dept box sizes.
-    // The dept group nodes themselves stay, with an `isCollapsed`
-    // flag injected into their data so the UI can render the correct
-    // chevron state.  Only applies in hierarchy mode -- the force
-    // view strips departments entirely, so collapsing is irrelevant.
-    if (viewMode === 'hierarchy' && collapsedDeptIds && collapsedDeptIds.size > 0) {
-      tree.nodes = tree.nodes
-        .filter((n) => !(n.parentId && collapsedDeptIds.has(n.parentId)))
-        .map((n) =>
-          n.type === 'department' && collapsedDeptIds.has(n.id)
-            ? { ...n, data: { ...n.data, isCollapsed: true } }
-            : n,
-        )
-      const remainingNodeIds = new Set(tree.nodes.map((n) => n.id))
-      tree.edges = tree.edges.filter(
-        (e) => remainingNodeIds.has(e.source) && remainingNodeIds.has(e.target),
-      )
-    }
-
-    if (viewMode === 'force') {
-      // Force view: only agent/ceo nodes (no department groups, no
-      // owner nodes, no hidden layout edges).  Communication view is
-      // about agent-to-agent message flow, so the hierarchy scaffold
-      // is intentionally stripped.
-      const agentNodes = tree.nodes.filter((n) => n.type === 'agent' || n.type === 'ceo')
-      // Remove parentId so nodes are not grouped inside departments
-      const freeNodes = agentNodes.map((n) => ({ ...n, parentId: undefined }))
-      // Filter links to only include edges between visible nodes
-      const visibleIds = new Set(freeNodes.map((n) => n.id))
-      const filteredLinks = commLinks.filter(
-        (l) => visibleIds.has(l.source) && visibleIds.has(l.target),
-      )
-      const layoutNodes = computeForceLayout(freeNodes, filteredLinks)
-      const commEdges = buildCommunicationEdges(filteredLinks)
-      return { nodes: layoutNodes, edges: commEdges, allNodes }
-    }
-
-    // Hierarchy view: dagre layout with department groups
-    const layoutNodes = applyDagreLayout(tree.nodes, tree.edges, {
-      showBudgetBar,
-      showStatusDots,
-      showAddAgentButton,
+    const tree = buildOrgTree(
+      config, runtimeStatuses, departmentHealths, owners, [], currentUser?.id,
+    )
+    return _deriveView({
+      tree,
+      viewMode,
+      collapsedDeptIds,
+      commLinks,
+      prefs: { showBudgetBar, showStatusDots, showAddAgentButton },
     })
-    return { nodes: layoutNodes, edges: tree.edges, allNodes }
   }, [
-    config,
-    runtimeStatuses,
-    departmentHealths,
-    viewMode,
-    commLinks,
-    owners,
-    collapsedDeptIds,
-    showBudgetBar,
-    showStatusDots,
-    showAddAgentButton,
+    config, runtimeStatuses, departmentHealths, viewMode, commLinks, owners,
+    collapsedDeptIds, showBudgetBar, showStatusDots, showAddAgentButton,
     currentUser?.id,
   ])
 

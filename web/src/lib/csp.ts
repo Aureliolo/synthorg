@@ -37,21 +37,24 @@ let cached: string | undefined | typeof UNREAD = UNREAD
  * unpredictable (Caddy's `{http.request.uuid}` placeholder, a 128-bit
  * UUID generated per request) to prevent replay across requests.
  */
-export function getCspNonce(): string | undefined {
-  if (cached !== UNREAD) return cached
-
-  const meta = document.querySelector<HTMLMetaElement>(
-    'meta[name="csp-nonce"]',
-  )
-  const value = meta?.content?.trim()
-
+/**
+ * Log any deployment-readiness issue surfaced by the meta-tag content.
+ * Split from the main reader so the caller stays under the complexity
+ * cap; the logging branches are themselves a small isolated ladder.
+ */
+function _logCspNonceIssue(
+  meta: HTMLMetaElement | null,
+  value: string | undefined,
+): void {
   if (!meta) {
-    // Missing meta tag: local dev without nginx in the path, or a
+    // Missing meta tag: local dev without Caddy in the path, or a
     // deployment misconfiguration. Inline <style> tags will be unsigned.
     log.warn('CSP nonce meta tag missing', {
       impact: 'inline <style> elements will not carry a nonce',
     })
-  } else if (value?.includes('{{placeholder')) {
+    return
+  }
+  if (value?.includes('{{placeholder')) {
     // Go template placeholder survived: in production this means Caddy's
     // templates directive is misconfigured and the CSP will block every
     // injected <style>. In the Vite dev server the placeholder is always
@@ -62,16 +65,34 @@ export function getCspNonce(): string | undefined {
       })
     } else {
       log.error('CSP nonce placeholder not substituted', {
-        impact: 'Caddy templates directive is misconfigured -- CSP will block inline styles',
+        impact: 'Caddy templates directive is misconfigured: CSP will block inline styles',
       })
     }
-  } else if (!value) {
+    return
+  }
+  if (!value) {
     log.warn('CSP nonce meta tag present but empty')
   }
+}
 
-  // Reject the un-substituted Caddy template placeholder: if {{placeholder
-  // "..."}} appears literally, the templates directive is misconfigured (or
-  // we are in dev), and the value is not a real nonce.
-  cached = value && !value.includes('{{placeholder') ? value : undefined
+/**
+ * Reject the un-substituted Caddy template placeholder: if
+ * `{{placeholder "..."}}` appears literally, the templates directive is
+ * misconfigured (or we are in dev), and the value is not a real nonce.
+ */
+function _validNonce(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  if (value.includes('{{placeholder')) return undefined
+  return value
+}
+
+export function getCspNonce(): string | undefined {
+  if (cached !== UNREAD) return cached
+  const meta = document.querySelector<HTMLMetaElement>(
+    'meta[name="csp-nonce"]',
+  )
+  const value = meta?.content?.trim()
+  _logCspNonceIssue(meta, value)
+  cached = _validNonce(value)
   return cached
 }

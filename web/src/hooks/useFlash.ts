@@ -22,17 +22,25 @@ interface UseFlashReturn {
 }
 
 /**
+ * Resolve the total flash duration (flash + hold + fade), falling back
+ * to the design-system timing constants when the caller omits an
+ * override.
+ */
+function _resolveTotalMs(options?: UseFlashOptions): number {
+  const flashMs = options?.flashMs ?? STATUS_FLASH.flashMs
+  const holdMs = options?.holdMs ?? STATUS_FLASH.holdMs
+  const fadeMs = options?.fadeMs ?? STATUS_FLASH.fadeMs
+  return flashMs + holdMs + fadeMs
+}
+
+/**
  * Hook for triggering a real-time update flash effect.
  *
  * Uses the STATUS_FLASH timing constants from the motion system.
  * Multiple rapid triggers reset the timer rather than stacking.
  */
 export function useFlash(options?: UseFlashOptions): UseFlashReturn {
-  const flashMs = options?.flashMs ?? STATUS_FLASH.flashMs
-  const holdMs = options?.holdMs ?? STATUS_FLASH.holdMs
-  const fadeMs = options?.fadeMs ?? STATUS_FLASH.fadeMs
-  const totalMs = flashMs + holdMs + fadeMs
-
+  const totalMs = _resolveTotalMs(options)
   const [flashing, setFlashing] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -41,9 +49,7 @@ export function useFlash(options?: UseFlashOptions): UseFlashReturn {
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current)
     }
-
     setFlashing(true)
-
     timerRef.current = setTimeout(() => {
       setFlashing(false)
       timerRef.current = null

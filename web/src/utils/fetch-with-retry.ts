@@ -110,14 +110,79 @@ function isRetriable(
 }
 
 /**
- * ``window.fetch``-compatible wrapper that retries 429s up to
- * {@link MAX_RATE_LIMIT_RETRIES} times, honouring ``Retry-After``.
+ * Pick the active AbortSignal: explicit `init.signal` wins, otherwise
+ * the `Request` object's own signal so callers passing a pre-built
+ * Request still see cancellation propagate into the retry sleep.
+ */
+function _resolveSignal(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): AbortSignal | undefined {
+  return init?.signal ?? (input instanceof Request ? input.signal : undefined)
+}
+
+/** Does the current response warrant another retry attempt? */
+function _shouldKeepRetrying(
+  response: Response,
+  attempt: number,
+  retriable: boolean,
+): boolean {
+  return (
+    response.status === HTTP_TOO_MANY_REQUESTS
+    && retriable
+    && attempt < MAX_RATE_LIMIT_RETRIES
+  )
+}
+
+/**
+ * Run one retry sleep, honouring the caller-supplied sleep helper when
+ * provided. Tests inject a fake sleep to avoid real waits; production
+ * uses `defaultSleep` which integrates with the abort signal.
+ */
+async function _performRetrySleep(
+  waitMs: number,
+  signal: AbortSignal | undefined,
+  sleep: ((ms: number) => Promise<void>) | undefined,
+): Promise<void> {
+  if (sleep) {
+    await sleep(waitMs)
+    return
+  }
+  await defaultSleep(waitMs, signal)
+}
+
+interface RetryBail {
+  /** The helper should immediately return this response. */
+  readonly bail: Response
+}
+
+/**
+ * Compute the wait + decide whether to bail before sleeping. Returns
+ * `bail` when the server says "give up" (`DO_NOT_RETRY`) or the caller
+ * has aborted. Returns the raw `waitMs` otherwise.
+ */
+function _decideRetryWait(
+  response: Response,
+  signal: AbortSignal | undefined,
+): RetryBail | number {
+  const waitMs = parseRetryAfterMs(
+    response.headers.get('Retry-After') ?? undefined,
+    null,
+  )
+  if (waitMs === DO_NOT_RETRY) return { bail: response }
+  if (signal?.aborted) return { bail: response }
+  return waitMs
+}
+
+/**
+ * `window.fetch`-compatible wrapper that retries 429s up to
+ * {@link MAX_RATE_LIMIT_RETRIES} times, honouring `Retry-After`.
  *
- * Returns the final ``Response`` -- successful, 4xx other than 429, or
+ * Returns the final `Response`: successful, 4xx other than 429, or
  * 429 once the retry budget is exhausted (the caller decides what to
- * do with it). Network errors propagate as raw ``fetch`` rejections.
+ * do with it). Network errors propagate as raw `fetch` rejections.
  *
- * If ``init.signal`` aborts during a retry sleep, the helper short-
+ * If `init.signal` aborts during a retry sleep, the helper short-
  * circuits and returns the most recent 429 response immediately so the
  * caller's cancellation is observed without waiting out the full
  * Retry-After budget.
@@ -128,39 +193,16 @@ export async function fetchWithRetryAfter(
   opts?: FetchWithRetryOptions,
 ): Promise<Response> {
   const fetchImpl = opts?.fetchImpl ?? fetch
-  // ``signal`` is read from ``init.signal`` for raw URL/string inputs and
-  // falls back to the ``Request`` object's signal so callers passing a
-  // pre-built Request still see cancellation propagate into the retry
-  // sleep below.
-  const signal =
-    init?.signal ?? (input instanceof Request ? input.signal : undefined)
+  const signal = _resolveSignal(input, init)
   const sleep = opts?.sleep
   const retriable = isRetriable(input, init, opts)
   let attempt = 0
   let response = await fetchImpl(input, init)
-  while (
-    response.status === HTTP_TOO_MANY_REQUESTS &&
-    retriable &&
-    attempt < MAX_RATE_LIMIT_RETRIES
-  ) {
-    const waitMs = parseRetryAfterMs(
-      response.headers.get('Retry-After') ?? undefined,
-      null,
-    )
-    if (waitMs === DO_NOT_RETRY) {
-      return response
-    }
-    if (signal?.aborted) {
-      return response
-    }
-    if (sleep) {
-      await sleep(waitMs)
-    } else {
-      await defaultSleep(waitMs, signal)
-    }
-    if (signal?.aborted) {
-      return response
-    }
+  while (_shouldKeepRetrying(response, attempt, retriable)) {
+    const decision = _decideRetryWait(response, signal)
+    if (typeof decision !== 'number') return decision.bail
+    await _performRetrySleep(decision, signal, sleep)
+    if (signal?.aborted) return response
     attempt += 1
     response = await fetchImpl(input, init)
   }

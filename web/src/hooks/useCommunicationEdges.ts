@@ -45,6 +45,40 @@ function fetchReducer(_state: FetchState, action: FetchAction): FetchState {
   }
 }
 
+interface CollectedMessages {
+  readonly messages: Array<{ sender: string; to: string }>
+  readonly truncated: boolean
+}
+
+/**
+ * Walk up to MAX_PAGES of the messages endpoint into a flat sender/to
+ * list. Returns null when the abort signal fires mid-walk so the caller
+ * can skip the success dispatch.
+ */
+async function _collectAllMessages(
+  signal: AbortSignal,
+): Promise<CollectedMessages | null> {
+  const messages: Array<{ sender: string; to: string }> = []
+  let cursor: string | null = null
+  let truncated = false
+  for (let page = 0; page < MAX_PAGES; page++) {
+    if (signal.aborted) return null
+    const result = await listMessages({ cursor, limit: PAGE_LIMIT, signal })
+    for (const msg of result.data) {
+      messages.push({ sender: msg.sender, to: msg.to })
+    }
+    const exhausted = !result.hasMore || result.data.length === 0
+    if (exhausted) break
+    cursor = result.nextCursor
+    if (page === MAX_PAGES - 1) truncated = true
+  }
+  return { messages, truncated }
+}
+
+function _toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : 'Failed to fetch messages'
+}
+
 /**
  * Fetch inter-agent messages and aggregate into communication links.
  *
@@ -64,42 +98,22 @@ export function useCommunicationEdges(enabled = true): UseCommunicationEdgesRetu
       dispatch({ type: 'reset' })
       return
     }
-
     const controller = new AbortController()
     dispatch({ type: 'loading' })
-
-    async function fetchAll() {
+    async function fetchAll(): Promise<void> {
       try {
-        const allMessages: Array<{ sender: string; to: string }> = []
-        let cursor: string | null = null
-        let truncated = false
-        for (let page = 0; page < MAX_PAGES; page++) {
-          if (controller.signal.aborted) return
-          const result = await listMessages({
-            cursor,
-            limit: PAGE_LIMIT,
-            signal: controller.signal,
-          })
-          for (const msg of result.data) {
-            allMessages.push({ sender: msg.sender, to: msg.to })
-          }
-          if (!result.hasMore || result.data.length === 0) break
-          cursor = result.nextCursor
-          if (page === MAX_PAGES - 1 && result.hasMore) {
-            truncated = true
-          }
-        }
-
-        if (!controller.signal.aborted) {
-          dispatch({ type: 'success', messages: allMessages, truncated })
-        }
+        const result = await _collectAllMessages(controller.signal)
+        if (controller.signal.aborted || result === null) return
+        dispatch({
+          type: 'success',
+          messages: result.messages,
+          truncated: result.truncated,
+        })
       } catch (err) {
-        if (!controller.signal.aborted) {
-          dispatch({ type: 'error', error: err instanceof Error ? err.message : 'Failed to fetch messages' })
-        }
+        if (controller.signal.aborted) return
+        dispatch({ type: 'error', error: _toErrorMessage(err) })
       }
     }
-
     void fetchAll()
     return () => { controller.abort() }
   }, [enabled])
