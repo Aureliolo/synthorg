@@ -6,7 +6,7 @@ from typing import Annotated, Final, Self
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.api.dto import (
@@ -22,7 +22,6 @@ from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.budget.currency import DEFAULT_CURRENCY, assert_currencies_match
 from synthorg.budget.errors import MixedCurrencyAggregationError
-from synthorg.core.domain_errors import ValidationError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -299,14 +298,14 @@ class BudgetController(Controller):
         state: State,
         agent_id: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to cost records emitted by this agent.",
             ),
         ] = None,
         task_id: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to cost records emitted under this task.",
             ),
@@ -329,20 +328,6 @@ class BudgetController(Controller):
         Returns:
             Paginated cost records with daily and period summaries.
         """
-        # Manual check retained: Litestar Parameter(max_length=...) on
-        # query params crashes the worker instead of returning a proper
-        # RFC 9457 error response.
-        for field_name, value in (("agent_id", agent_id), ("task_id", task_id)):
-            if value is not None and len(value) > QUERY_MAX_LENGTH:
-                msg = f"{field_name} exceeds maximum length of {QUERY_MAX_LENGTH}"
-                logger.warning(
-                    API_VALIDATION_FAILED,
-                    field=field_name,
-                    actual_length=len(value),
-                    max_length=QUERY_MAX_LENGTH,
-                )
-                raise ValidationError(msg)
-
         app_state: AppState = state.app_state
         budget_cfg = await app_state.config_resolver.get_budget_config()
         currency = budget_cfg.currency

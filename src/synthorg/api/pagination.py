@@ -13,7 +13,7 @@ wire format stays the same.
 
 from typing import Annotated
 
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 
 from synthorg.api.cursor import (
     CursorSecret,
@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 
 CursorLimit = Annotated[
     int,
-    Parameter(
+    QueryParameter(
         ge=1,
         le=MAX_LIMIT,
         description=f"Page size (default {DEFAULT_LIMIT}, max {MAX_LIMIT})",
@@ -39,14 +39,14 @@ CursorLimit = Annotated[
 """Query-parameter type for the page size (1-MAX_LIMIT).
 
 HTTP-boundary only: the bounds are enforced by Litestar's
-``Parameter`` metadata at request parsing. Do not reuse this alias
-for in-process validation, where the constraint would silently not
-apply.
+``QueryParameter`` metadata at request parsing. Do not reuse this
+alias for in-process validation, where the constraint would silently
+not apply.
 """
 
 CursorParam = Annotated[
     str | None,
-    Parameter(
+    QueryParameter(
         max_length=512,
         description="Opaque pagination cursor returned by the previous page",
     ),
@@ -54,8 +54,8 @@ CursorParam = Annotated[
 """Query-parameter type for the opaque cursor (max 512 chars).
 
 HTTP-boundary only: the ``max_length`` is enforced by Litestar's
-``Parameter`` metadata at request parsing, not by the type itself.
-Do not reuse this alias for in-process validation.
+``QueryParameter`` metadata at request parsing, not by the type
+itself. Do not reuse this alias for in-process validation.
 """
 
 

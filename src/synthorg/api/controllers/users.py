@@ -14,7 +14,7 @@ from synthorg.api.cursor import decode_keyset_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_ceo
 from synthorg.api.pagination import CursorLimit, CursorParam, encode_keyset_meta
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import PathId, PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
@@ -596,7 +596,7 @@ class UserController(Controller):
         self,
         state: State,
         user_id: PathId,
-        role: str,
+        role: PathName,
     ) -> None:
         """Revoke an org-level role from a user.
 

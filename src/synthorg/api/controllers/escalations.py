@@ -13,7 +13,7 @@ from typing import Annotated, Final
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.cursor import decode_cursor, encode_cursor
@@ -135,7 +135,7 @@ class EscalationsController(Controller):
         limit: CursorLimit = _DEFAULT_LIMIT,
         status: Annotated[
             EscalationStatus,
-            Parameter(
+            QueryParameter(
                 description="Filter to escalations in this status (default PENDING)."
             ),
         ] = EscalationStatus.PENDING,

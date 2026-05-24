@@ -7,10 +7,11 @@ selection, company creation, name locale configuration, agent management
 
 import asyncio
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 from litestar import Controller, get, post, put
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import PathParameter
 from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 
 if TYPE_CHECKING:
@@ -572,7 +573,7 @@ class SetupController(Controller):
     )
     async def update_agent_model(
         self,
-        agent_index: int,
+        agent_index: Annotated[int, PathParameter()],
         data: UpdateAgentModelRequest,
         state: State,
     ) -> ApiResponse[SetupAgentSummary]:
@@ -611,16 +612,8 @@ class SetupController(Controller):
                     "model_id": data.model_id,
                 },
             }
-            agents = [
-                *agents[:agent_index],
-                updated_agent,
-                *agents[agent_index + 1 :],
-            ]
-            await settings_svc.set(
-                "company",
-                "agents",
-                json.dumps(agents),
-            )
+            agents = [*agents[:agent_index], updated_agent, *agents[agent_index + 1 :]]
+            await settings_svc.set("company", "agents", json.dumps(agents))
 
         logger.info(
             SETUP_AGENT_MODEL_UPDATED,
@@ -640,7 +633,7 @@ class SetupController(Controller):
     )
     async def update_agent_name(
         self,
-        agent_index: int,
+        agent_index: Annotated[int, PathParameter()],
         data: UpdateAgentNameRequest,
         state: State,
     ) -> ApiResponse[SetupAgentSummary]:
@@ -699,7 +692,7 @@ class SetupController(Controller):
     )
     async def randomize_agent_name(
         self,
-        agent_index: int,
+        agent_index: Annotated[int, PathParameter()],
         state: State,
     ) -> ApiResponse[SetupAgentSummary]:
         """Generate a random name for an agent using locale preferences.

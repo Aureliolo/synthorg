@@ -5,7 +5,7 @@ from typing import Annotated, Final
 
 from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import PathParameter
 
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -83,7 +83,7 @@ class EvaluationConfigVersionController(Controller):
         state: State,
         version_num: Annotated[
             int,
-            Parameter(
+            PathParameter(
                 ge=1,
                 description="Evaluation config version (one-based).",
             ),

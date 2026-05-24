@@ -1,7 +1,7 @@
 """Tests for exception handlers with RFC 9457 structured error responses."""
 
 import re
-from typing import Any
+from typing import Annotated, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +13,7 @@ from litestar.exceptions import (
     PermissionDeniedException,
     ValidationException,
 )
+from litestar.params import PathParameter
 from litestar.testing import TestClient
 
 from synthorg.api.dto import ProblemDetail
@@ -1647,7 +1648,7 @@ class TestBareResponseFixes:
         """Missing project raises NotFoundError (404)."""
 
         @get("/projects/{project_id:str}")
-        async def handler(project_id: str) -> None:
+        async def handler(project_id: Annotated[str, PathParameter()]) -> None:
             msg = f"Project {project_id!r} not found"
             raise NotFoundError(msg)
 

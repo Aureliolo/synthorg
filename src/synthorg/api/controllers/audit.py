@@ -14,7 +14,7 @@ from typing import Annotated, Final
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import require_read_access
@@ -96,41 +96,41 @@ class AuditController(Controller):
         state: State,
         agent_id: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to audit entries emitted for this agent.",
             ),
         ] = None,
         tool_name: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to audit entries emitted for this tool.",
             ),
         ] = None,
         action_type: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to audit entries with this action type.",
             ),
         ] = None,
         verdict: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=50,
                 description="Filter by verdict (APPROVED / DENIED).",
             ),
         ] = None,
         since: Annotated[
             datetime | None,
-            Parameter(
+            QueryParameter(
                 description="Filter to entries emitted at or after this ISO timestamp."
             ),
         ] = None,
         until: Annotated[
             datetime | None,
-            Parameter(
+            QueryParameter(
                 description="Filter to entries emitted at or before this ISO timestamp."
             ),
         ] = None,
@@ -138,14 +138,14 @@ class AuditController(Controller):
         limit: CursorLimit = _DEFAULT_LIMIT,
         jsonb_contains: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=2048,
                 description="JSONB containment filter (Postgres @>); JSON-encoded.",
             ),
         ] = None,
         jsonb_key_exists: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=256,
                 description="Filter to entries whose payload has this top-level key.",
             ),

@@ -11,10 +11,11 @@ unavailable). Approve additionally needs the work pipeline + cost
 forecast store; it 503s when the dispatcher is absent.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 from litestar import Controller, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.cursor import decode_cursor
@@ -29,6 +30,7 @@ from synthorg.api.pagination import (
     CursorParam,
     encode_countless_seek_meta,
 )
+from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import ServiceUnavailableError
@@ -149,8 +151,8 @@ class CharterController(Controller):
     async def list_charters(
         self,
         state: State,
-        status: CharterStatus | None = None,
-        project_id: str | None = None,
+        status: Annotated[CharterStatus | None, QueryParameter()] = None,
+        project_id: Annotated[str | None, QueryParameter()] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_PAGE_SIZE,
     ) -> PaginatedResponse[ProjectCharter]:
@@ -194,7 +196,7 @@ class CharterController(Controller):
     @get("/{charter_id:str}")
     async def get_charter(
         self,
-        charter_id: str,
+        charter_id: PathId,
         state: State,
     ) -> ApiResponse[ProjectCharter]:
         """Fetch a single charter by id (creator-only)."""
@@ -215,7 +217,7 @@ class CharterController(Controller):
     )
     async def edit_charter(
         self,
-        charter_id: str,
+        charter_id: PathId,
         data: CharterEditRequest,
         state: State,
     ) -> ApiResponse[ProjectCharter]:
@@ -251,7 +253,7 @@ class CharterController(Controller):
     )
     async def approve_charter(
         self,
-        charter_id: str,
+        charter_id: PathId,
         data: _DecisionRequest,
         state: State,
     ) -> ApiResponse[CharterApprovalResult]:
@@ -287,7 +289,7 @@ class CharterController(Controller):
     )
     async def cancel_charter(
         self,
-        charter_id: str,
+        charter_id: PathId,
         data: _DecisionRequest,
         state: State,
     ) -> ApiResponse[ProjectCharter]:

@@ -18,7 +18,7 @@ from synthorg.api.dto_training import (
     UpdateTrainingOverridesRequest,
 )
 from synthorg.api.guards import require_org_mutation, require_read_access
-from synthorg.api.path_params import PathName  # noqa: TC001
+from synthorg.api.path_params import PathId, PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
@@ -432,7 +432,7 @@ class TrainingController(Controller):
         self,
         state: State,
         agent_name: PathName,
-        plan_id: str,
+        plan_id: PathId,
         data: UpdateTrainingOverridesRequest,
     ) -> ApiResponse[TrainingPlanResponse]:
         """Update training plan overrides.

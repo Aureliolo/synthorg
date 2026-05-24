@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Final, NamedTuple
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
@@ -585,11 +585,11 @@ class AnalyticsController(Controller):
         state: State,
         period: Annotated[
             TrendPeriod,
-            Parameter(description="Lookback period"),
+            QueryParameter(description="Lookback period"),
         ] = TrendPeriod.SEVEN_DAYS,
         metric: Annotated[
             TrendMetric,
-            Parameter(description="Metric to trend"),
+            QueryParameter(description="Metric to trend"),
         ] = TrendMetric.SPEND,
     ) -> ApiResponse[TrendsResponse]:
         """Return time-series trend data for a metric.
@@ -644,7 +644,7 @@ class AnalyticsController(Controller):
         state: State,
         horizon_days: Annotated[
             int,
-            Parameter(
+            QueryParameter(
                 ge=1,
                 le=90,
                 description="Projection horizon in days",

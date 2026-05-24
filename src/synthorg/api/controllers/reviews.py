@@ -10,6 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.channels import CHANNEL_REVIEWS, publish_ws_event
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
+    PathId,
+    PathName,
+)
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
@@ -80,7 +84,7 @@ class ReviewController(Controller):
     async def get_pipeline(
         self,
         state: State,
-        task_id: str,
+        task_id: PathId,
     ) -> ApiResponse[PipelineResult]:
         """Run the configured review pipeline against a task.
 
@@ -137,8 +141,8 @@ class ReviewController(Controller):
         self,
         request: Request[Any, Any, Any],
         state: State,
-        task_id: str,
-        stage_name: str,
+        task_id: PathId,
+        stage_name: PathName,
         data: StageDecisionPayload,
     ) -> ApiResponse[StageDecisionResult]:
         """Record a manual verdict override for a single review stage.

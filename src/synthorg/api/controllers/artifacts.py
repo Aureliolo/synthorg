@@ -5,7 +5,7 @@ from typing import Annotated, Any, Final
 from litestar import Controller, Request, Response, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
 from litestar.enums import RequestEncodingType
-from litestar.params import Body, Parameter
+from litestar.params import Body, QueryParameter
 
 from synthorg.api.channels import CHANNEL_ARTIFACTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, CreateArtifactRequest, PaginatedResponse
@@ -88,7 +88,7 @@ _SAFE_CONTENT_TYPES = frozenset(
 
 TaskIdFilter = Annotated[
     NotBlankStr | None,
-    Parameter(
+    QueryParameter(
         required=False,
         max_length=QUERY_MAX_LENGTH,
         description="Filter by originating task ID",
@@ -97,7 +97,7 @@ TaskIdFilter = Annotated[
 
 CreatedByFilter = Annotated[
     NotBlankStr | None,
-    Parameter(
+    QueryParameter(
         required=False,
         max_length=QUERY_MAX_LENGTH,
         description="Filter by creator agent ID",
@@ -106,9 +106,9 @@ CreatedByFilter = Annotated[
 
 TypeFilter = Annotated[
     NotBlankStr | None,
-    Parameter(
+    QueryParameter(
         required=False,
-        query="type",
+        name="type",
         max_length=QUERY_MAX_LENGTH,
         description="Filter by artifact type",
     ),

@@ -5,7 +5,7 @@ from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, Response, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.channels import CHANNEL_PROJECTS, publish_ws_event
@@ -41,7 +41,7 @@ def _service(state: State) -> ProjectService:
 
 ProjectStatusFilter = Annotated[
     NotBlankStr | None,
-    Parameter(
+    QueryParameter(
         required=False,
         max_length=QUERY_MAX_LENGTH,
         description="Filter by project status",
@@ -50,7 +50,7 @@ ProjectStatusFilter = Annotated[
 
 LeadFilter = Annotated[
     NotBlankStr | None,
-    Parameter(
+    QueryParameter(
         required=False,
         max_length=QUERY_MAX_LENGTH,
         description="Filter by project lead agent ID",

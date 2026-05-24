@@ -8,7 +8,7 @@ services:
   # cannot self-chown, so this one-shot container sets ownership on first start.
   data-init:
     # renovate: datasource=docker depName=busybox
-    image: busybox:1.38-musl@sha256:f36701e0a15a97186ccc59bbe9a6217b649edecb36ce32d07fa31bf5ad15e56d
+    image: busybox:<TAG>-musl@sha256:<DIGEST>
     volumes:
       - synthorg-data:/data
     command: ["sh", "-c", "set -e; mkdir -p /data/logs /data/memory; chown -R 65532:65532 /data"]
@@ -20,7 +20,7 @@ services:
       - FOWNER
 
   backend:
-    image: ghcr.io/aureliolo/synthorg-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    image: ghcr.io/aureliolo/synthorg-backend@sha256:<DIGEST>
     ports:
       - "3001:3001"
     volumes:
@@ -68,7 +68,7 @@ services:
     # Healthcheck defined in Dockerfile -- do not override here.
 
   web:
-    image: ghcr.io/aureliolo/synthorg-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    image: ghcr.io/aureliolo/synthorg-web@sha256:<DIGEST>
     ports:
       - "3000:8080"
     depends_on:

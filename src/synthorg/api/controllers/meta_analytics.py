@@ -8,7 +8,7 @@ from typing import Annotated, Final
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
@@ -116,7 +116,7 @@ class MetaAnalyticsController(Controller):
         state: State,
         min_deployments: Annotated[
             int,
-            Parameter(
+            QueryParameter(
                 ge=1,
                 le=100,
                 description="Minimum deployment count for a pattern to be returned.",

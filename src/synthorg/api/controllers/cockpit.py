@@ -10,7 +10,7 @@ from typing import Annotated, Final
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import PathParameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.cursor import decode_cursor
@@ -46,7 +46,7 @@ _COCKPIT_NS: Final[str] = "cockpit"
 #: ``FlightRecorderFrame.turn_index`` invariant.
 TurnIndexPath = Annotated[
     int,
-    Parameter(ge=1, description="Target turn index (1-based)"),
+    PathParameter(ge=1, description="Target turn index (1-based)"),
 ]
 
 

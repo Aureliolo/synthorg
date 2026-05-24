@@ -5,7 +5,7 @@ from typing import Annotated, Any, Final, Self
 
 from litestar import Controller, Request, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -245,11 +245,11 @@ class MeetingController(Controller):
         limit: CursorLimit = _DEFAULT_LIMIT,
         status: Annotated[
             MeetingStatus | None,
-            Parameter(description="Filter to meetings in this status."),
+            QueryParameter(description="Filter to meetings in this status."),
         ] = None,
         meeting_type: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter by meeting type (STAND_UP, RETRO, etc.).",
             ),
@@ -267,19 +267,6 @@ class MeetingController(Controller):
         Returns:
             Paginated meeting records with analytics fields.
         """
-        # Manual check retained: Litestar Parameter(max_length=...) on
-        # query params crashes the worker instead of returning a proper
-        # RFC 9457 error response.
-        if meeting_type is not None and len(meeting_type) > QUERY_MAX_LENGTH:
-            msg = f"meeting_type exceeds maximum length of {QUERY_MAX_LENGTH}"
-            logger.warning(
-                API_VALIDATION_FAILED,
-                field="meeting_type",
-                actual_length=len(meeting_type),
-                max_length=QUERY_MAX_LENGTH,
-            )
-            raise ValidationError(msg)
-
         orchestrator = state.app_state.meeting_orchestrator
         records = orchestrator.get_records()
 

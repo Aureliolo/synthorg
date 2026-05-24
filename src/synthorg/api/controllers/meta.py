@@ -11,6 +11,7 @@ from synthorg.api.controllers.custom_rules import rule_to_dict
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_org_mutation, require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.actor_context import require_actor
 from synthorg.core.domain_errors import (
@@ -234,7 +235,7 @@ class MetaController(Controller):
     @get("/ab-tests/{proposal_id:str}")
     async def get_ab_test_detail(
         self,
-        proposal_id: str,
+        proposal_id: PathId,
     ) -> ApiResponse[dict[str, Any]]:
         """Get detailed A/B test status for a specific proposal.
 

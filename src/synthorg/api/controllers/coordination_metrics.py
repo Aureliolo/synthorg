@@ -10,7 +10,7 @@ from typing import Annotated, Final
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import require_read_access
@@ -91,27 +91,27 @@ class CoordinationMetricsController(Controller):
         state: State,
         task_id: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to coordination metrics emitted under this task.",
             ),
         ] = None,
         agent_id: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to coordination metrics emitted by this agent.",
             ),
         ] = None,
         since: Annotated[
             datetime | None,
-            Parameter(
+            QueryParameter(
                 description="Filter to metrics emitted at or after this ISO timestamp."
             ),
         ] = None,
         until: Annotated[
             datetime | None,
-            Parameter(
+            QueryParameter(
                 description="Filter to metrics emitted at or before this ISO timestamp."
             ),
         ] = None,

@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from litestar import Controller, Response, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import PathParameter, QueryParameter
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.api.auth import get_authenticated_user_id
@@ -208,7 +208,7 @@ class SubworkflowController(Controller):
         state: State,
         q: Annotated[
             str,
-            Parameter(
+            QueryParameter(
                 required=True,
                 min_length=1,
                 max_length=128,
@@ -279,7 +279,7 @@ class SubworkflowController(Controller):
         subworkflow_id: PathId,
         version: Annotated[
             str,
-            Parameter(
+            PathParameter(
                 min_length=1,
                 max_length=64,
                 description="Subworkflow version to fetch (semver-like, e.g. 1.0.0).",
@@ -308,7 +308,7 @@ class SubworkflowController(Controller):
         subworkflow_id: PathId,
         version: Annotated[
             str,
-            Parameter(
+            PathParameter(
                 min_length=1,
                 max_length=64,
                 description="Subworkflow version pinned by the parent workflows.",
@@ -401,7 +401,7 @@ class SubworkflowController(Controller):
         subworkflow_id: PathId,
         version: Annotated[
             str,
-            Parameter(
+            PathParameter(
                 min_length=1,
                 max_length=64,
                 description="Subworkflow version to delete (parents block).",

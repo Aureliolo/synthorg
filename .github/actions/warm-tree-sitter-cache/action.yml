@@ -1,0 +1,37 @@
+name: Warm tree-sitter parser cache
+description: |
+  Pre-download the tree-sitter-language-pack parser tarball with bounded
+  retry before pytest fixtures touch ``get_language``. The
+  ``tree_sitter_language_pack`` Rust binding fetches platform-specific
+  parsers from a GitHub releases asset on first call, and a transient
+  502 from the GitHub releases CDN otherwise surfaces deep inside a
+  pytest fixture as ``_native.Error: Download error`` and fails the
+  knowledge test shard. This action warms the cache in a separate step
+  whose only job is downloading the tarball, so the same 502 retries
+  cleanly here instead of poisoning a multi-minute test run.
+
+  Matches the project standard for transient downloads documented in
+  the curl ``--retry 5 --retry-delay 5 --retry-all-errors`` pattern
+  (see .github/workflows/pages-preview.yml lines 161-180).
+
+runs:
+  using: composite
+  steps:
+    - name: Pre-download tree-sitter parsers (bounded retry)
+      shell: bash
+      run: |
+        set -euo pipefail
+        max_attempts=3
+        delay=10
+        for attempt in $(seq 1 "$max_attempts"); do
+          if uv run python -c "from tree_sitter_language_pack import get_language; get_language('python')"; then
+            echo "tree-sitter parser cache warmed on attempt ${attempt}"
+            exit 0
+          fi
+          if [ "$attempt" -lt "$max_attempts" ]; then
+            echo "::warning::tree-sitter parser download failed (attempt ${attempt}/${max_attempts}); retrying after ${delay}s"
+            sleep "$delay"
+          fi
+        done
+        echo "::error::tree-sitter parser download failed after ${max_attempts} attempts"
+        exit 1

@@ -6,11 +6,11 @@ signatures, and publishes to the message bus.
 
 import hashlib
 import json
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Annotated, Any, Final
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 
 from synthorg.api.boundary import parse_typed
 from synthorg.api.controllers._webhooks_wiring import (
@@ -25,6 +25,7 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
     PathEventType,
+    PathId,
     PathName,
 )
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
@@ -717,12 +718,10 @@ class WebhooksController(Controller):
         self,
         state: State,
         connection_name: PathName,
-        limit: int = Parameter(
-            default=100,
-            ge=1,
-            le=500,
-            description="Max results",
-        ),
+        limit: Annotated[
+            int,
+            QueryParameter(ge=1, le=500, description="Max results"),
+        ] = 100,  # lint-allow: magic-numbers -- pre-2.22 default preserved
     ) -> ApiResponse[tuple[WebhookReceipt, ...]]:
         """List recent webhook receipts for a connection."""
         service = await _get_activity_service(state)
@@ -745,7 +744,7 @@ class WebhooksController(Controller):
     async def retry_receipt(
         self,
         state: State,
-        receipt_id: str,
+        receipt_id: PathId,
     ) -> ApiResponse[dict[str, object]]:
         """Re-publish a stored webhook payload to the message bus.
 

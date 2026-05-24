@@ -6,21 +6,18 @@ from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.channels import CHANNEL_REQUESTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
-from synthorg.client.models import (
-    ClientRequest,
-    RequestStatus,
-    TaskRequirement,
-)
+from synthorg.client.models import ClientRequest, RequestStatus, TaskRequirement
 from synthorg.client.simulation_state import ClientSimulationState  # noqa: TC001
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
@@ -444,7 +441,7 @@ class RequestController(Controller):
         state: State,
         status: Annotated[
             RequestStatus | None,
-            Parameter(description="Filter to requests in this status."),
+            QueryParameter(description="Filter to requests in this status."),
         ] = None,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
@@ -467,7 +464,7 @@ class RequestController(Controller):
     async def get_request(
         self,
         state: State,
-        request_id: str,
+        request_id: PathId,
     ) -> ApiResponse[ClientRequest]:
         """Return a single request by id."""
         app_state: AppState = state.app_state
@@ -520,7 +517,7 @@ class RequestController(Controller):
         self,
         request: Request[Any, Any, Any],
         state: State,
-        request_id: str,
+        request_id: PathId,
         data: ScopingPayload,
     ) -> ApiResponse[ClientRequest]:
         """Walk a request into SCOPING status with scoping notes.
@@ -616,7 +613,7 @@ class RequestController(Controller):
         self,
         request: Request[Any, Any, Any],
         state: State,
-        request_id: str,
+        request_id: PathId,
     ) -> ApiResponse[ClientRequest]:
         """Approve a request and run it through the work pipeline.
 
@@ -689,7 +686,7 @@ class RequestController(Controller):
         self,
         request: Request[Any, Any, Any],
         state: State,
-        request_id: str,
+        request_id: PathId,
         data: RejectionPayload,
     ) -> ApiResponse[ClientRequest]:
         """Cancel a request, recording the rejection reason."""

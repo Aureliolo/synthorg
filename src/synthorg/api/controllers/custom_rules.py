@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.persistence_errors import ConstraintViolationError
@@ -230,7 +231,7 @@ class CustomRuleController(Controller):
     async def get_rule(
         self,
         state: State,
-        rule_id: str,
+        rule_id: PathId,
     ) -> ApiResponse[dict[str, Any]]:
         """Get a single custom rule.
 
@@ -327,7 +328,7 @@ class CustomRuleController(Controller):
     async def update_rule(
         self,
         state: State,
-        rule_id: str,
+        rule_id: PathId,
         data: UpdateCustomRuleRequest,
     ) -> ApiResponse[dict[str, Any]]:
         """Update an existing custom rule.
@@ -379,7 +380,7 @@ class CustomRuleController(Controller):
     async def delete_rule(
         self,
         state: State,
-        rule_id: str,
+        rule_id: PathId,
     ) -> None:
         """Delete a custom rule.
 
@@ -405,7 +406,7 @@ class CustomRuleController(Controller):
     async def toggle_rule(
         self,
         state: State,
-        rule_id: str,
+        rule_id: PathId,
     ) -> ApiResponse[dict[str, Any]]:
         """Toggle a custom rule's enabled status.
 

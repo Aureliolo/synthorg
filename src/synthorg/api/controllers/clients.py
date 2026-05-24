@@ -11,6 +11,7 @@ from synthorg.api.channels import CHANNEL_CLIENTS, publish_ws_event
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
+from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
@@ -232,7 +233,7 @@ class ClientController(Controller):
     async def get_client(
         self,
         state: State,
-        client_id: str,
+        client_id: PathId,
     ) -> ApiResponse[ClientProfile]:
         """Return a single client profile by id.
 
@@ -301,7 +302,7 @@ class ClientController(Controller):
         self,
         request: Request[Any, Any, Any],
         state: State,
-        client_id: str,
+        client_id: PathId,
         data: UpdateClientRequest,
     ) -> ApiResponse[ClientProfile]:
         """Update fields on an existing client profile.
@@ -342,7 +343,7 @@ class ClientController(Controller):
         self,
         request: Request[Any, Any, Any],
         state: State,
-        client_id: str,
+        client_id: PathId,
     ) -> None:
         """Deactivate a client without removing historical data.
 
@@ -372,7 +373,7 @@ class ClientController(Controller):
     async def get_satisfaction(
         self,
         state: State,
-        client_id: str,
+        client_id: PathId,
     ) -> ApiResponse[SatisfactionHistory]:
         """Return the full satisfaction history for a client.
 

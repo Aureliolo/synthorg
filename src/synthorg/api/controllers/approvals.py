@@ -10,7 +10,7 @@ from uuid import uuid4
 from litestar import Controller, Request, get, post
 from litestar.channels import ChannelsPlugin  # noqa: TC002
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 from pydantic import ConfigDict, Field
 
 from synthorg.api.channels import CHANNEL_APPROVALS, get_channels_plugin
@@ -44,7 +44,6 @@ from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.domain_errors import (
     ConflictError,
     UnauthorizedError,
-    ValidationError,
 )
 from synthorg.core.enums import (
     ApprovalRiskLevel,
@@ -534,15 +533,15 @@ class ApprovalsController(Controller):
         state: State,
         status: Annotated[
             ApprovalStatus | None,
-            Parameter(description="Filter to approvals in this status."),
+            QueryParameter(description="Filter to approvals in this status."),
         ] = None,
         risk_level: Annotated[
             ApprovalRiskLevel | None,
-            Parameter(description="Filter to approvals at this risk level."),
+            QueryParameter(description="Filter to approvals at this risk level."),
         ] = None,
         action_type: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Filter to approvals raised for this action type.",
             ),
@@ -563,19 +562,6 @@ class ApprovalsController(Controller):
         Returns:
             Paginated approval list with urgency fields.
         """
-        # Manual check retained: Litestar Parameter(max_length=...) on
-        # query params crashes the worker instead of returning a proper
-        # RFC 9457 error response.
-        if action_type is not None and len(action_type) > QUERY_MAX_LENGTH:
-            msg = f"action_type exceeds maximum length of {QUERY_MAX_LENGTH}"
-            logger.warning(
-                API_VALIDATION_FAILED,
-                field="action_type",
-                actual_length=len(action_type),
-                max_length=QUERY_MAX_LENGTH,
-            )
-            raise ValidationError(msg)
-
         app_state: AppState = state.app_state
         items = await app_state.approval_store.list_items(
             status=status,

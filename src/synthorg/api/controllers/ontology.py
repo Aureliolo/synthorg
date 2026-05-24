@@ -9,7 +9,7 @@ from typing import Annotated, Final
 
 from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import PathParameter, QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.cursor import decode_cursor
@@ -134,7 +134,7 @@ class OntologyController(Controller):
         limit: CursorLimit = _DEFAULT_LIMIT,
         tier: Annotated[
             str | None,
-            Parameter(description="Filter to entity definitions in this tier."),
+            QueryParameter(description="Filter to entity definitions in this tier."),
         ] = None,
     ) -> PaginatedResponse[EntityResponse]:
         """List all entity definitions, filterable by tier."""
@@ -416,7 +416,7 @@ class OntologyController(Controller):
         name: PathName,
         version: Annotated[
             int,
-            Parameter(description="Entity definition version to fetch."),
+            PathParameter(description="Entity definition version to fetch."),
         ],
     ) -> ApiResponse[EntityVersionResponse]:
         """Get a specific version snapshot."""
