@@ -158,9 +158,13 @@ func resolveExistingAncestor(dir string) (string, error) {
 
 // rejectExisting returns an error if any path already exists on disk.
 // Used to fail fast before any write when Overwrite is false.
+// Uses os.Lstat (not os.Stat) so a dangling symlink at the target
+// path is still treated as "already exists" -- otherwise os.Stat
+// would follow the broken link, return ErrNotExist, and let the
+// subsequent write blow away the symlink without warning.
 func rejectExisting(paths []string) error {
 	for _, abs := range paths {
-		if _, err := os.Stat(abs); err == nil {
+		if _, err := os.Lstat(abs); err == nil {
 			return fmt.Errorf("target already exists: %s", abs)
 		} else if !os.IsNotExist(err) {
 			return fmt.Errorf("checking %s: %w", abs, err)

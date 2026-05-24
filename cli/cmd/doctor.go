@@ -507,7 +507,13 @@ func doctorComposeError(r diagnostics.Report) (string, bool) {
 
 func collectDoctorWarnings(r diagnostics.Report) []string {
 	var warnings []string
-	if len(r.ContainerSummary) == 0 && r.ComposeFileExists {
+	// The "no containers" warning is only meaningful when the
+	// containers category is actually part of the report. When the
+	// operator scoped --checks AWAY from containers, the filtered
+	// report has a zeroed ContainerSummary; emitting "no containers
+	// detected" anyway would surface a finding from a category the
+	// operator explicitly excluded.
+	if doctorCheckEnabled("containers") && len(r.ContainerSummary) == 0 && r.ComposeFileExists {
 		warnings = append(warnings, "no containers detected")
 	}
 	for _, c := range r.ContainerSummary {

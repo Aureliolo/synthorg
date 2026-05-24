@@ -120,6 +120,12 @@ func ResolveTunables(s State) (Tunables, error) {
 // resolveRegistryTunables fills the registry/tag string fields on t,
 // applying the env > state > default precedence and validating each
 // against its format predicate.
+//
+// Per-field validation is unrolled (rather than table-driven) to keep
+// the resolveRegistryTunables hot path zero-alloc. A previous
+// `[]struct{name, value, valid}` literal escaped to the heap once per
+// call (~208 B/op) because the slice header survived the range loop,
+// which tripped CLI Bench Regression on ResolveTunables.
 func resolveRegistryTunables(t *Tunables, s State) error {
 	t.RegistryHost = firstNonEmpty(os.Getenv(EnvRegistryHost), s.RegistryHost, t.RegistryHost)
 	t.ImageRepoPrefix = firstNonEmpty(os.Getenv(EnvImageRepoPrefix), s.ImageRepoPrefix, t.ImageRepoPrefix)
@@ -127,23 +133,32 @@ func resolveRegistryTunables(t *Tunables, s State) error {
 	t.PostgresImageTag = firstNonEmpty(os.Getenv(EnvPostgresImageTag), s.PostgresImageTag, t.PostgresImageTag)
 	t.NATSImageTag = firstNonEmpty(os.Getenv(EnvNATSImageTag), s.NATSImageTag, t.NATSImageTag)
 	t.DefaultNATSStreamPrefix = firstNonEmpty(os.Getenv(EnvDefaultNATSStreamPfx), s.DefaultNATSStreamPrefix, t.DefaultNATSStreamPrefix)
+	return validateResolvedRegistryFields(t)
+}
 
-	checks := []struct {
-		name  string
-		value string
-		valid func(string) bool
-	}{
-		{"registry_host", t.RegistryHost, IsValidRegistryHost},
-		{"dhi_registry", t.DHIRegistry, IsValidRegistryHost},
-		{"image_repo_prefix", t.ImageRepoPrefix, IsValidImageRepoPrefix},
-		{"postgres_image_tag", t.PostgresImageTag, IsValidImageTag},
-		{"nats_image_tag", t.NATSImageTag, IsValidImageTag},
-		{"default_nats_stream_prefix", t.DefaultNATSStreamPrefix, IsValidStreamPrefix},
+// validateResolvedRegistryFields runs the per-field format predicates
+// on the registry / image-tag fields after resolution. Extracted so
+// resolveRegistryTunables stays under the cyclomatic-complexity
+// ceiling (6 ifs plus the 6 firstNonEmpty assignments would push it
+// over) without re-introducing a per-call slice.
+func validateResolvedRegistryFields(t *Tunables) error {
+	if !IsValidRegistryHost(t.RegistryHost) {
+		return fmt.Errorf("invalid registry_host %q", t.RegistryHost)
 	}
-	for _, c := range checks {
-		if !c.valid(c.value) {
-			return fmt.Errorf("invalid %s %q", c.name, c.value)
-		}
+	if !IsValidRegistryHost(t.DHIRegistry) {
+		return fmt.Errorf("invalid dhi_registry %q", t.DHIRegistry)
+	}
+	if !IsValidImageRepoPrefix(t.ImageRepoPrefix) {
+		return fmt.Errorf("invalid image_repo_prefix %q", t.ImageRepoPrefix)
+	}
+	if !IsValidImageTag(t.PostgresImageTag) {
+		return fmt.Errorf("invalid postgres_image_tag %q", t.PostgresImageTag)
+	}
+	if !IsValidImageTag(t.NATSImageTag) {
+		return fmt.Errorf("invalid nats_image_tag %q", t.NATSImageTag)
+	}
+	if !IsValidStreamPrefix(t.DefaultNATSStreamPrefix) {
+		return fmt.Errorf("invalid default_nats_stream_prefix %q", t.DefaultNATSStreamPrefix)
 	}
 	return nil
 }
