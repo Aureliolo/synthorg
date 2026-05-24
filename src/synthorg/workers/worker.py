@@ -491,11 +491,13 @@ class Worker:
                 await JetStreamTaskQueue.ack(raw)
             else:
                 await JetStreamTaskQueue.nack(raw)
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 WORKERS_FINALIZE_FAILED,
                 worker_id=self._worker_id,
                 status=str(status),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 

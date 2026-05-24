@@ -15,7 +15,7 @@ from synthorg.meta.signal_models import (
     OrgScalingSummary,
     ScalingDecisionSummary,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
@@ -89,10 +89,12 @@ class ScalingSignalAggregator:
             raise
         except asyncio.CancelledError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 META_SIGNAL_AGGREGATION_FAILED,
                 domain="scaling",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return _EMPTY
 
@@ -131,13 +133,15 @@ class ScalingSignalAggregator:
             raise
         except asyncio.CancelledError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 META_SIGNAL_AGGREGATION_FAILED,
                 domain="scaling",
                 stage="reduce",
                 decision_count=len(decisions),
                 action_count=len(actions),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 

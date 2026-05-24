@@ -24,7 +24,7 @@ from prometheus_client import Counter as PromCounter
 
 from synthorg import __version__
 from synthorg.budget.billing import billing_period_start
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.metrics import (
     METRICS_COLLECTOR_INITIALIZED,
     METRICS_SCRAPE_COMPLETED,
@@ -148,7 +148,7 @@ async def _fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
         return frozenset(registry.list_tools())
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except Exception as exc:
         # ``_fetch_tool_names`` runs inside a ``TaskGroup`` alongside
         # the workflow / department fetchers; an uncaught exception
         # here would cancel its siblings via the structured-concurrency
@@ -156,9 +156,11 @@ async def _fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
         # log via ``logger.exception`` so the traceback survives, and
         # fall back to ``None`` so the merge step preserves the prior
         # tool-name allowlist.
-        logger.exception(
+        logger.error(
             METRICS_SCRAPE_FAILED,
             component="tool_registry",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
 

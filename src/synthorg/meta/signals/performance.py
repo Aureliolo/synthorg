@@ -14,7 +14,7 @@ from synthorg.meta.models import (
     MetricSummary,
     OrgPerformanceSummary,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
@@ -179,10 +179,12 @@ class PerformanceSignalAggregator:
                 avg_quality=avg_quality,
                 windows=len(metrics),
             )
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 META_SIGNAL_AGGREGATION_FAILED,
                 domain="performance",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return _EMPTY
         else:

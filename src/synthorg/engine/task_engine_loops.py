@@ -209,10 +209,12 @@ class TaskEngineLoopsMixin:
                     with contextlib.suppress(BaseException):
                         envelope.future.exception()
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                logger.error(
                     TASK_ENGINE_LOOP_ERROR,
-                    error="Unhandled exception in processing loop",
+                    reason="Unhandled exception in processing loop",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 if not envelope.future.done():
                     envelope.future.set_result(
@@ -316,13 +318,15 @@ class TaskEngineLoopsMixin:
                 await self._notify_observers(event)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                logger.error(
                     TASK_ENGINE_LOOP_ERROR,
-                    error="Unhandled exception in observer dispatch loop",
+                    reason="Unhandled exception in observer dispatch loop",
                     task_id=event.task_id,
                     request_id=event.request_id,
                     mutation_type=event.mutation_type,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
             finally:
                 self._observer_queue.task_done()

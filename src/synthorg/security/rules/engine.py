@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import ApprovalRiskLevel
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_EVALUATE_COMPLETE,
     SECURITY_RULE_ERROR,
@@ -171,11 +171,13 @@ class RuleEngine:
             return rule.evaluate(context)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 SECURITY_RULE_ERROR,
                 rule_name=rule.name,
                 tool_name=context.tool_name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return SecurityVerdict(
                 verdict=SecurityVerdictType.DENY,

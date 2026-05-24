@@ -40,7 +40,7 @@ from synthorg.hr.evaluation.external_benchmark_registry import (
 from synthorg.hr.evaluation.models import EvaluationReport  # noqa: TC001
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.training.service import TrainingService  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.eval_loop import (
     EVAL_LOOP_ACTION_PROPOSED,
     EVAL_LOOP_AGENT_EVAL_FAILED,
@@ -226,10 +226,12 @@ class EvalLoopCoordinator:
 
             return report  # noqa: TRY300
 
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 EVAL_LOOP_CYCLE_FAILED,
                 cycle_id=cycle_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -279,10 +281,12 @@ class EvalLoopCoordinator:
             return await self._evaluation.evaluate(agent_id)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 EVAL_LOOP_AGENT_EVAL_FAILED,
                 agent_id=agent_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
 
@@ -457,10 +461,12 @@ class EvalLoopCoordinator:
                     return await self._benchmarks.run_benchmark(name)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                logger.error(
                     EVAL_LOOP_BENCHMARK_FAILED,
                     benchmark_name=name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 return None
 

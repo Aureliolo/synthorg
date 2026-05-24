@@ -10,7 +10,7 @@ from synthorg.engine.review.models import (
     ReviewVerdict,
 )
 from synthorg.engine.review.protocol import ReviewStage  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.review_pipeline import (
     REVIEW_PIPELINE_COMPLETED,
     REVIEW_PIPELINE_STAGE_COMPLETED,
@@ -75,12 +75,14 @@ class ReviewPipeline:
         for stage in self._stages:
             try:
                 result = await stage.execute(task)
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                logger.error(
                     REVIEW_PIPELINE_STAGE_COMPLETED,
                     task_id=task.id,
                     stage_name=getattr(stage, "name", type(stage).__name__),
                     verdict="error",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             stage_results.append(result)

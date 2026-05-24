@@ -211,8 +211,12 @@ class HybridPromptRetrievalBackend:
                 text=query.context,
                 limit=query.limit,
             )
-        except OrgMemoryQueryError:
-            logger.exception(ORG_MEMORY_QUERY_FAILED)
+        except OrgMemoryQueryError as exc:
+            logger.error(
+                ORG_MEMORY_QUERY_FAILED,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
             raise
         else:
             logger.info(ORG_MEMORY_QUERY_COMPLETE, count=len(results))
@@ -265,10 +269,12 @@ class HybridPromptRetrievalBackend:
 
         try:
             await self._store.save(fact)
-        except OrgMemoryWriteError:
-            logger.exception(
+        except OrgMemoryWriteError as exc:
+            logger.error(
                 ORG_MEMORY_WRITE_FAILED,
                 fact_id=fact_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         else:

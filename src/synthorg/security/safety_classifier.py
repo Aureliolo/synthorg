@@ -40,7 +40,7 @@ from synthorg.core.types import NotBlankStr
 # resolved against a partially-initialised ``synthorg.engine``
 # package.  ``prompt_safety`` itself has no dependency on the rest
 # of ``engine/``; the deferred import is correctness-preserving.
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_INFO_STRIP_COMPLETE,
     SECURITY_SAFETY_CLASSIFY_COMPLETE,
@@ -433,13 +433,15 @@ class SafetyClassifier:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
-            logger.exception(
+            logger.error(
                 SECURITY_SAFETY_CLASSIFY_ERROR,
                 tool_name=tool_name,
                 action_type=action_type,
                 duration_ms=duration_ms,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return SafetyClassifierResult(
                 classification=SafetyClassification.SUSPICIOUS,

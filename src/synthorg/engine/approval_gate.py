@@ -28,7 +28,7 @@ from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: T
 from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_CONTEXT_PARK_FAILED,
     APPROVAL_GATE_CONTEXT_PARKED,
@@ -312,12 +312,14 @@ class ApprovalGate:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 APPROVAL_GATE_CONTEXT_PARK_FAILED,
                 approval_id=escalation.approval_id,
                 agent_id=agent_id,
                 task_id=task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         logger.info(
@@ -341,12 +343,14 @@ class ApprovalGate:
             await self._parked_context_repo.save(parked)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 APPROVAL_GATE_CONTEXT_PARK_FAILED,
                 approval_id=escalation.approval_id,
                 parked_id=parked.id,
                 note="Context serialized but persistence failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -488,12 +492,14 @@ class ApprovalGate:
             return self._park_service.resume(parked)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 APPROVAL_GATE_RESUME_FAILED,
                 approval_id=approval_id,
                 parked_id=parked.id,
                 note="Deserialization failed -- parked record preserved",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
@@ -509,7 +515,7 @@ class ApprovalGate:
             deleted = await self._parked_context_repo.delete(parked.id)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             # Fail-safe: a delete exception means the parked row may
             # still exist. Re-raise so ``resume_context`` aborts
             # *before* handing the context to the caller, rather than
@@ -517,12 +523,16 @@ class ApprovalGate:
             # re-resume (silent duplicate execution). The caller logs
             # loudly and the parked record is preserved for a clean
             # retry / operator intervention.
-            logger.exception(
+            logger.error(
                 APPROVAL_GATE_RESUME_DELETE_FAILED,
                 approval_id=approval_id,
                 parked_id=parked.id,
-                note="parked-record delete raised; aborting resume to "
-                "avoid a duplicate re-resume",
+                note=(
+                    "parked-record delete raised; aborting resume to avoid "
+                    "a duplicate re-resume"
+                ),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 

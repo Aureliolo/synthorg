@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.enums import TaskStatus
 from synthorg.engine.errors import TaskAssignmentError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.task_assignment import (
     TASK_ASSIGNMENT_AGENT_SELECTED,
     TASK_ASSIGNMENT_COMPLETE,
@@ -126,11 +126,13 @@ class TaskAssignmentService:
             result = self._strategy.assign(request)
         except TaskAssignmentError:
             raise  # already logged by the strategy
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 TASK_ASSIGNMENT_FAILED,
                 task_id=task.id,
                 strategy=self._strategy.name,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 

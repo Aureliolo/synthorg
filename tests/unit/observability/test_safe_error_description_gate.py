@@ -1422,6 +1422,75 @@ class TestGateFuzz:
             assert hits, "missing allowlist marker must be flagged"
 
 
+@pytest.mark.unit
+class TestLoggerExceptionCallRule:
+    """The gate also bans every ``logger.exception(...)`` call shape.
+
+    ``logger.exception`` attaches a full Python traceback whose
+    frame-locals (in-scope ``client_secret`` / ``refresh_token`` /
+    Fernet ciphertext) get serialised into the log record. The
+    ``error=str(exc)`` rule did not cover this leak vector because
+    such calls typically pass zero kwargs of interest -- the
+    traceback alone is the payload. The third rule
+    (``_RULE_LOGGER_EXCEPTION``) flags any logger-receiver method
+    call whose terminal attribute is ``exception``.
+    """
+
+    def test_bare_logger_exception_flagged(self) -> None:
+        """``logger.exception(EVENT)`` is flagged even with no kwargs."""
+        hits = _scan_source(
+            """
+            logger.exception(EVENT)
+            """,
+        )
+        assert hits, "logger.exception(...) must be flagged regardless of kwargs"
+        assert any(rule == "logger_exception_call" for _, _, rule in hits)
+
+    def test_logger_exception_with_structured_kwargs_flagged(self) -> None:
+        """Structured kwargs do not exempt the traceback-attaching call."""
+        hits = _scan_source(
+            """
+            logger.exception(
+                EVENT,
+                agent_id=agent_id,
+                task_id=task_id,
+            )
+            """,
+        )
+        assert any(rule == "logger_exception_call" for _, _, rule in hits)
+
+    def test_attribute_logger_exception_flagged(self) -> None:
+        """``self._logger.exception(...)`` also trips the rule."""
+        hits = _scan_source(
+            """
+            self._logger.exception(EVENT)
+            """,
+        )
+        assert any(rule == "logger_exception_call" for _, _, rule in hits)
+
+    def test_canonical_replacement_not_flagged(self) -> None:
+        """The post-migration ``logger.error(...)`` shape is permitted."""
+        hits = _scan_source(
+            """
+            logger.error(
+                EVENT,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            """,
+        )
+        assert not hits, "the canonical SEC-1 replacement must be permitted"
+
+    def test_non_logger_exception_method_not_flagged(self) -> None:
+        """A method named ``exception`` on a non-logger receiver is fine."""
+        hits = _scan_source(
+            """
+            controller.exception(payload)
+            """,
+        )
+        assert not hits
+
+
 @pytest.mark.integration
 class TestRepoIsClean:
     """End-to-end check: the gate finds zero violations after the sweep.

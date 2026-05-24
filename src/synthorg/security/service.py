@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, AutonomyLevel
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.autonomy import (
     AUTONOMY_ACTION_AUTO_APPROVED,
     AUTONOMY_ACTION_HUMAN_REQUIRED,
@@ -193,11 +193,13 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             verdict = self._rule_engine.evaluate(context)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 SECURITY_INTERCEPTOR_ERROR,
                 tool_name=context.tool_name,
                 note="Rule engine evaluation failed (fail-closed)",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             verdict = SecurityVerdict(
                 verdict=SecurityVerdictType.DENY,
@@ -305,11 +307,13 @@ class SecOpsService(SecOpsServiceSafetyMixin):
                 self._audit_log.record(entry)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                logger.error(
                     SECURITY_AUDIT_RECORD_ERROR,
                     tool_name=context.tool_name,
                     note="Output scan audit recording failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         # Apply the output scan response policy.  On failure, fall back
@@ -322,15 +326,18 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             result = self._output_scan_policy.apply(result, context)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 SECURITY_INTERCEPTOR_ERROR,
                 tool_name=context.tool_name,
                 policy=policy_name,
                 fallback_outcome=result.outcome.value,
-                note="Output scan policy application failed "
-                "-- returning raw scan result "
-                "(may be less strict than intended policy)",
+                note=(
+                    "Output scan policy application failed; returning raw "
+                    "scan result (may be less strict than intended policy)"
+                ),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
         return result
@@ -376,11 +383,13 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             return await self._llm_evaluator.evaluate(context, verdict)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 SECURITY_INTERCEPTOR_ERROR,
                 tool_name=context.tool_name,
                 note="LLM security evaluation failed (applying error policy)",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             # Respect the configured error policy rather than
             # unconditionally returning the rule verdict.
@@ -500,11 +509,13 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             self._audit_log.record(entry)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 SECURITY_AUDIT_RECORD_ERROR,
                 tool_name=context.tool_name,
                 note="Audit recording failed -- verdict still returned",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def _handle_escalation(
@@ -608,12 +619,14 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             await self._approval_store.add(item)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 SECURITY_ESCALATION_STORE_ERROR,
                 approval_id=approval_id,
                 tool_name=context.tool_name,
                 agent_id=context.agent_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return verdict.model_copy(
                 update={

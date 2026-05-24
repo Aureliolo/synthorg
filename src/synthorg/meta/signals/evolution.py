@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.signal_models import OrgEvolutionSummary
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_SIGNAL_AGGREGATION_COMPLETED,
     META_SIGNAL_AGGREGATION_FAILED,
@@ -70,10 +70,12 @@ class EvolutionSignalAggregator:
                 domain="evolution",
                 total_proposals=summary.total_proposals,
             )
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 META_SIGNAL_AGGREGATION_FAILED,
                 domain="evolution",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return _EMPTY
         return summary

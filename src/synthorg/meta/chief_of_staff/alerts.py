@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.meta.chief_of_staff.models import Alert, OrgInflection
 from synthorg.meta.models import RuleSeverity
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.chief_of_staff import (
     COS_ALERT_EMITTED,
     COS_ALERT_SUPPRESSED,
@@ -90,13 +90,15 @@ class ProactiveAlertService:
                 await sink.on_alert(alert)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 failed_sinks.append(type(sink).__name__)
-                logger.exception(
+                logger.error(
                     COS_ALERT_EMITTED,
                     alert_id=str(alert.id),
                     sink=type(sink).__name__,
                     status="sink_failed",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
 
         async with asyncio.TaskGroup() as tg:

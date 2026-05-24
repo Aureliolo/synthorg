@@ -16,7 +16,7 @@ from synthorg.meta.models import (
     PromptChange,
     ProposalAltitude,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
     META_APPLY_FAILED,
@@ -103,11 +103,13 @@ class PromptApplier:
             return ApplyResult(success=True, changes_applied=count)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 META_APPLY_FAILED,
                 altitude="prompt_tuning",
                 proposal_id=str(proposal.id),
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return ApplyResult(
                 success=False,

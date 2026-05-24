@@ -34,7 +34,7 @@ from synthorg.communication.delegation.hierarchy import (  # noqa: TC001
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
 from synthorg.communication.errors import ConflictHierarchyError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.conflict import (
     CONFLICT_AUTHORITY_FALLBACK,
     CONFLICT_DEBATE_EVALUATOR_FAILED,
@@ -103,11 +103,13 @@ class DebateResolver:
                 )
             except MemoryError, RecursionError:
                 raise
-            except Exception:
-                logger.exception(
+            except Exception as exc:
+                logger.error(
                     CONFLICT_DEBATE_EVALUATOR_FAILED,
                     conflict_id=conflict.id,
                     judge=judge_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 try:
                     winning_agent_id, reasoning = self._authority_fallback(

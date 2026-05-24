@@ -534,12 +534,14 @@ class AgentEngine(
                     provider=provider,
                     project_budget=_project_budget,
                 )
-            except MemoryError, RecursionError:
-                logger.exception(
+            except (MemoryError, RecursionError) as exc:
+                logger.error(
                     EXECUTION_ENGINE_ERROR,
                     agent_id=agent_id,
                     task_id=task_id,
-                    error="non-recoverable error in run()",
+                    reason="non-recoverable error in run()",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
             except ProjectNotFoundError, ProjectAgentNotMemberError:

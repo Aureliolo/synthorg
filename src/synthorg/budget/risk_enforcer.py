@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from synthorg.budget.billing import daily_period_start
 from synthorg.budget.errors import RiskBudgetExhaustedError
 from synthorg.budget.risk_check import RiskCheckResult
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.risk_budget import (
     RISK_BUDGET_DAILY_LIMIT_EXCEEDED,
     RISK_BUDGET_ENFORCEMENT_CHECK,
@@ -103,13 +103,15 @@ class BudgetEnforcerRiskMixin:
             raise
         except RiskBudgetExhaustedError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 RISK_BUDGET_ENFORCEMENT_CHECK,
                 agent_id=agent_id,
                 task_id=task_id,
                 action_type=action_type,
                 reason="risk_check_error",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
         return RiskCheckResult(risk_units=projected)
@@ -178,12 +180,14 @@ class BudgetEnforcerRiskMixin:
             await self._risk_tracker.record(record)
         except MemoryError, RecursionError:
             raise
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 RISK_BUDGET_RECORD_FAILED,
                 agent_id=agent_id,
                 task_id=task_id,
                 action_type=action_type,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             return None
         logger.info(

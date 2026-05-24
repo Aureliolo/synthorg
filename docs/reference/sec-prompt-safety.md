@@ -55,11 +55,11 @@ This list is non-exhaustive; treat it as a navigational starting point for new S
 - `SuccessMemoryProposer._build_user_message` and module `_SYSTEM_PROMPT` (`memory/procedural/success_proposer.py`): execution context is fenced under `TAG_TASK_DATA`.
 - `SafetyClassifier._build_messages` (`security/safety_classifier.py`): the action `description` (only attacker-controllable field) is fenced under `TAG_TASK_DATA`; bounded label fields (tool name, action type, risk level) stay `html.escape`d. The system prompt is computed lazily via `_system_prompt()` to avoid a circular import through `synthorg.engine.__init__`.
 - Meeting protocol prompt builders (peer-contribution wrapping):
-    - `build_agenda_prompt` (`communication/meeting/_prompts.py`): wraps agenda title / context / items in `TAG_TASK_DATA`
-    - `RoundRobinProtocol.run` and `RoundRobinProtocol._run_discussion_rounds` (`communication/meeting/round_robin.py`): both transcript-build paths wrap each turn's content via the shared `_format_transcript_entry` helper using `TAG_PEER_CONTRIBUTION`
-    - `_build_conflict_check_prompt` / `_build_discussion_prompt` / `_build_synthesis_prompt` (`communication/meeting/structured_phases.py`)
-    - `_build_synthesis_prompt` (`communication/meeting/position_papers.py`)
-    - `_render_system_prompt` in `communication/meeting/agent_caller.py` appends the directive listing both `TAG_TASK_DATA` and `TAG_PEER_CONTRIBUTION` for every meeting LLM call
+  - `build_agenda_prompt` (`communication/meeting/_prompts.py`): wraps agenda title / context / items in `TAG_TASK_DATA`
+  - `RoundRobinProtocol.run` and `RoundRobinProtocol._run_discussion_rounds` (`communication/meeting/round_robin.py`): both transcript-build paths wrap each turn's content via the shared `_format_transcript_entry` helper using `TAG_PEER_CONTRIBUTION`
+  - `_build_conflict_check_prompt` / `_build_discussion_prompt` / `_build_synthesis_prompt` (`communication/meeting/structured_phases.py`)
+  - `_build_synthesis_prompt` (`communication/meeting/position_papers.py`)
+  - `_render_system_prompt` in `communication/meeting/agent_caller.py` appends the directive listing both `TAG_TASK_DATA` and `TAG_PEER_CONTRIBUTION` for every meeting LLM call
 
 ### Completion config pinning
 
@@ -114,7 +114,7 @@ The `scrub_event_fields` structlog processor masks every log record (covering es
 
 ### Pre-commit gate
 
-`scripts/check_logger_exception_str_exc.py` enforces two rules unconditionally (no global allowlist, no baseline) for every logger severity (`exception`, `warning`, `error`, `info`, `debug`) on bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`), or any Name whose id contains `logger`. The **`exc_info=True` rule** (rule 2 below) supports a required same-line per-call opt-out marker (`# lint-allow: exc-info -- <reason>` with a mandatory non-empty reason); this is a per-instance carve-out for genuine framework-boundary handlers, *not* a global allowlist or list-based baseline:
+`scripts/check_logger_exception_str_exc.py` enforces three rules unconditionally (no global allowlist, no baseline) for every logger severity (`exception`, `warning`, `error`, `info`, `debug`) on bare `logger`, attribute-chain loggers (`self._logger`, `audit_logger`), or any Name whose id contains `logger`. The **`exc_info=True` rule** (rule 2 below) supports a required same-line per-call opt-out marker (`# lint-allow: exc-info -- <reason>` with a mandatory non-empty reason); this is a per-instance carve-out for genuine framework-boundary handlers, *not* a global allowlist or list-based baseline:
 
 1. **Leak-shape rule** (`error=` value): the `error=` value subtree is walked via a custom `ast.walk` traversal that excludes `Call.args` and class-introspection chains (so `f"{type(exc).__name__}"`, `f"{exc.__class__.__name__}"`, `f"{safe_error_description(exc)}"` are not flagged) and that flags any of:
    - `str(<exc_like>)` calls where `<exc_like>` is `Name` / `Attribute` / `Subscript` (covers `str(exc)`, `str(self._inner)`, `str(exc.args[0])`).
@@ -123,6 +123,8 @@ The `scrub_event_fields` structlog processor masks every log record (covering es
    - Wrapper combinations are walked: `str(exc)[:200]` (Subscript), `str(exc) or fallback` (BoolOp), `str(exc) if cond else fallback` (IfExp), `str(exc) + " ctx"` (BinOp), `f"failed: {str(exc)}"` (JoinedStr), `**{"error": str(exc)}` (Dict-unpack).
 
 2. **`exc_info=True` rule**: any literal `exc_info=True` kwarg on a logger call is flagged, with a per-line `# lint-allow: exc-info -- <reason>` opt-out (mandatory non-empty reason). The marker must sit on the same physical line as the `exc_info=True,` keyword so reviewers and tooling can locate the opt-out without scanning the file.
+
+3. **`logger.exception(...)` rule**: any call whose terminal attribute is `exception` on a logger-like receiver is flagged unconditionally. `logger.exception()` attaches a full Python traceback whose `format_exc_info` processor serialises frame-locals (in-scope `client_secret` / `refresh_token` / Fernet ciphertext) into the log record before the `scrub_event_fields` deep scrubber sees it. No per-line opt-out: replace with `except ... as exc: logger.error(EVENT, ..., error_type=type(exc).__name__, error=safe_error_description(exc))`.
 
 The matcher is the source of truth; the gate's docstring (`scripts/check_logger_exception_str_exc.py`) describes the AST shapes covered and the rationale per-rule. The script's filename is preserved (rather than renamed) so the pre-commit hook ID `no-new-logger-exception-str-exc` stays stable in `.pre-commit-config.yaml` and CI job references.
 

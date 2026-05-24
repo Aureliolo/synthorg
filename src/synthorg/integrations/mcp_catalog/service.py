@@ -25,7 +25,7 @@ from synthorg.integrations.mcp_catalog.installations import (
     McpInstallation,
     McpInstallationRepository,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     MCP_CATALOG_BROWSED,
     MCP_CATALOG_ENTRY_NOT_FOUND,
@@ -127,22 +127,26 @@ class CatalogService:
                         tags=tuple(s.get("tags", ())),
                     ),
                 )
-        except json.JSONDecodeError, KeyError, FileNotFoundError:
-            logger.exception(
+        except (json.JSONDecodeError, KeyError, FileNotFoundError) as exc:
+            logger.error(
                 MCP_SERVER_INSTALL_FAILED,
-                error="failed to load bundled catalog",
+                reason="failed to load bundled catalog",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
-        except ValueError, TypeError, AttributeError:
+        except (ValueError, TypeError, AttributeError) as exc:
             # Catches ``ConnectionType(conn_type)`` enum rejection,
             # the shape-guard TypeErrors above, ``CatalogEntry``
             # Pydantic validation errors, and any residual
             # ``AttributeError`` from an unexpected payload shape
             # (belt-and-braces) so malformed bundled entries always
             # surface as a logged failure instead of escaping silently.
-            logger.exception(
+            logger.error(
                 MCP_SERVER_INSTALL_FAILED,
-                error="bundled catalog entry failed model validation",
+                reason="bundled catalog entry failed model validation",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         self._entries = tuple(entries)

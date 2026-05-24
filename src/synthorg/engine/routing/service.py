@@ -10,7 +10,7 @@ from synthorg.engine.routing.models import (
     RoutingDecision,
     RoutingResult,
 )
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.task_routing import (
     TASK_ROUTING_COMPLETE,
     TASK_ROUTING_FAILED,
@@ -106,10 +106,12 @@ class TaskRoutingService:
 
         try:
             return self._do_route(decomposition_result, available_agents, parent_task)
-        except Exception:
-            logger.exception(
+        except Exception as exc:
+            logger.error(
                 TASK_ROUTING_FAILED,
                 parent_task_id=plan.parent_task_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
 
