@@ -14,16 +14,15 @@ description: >-
   the expected names). This action then runs the security-critical
   publish path that must be byte-identical across every caller.
 
-  Background on the digest-pinning: a previous version used
-  `${REPO}:sha-X-amd64` tag refs in `docker manifest create`.
-  `docker manifest create` re-resolves tag references against the
-  registry on every call, so when a concurrent main-push run overwrote
-  the per-arch tag between two iterations of a tag-push run's loop,
-  the manifest lists for different destination tags ended up with
-  different per-arch digests. cosign signed only the last one, leaving
-  the user-facing version tag unsigned. Capturing the per-arch digest
-  immediately after push and referencing manifest list members by
-  `@sha256:digest` makes every iteration produce byte-identical bytes.
+  Why digest-pinning: `docker manifest create` re-resolves tag
+  references against the registry on every call. When a concurrent
+  main-push run overwrites a per-arch tag between two iterations of a
+  tag-push run's loop, the manifest lists for different destination
+  tags end up with different per-arch digests, and cosign signs only
+  the last one, leaving the user-facing version tag unsigned.
+  Capturing the per-arch digest immediately after push and referencing
+  manifest list members by `@sha256:digest` makes every iteration
+  produce byte-identical bytes, immune to concurrent tag mutations.
 
   Caller responsibilities:
     - `packages: write`, `id-token: write`, `attestations: write`
@@ -61,11 +60,11 @@ outputs:
 runs:
   using: composite
   steps:
-    # GHCR's token endpoint occasionally exceeds the docker client's default
-    # 30s deadline (the failure mode that took down main 2026-05-13). Drive
-    # `docker login` directly through nick-fields/retry so the login is
-    # re-attempted on `context deadline exceeded`. Token via env + stdin so
-    # it never lands on a command line.
+    # GHCR's token endpoint occasionally exceeds the docker client's
+    # default 30s deadline. Drive `docker login` directly through
+    # nick-fields/retry so the login is re-attempted on `context
+    # deadline exceeded`. Token via env + stdin so it never lands on
+    # a command line.
     - name: Log in to GHCR
       uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
       env:
@@ -109,9 +108,8 @@ runs:
     #
     # Note: the manifest-list digest below is still read via
     # `docker buildx imagetools inspect` because `docker manifest
-    # push` stdout is unreliable across Docker versions (PR #1650
-    # documented this: some versions emit the digest, some only
-    # print `Created manifest list`).
+    # push` stdout is unreliable across Docker versions: some emit
+    # the digest, some only print `Created manifest list`.
     - name: Push per-arch images and assemble manifest list
       id: push
       shell: bash
