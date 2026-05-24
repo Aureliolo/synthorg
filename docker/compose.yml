@@ -7,7 +7,7 @@ x-logging: &logging
 services:
   postgres:
     # renovate: datasource=docker depName=dhi.io/postgres
-    image: dhi.io/postgres:18-debian13@sha256:6aa59b8ff6ffcbcea41f285c435243734a9cb60e0068a8345b8284b41e5e650b
+    image: dhi.io/postgres:18-debian13@sha256:21d6e884d25134f59723b11a0c1f78b199b38591d1c6f2d492934e31827f8376
     ports:
       - "${POSTGRES_PORT:-3002}:5432"
     volumes:
@@ -54,7 +54,7 @@ services:
   #   /nats-data -> 65532 (nats)
   data-init:
     # renovate: datasource=docker depName=busybox
-    image: busybox:1.37-musl@sha256:19b646668802469d968a05342a601e78da4322a414a7c09b1c9ee25165042138
+    image: busybox:1.38-musl@sha256:f36701e0a15a97186ccc59bbe9a6217b649edecb36ce32d07fa31bf5ad15e56d
     volumes:
       - synthorg-data:/data
       - synthorg-pgdata:/pgdata
@@ -173,7 +173,7 @@ services:
   # --max_payload CLI flag, so non-default settings need a config file.
   nats:
     # renovate: datasource=docker depName=dhi.io/nats
-    image: dhi.io/nats:2.14-debian13@sha256:e545a823f5d6ceaa33983c2b055d85e200d497ef5f949c3b991698e268f34875
+    image: dhi.io/nats:2.14-debian13@sha256:5ce86b96c969f5089c65ac6c786556999e39980e3873140e1c5b034d4a8f8a92
     command: ["-c", "/etc/nats/nats.conf"]
     ports:
       - "${NATS_CLIENT_PORT:-3003}:4222"
