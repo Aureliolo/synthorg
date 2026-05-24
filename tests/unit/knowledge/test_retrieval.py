@@ -8,11 +8,6 @@ isolation across projects, and that hits without provenance are dropped.
 from datetime import UTC, datetime
 
 import pytest
-from tests._shared import FakeClock
-from tests.unit.knowledge._fakes import (
-    FakeChunkProvenanceRepository,
-    FakeKnowledgeSourceRepository,
-)
 
 from synthorg.core.enums import ContentKind, SourceStatus, SourceType
 from synthorg.core.types import NotBlankStr
@@ -26,6 +21,11 @@ from synthorg.knowledge.models import (
 from synthorg.knowledge.retrieval import KnowledgeRetriever
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.versioning.hashing import compute_text_hash
+from tests._shared import FakeClock
+from tests.unit.knowledge._fakes import (
+    FakeChunkProvenanceRepository,
+    FakeKnowledgeSourceRepository,
+)
 
 pytestmark = pytest.mark.unit
 

@@ -9,8 +9,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from tests._shared import mock_of
-from tests.unit.api.fakes import FakeFlightRecorderFrameRepository
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
@@ -28,6 +26,8 @@ from synthorg.persistence.flight_recorder_protocol import (
 )
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage
+from tests._shared import mock_of
+from tests.unit.api.fakes import FakeFlightRecorderFrameRepository
 
 if TYPE_CHECKING:
     from tests.unit.engine.conftest import MockCompletionProvider

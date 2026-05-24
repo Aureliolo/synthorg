@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from tests._shared import FakeClock, mock_of
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
@@ -12,6 +11,7 @@ from synthorg.engine.workspace.git_backend import GitBackend, PushResult
 from synthorg.engine.workspace.models import MergeResult, Workspace
 from synthorg.engine.workspace.protocol import WorkspaceIsolationStrategy
 from synthorg.engine.workspace.service import WorkspaceIsolationService
+from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.unit
 

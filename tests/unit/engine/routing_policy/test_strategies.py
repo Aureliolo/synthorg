@@ -4,7 +4,6 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 
 import pytest
-from tests._shared.scripted_provider import make_e2e_identity
 
 from synthorg.budget.benchmark_protocol import BenchmarkScore
 from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
@@ -30,6 +29,7 @@ from synthorg.engine.routing_policy import (
 from synthorg.engine.routing_policy.config import QualityFloors
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
+from tests._shared.scripted_provider import make_e2e_identity
 
 
 class _NoScoreProvider:

@@ -4,8 +4,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
-from tests._shared import FakeClock, mock_of
-from tests.unit.api.fakes import FakeFlightRecorderFrameRepository
 
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
@@ -13,6 +11,8 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.cockpit import CockpitService
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame
+from tests._shared import FakeClock, mock_of
+from tests.unit.api.fakes import FakeFlightRecorderFrameRepository
 
 pytestmark = pytest.mark.unit
 

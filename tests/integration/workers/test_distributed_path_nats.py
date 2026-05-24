@@ -19,13 +19,13 @@ from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Final
 
 import pytest
-from tests._shared.persistence import make_sqlite_seen_claims
 
 from synthorg.communication.config import NatsConfig
 from synthorg.workers.claim import JetStreamTaskQueue, TaskClaim, TaskClaimStatus
 from synthorg.workers.config import QueueConfig
 from synthorg.workers.dead_letter import DeadLetterConsumer, DeadLetterOutcome
 from synthorg.workers.worker import run_worker_pool
+from tests._shared.persistence import make_sqlite_seen_claims
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(120)]
 """Override the 30s global pytest-timeout to give the NATS JetStream

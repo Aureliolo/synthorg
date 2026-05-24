@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests._shared import FakeClock, mock_of
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
@@ -33,6 +32,7 @@ from synthorg.integrations.connections.models import (
     Connection,
     ConnectionType,
 )
+from tests._shared import FakeClock, mock_of
 
 pytestmark = pytest.mark.unit
 

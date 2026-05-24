@@ -340,7 +340,6 @@ max-complexity = 8
     "DOC201",  # missing return docstring (not enforced in tests)
     "DOC202",  # extraneous return docstring
     "DOC501",  # missing raises docstring
-    "INP001",  # implicit namespace packages: pytest discovery does not require __init__
     "C901",    # complex parametrised tests
     "PLR0911",
     "PLR0912",

@@ -4,9 +4,6 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from tests._shared import FakeClock
-from tests._shared.scripted_provider import ScriptedProvider
-from tests.unit.research._fakes import scripted_response
 
 from synthorg.core.enums import ResearchSourceType
 from synthorg.research.errors import ResearchSynthesisError
@@ -20,6 +17,9 @@ from synthorg.research.models import (
 )
 from synthorg.research.synthesis.citation_binder import CitationBinder
 from synthorg.research.synthesis.llm_synthesizer import LlmSynthesizer
+from tests._shared import FakeClock
+from tests._shared.scripted_provider import ScriptedProvider
+from tests.unit.research._fakes import scripted_response
 
 pytestmark = pytest.mark.unit
 

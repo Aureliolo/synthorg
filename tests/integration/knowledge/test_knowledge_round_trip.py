@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests._shared import FakeClock
 
 from synthorg.core.enums import SourceType
 from synthorg.core.project import Project
@@ -35,6 +34,7 @@ from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.persistence import migrations
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.integration
 

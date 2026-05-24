@@ -1,7 +1,6 @@
 """Unit tests for the cockpit steering directive."""
 
 import pytest
-from tests._shared import FakeClock
 
 from synthorg.communication.event_stream.interrupt import InterruptStore, InterruptType
 from synthorg.core.enums import InterventionKind
@@ -9,6 +8,7 @@ from synthorg.engine.intervention import (
     SafeDefaultSteeringDirective,
     build_steering_directive,
 )
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 

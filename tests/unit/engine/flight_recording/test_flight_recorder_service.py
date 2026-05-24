@@ -3,12 +3,12 @@
 from datetime import UTC, datetime
 
 import pytest
-from tests.unit.api.fakes import FakeFlightRecorderFrameRepository
 
 from synthorg.core.enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.flight_recording import FlightRecorderService
 from synthorg.persistence.flight_recorder_protocol import FlightRecorderFrame
+from tests.unit.api.fakes import FakeFlightRecorderFrameRepository
 
 pytestmark = pytest.mark.unit
 

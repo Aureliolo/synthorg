@@ -5,7 +5,6 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from tests._shared.mock_of import mock_of
 
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.enums import ApprovalStatus, AutonomyLevel
@@ -27,6 +26,7 @@ from synthorg.tools.external_api.provider import (
     ExternalAccessResponse,
 )
 from synthorg.tools.network_validator import NetworkPolicy
+from tests._shared.mock_of import mock_of
 
 _ACTION_TYPE = "external_data:request"
 

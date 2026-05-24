@@ -1,7 +1,6 @@
 """Unit tests for the environment-strategy factory."""
 
 import pytest
-from tests._shared import FakeClock
 
 from synthorg.core.enums import EnvironmentType
 from synthorg.engine.workspace.environment.config import (
@@ -15,6 +14,7 @@ from synthorg.engine.workspace.environment.factory import build_environment_stra
 from synthorg.engine.workspace.environment.manifest import ManifestEnvironmentStrategy
 from synthorg.engine.workspace.environment.nix import NixEnvironmentStrategy
 from synthorg.engine.workspace.environment.protocol import EnvironmentStrategy
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 

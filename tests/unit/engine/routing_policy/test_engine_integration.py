@@ -1,7 +1,6 @@
 """AgentEngine stakes-routing integration (the ``_route_stakes`` seam)."""
 
 import pytest
-from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 from synthorg.budget.benchmark_stub import StubBenchmarkScoreProvider
 from synthorg.core.agent import AgentIdentity, ModelConfig
@@ -12,6 +11,7 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.routing_policy import StakesRoutingConfig, build_stakes_router
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
+from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 _PROVIDER = "example-provider"
 _TIER_MODEL_IDS: dict[ModelTier, str] = {

@@ -4,13 +4,13 @@ import json
 from datetime import UTC, datetime
 
 import pytest
-from tests._shared.scripted_provider import ScriptedProvider
-from tests.unit.research._fakes import scripted_response
 
 from synthorg.core.enums import ResearchSourceType
 from synthorg.research.errors import ResearchRunError
 from synthorg.research.models import ResearchBrief
 from synthorg.research.planning.llm_planner import LlmQueryPlanner
+from tests._shared.scripted_provider import ScriptedProvider
+from tests.unit.research._fakes import scripted_response
 
 pytestmark = pytest.mark.unit
 

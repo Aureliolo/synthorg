@@ -8,6 +8,7 @@
 
 import { create } from 'zustand'
 import * as authApi from '@/api/endpoints/auth'
+import { setUnauthorizedHandler } from '@/api/unauthorized-handler'
 import { getErrorMessage, isAxiosError } from '@/utils/errors'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { createLogger } from '@/lib/logger'
@@ -198,6 +199,17 @@ export const useAuthStore = create<AuthState>()((set, get) => {
       }
     },
   }
+})
+
+// ── 401 handler registration ────────────────────────────────
+//
+// `api/client` calls `notifyUnauthorized()` from its 401 response
+// interceptor; this side-effect wires the auth store as the listener.
+// Done at module init (not lazy) so the handler is in place before
+// any HTTP call lands a 401. Lives here, not in `main.tsx`, because
+// the auth store owns its own lifecycle behaviour.
+setUnauthorizedHandler(() => {
+  useAuthStore.getState().handleUnauthorized()
 })
 
 // ── Selector hooks ──────────────────────────────────────────

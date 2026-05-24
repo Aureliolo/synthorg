@@ -11,7 +11,6 @@ import os
 from pathlib import Path
 
 import pytest
-from tests._shared import FakeClock
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import GitBackendSeedError
@@ -23,6 +22,7 @@ from synthorg.engine.workspace.git_backend.protocol import (
     ResolvedSource,
     SourceKind,
 )
+from tests._shared import FakeClock
 
 pytestmark = pytest.mark.unit
 

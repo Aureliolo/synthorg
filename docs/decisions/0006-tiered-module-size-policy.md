@@ -320,7 +320,6 @@ and closed for the project to reach 100% strict enforcement.
 | Mypy `deprecated` (3 sites) | Issue #2060: "Mypy deprecated-API cleanup" | Trivial |
 | Mypy strict++ overrides on `tests.*` | Issue #2061: "Lift mypy strict++ overrides for tests/" | Medium |
 | Ruff `ERA001` (49 sites) | Issue #2063: "Remove commented-out code (ERA001)" | Small |
-| Ruff `INP001` (78 sites in tests/) | Issue #2064: "Add `__init__.py` to test directories OR configure pytest namespace packages globally" | Trivial |
 | Ruff `DOC201/202/501` on `src/synthorg/**` | Issue #2065: "Docstring Returns/Raises backfill + interrogate threshold flip" | Large |
 | Interrogate `fail_under` 90 -> 95 | Same as DOC backfill | Medium |
 | ESLint `complexity / max-lines / max-lines-per-function / max-params` exempted on `src/**/*.{ts,tsx}` | EPIC #2066: "Web component-size ratchet: decompose oversized React components" | Large (no existing PR in EPIC) |
