@@ -13,6 +13,7 @@ from synthorg.budget.risk_record import RiskRecord
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker import CostTracker
 from synthorg.security.risk_scorer import DefaultRiskScorer, RiskScore
+from tests._shared import CapturingErrorLogger
 
 
 def _make_risk_record(
@@ -333,39 +334,6 @@ class _RaisingRiskScorer:
         raise self._exc
 
 
-class _CapturingErrorLogger:
-    """Captures ``logger.error`` calls so tests can assert redaction side-effects.
-
-    The risk enforcer's except branches route through
-    ``log_exception_redacted`` which ultimately calls ``logger.error``
-    with structured kwargs. structlog does NOT route through stdlib
-    ``logging``, so ``caplog`` cannot see these records; swapping the
-    module-level logger via ``monkeypatch`` is the supported pattern.
-    The other logger methods are no-ops because the enforcer's debug /
-    info calls during the same flow must not break the test.
-    """
-
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, object]]] = []
-
-    def error(self, event: str, **kwargs: object) -> None:
-        self.calls.append((event, dict(kwargs)))
-
-    def warning(self, event: str, **kwargs: object) -> None:
-        # The enforcer does not warn during the scorer-exception path,
-        # but include the method so a future refactor that swaps
-        # ``logger.error`` for ``logger.warning`` does not crash the
-        # test with AttributeError -- the assertion would just fail
-        # cleanly because ``error_calls`` would be empty.
-        del event, kwargs
-
-    def info(self, event: str, **kwargs: object) -> None:
-        del event, kwargs
-
-    def debug(self, event: str, **kwargs: object) -> None:
-        del event, kwargs
-
-
 @pytest.mark.unit
 class TestRiskEnforcerExceptionPaths:
     """The except-Exception branches in check_risk_budget / record_risk.
@@ -401,7 +369,7 @@ class TestRiskEnforcerExceptionPaths:
         # SIDE-EFFECT -- the value matters as much as the return.
         from synthorg.budget import risk_enforcer as _risk_enforcer_module
 
-        capturing = _CapturingErrorLogger()
+        capturing = CapturingErrorLogger()
         monkeypatch.setattr(_risk_enforcer_module, "logger", capturing)
         enforcer = BudgetEnforcer(
             budget_config=budget_config,
@@ -462,7 +430,7 @@ class TestRiskEnforcerExceptionPaths:
         )
         from synthorg.budget import risk_enforcer as _risk_enforcer_module
 
-        capturing = _CapturingErrorLogger()
+        capturing = CapturingErrorLogger()
         monkeypatch.setattr(_risk_enforcer_module, "logger", capturing)
         enforcer = BudgetEnforcer(
             budget_config=budget_config,
