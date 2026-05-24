@@ -4,13 +4,14 @@ import asyncio
 import contextlib
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import AwareDatetime
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message
+from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.core.artifact import Artifact
 from synthorg.core.auth.models import ApiKey
 from synthorg.core.enums import (
@@ -1221,11 +1222,15 @@ class FakeMessageBus:
     ) -> None:
         pass
 
-    async def subscribe(self, channel_name: str, subscriber_id: str) -> None:
-        # The protocol return type is ``Subscription``; the fake returns
-        # ``None`` because no test consumes the subscription handle. Narrowed
-        # here so callers don't get a misleading ``Any`` from the boundary.
-        del channel_name, subscriber_id
+    async def subscribe(self, channel_name: str, subscriber_id: str) -> Subscription:
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        return Subscription(
+            channel_name=NotBlankStr(channel_name),
+            subscriber_id=NotBlankStr(subscriber_id),
+            subscribed_at=_dt.now(UTC),
+        )
 
     async def unsubscribe(self, channel_name: str, subscriber_id: str) -> None:
         pass
@@ -1236,7 +1241,7 @@ class FakeMessageBus:
         subscriber_id: str,
         *,
         timeout: float | None = None,  # noqa: ASYNC109
-    ) -> None:
+    ) -> DeliveryEnvelope | None:
         """Block up to *timeout* seconds before returning ``None``.
 
         The real ``MessageBus.receive`` blocks on an internal queue
@@ -1253,10 +1258,10 @@ class FakeMessageBus:
         if timeout is None:
             # No timeout -- block forever (until cancelled).
             await asyncio.Event().wait()
-            return
+            return None
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(asyncio.Event().wait(), timeout=timeout)
-        return
+        return None
 
     async def create_channel(self, channel: Channel) -> Channel:
         self._channels.append(channel)
@@ -1296,7 +1301,7 @@ class FakeMessageBus:
 # PEP 562 module-level ``__getattr__`` solves it: the attribute is
 # resolved on first access rather than at module load. By then
 # ``fakes_backend`` has already completed its own initialisation.
-def __getattr__(name: str) -> type:
+def __getattr__(name: str) -> Any:  # type: ignore[explicit-any]  # PEP 562 re-export; callers consume FakePersistenceBackend as both a value and a type, which mypy can't model via `-> type`
     """Lazy re-export of ``FakePersistenceBackend`` (see note above)."""
     if name == "FakePersistenceBackend":
         from tests.unit.api.fakes_backend import (
