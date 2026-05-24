@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 import structlog.testing
+from pydantic import JsonValue
 
 from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import (
@@ -51,10 +52,10 @@ async def test_spawn_tracks_task_and_discards_on_success() -> None:
 
 
 async def test_failed_task_logs_notification_send_failed(
-    captured_logs: list[MutableMapping[str, Any]],
+    captured_logs: list[MutableMapping[str, JsonValue]],
 ) -> None:
     registry = BackgroundTaskRegistry(owner="test.owner")
-    registry.spawn(
+    _ = registry.spawn(
         _raiser(ValueError("notify failed")),
         event="test.intent",
         severity="critical",
@@ -78,7 +79,7 @@ async def test_failed_task_logs_notification_send_failed(
 
 
 async def test_cancelled_task_does_not_log_failure(
-    captured_logs: list[MutableMapping[str, Any]],
+    captured_logs: list[MutableMapping[str, JsonValue]],
 ) -> None:
     registry = BackgroundTaskRegistry(owner="test.owner")
     blocker = asyncio.Event()
@@ -97,8 +98,8 @@ async def test_cancelled_task_does_not_log_failure(
 async def test_drain_waits_for_pending_tasks() -> None:
     registry = BackgroundTaskRegistry(owner="test.owner")
     blocker = asyncio.Event()
-    registry.spawn(_block_until_set(blocker), event="test.intent")
-    registry.spawn(_block_until_set(blocker), event="test.intent")
+    _ = registry.spawn(_block_until_set(blocker), event="test.intent")
+    _ = registry.spawn(_block_until_set(blocker), event="test.intent")
     assert registry.active_count == 2
     # Release both blockers so drain has something to wait on
     # (rather than a timing-dependent 50ms sleep).
@@ -108,7 +109,7 @@ async def test_drain_waits_for_pending_tasks() -> None:
 
 
 async def test_drain_cancels_on_timeout(
-    captured_logs: list[MutableMapping[str, Any]],
+    captured_logs: list[MutableMapping[str, JsonValue]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registry = BackgroundTaskRegistry(owner="test.owner")
@@ -125,7 +126,7 @@ async def test_drain_cancels_on_timeout(
     original_wait = asyncio.wait
     call_count = 0
 
-    async def _wait_shim(
+    async def _wait_shim(  # type: ignore[explicit-any]  # mirrors asyncio.wait signature: Task[Any] / **kwargs: Any
         tasks: set[asyncio.Task[Any]],
         *,
         timeout: float | None = None,  # noqa: ASYNC109 - mirrors asyncio.wait
@@ -180,7 +181,7 @@ async def test_no_task_exception_warning_on_failed_task(
     """
     registry = BackgroundTaskRegistry(owner="test.owner")
     caplog.set_level(logging.WARNING)
-    registry.spawn(_raiser(RuntimeError("boom")), event="test.intent")
+    _ = registry.spawn(_raiser(RuntimeError("boom")), event="test.intent")
     await asyncio.sleep(0)
     await asyncio.sleep(0)
     assert not any(
@@ -273,7 +274,7 @@ class TestLogTaskExceptions:
     async def test_context_frozen_after_registration(self) -> None:
         """Mutating ``context`` after registering the callback is a no-op."""
         logger = get_logger("test.log_task_exceptions")
-        context: dict[str, Any] = {"channel": "alpha"}
+        context: dict[str, JsonValue] = {"channel": "alpha"}
         with structlog.testing.capture_logs() as events:
             task = asyncio.create_task(_raiser(ValueError("x")))
             task.add_done_callback(

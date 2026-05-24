@@ -14,6 +14,7 @@ one caller wins.
 
 import asyncio
 import contextlib
+from typing import override
 
 import pytest
 
@@ -48,7 +49,8 @@ class TestConcurrentStart:
         acquire_count = 0
 
         class _CoordinatedLock(asyncio.Lock):
-            async def acquire(self) -> bool:  # type: ignore[override]
+            @override
+            async def acquire(self) -> bool:  # type: ignore[override]  # asyncio.Lock.acquire returns Literal[True]; we return bool
                 nonlocal acquire_count
                 acquire_count += 1
                 if acquire_count <= 2:

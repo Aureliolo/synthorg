@@ -1,12 +1,15 @@
 """Tests for the per-setting write-time JSON-shape validators."""
 
-from typing import Any
+from collections.abc import Callable
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.settings.json_validators import get_json_validator
 
 pytestmark = pytest.mark.unit
+
+_Validator = Callable[[JsonValue], None]
 
 
 class TestCspDocsExternalOriginsJsonValidator:
@@ -17,12 +20,12 @@ class TestCspDocsExternalOriginsJsonValidator:
     """
 
     @pytest.fixture
-    def validator(self) -> Any:
+    def validator(self) -> _Validator:
         v = get_json_validator("api", "csp_docs_external_origins")
         assert v is not None, "csp_docs_external_origins validator missing"
         return v
 
-    def test_accepts_canonical_origins(self, validator: Any) -> None:
+    def test_accepts_canonical_origins(self, validator: _Validator) -> None:
         validator(
             [
                 "https://cdn.example.com",
@@ -31,15 +34,15 @@ class TestCspDocsExternalOriginsJsonValidator:
             ]
         )
 
-    def test_rejects_non_array_payload(self, validator: Any) -> None:
+    def test_rejects_non_array_payload(self, validator: _Validator) -> None:
         with pytest.raises(ValueError, match="JSON array"):
             validator({"not": "an array"})
 
-    def test_rejects_non_string_entry(self, validator: Any) -> None:
+    def test_rejects_non_string_entry(self, validator: _Validator) -> None:
         with pytest.raises(ValueError, match="must be strings"):
             validator(["https://cdn.example.com", 42])
 
-    def test_rejects_empty_array(self, validator: Any) -> None:
+    def test_rejects_empty_array(self, validator: _Validator) -> None:
         with pytest.raises(ValueError, match="at least one trusted origin"):
             validator([])
 
@@ -66,7 +69,9 @@ class TestCspDocsExternalOriginsJsonValidator:
             "port_zero",
         ],
     )
-    def test_rejects_non_canonical_entry(self, validator: Any, bad_origin: str) -> None:
+    def test_rejects_non_canonical_entry(
+        self, validator: _Validator, bad_origin: str
+    ) -> None:
         with pytest.raises(ValueError, match="csp_docs_external_origins"):
             validator(["https://cdn.example.com", bad_origin])
 
