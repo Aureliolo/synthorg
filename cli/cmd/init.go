@@ -40,8 +40,8 @@ var initCmd = &cobra.Command{
 
 When all required flags are provided, the interactive wizard is skipped
 (useful for CI/automation).`,
-	Example: `  synthorg init                                         # interactive setup wizard
-  synthorg init --backend-port 3001 --web-port 3000 --sandbox true  # non-interactive`,
+	Example: `  synthorg init                                                                                # interactive setup wizard
+  synthorg init --backend-port 3001 --web-port 3000 --sandbox true --log-level info            # non-interactive`,
 	RunE: runInit,
 }
 

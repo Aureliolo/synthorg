@@ -149,17 +149,24 @@ func DaemonHint(goos string) string {
 // parseSemverComponents extracts up to three integer components from a
 // semver-like version string. The leading "v" is stripped; non-numeric
 // suffixes on any component are dropped (e.g. "1.0.0-rc1" -> [1, 0, 0]);
-// missing components default to 0.
+// missing components default to 0. NON-empty components that contain
+// no digit run at all (e.g. "abc.def" or "1.x.0") are rejected so a
+// malformed input cannot silently coerce to 0.0.0 and be treated as
+// "version 0"; empty components ("" or "1.") are accepted as 0 to
+// preserve compatibility with relaxed tag schemes.
 func parseSemverComponents(ver string) ([3]int, error) {
 	ver = strings.TrimPrefix(ver, "v")
 	parts := strings.SplitN(ver, ".", 3)
 	var components [3]int
 	for i, part := range parts {
+		if part == "" {
+			continue
+		}
 		numStr := strings.FieldsFunc(part, func(r rune) bool {
 			return r < '0' || r > '9'
 		})
 		if len(numStr) == 0 {
-			continue
+			return [3]int{}, fmt.Errorf("invalid version component %q in %q: no digit run", part, ver)
 		}
 		v, err := strconv.Atoi(numStr[0])
 		if err != nil {

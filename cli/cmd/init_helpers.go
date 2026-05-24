@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -28,6 +29,15 @@ func reuseExistingStateForInteractive(cmd *cobra.Command, state *config.State, r
 		errOut.Warn(fmt.Sprintf("Existing configuration found at %s -- secrets will be regenerated.", existing))
 	}
 	oldState, loadErr := config.Load(state.DataDir)
+	if errors.Is(loadErr, config.ErrMissingMasterKey) {
+		// Recovery path mirrors handleReinit: encrypt_secrets is on but
+		// no master_key was ever generated. Re-read via the permissive
+		// variant so the rest of the state carries forward; the new
+		// key (already generated on `state`) wins through
+		// copyPreservedSecrets below (which only copies the OLD key
+		// when it is non-empty).
+		oldState, loadErr = config.LoadAllowMissingMasterKey(state.DataDir)
+	}
 	if loadErr != nil {
 		return fmt.Errorf("existing config unreadable: %w", loadErr)
 	}

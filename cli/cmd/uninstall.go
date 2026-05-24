@@ -57,9 +57,14 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errUI := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
-	state, err := config.Load(opts.DataDir)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+	state, loadErr := config.Load(opts.DataDir)
+	if loadErr != nil {
+		// Uninstall is a teardown path: a broken on-disk config must
+		// not block the operator from removing whatever IS there.
+		// Fall back to a sanitised State seeded with --data-dir so
+		// safeStateDir can still resolve a destination directory.
+		errUI.Warn(fmt.Sprintf("Could not load config (%v); continuing teardown with --data-dir only.", loadErr))
+		state = config.State{DataDir: opts.DataDir}
 	}
 	safeDir, err := safeStateDir(state)
 	if err != nil {

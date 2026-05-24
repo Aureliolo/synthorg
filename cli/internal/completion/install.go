@@ -253,13 +253,33 @@ func probeShellProfile(ctx context.Context, shell, resolvedHome string) (string,
 		return "", false
 	}
 	resolved := resolveProfileDir(cleaned)
-	rel, relErr := filepath.Rel(resolvedHome, resolved)
+	// Normalise both sides before filepath.Rel so a Windows drive-
+	// letter casing mismatch (`C:\Users\X` vs `c:\users\x`) does not
+	// produce a spurious "..\.." prefix and reject a profile that
+	// actually lives inside the resolved home. Linux / macOS path
+	// comparison is already case-sensitive; normalisation is a no-op
+	// outside Windows.
+	rel, relErr := filepath.Rel(
+		normalizePathForCompare(resolvedHome),
+		normalizePathForCompare(resolved),
+	)
 	// "..foo" is a valid filename and stays inside resolvedHome; reject
 	// only bare ".." or any prefix-with-separator that walks the parent.
 	if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", false
 	}
 	return resolved, true
+}
+
+// normalizePathForCompare returns path in a form suitable for
+// case-insensitive comparison on Windows (where the filesystem is
+// case-insensitive but Go's filepath.Rel is not). On every other
+// platform the original path is returned unchanged.
+func normalizePathForCompare(path string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(path)
+	}
+	return path
 }
 
 // resolveProfileDir resolves symlinks on the parent directory of path

@@ -102,7 +102,10 @@ func validateSandbox(p Params) error {
 	if strings.ContainsAny(p.DockerSock, "\"'`$\n\r{}[]") {
 		return fmt.Errorf("docker socket path %q contains unsafe characters", p.DockerSock)
 	}
-	if p.DockerSockGID < -1 || p.DockerSockGID > 4294967295 {
+	// p.DockerSockGID is an int; the upper bound 4294967295 (uint32 max)
+	// is not representable in a 32-bit signed int, so widen the
+	// comparison to int64 to keep the check correct on 32-bit builds.
+	if gid := int64(p.DockerSockGID); gid < -1 || gid > 4294967295 {
 		return fmt.Errorf("invalid docker socket gid %d: must be -1 to 4294967295", p.DockerSockGID)
 	}
 	return nil

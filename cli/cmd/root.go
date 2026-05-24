@@ -256,7 +256,11 @@ func applyConfigOverrides(opts *GlobalOpts) {
 		opts.Hints = state.Hints
 	}
 	applyColorOverride(opts, state.Color)
-	if !flagJSON && !opts.JSON && state.Output == "json" {
+	// Persisted `output=json` is honoured only when the operator did
+	// not request --plain (or set its env equivalent). --plain implies
+	// "ASCII-only, no machine output"; silently upgrading to JSON
+	// because of stale state would defeat the explicit user choice.
+	if !flagJSON && !opts.JSON && !flagPlain && !opts.Plain && state.Output == "json" {
 		opts.JSON = true
 	}
 }

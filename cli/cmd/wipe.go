@@ -247,14 +247,36 @@ func (wc *wipeContext) stopAndPrune() error {
 	return nil
 }
 
+// pathContainsTraversal reports whether path -- after lexical cleaning
+// -- contains a ".." element. Compares whole path components rather
+// than a substring so names like "foo..bar" or ".." (only as a literal
+// component) are evaluated correctly. Both / and \ are tolerated as
+// separators so the same check works on Windows.
+func pathContainsTraversal(path string) bool {
+	cleaned := filepath.Clean(path)
+	for _, part := range strings.FieldsFunc(cleaned, func(r rune) bool {
+		return r == '/' || r == '\\'
+	}) {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
 // removeDataDirectory deletes the safeDir contents after checking the
 // path looks safe. On Windows the running CLI binary is preserved when
 // it lives inside the dir (we cannot remove a running executable).
 func (wc *wipeContext) removeDataDirectory() error {
 	// Guard: safeDir was validated by safeStateDir -> config.SecurePath
 	// (absolute + clean). Reject anything that looks like a traversal
-	// or root path to prevent accidental destruction.
-	if strings.Contains(wc.safeDir, "..") || wc.safeDir == "/" || wc.safeDir == filepath.VolumeName(wc.safeDir)+string(filepath.Separator) {
+	// or root path to prevent accidental destruction. The traversal
+	// check splits on filepath.Separator and matches whole ".."
+	// elements rather than substring ".." -- legitimate names such as
+	// "/var/lib/synthorg..bak" would otherwise be rejected.
+	if pathContainsTraversal(wc.safeDir) ||
+		wc.safeDir == "/" ||
+		wc.safeDir == filepath.VolumeName(wc.safeDir)+string(filepath.Separator) {
 		return fmt.Errorf("refusing to remove suspicious path: %s", wc.safeDir)
 	}
 	sp := wc.out.StartSpinner("Removing data directory...")

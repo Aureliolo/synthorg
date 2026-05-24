@@ -341,19 +341,34 @@ type pullItem struct {
 // buildPullItems enumerates every image the start path must pull: the
 // enabled compose services plus the standalone (sandbox / sidecar /
 // fine-tune) images that compose does not own.
+//
+// When the operator has overridden any of the registry / image-tag
+// tunables (registry_host, image_repo_prefix, dhi_registry,
+// postgres_image_tag, nats_image_tag), state.VerifiedDigests is bound
+// to the DEFAULT-registry images and would pin the standalone pulls
+// to stale digests that do not exist on the override registry. Drop
+// the digest in that case so the pull resolves the tag on the
+// override registry instead of failing on a stale @sha256 reference.
 func buildPullItems(state config.State) []pullItem {
 	var items []pullItem
 	for _, svc := range composeServiceNames(state) {
 		items = append(items, pullItem{name: svc, compose: true})
 	}
+	useDigests := !stateHasRegistryOverrides(state)
+	pickDigest := func(name string) string {
+		if !useDigests {
+			return ""
+		}
+		return state.VerifiedDigests[name]
+	}
 	if state.Sandbox {
 		items = append(items, pullItem{
 			name: "sandbox",
-			ref:  verify.FormatImageRef("sandbox", state.ImageTag, state.VerifiedDigests["sandbox"]),
+			ref:  verify.FormatImageRef("sandbox", state.ImageTag, pickDigest("sandbox")),
 		})
 		items = append(items, pullItem{
 			name: "sidecar",
-			ref:  verify.FormatImageRef("sidecar", state.ImageTag, state.VerifiedDigests["sidecar"]),
+			ref:  verify.FormatImageRef("sidecar", state.ImageTag, pickDigest("sidecar")),
 		})
 	}
 	if state.FineTuning {
@@ -361,10 +376,23 @@ func buildPullItems(state config.State) []pullItem {
 		svc := verify.FineTuneServiceName(variant)
 		items = append(items, pullItem{
 			name: svc,
-			ref:  verify.FormatImageRef(svc, state.ImageTag, state.VerifiedDigests[svc]),
+			ref:  verify.FormatImageRef(svc, state.ImageTag, pickDigest(svc)),
 		})
 	}
 	return items
+}
+
+// stateHasRegistryOverrides reports whether the persisted State carries
+// any registry / image-tag override that detaches the digest map from
+// the default registry. Mirrors the precedence inputs that feed
+// Tunables.CustomRegistry; checking the State directly avoids forcing
+// callers to call ResolveTunables just for this signal.
+func stateHasRegistryOverrides(state config.State) bool {
+	return state.RegistryHost != "" ||
+		state.ImageRepoPrefix != "" ||
+		state.DHIRegistry != "" ||
+		state.PostgresImageTag != "" ||
+		state.NATSImageTag != ""
 }
 
 // emitFineTuneSizeHint warns the user about the fine-tune image size

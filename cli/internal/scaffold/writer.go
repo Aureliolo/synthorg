@@ -89,6 +89,12 @@ func resolveTargets(files []RenderedFile, absRoot string) ([]string, error) {
 // after joining, AND -- when the candidate's deepest existing parent
 // is a symlink -- against the symlink-resolved parent so a sub-path
 // linking outside the scaffold root cannot escape at write time.
+//
+// Both the deepest existing parent AND absRoot itself are resolved via
+// EvalSymlinks before the containment check. Some environments (macOS
+// /var -> /private/var, Windows junctions for temp dirs) wrap absRoot
+// in a symlink chain too; comparing a resolved parent against an
+// unresolved root would then reject every otherwise-legitimate write.
 func resolveOneTarget(f RenderedFile, absRoot string) (string, error) {
 	if len(f.Contents) == 0 {
 		return "", fmt.Errorf("rendered file %q has empty content", f.Path)
@@ -101,11 +107,15 @@ func resolveOneTarget(f RenderedFile, absRoot string) (string, error) {
 	if !pathHasRoot(abs, absRoot) {
 		return "", fmt.Errorf("scaffold path escapes root: %q", f.Path)
 	}
+	resolvedRoot, err := resolveExistingAncestor(absRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolving scaffold root: %w", err)
+	}
 	resolvedParent, err := resolveExistingAncestor(filepath.Dir(abs))
 	if err != nil {
 		return "", fmt.Errorf("resolving scaffold parent %q: %w", f.Path, err)
 	}
-	if !pathHasRoot(resolvedParent, absRoot) {
+	if !pathHasRoot(resolvedParent, resolvedRoot) {
 		return "", fmt.Errorf("scaffold path escapes root via symlink: %q", f.Path)
 	}
 	return abs, nil

@@ -200,11 +200,18 @@ func selectBestRelease(releases []devRelease) (*devRelease, error) {
 // isUsableRelease returns true if r is not a draft and its tag parses
 // as a valid version. Malformed tags are silently skipped because tags
 // come from the GitHub API and are expected to be well-formed.
+//
+// Validation actually runs compareSemver on the dev-stripped base so
+// non-empty components without a digit run (e.g. "abc.def.ghi") are
+// rejected -- the prior `compareWithDev(tag, tag)` self-compare never
+// triggered the error path (any tag was "equal to itself") and
+// silently let malformed entries leak into pickNewerRelease.
 func isUsableRelease(r *devRelease) bool {
 	if r.Draft {
 		return false
 	}
-	if _, err := compareWithDev(r.TagName, r.TagName); err != nil {
+	_, base := splitDev(strings.TrimPrefix(r.TagName, "v"))
+	if _, err := compareSemver(base, base); err != nil {
 		return false
 	}
 	return true
@@ -417,33 +424,39 @@ func isUpdateAvailable(current, latest string) (bool, error) {
 	return cmp > 0, nil
 }
 
+// parseSemverComponent extracts the integer value of one slot of a
+// dotted-decimal version. Missing slots (i past parts) and slots whose
+// string is empty (e.g. "1." has a trailing empty patch) are
+// legitimately 0; a non-empty slot without any digit run is the
+// malformed signal isUsableRelease / pickNewerRelease use to filter
+// tags out (per CR #10), so it returns an error rather than the
+// silent 0 the older closure did.
+func parseSemverComponent(parts []string, i int, ver string) (int, error) {
+	if i >= len(parts) || parts[i] == "" {
+		return 0, nil
+	}
+	numStr := strings.FieldsFunc(parts[i], func(r rune) bool { return r < '0' || r > '9' })
+	if len(numStr) == 0 {
+		return 0, fmt.Errorf("invalid version component %q in %q: no digit run", parts[i], ver)
+	}
+	v, err := strconv.Atoi(numStr[0])
+	if err != nil {
+		return 0, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], ver, err)
+	}
+	return v, nil
+}
+
 // compareSemver returns >0 if a > b, 0 if equal, <0 if a < b.
 // Compares major.minor.patch numerically; ignores pre-release.
 func compareSemver(a, b string) (int, error) {
 	aParts := strings.SplitN(a, ".", 3)
 	bParts := strings.SplitN(b, ".", 3)
-
-	parsePart := func(parts []string, i int, ver string) (int, error) {
-		if i >= len(parts) {
-			return 0, nil
-		}
-		numStr := strings.FieldsFunc(parts[i], func(r rune) bool { return r < '0' || r > '9' })
-		if len(numStr) == 0 {
-			return 0, nil
-		}
-		v, err := strconv.Atoi(numStr[0])
-		if err != nil {
-			return 0, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], ver, err)
-		}
-		return v, nil
-	}
-
 	for i := range 3 {
-		av, err := parsePart(aParts, i, a)
+		av, err := parseSemverComponent(aParts, i, a)
 		if err != nil {
 			return 0, err
 		}
-		bv, err := parsePart(bParts, i, b)
+		bv, err := parseSemverComponent(bParts, i, b)
 		if err != nil {
 			return 0, err
 		}

@@ -116,7 +116,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 
 	// --cli-only: stop after CLI update.
 	if updateCLIOnly {
-		out.HintGuidance("Run 'synthorg update --images-only' to update container images separately.")
+		out.HintNextStep("Run 'synthorg update --images-only' to update container images separately.")
 		return nil
 	}
 
@@ -124,7 +124,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("updating compose and images: %w", err)
 	}
 	if updateImagesOnly {
-		out.HintGuidance("Run 'synthorg update --cli-only' to update the CLI binary separately.")
+		out.HintNextStep("Run 'synthorg update --cli-only' to update the CLI binary separately.")
 	}
 	return nil
 }

@@ -37,6 +37,10 @@ func BenchmarkLoadExisting(b *testing.B) {
 	state.Sandbox = true
 	state.FineTuning = true
 	state.FineTuningVariant = "cpu"
+	// encrypt_secrets defaults to true (DefaultState) which now
+	// requires a master_key. This bench measures Load/parse cost, not
+	// encryption surface; opt out so the fixture validates clean.
+	state.EncryptSecrets = false
 	// v0.7.3 is illustrative -- a representative recent stable tag with
 	// full feature coverage (postgres, nats, fine-tuning). The exact tag
 	// does not matter for perf; it is a fixture, not a pinned version.
