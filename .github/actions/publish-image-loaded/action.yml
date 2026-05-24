@@ -14,16 +14,15 @@ description: >-
   the expected names). This action then runs the security-critical
   publish path that must be byte-identical across every caller.
 
-  Background on the digest-pinning: a previous version used
-  `${REPO}:sha-X-amd64` tag refs in `docker manifest create`.
-  `docker manifest create` re-resolves tag references against the
-  registry on every call, so when a concurrent main-push run overwrote
-  the per-arch tag between two iterations of a tag-push run's loop,
-  the manifest lists for different destination tags ended up with
-  different per-arch digests. cosign signed only the last one, leaving
-  the user-facing version tag unsigned. Capturing the per-arch digest
-  immediately after push and referencing manifest list members by
-  `@sha256:digest` makes every iteration produce byte-identical bytes.
+  Why digest-pinning: `docker manifest create` re-resolves tag
+  references against the registry on every call. When a concurrent
+  main-push run overwrites a per-arch tag between two iterations of a
+  tag-push run's loop, the manifest lists for different destination
+  tags end up with different per-arch digests, and cosign signs only
+  the last one, leaving the user-facing version tag unsigned.
+  Capturing the per-arch digest immediately after push and referencing
+  manifest list members by `@sha256:digest` makes every iteration
+  produce byte-identical bytes, immune to concurrent tag mutations.
 
   Caller responsibilities:
     - `packages: write`, `id-token: write`, `attestations: write`
@@ -61,11 +60,11 @@ outputs:
 runs:
   using: composite
   steps:
-    # GHCR's token endpoint occasionally exceeds the docker client's default
-    # 30s deadline (the failure mode that took down main 2026-05-13). Drive
-    # `docker login` directly through nick-fields/retry so the login is
-    # re-attempted on `context deadline exceeded`. Token via env + stdin so
-    # it never lands on a command line.
+    # GHCR's token endpoint occasionally exceeds the docker client's
+    # default 30s deadline. Drive `docker login` directly through
+    # nick-fields/retry so the login is re-attempted on `context
+    # deadline exceeded`. Token via env + stdin so it never lands on
+    # a command line.
     - name: Log in to GHCR
       uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
       env:
@@ -109,9 +108,8 @@ runs:
     #
     # Note: the manifest-list digest below is still read via
     # `docker buildx imagetools inspect` because `docker manifest
-    # push` stdout is unreliable across Docker versions (PR #1650
-    # documented this: some versions emit the digest, some only
-    # print `Created manifest list`).
+    # push` stdout is unreliable across Docker versions: some emit
+    # the digest, some only print `Created manifest list`.
     - name: Push per-arch images and assemble manifest list
       id: push
       shell: bash
@@ -240,6 +238,12 @@ runs:
       if: steps.cosign_2.outcome == 'failure'
       uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
+    # Wrap the cosign call in cosign_sign_with_retry.sh so a GHCR /
+    # Rekor / Fulcio 5xx during signature upload retries on the same
+    # budget every docker push already gets via docker_push_with_retry.sh.
+    # The helper preserves the `createLogEntryConflict` idempotency
+    # branch (already-signed digest -> success) and only retries on
+    # the shared transient regex.
     - name: Sign image
       shell: bash
       env:
@@ -251,13 +255,8 @@ runs:
           echo "::error::Push step did not produce a digest -- cannot sign image"
           exit 1
         fi
-        if ! cosign sign --yes "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}@${DIGEST}" 2>&1 | tee /tmp/cosign-out; then
-          if grep -q 'createLogEntryConflict' /tmp/cosign-out; then
-            echo "::notice::Image already signed in transparency log -- skipping"
-          else
-            exit 1
-          fi
-        fi
+        bash "${GITHUB_WORKSPACE}/.github/scripts/cosign_sign_with_retry.sh" \
+          "ghcr.io/aureliolo/synthorg-${IMAGE_NAME}@${DIGEST}"
 
     # Belt-and-braces: confirm every tag pushed in this step resolves
     # (in the registry, NOW) to the same digest cosign just signed. A
