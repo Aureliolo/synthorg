@@ -1,3 +1,4 @@
+# module-kind: adapter
 """External-remote git backend: GitHub/GitLab/Gitea/Forgejo via catalog.
 
 Resolves the forge connection from the connection catalog, injects a
