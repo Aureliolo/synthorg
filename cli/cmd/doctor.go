@@ -209,10 +209,27 @@ func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, st
 		out.Success("All systems healthy -- nothing to fix")
 		return false
 	}
+	needComposeFix, needRestart, unfixable := classifyDoctorIssues(issues)
+	if !needComposeFix && !needRestart && len(unfixable) == 0 {
+		out.Success("No fixable issues in selected checks")
+		return false
+	}
+	if needComposeFix {
+		runDoctorComposeFix(out, errOut, state, safeDir)
+	}
+	if needRestart {
+		runDoctorRestart(ctx, out, errOut, safeDir)
+	}
+	for _, issue := range unfixable {
+		out.HintNextStep(fmt.Sprintf("No auto-fix available for: %s", issue))
+	}
+	return needComposeFix || needRestart
+}
 
-	// Phase 1: scan issues and determine needed actions.
-	var needComposeFix, needRestart bool
-	var unfixable []string
+// classifyDoctorIssues sorts issues into the two fixable buckets
+// (compose-regeneration and restart) plus an unfixable remainder.
+// Check filter (--checks) gates whether a bucket is touched.
+func classifyDoctorIssues(issues []string) (needComposeFix, needRestart bool, unfixable []string) {
 	for _, issue := range issues {
 		switch {
 		case strings.Contains(issue, "compose.yml") && (strings.Contains(issue, "not found") || strings.Contains(issue, "invalid")):
@@ -227,40 +244,30 @@ func doctorAutoFix(ctx context.Context, _ *cobra.Command, out, errOut *ui.UI, st
 			unfixable = append(unfixable, issue)
 		}
 	}
+	return needComposeFix, needRestart, unfixable
+}
 
-	if !needComposeFix && !needRestart && len(unfixable) == 0 {
-		out.Success("No fixable issues in selected checks")
-		return false
+func runDoctorComposeFix(out, errOut *ui.UI, state config.State, safeDir string) {
+	out.Step("Regenerating compose.yml from template...")
+	if fixErr := doctorFixCompose(state, safeDir); fixErr != nil {
+		errOut.Error(fmt.Sprintf("Could not regenerate compose: %v", fixErr))
+		return
 	}
+	out.Success("Regenerated compose.yml from template")
+}
 
-	// Phase 2: execute fixes in correct order (compose before restart).
-	if needComposeFix {
-		out.Step("Regenerating compose.yml from template...")
-		if fixErr := doctorFixCompose(state, safeDir); fixErr != nil {
-			errOut.Error(fmt.Sprintf("Could not regenerate compose: %v", fixErr))
-		} else {
-			out.Success("Regenerated compose.yml from template")
-		}
+func runDoctorRestart(ctx context.Context, out, errOut *ui.UI, safeDir string) {
+	info, dockerErr := docker.Detect(ctx)
+	if dockerErr != nil {
+		errOut.Warn(fmt.Sprintf("Cannot restart containers: Docker not available (%v)", dockerErr))
+		return
 	}
-
-	if needRestart {
-		info, dockerErr := docker.Detect(ctx)
-		if dockerErr != nil {
-			errOut.Warn(fmt.Sprintf("Cannot restart containers: Docker not available (%v)", dockerErr))
-		} else {
-			out.Step("Restarting containers...")
-			if fixErr := composeRunQuiet(ctx, info, safeDir, "restart"); fixErr != nil {
-				errOut.Error(fmt.Sprintf("Restart failed: %v", fixErr))
-			} else {
-				out.Success("Containers restarted")
-			}
-		}
+	out.Step("Restarting containers...")
+	if fixErr := composeRunQuiet(ctx, info, safeDir, "restart"); fixErr != nil {
+		errOut.Error(fmt.Sprintf("Restart failed: %v", fixErr))
+		return
 	}
-
-	for _, issue := range unfixable {
-		out.HintNextStep(fmt.Sprintf("No auto-fix available for: %s", issue))
-	}
-	return needComposeFix || needRestart
+	out.Success("Containers restarted")
 }
 
 // doctorFixCompose regenerates compose.yml from the embedded template.
@@ -292,62 +299,7 @@ const (
 
 // classifyDoctor inspects the report to determine the overall status.
 func classifyDoctor(r diagnostics.Report) (doctorStatus, []string) {
-	var warnings, errs []string
-
-	// Backend health.
-	switch r.HealthStatus {
-	case "200":
-		// ok
-	case "unreachable":
-		errs = append(errs, "backend unreachable")
-	case "":
-		// not checked
-	default:
-		errs = append(errs, fmt.Sprintf("backend unhealthy (HTTP %s)", r.HealthStatus))
-	}
-
-	// Container states.
-	if len(r.ContainerSummary) == 0 && r.ComposeFileExists {
-		warnings = append(warnings, "no containers detected")
-	}
-	for _, c := range r.ContainerSummary {
-		switch {
-		case c.Health == "unhealthy", c.State == "exited":
-			status := c.Health
-			if status == "" {
-				status = c.State
-			}
-			errs = append(errs, fmt.Sprintf("%s %s", c.Name, status))
-		case c.Health == "starting":
-			warnings = append(warnings, fmt.Sprintf("%s still starting", c.Name))
-		}
-	}
-
-	// Image availability.
-	for _, img := range r.ImageStatus {
-		if !strings.HasSuffix(img, ": available") {
-			warnings = append(warnings, img)
-		}
-	}
-
-	// Compose file.
-	switch {
-	case !r.ComposeFileExists:
-		errs = append(errs, "compose.yml not found")
-	case r.ComposeFileValid == nil:
-		warnings = append(warnings, "compose.yml exists, validity not checked")
-	case !*r.ComposeFileValid:
-		errs = append(errs, "compose.yml is invalid")
-	}
-
-	// Port conflicts.
-	for _, p := range r.PortConflicts {
-		errs = append(errs, fmt.Sprintf("port conflict: %s", p))
-	}
-
-	// Explicit errors from collection.
-	errs = append(errs, r.Errors...)
-
+	warnings, errs := collectDoctorWarnings(r), collectDoctorErrors(r)
 	if len(errs) > 0 {
 		return doctorErrors, errs
 	}
@@ -355,6 +307,79 @@ func classifyDoctor(r diagnostics.Report) (doctorStatus, []string) {
 		return doctorWarnings, warnings
 	}
 	return doctorHealthy, nil
+}
+
+func collectDoctorErrors(r diagnostics.Report) []string {
+	var errs []string
+	if msg, ok := doctorHealthError(r.HealthStatus); ok {
+		errs = append(errs, msg)
+	}
+	errs = append(errs, doctorContainerErrors(r.ContainerSummary)...)
+	if msg, ok := doctorComposeError(r); ok {
+		errs = append(errs, msg)
+	}
+	for _, p := range r.PortConflicts {
+		errs = append(errs, fmt.Sprintf("port conflict: %s", p))
+	}
+	errs = append(errs, r.Errors...)
+	return errs
+}
+
+func doctorHealthError(status string) (string, bool) {
+	switch status {
+	case "200", "":
+		return "", false
+	case "unreachable":
+		return "backend unreachable", true
+	default:
+		return fmt.Sprintf("backend unhealthy (HTTP %s)", status), true
+	}
+}
+
+func doctorContainerErrors(containers []diagnostics.ContainerDetail) []string {
+	var errs []string
+	for _, c := range containers {
+		if c.Health != "unhealthy" && c.State != "exited" {
+			continue
+		}
+		status := c.Health
+		if status == "" {
+			status = c.State
+		}
+		errs = append(errs, fmt.Sprintf("%s %s", c.Name, status))
+	}
+	return errs
+}
+
+func doctorComposeError(r diagnostics.Report) (string, bool) {
+	switch {
+	case !r.ComposeFileExists:
+		return "compose.yml not found", true
+	case r.ComposeFileValid != nil && !*r.ComposeFileValid:
+		return "compose.yml is invalid", true
+	}
+	return "", false
+}
+
+func collectDoctorWarnings(r diagnostics.Report) []string {
+	var warnings []string
+	if len(r.ContainerSummary) == 0 && r.ComposeFileExists {
+		warnings = append(warnings, "no containers detected")
+	}
+	for _, c := range r.ContainerSummary {
+		if c.Health == "starting" {
+			warnings = append(warnings, fmt.Sprintf("%s still starting", c.Name))
+		}
+	}
+	for _, img := range r.ImageStatus {
+		if !strings.HasSuffix(img, ": available") {
+			warnings = append(warnings, img)
+		}
+	}
+	if r.ComposeFileExists && r.ComposeFileValid == nil {
+		warnings = append(warnings, "compose.yml exists, validity not checked")
+	}
+	return warnings
 }
 
 // renderDoctorSummary prints a final summary box showing overall system status.
@@ -461,25 +486,33 @@ func renderDoctorImages(out *ui.UI, r diagnostics.Report) {
 
 func renderDoctorInfra(out *ui.UI, r diagnostics.Report) {
 	_, _ = fmt.Fprintln(out.Writer())
-	if r.ComposeFileExists {
-		valid := "not checked"
-		if r.ComposeFileValid != nil {
-			if *r.ComposeFileValid {
-				valid = "valid"
-			} else {
-				valid = "invalid"
-			}
-		}
-		if valid == "valid" {
-			out.Success(fmt.Sprintf("Compose file: exists, %s", valid))
-		} else {
-			out.Warn(fmt.Sprintf("Compose file: exists, %s", valid))
-		}
-	} else {
-		out.Error("Compose file: not found")
-	}
+	renderComposeFileStatus(out, r)
 	for _, conflict := range r.PortConflicts {
 		out.Error(fmt.Sprintf("Port conflict: %s", conflict))
+	}
+}
+
+func renderComposeFileStatus(out *ui.UI, r diagnostics.Report) {
+	if !r.ComposeFileExists {
+		out.Error("Compose file: not found")
+		return
+	}
+	valid := composeValidityWord(r.ComposeFileValid)
+	if valid == "valid" {
+		out.Success(fmt.Sprintf("Compose file: exists, %s", valid))
+		return
+	}
+	out.Warn(fmt.Sprintf("Compose file: exists, %s", valid))
+}
+
+func composeValidityWord(valid *bool) string {
+	switch {
+	case valid == nil:
+		return "not checked"
+	case *valid:
+		return "valid"
+	default:
+		return "invalid"
 	}
 }
 
