@@ -124,10 +124,10 @@
     },
     {
       "customType": "regex",
-      "description": "GitHub Action version: input parameters (also matches lycheeVersion: for lycheeverse/lychee-action v2+)",
+      "description": "GitHub Action version: input parameters",
       "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/"],
       "matchStrings": [
-        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+(?:version|lycheeVersion):\\s*(?<currentValue>[^\\s]+)"
+        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+version:\\s*(?<currentValue>[^\\s]+)"
       ],
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver"

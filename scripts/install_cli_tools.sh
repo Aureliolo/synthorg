@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-# Install external CLI toolchain for local development.
+# Install external CLI toolchain for local development AND CI.
+#
+# Usage:
+#   scripts/install_cli_tools.sh                # default: install both
+#   scripts/install_cli_tools.sh all            # explicit: install both
+#   scripts/install_cli_tools.sh lychee         # install lychee only
+#   scripts/install_cli_tools.sh golangci-lint  # install golangci-lint only
 #
 # Two binaries:
 #   * golangci-lint -- Go linter for the cli/ binary.
@@ -12,8 +18,8 @@
 #
 # CI installs golangci-lint via the official GitHub Action
 # (.github/workflows/cli.yml uses golangci/golangci-lint-action) and lychee via
-# the official lychee-action (.github/workflows/lychee.yml uses
-# lycheeverse/lychee-action). Local developers run this script once per machine.
+# this script (`scripts/install_cli_tools.sh lychee` in .github/workflows/lychee.yml)
+# so the local pre-push hook and the CI run use the byte-identical binary.
 # Renovate tracks the pinned versions via the "go install binary versions" and
 # "Binary tool version env vars" custom regex managers in renovate.json.
 #
@@ -101,10 +107,24 @@ install_golangci_lint() {
     return 1
   fi
 
+  # PATH-staleness check: even if the install_dir binary is correct, the user's
+  # PATH may resolve an older copy from somewhere else (system package manager,
+  # a previous `go install` against a different GOPATH, ...). Pre-push hooks
+  # and CI both invoke ``golangci-lint`` through PATH, so a stale earlier
+  # entry will silently run the wrong version. Fail fast with a hint.
+  local path_binary path_version
+  path_binary="$(command -v golangci-lint 2>/dev/null || true)"
+  if [ -n "${path_binary}" ] && [ "${path_binary}" != "${installed_binary}" ]; then
+    path_version=$(extract_version "${path_binary}")
+    if [ "${path_version:-}" != "${golangci_lint_version}" ]; then
+      echo "error: golangci-lint on PATH is the wrong version -- expected ${golangci_lint_version}, got '${path_version:-unknown}' from ${path_binary}" >&2
+      echo "hint: ensure ${install_dir} precedes other golangci-lint locations on PATH, or remove the stale binary at ${path_binary}" >&2
+      return 1
+    fi
+  fi
+
   echo "golangci-lint ready: $(${verify_binary} --version 2>&1 | head -n1)"
 }
-
-install_golangci_lint
 
 # ---------------------------------------------------------------------------
 # lychee (Rust link-checker)
@@ -114,10 +134,9 @@ install_golangci_lint
 LYCHEE_VERSION="v0.24.2"
 
 # Upstream release tags are prefixed `lychee-` (e.g. `lychee-v0.24.2`); the
-# bare `v...` form here matches the `lycheeVersion:` input shape of
-# `lycheeverse/lychee-action` and the value Renovate writes back after
-# stripping the prefix via the packageRules entry for `lycheeverse/lychee`
-# in renovate.json. The download URL prepends the prefix below.
+# bare `v...` form here is the value Renovate writes back after stripping
+# the prefix via the packageRules entry for `lycheeverse/lychee` in
+# renovate.json. The download URL prepends the prefix below.
 
 extract_lychee_version() {
   local raw
@@ -219,6 +238,7 @@ install_lychee() {
   # temp dir. EXIT runs on both normal return AND set -e bailout.
   # Double quotes expand ${tmpdir} now (function-local), since the
   # trap body fires at script exit when the local has gone out of scope.
+  # shellcheck disable=SC2064 -- early expansion intentional: ${tmpdir} is function-local.
   trap "rm -rf '${tmpdir}'" EXIT
 
   echo "Installing lychee ${LYCHEE_VERSION} (${triplet}) to ${install_dir}..."
@@ -277,11 +297,45 @@ install_lychee() {
     return 1
   fi
 
-  if [ -z "$(lychee_on_path)" ]; then
+  # PATH-staleness check: even though the install_dir binary is correct,
+  # the user's PATH may resolve a different lychee earlier (system package
+  # manager, a previous install with a different LYCHEE_INSTALL_DIR, ...).
+  # The pre-commit hook and CI both invoke ``lychee`` through PATH, so a
+  # stale earlier entry will silently run the wrong version. Fail fast.
+  local path_binary path_version
+  path_binary="$(lychee_on_path)"
+  if [ -z "${path_binary}" ]; then
     echo "warning: ${install_dir} is not on PATH; add it (e.g. 'export PATH=\"${install_dir}:\$PATH\"' in ~/.bashrc / ~/.zshrc) to use lychee directly" >&2
+  elif [ "${path_binary}" != "${binary_path}" ]; then
+    path_version=$(extract_lychee_version "${path_binary}")
+    if [ "${path_version:-}" != "${LYCHEE_VERSION}" ]; then
+      echo "error: lychee on PATH is the wrong version -- expected ${LYCHEE_VERSION}, got '${path_version:-unknown}' from ${path_binary}" >&2
+      echo "hint: ensure ${install_dir} precedes other lychee locations on PATH, or remove the stale binary at ${path_binary}" >&2
+      return 1
+    fi
   fi
 
   echo "lychee ready: $(${binary_path} --version 2>&1 | head -n1)"
 }
 
-install_lychee
+# ---------------------------------------------------------------------------
+# Dispatcher
+# ---------------------------------------------------------------------------
+
+target="${1:-all}"
+case "${target}" in
+  all)
+    install_golangci_lint
+    install_lychee
+    ;;
+  golangci-lint)
+    install_golangci_lint
+    ;;
+  lychee)
+    install_lychee
+    ;;
+  *)
+    echo "error: unknown target '${target}' (expected: all | golangci-lint | lychee)" >&2
+    exit 2
+    ;;
+esac
