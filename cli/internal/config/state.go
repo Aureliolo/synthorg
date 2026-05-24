@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -246,6 +245,44 @@ func (s State) DisplayChannel() string {
 	return s.Channel
 }
 
+// ColorOrDefault returns the persisted color mode, or "auto" when empty.
+// "auto" matches the runtime auto-detect (TTY + NO_COLOR + CLICOLOR
+// inspection in GlobalOpts) that fires when Color is unset.
+func (s State) ColorOrDefault() string {
+	if s.Color == "" {
+		return "auto"
+	}
+	return s.Color
+}
+
+// HintsOrDefault returns the persisted hints mode, or "auto" when empty.
+// "auto" matches the runtime default (once-per-session for HintTip,
+// suppressed for HintGuidance) applied when Hints is unset.
+func (s State) HintsOrDefault() string {
+	if s.Hints == "" {
+		return "auto"
+	}
+	return s.Hints
+}
+
+// OutputOrDefault returns the persisted output mode, or "text" when empty.
+func (s State) OutputOrDefault() string {
+	if s.Output == "" {
+		return "text"
+	}
+	return s.Output
+}
+
+// TimestampsOrDefault returns the persisted timestamp mode, or "relative"
+// when empty (the canonical default rendered by the logs command when
+// the operator has not opted into iso8601).
+func (s State) TimestampsOrDefault() string {
+	if s.Timestamps == "" {
+		return "relative"
+	}
+	return s.Timestamps
+}
+
 // ChangelogViewOrDefault returns the configured changelog view for the
 // `synthorg update` walk, defaulting to "highlights" when empty or unknown.
 // "highlights" -> AI summary block (per stable release); "commits" -> the
@@ -265,6 +302,24 @@ func StatePath(dataDir string) string {
 // Load reads State from disk. Returns a default state with the given dataDir
 // if the file does not exist (so --data-dir is respected on bootstrap).
 func Load(dataDir string) (State, error) {
+	return loadWith(dataDir, State.Validate)
+}
+
+// LoadAllowMissingMasterKey is Load but runs ValidateAllowMissingMasterKey
+// instead of Validate, so a legacy persisted config can be read even
+// when EncryptSecrets is true and MasterKey is empty. Used by the init
+// reinit flow to recover such installs; callers MUST regenerate or
+// hand-provide a master_key before persisting the returned state back
+// (the strict Validate runs again on the next normal Load).
+func LoadAllowMissingMasterKey(dataDir string) (State, error) {
+	return loadWith(dataDir, State.ValidateAllowMissingMasterKey)
+}
+
+// loadWith is the shared body of Load and LoadAllowMissingMasterKey.
+// validate is the per-state validator the caller wants applied to the
+// unmarshalled State; both wrappers pass a method value so the dispatch
+// cost is a single function call rather than a per-call branch.
+func loadWith(dataDir string, validate func(State) error) (State, error) {
 	safeDir, err := SecurePath(dataDir)
 	if err != nil {
 		return State{}, err
@@ -287,7 +342,7 @@ func Load(dataDir string) (State, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return State{}, fmt.Errorf("%w %s: %w", ErrParsing, path, err)
 	}
-	if err := s.validate(); err != nil {
+	if err := validate(s); err != nil {
 		return State{}, fmt.Errorf("config %s: %w", path, err)
 	}
 	// Canonicalize and validate DataDir.
@@ -315,20 +370,40 @@ var validTimestampModes = map[string]bool{"relative": true, "iso8601": true}
 var validHintsModes = map[string]bool{"always": true, "auto": true, "never": true}
 var validChangelogViews = map[string]bool{"highlights": true, "commits": true}
 
+// Cached sortedKeys outputs for each enum map. sortedKeys allocates a
+// keys slice + the joined string, so callers that hit it per Validate
+// (e.g. the error-message lookups in validateBackends /
+// validateDisplayModes) pay those allocs eagerly even on the happy
+// path. The maps are package-level constants; their sorted-string form
+// is too, so memoise once at init and serve every accessor from the
+// cache. Restores LoadExisting to its pre-refactor alloc budget.
+var (
+	persistenceBackendNamesCache = sortedKeys(validPersistenceBackends)
+	memoryBackendNamesCache      = sortedKeys(validMemoryBackends)
+	busBackendNamesCache         = sortedKeys(validBusBackends)
+	channelNamesCache            = sortedKeys(validChannels)
+	logLevelNamesCache           = sortedKeys(validLogLevels)
+	colorModeNamesCache          = sortedKeys(validColorModes)
+	outputModeNamesCache         = sortedKeys(validOutputModes)
+	timestampModeNamesCache      = sortedKeys(validTimestampModes)
+	hintsModeNamesCache          = sortedKeys(validHintsModes)
+	changelogViewNamesCache      = sortedKeys(validChangelogViews)
+)
+
 // IsValidChannel reports whether name is a known update channel.
 func IsValidChannel(name string) bool {
 	return validChannels[name]
 }
 
 // ChannelNames returns the allowed channel names.
-func ChannelNames() string { return sortedKeys(validChannels) }
+func ChannelNames() string { return channelNamesCache }
 
 // IsValidChangelogView reports whether name is a known changelog view mode
 // for the `synthorg update` walk.
 func IsValidChangelogView(name string) bool { return validChangelogViews[name] }
 
 // ChangelogViewNames returns the allowed changelog view names.
-func ChangelogViewNames() string { return sortedKeys(validChangelogViews) }
+func ChangelogViewNames() string { return changelogViewNamesCache }
 
 // IsValidLogLevel reports whether name is a known log level.
 func IsValidLogLevel(name string) bool {
@@ -336,7 +411,7 @@ func IsValidLogLevel(name string) bool {
 }
 
 // LogLevelNames returns the allowed log level names.
-func LogLevelNames() string { return sortedKeys(validLogLevels) }
+func LogLevelNames() string { return logLevelNamesCache }
 
 // sortedKeys returns a comma-separated sorted list of map keys.
 func sortedKeys(m map[string]bool) string {
@@ -372,134 +447,52 @@ func IsValidBusBackend(name string) bool {
 }
 
 // PersistenceBackendNames returns the allowed persistence backend names.
-func PersistenceBackendNames() string { return sortedKeys(validPersistenceBackends) }
+func PersistenceBackendNames() string { return persistenceBackendNamesCache }
 
 // MemoryBackendNames returns the allowed memory backend names.
-func MemoryBackendNames() string { return sortedKeys(validMemoryBackends) }
+func MemoryBackendNames() string { return memoryBackendNamesCache }
 
 // BusBackendNames returns the allowed bus backend names.
-func BusBackendNames() string { return sortedKeys(validBusBackends) }
+func BusBackendNames() string { return busBackendNamesCache }
 
 // IsValidColorMode reports whether name is a known color mode.
 func IsValidColorMode(name string) bool { return validColorModes[name] }
 
 // ColorModeNames returns the allowed color mode names.
-func ColorModeNames() string { return sortedKeys(validColorModes) }
+func ColorModeNames() string { return colorModeNamesCache }
 
 // IsValidOutputMode reports whether name is a known output mode.
 func IsValidOutputMode(name string) bool { return validOutputModes[name] }
 
 // OutputModeNames returns the allowed output mode names.
-func OutputModeNames() string { return sortedKeys(validOutputModes) }
+func OutputModeNames() string { return outputModeNamesCache }
 
 // IsValidTimestampMode reports whether name is a known timestamp mode.
 func IsValidTimestampMode(name string) bool { return validTimestampModes[name] }
 
 // TimestampModeNames returns the allowed timestamp mode names.
-func TimestampModeNames() string { return sortedKeys(validTimestampModes) }
+func TimestampModeNames() string { return timestampModeNamesCache }
 
 // IsValidHintsMode reports whether name is a known hints mode.
 func IsValidHintsMode(name string) bool { return validHintsModes[name] }
 
 // HintsModeNames returns the allowed hints mode names.
-func HintsModeNames() string { return sortedKeys(validHintsModes) }
+func HintsModeNames() string { return hintsModeNamesCache }
 
-// validate checks that loaded config values are within safe ranges.
-func (s State) validate() error {
-	if s.BackendPort < 1 || s.BackendPort > 65535 {
-		return fmt.Errorf("invalid backend_port %d: must be 1-65535", s.BackendPort)
-	}
-	if s.WebPort < 1 || s.WebPort > 65535 {
-		return fmt.Errorf("invalid web_port %d: must be 1-65535", s.WebPort)
-	}
-	if !IsValidPersistenceBackend(s.PersistenceBackend) {
-		return fmt.Errorf("invalid persistence_backend %q: must be one of %s", s.PersistenceBackend, sortedKeys(validPersistenceBackends))
-	}
-	if !IsValidMemoryBackend(s.MemoryBackend) {
-		return fmt.Errorf("invalid memory_backend %q: must be one of %s", s.MemoryBackend, sortedKeys(validMemoryBackends))
-	}
-	if s.BusBackend != "" && !IsValidBusBackend(s.BusBackend) {
-		return fmt.Errorf("invalid bus_backend %q: must be one of %s", s.BusBackend, sortedKeys(validBusBackends))
-	}
-	if s.NatsClientPort != 0 && (s.NatsClientPort < 1 || s.NatsClientPort > 65535) {
-		return fmt.Errorf("invalid nats_client_port %d: must be 1-65535", s.NatsClientPort)
-	}
-	if s.DockerSockGID < -1 || s.DockerSockGID > 4294967295 {
-		return fmt.Errorf("invalid docker_sock_gid %d: must be -1 to 4294967295", s.DockerSockGID)
-	}
-	if s.Channel != "" && !IsValidChannel(s.Channel) {
-		return fmt.Errorf("invalid channel %q: must be one of %s", s.Channel, sortedKeys(validChannels))
-	}
-	if s.LogLevel != "" && !IsValidLogLevel(s.LogLevel) {
-		return fmt.Errorf("invalid log_level %q: must be one of %s", s.LogLevel, sortedKeys(validLogLevels))
-	}
-	if s.ImageTag != "" && !IsValidImageTag(s.ImageTag) {
-		return fmt.Errorf("invalid image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", s.ImageTag)
-	}
-	if s.Color != "" && !IsValidColorMode(s.Color) {
-		return fmt.Errorf("invalid color %q: must be one of %s", s.Color, ColorModeNames())
-	}
-	if s.Output != "" && !IsValidOutputMode(s.Output) {
-		return fmt.Errorf("invalid output %q: must be one of %s", s.Output, OutputModeNames())
-	}
-	if s.Timestamps != "" && !IsValidTimestampMode(s.Timestamps) {
-		return fmt.Errorf("invalid timestamps %q: must be one of %s", s.Timestamps, TimestampModeNames())
-	}
-	if s.Hints != "" && !IsValidHintsMode(s.Hints) {
-		return fmt.Errorf("invalid hints %q: must be one of %s", s.Hints, HintsModeNames())
-	}
-	if s.ChangelogView != "" && !IsValidChangelogView(s.ChangelogView) {
-		return fmt.Errorf("invalid changelog_view %q: must be one of %s", s.ChangelogView, ChangelogViewNames())
-	}
-	if s.PersistenceBackend == "postgres" {
-		if s.PostgresPort < 1 || s.PostgresPort > 65535 {
-			return fmt.Errorf("invalid postgres_port %d: must be 1-65535", s.PostgresPort)
-		}
-		if strings.TrimSpace(s.PostgresPassword) == "" {
-			return fmt.Errorf("postgres_password is required when persistence_backend is postgres")
-		}
-		if len(s.PostgresPassword) < 32 {
-			return fmt.Errorf("postgres_password must be at least 32 characters, got %d", len(s.PostgresPassword))
-		}
-		// Reject NUL/CR/LF/TAB. The password is interpolated into the
-		// Postgres DSN, written to the compose.yml env block, and
-		// forwarded to docker -- a stray newline could split the DSN or
-		// produce a YAML value that deserializes to something else.
-		if strings.ContainsAny(s.PostgresPassword, "\x00\n\r\t") {
-			return fmt.Errorf("postgres_password must not contain control characters (NUL, CR, LF, TAB)")
-		}
-	}
-	if s.EncryptSecrets && strings.TrimSpace(s.MasterKey) != "" {
-		if err := validateFernetKey(s.MasterKey); err != nil {
-			return fmt.Errorf("invalid master_key: %w", err)
-		}
-	}
-	if s.FineTuning && !s.Sandbox {
-		return fmt.Errorf("fine_tuning requires sandbox to be enabled")
-	}
-	if s.FineTuning && runtime.GOARCH != "amd64" {
-		return fmt.Errorf("fine_tuning requires x86_64 (amd64) architecture; the fine-tune image is not available for %s", runtime.GOARCH)
-	}
-	// Variant validation is unconditional: an invalid persisted value that
-	// went unnoticed while fine_tuning=false would silently coerce to "gpu"
-	// the moment the user flipped the feature on. Reject typos at load time
-	// regardless of the current toggle state.
-	switch s.FineTuningVariant {
-	case "", FineTuneVariantGPU, FineTuneVariantCPU:
-		// Empty permitted for forward compat with pre-split configs;
-		// resolved to "gpu" at read time via FineTuneVariantOrDefault.
-	default:
-		return fmt.Errorf("fine_tuning_variant must be %q or %q, got %q", FineTuneVariantGPU, FineTuneVariantCPU, s.FineTuningVariant)
-	}
-	for name, digest := range s.VerifiedDigests {
-		if !isValidDigestFormat(digest) {
-			return fmt.Errorf("invalid verified_digests[%q]: %q is not a valid sha256 digest", name, digest)
-		}
-	}
-	if err := s.validateTunables(); err != nil {
-		return err
-	}
-	return nil
+// stateValidations is the ordered list of per-section State validators
+// invoked by both Validate and ValidateAllowMissingMasterKey.
+// validateMasterKey is NOT in this slice; both wrappers call it (or
+// skip it) separately so the migration-recovery path does not need
+// pointer comparison or per-iteration skip logic to omit it.
+// Package-level so the slice header is allocated once at init rather
+// than on every Validate call (LoadExisting is a hot path).
+var stateValidations = []func(State) error{
+	validatePorts,
+	validateBackends,
+	validateDisplayModes,
+	validatePostgres,
+	validateFineTuning,
+	validateVerifiedDigests,
 }
 
 // Validate runs State invariants (cross-field constraints such as
@@ -507,9 +500,39 @@ func (s State) validate() error {
 // master-key formats) and returns the first failure. Callers that mutate
 // State outside of Load (e.g. `synthorg config set` when toggling a
 // previously-off feature) should invoke this so inconsistent combinations
-// fail at `config set` time rather than at the next `start`.
+// fail at `config set` time rather than at the next `start`. Load also
+// runs Validate on every read.
 func (s State) Validate() error {
-	return s.validate()
+	for _, check := range stateValidations {
+		if err := check(s); err != nil {
+			return err
+		}
+	}
+	if err := validateMasterKey(s); err != nil {
+		return err
+	}
+	return s.validateTunables()
+}
+
+// ValidateAllowMissingMasterKey is Validate but tolerates ONE specific
+// failure -- ErrMissingMasterKey. Every other validateMasterKey error
+// (e.g. a non-empty MasterKey that fails the Fernet format check) is
+// still surfaced so a malformed key cannot leak through the recovery
+// path. Used by LoadAllowMissingMasterKey (and ultimately by the init
+// reinit flow) so a legacy persisted config can be read into memory
+// even though it fails the strict invariant; the caller MUST
+// regenerate or hand-provide a master_key before persisting the
+// returned state back.
+func (s State) ValidateAllowMissingMasterKey() error {
+	for _, check := range stateValidations {
+		if err := check(s); err != nil {
+			return err
+		}
+	}
+	if err := validateMasterKey(s); err != nil && !errors.Is(err, ErrMissingMasterKey) {
+		return err
+	}
+	return s.validateTunables()
 }
 
 // FineTuneVariantOrDefault returns the configured fine-tune variant,
@@ -534,90 +557,23 @@ func FineTuneVariantFromIndex(idx int) string {
 	return FineTuneVariantGPU
 }
 
-// validateTunables checks that the optional registry/tunable fields parse
-// and fall within sane ranges. Empty fields are treated as "use default"
-// and skipped.
+// tunablesValidations is the ordered list of per-section tunables
+// validators. Package-level for the same reason as stateValidations:
+// avoid a per-call slice header allocation on the LoadExisting hot path.
+var tunablesValidations = []func(State) error{
+	validateRegistryFields,
+	validateDurationFields,
+	validateIntegerFields,
+	validateByteFields,
+}
+
+// validateTunables checks that the optional registry/tunable fields
+// parse and fall within sane ranges. Empty fields are treated as "use
+// default" and skipped. Per-section validators live in validate.go.
 func (s State) validateTunables() error {
-	if s.RegistryHost != "" && !IsValidRegistryHost(s.RegistryHost) {
-		return fmt.Errorf("invalid registry_host %q: must be a DNS hostname (optionally with :port)", s.RegistryHost)
-	}
-	if s.DHIRegistry != "" && !IsValidRegistryHost(s.DHIRegistry) {
-		return fmt.Errorf("invalid dhi_registry %q: must be a DNS hostname (optionally with :port)", s.DHIRegistry)
-	}
-	if s.ImageRepoPrefix != "" && !IsValidImageRepoPrefix(s.ImageRepoPrefix) {
-		return fmt.Errorf("invalid image_repo_prefix %q: must match [a-z0-9][a-z0-9._/-]*", s.ImageRepoPrefix)
-	}
-	if s.PostgresImageTag != "" && !IsValidImageTag(s.PostgresImageTag) {
-		return fmt.Errorf("invalid postgres_image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", s.PostgresImageTag)
-	}
-	if s.NATSImageTag != "" && !IsValidImageTag(s.NATSImageTag) {
-		return fmt.Errorf("invalid nats_image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", s.NATSImageTag)
-	}
-	if s.DefaultNATSStreamPrefix != "" && !IsValidStreamPrefix(s.DefaultNATSStreamPrefix) {
-		return fmt.Errorf("invalid default_nats_stream_prefix %q: must match [A-Z0-9][A-Z0-9_-]*", s.DefaultNATSStreamPrefix)
-	}
-	durations := []struct {
-		name, value string
-	}{
-		{"backup_create_timeout", s.BackupCreateTimeout},
-		{"backup_restore_timeout", s.BackupRestoreTimeout},
-		{"health_check_timeout", s.HealthCheckTimeout},
-		{"self_update_http_timeout", s.SelfUpdateHTTPTimeout},
-		{"self_update_api_timeout", s.SelfUpdateAPITimeout},
-		{"tuf_fetch_timeout", s.TUFFetchTimeout},
-		{"attestation_http_timeout", s.AttestationHTTPTimeout},
-		{"image_verify_timeout", s.ImageVerifyTimeout},
-		{"image_pull_retry_delay", s.ImagePullRetryDelay},
-	}
-	for _, d := range durations {
-		if d.value == "" {
-			continue
-		}
-		parsed, err := time.ParseDuration(d.value)
-		if err != nil {
-			return fmt.Errorf("invalid %s %q: %w", d.name, d.value, err)
-		}
-		if parsed <= 0 {
-			return fmt.Errorf("invalid %s %q: must be > 0", d.name, d.value)
-		}
-		// image_verify_timeout has an additional floor: shorter values
-		// would bypass cosign/SLSA verification by silently timing out
-		// before network I/O completes.  Catch it at state-load time so
-		// a persisted config.json fails loudly here rather than deep
-		// inside ResolveTunables on the next `start`.
-		if d.name == "image_verify_timeout" && parsed < MinImageVerifyTimeout {
-			return fmt.Errorf(
-				"invalid %s %q: %v is below the %v minimum floor; a shorter timeout would bypass cosign/SLSA verification by silently timing out",
-				d.name, d.value, parsed, MinImageVerifyTimeout,
-			)
-		}
-	}
-	if s.ImagePullAttempts != "" {
-		n, err := strconv.Atoi(s.ImagePullAttempts)
-		if err != nil {
-			return fmt.Errorf("invalid image_pull_attempts %q: %w", s.ImagePullAttempts, err)
-		}
-		if n < 1 || n > MaxImagePullAttempts {
-			return fmt.Errorf("invalid image_pull_attempts %q: must be in [1, %d]", s.ImagePullAttempts, MaxImagePullAttempts)
-		}
-	}
-	bytes := []struct {
-		name  string
-		value int64
-	}{
-		{"max_api_response_bytes", s.MaxAPIResponseBytes},
-		{"max_binary_bytes", s.MaxBinaryBytes},
-		{"max_archive_entry_bytes", s.MaxArchiveEntryBytes},
-	}
-	for _, b := range bytes {
-		if b.value == 0 {
-			continue
-		}
-		if b.value < 0 {
-			return fmt.Errorf("invalid %s %d: must be positive", b.name, b.value)
-		}
-		if b.value > MaxBytesCeiling {
-			return fmt.Errorf("invalid %s %d: exceeds ceiling %d (1 GiB)", b.name, b.value, MaxBytesCeiling)
+	for _, check := range tunablesValidations {
+		if err := check(s); err != nil {
+			return err
 		}
 	}
 	return nil

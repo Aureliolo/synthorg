@@ -20,7 +20,7 @@ suitable for issue reports. Pass --short for a single-line
 semantic version string, useful in shell pipelines.`,
 	Example: `  synthorg version          # full version info with logo
   synthorg version --short  # version number only`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		if versionShort {
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), version.Version)
 			return nil

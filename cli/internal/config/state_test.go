@@ -375,6 +375,11 @@ func TestLoadRejectsInvalidChannelAndLogLevel(t *testing.T) {
 				"channel":             tt.channel,
 				"persistence_backend": "sqlite",
 				"memory_backend":      "mem0",
+				// encrypt_secrets defaults to true (DefaultState), and
+				// the master-key invariant now rejects an empty key in
+				// that combination; opt this fixture out since it is
+				// targeting channel/log-level validation only.
+				"encrypt_secrets": false,
 			})
 			if err := os.WriteFile(filepath.Join(tmp, stateFileName), raw, 0o600); err != nil {
 				t.Fatal(err)

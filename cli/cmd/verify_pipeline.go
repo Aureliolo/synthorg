@@ -48,59 +48,83 @@ func verifyImagesWithCache(
 ) (imagesVerifyResult, error) {
 	merged := make(map[string]string, len(state.VerifiedDigests))
 	maps.Copy(merged, state.VerifiedDigests)
-
 	res := imagesVerifyResult{Pins: merged}
 
-	if hasSynthOrgDigests(state) {
-		renderCachedSynthOrgBox(out, state)
-	} else {
-		pins, err := verifySynthOrgGroup(ctx, state, out, errOut)
-		if err != nil {
-			return imagesVerifyResult{}, err
-		}
-		// A miss replaces every prior SynthOrg pin (the bare-name keys),
-		// because the new tag's images have new digests and the OLD pin
-		// values are no longer trusted for the new refs.
-		maps.DeleteFunc(merged, func(k, _ string) bool {
-			return !strings.HasPrefix(k, "dhi:")
-		})
-		maps.Copy(merged, pins)
-		res.SynthOrgReverified = true
+	synthOrgReverified, err := verifyOrLoadSynthOrg(ctx, state, out, errOut, merged)
+	if err != nil {
+		return imagesVerifyResult{}, err
 	}
+	res.SynthOrgReverified = synthOrgReverified
 
-	if hasDHIDigests(state) {
-		renderCachedDHIBox(out, state)
-	} else {
-		dhiResults, err := verifyDHIImages(ctx, info, state, out, errOut)
-		if err != nil {
-			return imagesVerifyResult{}, fmt.Errorf("DHI image verification failed: %w", err)
-		}
-		// A miss replaces every prior DHI pin: the binary-pinned index
-		// moved (Renovate bump) or this is the first verification on
-		// this install. Either way OLD dhi:* values do not describe the
-		// images we just verified.
-		maps.DeleteFunc(merged, func(k, _ string) bool {
-			return strings.HasPrefix(k, "dhi:")
-		})
-		for _, r := range dhiResults {
-			if indexDigest, ok := verify.DHIPinnedIndexDigest(r.Image); ok {
-				merged["dhi:"+r.Image] = indexDigest
-			}
-			if r.Digest != "" {
-				merged["dhi:"+r.Image+":platform"] = r.Digest
-			}
-			if r.AttDigest != "" {
-				merged["dhi:"+r.Image+":attestation"] = r.AttDigest
-			}
-			if r.SigDigest != "" {
-				merged["dhi:"+r.Image+":signature"] = r.SigDigest
-			}
-		}
-		res.DHIReverified = true
+	dhiReverified, err := verifyOrLoadDHI(ctx, info, state, out, errOut, merged)
+	if err != nil {
+		return imagesVerifyResult{}, err
 	}
+	res.DHIReverified = dhiReverified
 
 	res.Pins = merged
 	return res, nil
+}
+
+// verifyOrLoadSynthOrg renders the cache-hit box when state.VerifiedDigests
+// already covers the SynthOrg group, otherwise runs live verification and
+// folds the fresh pins into merged. A miss replaces every prior SynthOrg
+// pin (bare-name keys) because the new tag's images have new digests and
+// the OLD pin values are no longer trusted for the new refs.
+func verifyOrLoadSynthOrg(ctx context.Context, state config.State, out, errOut *ui.UI, merged map[string]string) (bool, error) {
+	if hasSynthOrgDigests(state) {
+		renderCachedSynthOrgBox(out, state)
+		return false, nil
+	}
+	pins, err := verifySynthOrgGroup(ctx, state, out, errOut)
+	if err != nil {
+		return false, err
+	}
+	maps.DeleteFunc(merged, func(k, _ string) bool {
+		return !strings.HasPrefix(k, "dhi:")
+	})
+	maps.Copy(merged, pins)
+	return true, nil
+}
+
+// verifyOrLoadDHI is the DHI-group counterpart of verifyOrLoadSynthOrg.
+// On miss it replaces every prior dhi:* key because either the
+// binary-pinned index moved (Renovate bump) or this is the first
+// verification on this install.
+func verifyOrLoadDHI(ctx context.Context, info docker.Info, state config.State, out, errOut *ui.UI, merged map[string]string) (bool, error) {
+	if hasDHIDigests(state) {
+		renderCachedDHIBox(out, state)
+		return false, nil
+	}
+	dhiResults, err := verifyDHIImages(ctx, info, state, out, errOut)
+	if err != nil {
+		return false, fmt.Errorf("DHI image verification failed: %w", err)
+	}
+	maps.DeleteFunc(merged, func(k, _ string) bool {
+		return strings.HasPrefix(k, "dhi:")
+	})
+	for _, r := range dhiResults {
+		mergeDHIPin(merged, r)
+	}
+	return true, nil
+}
+
+// mergeDHIPin folds one DHI verification result into the pin map,
+// adding the index digest plus per-platform / per-attestation /
+// per-signature pins as available.
+func mergeDHIPin(merged map[string]string, r verify.DHIVerifyResult) {
+	if indexDigest, ok := verify.DHIPinnedIndexDigest(r.Image); ok {
+		merged["dhi:"+r.Image] = indexDigest
+	}
+	if r.Digest != "" {
+		merged["dhi:"+r.Image+":platform"] = r.Digest
+	}
+	if r.AttDigest != "" {
+		merged["dhi:"+r.Image+":attestation"] = r.AttDigest
+	}
+	if r.SigDigest != "" {
+		merged["dhi:"+r.Image+":signature"] = r.SigDigest
+	}
 }
 
 // verifySynthOrgGroup runs SynthOrg cosign + SLSA verification for every

@@ -190,18 +190,23 @@ func (r Report) FormatText() string {
 
 func (r Report) formatComposeSection(b *strings.Builder) {
 	b.WriteString("--- Compose File ---\n")
-	if r.ComposeFileExists {
-		valid := "not checked"
-		if r.ComposeFileValid != nil {
-			if *r.ComposeFileValid {
-				valid = "yes"
-			} else {
-				valid = "no"
-			}
-		}
-		fmt.Fprintf(b, "Exists: yes  Valid: %s\n\n", valid)
-	} else {
+	if !r.ComposeFileExists {
 		b.WriteString("Not found\n\n")
+		return
+	}
+	fmt.Fprintf(b, "Exists: yes  Valid: %s\n\n", composeValidityLabel(r.ComposeFileValid))
+}
+
+// composeValidityLabel renders the tri-state validity flag (nil = not
+// checked, *true = yes, *false = no) as a display string.
+func composeValidityLabel(valid *bool) string {
+	switch {
+	case valid == nil:
+		return "not checked"
+	case *valid:
+		return "yes"
+	default:
+		return "no"
 	}
 }
 

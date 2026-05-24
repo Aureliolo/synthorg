@@ -52,6 +52,7 @@ func TestTunableKeys_SetUnsetRoundTrip(t *testing.T) {
 	for _, tk := range tunableKeys {
 		t.Run(tk.Key, func(t *testing.T) {
 			state := config.DefaultState()
+			state.EncryptSecrets = false
 
 			if err := applyConfigValue(&state, tk.Key, tk.Value); err != nil {
 				t.Fatalf("applyConfigValue(%s, %q): %v", tk.Key, tk.Value, err)
@@ -98,6 +99,7 @@ func TestTunableKeys_InvalidValues(t *testing.T) {
 	for key, bad := range cases {
 		t.Run(key, func(t *testing.T) {
 			state := config.DefaultState()
+			state.EncryptSecrets = false
 			err := applyConfigValue(&state, key, bad)
 			if err == nil {
 				t.Errorf("applyConfigValue(%s, %q) = nil, want error", key, bad)
@@ -132,6 +134,7 @@ func TestTunableKeys_ComposeAffectingSet(t *testing.T) {
 func TestRemovedTunable_DefaultNATSURLRejected(t *testing.T) {
 	const removedKey = "default_nats_url"
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 
 	if slices.Contains(supportedConfigKeys, removedKey) {
 		t.Errorf("%s should NOT be present in supportedConfigKeys", removedKey)

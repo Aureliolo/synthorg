@@ -63,7 +63,13 @@ jobs:
     # accidentally widen the page surface) and intentionally does NOT
     # match ``cancelled`` / ``timed_out`` (concurrency cancellation
     # should not page anyone).
-    if: needs.agent-evals.result == 'failure' && github.event_name == 'schedule'
+    #
+    # ``always()`` is required so the runner evaluates the full
+    # condition even when the ``needs:`` job was skipped (the default
+    # ``success()`` short-circuit would otherwise produce a CANCELLED
+    # status on every PR run that did not carry the ``run-evals``
+    # label, polluting the rollup with a fake failure).
+    if: always() && needs.agent-evals.result == 'failure' && github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

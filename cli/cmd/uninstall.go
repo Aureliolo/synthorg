@@ -57,50 +57,95 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errUI := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
-
-	state, err := config.Load(opts.DataDir)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+	state, loadErr := config.Load(opts.DataDir)
+	if loadErr != nil {
+		// Uninstall is a teardown path: a broken on-disk config must
+		// not block the operator from removing whatever IS there.
+		// Fall back to a sanitised State seeded with --data-dir so
+		// safeStateDir can still resolve a destination directory.
+		errUI.Warn(fmt.Sprintf("Could not load config (%v); continuing teardown with --data-dir only.", loadErr))
+		state = config.State{DataDir: opts.DataDir}
 	}
-
 	safeDir, err := safeStateDir(state)
 	if err != nil {
 		return err
 	}
-
 	autoAccept := opts.Yes
+	if err := uninstallContainers(cmd, ctx, safeDir, out, errUI, autoAccept); err != nil {
+		return err
+	}
+	if err := uninstallData(cmd, safeDir, autoAccept, out); err != nil {
+		return err
+	}
+	removeAllShellCompletions(ctx, out, errUI)
+	if err := confirmAndRemoveBinary(cmd, safeDir, autoAccept); err != nil {
+		return err
+	}
+	out.Blank()
+	out.Success("SynthOrg uninstalled")
+	out.HintNextStep("Reinstall from GitHub Releases: https://github.com/Aureliolo/synthorg/releases")
+	return nil
+}
 
-	// Stop containers and optionally remove volumes.
+// uninstallContainers stops the containers + (optionally) volumes, and
+// (optionally) removes the SynthOrg images. Skipped entirely when
+// Docker is not available; warns to errUI in that case.
+func uninstallContainers(cmd *cobra.Command, ctx context.Context, safeDir string, out, errUI *ui.UI, autoAccept bool) error {
 	info, dockerErr := docker.Detect(ctx)
 	if dockerErr != nil {
 		errUI.Warn(fmt.Sprintf("Docker not available, cannot stop containers: %v", dockerErr))
-	} else {
-		if err := stopAndRemoveVolumes(cmd, info, safeDir, out, autoAccept, uninstallKeepData); err != nil {
-			return err
-		}
-		// Offer to remove SynthOrg container images.
-		if !uninstallKeepImages {
-			if err := confirmAndRemoveImages(cmd, info, out, errUI, autoAccept); err != nil {
-				return err
-			}
-		} else {
-			out.Success("Container images preserved (--keep-images)")
-			out.HintGuidance("Container images still on disk. Run 'docker rmi' to free space later.")
-		}
+		return nil
 	}
+	if err := stopAndRemoveVolumes(cmd, info, safeDir, out, autoAccept, uninstallKeepData); err != nil {
+		return err
+	}
+	if uninstallKeepImages {
+		out.Success("Container images preserved (--keep-images)")
+		out.HintNextStep("Container images still on disk. Run 'docker rmi' to free space later.")
+		return nil
+	}
+	return confirmAndRemoveImages(cmd, info, out, errUI, autoAccept)
+}
 
-	// Remove data directory.
+// uninstallData removes the data directory unless --keep-data is set.
+func uninstallData(cmd *cobra.Command, safeDir string, autoAccept bool, out *ui.UI) error {
 	if !uninstallKeepData {
-		if err := confirmAndRemoveData(cmd, safeDir, autoAccept); err != nil {
-			return err
-		}
-	} else {
-		out.Success(fmt.Sprintf("Data directory preserved (--keep-data): %s", safeDir))
-		out.HintGuidance(fmt.Sprintf("Config and data preserved at %s. Reinstall will reuse this data.", safeDir))
+		return confirmAndRemoveData(cmd, safeDir, autoAccept)
 	}
+	out.Success(fmt.Sprintf("Data directory preserved (--keep-data): %s", safeDir))
+	out.HintGuidance(fmt.Sprintf("Config and data preserved at %s. Reinstall will reuse this data.", safeDir))
+	return nil
+}
 
-	// Remove shell completion snippets for all supported shells
-	// (user may have installed completions for multiple shells).
+// shouldRemoveVolumes decides whether `compose down` should pass -v.
+// --keep-data forces false (volumes hold app data we must preserve);
+// --yes accepts without prompting; otherwise we prompt interactively.
+func shouldRemoveVolumes(keepData, autoAccept bool) (bool, error) {
+	if keepData {
+		return false, nil
+	}
+	if autoAccept {
+		return true, nil
+	}
+	var remove bool
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Remove Docker volumes? (ALL DATA WILL BE LOST)").
+				Description("This removes the persistent database and memory data.").
+				Value(&remove),
+		),
+	)
+	if err := form.Run(); err != nil {
+		return false, err
+	}
+	return remove, nil
+}
+
+// removeAllShellCompletions removes the SynthOrg snippet from every
+// supported shell profile (the user may have installed completions for
+// multiple shells).
+func removeAllShellCompletions(ctx context.Context, out, errUI *ui.UI) {
 	sp := out.StartSpinner("Removing shell completions...")
 	for _, shell := range []completion.ShellType{
 		completion.Bash, completion.Zsh, completion.Fish, completion.PowerShell,
@@ -110,41 +155,14 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 		}
 	}
 	sp.Success("Shell completions removed")
-
-	// Optionally remove CLI binary.
-	if err := confirmAndRemoveBinary(cmd, safeDir, autoAccept); err != nil {
-		return err
-	}
-
-	out.Blank()
-	out.Success("SynthOrg uninstalled")
-	out.HintGuidance("Reinstall from GitHub Releases: https://github.com/Aureliolo/synthorg/releases")
-	return nil
 }
 
 func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, out *ui.UI, autoAccept bool, keepData bool) error {
 	ctx := cmd.Context()
-
-	// When --keep-data is set, never remove volumes (they contain app data).
-	removeVolumes := false
-	if !keepData {
-		if autoAccept {
-			removeVolumes = true
-		} else {
-			form := huh.NewForm(
-				huh.NewGroup(
-					huh.NewConfirm().
-						Title("Remove Docker volumes? (ALL DATA WILL BE LOST)").
-						Description("This removes the persistent database and memory data.").
-						Value(&removeVolumes),
-				),
-			)
-			if err := form.Run(); err != nil {
-				return err
-			}
-		}
+	removeVolumes, err := shouldRemoveVolumes(keepData, autoAccept)
+	if err != nil {
+		return err
 	}
-
 	downArgs := []string{"down"}
 	if removeVolumes {
 		downArgs = append(downArgs, "-v")
@@ -250,32 +268,56 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string, autoAccept bool) e
 	return removeDataDir(cmd, dir)
 }
 
-// rejectUnsafeDir refuses to remove root, home, relative, UNC share roots, or drive roots.
+// rejectUnsafeDir refuses to remove root, home, relative, UNC share
+// roots, or drive roots. Splitting per-shape keeps each predicate easy
+// to reason about and prevents the function from accumulating
+// architecture-specific path knowledge in one body.
 func rejectUnsafeDir(dir string) error {
 	if dir == "" || dir == "." || !filepath.IsAbs(dir) {
 		return fmt.Errorf("refusing to remove %q -- must be an absolute path", dir)
 	}
-	home, homeErr := os.UserHomeDir()
-	isHomeDir := false
-	if homeErr == nil {
-		home = filepath.Clean(home)
-		if runtime.GOOS == "windows" {
-			isHomeDir = strings.EqualFold(dir, home)
-		} else {
-			isHomeDir = dir == home
-		}
-	}
-	vol := filepath.VolumeName(dir)
-	// Only reject UNC share roots (e.g. \\server\share), not arbitrary
-	// paths under a UNC share (e.g. \\server\share\synthorg\data).
-	isUNCRoot := vol != "" &&
-		(strings.HasPrefix(vol, `\\`) || strings.HasPrefix(vol, "//")) &&
-		(dir == vol || dir == vol+`\` || dir == vol+"/")
-	isDriveRoot := len(dir) == 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
-	if dir == "/" || isHomeDir || isDriveRoot || isUNCRoot {
+	if dir == "/" || isHomeDirectory(dir) || isDriveRoot(dir) || isUNCShareRoot(dir) {
 		return fmt.Errorf("refusing to remove %q -- does not look like an app data directory", dir)
 	}
 	return nil
+}
+
+// isHomeDirectory reports whether dir resolves to the user's home dir.
+// On Windows the comparison is case-insensitive; elsewhere it is byte
+// equal. If we cannot determine the home dir, returns false (we cannot
+// confidently reject what we cannot identify).
+func isHomeDirectory(dir string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	home = filepath.Clean(home)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(dir, home)
+	}
+	return dir == home
+}
+
+// isDriveRoot reports whether dir is a Windows drive root such as `C:\`
+// or `C:/`. Three-character form is the only valid shape after
+// filepath.Clean.
+func isDriveRoot(dir string) bool {
+	return len(dir) == 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
+}
+
+// isUNCShareRoot reports whether dir is the root of a UNC share (e.g.
+// \\server\share) rather than a path inside one (e.g.
+// \\server\share\app\data). Only the bare root is rejected: paths
+// inside UNC shares are legitimate install targets.
+func isUNCShareRoot(dir string) bool {
+	vol := filepath.VolumeName(dir)
+	if vol == "" {
+		return false
+	}
+	if !strings.HasPrefix(vol, `\\`) && !strings.HasPrefix(vol, "//") {
+		return false
+	}
+	return dir == vol || dir == vol+`\` || dir == vol+"/"
 }
 
 // removeDataDir removes the data directory. On Windows, if the running
@@ -458,6 +500,39 @@ type walkEntry struct {
 	isDir bool
 }
 
+// caseFoldOnWindows lowercases s for case-insensitive comparison on
+// Windows (NTFS is case-insensitive). On other platforms it is the
+// identity function.
+func caseFoldOnWindows(s string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(s)
+	}
+	return s
+}
+
+// collectRemoveEntries walks root and returns every descendant entry
+// except root itself and the path that equals exceptCmp (case-folded
+// on Windows). The order matches filepath.WalkDir (parents before
+// children), so callers iterate in reverse to remove deepest-first.
+func collectRemoveEntries(root, exceptCmp string) ([]walkEntry, error) {
+	var entries []walkEntry
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		cleanPath := filepath.Clean(path)
+		if cleanPath == root {
+			return nil
+		}
+		if caseFoldOnWindows(cleanPath) == exceptCmp {
+			return nil
+		}
+		entries = append(entries, walkEntry{path: path, isDir: d.IsDir()})
+		return nil
+	})
+	return entries, err
+}
+
 // removeAllExcept removes all files and directories under root except the
 // file at except (and its ancestor directories up to root). The root
 // directory itself is preserved. Entries are removed deepest-first so
@@ -465,33 +540,8 @@ type walkEntry struct {
 func removeAllExcept(root, except string) error {
 	root = filepath.Clean(root)
 	except = filepath.Clean(except)
-
-	// Case-fold for comparison on Windows (NTFS is case-insensitive).
-	exceptCmp := except
-	if runtime.GOOS == "windows" {
-		exceptCmp = strings.ToLower(except)
-	}
-
-	var entries []walkEntry
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		cleanPath := filepath.Clean(path)
-		// Skip root itself -- we only remove contents, not the root directory.
-		if cleanPath == root {
-			return nil
-		}
-		cmpPath := cleanPath
-		if runtime.GOOS == "windows" {
-			cmpPath = strings.ToLower(cleanPath)
-		}
-		if cmpPath == exceptCmp {
-			return nil // skip the excluded file
-		}
-		entries = append(entries, walkEntry{path: path, isDir: d.IsDir()})
-		return nil
-	})
+	exceptCmp := caseFoldOnWindows(except)
+	entries, err := collectRemoveEntries(root, exceptCmp)
 	if err != nil {
 		return err
 	}

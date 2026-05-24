@@ -44,30 +44,31 @@ func Write(files []RenderedFile, opts WriteOptions) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolving root dir: %w", err)
 	}
+	resolved, err := resolveTargets(files, absRoot)
+	if err != nil {
+		return nil, err
+	}
+	if !opts.Overwrite {
+		if err := rejectExisting(resolved); err != nil {
+			return nil, err
+		}
+	}
+	if opts.DryRun {
+		return resolved, nil
+	}
+	return writeAtomicAll(files, resolved)
+}
+
+// resolveTargets validates each rendered file and computes its absolute
+// path under absRoot. Rejects empty content, paths that escape the root,
+// and intra-call duplicates that would clobber each other on rename.
+func resolveTargets(files []RenderedFile, absRoot string) ([]string, error) {
 	resolved := make([]string, len(files))
-	// Track resolved targets to fail fast on intra-call duplicates: two
-	// RenderedFile entries pointing at the same absolute path would let
-	// the later atomic-rename silently overwrite the earlier one,
-	// defeating the existence guard below for template-path collisions.
 	seen := make(map[string]int, len(files))
 	for i, f := range files {
-		// Reject empty content up front. A template that renders to
-		// nothing would silently write an empty .py file the user's
-		// pre-commit hooks would later flag as malformed; failing
-		// fast here gives a clear error message naming the path.
-		if len(f.Contents) == 0 {
-			return nil, fmt.Errorf("rendered file %q has empty content", f.Path)
-		}
-		clean := filepath.Clean(f.Path)
-		// Reject any path that climbs out of RootDir. RenderedFile.Path
-		// is built by the per-Kind renderers from a validated Domain,
-		// but defence-in-depth is cheap.
-		if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) {
-			return nil, fmt.Errorf("scaffold path escapes root: %q", f.Path)
-		}
-		abs := filepath.Join(absRoot, clean)
-		if !strings.HasPrefix(abs+string(filepath.Separator), absRoot+string(filepath.Separator)) && abs != absRoot {
-			return nil, fmt.Errorf("scaffold path escapes root: %q", f.Path)
+		abs, err := resolveOneTarget(f, absRoot)
+		if err != nil {
+			return nil, err
 		}
 		if prior, dup := seen[abs]; dup {
 			return nil, fmt.Errorf(
@@ -78,18 +79,104 @@ func Write(files []RenderedFile, opts WriteOptions) ([]string, error) {
 		seen[abs] = i
 		resolved[i] = abs
 	}
-	if !opts.Overwrite {
-		for _, abs := range resolved {
-			if _, err := os.Stat(abs); err == nil {
-				return nil, fmt.Errorf("target already exists: %s", abs)
-			} else if !os.IsNotExist(err) {
-				return nil, fmt.Errorf("checking %s: %w", abs, err)
+	return resolved, nil
+}
+
+// resolveOneTarget validates a single rendered file and returns its
+// absolute path. Path-escape is checked lexically (rejecting "..",
+// absolute paths), against absRoot after joining, AND -- when the
+// candidate's deepest existing parent is a symlink -- against the
+// symlink-resolved parent so a sub-path linking outside the scaffold
+// root cannot escape at write time.
+//
+// Both the deepest existing parent AND absRoot itself are resolved via
+// EvalSymlinks before the containment check. Some environments (macOS
+// /var -> /private/var, Windows junctions for temp dirs) wrap absRoot
+// in a symlink chain too; comparing a resolved parent against an
+// unresolved root would then reject every otherwise-legitimate write.
+//
+// Empty file contents are accepted; legitimate zero-byte scaffold
+// outputs (e.g. an empty __init__.py marker) flow through unchanged.
+// Malformed-template detection belongs in the renderer, not here.
+func resolveOneTarget(f RenderedFile, absRoot string) (string, error) {
+	clean := filepath.Clean(f.Path)
+	if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) {
+		return "", fmt.Errorf("scaffold path escapes root: %q", f.Path)
+	}
+	abs := filepath.Join(absRoot, clean)
+	if !pathHasRoot(abs, absRoot) {
+		return "", fmt.Errorf("scaffold path escapes root: %q", f.Path)
+	}
+	resolvedRoot, err := resolveExistingAncestor(absRoot)
+	if err != nil {
+		return "", fmt.Errorf("resolving scaffold root: %w", err)
+	}
+	resolvedParent, err := resolveExistingAncestor(filepath.Dir(abs))
+	if err != nil {
+		return "", fmt.Errorf("resolving scaffold parent %q: %w", f.Path, err)
+	}
+	if !pathHasRoot(resolvedParent, resolvedRoot) {
+		return "", fmt.Errorf("scaffold path escapes root via symlink: %q", f.Path)
+	}
+	return abs, nil
+}
+
+// pathHasRoot reports whether candidate is contained within root using
+// path-component containment (so "/tmp/foo-bar" is NOT inside "/tmp/foo").
+func pathHasRoot(candidate, root string) bool {
+	if candidate == root {
+		return true
+	}
+	return strings.HasPrefix(candidate+string(filepath.Separator), root+string(filepath.Separator))
+}
+
+// resolveExistingAncestor walks up dir until it finds an ancestor that
+// exists on disk, then resolves its symlinks. Sub-paths inside the
+// scaffold tree typically do not exist yet (the writer creates them);
+// the deepest existing ancestor is the right boundary to check against
+// because any symlink in the parent chain would route subsequent writes
+// outside absRoot. EvalSymlinks on a missing path errors, so we walk
+// up only as far as needed.
+func resolveExistingAncestor(dir string) (string, error) {
+	for {
+		if _, err := os.Lstat(dir); err == nil {
+			resolved, evalErr := filepath.EvalSymlinks(dir)
+			if evalErr != nil {
+				return "", evalErr
 			}
+			return resolved, nil
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return dir, nil
+		}
+		dir = parent
+	}
+}
+
+// rejectExisting returns an error if any path already exists on disk.
+// Used to fail fast before any write when Overwrite is false.
+// Uses os.Lstat (not os.Stat) so a dangling symlink at the target
+// path is still treated as "already exists" -- otherwise os.Stat
+// would follow the broken link, return ErrNotExist, and let the
+// subsequent write blow away the symlink without warning.
+func rejectExisting(paths []string) error {
+	for _, abs := range paths {
+		if _, err := os.Lstat(abs); err == nil {
+			return fmt.Errorf("target already exists: %s", abs)
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("checking %s: %w", abs, err)
 		}
 	}
-	if opts.DryRun {
-		return resolved, nil
-	}
+	return nil
+}
+
+// writeAtomicAll writes each file atomically. If write N fails, files
+// 1..N-1 are already on disk; the returned slice lists the paths that
+// succeeded so the caller can advise the user to remove them.
+func writeAtomicAll(files []RenderedFile, resolved []string) ([]string, error) {
 	written := make([]string, 0, len(resolved))
 	for i, abs := range resolved {
 		if err := writeFileAtomic(abs, files[i].Contents); err != nil {
@@ -145,20 +232,25 @@ func writeFileAtomic(abs string, contents []byte) error {
 		return fmt.Errorf("renaming %s -> %s: %w", tmpName, abs, err)
 	}
 	cleanup = false
-	// Best-effort directory fsync so the rename's metadata is durable
-	// across a crash. Failure here does not roll back the rename; we
-	// have already returned a usable file. Mirrors compose/writer.go.
-	// Sync / Close errors are logged at debug rather than swallowed so
-	// a recurring filesystem fault is observable in support logs.
-	if d, derr := os.Open(dir); derr == nil {
-		if serr := d.Sync(); serr != nil {
-			slog.Debug("scaffold: dir fsync failed", "dir", dir, "err", serr)
-		}
-		if cerr := d.Close(); cerr != nil {
-			slog.Debug("scaffold: dir close failed", "dir", dir, "err", cerr)
-		}
-	} else {
-		slog.Debug("scaffold: dir open for fsync failed", "dir", dir, "err", derr)
-	}
+	fsyncParentDir(dir)
 	return nil
+}
+
+// fsyncParentDir is a best-effort directory fsync so a rename's metadata
+// is durable across a crash. Failure here does not roll back the rename
+// (we have already returned a usable file), but a recurring fault is
+// logged at debug rather than swallowed so support logs can observe it.
+// Mirrors cli/internal/compose/writer.go.
+func fsyncParentDir(dir string) {
+	d, err := os.Open(dir)
+	if err != nil {
+		slog.Debug("scaffold: dir open for fsync failed", "dir", dir, "err", err)
+		return
+	}
+	if serr := d.Sync(); serr != nil {
+		slog.Debug("scaffold: dir fsync failed", "dir", dir, "err", serr)
+	}
+	if cerr := d.Close(); cerr != nil {
+		slog.Debug("scaffold: dir close failed", "dir", dir, "err", cerr)
+	}
 }
