@@ -314,7 +314,10 @@ async function rotateCredentialsImpl(
     endMutation(set)
     return null
   }
-  await refreshAfterWrite(get, null)
+  // Pass ``name`` so the currently-open provider detail also refreshes
+  // (mirrors the updateProvider flow); otherwise selectedProvider can
+  // hold a stale credentials snapshot after a successful rotate.
+  await refreshAfterWrite(get, name)
   endMutation(set)
   return updated
 }

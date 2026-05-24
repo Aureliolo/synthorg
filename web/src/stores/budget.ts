@@ -278,9 +278,13 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
         void get().fetchOverview()
       }
     } catch (err) {
+      // WS-controlled fields go through sanitizeForLog before
+      // embedding in the structured log object so a malformed frame
+      // cannot inject log-line escape sequences via the event_type
+      // or channel keys.
       log.error('Failed to process WS event:', {
-        type: eventType,
-        channel: sanitizeWsString(event.channel),
+        type: sanitizeForLog(eventType),
+        channel: sanitizeForLog(sanitizeWsString(event.channel)),
         error: sanitizeForLog(err),
       })
     }

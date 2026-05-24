@@ -15,18 +15,24 @@ export function createOptimisticActions(set: TasksSet, get: TasksGet) {
       const newTasks = [...prev]
       newTasks[taskIdx] = updated
       set({ tasks: newTasks })
-      // Targeted rollback: restore only the affected task in the
-      // CURRENT array, leaving concurrent updates intact. Wholesale
-      // ``set({ tasks: prev })`` would clobber any task that other
-      // mutations / WS events changed in the meantime.
+      // Targeted rollback: only revert the optimistic ``status`` field
+      // on the current task object. Assigning the whole ``oldTask``
+      // snapshot would clobber title / assignee / etc. that arrived
+      // via a concurrent mutation or WS update during the request.
       return () => {
         pendingTransitions.delete(taskId)
         set((s) => {
           const currentIdx = s.tasks.findIndex((t) => t.id === taskId)
-          if (currentIdx === -1) return s
+          if (currentIdx === -1) return {}
+          const currentTask = s.tasks[currentIdx]!
           const restored = [...s.tasks]
-          restored[currentIdx] = oldTask
-          return { tasks: restored }
+          restored[currentIdx] = { ...currentTask, status: oldTask.status }
+          return {
+            tasks: restored,
+            selectedTask: s.selectedTask?.id === taskId
+              ? restored[currentIdx]
+              : s.selectedTask,
+          }
         })
       }
     },

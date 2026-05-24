@@ -126,16 +126,21 @@ async function fetchSinksImpl(set: SinksSet): Promise<void> {
 async function refreshSinksAfterWrite(get: SinksGet): Promise<void> {
   // Post-write refresh MUST NOT revert a committed mutation. A fetch
   // failure here is a "view may be stale" warning, not a save failure.
-  try {
-    await get().fetchSinks()
-  } catch (err) {
-    log.warn('fetchSinks after sink mutation failed', sanitizeForLog(err))
-    useToastStore.getState().add({
-      variant: 'warning',
-      title: 'Sink list may be stale',
-      description: getErrorMessage(err),
-    })
-  }
+  // ``fetchSinks`` swallows list-read errors into the store's
+  // ``error`` slot rather than rejecting, so we observe failure via
+  // the slot instead of relying on a catch (which would never fire).
+  await get().fetchSinks()
+  const refreshError = get().error
+  if (refreshError === null) return
+  log.warn(
+    'fetchSinks after sink mutation failed',
+    sanitizeForLog(refreshError),
+  )
+  useToastStore.getState().add({
+    variant: 'warning',
+    title: 'Sink list may be stale',
+    description: refreshError,
+  })
 }
 
 async function saveSinkImpl(
