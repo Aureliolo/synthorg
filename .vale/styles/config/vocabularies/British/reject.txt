@@ -256,10 +256,10 @@
 (?i)theorizes
 (?i)theorizing
 (?i)aluminum
-gray
-grayed
-graying
-grayish
+(?i)gray
+(?i)grayed
+(?i)graying
+(?i)grayish
 (?i)jewelry
 (?i)traveler
 (?i)travelers

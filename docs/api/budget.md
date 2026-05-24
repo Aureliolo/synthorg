@@ -47,7 +47,7 @@ Cost tracking, budget enforcement, auto-downgrade, quota management, and CFO opt
 
 ## Optimiser
 
-::: synthorg.budget.optimiser
+::: synthorg.budget.optimizer
 
 ::: synthorg.budget.optimizer_models
 

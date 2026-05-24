@@ -44,6 +44,21 @@
 
 set -euo pipefail
 
+# Cleanup is wired through a single global trap so the `all` target (which
+# chains install_lychee + install_vale + sync_vale_packages) does not leak
+# temp dirs. Each per-tool installer appends its mktemp dir to this array
+# instead of setting its own `trap "rm -rf '$tmpdir'" EXIT` -- a per-function
+# trap silently overwrites the previously registered one, so only the last
+# installer's tmpdir would be cleaned up under `all`.
+_cleanup_dirs=()
+_cleanup_tmpdirs() {
+  local dir
+  for dir in "${_cleanup_dirs[@]:-}"; do
+    [ -n "${dir:-}" ] && [ -d "${dir}" ] && rm -rf "${dir}"
+  done
+}
+trap _cleanup_tmpdirs EXIT
+
 # golangci-lint --version prints "golangci-lint has version 2.11.4 built..." --
 # the tag we compare against is "v2.11.4", so the extractor tolerates the
 # optional leading 'v' and reattaches it for the comparison.
@@ -241,13 +256,12 @@ install_lychee() {
 
   local tmpdir
   tmpdir="$(mktemp -d -t lychee-install.XXXXXX)"
-  # Use EXIT not RETURN: ``set -e`` aborts the script on a failed
-  # curl/sha256sum/tar before the RETURN trap would fire, leaking the
-  # temp dir. EXIT runs on both normal return AND set -e bailout.
-  # Double quotes expand ${tmpdir} now (function-local), since the
-  # trap body fires at script exit when the local has gone out of scope.
-  # shellcheck disable=SC2064  # early expansion intentional: ${tmpdir} is function-local.
-  trap "rm -rf '${tmpdir}'" EXIT
+  # Register with the global cleanup accumulator declared at script top.
+  # A per-function `trap "rm -rf '$tmpdir'" EXIT` would be overwritten by
+  # install_vale's own trap when the `all` target chains them, leaking
+  # lychee's tmpdir. The accumulator handles both normal return AND
+  # ``set -e`` bailout for every registered dir.
+  _cleanup_dirs+=("${tmpdir}")
 
   echo "Installing lychee ${LYCHEE_VERSION} (${triplet}) to ${install_dir}..."
   # --retry covers transient 5xx (e.g. github.com releases CDN returns
@@ -432,12 +446,10 @@ install_vale() {
 
   local tmpdir
   tmpdir="$(mktemp -d -t vale-install.XXXXXX)"
-  # EXIT trap (not RETURN): same rationale as install_lychee -- ``set -e``
-  # aborts on a failed curl/extract before RETURN would fire, leaking the
-  # temp dir. Early-expand ${tmpdir} since the local goes out of scope at
-  # script exit when the trap actually runs.
-  # shellcheck disable=SC2064  # early expansion intentional.
-  trap "rm -rf '${tmpdir}'" EXIT
+  # Register with the global cleanup accumulator (see top of script). A
+  # per-function EXIT trap would overwrite install_lychee's trap when the
+  # `all` target chains both installers, leaking the earlier tmpdir.
+  _cleanup_dirs+=("${tmpdir}")
 
   echo "Installing vale ${VALE_VERSION} (${archive}) to ${install_dir}..."
   curl --fail --silent --show-error --location \
