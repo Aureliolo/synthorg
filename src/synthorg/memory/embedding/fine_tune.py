@@ -656,7 +656,7 @@ async def contrastive_fine_tune(  # noqa: PLR0913
 
     def _progress_hook(
         score: float,  # noqa: ARG001
-        epoch: int,  # noqa: ARG001
+        _epoch: int,
         steps: int,  # noqa: ARG001
     ) -> None:
         nonlocal step

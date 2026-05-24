@@ -161,7 +161,7 @@ class _StubTicketFetcher:
 
 
 class _FailingTicketFetcher:
-    async def fetch(self, _ticket_uri: str) -> TicketThread:
+    async def fetch(self, ticket_uri: str) -> TicketThread:
         msg = "transport error"
         raise ConnectionError(msg)
 

@@ -742,13 +742,13 @@ DEP002 = [
 paths = ["src/synthorg"]
 min_confidence = 80
 ignore_names = [
-    "judge_agent_id",  # Protocol method param (conflict_resolution)
-    "agent_output",    # Protocol method param (hr/evaluation)
-    "ticket_uri",      # Protocol method param (knowledge/loaders)
-    "epoch",           # Training-loop counter referenced via tqdm callback
-    "tb",              # Context-manager __exit__ traceback
-    "exc_val",         # Context-manager __exit__ exception value
-    "exc_tb",          # Context-manager __exit__ traceback
+    # Protocol method params whose names leak into the public call ABI.
+    # An ``_``-prefix rename at the declaration site would force every
+    # keyword caller and every implementation to write the underscored
+    # form, putting vulture-suppression syntax inside the contract.
+    "judge_agent_id",  # JudgeEvaluator.evaluate (conflict_resolution)
+    "agent_output",    # ExternalBenchmark.grade (hr/evaluation)
+    "ticket_uri",      # TicketFetcher.fetch (knowledge/loaders)
 ]
 
 # ---------------------------------------------------------------------------
