@@ -1,3 +1,4 @@
+# module-kind: orchestrator
 """Provider-present switch: build the boot runtime services.
 
 This is the construction site for the agent runtime. With a provider
@@ -181,12 +182,15 @@ def _select_active_provider(
     Logs the empty-company path and the unsupported multi-provider
     fan-in so the boot decision is observable.
     """
+    security = app_state.config.security
     if not app_state.has_active_provider:
         logger.info(
             API_APP_STARTUP,
             service="runtime_services",
             mode="no_provider",
             note="empty company -- task execution rejected at the seam",
+            security_enabled=security.enabled,
+            security_enforcement_mode=security.enforcement_mode.value,
         )
         return None
 
@@ -198,6 +202,8 @@ def _select_active_provider(
             service="runtime_services",
             mode="no_provider",
             note="provider registry present but empty",
+            security_enabled=security.enabled,
+            security_enforcement_mode=security.enforcement_mode.value,
         )
         return None
     if len(names) > 1:
@@ -567,15 +573,28 @@ async def _build_runtime_coordinator(
     (one routing surface, no divergence). The resolved decomposition
     model is returned so the ``llm-judged`` routing policy reuses it.
     """
-    async with asyncio.TaskGroup() as tg:
-        model_task = tg.create_task(
-            app_state.config_resolver.get_str(
-                _DECOMPOSITION_NS,
-                _DECOMPOSITION_KEY,
+    try:
+        async with asyncio.TaskGroup() as tg:
+            model_task = tg.create_task(
+                app_state.config_resolver.get_str(
+                    _DECOMPOSITION_NS,
+                    _DECOMPOSITION_KEY,
+                )
             )
+            scorer_task = tg.create_task(_resolve_routing_scorer_config(app_state))
+            workspace_task = tg.create_task(_build_workspace_strategy(app_state))
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        log_exception_redacted(
+            logger,
+            API_APP_STARTUP,
+            exc,
+            service="coordinator",
+            context="resolve_failed",
+            note="decomposition / routing-scorer / workspace config resolve failed",
         )
-        scorer_task = tg.create_task(_resolve_routing_scorer_config(app_state))
-        workspace_task = tg.create_task(_build_workspace_strategy(app_state))
+        raise
     decomposition_model = model_task.result()
     routing_scorer_config = scorer_task.result()
     workspace_strategy, workspace_config = workspace_task.result()
@@ -752,12 +771,15 @@ async def build_runtime_services(
         provider,
         coordination_metrics_collector,
     )
+    security = app_state.config.security
     logger.info(
         API_APP_STARTUP,
         service="runtime_services",
         mode="agent_engine",
         provider=names[0],
         tool_count=tool_count,
+        security_enabled=security.enabled,
+        security_enforcement_mode=security.enforcement_mode.value,
     )
     # The env runner provisions the declaration into the same backend the
     # build/test tool categories resolve to (not necessarily Docker), so
@@ -796,16 +818,28 @@ async def build_runtime_services(
         provider_name=names[0],
         seed=red_team_seed,
     )
+    vision_gate = _build_vision_gate_or_none(
+        app_state=app_state,
+        workspace_root=workspace_root,
+        provider=provider,
+    )
+    logger.info(
+        API_APP_STARTUP,
+        service="runtime_services",
+        mode="agent_engine_built",
+        coordinator_wired=coordinator is not None,
+        work_pipeline_wired=work_pipeline is not None,
+        red_team_wired=red_team_runtime is not None,
+        vision_gate_wired=vision_gate is not None,
+        security_enabled=security.enabled,
+        security_enforcement_mode=security.enforcement_mode.value,
+    )
     return RuntimeServices(
         worker_execution_service=worker_execution_service,
         coordinator=coordinator,
         work_pipeline=work_pipeline,
         red_team_runtime=red_team_runtime,
-        vision_gate=_build_vision_gate_or_none(
-            app_state=app_state,
-            workspace_root=workspace_root,
-            provider=provider,
-        ),
+        vision_gate=vision_gate,
     )
 
 
