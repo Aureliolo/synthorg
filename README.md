@@ -19,7 +19,7 @@ SynthOrg is a self-contained, self-hostable platform for **synthetic organisatio
 
 It is provider-agnostic (<!--RS:providers_via_litellm-->2700+<!--/RS--> LLMs via [LiteLLM](https://github.com/BerriAI/litellm)), configuration-driven ([Pydantic v2](https://docs.pydantic.dev/) models), and licensed BUSL-1.1 (converts to Apache 2.0 at the Change Date).
 
-> **Project status (read this).** The framework and infrastructure are built and tested (<!--RS:tests-->33,000+<!--/RS--> tests, 80%+ coverage): API, dashboard, CLI, dual-backend persistence, the provider layer, and every subsystem as importable, unit-tested components. The autonomous agent **runtime** that makes the organisation actually execute work is **in active development** and tracked openly on the [roadmap](https://synthorg.io/docs/roadmap/) and the [issue tracker](https://github.com/Aureliolo/synthorg/issues). Today, starting SynthOrg brings up the platform and dashboard; running a company end to end is the work in flight. We would rather you see exactly what is built versus in progress than discover it later.
+> **Project status (read this).** SynthOrg is **pre-alpha**. The framework, infrastructure, and runtime are built and tested (<!--RS:tests-->33,000+<!--/RS--> tests, 80%+ coverage): API, dashboard, CLI, dual-backend persistence, the provider layer, the agent runtime, the multi-agent coordinator, the work pipeline spine, the intake engine, sandbox lifecycle dispatch, and the distributed-path consumers are all wired and exercised by deterministic e2e harnesses with a scripted provider (no real LLM spend). Operator-facing onboarding (real provider, real workloads, dashboard polish) has not been exercised end to end by a human. Expect bugs, rough edges, and missing polish; use it for research and contribution, not for production workloads. Progress is tracked openly on the [roadmap](https://synthorg.io/docs/roadmap/) and the [issue tracker](https://github.com/Aureliolo/synthorg/issues).
 
 ## What is available now
 
@@ -30,22 +30,25 @@ A tested platform you can run, inspect, and build on:
 - **Dual-backend persistence**: SQLite (single-node default) and PostgreSQL (multi-instance), conformance-tested for parity, with in-process yoyo schema migrations and ISO 4217 currency stamping on every cost-bearing row.
 - **Provider layer**: any LLM via LiteLLM with built-in retry and rate-limit handling; local model management for Ollama and LM Studio.
 - **Configuration and templates**: define a company in YAML; importable/shareable agent, department, and company templates with personality presets.
-- **Subsystem libraries, tested as components**: the engine, memory, budget, security, and coordination modules exist as importable, unit-tested code. Note honestly: these are exercised by their test suites, not yet by a running agent (see below).
-- **Client-simulation intake runtime**: the intake engine is wired into boot via the client-simulation runtime and driven end-to-end by a deterministic simulation harness (synthetic clients, scripted provider, zero LLM spend), which is also the acceptance substrate for the runtime work in flight.
+- **Agent runtime**: a configured provider boots a real agent runtime that executes tasks (LLM + sandboxed tools) under a minimal safety spine (autonomy/trust verdict on tool actions, approval-queue producer for sensitive actions). An empty company (no provider) cleanly rejects task submission. Exercised by a deterministic e2e simulation harness (synthetic clients, scripted provider, zero LLM spend).
+- **Multi-agent coordinator + work pipeline spine**: `/coordinate` runs decompose, route, parallel execution, then rollup end to end behind the provider-present switch. The shared work pipeline (intake to projects to decompose to solo/team to execute to coordination metrics) is the single integration point every entry adapter feeds, with solo-vs-team decided internally by decomposition.
+- **Entry adapters**: real work-entry paths for the intake engine (`POST /requests/{id}/approve`), the task board (`POST /tasks`), and stated objectives (`POST /objectives`), all driving the pipeline spine.
+- **Sandbox lifecycle dispatch**: `DockerSandbox.execute()` honours `owner_id` and dispatches to the configured per-call / per-agent / per-task lifecycle strategy, with grace-period teardown.
 - **Operations**: structured logging with redaction and correlation, Prometheus metrics and OTLP, HttpOnly-cookie multi-user sessions with CSRF protection, Chainguard distroless images with Trivy + Grype scanning, cosign signatures, and SLSA L3 provenance.
-- **Distributed dispatch plumbing**: NATS JetStream queue and a worker pool. The dispatch path exists; the task-execute endpoint currently advances task state and does not yet invoke an agent.
+- **Distributed dispatch**: NATS JetStream queue, worker pool, dead-letter consumer, dedup pruner, and heartbeat subscriber, validated under multi-worker synthetic load (no loss, no duplication).
 
 ## In active development
 
-These are the capabilities that make SynthOrg an autonomous studio. They are designed and largely written as components, but not yet wired into a running product. Each is tracked in the open:
+The runtime, coordinator, intake, work pipeline, sandbox dispatch, and distributed-path consumers are wired and exercised by deterministic harnesses. What remains in flight is the operator-facing maturity that turns the wired runtime into a polished autonomous studio:
 
-- **Agent runtime online**: agents actually executing tasks (LLM + sandboxed tools) under a minimal safety spine. This is the foundational item everything else depends on.
-- **Conversational org interface**: talk to the company in natural language. v1 lands clarify-and-propose against the Chief of Staff (asks clarifying questions when the request is underspecified, then parks one or more concrete `WorkItem`s in the human approval queue; on approval they run through the work pipeline). Still no autonomous acting; direct MCP acting under governance is the separate follow-up child.
+- **Conversational org interface**: talking to the company in natural language. v1 lands clarify-and-propose against the Chief of Staff (asks clarifying questions when the request is underspecified, then parks one or more concrete `WorkItem`s in the human approval queue; on approval they run through the work pipeline). Direct MCP acting under governance is the follow-up child.
 - **Autonomous product studio substrate**: persistent project workspace with pluggable git, brownfield codebase intake, living documentation, and a deep requirements interview.
-- **Best-in-class operate tier**: a golden-company benchmark, mission control with run replay, a cost forecast/kill-switch dial, a measurable learning curve, deterministic replay, run narratives, and an adversarial red-team.
-- **Agent capability layer**: a knowledge and provenance retrieval substrate, research mode, continual improvement, governed external API access, headless-browser and virtual-desktop testing, and more.
+- **Best-in-class operate tier**: a golden-company benchmark, mission control with run replay, a cost forecast / kill-switch dial, a measurable learning curve, deterministic replay, run narratives, and an adversarial red-team.
+- **Agent capability layer**: knowledge and provenance retrieval substrate, research mode, continual improvement, governed external API access, headless-browser and virtual-desktop testing.
+- **Self-improvement loop**: company-wide signals from existing subsystems producing deployment and product-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval. Components built and unit-tested; live end-to-end run pending.
+- **Real-provider acceptance**: the e2e harness drives the runtime against a deterministic scripted provider, not a real LLM. A real-provider golden-company benchmark and run narrative arrive with the operate tier.
 
-The multi-agent coordinator runs end to end behind the provider-present switch (decompose, route, parallel execution, rollup; `/coordinate` returns a real result when a provider is configured). Coordination metrics, autonomy/trust enforcement on a live run, and the self-improvement loop are designed and unit-tested but not yet exercised end to end. The design for each lives in the [Design Specification](https://synthorg.io/docs/design/).
+The design for each lives in the [Design Specification](https://synthorg.io/docs/design/).
 
 ## Quick Start
 
