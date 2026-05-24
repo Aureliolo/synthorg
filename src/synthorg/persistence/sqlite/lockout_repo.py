@@ -17,6 +17,7 @@ import aiosqlite  # noqa: TC002
 
 from synthorg.core.auth.config import AuthConfig  # noqa: TC001
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import _reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_LOCKOUT_CLEANUP,
@@ -172,9 +173,8 @@ class SQLiteLockoutRepository:
                 count = row["cnt"] if row else 0
                 now_locked = count >= self._threshold
                 await self._db.commit()
-            except MemoryError, RecursionError:  # PEP758 exception syntax
-                raise
-            except Exception:
+            except Exception as exc:
+                _reraise_critical(exc)
                 await self._db.rollback()
                 raise
             # Cache mutation MUST happen while still holding
@@ -213,9 +213,8 @@ class SQLiteLockoutRepository:
                     (username,),
                 )
                 await self._db.commit()
-            except MemoryError, RecursionError:  # PEP758 exception syntax
-                raise
-            except Exception:
+            except Exception as exc:
+                _reraise_critical(exc)
                 await self._db.rollback()
                 raise
             # Cache pop while still holding ``write_context`` so a
@@ -245,9 +244,8 @@ class SQLiteLockoutRepository:
                 )
                 count = cursor.rowcount
                 await self._db.commit()
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                _reraise_critical(exc)
                 await self._db.rollback()
                 raise
         if count:

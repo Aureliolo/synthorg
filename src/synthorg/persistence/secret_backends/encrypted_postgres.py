@@ -20,6 +20,7 @@ from uuid import uuid4
 import psycopg
 from cryptography.fernet import Fernet, InvalidToken
 
+from synthorg.core.critical_errors import _reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.config import EncryptedPostgresConfig
 from synthorg.integrations.errors import (
@@ -323,9 +324,8 @@ class EncryptedPostgresSecretBackend:
             # failure.
             try:
                 scrubbed = safe_error_description(rb_exc)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:  # pragma: no cover - defensive
+            except Exception as exc:  # pragma: no cover - defensive
+                _reraise_critical(exc)
                 scrubbed = type(rb_exc).__name__
             logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,

@@ -7,7 +7,6 @@ concrete backend.
 """
 
 import asyncio
-import contextlib
 import math
 from typing import TYPE_CHECKING
 
@@ -15,6 +14,7 @@ import psycopg
 from psycopg import sql
 from psycopg_pool import AsyncConnectionPool
 
+from synthorg.core.critical_errors import _reraise_critical
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -124,15 +124,10 @@ class PostgresConnectionMixin:
                 )
                 self._pool = pool
                 self._create_repositories()
-            except MemoryError, RecursionError:
-                if pool is not None:
-                    with contextlib.suppress(Exception):
-                        await pool.close()
-                self._clear_state()
-                raise
             except (psycopg.Error, OSError, TimeoutError) as exc:
                 await self._cleanup_failed_connect(exc, pool)
             except Exception as exc:
+                _reraise_critical(exc)
                 await self._cleanup_failed_connect(exc, pool)
 
             logger.info(

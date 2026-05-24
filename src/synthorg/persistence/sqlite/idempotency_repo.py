@@ -15,6 +15,7 @@ from datetime import datetime  # noqa: TC003
 import aiosqlite
 from pydantic import AwareDatetime  # noqa: TC002
 
+from synthorg.core.critical_errors import _reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -91,11 +92,8 @@ class SQLiteIdempotencyRepository:
                     expires_at=expires_at,
                 )
                 await self._db.commit()
-            except MemoryError, RecursionError:
-                # System errors must propagate without touching the
-                # row -- attempting rollback under OOM may itself fail.
-                raise
             except Exception as exc:
+                _reraise_critical(exc)
                 # Catch broadly so a non-SQL failure (parse_iso_utc on
                 # a corrupt row, IdempotencyClaim model_validator,
                 # ...) still triggers rollback + structured logging

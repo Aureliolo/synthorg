@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 import psycopg
 from psycopg.rows import dict_row
 
+from synthorg.core.critical_errors import _reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
@@ -91,8 +92,6 @@ class PostgresMcpInstallationRepository:
                         installed_at,
                     ),
                 )
-        except MemoryError, RecursionError:
-            raise
         except psycopg.errors.IntegrityError as exc:
             constraint = (
                 getattr(getattr(exc, "diag", None), "constraint_name", None)
@@ -151,9 +150,8 @@ class PostgresMcpInstallationRepository:
                     (catalog_entry_id,),
                 )
                 row = await cur.fetchone()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            _reraise_critical(exc)
             logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
                 operation="get",
@@ -204,9 +202,8 @@ class PostgresMcpInstallationRepository:
             # ``QueryError`` envelope as a DB failure, not as a raw
             # exception that escapes the persistence boundary.
             return tuple(_row_to_installation(row) for row in rows)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            _reraise_critical(exc)
             msg = "Failed to list mcp installations"
             logger.warning(
                 PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
@@ -227,9 +224,8 @@ class PostgresMcpInstallationRepository:
                     (catalog_entry_id,),
                 )
                 deleted = cur.rowcount > 0
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            _reraise_critical(exc)
             logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
                 operation="delete",

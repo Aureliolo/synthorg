@@ -10,6 +10,7 @@ import sqlite3
 
 import aiosqlite
 
+from synthorg.core.critical_errors import _reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
@@ -203,9 +204,8 @@ class SQLiteMcpInstallationRepository:
                 )
                 for row in rows
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            _reraise_critical(exc)
             msg = "Failed to list mcp installations"
             logger.warning(
                 PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,

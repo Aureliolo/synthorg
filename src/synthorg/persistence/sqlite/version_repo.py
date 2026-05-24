@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 import aiosqlite
 from pydantic import BaseModel, ValidationError
 
+from synthorg.core.critical_errors import _reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -170,9 +171,8 @@ class SQLiteVersionRepository[T: BaseModel]:
                 reason="unexpected",
             )
             raise QueryError(msg) from exc
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            _reraise_critical(exc)
             # Catch-all for unconstrained deserialize_snapshot callbacks
             # (e.g. TypeError, AttributeError) so all callback errors
             # are normalized to QueryError.
@@ -201,9 +201,8 @@ class SQLiteVersionRepository[T: BaseModel]:
         """
         try:
             serialized = self._serialize(version.snapshot)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            _reraise_critical(exc)
             msg = (
                 f"Failed to serialize snapshot for version "
                 f"{version.version} of {version.entity_id!r} "

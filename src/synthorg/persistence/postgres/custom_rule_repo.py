@@ -154,8 +154,6 @@ class PostgresCustomRuleRepository:
                 msg,
                 constraint=constraint_name or "custom_rules_unknown",
             ) from exc
-        except MemoryError, RecursionError:
-            raise
         except psycopg.Error as exc:
             msg = f"Failed to save custom rule {rule.name!r}"
             logger.warning(
@@ -211,8 +209,6 @@ class PostgresCustomRuleRepository:
                     (rule_id,),
                 )
                 row = await cur.fetchone()
-        except MemoryError, RecursionError:
-            raise
         except psycopg.Error as exc:
             msg = f"Failed to fetch custom rule {rule_id!r}"
             logger.warning(
@@ -267,8 +263,6 @@ class PostgresCustomRuleRepository:
                     (name,),
                 )
                 row = await cur.fetchone()
-        except MemoryError, RecursionError:
-            raise
         except psycopg.Error as exc:
             msg = f"Failed to fetch custom rule by name {name!r}"
             logger.warning(
@@ -324,8 +318,6 @@ class PostgresCustomRuleRepository:
             ):
                 await cur.execute(sql, (limit, offset))
                 rows = await cur.fetchall()
-        except MemoryError, RecursionError:
-            raise
         except psycopg.Error as exc:
             msg = "Failed to list custom rules"
             logger.warning(
@@ -378,8 +370,6 @@ class PostgresCustomRuleRepository:
                     (rule_id,),
                 )
                 deleted = cur.rowcount > 0
-        except MemoryError, RecursionError:
-            raise
         except psycopg.Error as exc:
             msg = f"Failed to delete custom rule {rule_id!r}"
             logger.warning(

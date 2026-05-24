@@ -453,8 +453,6 @@ class SQLiteDynamicToolRepository:
         """
         try:
             await self._db.rollback()
-        except MemoryError, RecursionError:
-            raise
         except (sqlite3.Error, aiosqlite.Error) as exc:
             log_exception_redacted(
                 logger, event, exc, phase="rollback", operation=operation

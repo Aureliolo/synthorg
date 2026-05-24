@@ -107,8 +107,6 @@ async def _safe_rollback(
     """
     try:
         await db.rollback()
-    except MemoryError, RecursionError:
-        raise
     except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
         log_exception_redacted(
             logger,
