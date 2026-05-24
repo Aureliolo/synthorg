@@ -28,6 +28,24 @@ import type { ProvidersGet, ProvidersSet } from './types'
 
 const log = createLogger('providers')
 
+async function refreshAfterModelMutation(
+  get: ProvidersGet,
+  name: string,
+): Promise<void> {
+  // Refresh is best-effort: a refresh failure must NOT overturn a
+  // successful mutation (the server already committed the write).
+  try {
+    await get().fetchProviders()
+    await refreshActiveDetail(get, name)
+  } catch (err) {
+    log.warn('Post-mutation refresh failed:', getErrorMessage(err))
+    emitPlainErrorToast(
+      `Provider "${name}" model list may be stale; refresh manually`,
+      err,
+    )
+  }
+}
+
 async function addProviderModelImpl(
   set: ProvidersSet,
   get: ProvidersGet,
@@ -35,19 +53,19 @@ async function addProviderModelImpl(
   data: AddModelRequest,
 ): Promise<ProviderConfig | null> {
   beginMutation(set)
+  let updated: ProviderConfig
   try {
-    const updated = await apiAddModel(name, data)
+    updated = await apiAddModel(name, data)
     emitSuccessToast(`Model "${data.model.id}" added to "${name}"`)
-    await get().fetchProviders()
-    await refreshActiveDetail(get, name)
-    return updated
   } catch (err) {
     log.warn('Failed to add model:', getErrorMessage(err))
     emitPlainErrorToast(`Failed to add model to "${name}"`, err)
-    return null
-  } finally {
     endMutation(set)
+    return null
   }
+  await refreshAfterModelMutation(get, name)
+  endMutation(set)
+  return updated
 }
 
 function summarizeSyncResult(result: SyncModelsResponse): string {
@@ -68,22 +86,22 @@ async function syncProviderModelsImpl(
   data: SyncModelsRequest,
 ): Promise<SyncModelsResponse | null> {
   beginMutation(set)
+  let result: SyncModelsResponse
   try {
-    const result = await apiSyncModels(name, data)
+    result = await apiSyncModels(name, data)
     emitSuccessToast(
       `Models synced for "${name}"`,
       summarizeSyncResult(result),
     )
-    await get().fetchProviders()
-    await refreshActiveDetail(get, name)
-    return result
   } catch (err) {
     log.warn('Failed to sync models:', getErrorMessage(err))
     emitPlainErrorToast(`Failed to sync models for "${name}"`, err)
-    return null
-  } finally {
     endMutation(set)
+    return null
   }
+  await refreshAfterModelMutation(get, name)
+  endMutation(set)
+  return result
 }
 
 async function updateRateLimitsImpl(
@@ -93,22 +111,29 @@ async function updateRateLimitsImpl(
   data: RateLimitsUpdateRequest,
 ): Promise<RateLimitsConfig | null> {
   beginMutation(set)
+  let updated: RateLimitsConfig
   try {
-    const updated = await apiUpdateRateLimits(name, data)
+    updated = await apiUpdateRateLimits(name, data)
     emitSuccessToast(`Rate limits updated for "${name}"`)
     set((s) => {
       if (s.rateLimitsProviderName !== name) return s
       return { ...s, rateLimits: updated }
     })
-    await refreshActiveDetail(get, name)
-    return updated
   } catch (err) {
     log.warn('Failed to update rate limits:', getErrorMessage(err))
     emitPlainErrorToast(`Failed to update rate limits for "${name}"`, err)
-    return null
-  } finally {
     endMutation(set)
+    return null
   }
+  // Refresh is best-effort; don't return null if it fails because the
+  // rate-limit mutation already committed on the server.
+  try {
+    await refreshActiveDetail(get, name)
+  } catch (err) {
+    log.warn('refreshActiveDetail after rate-limit update failed:', getErrorMessage(err))
+  }
+  endMutation(set)
+  return updated
 }
 
 async function updatePresetOverrideImpl(

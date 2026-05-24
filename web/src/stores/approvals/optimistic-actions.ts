@@ -62,9 +62,13 @@ function buildRollback(
     set((s) => {
       const currentApprovals = [...s.approvals]
       const currentIdx = currentApprovals.findIndex((a) => a.id === id)
-      if (currentIdx !== -1) {
-        currentApprovals[currentIdx] = snapshot.oldApproval
+      // Only restore selection state when the approval still exists in
+      // the current list; otherwise the selection could point at a
+      // ghost id that no longer maps to any row.
+      if (currentIdx === -1) {
+        return { approvals: currentApprovals }
       }
+      currentApprovals[currentIdx] = snapshot.oldApproval
       const restoredIds = snapshot.hadSelection
         ? new Set([...s.selectedIds, id])
         : s.selectedIds

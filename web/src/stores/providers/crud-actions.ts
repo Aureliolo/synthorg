@@ -48,27 +48,45 @@ async function fetchPresetsImpl(
   }
 }
 
+async function refreshAfterWrite(
+  get: ProvidersGet,
+  name: string | null,
+): Promise<void> {
+  // Post-write refreshes are best-effort and MUST NOT overwrite a
+  // successful mutation's outcome -- a refresh failure logs + toasts
+  // but doesn't propagate to the caller (mutation already committed
+  // on the server).
+  try {
+    await get().fetchProviders()
+    if (name !== null) await refreshActiveDetail(get, name)
+  } catch (err) {
+    log.warn('Post-write refresh failed:', sanitizeForLog(err))
+    emitPlainErrorToast('Provider list may be stale', err)
+  }
+}
+
 async function createProviderImpl(
   set: ProvidersSet,
   get: ProvidersGet,
   data: CreateProviderRequest,
 ): Promise<ProviderConfig | null> {
   beginMutation(set)
+  let config: ProviderConfig
   try {
-    const config = await apiCreateProvider(data)
+    config = await apiCreateProvider(data)
     emitSuccessToast(`Provider "${data.name}" created`)
-    await get().fetchProviders()
-    return config
   } catch (err) {
     log.error('createProvider failed:', {
       name: sanitizeForLog(data.name),
       error: sanitizeForLog(getErrorMessage(err)),
     })
     emitErrorToast(err, 'Failed to create provider')
-    return null
-  } finally {
     endMutation(set)
+    return null
   }
+  await refreshAfterWrite(get, null)
+  endMutation(set)
+  return config
 }
 
 async function createFromPresetImpl(
@@ -77,11 +95,10 @@ async function createFromPresetImpl(
   data: CreateFromPresetRequest,
 ): Promise<ProviderConfig | null> {
   beginMutation(set)
+  let config: ProviderConfig
   try {
-    const config = await apiCreateFromPreset(data)
+    config = await apiCreateFromPreset(data)
     emitSuccessToast(`Provider "${data.name}" created from preset`)
-    await get().fetchProviders()
-    return config
   } catch (err) {
     log.error('createFromPreset failed:', {
       name: sanitizeForLog(data.name),
@@ -89,10 +106,12 @@ async function createFromPresetImpl(
       error: sanitizeForLog(getErrorMessage(err)),
     })
     emitErrorToast(err, 'Failed to create provider')
-    return null
-  } finally {
     endMutation(set)
+    return null
   }
+  await refreshAfterWrite(get, null)
+  endMutation(set)
+  return config
 }
 
 async function updateProviderImpl(
@@ -102,22 +121,22 @@ async function updateProviderImpl(
   data: UpdateProviderRequest,
 ): Promise<ProviderConfig | null> {
   beginMutation(set)
+  let config: ProviderConfig
   try {
-    const config = await apiUpdateProvider(name, data)
+    config = await apiUpdateProvider(name, data)
     emitSuccessToast(`Provider "${name}" updated`)
-    await get().fetchProviders()
-    await refreshActiveDetail(get, name)
-    return config
   } catch (err) {
     log.error('updateProvider failed:', {
       name: sanitizeForLog(name),
       error: sanitizeForLog(getErrorMessage(err)),
     })
     emitErrorToast(err, 'Failed to update provider')
-    return null
-  } finally {
     endMutation(set)
+    return null
   }
+  await refreshAfterWrite(get, name)
+  endMutation(set)
+  return config
 }
 
 function removeProviderFromState(set: ProvidersSet, name: string): void {
@@ -285,18 +304,19 @@ async function rotateCredentialsImpl(
   data: CredentialsRotateRequest,
 ): Promise<ProviderConfig | null> {
   beginMutation(set)
+  let updated: ProviderConfig
   try {
-    const updated = await apiRotateCredentials(name, data)
+    updated = await apiRotateCredentials(name, data)
     emitSuccessToast(`Credentials rotated for "${name}"`)
-    await get().fetchProviders()
-    return updated
   } catch (err) {
     log.warn('Failed to rotate credentials:', getErrorMessage(err))
     emitPlainErrorToast(`Failed to rotate credentials for "${name}"`, err)
-    return null
-  } finally {
     endMutation(set)
+    return null
   }
+  await refreshAfterWrite(get, null)
+  endMutation(set)
+  return updated
 }
 
 export function createCrudActions(set: ProvidersSet, get: ProvidersGet) {

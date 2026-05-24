@@ -1,7 +1,7 @@
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { sanitizeWsString } from '@/utils/ws-sanitize'
-import type { WsEvent } from '@/api/types/websocket'
+import type { WsEvent } from '@/api/types'
 import type { ProjectsGet, ProjectsSet } from './types'
 
 const log = createLogger('projects')

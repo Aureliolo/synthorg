@@ -3,7 +3,7 @@ import {
   deleteModel as apiDeleteModel,
   updateModelConfig as apiUpdateModelConfig,
 } from '@/api/endpoints/providers'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import type { LocalModelParams } from '@/api/types/providers'
 import { useToastStore } from '@/stores/toast'
@@ -48,6 +48,10 @@ async function pullModelImpl(
     if (lastError) {
       useToastStore.getState().add({
         variant: 'error',
+        // ``lastError`` is a streamed-progress string, not an Error
+        // instance, so getCrudErrorTitle can't extract a 409 / 422
+        // category from it. Fall back to the literal title to keep
+        // the toast meaningful.
         title: 'Model pull failed',
         description: lastError,
       })
@@ -64,7 +68,7 @@ async function pullModelImpl(
       log.error('Model pull failed:', getErrorMessage(err))
       useToastStore.getState().add({
         variant: 'error',
-        title: 'Model pull failed',
+        ...getCrudErrorTitle(err, 'Model pull failed'),
         description: getErrorMessage(err),
       })
     }
@@ -96,7 +100,7 @@ async function deleteModelImpl(
     log.error('Failed to delete model:', getErrorMessage(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to delete model',
+      ...getCrudErrorTitle(err, 'Failed to delete model'),
       description: getErrorMessage(err),
     })
     return false
@@ -123,7 +127,7 @@ async function updateModelConfigImpl(
     log.error('Failed to update model config:', getErrorMessage(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to update model config',
+      ...getCrudErrorTitle(err, 'Failed to update model config'),
       description: getErrorMessage(err),
     })
     return false

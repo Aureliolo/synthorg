@@ -9,9 +9,31 @@ import {
 } from './_state'
 import type { ProjectsSet } from './types'
 
+const TASKS_PAGE_LIMIT = 50
+
+// Safety stop so a backend bug that keeps returning ``has_more=true``
+// cannot lock the dashboard in an infinite drain loop.
+const TASKS_DRAIN_PAGE_LIMIT = 50
+
 interface DetailResults {
   projectResult: PromiseSettledResult<Project>
   tasksResult: PromiseSettledResult<{ data: Task[] }>
+}
+
+async function drainProjectTasks(projectId: string): Promise<Task[]> {
+  const collected: Task[] = []
+  let cursor: string | null = null
+  for (let i = 0; i < TASKS_DRAIN_PAGE_LIMIT; i++) {
+    const page = await listTasks({
+      project: projectId,
+      limit: TASKS_PAGE_LIMIT,
+      cursor,
+    })
+    collected.push(...page.data)
+    if (!page.hasMore || !page.nextCursor) return collected
+    cursor = page.nextCursor
+  }
+  return collected
 }
 
 function applyDetailResults(
@@ -60,7 +82,9 @@ async function fetchProjectDetailImpl(
   try {
     const [projectResult, tasksResult] = await Promise.allSettled([
       getProject(id),
-      listTasks({ project: id, limit: 50 }),
+      // Drain every page so the detail view shows the full task list
+      // for the project rather than truncating at the first page.
+      drainProjectTasks(id).then((data) => ({ data })),
     ])
     if (isStaleDetailRequest(token)) return
     applyDetailResults(set, { projectResult, tasksResult })

@@ -123,6 +123,21 @@ async function fetchSinksImpl(set: SinksSet): Promise<void> {
   }
 }
 
+async function refreshSinksAfterWrite(get: SinksGet): Promise<void> {
+  // Post-write refresh MUST NOT revert a committed mutation. A fetch
+  // failure here is a "view may be stale" warning, not a save failure.
+  try {
+    await get().fetchSinks()
+  } catch (err) {
+    log.warn('fetchSinks after sink mutation failed', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'warning',
+      title: 'Sink list may be stale',
+      description: getErrorMessage(err),
+    })
+  }
+}
+
 async function saveSinkImpl(
   set: SinksSet,
   get: SinksGet,
@@ -136,9 +151,6 @@ async function saveSinkImpl(
     } else {
       await saveCustomSink(sink)
     }
-    await get().fetchSinks()
-    useToastStore.getState().add({ variant: 'success', title: 'Sink saved' })
-    return true
   } catch (err) {
     log.error('Failed to save sink', sanitizeForLog(err))
     set({ sinks: previous, error: getErrorMessage(err) })
@@ -149,6 +161,9 @@ async function saveSinkImpl(
     })
     return false
   }
+  await refreshSinksAfterWrite(get)
+  useToastStore.getState().add({ variant: 'success', title: 'Sink saved' })
+  return true
 }
 
 async function deleteSinkImpl(
@@ -164,12 +179,6 @@ async function deleteSinkImpl(
     } else {
       await deleteCustomSink(sink)
     }
-    await get().fetchSinks()
-    useToastStore.getState().add({
-      variant: 'success',
-      title: sink.is_default ? 'Sink overrides cleared' : 'Sink deleted',
-    })
-    return true
   } catch (err) {
     log.error('Failed to delete sink', sanitizeForLog(err))
     set({ sinks: previous, error: getErrorMessage(err) })
@@ -180,6 +189,12 @@ async function deleteSinkImpl(
     })
     return false
   }
+  await refreshSinksAfterWrite(get)
+  useToastStore.getState().add({
+    variant: 'success',
+    title: sink.is_default ? 'Sink overrides cleared' : 'Sink deleted',
+  })
+  return true
 }
 
 export const useSinksStore = create<SinksState>((set, get) => ({

@@ -87,7 +87,22 @@ async function refreshEntriesImpl(
   // flight at apply time; the generation check covers the
   // start-during-fetch / finish-before-apply race.
   const generationAtFetchStart = get().entriesGeneration
-  const entries = await fetchAllSettingsEntries()
+  let entries: Awaited<ReturnType<typeof fetchAllSettingsEntries>>
+  try {
+    entries = await fetchAllSettingsEntries()
+  } catch (error) {
+    // Surface the failure on the store's error slot only if this
+    // snapshot is still relevant (no concurrent save mutated the
+    // generation); otherwise drop silently so a stale failure does
+    // not overwrite a fresher save's error state.
+    if (
+      get().savingKeys.size === 0
+      && get().entriesGeneration === generationAtFetchStart
+    ) {
+      set({ error: getErrorMessage(error) })
+    }
+    return
+  }
   // Re-check: a save / reset may have started OR completed during
   // the fetch. Either condition means this snapshot may be stale.
   if (

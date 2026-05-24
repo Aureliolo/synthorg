@@ -1,11 +1,11 @@
 import type { StoreApi } from 'zustand'
-import type { ProjectStatus } from '@/api/types/enums'
 import type {
   CreateProjectRequest,
   Project,
-} from '@/api/types/projects'
-import type { Task } from '@/api/types/tasks'
-import type { WsEvent } from '@/api/types/websocket'
+  ProjectStatus,
+  Task,
+  WsEvent,
+} from '@/api/types'
 
 export interface BatchDeleteOutcome {
   succeeded: number

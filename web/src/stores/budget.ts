@@ -268,15 +268,18 @@ export const useBudgetStore = create<BudgetState>()((set, get) => ({
   },
 
   updateFromWsEvent: (event) => {
+    // Sanitize the WS-supplied event_type once so both the dispatch
+    // branch and the failure log read the same normalised value.
+    const eventType = sanitizeWsString(event.event_type, 64)
     try {
       const item = wsEventToActivityItem(event)
       get().pushActivity(item)
-      if (event.event_type === 'budget.record_added') {
+      if (eventType === 'budget.record_added') {
         void get().fetchOverview()
       }
     } catch (err) {
       log.error('Failed to process WS event:', {
-        type: sanitizeWsString(event.event_type),
+        type: eventType,
         channel: sanitizeWsString(event.channel),
         error: sanitizeForLog(err),
       })

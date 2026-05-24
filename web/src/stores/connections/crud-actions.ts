@@ -81,11 +81,15 @@ async function deleteConnectionImpl(
   get: ConnectionsGet,
   name: string,
 ): Promise<boolean> {
-  const previous = get().connections
-  set({
+  // Capture only the specific row we optimistically remove. Restoring
+  // the full ``previous`` snapshot on failure could clobber connections
+  // legitimately added or updated by a concurrent request between the
+  // optimistic remove and the failure.
+  const removed = get().connections.find((c) => c.name === name) ?? null
+  set((s) => ({
     mutating: true,
-    connections: previous.filter((c) => c.name !== name),
-  })
+    connections: s.connections.filter((c) => c.name !== name),
+  }))
   try {
     await apiDeleteConnection(name)
     set({ mutating: false })
@@ -95,7 +99,13 @@ async function deleteConnectionImpl(
     })
     return true
   } catch (err) {
-    set({ mutating: false, connections: previous })
+    set((s) => {
+      const alreadyBack = s.connections.some((c) => c.name === name)
+      const restored = !alreadyBack && removed !== null
+        ? [removed, ...s.connections]
+        : s.connections
+      return { mutating: false, connections: restored }
+    })
     emitCrudError(err, 'Failed to delete connection', 'Delete connection failed')
     return false
   }

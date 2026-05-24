@@ -100,11 +100,17 @@ async function triggerMeetingImpl(
   set({ triggering: true })
   try {
     const meetings = await meetingsApi.triggerMeeting(data)
-    set((s) => ({
-      triggering: false,
-      meetings: [...meetings, ...s.meetings],
-      total: s.total + meetings.length,
-    }))
+    set((s) => {
+      // ``total`` is always derived from the resulting array length so
+      // it can never drift from the actual count (a separate increment
+      // can desync if a concurrent fetch merges different data).
+      const nextMeetings = [...meetings, ...s.meetings]
+      return {
+        triggering: false,
+        meetings: nextMeetings,
+        total: nextMeetings.length,
+      }
+    })
     useToastStore.getState().add({
       variant: 'success',
       title: `Triggered ${meetings.length} meeting(s)`,

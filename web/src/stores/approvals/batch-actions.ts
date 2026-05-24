@@ -89,15 +89,38 @@ function emitBatchOutcomeToast(
   })
 }
 
+function totalFailureOutcome(
+  ids: readonly string[],
+  err: unknown,
+): BatchOutcome {
+  return {
+    succeeded: 0,
+    failed: ids.length,
+    failedReasons: [getErrorMessage(err)],
+  }
+}
+
 export function createBatchActions(get: ApprovalsGet) {
   return {
     async batchApprove(ids: string[], comment?: string): Promise<BatchOutcome> {
-      const outcome = await runBatch(get, {
-        ids,
-        call: (id) =>
-          approvalsApi.approveApproval(id, comment ? { comment } : undefined),
-        rollbackFor: (id) => get().optimisticApprove(id),
-      })
+      // Outer try/catch so any unexpected throw from runBatch / its
+      // rollback callbacks still produces the canonical BatchOutcome
+      // sentinel instead of leaking a rejected promise to the caller.
+      let outcome: BatchOutcome
+      try {
+        outcome = await runBatch(get, {
+          ids,
+          call: (id) =>
+            approvalsApi.approveApproval(id, comment ? { comment } : undefined),
+          rollbackFor: (id) => get().optimisticApprove(id),
+        })
+      } catch (err) {
+        log.error(
+          'Batch approve failed unexpectedly',
+          sanitizeForLog({ error: err }),
+        )
+        outcome = totalFailureOutcome(ids, err)
+      }
       if (outcome.failed > 0) {
         log.error('Batch approve failed', sanitizeForLog({
           failed: outcome.failed,
@@ -121,11 +144,20 @@ export function createBatchActions(get: ApprovalsGet) {
     },
 
     async batchReject(ids: string[], reason: string): Promise<BatchOutcome> {
-      const outcome = await runBatch(get, {
-        ids,
-        call: (id) => approvalsApi.rejectApproval(id, { reason }),
-        rollbackFor: (id) => get().optimisticReject(id),
-      })
+      let outcome: BatchOutcome
+      try {
+        outcome = await runBatch(get, {
+          ids,
+          call: (id) => approvalsApi.rejectApproval(id, { reason }),
+          rollbackFor: (id) => get().optimisticReject(id),
+        })
+      } catch (err) {
+        log.error(
+          'Batch reject failed unexpectedly',
+          sanitizeForLog({ error: err }),
+        )
+        outcome = totalFailureOutcome(ids, err)
+      }
       if (outcome.failed > 0) {
         log.error('Batch reject failed', sanitizeForLog({
           failed: outcome.failed,

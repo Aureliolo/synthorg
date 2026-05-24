@@ -54,11 +54,14 @@ function isValidItem(item: unknown): item is NotificationItem {
   for (const field of ITEM_REQUIRED_STRING_FIELDS) {
     if (typeof obj[field] !== 'string') return false
   }
-  return (
-    VALID_CATEGORIES.has(obj.category as string)
-    && VALID_SEVERITIES.has(obj.severity as string)
-    && typeof obj.read === 'boolean'
-    && Array.isArray(obj.dispatchedTo)
+  if (!VALID_CATEGORIES.has(obj.category as string)) return false
+  if (!VALID_SEVERITIES.has(obj.severity as string)) return false
+  if (typeof obj.read !== 'boolean') return false
+  // Validate each dispatchedTo entry is a known route string; corrupt
+  // localStorage entries shouldn't rehydrate into NotificationItem.
+  if (!Array.isArray(obj.dispatchedTo)) return false
+  return obj.dispatchedTo.every(
+    (entry) => typeof entry === 'string' && VALID_ROUTES.has(entry),
   )
 }
 

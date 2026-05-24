@@ -9,13 +9,19 @@ import {
 } from './_state'
 import type { ArtifactsSet } from './types'
 
-/** Content types eligible for inline text preview: text/*, application/json, and YAML. */
+/** Content types eligible for inline text preview: text/*, application/json, and YAML.
+ *
+ * Normalises the wire value first by stripping any ``; charset=...`` suffix
+ * and lowercasing the bare media type so headers like
+ * ``application/json; charset=utf-8`` still match.
+ */
 function isPreviewableText(contentType: string): boolean {
+  const baseType = contentType.split(';')[0]!.trim().toLowerCase()
   return (
-    contentType.startsWith('text/')
-    || contentType === 'application/json'
-    || contentType === 'application/yaml'
-    || contentType === 'application/x-yaml'
+    baseType.startsWith('text/')
+    || baseType === 'application/json'
+    || baseType === 'application/yaml'
+    || baseType === 'application/x-yaml'
   )
 }
 

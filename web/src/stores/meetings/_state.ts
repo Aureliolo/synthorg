@@ -35,8 +35,12 @@ export function bumpRequestEpoch(): void {
   requestEpoch += 1
 }
 
-/** Reset module-level request seq counters -- test-only. */
+/** Reset module-level request seq counters AND the epoch -- test-only.
+ *  Skipping the epoch leaves it incremented across tests, which lets a
+ *  stale captured seq match a fresh post-reset seq value (same
+ *  collision bumpRequestEpoch was introduced to prevent). */
 export function _resetRequestSeqs(): void {
   listRequestSeq = 0
   detailRequestSeq = 0
+  requestEpoch = 0
 }

@@ -58,12 +58,18 @@ export function createListActions(set: McpCatalogSet) {
     },
 
     setSearchQuery: async (q: string) => {
-      set({ searchQuery: q })
+      // Normalise once at the top so the same trimmed value drives the
+      // stored query, the empty-check, and the upstream API call.
+      // Otherwise a whitespace-padded query stores raw, short-circuits
+      // on ``!q.trim()``, but the API would receive the untrimmed
+      // version on the search path.
+      const trimmed = q.trim()
+      set({ searchQuery: trimmed })
       // Cancellation also bumps the generation, so the existing
       // generation guard below short-circuits any pending timer
       // callback that has already been dispatched by the runtime.
       cancelPendingMcpCatalogSearch()
-      if (!q.trim()) {
+      if (!trimmed) {
         set({ searchResults: null, searchLoading: false })
         return
       }
@@ -74,7 +80,7 @@ export function createListActions(set: McpCatalogSet) {
           void (async () => {
             if (generation !== currentSearchGeneration()) return
             try {
-              const page = await searchMcpCatalog(q, { limit: 100 })
+              const page = await searchMcpCatalog(trimmed, { limit: 100 })
               if (generation !== currentSearchGeneration()) return
               set({
                 searchResults: page.data as readonly McpCatalogEntry[],

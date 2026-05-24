@@ -34,10 +34,12 @@ async function fetchTasksImpl(
 }
 
 async function fetchTaskImpl(set: TasksSet, taskId: string): Promise<void> {
-  set({ loadingDetail: true })
+  // Clear any stale ``error`` on entry AND on success so a previous
+  // failure does not keep a banner up after a fresh fetch resolves.
+  set({ loadingDetail: true, error: null })
   try {
     const task = await tasksApi.getTask(taskId)
-    set({ selectedTask: task, loadingDetail: false })
+    set({ selectedTask: task, loadingDetail: false, error: null })
   } catch (err) {
     set({ loadingDetail: false, error: getErrorMessage(err) })
   }

@@ -6,7 +6,7 @@ import { createLogger } from '@/lib/logger'
 import type {
   SettingEntry,
   SettingNamespace,
-} from '@/api/types/settings'
+} from '@/api/types'
 import {
   DEFAULT_CURRENCY,
   decrementSavingKey,

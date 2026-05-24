@@ -3,8 +3,8 @@ import type {
   SettingDefinition,
   SettingEntry,
   SettingNamespace,
-} from '@/api/types/settings'
-import type { WsEvent } from '@/api/types/websocket'
+  WsEvent,
+} from '@/api/types'
 
 export interface SettingsState {
   /** ISO 4217 currency code for display formatting. */

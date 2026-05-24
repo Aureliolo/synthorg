@@ -12,17 +12,12 @@ import type {
   MeetingResponse,
 } from '@/api/types/meetings'
 
-// Status, protocol_type, phase, and priority are no longer
-// pre-validated against the allowlist at the copy step; sanitizeWsEnum
-// owns that responsibility (see sanitizeMeeting,
-// sanitizeMeetingMinutes, sanitizeContribution, and
-// sanitizeMinutesCollections). The local sets retained below remain
-// structural guards inside isContributionShape / isActionItemShape so
-// a payload missing the field entirely is rejected before sanitization.
-const PRIORITY_SET: ReadonlySet<string> = new Set<string>(PRIORITY_VALUES)
-const MEETING_PHASE_SET: ReadonlySet<string> = new Set<string>(
-  MEETING_PHASE_VALUES,
-)
+// Status, protocol_type, phase, and priority all flow through
+// sanitizeWsEnum (see sanitizeMeeting, sanitizeMeetingMinutes,
+// sanitizeContribution, sanitizeMinutesCollections), so the shape
+// predicates only need to check ``typeof === 'string'``. Unknown
+// enum values fall back via the sanitizer rather than collapsing the
+// whole frame.
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -89,9 +84,11 @@ function isContributionShape(value: unknown): boolean {
   for (const field of CONTRIBUTION_REQUIRED_STRING_FIELDS) {
     if (typeof value[field] !== 'string') return false
   }
-  if (typeof value.phase !== 'string' || !MEETING_PHASE_SET.has(value.phase)) {
-    return false
-  }
+  // Don't reject on allowlist miss here: ``sanitizeContribution`` runs
+  // ``sanitizeWsEnum`` which emits the structured warning and falls
+  // back, so a rolling backend that ships a new phase value doesn't
+  // collapse the whole frame.
+  if (typeof value.phase !== 'string') return false
   for (const field of CONTRIBUTION_REQUIRED_NUMERIC_FIELDS) {
     if (!isNonNegInt(value[field])) return false
   }
@@ -104,11 +101,13 @@ function isContributionShape(value: unknown): boolean {
  */
 function isActionItemShape(value: unknown): boolean {
   if (!isPlainObject(value)) return false
+  // Same reasoning as ``isContributionShape``: don't reject on
+  // allowlist miss here; ``sanitizeMinutesCollections`` runs
+  // ``sanitizeWsEnum`` on priority and falls back consistently.
   return (
     typeof value.description === 'string'
     && (value.assignee_id === null || typeof value.assignee_id === 'string')
     && typeof value.priority === 'string'
-    && PRIORITY_SET.has(value.priority)
   )
 }
 

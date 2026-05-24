@@ -141,7 +141,19 @@ async function fetchAgentDetailImpl(
       const reason = results.agentResult.status === 'rejected'
         ? results.agentResult.reason
         : null
+      // Clear every detail slice so previously-loaded data for a
+      // different agent doesn't keep rendering when the new agent's
+      // lookup fails.
       set({
+        selectedAgent: null,
+        performance: null,
+        agentTasks: [],
+        activity: [],
+        activityTotal: 0,
+        activityNextCursor: null,
+        activityHasMore: false,
+        activityLoading: false,
+        careerHistory: [],
         detailLoading: false,
         detailError: getErrorMessage(reason ?? 'Agent not found'),
       })

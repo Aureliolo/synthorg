@@ -199,7 +199,11 @@ describe('useArtifactsStore', () => {
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
-      expect(toasts[0]!.title).toBe('Failed to create artifact')
+      // ``getCrudErrorTitle`` maps the 422 to the status-specific title
+      // ('Validation failed' per STATUS_TITLES in utils/errors.ts)
+      // instead of the literal fallback so the toast reflects the
+      // structured error category.
+      expect(toasts[0]!.title).toBe('Validation failed')
       expect(toasts[0]!.description).toContain('Quota exceeded')
     })
 

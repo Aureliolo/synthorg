@@ -39,12 +39,12 @@ export interface FineTuningState {
   fetchStatus: () => Promise<void>
   fetchCheckpoints: () => Promise<void>
   fetchRuns: () => Promise<void>
-  startRun: (request: StartFineTuneRequest) => Promise<void>
-  cancelRun: () => Promise<void>
-  runPreflightCheck: (request: StartFineTuneRequest) => Promise<void>
-  deployCheckpointAction: (id: string) => Promise<void>
-  rollbackCheckpointAction: (id: string) => Promise<void>
-  deleteCheckpointAction: (id: string) => Promise<void>
+  startRun: (request: StartFineTuneRequest) => Promise<boolean>
+  cancelRun: () => Promise<boolean>
+  runPreflightCheck: (request: StartFineTuneRequest) => Promise<boolean>
+  deployCheckpointAction: (id: string) => Promise<boolean>
+  rollbackCheckpointAction: (id: string) => Promise<boolean>
+  deleteCheckpointAction: (id: string) => Promise<boolean>
   handleWsEvent: (event: WsEvent) => void
 }
 

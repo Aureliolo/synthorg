@@ -35,12 +35,13 @@ function emitMutationSuccess(title: string): void {
 async function startRunImpl(
   set: FineTuningSet,
   request: StartFineTuneRequest,
-): Promise<void> {
+): Promise<boolean> {
   set({ loading: true })
   try {
     const status = await startFineTune(request)
     set({ status, loading: false })
     emitMutationSuccess('Fine-tune run started')
+    return true
   } catch (err) {
     set({ loading: false })
     emitMutationError(
@@ -48,35 +49,40 @@ async function startRunImpl(
       'Failed to start fine-tune run',
       'Failed to start fine-tune run',
     )
+    return false
   }
 }
 
-async function cancelRunImpl(set: FineTuningSet): Promise<void> {
+async function cancelRunImpl(set: FineTuningSet): Promise<boolean> {
   try {
     const status = await cancelFineTune()
     set({ status })
     emitMutationSuccess('Fine-tune run cancelled')
+    return true
   } catch (err) {
     emitMutationError(
       err,
       'Failed to cancel fine-tune run',
       'Failed to cancel fine-tune run',
     )
+    return false
   }
 }
 
 async function runPreflightImpl(
   set: FineTuningSet,
   request: StartFineTuneRequest,
-): Promise<void> {
+): Promise<boolean> {
   set({ loading: true, preflight: null })
   try {
     const result = await runPreflight(request)
     set({ preflight: result, loading: false })
     emitMutationSuccess('Preflight check complete')
+    return true
   } catch (err) {
     set({ loading: false })
     emitMutationError(err, 'Preflight check failed', 'Failed to run preflight')
+    return false
   }
 }
 
@@ -86,13 +92,15 @@ async function checkpointMutationImpl(
   successTitle: string,
   fallbackTitle: string,
   logPrefix: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await call()
     await get().fetchCheckpoints()
     emitMutationSuccess(successTitle)
+    return true
   } catch (err) {
     emitMutationError(err, fallbackTitle, logPrefix)
+    return false
   }
 }
 
