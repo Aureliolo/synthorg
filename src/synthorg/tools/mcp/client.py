@@ -106,8 +106,13 @@ class MCPClient:
             )
             async with AsyncExitStack() as stack:
                 session = await self._establish_session(stack)
-                self._session = session
+                # ``_exit_stack`` first so a CancelledError between
+                # these two assignments cannot leave a zombie state
+                # (``is_connected`` true, transport closed): once
+                # ``pop_all()`` lands on ``self``, ``disconnect()``
+                # owns cleanup regardless of which line is interrupted.
                 self._exit_stack = stack.pop_all()
+                self._session = session
             logger.info(
                 MCP_CLIENT_CONNECTED,
                 server=self._config.name,
@@ -140,6 +145,11 @@ class MCPClient:
             )
             self._raise_connection_error(msg, exc)
         except MCPConnectionError:
+            raise
+        except MemoryError, RecursionError:
+            # Interpreter-state failures bypass the broad-Exception
+            # wrapper so the orchestrator can surface them as
+            # catastrophic rather than transient transport errors.
             raise
         except Exception as exc:
             logger.warning(
