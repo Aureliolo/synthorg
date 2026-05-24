@@ -26,8 +26,8 @@ flowchart TD
 
     signals --> SNAP[OrgSignalSnapshot]
     SNAP --> RE[Rule Engine<br/>9 built-in rules]
-    RE -->|rules fire| STRAT[Strategies<br/>Config / Architecture / Prompt / Code]
-    STRAT --> GUARD[Guard Chain<br/>Scope / Rollback / Rate / Approval]
+    RE -->|rules fire| STRATEGIES[Strategies<br/>Config / Architecture / Prompt / Code]
+    STRATEGIES --> GUARD[Guard Chain<br/>Scope / Rollback / Rate / Approval]
     GUARD -->|all pass| QUEUE[Approval Queue<br/>Human Review]
     QUEUE -->|approved| ROLLOUT[Rollout<br/>Before-After / Canary]
     ROLLOUT --> REGRESS[Regression Detection<br/>Threshold + Statistical]

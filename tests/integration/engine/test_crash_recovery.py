@@ -133,12 +133,12 @@ class TestCrashRecoveryFlow:
         assert result.termination_reason == TerminationReason.ERROR
         assert result.is_success is False
 
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status is TaskStatus.FAILED
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status is TaskStatus.FAILED
 
         # retry_count=0 < max_retries=1 means reassignment is possible
-        assert te.retry_count < task.max_retries
+        assert task_execution.retry_count < task.max_retries
 
     async def test_second_failure_cannot_reassign(self) -> None:
         """Second failure (retry_count=1, max_retries=1) -> cannot reassign."""

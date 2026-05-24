@@ -50,10 +50,10 @@ function sortEntities(
       const detail = (e as unknown as { attributes?: readonly unknown[] }).attributes
       return detail?.length ?? 0
     }
-    const aCount = readCount(a)
-    const bCount = readCount(b)
-    if (aCount === bCount) return a.name.localeCompare(b.name) * sign
-    return (aCount - bCount) * sign
+    const countA = readCount(a)
+    const countB = readCount(b)
+    if (countA === countB) return a.name.localeCompare(b.name) * sign
+    return (countA - countB) * sign
   }
   return [...entities].sort(cmp)
 }

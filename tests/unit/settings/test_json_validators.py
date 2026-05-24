@@ -73,4 +73,4 @@ class TestCspDocsExternalOriginsJsonValidator:
 
 def test_unregistered_namespace_returns_none() -> None:
     assert get_json_validator("api", "definitely_not_a_setting") is None
-    assert get_json_validator("doesnt_exist", "csp_docs_external_origins") is None
+    assert get_json_validator("missing_namespace", "csp_docs_external_origins") is None

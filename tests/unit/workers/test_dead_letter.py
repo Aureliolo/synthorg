@@ -16,7 +16,7 @@ from synthorg.workers.config import QueueConfig
 from synthorg.workers.dead_letter import (
     DeadLetterConsumer,
     DeadLetterOutcome,
-    TaskFailer,
+    TaskFailHandler,
 )
 from tests._shared.fake_clock import FakeClock
 from tests._shared.fake_task_queue import FakeJetStreamTaskQueue
@@ -35,7 +35,7 @@ def _claim(task_id: str = "task-x") -> TaskClaim:
     return TaskClaim(task_id=task_id, new_status="assigned")
 
 
-def _failer(outcome: DeadLetterOutcome, *, calls: list[str]) -> TaskFailer:
+def _fail_handler(outcome: DeadLetterOutcome, *, calls: list[str]) -> TaskFailHandler:
     async def _fail(task_id: str, reason: str) -> DeadLetterOutcome:
         calls.append(task_id)
         return outcome
@@ -53,14 +53,14 @@ async def _next_dead(
 
 def _consumer(
     queue: FakeJetStreamTaskQueue,
-    failer: TaskFailer,
+    fail_handler: TaskFailHandler,
     *,
     seen: SeenClaimsRepository | None = None,
     max_deliver: int = 3,
 ) -> DeadLetterConsumer:
     return DeadLetterConsumer(
         task_queue=queue,  # type: ignore[arg-type]
-        task_failer=failer,
+        task_fail_handler=fail_handler,
         queue_config=QueueConfig(enabled=True, max_deliver=max_deliver),
         seen_claims=seen,
         clock=FakeClock(),
@@ -70,7 +70,9 @@ def _consumer(
 async def test_transitioned_marks_and_acks() -> None:
     queue = FakeJetStreamTaskQueue()
     calls: list[str] = []
-    consumer = _consumer(queue, _failer(DeadLetterOutcome.TRANSITIONED, calls=calls))
+    consumer = _consumer(
+        queue, _fail_handler(DeadLetterOutcome.TRANSITIONED, calls=calls)
+    )
     queue.deliver_dead(_claim("task-1"))
     claim, raw = await _next_dead(queue)
 
@@ -84,7 +86,7 @@ async def test_already_terminal_acks_without_error() -> None:
     queue = FakeJetStreamTaskQueue()
     calls: list[str] = []
     consumer = _consumer(
-        queue, _failer(DeadLetterOutcome.ALREADY_TERMINAL, calls=calls)
+        queue, _fail_handler(DeadLetterOutcome.ALREADY_TERMINAL, calls=calls)
     )
     queue.deliver_dead(_claim("task-2"))
     claim, raw = await _next_dead(queue)
@@ -96,7 +98,7 @@ async def test_already_terminal_acks_without_error() -> None:
 
 async def test_not_found_acks() -> None:
     queue = FakeJetStreamTaskQueue()
-    consumer = _consumer(queue, _failer(DeadLetterOutcome.NOT_FOUND, calls=[]))
+    consumer = _consumer(queue, _fail_handler(DeadLetterOutcome.NOT_FOUND, calls=[]))
     queue.deliver_dead(_claim("gone"))
     claim, raw = await _next_dead(queue)
 
@@ -108,7 +110,7 @@ async def test_not_found_acks() -> None:
 async def test_retryable_not_exhausted_nacks() -> None:
     queue = FakeJetStreamTaskQueue(max_deliver=3)
     consumer = _consumer(
-        queue, _failer(DeadLetterOutcome.RETRYABLE, calls=[]), max_deliver=3
+        queue, _fail_handler(DeadLetterOutcome.RETRYABLE, calls=[]), max_deliver=3
     )
     queue.deliver_dead(_claim("retry"))
     claim, raw = await _next_dead(queue)
@@ -122,7 +124,7 @@ async def test_retryable_not_exhausted_nacks() -> None:
 async def test_retryable_exhausted_raises() -> None:
     queue = FakeJetStreamTaskQueue(max_deliver=1)
     consumer = _consumer(
-        queue, _failer(DeadLetterOutcome.RETRYABLE, calls=[]), max_deliver=1
+        queue, _fail_handler(DeadLetterOutcome.RETRYABLE, calls=[]), max_deliver=1
     )
     queue.deliver_dead(_claim("stuck"))
     claim, raw = await _next_dead(queue)
@@ -131,7 +133,7 @@ async def test_retryable_exhausted_raises() -> None:
         await consumer._handle(claim, raw)
 
 
-async def test_unmapped_failer_exception_raises_loud() -> None:
+async def test_unmapped_fail_handler_exception_raises_loud() -> None:
     queue = FakeJetStreamTaskQueue()
 
     async def _boom(task_id: str, reason: str) -> DeadLetterOutcome:
@@ -153,7 +155,7 @@ async def test_duplicate_dead_claim_suppressed_via_real_repo() -> None:
     async with make_sqlite_seen_claims() as repo:
         consumer = _consumer(
             queue,
-            _failer(DeadLetterOutcome.TRANSITIONED, calls=calls),
+            _fail_handler(DeadLetterOutcome.TRANSITIONED, calls=calls),
             seen=repo,
         )
         claim = _claim("task-dup")
@@ -173,7 +175,9 @@ async def test_start_stop_lifecycle_processes_via_loop() -> None:
     """The background loop drains the dead subject and is restart-safe."""
     queue = FakeJetStreamTaskQueue()
     calls: list[str] = []
-    consumer = _consumer(queue, _failer(DeadLetterOutcome.TRANSITIONED, calls=calls))
+    consumer = _consumer(
+        queue, _fail_handler(DeadLetterOutcome.TRANSITIONED, calls=calls)
+    )
     await consumer.start()
     with pytest.raises(RuntimeError, match="already running"):
         await consumer.start()

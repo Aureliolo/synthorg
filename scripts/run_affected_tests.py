@@ -106,9 +106,10 @@ def _git(*args: str, strip: bool = True) -> str:
             v1 status codes are two columns and the first column is a
             space for worktree-only modifications (`` M path``).
             Stripping the blob eats that leading space on the first
-            line, shifting every fixed-index slice by one (so
-            ``scripts/...`` parses as ``cripts/...`` and the subsequent
-            ``git restore`` fails on a bogus pathspec).
+            line, shifting every fixed-index slice by one (e.g. a
+            ``[3:]`` slice that should read ``tests/foo.py`` instead
+            yields the truncated path ``ests/foo.py``) and the
+            subsequent ``git restore`` then fails on a bogus pathspec.
 
     Raises:
         _GitError: On non-zero exit so callers fail closed.

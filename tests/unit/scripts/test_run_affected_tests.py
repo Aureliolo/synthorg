@@ -1016,7 +1016,7 @@ def test_tracked_dirty_paths_requests_unstripped_porcelain(
     # Regression: a worktree-only modification's porcelain code is
     # `` M path`` (leading space). When the whole stdout blob is
     # str.strip()-ed, the first line loses that space and the fixed
-    # index-3 slice yields ``cripts/...`` for ``scripts/...``, so the
+    # index-3 slice drops the leading character of the path, so the
     # follow-up ``git restore`` fails on a bogus pathspec and the push
     # aborts. The parser MUST request unstripped output.
     fake = _FakeGit([" M scripts/git-hooks/_run-hook.sh\nD  tests/x_test.py"])
@@ -1026,7 +1026,7 @@ def test_tracked_dirty_paths_requests_unstripped_porcelain(
         "scripts/git-hooks/_run-hook.sh",
         "tests/x_test.py",
     }
-    assert "cripts/git-hooks/_run-hook.sh" not in result
+    assert all(p.startswith(("scripts/", "tests/")) for p in result)
     assert fake.status_strip == [False]
 
 

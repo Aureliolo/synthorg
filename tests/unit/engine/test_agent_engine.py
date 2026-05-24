@@ -133,9 +133,9 @@ class TestAgentEngineTaskTransition:
         )
 
         # Successful run parks at IN_REVIEW: ASSIGNED -> IP -> IR
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.IN_REVIEW
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.IN_REVIEW
 
 
 @pytest.mark.unit
@@ -160,9 +160,9 @@ class TestAgentEngineAlreadyInProgress:
 
         assert result.is_success is True
         # Successful run parks at IN_REVIEW: IP -> IR
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.IN_REVIEW
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.IN_REVIEW
 
 
 @pytest.mark.unit

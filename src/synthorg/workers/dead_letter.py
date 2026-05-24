@@ -10,7 +10,7 @@ task is never silently lost, closing the no-loss gap the Distributed
 Runtime design page describes.
 
 Single-writer invariant: this consumer runs inside the backend
-process, so it transitions the task through the injected ``TaskFailer``
+process, so it transitions the task through the injected ``TaskFailHandler``
 seam, which goes through the normal ``TaskEngine`` mutation queue
 (exactly the single-writer path the in-process dispatcher uses). It
 never writes persistence directly.
@@ -63,18 +63,18 @@ class DeadLetterOutcome(StrEnum):
     RETRYABLE = "retryable"
 
 
-TaskFailer = Callable[[str, str], Awaitable[DeadLetterOutcome]]
+TaskFailHandler = Callable[[str, str], Awaitable[DeadLetterOutcome]]
 """Seam that transitions a task to FAILED.
 
 Args are ``(task_id, reason)``. The production implementation
-(:func:`make_engine_task_failer`) routes through
+(:func:`make_engine_task_fail_handler`) routes through
 ``TaskEngine.transition_task`` so the single-writer invariant holds;
 tests inject a fake.
 """
 
 
-def make_engine_task_failer(engine: Any) -> TaskFailer:
-    """Build a :data:`TaskFailer` backed by a ``TaskEngine``.
+def make_engine_task_fail_handler(engine: Any) -> TaskFailHandler:
+    """Build a :data:`TaskFailHandler` backed by a ``TaskEngine``.
 
     Maps engine exceptions onto :class:`DeadLetterOutcome` so the
     consumer can decide ack vs nack without coupling to engine
@@ -120,7 +120,7 @@ class DeadLetterConsumer:
     Args:
         task_queue: Connected :class:`JetStreamTaskQueue` (shared with
             the dispatcher in the backend process).
-        task_failer: Seam transitioning a task to FAILED.
+        task_fail_handler: Seam transitioning a task to FAILED.
         queue_config: Queue config (ack wait / max deliver) used for
             the dedup TTL and final-delivery detection.
         seen_claims: Durable dedup repository so a redelivered dead
@@ -133,13 +133,13 @@ class DeadLetterConsumer:
         self,
         *,
         task_queue: JetStreamTaskQueue,
-        task_failer: TaskFailer,
+        task_fail_handler: TaskFailHandler,
         queue_config: QueueConfig,
         seen_claims: SeenClaimsRepository | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._task_queue = task_queue
-        self._task_failer = task_failer
+        self._task_fail_handler = task_fail_handler
         self._queue_config = queue_config
         self._seen_claims = seen_claims
         self._clock: Clock = clock or SystemClock()
@@ -221,7 +221,7 @@ class DeadLetterConsumer:
             await JetStreamTaskQueue.ack(raw)
             return
         try:
-            outcome = await self._task_failer(
+            outcome = await self._task_fail_handler(
                 str(claim.task_id),
                 "Task exhausted distributed retry budget (dead-lettered)",
             )

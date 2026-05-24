@@ -306,7 +306,7 @@ class TestGracefulShutdownFlow:
             task=task,
         )
 
-        te = result.execution_result.context.task_execution
-        assert te is not None
-        assert te.status == TaskStatus.INTERRUPTED
+        task_execution = result.execution_result.context.task_execution
+        assert task_execution is not None
+        assert task_execution.status == TaskStatus.INTERRUPTED
         assert result.execution_result.termination_reason.value == "shutdown"

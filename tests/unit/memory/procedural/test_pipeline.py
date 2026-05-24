@@ -65,9 +65,13 @@ def _make_recovery_result(
     t = task or _make_task()
     agent_id = str(uuid4())
     exec_id = str(uuid4())
-    te = TaskExecution.from_task(t)
-    te = te.with_transition(TaskStatus.IN_PROGRESS, reason="started")
-    te = te.with_transition(TaskStatus.FAILED, reason=error_message)
+    task_execution = TaskExecution.from_task(t)
+    task_execution = task_execution.with_transition(
+        TaskStatus.IN_PROGRESS, reason="started"
+    )
+    task_execution = task_execution.with_transition(
+        TaskStatus.FAILED, reason=error_message
+    )
     snapshot = AgentContextSnapshot(
         execution_id=exec_id,
         agent_id=agent_id,
@@ -84,7 +88,7 @@ def _make_recovery_result(
         message_count=6,
     )
     return RecoveryResult(
-        task_execution=te,
+        task_execution=task_execution,
         strategy_type="fail_reassign",
         context_snapshot=snapshot,
         error_message=error_message,
