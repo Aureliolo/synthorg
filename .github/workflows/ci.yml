@@ -369,6 +369,8 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
+      - uses: ./.github/actions/warm-tree-sitter-cache
+
       # Enable user-process core dumps. Ubuntu runners ship with
       # ``ulimit -c 0`` (disabled). With ``-c unlimited`` any SIGSEGV /
       # SIGABRT / SIGBUS that kills a worker leaves a binary core file
@@ -547,6 +549,8 @@ jobs:
 
       - uses: ./.github/actions/install-postgres-18-client
 
+      - uses: ./.github/actions/warm-tree-sitter-cache
+
       - name: Postgres drift detection
         run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
 
@@ -663,6 +667,8 @@ jobs:
       - uses: ./.github/actions/setup-python-uv
 
       - uses: ./.github/actions/install-postgres-18-client
+
+      - uses: ./.github/actions/warm-tree-sitter-cache
 
       - name: Postgres drift detection
         run: uv run python scripts/check_schema_drift_revisions.py --backend postgres

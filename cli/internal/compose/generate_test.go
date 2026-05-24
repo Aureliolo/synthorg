@@ -25,7 +25,7 @@ import (
 //   - `busybox:<tag>-musl`
 //   - `postgres:<tag>-(alpine|debianN)` (no DHI prefix; the digest
 //     pattern already covers the postgres digest portion)
-//   - `nats:<tag>-debianN` (DefaultNATSImageTag uses the same
+//   - `nats:<tag>-(alpine|debianN)` (DefaultNATSImageTag uses the same
 //     version-suffix pattern as postgres; tunnel-mode goldens that
 //     render the NATS service would otherwise drift on Renovate's
 //     weekly DHI rotation alongside postgres)
@@ -33,7 +33,7 @@ var (
 	sha256DigestRE = regexp.MustCompile(`@sha256:[0-9a-f]{64}`)
 	busyboxTagRE   = regexp.MustCompile(`busybox:[0-9.]+-musl`)
 	postgresTagRE  = regexp.MustCompile(`postgres:[0-9.]+-(alpine|debian[0-9]+)`)
-	natsTagRE      = regexp.MustCompile(`nats:[0-9.]+-debian[0-9]+`)
+	natsTagRE      = regexp.MustCompile(`nats:[0-9.]+-(alpine|debian[0-9]+)`)
 )
 
 // normalize masks Renovate-rotated digest and version-suffixed tag
@@ -45,7 +45,7 @@ func normalize(s string) string {
 	s = sha256DigestRE.ReplaceAllString(s, "@sha256:<DIGEST>")
 	s = busyboxTagRE.ReplaceAllString(s, "busybox:<TAG>-musl")
 	s = postgresTagRE.ReplaceAllString(s, "postgres:<TAG>-$1")
-	s = natsTagRE.ReplaceAllString(s, "nats:<TAG>-debianN")
+	s = natsTagRE.ReplaceAllString(s, "nats:<TAG>-$1")
 	return s
 }
 
