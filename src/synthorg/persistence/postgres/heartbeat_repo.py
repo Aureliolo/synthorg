@@ -43,7 +43,11 @@ class PostgresHeartbeatRepository:
         self._pool = pool
 
     async def save(self, heartbeat: Heartbeat) -> None:
-        """Persist a heartbeat (upsert by execution_id)."""
+        """Persist a heartbeat (upsert by execution_id).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         # Normalize to UTC for consistent lexicographic comparisons
         last_heartbeat_at_utc = heartbeat.last_heartbeat_at.astimezone(UTC)
         try:
@@ -78,7 +82,14 @@ ON CONFLICT(execution_id) DO UPDATE SET
             raise QueryError(msg) from exc
 
     async def get(self, execution_id: NotBlankStr) -> Heartbeat | None:
-        """Retrieve a heartbeat by execution ID."""
+        """Retrieve a heartbeat by execution ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -126,6 +137,12 @@ ON CONFLICT(execution_id) DO UPDATE SET
                 this timestamp are considered stale.
             limit: Maximum rows to return.
             offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_HEARTBEAT_QUERY_FAILED
@@ -163,7 +180,14 @@ ON CONFLICT(execution_id) DO UPDATE SET
         return results
 
     async def delete(self, execution_id: NotBlankStr) -> bool:
-        """Delete a heartbeat by execution ID."""
+        """Delete a heartbeat by execution ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -189,6 +213,9 @@ ON CONFLICT(execution_id) DO UPDATE SET
 
         Raises:
             QueryError: If the row cannot be deserialized.
+
+        Returns:
+            Result of type ``Heartbeat``.
         """
         try:
             return Heartbeat.model_validate(row)

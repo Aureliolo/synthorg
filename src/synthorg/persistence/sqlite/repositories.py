@@ -72,6 +72,9 @@ def _json_list(items: tuple[object, ...]) -> str:
 
     Items must be JSON-serializable or Pydantic models.
     Non-serializable items will raise ``TypeError``.
+
+    Returns:
+        Result of type ``str``.
     """
     return json.dumps(
         [
@@ -104,7 +107,11 @@ class SQLiteTaskRepository:
         self._write_context = write_context
 
     async def save(self, task: Task) -> None:
-        """Persist a task (upsert semantics)."""
+        """Persist a task (upsert semantics).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 params = task.model_dump(mode="json")
@@ -177,7 +184,14 @@ ON CONFLICT(id) DO UPDATE SET
     )
 
     def _row_to_task(self, row: aiosqlite.Row) -> Task:
-        """Reconstruct a Task from a database row."""
+        """Reconstruct a Task from a database row.
+
+        Returns:
+            Result of type ``Task``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             data = dict(row)
             for field in self._JSON_FIELDS:
@@ -207,7 +221,14 @@ id, title, description, type, priority, project, created_by,
        delegation_chain"""
 
     async def get(self, task_id: str) -> Task | None:
-        """Retrieve a task by its ID."""
+        """Retrieve a task by its ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 f"SELECT {self._TASK_COLUMNS} FROM tasks WHERE id = ?",  # noqa: S608
@@ -239,6 +260,12 @@ id, title, description, type, priority, project, created_by,
 
         Ordering is deterministic on the primary key ``id`` so paginated
         callers see stable windows.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_TASK_LIST_FAILED
@@ -274,6 +301,12 @@ id, title, description, type, priority, project, created_by,
 
         Ordering is deterministic on the primary key ``id`` so paginated
         callers see stable windows.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_TASK_LIST_FAILED
@@ -312,7 +345,14 @@ id, title, description, type, priority, project, created_by,
         return tasks
 
     async def count(self, filter_spec: TaskFilterSpec) -> int:
-        """Count tasks matching the given filter spec."""
+        """Count tasks matching the given filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         clauses: list[str] = []
         params: list[object] = []
         if filter_spec.status is not None:
@@ -345,7 +385,14 @@ id, title, description, type, priority, project, created_by,
         return total
 
     async def delete(self, task_id: str) -> bool:
-        """Delete a task by ID."""
+        """Delete a task by ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -388,7 +435,11 @@ class SQLiteCostRecordRepository:
         self._write_context = write_context
 
     async def append(self, event: CostRecord) -> None:
-        """Persist a cost record (append-only per AppendOnlyRepository)."""
+        """Persist a cost record (append-only per AppendOnlyRepository).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 data = event.model_dump(mode="json")
@@ -429,7 +480,14 @@ INSERT INTO cost_records (
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CostRecord, ...]:
-        """Query cost records matching filter spec with pagination."""
+        """Query cost records matching filter spec with pagination.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_COST_RECORD_QUERY_FAILED
         )
@@ -486,6 +544,13 @@ FROM cost_records"""
         + ``GROUP_CONCAT(DISTINCT)`` + ``SUM``) so the two observations
         share one snapshot and a concurrent insert cannot change the
         result between them.
+
+        Returns:
+            Result of type ``float``.
+
+        Raises:
+            QueryError: If the database query fails.
+            MixedCurrencyAggregationError: If aggregated rows mix currencies.
         """
         try:
             conditions: list[str] = []
@@ -559,6 +624,12 @@ FROM cost_records"""
         ``threshold`` must be timezone-aware: a naive value compared
         against UTC-formatted stored timestamps would silently delete
         the wrong window.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         if threshold.tzinfo is None:
             msg = f"threshold must be timezone-aware, got naive {threshold!r}"
@@ -631,7 +702,12 @@ class SQLiteMessageRepository:
             )
 
     async def append(self, message: Message) -> None:
-        """Persist a message (append-only per AppendOnlyRepository)."""
+        """Persist a message (append-only per AppendOnlyRepository).
+
+        Raises:
+            QueryError: If the database query fails.
+            DuplicateRecordError: If a row with the same key already exists.
+        """
         data = message.model_dump(mode="json")
         msg_id = str(message.id)
 
@@ -692,7 +768,14 @@ INSERT INTO messages (
                 raise QueryError(msg) from exc
 
     def _row_to_message(self, row: aiosqlite.Row) -> Message:
-        """Reconstruct a Message from a database row."""
+        """Reconstruct a Message from a database row.
+
+        Returns:
+            Result of type ``Message``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             data = dict(row)
             # Map DB column "sender" to Message's "from" alias.
@@ -725,7 +808,14 @@ INSERT INTO messages (
         *,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[Message, ...]:
-        """Retrieve message history for a channel, newest first."""
+        """Retrieve message history for a channel, newest first.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if limit is not None and limit < 1:
             msg = f"limit must be a positive integer, got {limit}"
             raise QueryError(msg)
@@ -771,6 +861,12 @@ ORDER BY timestamp DESC"""
         key); the extra ``channel`` predicate is a deliberate scoping
         guard so a caller holding only a message id cannot read a
         message outside the channel it asked for.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         sql = """\
 SELECT id, timestamp, sender, "to", type, priority,
@@ -807,7 +903,14 @@ WHERE id = ? AND channel = ?"""
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Message, ...]:
-        """Return messages matching the filter spec, newest first."""
+        """Return messages matching the filter spec, newest first.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_MESSAGE_HISTORY_FAILED
         )
@@ -841,6 +944,12 @@ FROM messages"""
         ``threshold`` must be timezone-aware: a naive value compared
         against UTC-formatted stored timestamps would silently delete
         the wrong window.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         if threshold.tzinfo is None:
             msg = f"threshold must be timezone-aware, got naive {threshold!r}"
@@ -877,6 +986,12 @@ FROM messages"""
         emitted by :class:`MessageService.delete_message`; the
         repository never logs mutations itself (persistence-boundary
         rule, see ``docs/reference/persistence-boundary.md``).
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         async with self._write_context():
             try:

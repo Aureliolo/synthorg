@@ -325,5 +325,8 @@ class SQLiteAuditRepository:
 
         Raises:
             QueryError: If the row cannot be deserialized.
+
+        Returns:
+            Result of type ``AuditEntry``.
         """
         return row_to_audit_entry(row)

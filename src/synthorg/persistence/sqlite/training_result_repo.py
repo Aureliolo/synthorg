@@ -56,14 +56,22 @@ ON CONFLICT(id) DO UPDATE SET
 def _serialize_count_tuples(
     counts: tuple[tuple[ContentType, int], ...],
 ) -> str:
-    """Serialize per-content-type count tuples to JSON."""
+    """Serialize per-content-type count tuples to JSON.
+
+    Returns:
+        Result of type ``str``.
+    """
     return json.dumps([[ct.value, n] for ct, n in counts])
 
 
 def _serialize_approvals(
     approvals: tuple[TrainingApprovalHandle, ...],
 ) -> str:
-    """Serialize pending approval handles to JSON."""
+    """Serialize pending approval handles to JSON.
+
+    Returns:
+        Result of type ``str``.
+    """
     return json.dumps(
         [
             {
@@ -79,17 +87,29 @@ def _serialize_approvals(
 def _serialize_sources(
     sources: tuple[NotBlankStr, ...],
 ) -> str:
-    """Serialize source agent IDs to JSON."""
+    """Serialize source agent IDs to JSON.
+
+    Returns:
+        Result of type ``str``.
+    """
     return json.dumps([str(s) for s in sources])
 
 
 def _serialize_errors(errors: tuple[str, ...]) -> str:
-    """Serialize error strings to JSON."""
+    """Serialize error strings to JSON.
+
+    Returns:
+        Result of type ``str``.
+    """
     return json.dumps(list(errors))
 
 
 def _result_to_params(result: TrainingResult) -> tuple[object, ...]:
-    """Build the parameter tuple for the upsert SQL statement."""
+    """Build the parameter tuple for the upsert SQL statement.
+
+    Returns:
+        The matching collection.
+    """
     return (
         str(result.id),
         str(result.plan_id),
@@ -111,14 +131,22 @@ def _result_to_params(result: TrainingResult) -> tuple[object, ...]:
 def _deserialize_count_tuples(
     raw: str,
 ) -> tuple[tuple[ContentType, int], ...]:
-    """Deserialize per-content-type count tuples from JSON."""
+    """Deserialize per-content-type count tuples from JSON.
+
+    Returns:
+        The matching collection.
+    """
     return tuple((ContentType(ct), n) for ct, n in json.loads(raw))
 
 
 def _deserialize_approvals(
     raw: str,
 ) -> tuple[TrainingApprovalHandle, ...]:
-    """Deserialize pending approval handles from JSON."""
+    """Deserialize pending approval handles from JSON.
+
+    Returns:
+        The matching collection.
+    """
     return tuple(
         TrainingApprovalHandle(
             approval_item_id=NotBlankStr(h["approval_item_id"]),
@@ -359,6 +387,9 @@ class SQLiteTrainingResultRepository:
 
         Returns:
             The most recent matching result, or ``None`` if not found.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             cursor = await self._db.execute(
@@ -394,6 +425,9 @@ LIMIT 1""",
 
         Returns:
             The most recent result, or ``None``.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             cursor = await self._db.execute(

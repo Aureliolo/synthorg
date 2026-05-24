@@ -78,7 +78,11 @@ def _parse_row_timestamps(data: dict[str, object]) -> None:
 def _deserialize_node_executions(
     raw_json: str,
 ) -> tuple[WorkflowNodeExecution, ...]:
-    """Deserialize JSON array into WorkflowNodeExecution tuple."""
+    """Deserialize JSON array into WorkflowNodeExecution tuple.
+
+    Returns:
+        The matching collection.
+    """
     items = json.loads(raw_json)
     return tuple(
         WorkflowNodeExecution(
@@ -186,7 +190,11 @@ class SQLiteWorkflowExecutionRepository:
         self,
         execution: WorkflowExecution,
     ) -> tuple[object, ...]:
-        """Build the parameter tuple for insert/update SQL."""
+        """Build the parameter tuple for insert/update SQL.
+
+        Returns:
+            The matching collection.
+        """
         node_json = json.dumps(
             [ne.model_dump(mode="json") for ne in execution.node_executions],
         )
@@ -211,7 +219,12 @@ class SQLiteWorkflowExecutionRepository:
         )
 
     async def _insert(self, execution: WorkflowExecution) -> None:
-        """Insert a new workflow execution row."""
+        """Insert a new workflow execution row.
+
+        Raises:
+            DuplicateRecordError: If a row with the same key already exists.
+            QueryError: If the database query fails.
+        """
         params = self._serialize_execution(execution)
         async with self._write_context():
             try:
@@ -267,7 +280,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 raise QueryError(msg) from exc
 
     async def _update(self, execution: WorkflowExecution) -> None:
-        """Update an existing workflow execution with version check."""
+        """Update an existing workflow execution with version check.
+
+        Raises:
+            PersistenceVersionConflictError: If the row version no longer matches.
+            QueryError: If the database query fails.
+            RecordNotFoundError: If no row matches the supplied key.
+        """
         params = self._serialize_execution(execution)
         async with self._write_context():
             try:

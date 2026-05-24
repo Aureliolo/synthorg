@@ -38,7 +38,11 @@ _MAX_LIST_ROWS: int = 10_000
 
 
 def _row_to_project(row: dict[str, Any]) -> Project:
-    """Reconstruct a ``Project`` from a Postgres dict_row."""
+    """Reconstruct a ``Project`` from a Postgres dict_row.
+
+    Returns:
+        Result of type ``Project``.
+    """
     data = dict(row)
     data["status"] = ProjectStatus(data["status"])
     data["team"] = tuple(data.get("team") or [])
@@ -58,6 +62,11 @@ class PostgresProjectRepository:
 
     @staticmethod
     def _row_params(project: Project) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            The matching collection.
+        """
         return (
             project.id,
             project.name,
@@ -163,7 +172,11 @@ class PostgresProjectRepository:
             raise RecordNotFoundError(msg)
 
     async def save(self, project: Project) -> None:
-        """Persist a project via upsert (migration / import paths)."""
+        """Persist a project via upsert (migration / import paths).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -195,7 +208,14 @@ class PostgresProjectRepository:
             raise QueryError(msg) from exc
 
     async def get(self, project_id: NotBlankStr) -> Project | None:
-        """Retrieve a project by primary key."""
+        """Retrieve a project by primary key.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -268,6 +288,9 @@ class PostgresProjectRepository:
 
         Returns:
             Matching projects ordered by ID.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_PROJECT_LIST_FAILED
@@ -321,7 +344,14 @@ class PostgresProjectRepository:
         return projects
 
     async def count(self, filter_spec: ProjectFilterSpec) -> int:
-        """Count projects matching the filter spec."""
+        """Count projects matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         conditions: list[str] = []
         params: list[object] = []
 
@@ -353,7 +383,14 @@ class PostgresProjectRepository:
         return int(row["count"]) if row else 0
 
     async def delete(self, project_id: NotBlankStr) -> bool:
-        """Delete a project by primary key."""
+        """Delete a project by primary key.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute("DELETE FROM projects WHERE id = %s", (project_id,))

@@ -52,6 +52,9 @@ class SQLiteConnectionSecretRepository:
 
         The repository stores the bytes verbatim; encryption happens
         at the secret-backend layer above.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         now_iso = format_iso_utc(datetime.now(UTC))
         async with self._write_context():
@@ -84,7 +87,14 @@ class SQLiteConnectionSecretRepository:
                 raise QueryError(msg) from exc
 
     async def retrieve(self, secret_id: NotBlankStr) -> bytes | None:
-        """Return the raw encrypted bytes, or ``None`` if not stored."""
+        """Return the raw encrypted bytes, or ``None`` if not stored.
+
+        Returns:
+            The matching value, or ``None`` when absent.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._db.execute(
                 "SELECT encrypted_value FROM connection_secrets WHERE secret_id = ?",
@@ -105,7 +115,14 @@ class SQLiteConnectionSecretRepository:
         return bytes(row[0])
 
     async def delete(self, secret_id: NotBlankStr) -> bool:
-        """Delete an encrypted secret; return ``True`` if a row was removed."""
+        """Delete an encrypted secret; return ``True`` if a row was removed.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(

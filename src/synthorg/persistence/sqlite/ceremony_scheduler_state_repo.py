@@ -63,7 +63,11 @@ class SQLiteCeremonySchedulerStateRepository:
             )
 
     async def save(self, record: CeremonySchedulerStateRecord) -> None:
-        """Persist a snapshot (upsert by sprint_id)."""
+        """Persist a snapshot (upsert by sprint_id).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         params = {
             "sprint_id": record.sprint_id,
             "completion_counters_json": record.completion_counters_json,
@@ -101,7 +105,14 @@ INSERT OR REPLACE INTO ceremony_scheduler_state (
                 raise QueryError(msg) from exc
 
     async def get(self, sprint_id: NotBlankStr) -> CeremonySchedulerStateRecord | None:
-        """Load a snapshot by sprint_id, or ``None`` if absent."""
+        """Load a snapshot by sprint_id, or ``None`` if absent.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT sprint_id, completion_counters_json, "
@@ -140,7 +151,14 @@ INSERT OR REPLACE INTO ceremony_scheduler_state (
         return record
 
     async def delete(self, sprint_id: NotBlankStr) -> bool:
-        """Delete a snapshot by sprint_id."""
+        """Delete a snapshot by sprint_id.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -170,7 +188,14 @@ INSERT OR REPLACE INTO ceremony_scheduler_state (
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CeremonySchedulerStateRecord, ...]:
-        """List snapshots ordered by sprint_id ascending."""
+        """List snapshots ordered by sprint_id ascending.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CEREMONY_STATE_LOAD_FAILED
         )

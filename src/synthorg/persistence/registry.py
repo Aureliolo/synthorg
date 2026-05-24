@@ -42,7 +42,11 @@ class PersistenceBackendRegistry:
     _KIND = "persistence_backend"
 
     def __init__(self, factories: Mapping[str, _PersistenceFactory]) -> None:
-        """Freeze *factories* and emit a registry-built event."""
+        """Freeze *factories* and emit a registry-built event.
+
+        Raises:
+            ValueError: If an argument fails validation.
+        """
         if not factories:
             msg = "PersistenceBackendRegistry requires at least one factory"
             raise ValueError(msg)
@@ -115,15 +119,27 @@ class PersistenceBackendRegistry:
         return backend
 
     def names(self) -> tuple[str, ...]:
-        """Sorted tuple of registered backend names."""
+        """Sorted tuple of registered backend names.
+
+        Returns:
+            The matching collection.
+        """
         return tuple(sorted(self._factories))
 
     def __contains__(self, name: object) -> bool:
-        """Return ``True`` iff *name* is a registered string discriminator."""
+        """Return ``True`` iff *name* is a registered string discriminator.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+        """
         if not isinstance(name, str):
             return False
         return name in self._factories
 
     def __len__(self) -> int:
-        """Number of registered backends."""
+        """Number of registered backends.
+
+        Returns:
+            Numeric result of the operation.
+        """
         return len(self._factories)

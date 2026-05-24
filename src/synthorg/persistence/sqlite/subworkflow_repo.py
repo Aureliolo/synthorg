@@ -57,7 +57,11 @@ nodes, edges, created_by, created_at, updated_at"""
 
 
 def _semver_sort_key(version: str) -> Version:
-    """Parse a semver string to a :class:`packaging.version.Version` key."""
+    """Parse a semver string to a :class:`packaging.version.Version` key.
+
+    Returns:
+        Result of type ``Version``.
+    """
     try:
         return Version(version)
     except InvalidVersion:
@@ -66,7 +70,11 @@ def _semver_sort_key(version: str) -> Version:
 
 
 def _parse_created_at(value: object) -> datetime:
-    """Parse an ISO timestamp, forcing UTC."""
+    """Parse an ISO timestamp, forcing UTC.
+
+    Returns:
+        Result of type ``datetime``.
+    """
     dt = datetime.fromisoformat(str(value))
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
@@ -77,7 +85,14 @@ def _deserialize_row(
     row: aiosqlite.Row,
     context_id: str,
 ) -> WorkflowDefinition:
-    """Reconstruct a ``WorkflowDefinition`` from a subworkflows row."""
+    """Reconstruct a ``WorkflowDefinition`` from a subworkflows row.
+
+    Returns:
+        Result of type ``WorkflowDefinition``.
+
+    Raises:
+        QueryError: If the database query fails.
+    """
     try:
         data = dict(row)
         nodes = tuple(WorkflowNode.model_validate(n) for n in json.loads(data["nodes"]))
@@ -131,6 +146,9 @@ def _extract_references(  # noqa: PLR0913
 
     Mutates *references* in place, appending one ``ParentReference``
     per matching node found.
+
+    Raises:
+        QueryError: If the database query fails.
     """
     for row in rows:
         parent_id = str(row[id_column])
@@ -309,7 +327,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         self,
         entity_id: tuple[NotBlankStr, NotBlankStr],
     ) -> WorkflowDefinition | None:
-        """Fetch a specific subworkflow version by composite key."""
+        """Fetch a specific subworkflow version by composite key.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         subworkflow_id, version = entity_id
         try:
             cursor = await self._db.execute(
@@ -364,6 +389,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
 
         Raises:
             QueryError: If the database query fails.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
@@ -402,6 +430,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         Raises:
             QueryError: If the database query or pagination validation
                 fails.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
@@ -442,6 +473,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         Raises:
             QueryError: If the database query or pagination validation
                 fails.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
@@ -484,6 +518,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         Summaries are ``(subworkflow_id, latest_version)``-ordered so
         a cursor walk is stable; callers that need every match drain
         via :func:`synthorg.persistence._shared.collect_all`.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED, query=query
@@ -544,7 +584,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         self,
         entity_id: tuple[NotBlankStr, NotBlankStr],
     ) -> bool:
-        """Delete a subworkflow version by composite key (``True`` on success)."""
+        """Delete a subworkflow version by composite key (``True`` on success).
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         subworkflow_id, version = entity_id
         async with self._write_context():
             try:
@@ -572,7 +619,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         subworkflow_id: NotBlankStr,
         version: NotBlankStr,
     ) -> tuple[bool, tuple[ParentReference, ...]]:
-        """Atomically check-and-delete inside a single transaction."""
+        """Atomically check-and-delete inside a single transaction.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 # find_parents already uses self._db so we wrap the
@@ -648,6 +702,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (:meth:`delete_if_unreferenced`) bypasses pagination via
         :meth:`_find_parents_unpaged`; a truncated parent set would let
         a still-referenced version be deleted.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         limit = validate_pagination_args(
             limit,
@@ -668,6 +725,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         Backs both :meth:`find_parents` (which slices a page off this
         result) and :meth:`delete_if_unreferenced` (which must see the
         complete set so a still-referenced version is never deleted).
+
+        Returns:
+            The matching collection.
         """
         references: list[ParentReference] = []
 
@@ -721,7 +781,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         query: str,
         subworkflow_id: str,
     ) -> Iterable[Any]:
-        """Execute a SELECT and return all rows, with error handling."""
+        """Execute a SELECT and return all rows, with error handling.
+
+        Returns:
+            Result of type ``Iterable[Any]``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(query)
             return await cursor.fetchall()
@@ -739,7 +806,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         self,
         rows: Iterable[Any],
     ) -> tuple[SubworkflowSummary, ...]:
-        """Group rows by subworkflow and emit a summary for the latest one."""
+        """Group rows by subworkflow and emit a summary for the latest one.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
             data = dict(row)

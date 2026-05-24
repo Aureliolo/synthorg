@@ -56,6 +56,9 @@ def _clamp_pagination(limit: int, offset: int) -> tuple[int, int]:
 
     ``limit`` is clamped to ``[1, _MAX_LIST_LIMIT]`` and ``offset`` to
     ``[0, +inf)``.  Used by both list_runs and list_checkpoints.
+
+    Returns:
+        The matching collection.
     """
     return min(max(limit, 1), _MAX_LIST_LIMIT), max(offset, 0)
 
@@ -69,6 +72,9 @@ def _run_from_row(row: dict[str, Any]) -> FineTuneRun:
 
     Raises:
         QueryError: If the row contains invalid data.
+
+    Returns:
+        Result of type ``FineTuneRun``.
     """
     try:
         return FineTuneRun(
@@ -102,6 +108,9 @@ def _checkpoint_from_row(row: dict[str, Any]) -> CheckpointRecord:
 
     Raises:
         QueryError: If the row contains invalid data.
+
+    Returns:
+        Result of type ``CheckpointRecord``.
     """
     try:
         eval_metrics = None
@@ -142,7 +151,11 @@ class PostgresFineTuneRunRepository:
         self._pool = pool
 
     async def save(self, entity: FineTuneRun) -> None:
-        """Upsert a run by id (idempotent semantics)."""
+        """Upsert a run by id (idempotent semantics).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         run = entity
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -190,7 +203,14 @@ ON CONFLICT (id) DO UPDATE SET
             raise QueryError(msg) from exc
 
     async def get(self, entity_id: str) -> FineTuneRun | None:
-        """Retrieve a run by id."""
+        """Retrieve a run by id.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         run_id = entity_id
         try:
             async with (
@@ -216,7 +236,14 @@ ON CONFLICT (id) DO UPDATE SET
         return _run_from_row(row)
 
     async def get_active_run(self) -> FineTuneRun | None:
-        """Get the currently active run (if any)."""
+        """Get the currently active run (if any).
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -247,7 +274,14 @@ ON CONFLICT (id) DO UPDATE SET
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[FineTuneRun, ...]:
-        """List runs in ascending id order (paginated)."""
+        """List runs in ascending id order (paginated).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit, offset = _clamp_pagination(limit, offset)
         try:
             async with (
@@ -279,6 +313,9 @@ ON CONFLICT (id) DO UPDATE SET
 
         Returns:
             Tuple of (runs, total_count).
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit, offset = _clamp_pagination(limit, offset)
         try:
@@ -311,6 +348,9 @@ ON CONFLICT (id) DO UPDATE SET
 
         Returns:
             ``True`` if deleted, ``False`` if not found.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         run_id = entity_id
         try:
@@ -336,7 +376,11 @@ ON CONFLICT (id) DO UPDATE SET
             return deleted
 
     async def update_run(self, run: FineTuneRun) -> None:
-        """Update all mutable fields for a run."""
+        """Update all mutable fields for a run.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -381,6 +425,9 @@ WHERE id = %s""",
 
         Returns:
             Number of runs marked as interrupted.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         now = datetime.now(UTC)
         try:
@@ -426,7 +473,11 @@ class PostgresFineTuneCheckpointRepository:
         self._pool = pool
 
     async def save(self, entity: CheckpointRecord) -> None:
-        """Upsert a checkpoint by id (idempotent semantics)."""
+        """Upsert a checkpoint by id (idempotent semantics).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         checkpoint = entity
         eval_payload: Jsonb | None = None
         if checkpoint.eval_metrics is not None:
@@ -481,7 +532,14 @@ ON CONFLICT (id) DO UPDATE SET
             raise QueryError(msg) from exc
 
     async def get(self, entity_id: str) -> CheckpointRecord | None:
-        """Retrieve a checkpoint by id."""
+        """Retrieve a checkpoint by id.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         checkpoint_id = entity_id
         try:
             async with (
@@ -512,7 +570,14 @@ ON CONFLICT (id) DO UPDATE SET
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CheckpointRecord, ...]:
-        """List checkpoints in ascending id order (paginated)."""
+        """List checkpoints in ascending id order (paginated).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit, offset = _clamp_pagination(limit, offset)
         try:
             async with (
@@ -545,6 +610,9 @@ ON CONFLICT (id) DO UPDATE SET
 
         Returns:
             Tuple of (checkpoints, total_count).
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit, offset = _clamp_pagination(limit, offset)
         try:
@@ -623,6 +691,9 @@ ON CONFLICT (id) DO UPDATE SET
         partial unique index (``idx_ftc_single_active WHERE is_active =
         TRUE``) instead of a sequential scan + no-op rewrite of every
         already-inactive row.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -648,6 +719,9 @@ ON CONFLICT (id) DO UPDATE SET
 
         Returns:
             ``True`` if deleted, ``False`` if not found.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         checkpoint_id = entity_id
         try:
@@ -698,7 +772,14 @@ ON CONFLICT (id) DO UPDATE SET
     async def get_active_checkpoint(
         self,
     ) -> CheckpointRecord | None:
-        """Get the currently active checkpoint (if any)."""
+        """Get the currently active checkpoint (if any).
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -734,6 +815,12 @@ ON CONFLICT (id) DO UPDATE SET
         JSONB, so the string must be parsed before insertion;
         invalid JSON surfaces as ``QueryError`` rather than a wire-level
         failure that would only show up on commit.
+
+        Returns:
+            The matching value, or ``None`` when absent.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         if payload is None:
             return None

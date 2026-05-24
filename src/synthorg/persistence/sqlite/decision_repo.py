@@ -90,6 +90,9 @@ def _build_insert_params(  # noqa: PLR0913
     Normalizes ``recorded_at`` to UTC (ISO 8601 with ``+00:00`` offset)
     so lexicographic ordering of the ``recorded_at`` column is
     equivalent to chronological ordering across mixed-timezone callers.
+
+    Returns:
+        Result of type ``dict[str, object]``.
     """
     return {
         "id": record_id,
@@ -110,7 +113,11 @@ def _build_insert_params(  # noqa: PLR0913
 
 
 def _unfreeze_for_json(value: object) -> object:
-    """Recursively convert MappingProxyType/tuple/frozenset to JSON primitives."""
+    """Recursively convert MappingProxyType/tuple/frozenset to JSON primitives.
+
+    Returns:
+        Result of type ``object``.
+    """
     if isinstance(value, MappingProxyType):
         return {k: _unfreeze_for_json(v) for k, v in value.items()}
     if isinstance(value, dict):
@@ -132,6 +139,9 @@ def _is_structural_constraint_error(exc: sqlite3.IntegrityError) -> bool:
     ``sqlite3.IntegrityError`` propagate keeps the structural
     failure visible to operators and to the review-gate service's
     narrowed ``except (QueryError, DuplicateRecordError)`` catch.
+
+    Returns:
+        ``True`` when the operation succeeded, ``False`` otherwise.
     """
     return exc.sqlite_errorname in {
         "SQLITE_CONSTRAINT_CHECK",
@@ -230,6 +240,10 @@ class SQLiteDecisionRepository:
                 silently swallow.
             QueryError: If the SQL operation fails (connection dropped,
                 schema mismatch, rollback failure, etc.).
+            TypeError: If an argument has the wrong type.
+
+        Returns:
+            Result of type ``DecisionRecord``.
         """
         # Deep-copy the metadata up-front so nested dicts/lists the
         # caller retains are never aliased by the stored record.  The
@@ -342,6 +356,14 @@ class SQLiteDecisionRepository:
         path.  Commit is delayed until AFTER the read-back guard
         succeeds so a defective fetchone() result never leaves a
         durable "ghost" row behind.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
+            DuplicateRecordError: If a row with the same key already exists.
+            IntegrityError: If a database integrity constraint is violated.
         """
         try:
             await self._db.execute(_INSERT_SQL, params)
@@ -458,6 +480,12 @@ class SQLiteDecisionRepository:
         :class:`AppendOnlyRepository`; most callers use
         ``append_with_next_version`` instead. Version must be set
         by the caller.
+
+        Raises:
+            QueryError: If the database query fails.
+            DuplicateRecordError: If a row with the same key already exists.
+            TypeError: If an argument has the wrong type.
+            IntegrityError: If a database integrity constraint is violated.
         """
         # Deep-copy metadata so nested dicts/lists the caller retains
         # are never aliased by the stored record.
@@ -562,6 +590,12 @@ class SQLiteDecisionRepository:
         (ascending recorded_at). When agent_id and role are specified
         without task_id, results are newest-first. Mixed filters default
         to task-oriented (oldest-first) ordering.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         validate_pagination_args(
             limit,
@@ -632,6 +666,12 @@ class SQLiteDecisionRepository:
         Serialized against concurrent writers via ``write_context`` so
         reads never observe rows from an in-flight ``INSERT -> SELECT
         -> commit`` sequence that has not yet committed.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with self._write_context():
@@ -870,6 +910,14 @@ class SQLiteDecisionRepository:
         than being silently coerced via ``tuple(...)`` which would
         iterate over the object's keys / string characters and
         produce garbage data.
+
+        Returns:
+            Result of type ``DecisionRecord``.
+
+        Raises:
+            QueryError: If the database query fails.
+            TypeError: If an argument has the wrong type.
+            KeyError: If a required dictionary key is missing.
         """
         try:
             try:

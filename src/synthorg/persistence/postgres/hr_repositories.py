@@ -59,7 +59,11 @@ class PostgresLifecycleEventRepository:
         self._pool = pool
 
     async def save(self, event: AgentLifecycleEvent) -> None:
-        """Persist a lifecycle event."""
+        """Persist a lifecycle event.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             data = event.model_dump(mode="json")
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -95,7 +99,14 @@ class PostgresLifecycleEventRepository:
             raise QueryError(msg) from exc
 
     def _row_to_event(self, row: dict[str, Any]) -> AgentLifecycleEvent:
-        """Reconstruct a lifecycle event from a database row."""
+        """Reconstruct a lifecycle event from a database row.
+
+        Returns:
+            Result of type ``AgentLifecycleEvent``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             data = dict(row)
             # Postgres returns JSONB as dict directly, no json.loads needed
@@ -122,6 +133,12 @@ class PostgresLifecycleEventRepository:
         """List lifecycle events with optional filters.
 
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         clauses: list[str] = []
         params: list[Any] = []
@@ -182,7 +199,11 @@ class PostgresTaskMetricRepository:
         self._pool = pool
 
     async def save(self, record: TaskMetricRecord) -> None:
-        """Persist a task metric record."""
+        """Persist a task metric record.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             data = record.model_dump(mode="json")
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -224,7 +245,14 @@ class PostgresTaskMetricRepository:
             raise QueryError(msg) from exc
 
     def _row_to_record(self, row: dict[str, Any]) -> TaskMetricRecord:
-        """Reconstruct a task metric record from a database row."""
+        """Reconstruct a task metric record from a database row.
+
+        Returns:
+            Result of type ``TaskMetricRecord``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             data = dict(row)
             return TaskMetricRecord.model_validate(data)
@@ -250,6 +278,12 @@ class PostgresTaskMetricRepository:
         """Query task metric records with optional filters.
 
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_TASK_METRIC_QUERY_FAILED
@@ -307,7 +341,11 @@ class PostgresCollaborationMetricRepository:
         self._pool = pool
 
     async def save(self, record: CollaborationMetricRecord) -> None:
-        """Persist a collaboration metric record."""
+        """Persist a collaboration metric record.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             data = record.model_dump(mode="json")
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -345,7 +383,14 @@ class PostgresCollaborationMetricRepository:
             raise QueryError(msg) from exc
 
     def _row_to_record(self, row: dict[str, Any]) -> CollaborationMetricRecord:
-        """Reconstruct a collaboration metric record from a database row."""
+        """Reconstruct a collaboration metric record from a database row.
+
+        Returns:
+            Result of type ``CollaborationMetricRecord``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             data = dict(row)
             # Postgres returns BOOLEAN as bool natively
@@ -371,6 +416,12 @@ class PostgresCollaborationMetricRepository:
         """Query collaboration metric records with optional filters.
 
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_COLLAB_METRIC_QUERY_FAILED

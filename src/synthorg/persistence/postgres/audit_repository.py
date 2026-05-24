@@ -37,7 +37,11 @@ _COL_LIST = ", ".join(AUDIT_COLUMNS)
 
 
 def _postgres_is_duplicate(exc: BaseException) -> bool:
-    """Detect Postgres duplicate-key violations by exception type."""
+    """Detect Postgres duplicate-key violations by exception type.
+
+    Returns:
+        ``True`` when the operation succeeded, ``False`` otherwise.
+    """
     return isinstance(exc, psycopg.errors.UniqueViolation)
 
 
@@ -257,6 +261,9 @@ class PostgresAuditRepository:
 
         Raises:
             QueryError: If the row cannot be deserialized.
+
+        Returns:
+            Result of type ``AuditEntry``.
         """
         return row_to_audit_entry(row)
 
@@ -265,7 +272,11 @@ class PostgresAuditRepository:
     _ALLOWED_JSONB_COLS: frozenset[str] = frozenset({"matched_rules"})
 
     def _check_jsonb_column(self, column: str) -> None:
-        """Reject unknown column names to prevent SQL injection."""
+        """Reject unknown column names to prevent SQL injection.
+
+        Raises:
+            ValueError: If an argument fails validation.
+        """
         if column not in self._ALLOWED_JSONB_COLS:
             logger.warning(
                 PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
@@ -284,7 +295,11 @@ class PostgresAuditRepository:
         since: AwareDatetime | None,
         until: AwareDatetime | None,
     ) -> tuple[list[str], list[object]]:
-        """Build timestamp filter conditions."""
+        """Build timestamp filter conditions.
+
+        Returns:
+            The matching collection.
+        """
         conditions: list[str] = []
         params: list[object] = []
         if since is not None:
@@ -305,7 +320,14 @@ class PostgresAuditRepository:
         limit: int,
         offset: int,
     ) -> tuple[tuple[AuditEntry, ...], int]:
-        """Execute a JSONB query with time filters and pagination."""
+        """Execute a JSONB query with time filters and pagination.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         self._validate_query_args(since=since, until=until, limit=limit)
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
@@ -365,6 +387,9 @@ class PostgresAuditRepository:
         """Query audit entries where *column* contains *value*.
 
         Uses the ``@>`` containment operator (GIN-indexed).
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
         """
         self._check_jsonb_column(column)
         condition = f"{column} @> %s::jsonb"
@@ -390,6 +415,9 @@ class PostgresAuditRepository:
         """Query audit entries where *column* has a top-level *key*.
 
         Uses the ``?`` existence operator (GIN-indexed).
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
         """
         self._check_jsonb_column(column)
         condition = f"{column} ? %s"

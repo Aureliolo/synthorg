@@ -92,6 +92,9 @@ def _row_to_blueprint(row: dict[str, Any]) -> ToolBlueprint:
 
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
+
+    Returns:
+        Result of type ``ToolBlueprint``.
     """
     try:
         validation_raw = row["validation"]
@@ -145,7 +148,11 @@ def _row_to_blueprint(row: dict[str, Any]) -> ToolBlueprint:
 
 
 def _upsert_params(bp: ToolBlueprint) -> tuple[object, ...]:
-    """Build the positional upsert parameter tuple for a blueprint."""
+    """Build the positional upsert parameter tuple for a blueprint.
+
+    Returns:
+        The matching collection.
+    """
     return (
         bp.id,
         bp.name,
@@ -212,7 +219,14 @@ class PostgresDynamicToolRepository:
             raise QueryError(msg) from exc
 
     async def get(self, entity_id: NotBlankStr) -> ToolBlueprint | None:
-        """Get a blueprint by id, or ``None`` if not found."""
+        """Get a blueprint by id, or ``None`` if not found.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = f"SELECT {_SELECT_COLS} FROM dynamic_tools WHERE id = %s"  # noqa: S608
         try:
             async with (
@@ -242,7 +256,14 @@ class PostgresDynamicToolRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ToolBlueprint, ...]:
-        """List blueprints ordered by ``(created_at DESC, id DESC)``."""
+        """List blueprints ordered by ``(created_at DESC, id DESC)``.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         effective_limit = min(
             validate_pagination_args(
                 limit, offset, event=PERSISTENCE_DYNAMIC_TOOL_LIST_FAILED
@@ -275,7 +296,11 @@ class PostgresDynamicToolRepository:
     def _build_where(
         self, filter_spec: ToolBlueprintFilterSpec
     ) -> tuple[str, list[object]]:
-        """Build the WHERE clause and bound params from a filter spec."""
+        """Build the WHERE clause and bound params from a filter spec.
+
+        Returns:
+            The matching collection.
+        """
         clauses: list[str] = []
         params: list[object] = []
         if filter_spec.state is not None:
@@ -297,7 +322,14 @@ class PostgresDynamicToolRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ToolBlueprint, ...]:
-        """List blueprints matching the filter spec (paginated)."""
+        """List blueprints matching the filter spec (paginated).
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         effective_limit = min(
             validate_pagination_args(
                 limit, offset, event=PERSISTENCE_DYNAMIC_TOOL_QUERY_FAILED
@@ -330,7 +362,14 @@ class PostgresDynamicToolRepository:
         return items
 
     async def count(self, filter_spec: ToolBlueprintFilterSpec) -> int:
-        """Count blueprints matching the filter spec."""
+        """Count blueprints matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         where, params = self._build_where(filter_spec)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -368,6 +407,12 @@ class PostgresDynamicToolRepository:
         :class:`ToolValidationResult` is passed; passing ``None``
         explicitly clears the JSONB column to ``NULL`` (callers who want
         to preserve existing evidence must omit the key).
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         unknown = set(updates) - _TRANSITION_UPDATE_KEYS
         if unknown:
@@ -409,7 +454,14 @@ class PostgresDynamicToolRepository:
         return updated
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
-        """Delete a blueprint by id; ``True`` iff a row was removed."""
+        """Delete a blueprint by id; ``True`` iff a row was removed.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = "DELETE FROM dynamic_tools WHERE id = %s"
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -429,7 +481,14 @@ class PostgresDynamicToolRepository:
 
 
 def _coerce_update_ts(value: object) -> datetime:
-    """Normalise a transition timestamp kwarg to an aware-UTC datetime."""
+    """Normalise a transition timestamp kwarg to an aware-UTC datetime.
+
+    Returns:
+        Result of type ``datetime``.
+
+    Raises:
+        QueryError: If the database query fails.
+    """
     if not isinstance(value, datetime):
         msg = f"transition timestamp must be a datetime, got {type(value).__name__}"
         raise QueryError(msg)
@@ -441,6 +500,12 @@ def _coerce_validation(value: object) -> Jsonb | None:
 
     ``None`` is passed through so callers can explicitly clear the column;
     everything else must be a :class:`ToolValidationResult`.
+
+    Returns:
+        The matching value, or ``None`` when absent.
+
+    Raises:
+        QueryError: If the database query fails.
     """
     if value is None:
         return None

@@ -56,7 +56,11 @@ ON CONFLICT(run_id) DO UPDATE SET
 
 
 def _row_to_run(row: aiosqlite.Row) -> ResearchRun:
-    """Reconstruct a :class:`ResearchRun` from its persisted JSON blob."""
+    """Reconstruct a :class:`ResearchRun` from its persisted JSON blob.
+
+    Returns:
+        Result of type ``ResearchRun``.
+    """
     return ResearchRun.model_validate_json(str(row["run_json"]))
 
 
@@ -75,6 +79,11 @@ class SQLiteResearchRunRepository:
 
     @staticmethod
     def _row_params(entity: ResearchRun) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            The matching collection.
+        """
         return (
             entity.run_id,
             entity.brief_id,
@@ -85,6 +94,7 @@ class SQLiteResearchRunRepository:
         )
 
     async def _safe_rollback(self, *, event: str) -> None:
+        """Safe rollback."""
         try:
             await self._db.rollback()
         except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
@@ -96,7 +106,11 @@ class SQLiteResearchRunRepository:
             )
 
     async def save(self, entity: ResearchRun) -> None:
-        """Persist a run row via upsert (PK ``run_id``)."""
+        """Persist a run row via upsert (PK ``run_id``).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 await self._db.execute(_UPSERT_SQL, self._row_params(entity))
@@ -113,7 +127,14 @@ class SQLiteResearchRunRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: ResearchRunKey) -> ResearchRun | None:
-        """Retrieve a run by ``run_id``."""
+        """Retrieve a run by ``run_id``.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT run_json FROM research_runs WHERE run_id = ?",
@@ -139,7 +160,14 @@ class SQLiteResearchRunRepository:
         return run
 
     async def delete(self, entity_id: ResearchRunKey) -> bool:
-        """Delete a run by ``run_id``."""
+        """Delete a run by ``run_id``.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -165,7 +193,14 @@ class SQLiteResearchRunRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ResearchRun, ...]:
-        """List all runs, most-recent first."""
+        """List all runs, most-recent first.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_RESEARCH_RUN_LIST_FAILED
         )
@@ -195,7 +230,14 @@ class SQLiteResearchRunRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ResearchRun, ...]:
-        """Return runs matching the filter, most-recent first."""
+        """Return runs matching the filter, most-recent first.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_RESEARCH_RUN_QUERY_FAILED
         )
@@ -227,7 +269,14 @@ class SQLiteResearchRunRepository:
         return runs
 
     async def count(self, filter_spec: ResearchRunFilter) -> int:
-        """Count runs matching the filter spec."""
+        """Count runs matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         where_sql, params = _build_query_sql(filter_spec)
         sql = f"SELECT COUNT(*) AS n {where_sql}"
         try:
@@ -251,7 +300,14 @@ class SQLiteResearchRunRepository:
         return count
 
     def _rows_to_tuple(self, rows: Iterable[aiosqlite.Row]) -> tuple[ResearchRun, ...]:
-        """Deserialise a row batch with one shared error path."""
+        """Deserialise a row batch with one shared error path.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             runs = tuple(_row_to_run(row) for row in rows)
         except (ValueError, ValidationError, KeyError) as exc:
@@ -270,6 +326,9 @@ def _build_query_sql(filter_spec: ResearchRunFilter) -> tuple[str, tuple[object,
     """Compose the ``FROM ... WHERE`` fragment for ``query`` / ``count``.
 
     The Postgres repo has its own ``%s``-placeholder twin of this helper.
+
+    Returns:
+        The matching collection.
     """
     conditions: list[str] = []
     params: list[object] = []

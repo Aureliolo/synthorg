@@ -98,7 +98,11 @@ _ALLOWED_TRANSITION_KEYS = frozenset(
 
 
 def _decode_str_tuple(raw: object) -> tuple[NotBlankStr, ...]:
-    """Decode a JSON array column into a tuple of non-blank strings."""
+    """Decode a JSON array column into a tuple of non-blank strings.
+
+    Returns:
+        The matching collection.
+    """
     if raw is None:
         return ()
     decoded = json.loads(str(raw))
@@ -106,12 +110,20 @@ def _decode_str_tuple(raw: object) -> tuple[NotBlankStr, ...]:
 
 
 def _encode_str_tuple(values: tuple[str, ...]) -> str:
-    """Encode a string tuple as a deterministic JSON array."""
+    """Encode a string tuple as a deterministic JSON array.
+
+    Returns:
+        Result of type ``str``.
+    """
     return json.dumps(list(values))
 
 
 def _as_iso(value: object) -> str | None:
-    """Normalise a timestamp update value to an ISO-8601 UTC string."""
+    """Normalise a timestamp update value to an ISO-8601 UTC string.
+
+    Returns:
+        The matching value, or ``None`` when absent.
+    """
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -120,7 +132,14 @@ def _as_iso(value: object) -> str | None:
 
 
 def _row_to_charter(row: dict[str, Any]) -> ProjectCharter:
-    """Convert a Postgres dict row into a :class:`ProjectCharter`."""
+    """Convert a Postgres dict row into a :class:`ProjectCharter`.
+
+    Returns:
+        Result of type ``ProjectCharter``.
+
+    Raises:
+        QueryError: If the database query fails.
+    """
     try:
         deadline_raw = row["envelope_deadline"]
         approved_at_raw = row["approved_at"]
@@ -206,7 +225,11 @@ def _row_to_charter(row: dict[str, Any]) -> ProjectCharter:
 
 
 def _build_where(filter_spec: CharterFilterSpec) -> tuple[str, list[object]]:
-    """Build the WHERE clause + bound params from a filter spec."""
+    """Build the WHERE clause + bound params from a filter spec.
+
+    Returns:
+        The matching collection.
+    """
     clauses: list[str] = []
     params: list[object] = []
     if filter_spec.status is not None:
@@ -226,7 +249,11 @@ def _build_where(filter_spec: CharterFilterSpec) -> tuple[str, list[object]]:
 
 
 def _validate_update_keys(updates: dict[str, object]) -> None:
-    """Reject unknown ``transition_if`` update keys."""
+    """Reject unknown ``transition_if`` update keys.
+
+    Raises:
+        QueryError: If the database query fails.
+    """
     unknown = sorted(set(updates) - _ALLOWED_TRANSITION_KEYS)
     if unknown:
         msg = f"transition_if rejects unknown update keys: {unknown!r}"
@@ -235,7 +262,11 @@ def _validate_update_keys(updates: dict[str, object]) -> None:
 
 
 def _charter_save_params(entity: ProjectCharter) -> tuple[object, ...]:
-    """Flatten a charter into the positional upsert params."""
+    """Flatten a charter into the positional upsert params.
+
+    Returns:
+        The matching collection.
+    """
     return (
         entity.id,
         entity.conversation_id,
@@ -285,7 +316,12 @@ class PostgresCharterRepository:
         self._pool = pool
 
     async def save(self, entity: ProjectCharter) -> None:
-        """Upsert a charter row."""
+        """Upsert a charter row.
+
+        Raises:
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
         params = _charter_save_params(entity)
         try:
             async with self._pool.connection() as conn:
@@ -319,7 +355,14 @@ class PostgresCharterRepository:
             raise QueryError(msg) from exc
 
     async def get(self, entity_id: NotBlankStr) -> ProjectCharter | None:
-        """Get a charter by id, or ``None`` if not found."""
+        """Get a charter by id, or ``None`` if not found.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = f"SELECT {_SELECT_COLS} FROM project_charters WHERE id = %s"  # noqa: S608
         try:
             async with (
@@ -350,7 +393,14 @@ class PostgresCharterRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ProjectCharter, ...]:
-        """List charters newest-first."""
+        """List charters newest-first.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CHARTER_FAILED
         )
@@ -388,7 +438,14 @@ class PostgresCharterRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ProjectCharter, ...]:
-        """Return charters matching the spec, newest-first (paginated)."""
+        """Return charters matching the spec, newest-first (paginated).
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CHARTER_FAILED
         )
@@ -424,7 +481,14 @@ class PostgresCharterRepository:
         return items
 
     async def count(self, filter_spec: CharterFilterSpec) -> int:
-        """Count charters matching the filter spec."""
+        """Count charters matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         where, params = _build_where(filter_spec)
         sql = (
             "SELECT COUNT(*) FROM project_charters "  # noqa: S608
@@ -453,7 +517,15 @@ class PostgresCharterRepository:
         to_state: CharterStatus,
         **updates: object,
     ) -> bool:
-        """Atomic compare-and-set for the charter lifecycle state."""
+        """Atomic compare-and-set for the charter lifecycle state.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
         _validate_update_keys(updates)
         sql = (
             "UPDATE project_charters SET "
@@ -509,7 +581,14 @@ class PostgresCharterRepository:
         return rowcount > 0
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
-        """Delete a charter by id."""
+        """Delete a charter by id.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = "DELETE FROM project_charters WHERE id = %s"
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

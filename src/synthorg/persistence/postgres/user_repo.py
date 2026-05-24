@@ -76,6 +76,9 @@ def _classify_postgres_user_error(exc: psycopg.Error) -> str | None:
     for unique/foreign-key violations.  For trigger-raised exceptions
     the constraint name is usually empty, so we fall back to matching
     the error message against our known trigger messages.
+
+    Returns:
+        The matching value, or ``None`` when absent.
     """
     constraint = getattr(getattr(exc, "diag", None), "constraint_name", "") or ""
     if constraint in _PG_CONSTRAINT_MAP:
@@ -99,6 +102,9 @@ def _row_to_user(row: dict[str, Any]) -> User:
     Postgres returns JSONB as Python list/dict (no json.loads needed),
     TIMESTAMPTZ as timezone-aware datetime (no fromisoformat needed),
     and BOOLEAN as bool.  The only work left is enum construction.
+
+    Returns:
+        Result of type ``User``.
     """
     data = dict(row)
     data["role"] = HumanRole(data["role"])
@@ -109,7 +115,11 @@ def _row_to_user(row: dict[str, Any]) -> User:
 
 
 def _row_to_api_key(row: dict[str, Any]) -> ApiKey:
-    """Reconstruct an ``ApiKey`` from a Postgres dict_row."""
+    """Reconstruct an ``ApiKey`` from a Postgres dict_row.
+
+    Returns:
+        Result of type ``ApiKey``.
+    """
     data = dict(row)
     data["role"] = HumanRole(data["role"])
     return ApiKey.model_validate(data)
@@ -126,7 +136,12 @@ class PostgresUserRepository:
         self._pool = pool
 
     async def save(self, user: User) -> None:
-        """Persist a user via upsert."""
+        """Persist a user via upsert.
+
+        Raises:
+            QueryError: If the database query fails.
+            ConstraintViolationError: If a database constraint is violated.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -174,7 +189,14 @@ class PostgresUserRepository:
             raise QueryError(msg) from exc
 
     async def get(self, user_id: NotBlankStr) -> User | None:
-        """Retrieve a user by primary key."""
+        """Retrieve a user by primary key.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -209,7 +231,14 @@ class PostgresUserRepository:
         return user
 
     async def get_by_username(self, username: NotBlankStr) -> User | None:
-        """Retrieve a user by unique username."""
+        """Retrieve a user by unique username.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -301,7 +330,14 @@ class PostgresUserRepository:
         after_id: NotBlankStr | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[User, ...]:
-        """Keyset page of human users with ``id > after_id``."""
+        """Keyset page of human users with ``id > after_id``.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
         sql = "SELECT * FROM users WHERE role != %s"
         params: list[object] = [HumanRole.SYSTEM.value]
@@ -430,7 +466,14 @@ class PostgresUserRepository:
         return result
 
     async def count_by_role(self, role: HumanRole) -> int:
-        """Return the number of users with the given role."""
+        """Return the number of users with the given role.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -452,7 +495,15 @@ class PostgresUserRepository:
         return result
 
     async def delete(self, user_id: NotBlankStr) -> bool:
-        """Delete a user by primary key. The system user cannot be deleted."""
+        """Delete a user by primary key. The system user cannot be deleted.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+            ConstraintViolationError: If a database constraint is violated.
+        """
         if is_system_user(user_id):
             msg = "System user cannot be deleted"
             logger.warning(PERSISTENCE_USER_DELETE_FAILED, user_id=user_id, error=msg)
@@ -497,7 +548,11 @@ class PostgresApiKeyRepository:
         self._pool = pool
 
     async def save(self, key: ApiKey) -> None:
-        """Persist an API key via upsert."""
+        """Persist an API key via upsert.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -536,7 +591,14 @@ class PostgresApiKeyRepository:
             raise QueryError(msg) from exc
 
     async def get(self, key_id: NotBlankStr) -> ApiKey | None:
-        """Retrieve an API key by primary key."""
+        """Retrieve an API key by primary key.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -571,7 +633,14 @@ class PostgresApiKeyRepository:
         return key
 
     async def get_by_hash(self, key_hash: NotBlankStr) -> ApiKey | None:
-        """Retrieve an API key by its HMAC-SHA256 hash."""
+        """Retrieve an API key by its HMAC-SHA256 hash.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -750,7 +819,14 @@ class PostgresApiKeyRepository:
         return result
 
     async def delete(self, key_id: NotBlankStr) -> bool:
-        """Delete an API key by primary key."""
+        """Delete an API key by primary key.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute("DELETE FROM api_keys WHERE id = %s", (key_id,))

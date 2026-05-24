@@ -49,12 +49,23 @@ logger = get_logger(__name__)
 
 
 def _tags_to_json(tags: tuple[NotBlankStr, ...]) -> str:
-    """Serialize tags tuple to sorted JSON array."""
+    """Serialize tags tuple to sorted JSON array.
+
+    Returns:
+        Result of type ``str``.
+    """
     return json.dumps(sorted(tags))
 
 
 def _tags_from_json(raw: str) -> tuple[NotBlankStr, ...]:
-    """Deserialize JSON array to tags tuple."""
+    """Deserialize JSON array to tags tuple.
+
+    Returns:
+        The matching collection.
+
+    Raises:
+        OrgMemoryQueryError: If the underlying call raises.
+    """
     parsed = json.loads(raw)
     if not isinstance(parsed, list):
         msg = f"Tags must be a JSON array, got {type(parsed).__name__}"
@@ -68,7 +79,14 @@ def _tags_from_json(raw: str) -> tuple[NotBlankStr, ...]:
 
 
 def _snapshot_row_to_org_fact(row: Any) -> OrgFact:
-    """Reconstruct an ``OrgFact`` from a snapshot row."""
+    """Reconstruct an ``OrgFact`` from a snapshot row.
+
+    Returns:
+        Result of type ``OrgFact``.
+
+    Raises:
+        OrgMemoryQueryError: If the underlying call raises.
+    """
     try:
         created_at = coerce_row_timestamp(row["created_at"])
         author = OrgFactAuthor(
@@ -110,7 +128,14 @@ def _snapshot_row_to_org_fact(row: Any) -> OrgFact:
 
 
 def _row_to_operation_log_entry(row: Any) -> OperationLogEntry:
-    """Reconstruct an ``OperationLogEntry`` from a database row."""
+    """Reconstruct an ``OperationLogEntry`` from a database row.
+
+    Returns:
+        Result of type ``OperationLogEntry``.
+
+    Raises:
+        OrgMemoryQueryError: If the underlying call raises.
+    """
     try:
         return OperationLogEntry(
             operation_id=row["operation_id"],
@@ -151,7 +176,14 @@ def _row_to_operation_log_entry(row: Any) -> OperationLogEntry:
 
 
 def _row_to_snapshot(row: Any) -> OperationLogSnapshot:
-    """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row."""
+    """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row.
+
+    Returns:
+        Result of type ``OperationLogSnapshot``.
+
+    Raises:
+        OrgMemoryQueryError: If the underlying call raises.
+    """
     try:
         op_type: str = row["operation_type"]
         retracted_at = (
@@ -227,7 +259,11 @@ class SQLiteOrgFactRepository:
         author_is_human: bool,
         author_autonomy_level: AutonomyLevel | None,
     ) -> tuple[int, datetime]:
-        """Append an operation within the caller's transaction."""
+        """Append an operation within the caller's transaction.
+
+        Returns:
+            The matching collection.
+        """
         operation_id = str(uuid.uuid4())
         now = datetime.now(UTC)
         cursor = await db.execute(
@@ -263,7 +299,11 @@ class SQLiteOrgFactRepository:
         return next_version, now
 
     async def save(self, fact: OrgFact) -> None:
-        """Publish a fact: append PUBLISH to log, upsert snapshot."""
+        """Publish a fact: append PUBLISH to log, upsert snapshot.
+
+        Raises:
+            OrgMemoryWriteError: If the underlying call raises.
+        """
         db = self._db
         # Marshal every Python value into its SQLite-bound shape BEFORE
         # the transaction opens.  ``format_iso_utc`` raises
@@ -354,7 +394,14 @@ class SQLiteOrgFactRepository:
         *,
         author: OrgFactAuthor,
     ) -> bool:
-        """Retract a fact: append RETRACT to log, mark snapshot."""
+        """Retract a fact: append RETRACT to log, mark snapshot.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            OrgMemoryWriteError: If the underlying call raises.
+        """
         db = self._db
         async with self._write_context():
             try:
@@ -411,7 +458,14 @@ class SQLiteOrgFactRepository:
                 return True
 
     async def get(self, fact_id: NotBlankStr) -> OrgFact | None:
-        """Get an active fact by its ID."""
+        """Get an active fact by its ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            OrgMemoryQueryError: If the underlying call raises.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM org_facts_snapshot "
@@ -440,7 +494,14 @@ class SQLiteOrgFactRepository:
         limit: int = _DEFAULT_LIST_LIMIT_FACTS,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
-        """Query active facts by category and/or text content."""
+        """Query active facts by category and/or text content.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            OrgMemoryQueryError: If the underlying call raises.
+        """
         db = self._db
         limit = max(1, min(limit, 100))
         offset = max(0, int(offset))
@@ -492,7 +553,14 @@ class SQLiteOrgFactRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
-        """List all active facts in a category, optionally paginated."""
+        """List all active facts in a category, optionally paginated.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            OrgMemoryQueryError: If the underlying call raises.
+        """
         sql = (
             "SELECT * FROM org_facts_snapshot "
             "WHERE category = ? AND retracted_at IS NULL "
@@ -539,6 +607,12 @@ class SQLiteOrgFactRepository:
         page in ``fact_id`` order so a cursor walk is repeatable
         across the same snapshot; callers needing the whole snapshot
         drain via :func:`synthorg.persistence._shared.collect_all`.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            OrgMemoryQueryError: If the underlying call raises.
         """
         limit = validate_pagination_args(limit, offset, event=ORG_MEMORY_QUERY_FAILED)
         db = self._db
@@ -625,6 +699,12 @@ LIMIT ? OFFSET ?
         Version is unique per fact so the ordering is already stable;
         callers needing the full trail drain via
         :func:`synthorg.persistence._shared.collect_all`.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            OrgMemoryQueryError: If the underlying call raises.
         """
         limit = validate_pagination_args(
             limit, offset, event=ORG_MEMORY_QUERY_FAILED, fact_id=fact_id

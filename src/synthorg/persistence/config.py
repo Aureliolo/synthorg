@@ -60,6 +60,12 @@ class SQLiteConfig(BaseModel):
         Paths containing ``..`` components are rejected to prevent
         path-traversal attacks in multi-tenant configs.  Absolute paths
         are allowed for operational flexibility.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails validation.
         """
         if self.path == ":memory:":
             return self
@@ -207,7 +213,14 @@ class PostgresConfig(BaseModel):
     @field_validator("cost_records_chunk_interval", "audit_entries_chunk_interval")
     @classmethod
     def _validate_chunk_interval(cls, value: str) -> str:
-        """Reject malformed Postgres interval literals at config time."""
+        """Reject malformed Postgres interval literals at config time.
+
+        Returns:
+            Result of type ``str``.
+
+        Raises:
+            ValueError: If an argument fails validation.
+        """
         if not cls._INTERVAL_RE.match(value.strip()):
             msg = (
                 f"Invalid Postgres interval: {value!r}. "
@@ -225,7 +238,14 @@ class PostgresConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_pool_sizes(self) -> Self:
-        """Ensure ``pool_max_size`` is not smaller than ``pool_min_size``."""
+        """Ensure ``pool_max_size`` is not smaller than ``pool_min_size``.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails validation.
+        """
         if self.pool_max_size < self.pool_min_size:
             msg = (
                 f"pool_max_size ({self.pool_max_size}) must be >= "
@@ -271,7 +291,14 @@ class PersistenceConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_backend_name(self) -> Self:
-        """Ensure backend is known and backend-specific config is present."""
+        """Ensure backend is known and backend-specific config is present.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails validation.
+        """
         if self.backend not in self._VALID_BACKENDS:
             msg = (
                 f"Unknown persistence backend {self.backend!r}. "

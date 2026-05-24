@@ -107,7 +107,14 @@ class PostgresRiskOverrideRepository:
         self,
         override_id: NotBlankStr,
     ) -> RiskTierOverride | None:
-        """Retrieve an override by ID."""
+        """Retrieve an override by ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -147,7 +154,14 @@ class PostgresRiskOverrideRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[RiskTierOverride, ...]:
-        """List overrides ordered by id ascending (generic IdKeyed surface)."""
+        """List overrides ordered by id ascending (generic IdKeyed surface).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED
         )
@@ -188,7 +202,14 @@ class PostgresRiskOverrideRepository:
         return tuple(results)
 
     async def delete(self, override_id: NotBlankStr) -> bool:
-        """Delete an override by ID."""
+        """Delete an override by ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -220,6 +241,9 @@ class PostgresRiskOverrideRepository:
 
         Raises:
             QueryError: If the query or pagination validation fails.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED
@@ -274,7 +298,14 @@ class PostgresRiskOverrideRepository:
         revoked_by: NotBlankStr,
         revoked_at: AwareDatetime,
     ) -> bool:
-        """Mark an override as revoked."""
+        """Mark an override as revoked.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         revoked_at_utc = normalize_utc(revoked_at)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -300,7 +331,11 @@ class PostgresRiskOverrideRepository:
 
 
 def _row_to_override(row: dict[str, object]) -> RiskTierOverride:
-    """Convert a Postgres row to a RiskTierOverride."""
+    """Convert a Postgres row to a RiskTierOverride.
+
+    Returns:
+        Result of type ``RiskTierOverride``.
+    """
     return RiskTierOverride(
         id=str(row["id"]),
         action_type=str(row["action_type"]),

@@ -33,7 +33,11 @@ if TYPE_CHECKING:
 
 
 def _import_dict_row() -> Any:
-    """Lazily resolve ``psycopg.rows.dict_row``."""
+    """Lazily resolve ``psycopg.rows.dict_row``.
+
+    Returns:
+        Result of type ``Any``.
+    """
     from psycopg.rows import dict_row  # noqa: PLC0415
 
     return dict_row
@@ -82,6 +86,12 @@ class PostgresIdempotencyRepository:
         ``_CLAIM_INSERT_RETRIES`` times. Returning FRESH without a
         durable row would let ``complete``/``fail`` UPDATE zero rows
         and silently lose the cached response.
+
+        Returns:
+            Result of type ``IdempotencyClaim``.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         expires_at = now + timedelta(seconds=ttl_seconds)
         last_status: str | None = None
@@ -180,6 +190,9 @@ class PostgresIdempotencyRepository:
         Returns ``True`` when the insert landed (we own the lease);
         ``False`` on conflict (the caller must SELECT FOR UPDATE to
         decide what to do with the existing row).
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
         """
         await cur.execute(
             "INSERT INTO idempotency_keys "
@@ -207,6 +220,9 @@ class PostgresIdempotencyRepository:
         - ``COMPLETED`` + non-None ``cached_str``
         - ``IN_FLIGHT`` + ``None``
         - ``FRESH`` + ``None`` (caller must run the reclaim UPDATE)
+
+        Returns:
+            The matching value, or ``None`` when absent.
         """
         await cur.execute(
             "SELECT status, response_body, expires_at "
@@ -274,6 +290,12 @@ class PostgresIdempotencyRepository:
         with the SQLite backend). Returns ``True`` when the row's
         stored token matched and the UPDATE landed; ``False`` when
         the lease has rotated.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -317,6 +339,12 @@ class PostgresIdempotencyRepository:
 
         Same status-gate as :meth:`complete`: only an in-flight row
         with the matching lease token can transition to failed.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -345,7 +373,14 @@ class PostgresIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
     ) -> IdempotencyRecord | None:
-        """Fetch the persisted record verbatim, or None when absent."""
+        """Fetch the persisted record verbatim, or None when absent.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -406,7 +441,14 @@ class PostgresIdempotencyRepository:
             raise QueryError(msg) from exc
 
     async def cleanup_expired(self, now: AwareDatetime) -> int:
-        """Delete expired rows and return the count removed."""
+        """Delete expired rows and return the count removed.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

@@ -48,7 +48,11 @@ class SQLiteParkedContextRepository:
         self._write_context = write_context
 
     async def save(self, context: ParkedContext) -> None:
-        """Persist a parked context."""
+        """Persist a parked context.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 data = context.model_dump(mode="json")
@@ -77,7 +81,14 @@ INSERT OR REPLACE INTO parked_contexts (
                 raise QueryError(msg) from exc
 
     async def get(self, parked_id: str) -> ParkedContext | None:
-        """Retrieve a parked context by ID."""
+        """Retrieve a parked context by ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT id, execution_id, agent_id, task_id, approval_id, "
@@ -111,7 +122,14 @@ INSERT OR REPLACE INTO parked_contexts (
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ParkedContext, ...]:
-        """List parked contexts in id order."""
+        """List parked contexts in id order.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED
         )
@@ -137,7 +155,14 @@ INSERT OR REPLACE INTO parked_contexts (
         return results
 
     async def get_by_approval(self, approval_id: str) -> ParkedContext | None:
-        """Retrieve a parked context by approval ID."""
+        """Retrieve a parked context by approval ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT id, execution_id, agent_id, task_id, approval_id, "
@@ -172,6 +197,12 @@ INSERT OR REPLACE INTO parked_contexts (
 
         ``id`` is the stable secondary sort so rows sharing a
         ``parked_at`` page deterministically.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit,
@@ -209,7 +240,14 @@ INSERT OR REPLACE INTO parked_contexts (
         return results
 
     async def delete(self, parked_id: str) -> bool:
-        """Delete a parked context by ID."""
+        """Delete a parked context by ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -240,6 +278,9 @@ INSERT OR REPLACE INTO parked_contexts (
 
         Raises:
             QueryError: If the row cannot be deserialized.
+
+        Returns:
+            Result of type ``ParkedContext``.
         """
         try:
             raw_meta = row.get("metadata")

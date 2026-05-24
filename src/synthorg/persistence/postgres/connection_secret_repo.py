@@ -41,7 +41,11 @@ class PostgresConnectionSecretRepository:
         encrypted_value: bytes,
         key_version: int,
     ) -> None:
-        """Persist an encrypted secret blob (upsert by ``secret_id``)."""
+        """Persist an encrypted secret blob (upsert by ``secret_id``).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         now = datetime.now(UTC)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -70,7 +74,14 @@ class PostgresConnectionSecretRepository:
             raise QueryError(msg) from exc
 
     async def retrieve(self, secret_id: NotBlankStr) -> bytes | None:
-        """Return the raw encrypted bytes, or ``None`` if not stored."""
+        """Return the raw encrypted bytes, or ``None`` if not stored.
+
+        Returns:
+            The matching value, or ``None`` when absent.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -93,7 +104,14 @@ class PostgresConnectionSecretRepository:
         return bytes(row[0])
 
     async def delete(self, secret_id: NotBlankStr) -> bool:
-        """Delete an encrypted secret; return ``True`` if a row was removed."""
+        """Delete an encrypted secret; return ``True`` if a row was removed.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

@@ -42,7 +42,14 @@ class PostgresSeenClaimsRepository:
         *,
         idempotency_key: NotBlankStr,
     ) -> bool:
-        """Return ``True`` when a row for ``idempotency_key`` exists."""
+        """Return ``True`` when a row for ``idempotency_key`` exists.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -69,7 +76,14 @@ class PostgresSeenClaimsRepository:
         now: AwareDatetime,
         ttl_seconds: float,
     ) -> bool:
-        """Insert the dedup row; return ``True`` only on first write."""
+        """Insert the dedup row; return ``True`` only on first write.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         seen_at = normalize_utc(now)
         expires_at = seen_at + timedelta(seconds=ttl_seconds)
         try:
@@ -103,7 +117,15 @@ class PostgresSeenClaimsRepository:
         return inserted
 
     async def prune_expired(self, now: AwareDatetime) -> int:
-        """Delete rows past their ``expires_at`` boundary."""
+        """Delete rows past their ``expires_at`` boundary.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
+            Error: If the underlying driver call fails.
+        """
         cutoff = normalize_utc(now)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

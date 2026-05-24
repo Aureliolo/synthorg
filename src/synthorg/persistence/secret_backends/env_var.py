@@ -38,7 +38,11 @@ class EnvVarSecretBackend:
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier."""
+        """Human-readable backend identifier.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+        """
         return "env_var"
 
     async def store(
@@ -46,7 +50,11 @@ class EnvVarSecretBackend:
         secret_id: NotBlankStr,
         value: bytes,  # noqa: ARG002
     ) -> None:
-        """Not supported -- environment is read-only."""
+        """Not supported -- environment is read-only.
+
+        Raises:
+            SecretStorageError: If the secret store rejects the write.
+        """
         logger.warning(
             SECRET_BACKEND_UNAVAILABLE,
             backend=self.backend_name,
@@ -57,7 +65,11 @@ class EnvVarSecretBackend:
         raise SecretStorageError(msg)
 
     async def retrieve(self, secret_id: NotBlankStr) -> bytes | None:
-        """Read a secret from the environment."""
+        """Read a secret from the environment.
+
+        Returns:
+            The matching value, or ``None`` when absent.
+        """
         env_key = f"{self._prefix}{secret_id}"
         raw = os.environ.get(env_key)
         if raw is None:
@@ -74,7 +86,11 @@ class EnvVarSecretBackend:
         self,
         secret_id: NotBlankStr,
     ) -> bool:
-        """Not supported -- environment is read-only."""
+        """Not supported -- environment is read-only.
+
+        Raises:
+            SecretStorageError: If the secret store rejects the write.
+        """
         logger.warning(
             SECRET_BACKEND_UNAVAILABLE,
             backend=self.backend_name,
@@ -89,7 +105,11 @@ class EnvVarSecretBackend:
         old_id: NotBlankStr,
         new_value: bytes,  # noqa: ARG002
     ) -> NotBlankStr:
-        """Not supported -- environment is read-only."""
+        """Not supported -- environment is read-only.
+
+        Raises:
+            SecretStorageError: If the secret store rejects the write.
+        """
         logger.warning(
             SECRET_BACKEND_UNAVAILABLE,
             backend=self.backend_name,

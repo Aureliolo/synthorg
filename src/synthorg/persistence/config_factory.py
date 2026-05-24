@@ -42,6 +42,9 @@ def build_sqlite_persistence_config(*, path: str) -> PersistenceConfig:
     Callers (typically ``api/app.py`` auto-wire) get back the abstract
     ``PersistenceConfig`` envelope so they never have to import the
     concrete ``SQLiteConfig`` class directly.
+
+    Returns:
+        Result of type ``PersistenceConfig``.
     """
     return PersistenceConfig(
         backend="sqlite",
@@ -54,7 +57,11 @@ def _fail_url(
     reason: str,
     cause: Exception | None = None,
 ) -> NoReturn:
-    """Log and raise for a Postgres-URL configuration failure."""
+    """Log and raise for a Postgres-URL configuration failure.
+
+    Raises:
+        ValueError: If an argument fails validation.
+    """
     logger.warning(API_APP_STARTUP, error=msg, reason=reason)
     raise ValueError(msg) from cause
 
@@ -71,6 +78,9 @@ def _validate_postgres_url(db_url: str) -> tuple[str, int, str, str, str]:
         ValueError (via :func:`_fail_url`) on any structural problem
         (parse failure, query parameters, wrong scheme, missing
         host/credentials/database, port 0).
+
+    Returns:
+        The matching collection.
     """
     try:
         parsed = urlparse(db_url)
@@ -136,6 +146,9 @@ def _resolve_postgres_port(parsed_port: int | None) -> int:
     the default port instead of failing fast. Distinguishing the two
     cases keeps the default-port convenience for ``...@host/db`` while
     surfacing ``...@host:0/db`` as a configuration error.
+
+    Returns:
+        Numeric result of the operation.
     """
     if parsed_port is None:
         return 5432
@@ -154,6 +167,9 @@ def _normalize_ssl_mode_kwargs(ssl_mode_override: str | None) -> dict[str, Any]:
     Empty / ``None`` overrides return an empty dict so the caller's
     ``**ssl_kwargs`` spread leaves the :class:`PostgresConfig` default
     (``"require"``) in place.
+
+    Returns:
+        Result of type ``dict[str, Any]``.
     """
     if not ssl_mode_override:
         return {}
@@ -184,6 +200,9 @@ def build_postgres_persistence_config_from_url(
     backend talks to Postgres over an internal network without TLS,
     callers can pass ``ssl_mode_override`` (typically sourced from
     ``SYNTHORG_POSTGRES_SSL_MODE``).
+
+    Returns:
+        Result of type ``PersistenceConfig``.
     """
     host, port, database, username, password = _validate_postgres_url(db_url)
     ssl_kwargs = _normalize_ssl_mode_kwargs(ssl_mode_override)
@@ -204,6 +223,9 @@ def build_filesystem_artifact_storage(*, data_dir: Path) -> ArtifactStorageBacke
     Returns the ``ArtifactStorageBackend`` protocol surface so callers
     never have to import the concrete ``FileSystemArtifactStorage``
     class.
+
+    Returns:
+        Result of type ``ArtifactStorageBackend``.
     """
     return FileSystemArtifactStorage(data_dir=data_dir)
 
@@ -217,6 +239,9 @@ def normalize_ssl_mode_value(raw: str | None) -> str | None:
     wiring; this helper stays env-agnostic so the persistence package
     can be reasoned about without its config decisions hidden behind a
     process-wide environment side-effect.
+
+    Returns:
+        The matching value, or ``None`` when absent.
     """
     if raw is None:
         return None

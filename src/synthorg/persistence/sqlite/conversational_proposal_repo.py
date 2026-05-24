@@ -82,6 +82,9 @@ def _row_to_proposal(row: Row) -> ConversationalProposal:
 
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
+
+    Returns:
+        Result of type ``ConversationalProposal``.
     """
     try:
         return ConversationalProposal(
@@ -106,7 +109,11 @@ def _row_to_proposal(row: Row) -> ConversationalProposal:
 def _build_where(
     filter_spec: ConversationalProposalFilterSpec,
 ) -> tuple[str, list[object]]:
-    """Build the WHERE clause + bound params from a filter spec."""
+    """Build the WHERE clause + bound params from a filter spec.
+
+    Returns:
+        The matching collection.
+    """
     clauses: list[str] = []
     params: list[object] = []
     if filter_spec.conversation_id is not None:
@@ -187,6 +194,9 @@ class SQLiteConversationalProposalRepository:
 
         Raises:
             QueryError: If the database query fails.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         sql = (
             f"SELECT {_SELECT_COLS} FROM conversational_proposals "  # noqa: S608
@@ -222,6 +232,9 @@ class SQLiteConversationalProposalRepository:
         Raises:
             QueryError: If the database query fails or pagination args
                 are invalid.
+
+        Returns:
+            The matching entities.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED
@@ -263,6 +276,9 @@ class SQLiteConversationalProposalRepository:
         Raises:
             QueryError: If the database query fails or pagination args
                 are invalid.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED
@@ -299,6 +315,9 @@ class SQLiteConversationalProposalRepository:
 
         Raises:
             QueryError: If the database query fails.
+
+        Returns:
+            Number of matching rows.
         """
         where, params = _build_where(filter_spec)
         sql = (
@@ -381,6 +400,9 @@ class SQLiteConversationalProposalRepository:
 
         Raises:
             QueryError: If the database operation fails.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
         """
         sql = "DELETE FROM conversational_proposals WHERE id = ?"
         async with self._write_context():

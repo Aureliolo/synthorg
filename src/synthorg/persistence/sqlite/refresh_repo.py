@@ -64,7 +64,11 @@ class SQLiteRefreshTokenRepository:
         user_id: str,
         expires_at: datetime,
     ) -> None:
-        """Store a new refresh token."""
+        """Store a new refresh token.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         now = datetime.now(UTC)
         async with self._write_context():
             try:
@@ -114,6 +118,12 @@ class SQLiteRefreshTokenRepository:
         post-commit check would burn the token even on a transient
         revocation-store error, leaving the user with no path to
         recover except a full re-authentication.
+
+        Returns:
+            Result of type ``RefreshConsumeOutcome``.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         now = format_iso_utc(datetime.now(UTC))
         revoked = False
@@ -189,7 +199,14 @@ class SQLiteRefreshTokenRepository:
         )
 
     async def revoke_by_session(self, session_id: str) -> int:
-        """Mark all refresh tokens for a session as used."""
+        """Mark all refresh tokens for a session as used.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -216,7 +233,14 @@ class SQLiteRefreshTokenRepository:
         return count
 
     async def revoke_by_user(self, user_id: str) -> int:
-        """Mark all refresh tokens for a user as used."""
+        """Mark all refresh tokens for a user as used.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -249,6 +273,12 @@ class SQLiteRefreshTokenRepository:
         ``API_AUTH_REFRESH_CLEANUP`` when count > 0; this repo only
         returns the count per the persistence-boundary rule:
         repositories do not emit operational events.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         now = format_iso_utc(datetime.now(UTC))
         async with self._write_context():

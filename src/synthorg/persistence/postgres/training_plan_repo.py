@@ -41,6 +41,9 @@ def _row_to_plan(row: dict[str, Any]) -> TrainingPlan:
 
     Raises:
         QueryError: If deserialization fails.
+
+    Returns:
+        Result of type ``TrainingPlan``.
     """
     data = dict(row)
     try:
@@ -97,7 +100,11 @@ ON CONFLICT(id) DO UPDATE SET
 
 
 def _plan_to_params(plan: TrainingPlan) -> tuple[object, ...]:
-    """Build the parameter tuple for the upsert SQL statement."""
+    """Build the parameter tuple for the upsert SQL statement.
+
+    Returns:
+        The matching collection.
+    """
     return (
         str(plan.id),
         str(plan.new_agent_id),
@@ -169,6 +176,9 @@ class PostgresTrainingPlanRepository:
 
         Returns:
             The plan, or ``None`` if not found.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with (
@@ -378,6 +388,9 @@ class PostgresTrainingPlanRepository:
 
         Returns:
             The latest pending plan, or ``None`` if none exists.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with (
@@ -468,6 +481,9 @@ LIMIT 1""",
         Returns:
             Tuple of plans ordered by ``created_at`` descending,
             capped at *limit* rows.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
         try:

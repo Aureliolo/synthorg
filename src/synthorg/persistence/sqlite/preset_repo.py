@@ -34,6 +34,12 @@ def _row_to_preset(row: Any, *, event: str) -> Preset:
     the repository's ``QueryError`` rather than letting a raw
     ``ValidationError`` / ``ValueError`` escape the persistence
     boundary.
+
+    Returns:
+        Result of type ``Preset``.
+
+    Raises:
+        QueryError: If the database query fails.
     """
     try:
         return Preset(
@@ -171,6 +177,9 @@ ON CONFLICT(name) DO UPDATE SET
 
         Raises:
             QueryError: If the database query fails.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(limit, offset, event=PRESET_CUSTOM_LIST_FAILED)
         try:
@@ -210,6 +219,9 @@ ON CONFLICT(name) DO UPDATE SET
 
         Raises:
             QueryError: If the database query fails.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
         """
         return await self.list_items(limit=limit, offset=offset)
 

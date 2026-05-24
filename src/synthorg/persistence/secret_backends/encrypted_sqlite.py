@@ -60,11 +60,23 @@ class EncryptedSqliteSecretBackend:
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier."""
+        """Human-readable backend identifier.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+        """
         return "encrypted_sqlite"
 
     @staticmethod
     def _init_fernet(env_var: str) -> Fernet:
+        """Init fernet.
+
+        Returns:
+            Result of type ``Fernet``.
+
+        Raises:
+            MasterKeyError: If the configured master key is missing or invalid.
+        """
         raw = os.environ.get(env_var, "").strip()
         if not raw:
             # Never include a generated key in the error text: the
@@ -95,6 +107,10 @@ class EncryptedSqliteSecretBackend:
         with the same ``secret_id`` already exists, its ciphertext is
         overwritten. Callers that need to detect overwrites must read
         first.
+
+        Raises:
+            SecretStorageError: If the secret store rejects the write.
+            MasterKeyError: If the configured master key is missing or invalid.
         """
         try:
             encrypted = self._fernet.encrypt(value)
@@ -128,7 +144,14 @@ class EncryptedSqliteSecretBackend:
             raise SecretStorageError(msg) from exc
 
     async def retrieve(self, secret_id: NotBlankStr) -> bytes | None:
-        """Retrieve and decrypt a secret."""
+        """Retrieve and decrypt a secret.
+
+        Returns:
+            The matching value, or ``None`` when absent.
+
+        Raises:
+            SecretRetrievalError: If decryption fails or the row is unreadable.
+        """
         try:
             async with aiosqlite.connect(self._db_path) as db:
                 cursor = await db.execute(
@@ -186,7 +209,14 @@ class EncryptedSqliteSecretBackend:
             raise SecretRetrievalError(msg) from exc
 
     async def delete(self, secret_id: NotBlankStr) -> bool:
-        """Delete a secret."""
+        """Delete a secret.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            SecretStorageError: If the secret store rejects the write.
+        """
         try:
             async with aiosqlite.connect(self._db_path) as db:
                 cursor = await db.execute(
@@ -226,6 +256,12 @@ class EncryptedSqliteSecretBackend:
         committed rotation. Rollback failures are embedded in the
         raised ``SecretRotationError`` so the caller can take
         manual cleanup action if needed.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+
+        Raises:
+            SecretRotationError: If rotation cannot complete cleanly.
         """
         new_id = str(uuid4())
         try:
@@ -279,7 +315,11 @@ class EncryptedSqliteSecretBackend:
         return new_id
 
     async def _rollback_new(self, new_id: NotBlankStr) -> str:
-        """Attempt to delete *new_id* after a failed rotation."""
+        """Attempt to delete *new_id* after a failed rotation.
+
+        Returns:
+            Result of type ``str``.
+        """
         try:
             await self.delete(new_id)
         except Exception as rb_exc:

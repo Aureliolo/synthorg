@@ -57,7 +57,14 @@ def ensure_pg_tools_available() -> None:
 
 
 def _resolve_binary(name: str) -> str:
-    """Look up *name* on PATH or raise :class:`PgToolUnavailableError`."""
+    """Look up *name* on PATH or raise :class:`PgToolUnavailableError`.
+
+    Returns:
+        Result of type ``str``.
+
+    Raises:
+        PgToolUnavailableError: If the underlying call raises.
+    """
     resolved = shutil.which(name)
     if resolved is None:
         msg = (
@@ -83,6 +90,9 @@ def _child_env(config: PostgresConfig) -> dict[str, str]:
     Copies the current environment so PATH / locale stay intact; sets
     ``PGPASSWORD`` so libpq picks it up without ever putting it on
     argv (where ``ps`` would expose it).
+
+    Returns:
+        Result of type ``dict[str, str]``.
     """
     env = os.environ.copy()
     env["PGPASSWORD"] = config.password.get_secret_value()
@@ -112,7 +122,11 @@ async def _close_and_unlink(output_path: Path, fp: IO[bytes]) -> None:
 def _raise_pg_tool_failed(
     binary: str, returncode: int | None, stderr: bytes
 ) -> NoReturn:
-    """Log ``BACKUP_COMPONENT_FAILED`` and raise ``PgToolFailedError``."""
+    """Log ``BACKUP_COMPONENT_FAILED`` and raise ``PgToolFailedError``.
+
+    Raises:
+        PgToolFailedError: If the underlying call raises.
+    """
     msg = (
         f"{binary} exited with code {returncode}: "
         f"{(stderr or b'').decode('utf-8', errors='replace').strip()}"
@@ -136,6 +150,9 @@ def _raise_pg_tool_spawn_failed(binary: str, exc: OSError) -> NoReturn:
     at runtime. Callers expect only :class:`PgToolUnavailableError`,
     :class:`PgToolFailedError`, and :class:`TimeoutError` per the
     public docstrings -- wrap the raw OS error so the contract holds.
+
+    Raises:
+        PgToolFailedError: If the underlying call raises.
     """
     msg = f"failed to spawn {binary}: {safe_error_description(exc)}"
     logger.warning(
@@ -164,6 +181,9 @@ async def _run_pg_tool_file(
     the process and remove the partially written dump before
     re-raising, so callers cannot mistake a failed dump for a valid
     empty one.
+
+    Returns:
+        Result of type ``bytes``.
     """
     # ``open()`` can block on slow / network-attached storage, so
     # offload to a thread to keep the event loop responsive.
@@ -214,6 +234,9 @@ async def _run_pg_tool_buffered(
     Raises :class:`PgToolFailedError` on a non-zero exit or a
     spawn-time ``OSError``; timeouts / cancellations terminate the
     process before re-raising.
+
+    Returns:
+        The matching collection.
     """
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -252,6 +275,9 @@ async def _run_pg_tool(
         PgToolFailedError: Non-zero exit or spawn-time ``OSError``.
         TimeoutError: Subprocess did not finish within
             ``timeout_seconds``.
+
+    Returns:
+        The matching collection.
     """
     if output_path is not None:
         stderr = await _run_pg_tool_file(
@@ -316,7 +342,11 @@ async def pg_dump_to_file(
 
 
 def _file_size(path: Path) -> int:
-    """Return ``path.stat().st_size`` (kept sync for ASYNC240)."""
+    """Return ``path.stat().st_size`` (kept sync for ASYNC240).
+
+    Returns:
+        Numeric result of the operation.
+    """
     return path.stat().st_size
 
 
@@ -379,6 +409,9 @@ async def pg_restore_list(
         PgToolUnavailableError: ``pg_restore`` is not on PATH.
         PgToolFailedError: ``pg_restore`` could not read the dump.
         TimeoutError: Listing exceeded ``timeout_seconds``.
+
+    Returns:
+        Numeric result of the operation.
     """
     binary = _resolve_binary(_PG_RESTORE_BINARY)
     stdout, _stderr = await _run_pg_tool(
@@ -397,5 +430,9 @@ async def pg_restore_list(
 
 
 def safe_error(exc: BaseException) -> str:
-    """Local alias preserving the redaction contract."""
+    """Local alias preserving the redaction contract.
+
+    Returns:
+        Result of type ``str``.
+    """
     return safe_error_description(exc)

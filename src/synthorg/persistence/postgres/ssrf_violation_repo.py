@@ -103,7 +103,14 @@ class PostgresSsrfViolationRepository:
         self,
         violation_id: NotBlankStr,
     ) -> SsrfViolation | None:
-        """Retrieve a violation by ID."""
+        """Retrieve a violation by ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -144,7 +151,14 @@ class PostgresSsrfViolationRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[SsrfViolation, ...]:
-        """List violations ordered by id ascending (generic IdKeyed surface)."""
+        """List violations ordered by id ascending (generic IdKeyed surface).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED
         )
@@ -183,7 +197,14 @@ class PostgresSsrfViolationRepository:
         return tuple(results)
 
     async def delete(self, violation_id: NotBlankStr) -> bool:
-        """Delete a violation by ID."""
+        """Delete a violation by ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -209,7 +230,15 @@ class PostgresSsrfViolationRepository:
         status: SsrfViolationStatus | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[SsrfViolation, ...]:
-        """List violations, optionally filtered by status."""
+        """List violations, optionally filtered by status.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            ValueError: If an argument fails validation.
+            QueryError: If the database query fails.
+        """
         if limit <= 0:
             msg = "limit must be positive"
             logger.warning(
@@ -282,6 +311,10 @@ class PostgresSsrfViolationRepository:
 
         Raises:
             ValueError: If status is PENDING.
+            QueryError: If the database query fails.
+
+        Returns:
+            The updated entity.
         """
         if status == SsrfViolationStatus.PENDING:
             msg = "Cannot transition a violation back to PENDING"
@@ -317,7 +350,11 @@ class PostgresSsrfViolationRepository:
 
 
 def _row_to_violation(row: dict[str, object]) -> SsrfViolation:
-    """Convert a Postgres row to an SsrfViolation."""
+    """Convert a Postgres row to an SsrfViolation.
+
+    Returns:
+        Result of type ``SsrfViolation``.
+    """
     return SsrfViolation(
         id=str(row["id"]),
         timestamp=normalize_utc(cast("datetime", row["timestamp"])),

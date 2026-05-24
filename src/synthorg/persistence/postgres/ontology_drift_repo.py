@@ -20,7 +20,11 @@ if TYPE_CHECKING:
 
 
 def _import_dict_row() -> Any:
-    """Lazily resolve ``psycopg.rows.dict_row``."""
+    """Lazily resolve ``psycopg.rows.dict_row``.
+
+    Returns:
+        Result of type ``Any``.
+    """
     from psycopg.rows import dict_row  # noqa: PLC0415
 
     return dict_row
@@ -32,7 +36,14 @@ _DEFAULT_LIST_LIMIT_10: Final[int] = 10
 
 
 def _row_to_report(row: dict[str, Any]) -> DriftReport:
-    """Deserialize a dict row into a DriftReport."""
+    """Deserialize a dict row into a DriftReport.
+
+    Returns:
+        Result of type ``DriftReport``.
+
+    Raises:
+        ValueError: If an argument fails validation.
+    """
     try:
         agents_raw = row["divergent_agents"]
         agents_data = (
@@ -118,6 +129,9 @@ class PostgresOntologyDriftReportRepository:
         the generic filtered ``query`` surface is unimplemented and
         raises rather than silently returning an empty tuple, which
         would mask the missing functionality from a caller.
+
+        Raises:
+            NotImplementedError: If the underlying call raises.
         """
         msg = "OntologyDriftReportRepository.query is not implemented"
         raise NotImplementedError(msg)
@@ -127,6 +141,9 @@ class PostgresOntologyDriftReportRepository:
 
         Raises rather than silently reporting zero deletions, which
         would let a retention caller believe a sweep ran.
+
+        Raises:
+            NotImplementedError: If the underlying call raises.
         """
         msg = "OntologyDriftReportRepository.purge_before is not implemented"
         raise NotImplementedError(msg)
@@ -142,6 +159,9 @@ class PostgresOntologyDriftReportRepository:
         Ordered by ``created_at DESC`` so the result uses the
         ``(entity_name, created_at DESC)`` index rather than a table
         scan on ``id``.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         dict_row = self._dict_row
         async with (
@@ -170,6 +190,9 @@ class PostgresOntologyDriftReportRepository:
         ``(entity_name, created_at DESC)`` index so the per-entity
         latest pick is O(#entities) rather than the previous
         correlated ``MAX(id)`` subquery (O(n log n)).
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         dict_row = self._dict_row
         async with (

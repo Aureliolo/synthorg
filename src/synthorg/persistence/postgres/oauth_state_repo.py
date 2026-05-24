@@ -43,7 +43,11 @@ _SELECT_COLS = (
 
 
 def _row_to_state(row: dict[str, Any]) -> OAuthState:
-    """Deserialize a dict row into an :class:`OAuthState`."""
+    """Deserialize a dict row into an :class:`OAuthState`.
+
+    Returns:
+        Result of type ``OAuthState``.
+    """
     pkce = row.get("pkce_verifier")
     nonce = row.get("nonce")
     consumed_at = row.get("consumed_at")
@@ -83,6 +87,9 @@ class PostgresOAuthStateRepository:
         (``OAuthStateService.persist_initiation``) and stamped
         later by ``mark_consumed``; saving them here lets tests
         construct a "post-callback" snapshot in a single round-trip.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         params = (
             str(state.state_token),
@@ -139,7 +146,14 @@ class PostgresOAuthStateRepository:
             raise QueryError(msg) from exc
 
     async def get(self, state_token: NotBlankStr) -> OAuthState | None:
-        """Fetch an OAuth state by token."""
+        """Fetch an OAuth state by token.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -175,7 +189,14 @@ class PostgresOAuthStateRepository:
             raise QueryError(msg) from exc
 
     async def delete(self, state_token: NotBlankStr) -> bool:
-        """Delete an OAuth state; return ``True`` if a row was removed."""
+        """Delete an OAuth state; return ``True`` if a row was removed.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -201,7 +222,14 @@ class PostgresOAuthStateRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[OAuthState, ...]:
-        """List all OAuth states with pagination."""
+        """List all OAuth states with pagination.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_OAUTH_STATE_FETCH_FAILED
         )
@@ -253,6 +281,12 @@ class PostgresOAuthStateRepository:
         NULL``. A redelivered callback observes the existing
         ``consumed_at`` and returns ``False`` so the handler can
         route it through the replay branch.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -284,6 +318,12 @@ class PostgresOAuthStateRepository:
 
         See :meth:`SQLiteOAuthStateRepository.cleanup_expired` for
         the retention contract.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         now = datetime.now(UTC)
         consumed_cutoff = now - timedelta(seconds=retention_seconds)

@@ -41,7 +41,11 @@ _MAX_LIST_ROWS: int = 10_000
 
 
 def _row_to_source(row: dict[str, Any]) -> KnowledgeSource:
-    """Reconstruct a :class:`KnowledgeSource` from a Postgres ``dict_row``."""
+    """Reconstruct a :class:`KnowledgeSource` from a Postgres ``dict_row``.
+
+    Returns:
+        Result of type ``KnowledgeSource``.
+    """
     data = dict(row)
     data["source_type"] = SourceType(data["source_type"])
     data["status"] = SourceStatus(data["status"])
@@ -60,6 +64,11 @@ class PostgresKnowledgeSourceRepository:
 
     @staticmethod
     def _row_params(entity: KnowledgeSource) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            The matching collection.
+        """
         return (
             entity.source_id,
             entity.source_type.value,
@@ -78,6 +87,7 @@ class PostgresKnowledgeSourceRepository:
     async def _safe_rollback(
         self, conn: psycopg.AsyncConnection[Any], *, event: str
     ) -> None:
+        """Safe rollback."""
         try:
             await conn.rollback()
         except psycopg.Error as rollback_exc:
@@ -89,7 +99,11 @@ class PostgresKnowledgeSourceRepository:
             )
 
     async def save(self, entity: KnowledgeSource) -> None:
-        """Persist a source row via upsert (PK ``source_id``)."""
+        """Persist a source row via upsert (PK ``source_id``).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._pool.connection() as conn, conn.cursor() as cur:
             try:
                 await cur.execute(
@@ -129,7 +143,14 @@ class PostgresKnowledgeSourceRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: KnowledgeSourceKey) -> KnowledgeSource | None:
-        """Retrieve a source by ``source_id``."""
+        """Retrieve a source by ``source_id``.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -166,7 +187,14 @@ class PostgresKnowledgeSourceRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[KnowledgeSource, ...]:
-        """List all sources, most-recent first."""
+        """List all sources, most-recent first.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_KNOWLEDGE_SOURCE_LIST_FAILED
         )
@@ -194,7 +222,14 @@ class PostgresKnowledgeSourceRepository:
         return self._rows_to_tuple(tuple(rows))
 
     async def delete(self, entity_id: KnowledgeSourceKey) -> bool:
-        """Delete a source by ``source_id``."""
+        """Delete a source by ``source_id``.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._pool.connection() as conn, conn.cursor() as cur:
             try:
                 await cur.execute(
@@ -224,7 +259,14 @@ class PostgresKnowledgeSourceRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[KnowledgeSource, ...]:
-        """Return sources matching the filter, most-recent first."""
+        """Return sources matching the filter, most-recent first.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_KNOWLEDGE_SOURCE_QUERY_FAILED
         )
@@ -257,7 +299,14 @@ class PostgresKnowledgeSourceRepository:
         return sources
 
     async def count(self, filter_spec: KnowledgeSourceFilter) -> int:
-        """Count sources matching the filter spec."""
+        """Count sources matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         base_sql, params = _build_query_sql(filter_spec)
         sql = base_sql.replace("SELECT *", "SELECT COUNT(*) AS n", 1)
         try:
@@ -287,7 +336,14 @@ class PostgresKnowledgeSourceRepository:
     def _rows_to_tuple(
         self, rows: tuple[dict[str, Any], ...]
     ) -> tuple[KnowledgeSource, ...]:
-        """Deserialise a row batch with one shared error path."""
+        """Deserialise a row batch with one shared error path.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             sources = tuple(_row_to_source(row) for row in rows)
         except (ValueError, ValidationError, KeyError) as exc:
@@ -305,7 +361,11 @@ class PostgresKnowledgeSourceRepository:
 def _build_query_sql(
     filter_spec: KnowledgeSourceFilter,
 ) -> tuple[str, tuple[object, ...]]:
-    """Compose the ``SELECT * ... WHERE`` clause for ``query`` / ``count``."""
+    """Compose the ``SELECT * ... WHERE`` clause for ``query`` / ``count``.
+
+    Returns:
+        The matching collection.
+    """
     conditions: list[str] = []
     params: list[object] = []
     pid = filter_spec.project_id

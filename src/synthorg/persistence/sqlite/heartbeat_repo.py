@@ -49,7 +49,11 @@ class SQLiteHeartbeatRepository:
         self._write_context = write_context
 
     async def save(self, heartbeat: Heartbeat) -> None:
-        """Persist a heartbeat (upsert by execution_id)."""
+        """Persist a heartbeat (upsert by execution_id).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 data = heartbeat.model_dump(mode="json")
@@ -83,7 +87,14 @@ INSERT OR REPLACE INTO heartbeats (
                 raise QueryError(msg) from exc
 
     async def get(self, execution_id: NotBlankStr) -> Heartbeat | None:
-        """Retrieve a heartbeat by execution ID."""
+        """Retrieve a heartbeat by execution ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT execution_id, agent_id, task_id, last_heartbeat_at "
@@ -127,6 +138,12 @@ INSERT OR REPLACE INTO heartbeats (
                 this timestamp are considered stale.
             limit: Maximum rows to return.
             offset: Rows to skip from the head of the ordering.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_HEARTBEAT_QUERY_FAILED
@@ -160,7 +177,14 @@ INSERT OR REPLACE INTO heartbeats (
         return results
 
     async def delete(self, execution_id: NotBlankStr) -> bool:
-        """Delete a heartbeat by execution ID."""
+        """Delete a heartbeat by execution ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -187,6 +211,9 @@ INSERT OR REPLACE INTO heartbeats (
 
         Raises:
             QueryError: If the row cannot be deserialized.
+
+        Returns:
+            Result of type ``Heartbeat``.
         """
         try:
             return Heartbeat.model_validate(row)

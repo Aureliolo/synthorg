@@ -39,6 +39,9 @@ def _classify_sqlite_constraint(exc: sqlite3.IntegrityError) -> str:
     message text. Match the message prefix and emit a stable token
     that mirrors the Postgres ``exc.diag.constraint_name`` shape so
     callers can route both backends through the same handler.
+
+    Returns:
+        Result of type ``str``.
     """
     text = str(exc).lower()
     if "foreign key" in text:
@@ -142,7 +145,11 @@ class SQLiteMcpInstallationRepository:
         self,
         catalog_entry_id: NotBlankStr,
     ) -> McpInstallation | None:
-        """Fetch a single installation by catalog entry id."""
+        """Fetch a single installation by catalog entry id.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+        """
         async with self._db.execute(
             """
             SELECT catalog_entry_id, connection_name, installed_at
@@ -172,6 +179,12 @@ class SQLiteMcpInstallationRepository:
         floor) and accepts any positive integer; no upper bound is
         enforced. Callers may either pass a larger ``limit`` or loop
         with ``offset`` for cursor-style pagination.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         validate_pagination_args(
             limit,
@@ -217,7 +230,14 @@ class SQLiteMcpInstallationRepository:
             raise QueryError(msg) from exc
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
-        """Delete an installation.  Returns ``True`` if a row was removed."""
+        """Delete an installation.  Returns ``True`` if a row was removed.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(

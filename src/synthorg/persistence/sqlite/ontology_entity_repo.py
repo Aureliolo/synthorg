@@ -61,11 +61,22 @@ class SQLiteOntologyEntityRepository:
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier."""
+        """Human-readable backend identifier.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+        """
         return NotBlankStr("sqlite")
 
     def _row_to_entity(self, row: aiosqlite.Row) -> EntityDefinition:
-        """Deserialize a database row into an EntityDefinition."""
+        """Deserialize a database row into an EntityDefinition.
+
+        Returns:
+            Result of type ``EntityDefinition``.
+
+        Raises:
+            OntologyError: If the underlying call raises.
+        """
         entity_name = row["name"]
         try:
             return EntityDefinition(
@@ -94,7 +105,11 @@ class SQLiteOntologyEntityRepository:
             raise OntologyError(msg) from exc
 
     def _entity_to_params(self, entity: EntityDefinition) -> dict[str, str]:
-        """Serialize an EntityDefinition into SQL parameters."""
+        """Serialize an EntityDefinition into SQL parameters.
+
+        Returns:
+            Result of type ``dict[str, str]``.
+        """
         return {
             "name": entity.name,
             "tier": entity.tier.value,
@@ -114,7 +129,12 @@ class SQLiteOntologyEntityRepository:
         }
 
     async def register(self, entity: EntityDefinition) -> None:
-        """Register a new entity definition."""
+        """Register a new entity definition.
+
+        Raises:
+            OntologyDuplicateError: If the underlying call raises.
+            OntologyError: If the underlying call raises.
+        """
         params = self._entity_to_params(entity)
         async with self._write_context():
             try:
@@ -173,6 +193,9 @@ class SQLiteOntologyEntityRepository:
         concurrent save on the same name. ``created_by`` / ``created_at``
         are intentionally left untouched on conflict so the original
         creator and creation time survive an upsert.
+
+        Raises:
+            OntologyError: If the underlying call raises.
         """
         params = self._entity_to_params(entity)
         async with self._write_context():
@@ -211,7 +234,11 @@ class SQLiteOntologyEntityRepository:
                 raise OntologyError(msg) from exc
 
     async def get(self, name: str) -> EntityDefinition | None:
-        """Retrieve an entity definition by name, or None if not found."""
+        """Retrieve an entity definition by name, or None if not found.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+        """
         cursor = await self._db.execute(
             "SELECT * FROM entity_definitions WHERE name = :name",
             {"name": name},
@@ -222,7 +249,12 @@ class SQLiteOntologyEntityRepository:
         return self._row_to_entity(row)
 
     async def update(self, entity: EntityDefinition) -> None:
-        """Update an existing entity definition."""
+        """Update an existing entity definition.
+
+        Raises:
+            OntologyNotFoundError: If the underlying call raises.
+            OntologyError: If the underlying call raises.
+        """
         params = self._entity_to_params(entity)
         async with self._write_context():
             try:
@@ -268,6 +300,12 @@ class SQLiteOntologyEntityRepository:
         """Delete an entity definition by name.
 
         Returns ``True`` iff a row existed (generic IdKeyedRepository contract).
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            OntologyError: If the underlying call raises.
         """
         async with self._write_context():
             try:
@@ -298,7 +336,11 @@ class SQLiteOntologyEntityRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
-        """List all entity definitions in name order."""
+        """List all entity definitions in name order.
+
+        Returns:
+            The matching entities.
+        """
         limit = validate_pagination_args(
             limit, offset, event=ONTOLOGY_ENTITY_DESERIALIZATION_FAILED
         )
@@ -323,6 +365,9 @@ class SQLiteOntologyEntityRepository:
         The legacy hard cap of 1000 rows applies when *limit* is
         ``None`` so callers that haven't migrated to pagination still
         receive a bounded result set.
+
+        Returns:
+            The matching entities.
         """
         effective_limit = 1000 if limit is None else int(limit)
         effective_offset = max(0, int(offset))
@@ -355,7 +400,11 @@ class SQLiteOntologyEntityRepository:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
-        """Search entities by name or definition text."""
+        """Search entities by name or definition text.
+
+        Returns:
+            The matching collection.
+        """
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         effective_limit = 1000 if limit is None else int(limit)
@@ -384,7 +433,11 @@ class SQLiteOntologyEntityRepository:
         self,
         rows: Iterable[aiosqlite.Row],
     ) -> tuple[EntityDefinition, ...]:
-        """Deserialize rows, skipping corrupted entries."""
+        """Deserialize rows, skipping corrupted entries.
+
+        Returns:
+            The matching collection.
+        """
         results: list[EntityDefinition] = []
         for row in rows:
             try:
@@ -404,6 +457,9 @@ class SQLiteOntologyEntityRepository:
         Entities page in ``entity_id`` order so a cursor walk is
         stable; callers needing the whole manifest drain via
         :func:`synthorg.persistence._shared.collect_all_mapping`.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         limit = validate_pagination_args(
             limit, offset, event=ONTOLOGY_ENTITY_DESERIALIZATION_FAILED

@@ -51,7 +51,11 @@ _LOCATOR_ADAPTER: TypeAdapter[ProvenanceLocator] = TypeAdapter(ProvenanceLocator
 
 
 def _row_to_provenance(row: aiosqlite.Row) -> ChunkProvenanceRow:
-    """Reconstruct a :class:`ChunkProvenanceRow` from a database row."""
+    """Reconstruct a :class:`ChunkProvenanceRow` from a database row.
+
+    Returns:
+        Result of type ``ChunkProvenanceRow``.
+    """
     locator = _LOCATOR_ADAPTER.validate_python(json.loads(row["locator_json"]))
     return ChunkProvenanceRow(
         chunk_id=row["chunk_id"],
@@ -78,6 +82,11 @@ class SQLiteChunkProvenanceRepository:
 
     @staticmethod
     def _row_params(entity: ChunkProvenanceRow) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            The matching collection.
+        """
         return (
             entity.chunk_id,
             entity.source_id,
@@ -90,6 +99,7 @@ class SQLiteChunkProvenanceRepository:
         )
 
     async def _safe_rollback(self, *, event: str) -> None:
+        """Safe rollback."""
         try:
             await self._db.rollback()
         except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
@@ -101,7 +111,11 @@ class SQLiteChunkProvenanceRepository:
             )
 
     async def save(self, entity: ChunkProvenanceRow) -> None:
-        """Persist a provenance row via upsert (PK ``chunk_id``)."""
+        """Persist a provenance row via upsert (PK ``chunk_id``).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 await self._db.execute(
@@ -135,7 +149,14 @@ ON CONFLICT(chunk_id) DO UPDATE SET
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: ChunkProvenanceKey) -> ChunkProvenanceRow | None:
-        """Retrieve a provenance row by ``chunk_id``."""
+        """Retrieve a provenance row by ``chunk_id``.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM knowledge_chunk_provenance WHERE chunk_id = ?",
@@ -164,7 +185,14 @@ ON CONFLICT(chunk_id) DO UPDATE SET
         self,
         chunk_ids: tuple[ChunkProvenanceKey, ...],
     ) -> tuple[ChunkProvenanceRow, ...]:
-        """Fetch many provenance rows by id in one round trip (ADR-0001 D7)."""
+        """Fetch many provenance rows by id in one round trip (ADR-0001 D7).
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if not chunk_ids:
             return ()
         placeholders = ",".join("?" for _ in chunk_ids)
@@ -192,7 +220,14 @@ ON CONFLICT(chunk_id) DO UPDATE SET
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ChunkProvenanceRow, ...]:
-        """List provenance rows ordered by ``(source_id, chunk_index)``."""
+        """List provenance rows ordered by ``(source_id, chunk_index)``.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_KNOWLEDGE_PROVENANCE_LIST_FAILED
         )
@@ -216,7 +251,14 @@ ON CONFLICT(chunk_id) DO UPDATE SET
         return self._rows_to_tuple(tuple(rows))
 
     async def delete(self, entity_id: ChunkProvenanceKey) -> bool:
-        """Delete a provenance row by ``chunk_id``."""
+        """Delete a provenance row by ``chunk_id``.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -239,7 +281,14 @@ ON CONFLICT(chunk_id) DO UPDATE SET
             return cursor.rowcount > 0
 
     async def delete_by_source(self, source_id: NotBlankStr) -> int:
-        """Delete every provenance row for a source (ADR-0001 D7)."""
+        """Delete every provenance row for a source (ADR-0001 D7).
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -268,7 +317,14 @@ ON CONFLICT(chunk_id) DO UPDATE SET
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ChunkProvenanceRow, ...]:
-        """Return provenance rows for a source, ``chunk_index`` ascending."""
+        """Return provenance rows for a source, ``chunk_index`` ascending.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_KNOWLEDGE_PROVENANCE_QUERY_FAILED
         )
@@ -300,7 +356,14 @@ ON CONFLICT(chunk_id) DO UPDATE SET
         return rows_out
 
     async def count(self, filter_spec: ChunkProvenanceFilter) -> int:
-        """Count provenance rows for a source."""
+        """Count provenance rows for a source.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT COUNT(*) AS n FROM knowledge_chunk_provenance "
@@ -328,7 +391,14 @@ ON CONFLICT(chunk_id) DO UPDATE SET
     def _rows_to_tuple(
         self, rows: Iterable[aiosqlite.Row]
     ) -> tuple[ChunkProvenanceRow, ...]:
-        """Deserialise a row batch with one shared error path."""
+        """Deserialise a row batch with one shared error path.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             provenance = tuple(_row_to_provenance(row) for row in rows)
         except (ValueError, ValidationError, KeyError, json.JSONDecodeError) as exc:

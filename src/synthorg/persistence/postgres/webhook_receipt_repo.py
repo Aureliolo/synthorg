@@ -49,6 +49,9 @@ def _row_to_receipt(row: dict[str, Any]) -> WebhookReceipt:
     The ``payload_json`` column is JSONB (a parsed value); the
     domain model expects a string, so re-serialize before
     constructing the model.
+
+    Returns:
+        Result of type ``WebhookReceipt``.
     """
     raw_payload = row.get("payload_json")
     if raw_payload is None:
@@ -82,7 +85,11 @@ class PostgresWebhookReceiptRepository:
         self._pool = pool
 
     async def save(self, entity: WebhookReceipt) -> None:
-        """Persist a webhook receipt (idempotent on receipt id)."""
+        """Persist a webhook receipt (idempotent on receipt id).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         receipt = entity
         # ``payload_json`` is stored as JSONB; parse the model's
         # string representation at the boundary so reads can return
@@ -148,7 +155,14 @@ class PostgresWebhookReceiptRepository:
             raise QueryError(msg) from exc
 
     async def get(self, receipt_id: NotBlankStr) -> WebhookReceipt | None:
-        """Fetch a single receipt by ID, or ``None`` when absent."""
+        """Fetch a single receipt by ID, or ``None`` when absent.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -195,6 +209,12 @@ class PostgresWebhookReceiptRepository:
 
         Returns ``True`` when the row existed and was updated, ``False``
         when no row matched the ID.
+
+        Returns:
+            The updated entity.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -238,6 +258,12 @@ class PostgresWebhookReceiptRepository:
         the matching row serialises the racing callers; the loser sees
         ``rowcount == 0`` and the controller raises ``NotFoundError``
         instead of re-publishing.
+
+        Returns:
+            The updated entity.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -270,7 +296,14 @@ class PostgresWebhookReceiptRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
-        """List all webhook receipts with pagination."""
+        """List all webhook receipts with pagination.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED
         )
@@ -308,7 +341,14 @@ class PostgresWebhookReceiptRepository:
             raise QueryError(msg) from exc
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
-        """Delete a webhook receipt by ID."""
+        """Delete a webhook receipt by ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -335,7 +375,14 @@ class PostgresWebhookReceiptRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
-        """List receipts for *connection_name*, newest-first up to *limit*."""
+        """List receipts for *connection_name*, newest-first up to *limit*.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if limit <= 0:
             return ()
         try:
@@ -380,6 +427,12 @@ class PostgresWebhookReceiptRepository:
 
         ``retention_days <= 0`` is treated as a no-op so callers cannot
         accidentally truncate the log via misconfiguration.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         if retention_days <= 0:
             return 0

@@ -39,6 +39,11 @@ class PostgresMigrationMixin:
     _lifecycle_lock: asyncio.Lock
 
     def _clear_state(self) -> None:  # pragma: no cover - see concrete
+        """Clear state (provided by concrete backend).
+
+        Raises:
+            NotImplementedError: Concrete backend has not implemented this method.
+        """
         raise NotImplementedError
 
     async def migrate(self) -> None:
@@ -105,6 +110,11 @@ class PostgresMigrationMixin:
         any psycopg error is handled by the enclosing ``migrate``
         method (pool close + state clear); this method's try/except
         only exists to tag the log event.
+
+        Raises:
+            psycopg.Error: Re-raised after tagging the failure with the
+                ``PERSISTENCE_TIMESCALEDB_SETUP_FAILED`` event so the
+                enclosing ``migrate`` call can perform pool cleanup.
         """
         assert self._pool is not None  # noqa: S101 -- checked in migrate()
         try:

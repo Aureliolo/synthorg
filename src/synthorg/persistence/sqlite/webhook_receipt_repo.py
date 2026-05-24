@@ -41,7 +41,11 @@ _SELECT_COLS = (
 
 
 def _row_to_receipt(row: aiosqlite.Row | tuple[Any, ...]) -> WebhookReceipt:
-    """Deserialize a row tuple into a :class:`WebhookReceipt`."""
+    """Deserialize a row tuple into a :class:`WebhookReceipt`.
+
+    Returns:
+        Result of type ``WebhookReceipt``.
+    """
     (
         receipt_id,
         connection_name,
@@ -78,7 +82,11 @@ class SQLiteWebhookReceiptRepository:
         self._write_context = write_context
 
     async def save(self, entity: WebhookReceipt) -> None:
-        """Persist a webhook receipt (idempotent on receipt id)."""
+        """Persist a webhook receipt (idempotent on receipt id).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         receipt = entity
         async with self._write_context():
             try:
@@ -127,7 +135,14 @@ class SQLiteWebhookReceiptRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, receipt_id: NotBlankStr) -> WebhookReceipt | None:
-        """Fetch a single receipt by ID, or ``None`` when absent."""
+        """Fetch a single receipt by ID, or ``None`` when absent.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._db.execute(
                 f"SELECT {_SELECT_COLS} FROM webhook_receipts "  # noqa: S608
@@ -171,6 +186,12 @@ class SQLiteWebhookReceiptRepository:
         Returns ``True`` when the row existed and was updated, ``False``
         when no row matched the ID. Callers can use the boolean to
         distinguish "not found" from a successful no-op.
+
+        Returns:
+            The updated entity.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         async with self._write_context():
             try:
@@ -216,6 +237,12 @@ class SQLiteWebhookReceiptRepository:
         ``False`` (rowcount 0) and the caller handles the lost-race
         path. SQLite's per-write_context serialization gives the
         ordering guarantee; the WHERE clause supplies the predicate.
+
+        Returns:
+            The updated entity.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         async with self._write_context():
             try:
@@ -252,7 +279,14 @@ class SQLiteWebhookReceiptRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
-        """List all webhook receipts with pagination."""
+        """List all webhook receipts with pagination.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED
         )
@@ -287,7 +321,14 @@ class SQLiteWebhookReceiptRepository:
             raise QueryError(msg) from exc
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
-        """Delete a webhook receipt by ID."""
+        """Delete a webhook receipt by ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -316,7 +357,14 @@ class SQLiteWebhookReceiptRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
-        """List receipts for *connection_name*, newest-first up to *limit*."""
+        """List receipts for *connection_name*, newest-first up to *limit*.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if limit <= 0:
             return ()
         try:
@@ -365,6 +413,12 @@ class SQLiteWebhookReceiptRepository:
         Batching the delete is left as a future optimisation; current
         deployment scale (handful of connections, days-scale retention)
         keeps each per-connection sweep small.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         if retention_days <= 0:
             return 0

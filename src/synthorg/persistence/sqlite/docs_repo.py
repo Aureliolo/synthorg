@@ -45,7 +45,11 @@ _MAX_LIST_ROWS: int = 10_000
 
 
 def _row_to_metadata(row: aiosqlite.Row) -> DocMetadata:
-    """Reconstruct a :class:`DocMetadata` from a database row."""
+    """Reconstruct a :class:`DocMetadata` from a database row.
+
+    Returns:
+        Result of type ``DocMetadata``.
+    """
     data = dict(row)
     data["doc_type"] = DocType(data["doc_type"])
     data["tags"] = tuple(json.loads(data["tags"]))
@@ -75,6 +79,11 @@ class SQLiteDocsRepository:
 
     @staticmethod
     def _row_params(entity: DocMetadata) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            The matching collection.
+        """
         return (
             entity.project_id,
             entity.slug,
@@ -88,6 +97,7 @@ class SQLiteDocsRepository:
         )
 
     async def _safe_rollback(self, *, event: str) -> None:
+        """Safe rollback."""
         try:
             await self._db.rollback()
         except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
@@ -99,7 +109,11 @@ class SQLiteDocsRepository:
             )
 
     async def save(self, entity: DocMetadata) -> None:
-        """Persist doc metadata via upsert."""
+        """Persist doc metadata via upsert.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 await self._db.execute(
@@ -132,7 +146,14 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: DocsRepositoryKey) -> DocMetadata | None:
-        """Retrieve doc metadata by ``(project_id, slug)``."""
+        """Retrieve doc metadata by ``(project_id, slug)``.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         project_id, slug = entity_id
         try:
             cursor = await self._db.execute(
@@ -185,7 +206,14 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[DocMetadata, ...]:
-        """List all doc metadata, recency-first."""
+        """List all doc metadata, recency-first.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_PROJECT_DOC_LIST_FAILED
         )
@@ -209,7 +237,14 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         return self._rows_to_tuple(tuple(rows))
 
     async def delete(self, entity_id: DocsRepositoryKey) -> bool:
-        """Delete doc metadata by ``(project_id, slug)``."""
+        """Delete doc metadata by ``(project_id, slug)``.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         project_id, slug = entity_id
         async with self._write_context():
             try:
@@ -238,7 +273,14 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[DocMetadata, ...]:
-        """Return docs matching the filter spec, recency-first."""
+        """Return docs matching the filter spec, recency-first.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_PROJECT_DOC_QUERY_FAILED
         )
@@ -271,7 +313,14 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         return metadata
 
     async def count(self, filter_spec: DocsFilterSpec) -> int:
-        """Count docs matching the filter spec."""
+        """Count docs matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         where_sql, params = _build_query_sql(filter_spec)
         sql = f"SELECT COUNT(*) AS n {where_sql}"
         try:
@@ -295,7 +344,14 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         return count
 
     def _rows_to_tuple(self, rows: Iterable[aiosqlite.Row]) -> tuple[DocMetadata, ...]:
-        """Deserialise a row batch with one shared error path."""
+        """Deserialise a row batch with one shared error path.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             metadata = tuple(_row_to_metadata(row) for row in rows)
         except (ValueError, ValidationError, KeyError, json.JSONDecodeError) as exc:
@@ -316,6 +372,9 @@ def _escape_like(value: str) -> str:
     Without this a tag containing ``%`` or ``_`` would behave as a
     wildcard. Backslash is escaped first, then the wildcards; the query
     pairs this with ``ESCAPE '\'``.
+
+    Returns:
+        Result of type ``str``.
     """
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
@@ -331,6 +390,9 @@ def _build_query_sql(filter_spec: DocsFilterSpec) -> tuple[str, tuple[object, ..
     form), so a tag containing quote characters matches its stored
     representation, and the surrounding quotes prevent partial-substring
     false matches (e.g. tag ``a`` cannot match a stored tag ``ab``).
+
+    Returns:
+        The matching collection.
     """
     sql = "FROM project_docs WHERE project_id = ?"
     params: list[object] = [filter_spec.project_id]

@@ -57,7 +57,11 @@ _SELECT_COLS = (
 
 
 def _row_to_connection(row: dict[str, Any]) -> Connection:
-    """Deserialize a psycopg dict row into a :class:`Connection`."""
+    """Deserialize a psycopg dict row into a :class:`Connection`.
+
+    Returns:
+        Result of type ``Connection``.
+    """
     secret_refs_payload = row.get("secret_refs_json") or []
     secret_refs = tuple(SecretRef(**entry) for entry in secret_refs_payload)
     metadata = row.get("metadata_json") or {}
@@ -102,7 +106,11 @@ class PostgresConnectionRepository:
         self._pool = pool
 
     async def save(self, connection: Connection) -> None:
-        """Upsert a connection row keyed by ``name``."""
+        """Upsert a connection row keyed by ``name``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         secret_refs_payload = [
             ref.model_dump(mode="json") for ref in connection.secret_refs
         ]
@@ -180,7 +188,14 @@ class PostgresConnectionRepository:
             raise QueryError(msg) from exc
 
     async def get(self, name: NotBlankStr) -> Connection | None:
-        """Fetch a single connection by name."""
+        """Fetch a single connection by name.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -221,7 +236,14 @@ class PostgresConnectionRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
-        """List all connections, sorted by name for determinism."""
+        """List all connections, sorted by name for determinism.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONNECTION_LIST_FAILED
         )
@@ -263,7 +285,14 @@ class PostgresConnectionRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
-        """List connections matching the filter spec, sorted by name."""
+        """List connections matching the filter spec, sorted by name.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONNECTION_LIST_FAILED
         )
@@ -301,7 +330,14 @@ class PostgresConnectionRepository:
             raise QueryError(msg) from exc
 
     async def count(self, filter_spec: ConnectionFilterSpec) -> int:
-        """Count connections matching the filter spec."""
+        """Count connections matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = "SELECT COUNT(*) FROM connections"
         params: tuple[object, ...] = ()
         if filter_spec.connection_type is not None:
@@ -325,7 +361,14 @@ class PostgresConnectionRepository:
             raise QueryError(msg) from exc
 
     async def delete(self, name: NotBlankStr) -> bool:
-        """Delete a connection by name; return ``True`` if a row was removed."""
+        """Delete a connection by name; return ``True`` if a row was removed.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

@@ -70,6 +70,12 @@ def _row_to_escalation(row: dict[str, Any]) -> Escalation:
     ``datetime`` objects from ``TIMESTAMPTZ`` columns and are
     validated by Pydantic's ``AwareDatetime`` type on the
     :class:`Escalation` model.
+
+    Returns:
+        Result of type ``Escalation``.
+
+    Raises:
+        QueryError: If the database query fails.
     """
     try:
         conflict = Conflict.model_validate(row["conflict_json"])
@@ -144,11 +150,20 @@ class PostgresEscalationRepository(EscalationQueueStore):
         Exposed for the cross-instance notify subscriber, which must
         reuse the repository's pool to share credentials and pool
         sizing with the rest of the persistence layer.
+
+        Returns:
+            Result of type ``AsyncConnectionPool``.
         """
         return self._pool
 
     async def create(self, escalation: Escalation) -> None:
-        """Insert a PENDING escalation row."""
+        """Insert a PENDING escalation row.
+
+        Raises:
+            ValueError: If an argument fails validation.
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
         if escalation.status != EscalationStatus.PENDING:
             msg = "create() requires status=PENDING"
             raise ValueError(msg)
@@ -218,7 +233,14 @@ INSERT INTO conflict_escalations (
             raise QueryError(msg) from exc
 
     async def get(self, escalation_id: str) -> Escalation | None:
-        """Fetch by ID."""
+        """Fetch by ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -250,7 +272,15 @@ INSERT INTO conflict_escalations (
         limit: int = _DEFAULT_LIMIT,
         offset: int = _DEFAULT_OFFSET,
     ) -> tuple[tuple[Escalation, ...], int]:
-        """Page over rows filtered by status."""
+        """Page over rows filtered by status.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            ValueError: If an argument fails validation.
+            QueryError: If the database query fails.
+        """
         if limit <= 0:
             msg = "limit must be positive"
             raise ValueError(msg)
@@ -309,7 +339,11 @@ INSERT INTO conflict_escalations (
         decision: EscalationDecision,
         decided_by: str,
     ) -> Escalation:
-        """Transition PENDING -> DECIDED atomically."""
+        """Transition PENDING -> DECIDED atomically.
+
+        Returns:
+            Result of type ``Escalation``.
+        """
         return await self._update_terminal(
             escalation_id,
             new_status=EscalationStatus.DECIDED,
@@ -318,7 +352,11 @@ INSERT INTO conflict_escalations (
         )
 
     async def cancel(self, escalation_id: str, *, cancelled_by: str) -> Escalation:
-        """Transition PENDING -> CANCELLED."""
+        """Transition PENDING -> CANCELLED.
+
+        Returns:
+            Result of type ``Escalation``.
+        """
         return await self._update_terminal(
             escalation_id,
             new_status=EscalationStatus.CANCELLED,
@@ -333,6 +371,12 @@ INSERT INTO conflict_escalations (
         distinguish sweeper-driven expiry from operator-driven
         cancellation (``system:resolver_cancelled``) or human
         decisions (``human:<operator_id>``).
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         now_dt = parse_iso_utc(now_iso)
         try:
@@ -382,7 +426,16 @@ INSERT INTO conflict_escalations (
         decided_by: str,
         decision: EscalationDecision | None,
     ) -> Escalation:
-        """Apply a terminal state transition gated on current status."""
+        """Apply a terminal state transition gated on current status.
+
+        Returns:
+            Result of type ``Escalation``.
+
+        Raises:
+            QueryError: If the database query fails.
+            ValueError: If an argument fails validation.
+            KeyError: If a required dictionary key is missing.
+        """
         decided_at = datetime.now(UTC)
         decision_payload: Jsonb | None = None
         if decision is not None:
@@ -488,6 +541,7 @@ INSERT INTO conflict_escalations (
                 notifies_gen = conn.notifies()
 
                 async def _payloads() -> AsyncIterator[str]:
+                    """Payloads payloads."""
                     async for notify in notifies_gen:
                         yield notify.payload
 

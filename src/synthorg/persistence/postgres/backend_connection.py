@@ -46,6 +46,9 @@ def _build_conninfo(config: PostgresConfig) -> str:
     truncating a sub-second value via ``int()`` would round 0.5 down
     to 0 which libpq interprets as "wait indefinitely", silently
     turning a short configured timeout into no timeout at all.
+
+    Returns:
+        Result of type ``str``.
     """
     connect_timeout = max(2, math.ceil(config.connect_timeout_seconds))
     return psycopg.conninfo.make_conninfo(
@@ -68,9 +71,19 @@ class PostgresConnectionMixin:
     _lifecycle_lock: asyncio.Lock
 
     def _clear_state(self) -> None:  # pragma: no cover - see concrete
+        """Clear state (provided by concrete backend).
+
+        Raises:
+            NotImplementedError: Concrete backend has not implemented this method.
+        """
         raise NotImplementedError
 
     def _create_repositories(self) -> None:  # pragma: no cover - see concrete
+        """Create repositories (provided by concrete backend).
+
+        Raises:
+            NotImplementedError: Concrete backend has not implemented this method.
+        """
         raise NotImplementedError
 
     async def _configure_connection(
@@ -209,6 +222,9 @@ class PostgresConnectionMixin:
         Pool state is captured into a local reference while holding
         ``_lifecycle_lock`` so ``disconnect()`` cannot close the pool
         out from under us after the ``None`` check passes.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
         """
         async with self._lifecycle_lock:
             pool = self._pool

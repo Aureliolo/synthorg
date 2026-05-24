@@ -274,7 +274,11 @@ WHERE id=?""",
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Artifact, ...]:
-        """List all artifacts with pagination (no filters)."""
+        """List all artifacts with pagination (no filters).
+
+        Returns:
+            The matching entities.
+        """
         return await self.query(
             ArtifactFilterSpec(),
             limit=limit,
@@ -288,7 +292,14 @@ WHERE id=?""",
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Artifact, ...]:
-        """List artifacts with optional filters (paginated)."""
+        """List artifacts with optional filters (paginated).
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
             logger.warning(
@@ -361,7 +372,14 @@ WHERE id=?""",
         return artifacts
 
     async def count(self, filter_spec: ArtifactFilterSpec) -> int:
-        """Count artifacts matching the filter spec."""
+        """Count artifacts matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         query = "SELECT COUNT(*) FROM artifacts"
         conditions: list[str] = []
         params: list[object] = []

@@ -53,7 +53,14 @@ class SQLitePresetOverrideRepo:
         self._write_context = write_context
 
     async def get(self, preset_name: NotBlankStr) -> PresetOverride | None:
-        """Read the override for ``preset_name``, if any."""
+        """Read the override for ``preset_name``, if any.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = (
             "SELECT preset_name, default_models, supported_auth_types, "
             "candidate_urls, base_url, updated_at, updated_by "
@@ -105,7 +112,11 @@ class SQLitePresetOverrideRepo:
             raise QueryError(msg) from exc
 
     async def save(self, override: PresetOverride) -> None:
-        """Insert or replace the override for ``override.preset_name``."""
+        """Insert or replace the override for ``override.preset_name``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if override.updated_at is None or override.updated_by is None:
             msg = "PresetOverride.updated_at and updated_by must be set on save"
             logger.warning(
@@ -162,7 +173,14 @@ class SQLitePresetOverrideRepo:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[PresetOverride, ...]:
-        """List overrides ordered by preset_name ascending."""
+        """List overrides ordered by preset_name ascending.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED
         )
@@ -208,7 +226,14 @@ class SQLitePresetOverrideRepo:
         return tuple(overrides)
 
     async def delete(self, preset_name: NotBlankStr) -> bool:
-        """Remove the override for ``preset_name``."""
+        """Remove the override for ``preset_name``.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -241,7 +266,14 @@ class SQLitePresetOverrideRepo:
             )
 
     def _row_to_override(self, row: dict[str, object]) -> PresetOverride:
-        """Deserialise a row dict into a ``PresetOverride``."""
+        """Deserialise a row dict into a ``PresetOverride``.
+
+        Returns:
+            Result of type ``PresetOverride``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         from synthorg.config.schema import (  # noqa: PLC0415
             ProviderModelConfig as _ProviderModelConfig,
         )

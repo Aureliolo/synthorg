@@ -52,7 +52,11 @@ inputs, outputs, nodes, edges, created_by, created_at, updated_at"""
 
 
 def _semver_sort_key(version: str) -> Version:
-    """Parse a semver string to a :class:`packaging.version.Version` key."""
+    """Parse a semver string to a :class:`packaging.version.Version` key.
+
+    Returns:
+        Result of type ``Version``.
+    """
     try:
         return Version(version)
     except InvalidVersion:
@@ -67,6 +71,12 @@ def _deserialize_row(
 
     Postgres returns JSONB as native Python objects (no json.loads
     needed) and TIMESTAMPTZ as timezone-aware datetime.
+
+    Returns:
+        Result of type ``WorkflowDefinition``.
+
+    Raises:
+        QueryError: If the database query fails.
     """
     try:
         nodes = tuple(WorkflowNode.model_validate(n) for n in (row.get("nodes") or []))
@@ -114,7 +124,11 @@ def _extract_references(  # noqa: PLR0913
     version_column: str | None = None,
     references: list[ParentReference],
 ) -> None:
-    """Scan rows for SUBWORKFLOW nodes matching the coordinate."""
+    """Scan rows for SUBWORKFLOW nodes matching the coordinate.
+
+    Raises:
+        QueryError: If the database query fails.
+    """
     for row in rows:
         parent_id = str(row[id_column])
         parent_name = str(row["name"])
@@ -191,7 +205,12 @@ class PostgresSubworkflowRepository:
         self._pool = pool
 
     async def save(self, definition: WorkflowDefinition) -> None:
-        """Insert a new subworkflow version row."""
+        """Insert a new subworkflow version row.
+
+        Raises:
+            DuplicateRecordError: If a row with the same key already exists.
+            QueryError: If the database query fails.
+        """
         nodes = [n.model_dump(mode="json") for n in definition.nodes]
         edges = [e.model_dump(mode="json") for e in definition.edges]
         inputs = [i.model_dump(mode="json") for i in definition.inputs]
@@ -249,7 +268,14 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         self,
         entity_id: tuple[NotBlankStr, NotBlankStr],
     ) -> WorkflowDefinition | None:
-        """Fetch a specific subworkflow version by composite key."""
+        """Fetch a specific subworkflow version by composite key.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         subworkflow_id, version = entity_id
         try:
             async with (
@@ -292,6 +318,9 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
 
         Raises:
             QueryError: If the database query fails.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
@@ -326,6 +355,12 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         """List semver strings for a subworkflow, newest first.
 
         Bounded by *limit* (default :data:`DEFAULT_PAGE_SIZE`).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
@@ -369,6 +404,12 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         SELECT then fetches every version row for those ids so the
         client-side aggregator still sees the full version set per
         included subworkflow.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED
@@ -410,6 +451,12 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         Summaries page in ``subworkflow_id`` order so a cursor walk is
         stable; callers needing every match drain via
         :func:`synthorg.persistence._shared.collect_all`.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_SUBWORKFLOW_LIST_FAILED, query=query
@@ -461,7 +508,14 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         self,
         entity_id: tuple[NotBlankStr, NotBlankStr],
     ) -> bool:
-        """Delete a subworkflow version by composite key, returning True on success."""
+        """Delete a subworkflow version by composite key, returning True on success.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         subworkflow_id, version = entity_id
         try:
             async with self._pool.connection() as conn:
@@ -493,6 +547,12 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         Uses a Postgres advisory lock keyed on the subworkflow
         coordinate to serialize with concurrent writers and prevent
         TOCTOU races under READ COMMITTED isolation.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with (
@@ -555,6 +615,12 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         delete-if-unreferenced path) MUST drain every page via
         :func:`synthorg.persistence._shared.collect_all`; a truncated
         parent set would let a still-referenced version be deleted.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit,
@@ -602,7 +668,11 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         subworkflow_id: str,
         version: str | None,
     ) -> tuple[ParentReference, ...]:
-        """Shared find_parents logic usable within an existing connection."""
+        """Shared find_parents logic usable within an existing connection.
+
+        Returns:
+            The matching collection.
+        """
         references: list[ParentReference] = []
 
         # Scan workflow_definitions table.
@@ -642,7 +712,11 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         self,
         rows: Iterable[dict[str, Any]],
     ) -> tuple[SubworkflowSummary, ...]:
-        """Group rows by subworkflow_id and build summaries."""
+        """Group rows by subworkflow_id and build summaries.
+
+        Returns:
+            The matching collection.
+        """
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
             sid = str(row["subworkflow_id"])

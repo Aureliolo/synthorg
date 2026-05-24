@@ -63,16 +63,28 @@ class SQLiteLockoutRepository:
 
     @property
     def lockout_duration_seconds(self) -> int:
-        """Return the lockout duration in seconds for Retry-After."""
+        """Return the lockout duration in seconds for Retry-After.
+
+        Returns:
+            Numeric result of the operation.
+        """
         return self._duration_seconds
 
     @property
     def threshold(self) -> int:
-        """Failed-attempt threshold; used by the controller's audit log."""
+        """Failed-attempt threshold; used by the controller's audit log.
+
+        Returns:
+            Numeric result of the operation.
+        """
         return self._threshold
 
     def is_locked(self, username: str) -> bool:
-        """Sync O(1) lockout check for the auth hot path."""
+        """Sync O(1) lockout check for the auth hot path.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+        """
         username = username.lower()
         with self._locked_lock:
             locked_until = self._locked.get(username)
@@ -95,6 +107,9 @@ class SQLiteLockoutRepository:
         not silently dropped.  Counts are taken over the window
         ending at each user's most-recent attempt, so extending the
         scan range does not inflate the threshold check.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         scan_now = self._clock.now()
         scan_start = format_iso_utc(scan_now - (self._window + self._duration))
@@ -151,7 +166,11 @@ class SQLiteLockoutRepository:
         username: str,
         ip_address: str = "",
     ) -> bool:
-        """Record a failed login attempt.  Return ``True`` if now locked."""
+        """Record a failed login attempt.  Return ``True`` if now locked.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+        """
         username = username.lower()
         now = self._clock.now()
         window_start = format_iso_utc(now - self._window)
@@ -203,6 +222,9 @@ class SQLiteLockoutRepository:
         Returns ``True`` if a previously-locked account was unlocked
         (caller logs ``SECURITY_AUTH_LOCKOUT_CLEARED``); ``False``
         when there was no prior lockout (no audit emission warranted).
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
         """
         username = username.lower()
         async with self._write_context():
@@ -232,6 +254,9 @@ class SQLiteLockoutRepository:
         startup.  A shorter retention would silently un-lock users
         whose lockouts are still in effect but whose attempt rows
         were pruned.
+
+        Returns:
+            Numeric result of the operation.
         """
         retention = self._window + self._duration
         cutoff = format_iso_utc(self._clock.now() - retention)

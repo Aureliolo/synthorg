@@ -42,7 +42,11 @@ logger = get_logger(__name__)
 
 
 def _row_to_installation(row: dict[str, Any]) -> McpInstallation:
-    """Deserialize a dict row into an :class:`McpInstallation`."""
+    """Deserialize a dict row into an :class:`McpInstallation`.
+
+    Returns:
+        Result of type ``McpInstallation``.
+    """
     connection_name_raw = row["connection_name"]
     return McpInstallation(
         catalog_entry_id=NotBlankStr(row["catalog_entry_id"]),
@@ -135,7 +139,11 @@ class PostgresMcpInstallationRepository:
         self,
         catalog_entry_id: NotBlankStr,
     ) -> McpInstallation | None:
-        """Fetch a single installation by catalog entry id."""
+        """Fetch a single installation by catalog entry id.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -177,6 +185,12 @@ class PostgresMcpInstallationRepository:
         as a stable tiebreaker so rows with identical timestamps
         (restores, backfills, clock skew) are always returned in the
         same order across calls.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         validate_pagination_args(
             limit,
@@ -216,7 +230,11 @@ class PostgresMcpInstallationRepository:
             raise QueryError(msg) from exc
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
-        """Delete an installation.  Returns ``True`` if a row was removed."""
+        """Delete an installation.  Returns ``True`` if a row was removed.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

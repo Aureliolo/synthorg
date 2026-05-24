@@ -58,26 +58,42 @@ ON CONFLICT(id) DO UPDATE SET
 def _serialize_content_types(
     content_types: frozenset[ContentType],
 ) -> str:
-    """Serialize enabled content types to a JSON array."""
+    """Serialize enabled content types to a JSON array.
+
+    Returns:
+        Result of type ``str``.
+    """
     return json.dumps(sorted(ct.value for ct in content_types))
 
 
 def _serialize_volume_caps(
     caps: tuple[tuple[ContentType, int], ...],
 ) -> str:
-    """Serialize volume caps to a JSON array of ``[type, count]`` pairs."""
+    """Serialize volume caps to a JSON array of ``[type, count]`` pairs.
+
+    Returns:
+        Result of type ``str``.
+    """
     return json.dumps([[ct.value, count] for ct, count in caps])
 
 
 def _serialize_sources(
     sources: tuple[NotBlankStr, ...],
 ) -> str:
-    """Serialize override sources to a JSON array."""
+    """Serialize override sources to a JSON array.
+
+    Returns:
+        Result of type ``str``.
+    """
     return json.dumps([str(s) for s in sources])
 
 
 def _plan_to_params(plan: TrainingPlan) -> tuple[object, ...]:
-    """Build the parameter tuple for the upsert SQL statement."""
+    """Build the parameter tuple for the upsert SQL statement.
+
+    Returns:
+        The matching collection.
+    """
     return (
         str(plan.id),
         str(plan.new_agent_id),
@@ -214,6 +230,9 @@ class SQLiteTrainingPlanRepository:
 
         Returns:
             The plan, or ``None`` if not found.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             cursor = await self._db.execute(
@@ -407,6 +426,9 @@ class SQLiteTrainingPlanRepository:
 
         Returns:
             The latest pending plan, or ``None`` if none exist.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             cursor = await self._db.execute(
@@ -488,6 +510,9 @@ LIMIT 1""",
 
         Returns:
             Tuple of plans (may be empty), capped at *limit* rows.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(limit, 0, event=HR_TRAINING_PERSISTENCE_ERROR)
         try:

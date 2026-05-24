@@ -34,6 +34,9 @@ def build_charter_repository(
     Returns ``None`` when the backend is absent / not connected, or is
     an unknown variant, so the caller degrades to a 503 rather than
     raising during boot.
+
+    Returns:
+        The matching value, or ``None`` when absent.
     """
     if backend is None or not getattr(backend, "is_connected", False):
         return None

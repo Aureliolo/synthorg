@@ -43,7 +43,11 @@ class PostgresCircuitBreakerStateRepository:
         self._pool = pool
 
     async def save(self, record: CircuitBreakerStateRecord) -> None:
-        """Persist a circuit breaker state record (upsert by pair key)."""
+        """Persist a circuit breaker state record (upsert by pair key).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -78,7 +82,14 @@ ON CONFLICT(pair_key_a, pair_key_b) DO UPDATE SET
         self,
         entity_id: CircuitBreakerPairKey,
     ) -> CircuitBreakerStateRecord | None:
-        """Retrieve one circuit breaker state record by composite key."""
+        """Retrieve one circuit breaker state record by composite key.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         pair_key_a, pair_key_b = entity_id
         try:
             async with (
@@ -131,7 +142,14 @@ ON CONFLICT(pair_key_a, pair_key_b) DO UPDATE SET
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CircuitBreakerStateRecord, ...]:
-        """List records ordered by ``(pair_key_a, pair_key_b)`` ascending."""
+        """List records ordered by ``(pair_key_a, pair_key_b)`` ascending.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CIRCUIT_BREAKER_LOAD_FAILED
         )
@@ -189,11 +207,21 @@ ON CONFLICT(pair_key_a, pair_key_b) DO UPDATE SET
         and pagination contract); kept as a distinct ADR-0001 D7
         method because boot-time callers drain it via
         :func:`synthorg.persistence._shared.collect_all`.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         return await self.list_items(limit=limit, offset=offset)
 
     async def delete(self, entity_id: CircuitBreakerPairKey) -> bool:
-        """Delete a circuit breaker state record by composite key."""
+        """Delete a circuit breaker state record by composite key.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         pair_key_a, pair_key_b = entity_id
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

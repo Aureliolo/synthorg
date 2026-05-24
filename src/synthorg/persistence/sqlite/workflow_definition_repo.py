@@ -158,6 +158,9 @@ class SQLiteWorkflowDefinitionRepository:
         :meth:`create_if_absent` so every write path fails fast with a
         descriptive ``QueryError`` rather than bubbling a generic SQLite
         CHECK-constraint error to the caller.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         if definition.revision < 1:
             msg = (
@@ -181,6 +184,13 @@ class SQLiteWorkflowDefinitionRepository:
         ``PersistenceVersionConflictError`` is raised so callers
         distinguish "row missing" (``False``) from "row changed
         concurrently".
+
+        Returns:
+            The updated entity.
+
+        Raises:
+            PersistenceVersionConflictError: If the row version no longer matches.
+            QueryError: If the database query fails.
         """
         self._require_valid_revision(definition)
         nodes_json = json.dumps(
@@ -261,6 +271,12 @@ WHERE id = ? AND revision = ?""",
         """Atomic create-or-skip via ``INSERT ... ON CONFLICT DO NOTHING``.
 
         See :meth:`WorkflowDefinitionRepository.create_if_absent`.
+
+        Returns:
+            The newly created entity.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         self._require_valid_revision(definition)
         nodes_json = json.dumps(
@@ -329,6 +345,7 @@ ON CONFLICT(id) DO NOTHING""",
             QueryError: If the database operation fails or the
                 ``revision`` value is invalid (see
                 :meth:`_require_valid_revision`).
+            PersistenceVersionConflictError: If the row version no longer matches.
         """
         self._require_valid_revision(definition)
         nodes_json = json.dumps(
@@ -538,6 +555,9 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
         Raises:
             QueryError: If the database query, deserialization, or
                 pagination validation fails.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
@@ -563,7 +583,14 @@ WHERE workflow_definitions.revision = excluded.revision - 1""",
         )
 
     async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
-        """Count workflow definitions matching the filter spec."""
+        """Count workflow definitions matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         conditions: list[str] = []
         params: list[object] = []
         if filter_spec.workflow_type is not None:

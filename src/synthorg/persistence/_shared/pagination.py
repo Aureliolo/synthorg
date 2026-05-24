@@ -157,6 +157,9 @@ async def collect_all_mapping[KeyT, ValT](
 
     Returns:
         The fully reassembled mapping.
+
+    Raises:
+        QueryError: If the database query fails.
     """
     # ``bool`` is a subclass of ``int``; without the explicit
     # ``isinstance(page_size, bool)`` guard ``True`` / ``False`` would

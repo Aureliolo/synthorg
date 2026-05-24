@@ -54,7 +54,14 @@ _UPSERT_SQL = f"""
 
 
 def _row_to_proposal(row: dict[str, Any]) -> ConversationalProposal:
-    """Convert a Postgres dict row into a :class:`ConversationalProposal`."""
+    """Convert a Postgres dict row into a :class:`ConversationalProposal`.
+
+    Returns:
+        Result of type ``ConversationalProposal``.
+
+    Raises:
+        QueryError: If the database query fails.
+    """
     try:
         return ConversationalProposal(
             id=str(row["id"]),
@@ -78,7 +85,11 @@ def _row_to_proposal(row: dict[str, Any]) -> ConversationalProposal:
 def _build_where(
     filter_spec: ConversationalProposalFilterSpec,
 ) -> tuple[str, list[object]]:
-    """Build the WHERE clause + bound params from a filter spec."""
+    """Build the WHERE clause + bound params from a filter spec.
+
+    Returns:
+        The matching collection.
+    """
     clauses: list[str] = []
     params: list[object] = []
     if filter_spec.conversation_id is not None:
@@ -153,6 +164,9 @@ class PostgresConversationalProposalRepository:
 
         Raises:
             QueryError: If the database query fails.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         sql = (
             f"SELECT {_SELECT_COLS} FROM conversational_proposals "  # noqa: S608
@@ -192,6 +206,9 @@ class PostgresConversationalProposalRepository:
         Raises:
             QueryError: If the database query fails or pagination args
                 are invalid.
+
+        Returns:
+            The matching entities.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED
@@ -236,6 +253,9 @@ class PostgresConversationalProposalRepository:
         Raises:
             QueryError: If the database query fails or pagination args
                 are invalid.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED
@@ -273,6 +293,9 @@ class PostgresConversationalProposalRepository:
 
         Raises:
             QueryError: If the database query fails.
+
+        Returns:
+            Number of matching rows.
         """
         where, params = _build_where(filter_spec)
         try:
@@ -355,6 +378,9 @@ class PostgresConversationalProposalRepository:
 
         Raises:
             QueryError: If the database operation fails.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

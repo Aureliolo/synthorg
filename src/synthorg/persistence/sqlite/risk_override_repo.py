@@ -132,7 +132,14 @@ class SQLiteRiskOverrideRepository:
         self,
         override_id: NotBlankStr,
     ) -> RiskTierOverride | None:
-        """Retrieve an override by ID."""
+        """Retrieve an override by ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            PersistenceError: If the persistence layer rejects the operation.
+        """
         try:
             cursor = await self._db.execute(
                 f"SELECT {_COLS} FROM risk_overrides "  # noqa: S608
@@ -159,7 +166,14 @@ class SQLiteRiskOverrideRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[RiskTierOverride, ...]:
-        """List overrides ordered by id ascending (generic IdKeyed surface)."""
+        """List overrides ordered by id ascending (generic IdKeyed surface).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            PersistenceError: If the persistence layer rejects the operation.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED
         )
@@ -195,7 +209,14 @@ class SQLiteRiskOverrideRepository:
         return tuple(results)
 
     async def delete(self, override_id: NotBlankStr) -> bool:
-        """Delete an override by ID."""
+        """Delete an override by ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            PersistenceError: If the persistence layer rejects the operation.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -229,6 +250,9 @@ class SQLiteRiskOverrideRepository:
         Raises:
             PersistenceError: If the query or pagination validation
                 fails.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_RISK_OVERRIDE_QUERY_FAILED
@@ -279,7 +303,14 @@ class SQLiteRiskOverrideRepository:
         revoked_by: NotBlankStr,
         revoked_at: AwareDatetime,
     ) -> bool:
-        """Mark an override as revoked."""
+        """Mark an override as revoked.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            PersistenceError: If the persistence layer rejects the operation.
+        """
         revoked_at_utc = format_iso_utc(revoked_at)
         async with self._write_context():
             try:
@@ -304,7 +335,11 @@ class SQLiteRiskOverrideRepository:
 
 
 def _row_to_override(row: Any) -> RiskTierOverride:
-    """Convert a SQLite row to a RiskTierOverride."""
+    """Convert a SQLite row to a RiskTierOverride.
+
+    Returns:
+        Result of type ``RiskTierOverride``.
+    """
     (
         id_,
         action_type,

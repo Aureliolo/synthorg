@@ -55,7 +55,14 @@ _SELECT_COLS = (
 
 
 def _row_to_escalation(row: Row) -> Escalation:
-    """Deserialize a DB row into an :class:`Escalation`."""
+    """Deserialize a DB row into an :class:`Escalation`.
+
+    Returns:
+        Result of type ``Escalation``.
+
+    Raises:
+        QueryError: If the database query fails.
+    """
     try:
         conflict = Conflict.model_validate_json(str(row["conflict_json"]))
         decision: EscalationDecision | None = None
@@ -122,7 +129,13 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         self._write_context = write_context
 
     async def create(self, escalation: Escalation) -> None:
-        """Insert a PENDING escalation row."""
+        """Insert a PENDING escalation row.
+
+        Raises:
+            ValueError: If an argument fails validation.
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
         if escalation.status != EscalationStatus.PENDING:
             msg = "create() requires status=PENDING"
             raise ValueError(msg)
@@ -165,7 +178,14 @@ class SQLiteEscalationRepository(EscalationQueueStore):
                 raise QueryError(msg) from exc
 
     async def get(self, escalation_id: str) -> Escalation | None:
-        """Fetch by ID."""
+        """Fetch by ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = f"SELECT {_SELECT_COLS} FROM conflict_escalations WHERE id = ?"  # noqa: S608
         try:
             cursor = await self._db.execute(sql, (escalation_id,))
@@ -190,7 +210,15 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         limit: int = _DEFAULT_LIMIT,
         offset: int = _DEFAULT_OFFSET,
     ) -> tuple[tuple[Escalation, ...], int]:
-        """Page over rows filtered by status."""
+        """Page over rows filtered by status.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            ValueError: If an argument fails validation.
+            QueryError: If the database query fails.
+        """
         if limit <= 0:
             msg = "limit must be positive"
             raise ValueError(msg)
@@ -242,7 +270,11 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         decision: EscalationDecision,
         decided_by: str,
     ) -> Escalation:
-        """Transition PENDING -> DECIDED atomically."""
+        """Transition PENDING -> DECIDED atomically.
+
+        Returns:
+            Result of type ``Escalation``.
+        """
         now_iso = format_iso_utc(datetime.now(UTC))
         decision_json = _decision_adapter.dump_json(decision).decode("utf-8")
         return await self._update_terminal(
@@ -255,7 +287,11 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         )
 
     async def cancel(self, escalation_id: str, *, cancelled_by: str) -> Escalation:
-        """Transition PENDING -> CANCELLED."""
+        """Transition PENDING -> CANCELLED.
+
+        Returns:
+            Result of type ``Escalation``.
+        """
         now_iso = format_iso_utc(datetime.now(UTC))
         return await self._update_terminal(
             escalation_id,
@@ -277,6 +313,12 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         distinguish sweeper-driven expiry from operator-driven
         cancellation (``"system:resolver_cancelled"``) or human
         decisions (``"human:<operator_id>"``).
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         update_sql = (
             "UPDATE conflict_escalations "
@@ -367,6 +409,14 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         ``allowed_from`` is an internal EscalationStatus enum set -- the
         ``IN (...)`` clause interpolates values from a trusted enum, not
         caller input, so the S608 is a false positive.
+
+        Returns:
+            Result of type ``Escalation``.
+
+        Raises:
+            ValueError: If an argument fails validation.
+            QueryError: If the database query fails.
+            KeyError: If a required dictionary key is missing.
         """
         allowed = ",".join(f"'{s.value}'" for s in allowed_from)
         update_sql = (

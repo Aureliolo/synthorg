@@ -79,7 +79,14 @@ _UPSERT_SQL = f"""
 
 
 def _row_to_forecast(row: dict[str, Any]) -> Forecast:
-    """Convert a Postgres dict row into a :class:`Forecast`."""
+    """Convert a Postgres dict row into a :class:`Forecast`.
+
+    Returns:
+        Result of type ``Forecast``.
+
+    Raises:
+        QueryError: If the database query fails.
+    """
     try:
         decided_at_raw = row["decided_at"]
         halted_at_raw = row["halted_at"]
@@ -139,7 +146,11 @@ def _row_to_forecast(row: dict[str, Any]) -> Forecast:
 def _build_where(
     filter_spec: CostForecastFilterSpec,
 ) -> tuple[str, list[object]]:
-    """Build the WHERE clause + bound params from a filter spec."""
+    """Build the WHERE clause + bound params from a filter spec.
+
+    Returns:
+        The matching collection.
+    """
     clauses: list[str] = []
     params: list[object] = []
     if filter_spec.brief_hash is not None:
@@ -159,7 +170,11 @@ def _validate_update_keys(
     *,
     to_state: ForecastDecision,
 ) -> None:
-    """Reject unknown update keys; enforce ``superseded`` semantics."""
+    """Reject unknown update keys; enforce ``superseded`` semantics.
+
+    Raises:
+        QueryError: If the database query fails.
+    """
     allowed = {"decided_by", "decided_at", "ceiling_amount"}
     unknown = sorted(set(updates) - allowed)
     if unknown:
@@ -206,7 +221,13 @@ class PostgresCostForecastRepository:
         )
 
     async def save(self, entity: Forecast) -> None:
-        """Upsert a forecast row."""
+        """Upsert a forecast row.
+
+        Raises:
+            MixedCurrencyAggregationError: If aggregated rows mix currencies.
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
+        """
         live_currency = self._currency_getter()
         if entity.currency != live_currency:
             logger.warning(
@@ -296,7 +317,14 @@ class PostgresCostForecastRepository:
             raise QueryError(msg) from exc
 
     async def get(self, entity_id: UUID) -> Forecast | None:
-        """Get a forecast by id, or ``None`` if not found."""
+        """Get a forecast by id, or ``None`` if not found.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = (
             f"SELECT {_SELECT_COLS} FROM cost_forecasts "  # noqa: S608
             "WHERE forecast_id = %s"
@@ -333,7 +361,14 @@ class PostgresCostForecastRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Forecast, ...]:
-        """List forecasts newest-first."""
+        """List forecasts newest-first.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_COST_FORECAST_FAILED
         )
@@ -371,7 +406,14 @@ class PostgresCostForecastRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Forecast, ...]:
-        """Return forecasts matching the spec, newest-first (paginated)."""
+        """Return forecasts matching the spec, newest-first (paginated).
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_COST_FORECAST_FAILED
         )
@@ -407,7 +449,14 @@ class PostgresCostForecastRepository:
         return items
 
     async def count(self, filter_spec: CostForecastFilterSpec) -> int:
-        """Count forecasts matching the filter spec."""
+        """Count forecasts matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         where, params = _build_where(filter_spec)
         sql = (
             "SELECT COUNT(*) FROM cost_forecasts "  # noqa: S608
@@ -436,7 +485,14 @@ class PostgresCostForecastRepository:
         to_state: ForecastDecision,
         **updates: object,
     ) -> bool:
-        """Atomic compare-and-set for the decision state."""
+        """Atomic compare-and-set for the decision state.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         _validate_update_keys("transition_if", entity_id, updates, to_state=to_state)
         decided_by = updates.get("decided_by")
         decided_at_raw = updates.get("decided_at")
@@ -488,7 +544,14 @@ class PostgresCostForecastRepository:
         return rowcount > 0
 
     async def delete(self, entity_id: UUID) -> bool:
-        """Delete a forecast by id."""
+        """Delete a forecast by id.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = "DELETE FROM cost_forecasts WHERE forecast_id = %s"
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

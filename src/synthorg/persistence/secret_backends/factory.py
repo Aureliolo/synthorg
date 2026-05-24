@@ -74,7 +74,11 @@ def _resolve_backend_type(
     pg_pool_available: bool,
     sqlite_db_path: str | None,
 ) -> _ResolvedBackend:
-    """Pick the backend type, reason, and log level for this environment."""
+    """Pick the backend type, reason, and log level for this environment.
+
+    Returns:
+        Result of type ``_ResolvedBackend``.
+    """
     resolved = config.backend_type
     if resolved == "encrypted_sqlite" and postgres_mode:
         if pg_pool_available:
@@ -123,6 +127,9 @@ def _check_master_key(
     Returns a `_ResolvedBackend` override if the key is missing
     (forcing a downgrade to ``env_var``); returns ``None`` when the
     backend is not encrypted or the key is present.
+
+    Returns:
+        The matching value, or ``None`` when absent.
     """
     if resolved not in ("encrypted_sqlite", "encrypted_postgres"):
         return None
@@ -153,6 +160,9 @@ def _promote_to_postgres(config: SecretBackendConfig) -> SecretBackendConfig:
     during the auto-promotion. Without this the promoted backend would look
     up a different env var (the postgres default) and silently fall back to
     ``env_var`` even though the operator's key is set.
+
+    Returns:
+        Result of type ``SecretBackendConfig``.
     """
     sqlite_env = config.encrypted_sqlite.master_key_env
     postgres_cfg = config.encrypted_postgres.model_copy(
@@ -236,6 +246,14 @@ def _build_encrypted_sqlite(
     db_path: str | None = None,
     **_unused: object,
 ) -> SecretBackend:
+    """Construct encrypted sqlite.
+
+    Returns:
+        Result of type ``SecretBackend``.
+
+    Raises:
+        ValueError: If an argument fails validation.
+    """
     if db_path is None:
         logger.error(
             SECRET_BACKEND_UNAVAILABLE,
@@ -256,6 +274,14 @@ def _build_encrypted_postgres(
     pg_pool: "AsyncConnectionPool | Callable[[], AsyncConnectionPool] | None" = None,  # noqa: UP037
     **_unused: object,
 ) -> SecretBackend:
+    """Construct encrypted postgres.
+
+    Returns:
+        Result of type ``SecretBackend``.
+
+    Raises:
+        ValueError: If an argument fails validation.
+    """
     if pg_pool is None:
         logger.error(
             SECRET_BACKEND_UNAVAILABLE,
@@ -274,6 +300,11 @@ def _build_env_var(
     config: SecretBackendConfig,
     **_unused: object,
 ) -> SecretBackend:
+    """Construct env var.
+
+    Returns:
+        Result of type ``SecretBackend``.
+    """
     return EnvVarSecretBackend(config=config.env_var)
 
 

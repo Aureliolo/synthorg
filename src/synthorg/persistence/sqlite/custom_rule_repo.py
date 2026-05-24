@@ -61,6 +61,9 @@ def _row_to_dict(row: Row) -> dict[str, object]:
     The shared ``row_to_custom_rule`` helper takes a dict so both
     backends share one deserializer. SQLite's positional row factory
     is mapped here at the boundary so the helper sees a uniform shape.
+
+    Returns:
+        Result of type ``dict[str, object]``.
     """
     return dict(zip(_COLUMNS, row, strict=True))
 
@@ -76,6 +79,9 @@ def _row_to_definition(row: Row) -> CustomRuleDefinition:
             data, or if the row width drifts from ``_COLUMNS`` (a
             schema-vs-query mismatch surfaces here as a deterministic
             non-retryable error).
+
+    Returns:
+        Result of type ``CustomRuleDefinition``.
     """
     try:
         row_dict = _row_to_dict(row)
@@ -284,7 +290,11 @@ ON CONFLICT(id) DO UPDATE SET
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CustomRuleDefinition, ...]:
-        """List custom rules ordered by name."""
+        """List custom rules ordered by name.
+
+        Returns:
+            The matching entities.
+        """
         return await self.query(
             CustomRuleFilterSpec(),
             limit=limit,
@@ -302,6 +312,9 @@ ON CONFLICT(id) DO UPDATE SET
 
         Raises:
             QueryError: If the query or pagination validation fails.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
         """
         limit = validate_pagination_args(
             limit, offset, event=META_CUSTOM_RULE_LIST_FAILED
@@ -329,7 +342,14 @@ ON CONFLICT(id) DO UPDATE SET
         return result
 
     async def count(self, filter_spec: CustomRuleFilterSpec) -> int:
-        """Count custom rules matching the filter spec."""
+        """Count custom rules matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         where = " WHERE enabled = 1" if filter_spec.enabled_only else ""
         sql = f"SELECT COUNT(*) FROM custom_rules{where}"  # noqa: S608
         try:

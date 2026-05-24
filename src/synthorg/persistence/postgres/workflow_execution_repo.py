@@ -66,7 +66,11 @@ _MAX_LIST_ROWS: int = 10_000
 def _deserialize_node_executions(
     raw: list[Any],
 ) -> tuple[WorkflowNodeExecution, ...]:
-    """Deserialize JSON array into WorkflowNodeExecution tuple."""
+    """Deserialize JSON array into WorkflowNodeExecution tuple.
+
+    Returns:
+        The matching collection.
+    """
     return tuple(
         WorkflowNodeExecution(
             node_id=item["node_id"],
@@ -161,7 +165,11 @@ class PostgresWorkflowExecutionRepository:
         self,
         execution: WorkflowExecution,
     ) -> tuple[object, ...]:
-        """Build the parameter tuple for insert/update SQL."""
+        """Build the parameter tuple for insert/update SQL.
+
+        Returns:
+            The matching collection.
+        """
         node_jsonb = Jsonb(
             [ne.model_dump(mode="json") for ne in execution.node_executions],
         )
@@ -181,7 +189,12 @@ class PostgresWorkflowExecutionRepository:
         )
 
     async def _insert(self, execution: WorkflowExecution) -> None:
-        """Insert a new workflow execution row."""
+        """Insert a new workflow execution row.
+
+        Raises:
+            QueryError: If the database query fails.
+            DuplicateRecordError: If a row with the same key already exists.
+        """
         params = self._serialize_execution(execution)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -217,7 +230,13 @@ class PostgresWorkflowExecutionRepository:
             raise QueryError(msg) from exc
 
     async def _update(self, execution: WorkflowExecution) -> None:
-        """Update an existing workflow execution with version check."""
+        """Update an existing workflow execution with version check.
+
+        Raises:
+            QueryError: If the database query fails.
+            PersistenceVersionConflictError: If the row version no longer matches.
+            RecordNotFoundError: If no row matches the supplied key.
+        """
         params = self._serialize_execution(execution)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

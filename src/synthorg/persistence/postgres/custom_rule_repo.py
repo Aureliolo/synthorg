@@ -59,6 +59,9 @@ def _row_to_definition(row: dict[str, Any]) -> CustomRuleDefinition:
         MalformedRowError: If the row contains corrupt or unparseable
             data. Non-retryable -- malformed rows are deterministic
             data-integrity issues, not transient query failures.
+
+    Returns:
+        Result of type ``CustomRuleDefinition``.
     """
     return row_to_custom_rule(row)
 
@@ -282,7 +285,11 @@ class PostgresCustomRuleRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CustomRuleDefinition, ...]:
-        """List custom rules ordered by name."""
+        """List custom rules ordered by name.
+
+        Returns:
+            The matching entities.
+        """
         return await self.query(
             CustomRuleFilterSpec(),
             limit=limit,
@@ -300,6 +307,9 @@ class PostgresCustomRuleRepository:
 
         Raises:
             QueryError: If the query or pagination validation fails.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
         """
         limit = validate_pagination_args(
             limit, offset, event=META_CUSTOM_RULE_LIST_FAILED
@@ -331,7 +341,14 @@ class PostgresCustomRuleRepository:
         return result
 
     async def count(self, filter_spec: CustomRuleFilterSpec) -> int:
-        """Count custom rules matching the filter spec."""
+        """Count custom rules matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         where = " WHERE enabled = true" if filter_spec.enabled_only else ""
         sql = f"SELECT COUNT(*) FROM custom_rules{where}"  # noqa: S608
         try:

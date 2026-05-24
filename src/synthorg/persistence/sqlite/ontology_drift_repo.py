@@ -27,7 +27,14 @@ _DEFAULT_LIST_LIMIT_10: Final[int] = 10
 
 
 def _row_to_report(row: Any) -> DriftReport:
-    """Deserialize a row into a DriftReport."""
+    """Deserialize a row into a DriftReport.
+
+    Returns:
+        Result of type ``DriftReport``.
+
+    Raises:
+        ValueError: If an argument fails validation.
+    """
     entity_name, divergence_score, canonical_version, rec, agents_json = row
     try:
         agents_data = json.loads(str(agents_json))
@@ -121,6 +128,9 @@ class SQLiteOntologyDriftReportRepository:
         the generic filtered ``query`` surface is unimplemented and
         raises rather than silently returning an empty tuple, which
         would mask the missing functionality from a caller.
+
+        Raises:
+            NotImplementedError: If the underlying call raises.
         """
         msg = "OntologyDriftReportRepository.query is not implemented"
         raise NotImplementedError(msg)
@@ -130,6 +140,9 @@ class SQLiteOntologyDriftReportRepository:
 
         Raises rather than silently reporting zero deletions, which
         would let a retention caller believe a sweep ran.
+
+        Raises:
+            NotImplementedError: If the underlying call raises.
         """
         msg = "OntologyDriftReportRepository.purge_before is not implemented"
         raise NotImplementedError(msg)
@@ -140,7 +153,11 @@ class SQLiteOntologyDriftReportRepository:
         *,
         limit: int = _DEFAULT_LIST_LIMIT_10,
     ) -> tuple[DriftReport, ...]:
-        """Return most recent drift reports for an entity."""
+        """Return most recent drift reports for an entity.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+        """
         cursor = await self._db.execute(
             "SELECT entity_name, divergence_score, canonical_version, "
             "recommendation, divergent_agents "
@@ -157,7 +174,11 @@ class SQLiteOntologyDriftReportRepository:
         *,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[DriftReport, ...]:
-        """Return the latest drift report for each entity."""
+        """Return the latest drift report for each entity.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+        """
         cursor = await self._db.execute(
             "SELECT entity_name, divergence_score, canonical_version, "
             "recommendation, divergent_agents "

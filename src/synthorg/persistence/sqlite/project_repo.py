@@ -81,6 +81,11 @@ class SQLiteProjectRepository:
 
     @staticmethod
     def _row_params(project: Project) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            The matching collection.
+        """
         return (
             project.id,
             project.name,
@@ -403,7 +408,14 @@ ON CONFLICT(id) DO UPDATE SET
         return projects
 
     async def count(self, filter_spec: ProjectFilterSpec) -> int:
-        """Count projects matching the filter spec."""
+        """Count projects matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         query = "SELECT COUNT(*) FROM projects"
         conditions: list[str] = []
         params: list[object] = []

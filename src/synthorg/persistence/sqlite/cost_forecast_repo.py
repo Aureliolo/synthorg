@@ -107,6 +107,9 @@ def _row_to_forecast(row: Row) -> Forecast:
 
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
+
+    Returns:
+        Result of type ``Forecast``.
     """
     try:
         decided_at_raw = row["decided_at"]
@@ -163,7 +166,11 @@ def _row_to_forecast(row: Row) -> Forecast:
 def _build_where(
     filter_spec: CostForecastFilterSpec,
 ) -> tuple[str, list[object]]:
-    """Build the WHERE clause + bound params from a filter spec."""
+    """Build the WHERE clause + bound params from a filter spec.
+
+    Returns:
+        The matching collection.
+    """
     clauses: list[str] = []
     params: list[object] = []
     if filter_spec.brief_hash is not None:
@@ -187,6 +194,9 @@ def _validate_update_keys(
 
     ``superseded`` is a system transition (the operator edited the
     brief); ``decided_by`` is forbidden there.
+
+    Raises:
+        QueryError: If the database query fails.
     """
     allowed = {"decided_by", "decided_at", "ceiling_amount"}
     unknown = sorted(set(updates) - allowed)
@@ -341,7 +351,14 @@ class SQLiteCostForecastRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: UUID) -> Forecast | None:
-        """Get a forecast by id, or ``None`` if not found."""
+        """Get a forecast by id, or ``None`` if not found.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = (
             f"SELECT {_SELECT_COLS} FROM cost_forecasts "  # noqa: S608
             "WHERE forecast_id = ?"
@@ -374,7 +391,14 @@ class SQLiteCostForecastRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Forecast, ...]:
-        """List forecasts newest-first (``created_at DESC, forecast_id DESC``)."""
+        """List forecasts newest-first (``created_at DESC, forecast_id DESC``).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_COST_FORECAST_FAILED
         )
@@ -408,7 +432,14 @@ class SQLiteCostForecastRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Forecast, ...]:
-        """Return forecasts matching the spec, newest-first (paginated)."""
+        """Return forecasts matching the spec, newest-first (paginated).
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_COST_FORECAST_FAILED
         )
@@ -440,7 +471,14 @@ class SQLiteCostForecastRepository:
         return items
 
     async def count(self, filter_spec: CostForecastFilterSpec) -> int:
-        """Count forecasts matching the filter spec."""
+        """Count forecasts matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         where, params = _build_where(filter_spec)
         sql = (
             "SELECT COUNT(*) FROM cost_forecasts "  # noqa: S608
@@ -473,6 +511,12 @@ class SQLiteCostForecastRepository:
         Accepts ``decided_by`` (NotBlankStr), ``decided_at`` (UTC
         datetime), and ``ceiling_amount`` (float) as correlated
         updates. ``decided_at`` defaults to ``utcnow()`` when omitted.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         _validate_update_keys("transition_if", entity_id, updates, to_state=to_state)
         decided_by = updates.get("decided_by")
@@ -530,7 +574,14 @@ class SQLiteCostForecastRepository:
         return cursor.rowcount > 0
 
     async def delete(self, entity_id: UUID) -> bool:
-        """Delete a forecast by id."""
+        """Delete a forecast by id.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = "DELETE FROM cost_forecasts WHERE forecast_id = ?"
         async with self._write_context():
             try:

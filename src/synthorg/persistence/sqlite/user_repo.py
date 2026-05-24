@@ -65,6 +65,9 @@ def _classify_sqlite_user_error(message: str) -> str | None:
 
     Returns ``None`` when the message does not match any of the
     known user-table constraints.
+
+    Returns:
+        The matching value, or ``None`` when absent.
     """
     lower = message.lower()
     if "cannot remove the last ceo" in lower:
@@ -92,6 +95,9 @@ def _row_to_user(row: aiosqlite.Row) -> User:
 
     Returns:
         Validated ``User`` model instance.
+
+    Raises:
+        TypeError: If an argument has the wrong type.
     """
     data = dict(row)
     data["must_change_password"] = bool(data["must_change_password"])
@@ -172,6 +178,7 @@ class SQLiteUserRepository:
 
         Raises:
             QueryError: If the database operation fails.
+            ConstraintViolationError: If a database constraint is violated.
         """
         async with self._write_context():
             try:
@@ -357,7 +364,14 @@ ON CONFLICT(id) DO UPDATE SET
         after_id: NotBlankStr | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[User, ...]:
-        """Keyset page of human users with ``id > after_id``."""
+        """Keyset page of human users with ``id > after_id``.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(limit, 0, event=PERSISTENCE_USER_LIST_FAILED)
         sql = "SELECT * FROM users WHERE role != ?"
         params: list[object] = [HumanRole.SYSTEM.value]
@@ -526,6 +540,7 @@ ON CONFLICT(id) DO UPDATE SET
         Raises:
             QueryError: If the user is the system user or the
                 database operation fails.
+            ConstraintViolationError: If a database constraint is violated.
         """
         if is_system_user(user_id):
             msg = "System user cannot be deleted"

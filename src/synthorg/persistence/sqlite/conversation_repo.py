@@ -123,6 +123,9 @@ def _row_to_conversation(row: Row) -> Conversation:
 
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
+
+    Returns:
+        Result of type ``Conversation``.
     """
     try:
         return Conversation(
@@ -148,6 +151,9 @@ def _row_to_turn(row: Row) -> ConversationTurn:
 
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
+
+    Returns:
+        Result of type ``ConversationTurn``.
     """
     try:
         return ConversationTurn(
@@ -245,6 +251,9 @@ class SQLiteConversationRepository:
 
         Raises:
             QueryError: If the database query fails.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         sql = """
             SELECT id, created_by, created_at, updated_at, status
@@ -280,6 +289,9 @@ class SQLiteConversationRepository:
         Raises:
             QueryError: If the database query fails or pagination args
                 are invalid.
+
+        Returns:
+            The matching entities.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_FAILED
@@ -382,6 +394,9 @@ class SQLiteConversationRepository:
 
         Raises:
             QueryError: If the database operation fails.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
         """
         sql = "DELETE FROM conversations WHERE id = ?"
         async with self._write_context():
@@ -545,6 +560,9 @@ class SQLiteConversationTurnRepository:
         Raises:
             QueryError: If the database query fails or pagination args
                 are invalid.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_TURN_FAILED
@@ -586,6 +604,9 @@ class SQLiteConversationTurnRepository:
 
         Raises:
             QueryError: On database errors.
+
+        Returns:
+            Numeric result of the operation.
         """
         sql = "DELETE FROM conversation_turns WHERE created_at < ?"
         async with self._write_context():

@@ -118,6 +118,9 @@ def row_to_audit_entry(row: dict[str, object]) -> AuditEntry:
             retrying re-reads the same bad row). The original exception
             is logged via ``safe_error_description`` (no payload bytes
             leak through traceback frame-locals).
+
+    Returns:
+        Result of type ``AuditEntry``.
     """
     try:
         raw_rules = row.get("matched_rules")

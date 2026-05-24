@@ -33,7 +33,11 @@ _MAX_LIST_ROWS: int = 10_000
 
 
 def _row_to_workspace(row: dict[str, Any]) -> ProjectWorkspace:
-    """Reconstruct a ``ProjectWorkspace`` from a Postgres dict_row."""
+    """Reconstruct a ``ProjectWorkspace`` from a Postgres dict_row.
+
+    Returns:
+        Result of type ``ProjectWorkspace``.
+    """
     data = dict(row)
     data["git_backend_kind"] = GitBackendType(data["git_backend_kind"])
     data["created_at"] = coerce_row_timestamp(data["created_at"])
@@ -53,6 +57,11 @@ class PostgresProjectWorkspaceRepository:
 
     @staticmethod
     def _row_params(workspace: ProjectWorkspace) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            The matching collection.
+        """
         return (
             workspace.project_id,
             workspace.workspace_path,
@@ -64,7 +73,11 @@ class PostgresProjectWorkspaceRepository:
         )
 
     async def save(self, entity: ProjectWorkspace) -> None:
-        """Persist a project workspace via upsert (insert or update)."""
+        """Persist a project workspace via upsert (insert or update).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -96,7 +109,14 @@ class PostgresProjectWorkspaceRepository:
             raise QueryError(msg) from exc
 
     async def get(self, entity_id: NotBlankStr) -> ProjectWorkspace | None:
-        """Retrieve a project workspace by owning project id."""
+        """Retrieve a project workspace by owning project id.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -147,7 +167,14 @@ class PostgresProjectWorkspaceRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ProjectWorkspace, ...]:
-        """List workspaces in project-id order."""
+        """List workspaces in project-id order.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_PROJECT_WORKSPACE_LIST_FAILED
         )
@@ -185,7 +212,14 @@ class PostgresProjectWorkspaceRepository:
         return workspaces
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
-        """Delete a project workspace by owning project id."""
+        """Delete a project workspace by owning project id.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

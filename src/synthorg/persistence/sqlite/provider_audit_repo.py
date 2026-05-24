@@ -82,7 +82,14 @@ class SQLiteProviderAuditRepo:
         self._write_context = write_context
 
     async def record(self, event: ProviderAuditEvent) -> ProviderAuditEvent:
-        """Insert one audit event and return the saved row with id populated."""
+        """Insert one audit event and return the saved row with id populated.
+
+        Returns:
+            Result of type ``ProviderAuditEvent``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         # ``event.payload`` is recursively frozen by
         # ``ProviderAuditEvent._freeze_payload`` (``MappingProxyType`` /
         # ``tuple`` / ``frozenset`` for dicts / lists / sets respectively)
@@ -125,7 +132,14 @@ class SQLiteProviderAuditRepo:
         after_id: int | None = None,
         limit: int = _DEFAULT_LIST_LIMIT_50,
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
-        """List events for one provider, newest first, with ``has_more`` overflow."""
+        """List events for one provider, newest first, with ``has_more`` overflow.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
             raise QueryError(msg)
@@ -201,6 +215,12 @@ class SQLiteProviderAuditRepo:
         Differs from :meth:`list` in two ways: paging is offset-based,
         and no ``has_more`` overflow is returned. Use ``list`` when the
         dashboard needs the ``has_more`` signal.
+
+        Returns:
+            Tuple of (items, next_cursor) for paginated iteration.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED
@@ -257,6 +277,12 @@ class SQLiteProviderAuditRepo:
         Slower than :meth:`purge_before_id` (range scan on
         ``occurred_at`` index vs primary-key range scan); kept so the
         protocol satisfies :class:`AppendOnlyRepository`.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         async with self._write_context():
             try:
@@ -277,7 +303,14 @@ class SQLiteProviderAuditRepo:
         return cursor.rowcount
 
     async def purge_before_id(self, *, before_id: int) -> int:
-        """Delete events with ``id < before_id`` (bespoke D7)."""
+        """Delete events with ``id < before_id`` (bespoke D7).
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -310,7 +343,14 @@ class SQLiteProviderAuditRepo:
             )
 
     def _row_to_event(self, row: dict[str, object]) -> ProviderAuditEvent:
-        """Deserialise a row dict into a ``ProviderAuditEvent``."""
+        """Deserialise a row dict into a ``ProviderAuditEvent``.
+
+        Returns:
+            Result of type ``ProviderAuditEvent``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         raw_payload = row["payload"]
         try:
             payload = json.loads(str(raw_payload)) if raw_payload else {}
