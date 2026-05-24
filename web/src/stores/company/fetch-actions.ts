@@ -1,5 +1,6 @@
 import { getCompanyConfig, getDepartmentHealth } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeWsString } from '@/utils/ws-sanitize'
 import type { DepartmentHealth } from '@/api/types/analytics'
 import type { WsEvent } from '@/api/types/websocket'
 import { log } from './_helpers'
@@ -91,7 +92,12 @@ async function refreshAfterWsEvent(get: CompanyGet): Promise<void> {
 }
 
 function updateFromWsEventImpl(get: CompanyGet, event: WsEvent): void {
-  if (!ORG_MUTATION_EVENTS.has(event.event_type)) return
+  // Sanitize the WS-supplied event_type before consulting the
+  // allowlist so a malformed frame can't smuggle control or bidi
+  // characters into the dispatch path.
+  const eventType = sanitizeWsString(event.event_type, 64)
+  if (eventType === undefined) return
+  if (!ORG_MUTATION_EVENTS.has(eventType)) return
   void refreshAfterWsEvent(get)
 }
 

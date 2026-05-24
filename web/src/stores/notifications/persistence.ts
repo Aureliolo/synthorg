@@ -1,6 +1,8 @@
 import type {
+  NotificationCategory,
   NotificationItem,
   NotificationPreferences,
+  NotificationRoute,
 } from '@/types/notifications'
 import {
   CATEGORY_CONFIGS,
@@ -19,6 +21,11 @@ const VALID_SEVERITIES: ReadonlySet<string> = new Set([
   'warning',
   'error',
   'critical',
+])
+const VALID_ROUTES: ReadonlySet<string> = new Set([
+  'drawer',
+  'toast',
+  'browser',
 ])
 
 // Module-scoped (escapes Zustand state) on purpose: the persist
@@ -67,6 +74,23 @@ export function hydrateItems(): readonly NotificationItem[] {
   }
 }
 
+function sanitizeRouteOverrides(
+  raw: unknown,
+): NotificationPreferences['routeOverrides'] {
+  if (typeof raw !== 'object' || raw === null) return {}
+  const out: Partial<Record<NotificationCategory, readonly NotificationRoute[]>>
+    = {}
+  for (const [category, routes] of Object.entries(raw)) {
+    if (!VALID_CATEGORIES.has(category)) continue
+    if (!Array.isArray(routes)) continue
+    if (!routes.every((r) => typeof r === 'string' && VALID_ROUTES.has(r))) {
+      continue
+    }
+    out[category as NotificationCategory] = routes as readonly NotificationRoute[]
+  }
+  return out
+}
+
 export function hydratePrefs(): NotificationPreferences {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_PREFS)
@@ -75,9 +99,15 @@ export function hydratePrefs(): NotificationPreferences {
     if (typeof parsed !== 'object' || parsed === null) {
       return DEFAULT_PREFERENCES
     }
+    const candidate = parsed as Partial<NotificationPreferences>
     return {
       ...DEFAULT_PREFERENCES,
-      ...(parsed as Partial<NotificationPreferences>),
+      ...candidate,
+      // Validate the deserialized routeOverrides map: drop unknown
+      // categories and non-allowlisted route strings before merging
+      // so corrupt or stale localStorage data can't crash route
+      // handling later at runtime.
+      routeOverrides: sanitizeRouteOverrides(candidate.routeOverrides),
     }
   } catch {
     return DEFAULT_PREFERENCES

@@ -1,6 +1,6 @@
 import * as meetingsApi from '@/api/endpoints/meetings'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import type {
   MeetingFilters,
@@ -115,7 +115,7 @@ async function triggerMeetingImpl(
     set({ triggering: false })
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Could not trigger meeting',
+      ...getCrudErrorTitle(err, 'Could not trigger meeting'),
       description: getErrorMessage(err),
     })
     return []

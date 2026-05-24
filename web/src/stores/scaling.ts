@@ -12,6 +12,7 @@ import {
 } from '@/api/endpoints/scaling'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeWsString } from '@/utils/ws-sanitize'
 import type { WsEvent } from '@/api/types/websocket'
 
 const log = createLogger('scaling')
@@ -166,7 +167,7 @@ export const useScalingStore = create<ScalingState>()((set, get) => ({
   },
 
   updateFromWsEvent: (event: WsEvent) => {
-    log.debug('Scaling WS event', event.event_type)
+    log.debug('Scaling WS event', sanitizeWsString(event.event_type, 128))
     void runWsRefresh(get)
   },
 

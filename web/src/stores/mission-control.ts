@@ -116,6 +116,10 @@ async function fetchMoreFramesImpl(
   const state = get()
   if (!state.framesHasMore || state.framesNextCursor === null) return
   if (state.framesExecutionId === null) return
+  // Gate on the in-flight flag so concurrent fetchMoreFrames() calls
+  // cannot read the same framesNextCursor before framesLoading is
+  // set and append duplicate frame pages.
+  if (state.framesLoading) return
   const cursor = state.framesNextCursor
   const executionId = state.framesExecutionId
   const requestExecutionId = executionId

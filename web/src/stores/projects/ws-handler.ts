@@ -1,6 +1,6 @@
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
-import { sanitizeWsString } from '@/stores/notifications'
+import { sanitizeWsString } from '@/utils/ws-sanitize'
 import type { WsEvent } from '@/api/types/websocket'
 import type { ProjectsGet, ProjectsSet } from './types'
 
@@ -19,9 +19,6 @@ function applyProjectDeleted(
     const clearDetail = state.selectedProject?.id === deletedId
     return {
       projects: filtered,
-      totalProjects: filtered.length !== state.projects.length
-        ? Math.max(0, state.totalProjects - 1)
-        : state.totalProjects,
       selectedProject: clearDetail ? null : state.selectedProject,
       projectTasks: clearDetail ? [] : state.projectTasks,
     }

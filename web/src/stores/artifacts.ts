@@ -12,7 +12,8 @@ const log = createLogger('artifacts')
 
 export const useArtifactsStore = create<ArtifactsState>()((set, get) => ({
   artifacts: [],
-  totalArtifacts: 0,
+  nextCursor: null,
+  hasMore: false,
   listLoading: false,
   listError: null,
 
@@ -28,7 +29,7 @@ export const useArtifactsStore = create<ArtifactsState>()((set, get) => ({
   detailLoading: false,
   detailError: null,
 
-  ...createListActions(set),
+  ...createListActions(set, get),
   ...createDetailActions(set),
   ...createCrudActions(set, get),
 

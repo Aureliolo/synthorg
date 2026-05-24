@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
+import { sanitizeWsString } from '@/utils/ws-sanitize'
 import { createLogger } from '@/lib/logger'
 import { createFetchActions } from './settings/fetch-actions'
 import { createMutationActions } from './settings/mutation-actions'
@@ -27,7 +28,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   ...createMutationActions(set, get),
 
   updateFromWsEvent: (event: WsEvent) => {
-    if (event.channel === 'system') {
+    const channel = sanitizeWsString(event.channel, 32)
+    if (channel === 'system') {
       void get().refreshEntries().catch((err: unknown) => {
         log.warn('WebSocket-triggered refresh failed', {
           error: sanitizeForLog(getErrorMessage(err)),

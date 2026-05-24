@@ -42,7 +42,8 @@ describe('useProjectsStore', () => {
   beforeEach(() => {
     useProjectsStore.setState({
       projects: [],
-      totalProjects: 0,
+      nextCursor: null,
+      hasMore: false,
       listLoading: false,
       listError: null,
       searchQuery: '',
@@ -68,7 +69,7 @@ describe('useProjectsStore', () => {
 
       const state = useProjectsStore.getState()
       expect(state.projects).toEqual([project])
-      expect(state.totalProjects).toBe(1)
+      expect(state.projects.length).toBe(1)
       expect(state.listLoading).toBe(false)
     })
 
@@ -160,7 +161,7 @@ describe('useProjectsStore', () => {
 
       const state = useProjectsStore.getState()
       expect(state.projects).toContainEqual(project)
-      expect(state.totalProjects).toBe(1)
+      expect(state.projects.length).toBe(1)
     })
 
     it('returns null sentinel + emits error toast on failure', async () => {
@@ -178,7 +179,7 @@ describe('useProjectsStore', () => {
 
       expect(result).toBeNull()
       expect(useProjectsStore.getState().projects).toEqual([])
-      expect(useProjectsStore.getState().totalProjects).toBe(0)
+      expect(useProjectsStore.getState().projects.length).toBe(0)
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
@@ -244,7 +245,6 @@ describe('useProjectsStore', () => {
     it('removes the project optimistically and returns true on success', async () => {
       useProjectsStore.setState({
         projects: [makeProject('proj-001'), makeProject('proj-002')],
-        totalProjects: 2,
       })
       server.use(
         http.delete('/api/v1/projects/:id', () =>
@@ -257,13 +257,12 @@ describe('useProjectsStore', () => {
       expect(ok).toBe(true)
       const state = useProjectsStore.getState()
       expect(state.projects.map((p) => p.id)).toEqual(['proj-002'])
-      expect(state.totalProjects).toBe(1)
+      expect(state.projects.length).toBe(1)
     })
 
     it('rolls back the optimistic remove and returns false on API failure', async () => {
       useProjectsStore.setState({
         projects: [makeProject('proj-001'), makeProject('proj-002')],
-        totalProjects: 2,
       })
       server.use(
         http.delete('/api/v1/projects/:id', () =>
@@ -276,7 +275,7 @@ describe('useProjectsStore', () => {
       expect(ok).toBe(false)
       const state = useProjectsStore.getState()
       expect(state.projects.map((p) => p.id)).toEqual(['proj-001', 'proj-002'])
-      expect(state.totalProjects).toBe(2)
+      expect(state.projects.length).toBe(2)
     })
   })
 
@@ -288,7 +287,6 @@ describe('useProjectsStore', () => {
           makeProject('proj-002'),
           makeProject('proj-003'),
         ],
-        totalProjects: 3,
       })
       server.use(
         http.delete('/api/v1/projects/:id', () =>
@@ -307,13 +305,12 @@ describe('useProjectsStore', () => {
       expect(result.failedReasons).toEqual([])
       const state = useProjectsStore.getState()
       expect(state.projects.map((p) => p.id)).toEqual(['proj-003'])
-      expect(state.totalProjects).toBe(1)
+      expect(state.projects.length).toBe(1)
     })
 
     it('keeps failed ids in the list and surfaces their reasons', async () => {
       useProjectsStore.setState({
         projects: [makeProject('proj-001'), makeProject('proj-002')],
-        totalProjects: 2,
       })
       server.use(
         http.delete('/api/v1/projects/:id', ({ params }) => {
@@ -349,7 +346,6 @@ describe('useProjectsStore', () => {
     it('removes the project identified by payload.project_id before the refetch lands', async () => {
       useProjectsStore.setState({
         projects: [makeProject('proj-001'), makeProject('proj-002')],
-        totalProjects: 2,
       })
       // Block the refetch so we can observe the pre-refetch state.
       server.use(
@@ -369,7 +365,7 @@ describe('useProjectsStore', () => {
       // Local pruning is synchronous -- check before waiting for the refetch.
       const state = useProjectsStore.getState()
       expect(state.projects.map((p) => p.id)).toEqual(['proj-002'])
-      expect(state.totalProjects).toBe(1)
+      expect(state.projects.length).toBe(1)
     })
   })
 })

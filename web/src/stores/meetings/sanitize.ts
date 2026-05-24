@@ -12,11 +12,13 @@ import type {
   MeetingResponse,
 } from '@/api/types/meetings'
 
-// Status + protocol_type are no longer pre-validated against the
-// allowlist; sanitizeWsEnum owns that responsibility (see
-// sanitizeMeeting / sanitizeMeetingMinutes). Phase + priority are
-// still NOT routed through sanitizeWsEnum, so their allowlist guard
-// stays here to prevent malformed payloads from polluting state.
+// Status, protocol_type, phase, and priority are no longer
+// pre-validated against the allowlist at the copy step; sanitizeWsEnum
+// owns that responsibility (see sanitizeMeeting,
+// sanitizeMeetingMinutes, sanitizeContribution, and
+// sanitizeMinutesCollections). The local sets retained below remain
+// structural guards inside isContributionShape / isActionItemShape so
+// a payload missing the field entirely is rejected before sanitization.
 const PRIORITY_SET: ReadonlySet<string> = new Set<string>(PRIORITY_VALUES)
 const MEETING_PHASE_SET: ReadonlySet<string> = new Set<string>(
   MEETING_PHASE_VALUES,
@@ -253,7 +255,12 @@ function sanitizeContribution(c: MeetingContribution): MeetingContribution {
   return {
     agent_id: sanitizeWsString(c.agent_id, 128) ?? '',
     content: sanitizeWsString(c.content, 4096) ?? '',
-    phase: c.phase,
+    phase: sanitizeWsEnum(
+      c.phase,
+      MEETING_PHASE_VALUES,
+      'discussion',
+      { maxLen: 64, field: 'meeting.contribution.phase' },
+    ),
     turn_number: c.turn_number,
     input_tokens: c.input_tokens,
     output_tokens: c.output_tokens,
@@ -297,7 +304,12 @@ function sanitizeMinutesCollections(minutes: MeetingMinutes) {
       assignee_id: ai.assignee_id === null
         ? null
         : sanitizeWsString(ai.assignee_id, 128) || null,
-      priority: ai.priority,
+      priority: sanitizeWsEnum(
+        ai.priority,
+        PRIORITY_VALUES,
+        'medium',
+        { maxLen: 32, field: 'meeting.action_item.priority' },
+      ),
     })),
   }
 }

@@ -28,6 +28,10 @@ function emitMutationError(
   })
 }
 
+function emitMutationSuccess(title: string): void {
+  useToastStore.getState().add({ variant: 'success', title })
+}
+
 async function startRunImpl(
   set: FineTuningSet,
   request: StartFineTuneRequest,
@@ -36,6 +40,7 @@ async function startRunImpl(
   try {
     const status = await startFineTune(request)
     set({ status, loading: false })
+    emitMutationSuccess('Fine-tune run started')
   } catch (err) {
     set({ loading: false })
     emitMutationError(
@@ -50,6 +55,7 @@ async function cancelRunImpl(set: FineTuningSet): Promise<void> {
   try {
     const status = await cancelFineTune()
     set({ status })
+    emitMutationSuccess('Fine-tune run cancelled')
   } catch (err) {
     emitMutationError(
       err,
@@ -67,6 +73,7 @@ async function runPreflightImpl(
   try {
     const result = await runPreflight(request)
     set({ preflight: result, loading: false })
+    emitMutationSuccess('Preflight check complete')
   } catch (err) {
     set({ loading: false })
     emitMutationError(err, 'Preflight check failed', 'Failed to run preflight')
@@ -76,12 +83,14 @@ async function runPreflightImpl(
 async function checkpointMutationImpl(
   get: FineTuningGet,
   call: () => Promise<unknown>,
+  successTitle: string,
   fallbackTitle: string,
   logPrefix: string,
 ): Promise<void> {
   try {
     await call()
     await get().fetchCheckpoints()
+    emitMutationSuccess(successTitle)
   } catch (err) {
     emitMutationError(err, fallbackTitle, logPrefix)
   }
@@ -101,6 +110,7 @@ export function createCrudActions(
       checkpointMutationImpl(
         get,
         () => deployCheckpoint(id),
+        'Checkpoint deployed',
         'Failed to deploy checkpoint',
         'Failed to deploy checkpoint',
       ),
@@ -108,6 +118,7 @@ export function createCrudActions(
       checkpointMutationImpl(
         get,
         () => rollbackCheckpoint(id),
+        'Checkpoint rolled back',
         'Failed to rollback checkpoint',
         'Failed to rollback checkpoint',
       ),
@@ -115,6 +126,7 @@ export function createCrudActions(
       checkpointMutationImpl(
         get,
         () => deleteCheckpoint(id),
+        'Checkpoint deleted',
         'Failed to delete checkpoint',
         'Failed to delete checkpoint',
       ),

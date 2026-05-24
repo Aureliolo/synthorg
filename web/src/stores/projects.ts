@@ -9,7 +9,8 @@ export type { ProjectsState } from './projects/types'
 
 export const useProjectsStore = create<ProjectsState>()((set, get) => ({
   projects: [],
-  totalProjects: 0,
+  nextCursor: null,
+  hasMore: false,
   listLoading: false,
   listError: null,
 
@@ -22,7 +23,7 @@ export const useProjectsStore = create<ProjectsState>()((set, get) => ({
   detailLoading: false,
   detailError: null,
 
-  ...createListActions(set),
+  ...createListActions(set, get),
   ...createDetailActions(set),
   ...createCrudActions(set, get),
   ...createWsHandler(set, get),

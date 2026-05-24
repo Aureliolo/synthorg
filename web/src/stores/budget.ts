@@ -11,7 +11,7 @@ import { listAgents } from '@/api/endpoints/agents'
 import { wsEventToActivityItem } from '@/utils/dashboard'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
-import { sanitizeWsString } from '@/stores/notifications'
+import { sanitizeWsString } from '@/utils/ws-sanitize'
 import { createLogger } from '@/lib/logger'
 import { aggregateWeekly, type AggregationPeriod } from '@/utils/budget'
 import type {

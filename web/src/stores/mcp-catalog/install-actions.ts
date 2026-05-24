@@ -5,7 +5,7 @@ import {
 import type { McpInstallResponse } from '@/api/types/integrations'
 import { createLogger } from '@/lib/logger'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import type { InstallContext, McpCatalogGet, McpCatalogSet } from './types'
 
 const log = createLogger('mcp-install')
@@ -84,7 +84,7 @@ async function confirmInstallImpl(
     })
     useToastStore.getState().add({
       variant: 'error',
-      title: 'MCP install failed',
+      ...getCrudErrorTitle(err, 'MCP install failed'),
       description: getErrorMessage(err),
     })
     return null
@@ -110,7 +110,7 @@ async function uninstallImpl(
     log.error('MCP uninstall failed:', getErrorMessage(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Uninstall failed',
+      ...getCrudErrorTitle(err, 'Uninstall failed'),
       description: getErrorMessage(err),
     })
     return false

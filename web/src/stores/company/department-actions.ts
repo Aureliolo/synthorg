@@ -162,6 +162,7 @@ async function reorderDepartmentsImpl(
         departments: [...reordered],
       })),
     }))
+    emitSuccessToast('Departments reordered')
     return true
   } catch (err) {
     endMutation(set, getErrorMessage(err))

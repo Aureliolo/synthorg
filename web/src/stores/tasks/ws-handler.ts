@@ -1,4 +1,5 @@
 import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
 import { sanitizeForLog } from '@/utils/logging'
 import type { DashboardTask } from '@/api/types/tasks'
 import type { WsEvent } from '@/api/types/websocket'
@@ -59,9 +60,11 @@ function nullableIdEqual(
   return (sanitized ?? null) === (original ?? null)
 }
 
+type MutationKind = 'none' | 'critical' | 'collection'
+
 interface SanitizationCheck {
   sanitized: DashboardTask
-  mutated: boolean
+  mutation: MutationKind
 }
 
 function requiredFieldsBlankOrMutated(
@@ -110,12 +113,21 @@ function checkSanitization(
   sanitized: DashboardTask,
   candidate: Record<string, unknown>,
 ): SanitizationCheck {
-  return {
-    sanitized,
-    mutated: requiredFieldsBlankOrMutated(sanitized, candidate)
-      || nullableIdFieldsMutated(sanitized, candidate)
-      || stringArrayFieldsMutated(sanitized, candidate),
+  // Distinguish "critical" mutations (id/project/created_by/assigned_to/
+  // parent_task_id) from "collection" mutations (reviewers / dependencies
+  // / delegation_chain / middleware_override). Both drop the frame, but
+  // the latter additionally surfaces a user-visible toast so an
+  // out-of-sync UI is not silent.
+  if (
+    requiredFieldsBlankOrMutated(sanitized, candidate)
+    || nullableIdFieldsMutated(sanitized, candidate)
+  ) {
+    return { sanitized, mutation: 'critical' }
   }
+  if (stringArrayFieldsMutated(sanitized, candidate)) {
+    return { sanitized, mutation: 'collection' }
+  }
+  return { sanitized, mutation: 'none' }
 }
 
 function logMutationSkip(candidate: Record<string, unknown>): void {
@@ -139,6 +151,20 @@ function logMalformedSkip(candidate: Record<string, unknown>): void {
   })
 }
 
+function notifyCollectionMutationSkip(taskId: string): void {
+  useToastStore.getState().add({
+    variant: 'warning',
+    title: 'Task update dropped',
+    description:
+      'A live update for a task included unsafe characters in its collection'
+      + ' fields and was discarded. Refresh the board to resync.',
+  })
+  log.warn(
+    'Task collection-field sanitization mutated payload, skipping upsert',
+    { id: sanitizeForLog(taskId) },
+  )
+}
+
 export function createWsHandler(get: TasksGet) {
   return {
     handleWsEvent(event: WsEvent): void {
@@ -155,12 +181,16 @@ export function createWsHandler(get: TasksGet) {
       // the optimistic-transition gate (which keys off the raw id)
       // and then sanitize down to the plain id to overwrite the
       // real task.
-      const { sanitized, mutated } = checkSanitization(
+      const { sanitized, mutation } = checkSanitization(
         sanitizeTask(candidate),
         candidate,
       )
-      if (mutated) {
+      if (mutation === 'critical') {
         logMutationSkip(candidate)
+        return
+      }
+      if (mutation === 'collection') {
+        notifyCollectionMutationSkip(sanitized.id)
         return
       }
       if (pendingTransitions.has(sanitized.id)) return

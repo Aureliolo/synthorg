@@ -1,6 +1,6 @@
 import * as tasksApi from '@/api/endpoints/tasks'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
@@ -63,7 +63,7 @@ async function createTaskImpl(
     log.error('Submit task failed:', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to submit task',
+      ...getCrudErrorTitle(err, 'Failed to submit task'),
       description: getErrorMessage(err),
     })
     return null
@@ -89,7 +89,7 @@ async function mutateTaskImpl(
     log.error(`${logPrefix} failed:`, sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: errorTitle,
+      ...getCrudErrorTitle(err, errorTitle),
       description: getErrorMessage(err),
     })
     return null
@@ -118,7 +118,7 @@ async function deleteTaskImpl(
     log.error('Delete task failed:', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to delete task',
+      ...getCrudErrorTitle(err, 'Failed to delete task'),
       description: getErrorMessage(err),
     })
     return false

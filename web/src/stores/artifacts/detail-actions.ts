@@ -1,6 +1,6 @@
 import { getArtifact, getArtifactContentText } from '@/api/endpoints/artifacts'
 import { getErrorMessage } from '@/utils/errors'
-import type { Artifact } from '@/api/types/artifacts'
+import type { Artifact } from '@/api/types'
 import {
   getPendingDetailId,
   isStaleDetailRequest,
@@ -78,7 +78,13 @@ async function fetchArtifactDetailImpl(
       contentPreview: null,
     })
   } finally {
-    if (getPendingDetailId() === id) setPendingDetailId(null)
+    // Only clear pendingDetailId when this response is not stale; a
+    // stale earlier request must not wipe the pending id set by a
+    // newer same-id request, or a later delete could miss invalidation
+    // and repopulate deleted detail data.
+    if (!isStaleDetailRequest(token) && getPendingDetailId() === id) {
+      setPendingDetailId(null)
+    }
     if (!isStaleDetailRequest(token)) set({ detailLoading: false })
   }
 }

@@ -3,11 +3,12 @@ import type {
   AgentActivityEvent,
   AgentConfig,
   AgentPerformanceSummary,
+  AgentStatus,
   CareerEvent,
-} from '@/api/types/agents'
-import type { AgentStatus, SeniorityLevel } from '@/api/types/enums'
-import type { Task } from '@/api/types/tasks'
-import type { WsEvent } from '@/api/types/websocket'
+  SeniorityLevel,
+  Task,
+  WsEvent,
+} from '@/api/types'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 import type { AgentSortKey } from '@/utils/agents'
 

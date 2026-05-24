@@ -16,7 +16,10 @@ export interface BatchDeleteOutcome {
 export interface ProjectsState {
   // List page
   projects: readonly Project[]
-  totalProjects: number
+  /** Opaque cursor for the next page; null on the final page. */
+  nextCursor: string | null
+  /** Whether more items follow the current page. */
+  hasMore: boolean
   listLoading: boolean
   listError: string | null
 
@@ -34,6 +37,7 @@ export interface ProjectsState {
   // Actions. Mutations follow the canonical store error contract:
   // log + error toast + return sentinel (`null`) on failure.
   fetchProjects: () => Promise<void>
+  fetchMoreProjects: () => Promise<void>
   fetchProjectDetail: (id: string) => Promise<void>
   createProject: (data: CreateProjectRequest) => Promise<Project | null>
   deleteProject: (id: string) => Promise<boolean>

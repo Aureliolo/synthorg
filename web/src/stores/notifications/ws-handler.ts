@@ -1,5 +1,5 @@
 import { createLogger } from '@/lib/logger'
-import { sanitizeWsString } from '@/utils/ws-sanitize'
+import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import { sanitizeForLog } from '@/utils/logging'
 import { isObject } from '@/utils/type-guards'
 import type { WsEvent } from '@/api/types/websocket'
@@ -9,6 +9,16 @@ const log = createLogger('notifications-store')
 
 type WsPayload = Record<string, unknown>
 type WsEnqueueRouter = (payload: WsPayload) => EnqueueParams | null
+
+const BUDGET_ALERT_LEVELS = [
+  'threshold',
+  'exhausted',
+  'hard_stop',
+] as const
+type BudgetAlertLevel = (typeof BUDGET_ALERT_LEVELS)[number]
+
+const TASK_STATUS_VALUES = ['failed', 'blocked', 'unknown'] as const
+type TaskStatusValue = (typeof TASK_STATUS_VALUES)[number]
 
 function approvalSubmitted(p: WsPayload): EnqueueParams {
   return {
@@ -33,7 +43,12 @@ function approvalEntity(
 }
 
 function budgetAlert(p: WsPayload): EnqueueParams {
-  const level = typeof p.level === 'string' ? p.level : 'threshold'
+  const level = sanitizeWsEnum<BudgetAlertLevel>(
+    p.level,
+    BUDGET_ALERT_LEVELS,
+    'threshold',
+    { maxLen: 32, field: 'budget.alert.level' },
+  )
   const isExhausted = level === 'exhausted' || level === 'hard_stop'
   return {
     category: isExhausted ? 'budget.exhausted' : 'budget.threshold',
@@ -81,7 +96,13 @@ function agentEvent(
 }
 
 function taskStatusChanged(p: WsPayload): EnqueueParams | null {
-  const status = typeof p.status === 'string' ? p.status : ''
+  const status = sanitizeWsEnum<TaskStatusValue>(
+    p.status,
+    TASK_STATUS_VALUES,
+    'unknown',
+    { maxLen: 32, field: 'task.status_changed.status' },
+  )
+  if (status === 'unknown') return null
   const taskId = sanitizeWsString(p.task_id)
   const title = sanitizeWsString(p.title)
   if (status === 'failed') {

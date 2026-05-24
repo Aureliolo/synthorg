@@ -68,10 +68,30 @@ function reorderAgentsImpl(
       .filter((a) => a.department === deptName && idSet.has(agentIdOf(a)))
       .map((a) => [agentIdOf(a), a]),
   )
-  const reorderedList = orderedIds
-    .map((id) => agentMap.get(id))
-    .filter((a): a is AgentConfig => a !== undefined)
-  const agents = applyAgentReorder(prev.agents, deptName, idSet, reorderedList)
+  // Walk ``orderedIds`` first so the caller-supplied ordering wins,
+  // then append any matching agents the caller omitted in their
+  // original positional order. Without this top-up,
+  // ``applyAgentReorder``'s ``?? a`` fallback could reinsert an agent
+  // that already appears in ``reorderedList`` at a different slot,
+  // producing duplicate entries in the resulting array.
+  const seen = new Set<string>()
+  const ordered: AgentConfig[] = []
+  for (const id of orderedIds) {
+    const agent = agentMap.get(id)
+    if (agent && !seen.has(id)) {
+      ordered.push(agent)
+      seen.add(id)
+    }
+  }
+  for (const id of prevDeptAgentIds) {
+    if (seen.has(id)) continue
+    const agent = agentMap.get(id)
+    if (agent) {
+      ordered.push(agent)
+      seen.add(id)
+    }
+  }
+  const agents = applyAgentReorder(prev.agents, deptName, idSet, ordered)
   set({ config: { ...prev, agents } })
   // Targeted rollback: restore only this department's agent ordering.
   return () => {

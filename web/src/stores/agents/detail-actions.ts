@@ -13,8 +13,8 @@ import type {
   AgentConfig,
   AgentPerformanceSummary,
   CareerEvent,
-} from '@/api/types/agents'
-import type { Task } from '@/api/types/tasks'
+  Task,
+} from '@/api/types'
 import type { PaginatedResult } from '@/api/client'
 import {
   MAX_ACTIVITIES,
@@ -178,7 +178,8 @@ async function fetchMoreActivityImpl(
   name: string,
 ): Promise<void> {
   if (!canFetchMoreActivity(get, name)) return
-  const cursor = get().activityNextCursor as string
+  const cursor = get().activityNextCursor
+  if (cursor === null) return
   set({ activityLoading: true })
   try {
     const result = await getAgentActivity(name, { cursor, limit: 20 })

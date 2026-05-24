@@ -2,7 +2,7 @@ import type { FineTuneStage } from '@/api/endpoints/fine-tuning'
 import type { FineTuningErrors, ListPagination } from './types'
 
 /** All valid fine-tune stage values for runtime validation of WS payloads. */
-export const VALID_STAGES: ReadonlySet<string> = new Set<FineTuneStage>([
+export const VALID_STAGE_VALUES = [
   'idle',
   'generating_data',
   'mining_negatives',
@@ -11,7 +11,11 @@ export const VALID_STAGES: ReadonlySet<string> = new Set<FineTuneStage>([
   'deploying',
   'complete',
   'failed',
-])
+] as const satisfies readonly FineTuneStage[]
+
+export const VALID_STAGES: ReadonlySet<string> = new Set<FineTuneStage>(
+  VALID_STAGE_VALUES,
+)
 
 export const NO_ERRORS: FineTuningErrors = {
   status: null,

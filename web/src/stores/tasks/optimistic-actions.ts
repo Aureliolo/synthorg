@@ -30,17 +30,23 @@ export function createOptimisticActions(set: TasksSet, get: TasksGet) {
         const selectedTask = s.selectedTask?.id === task.id
           ? task
           : s.selectedTask
-        const patch: Partial<TasksState> = { tasks: newTasks, selectedTask }
-        if (idx === -1) patch.total = s.total + 1
+        // ``total`` is always derived from the resulting tasks array so
+        // it can never drift from the actual count (a separate
+        // increment can desync on rapid concurrent upserts).
+        const patch: Partial<TasksState> = {
+          tasks: newTasks,
+          selectedTask,
+          total: newTasks.length,
+        }
         return patch
       })
     },
 
     removeTask(taskId: string): void {
-      set((s) => ({
-        tasks: s.tasks.filter((t) => t.id !== taskId),
-        total: Math.max(0, s.total - 1),
-      }))
+      set((s) => {
+        const tasks = s.tasks.filter((t) => t.id !== taskId)
+        return { tasks, total: tasks.length }
+      })
     },
   }
 }

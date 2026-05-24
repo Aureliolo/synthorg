@@ -1,12 +1,18 @@
 import type { StoreApi } from 'zustand'
-import type { Artifact, CreateArtifactRequest } from '@/api/types/artifacts'
-import type { ArtifactType } from '@/api/types/enums'
-import type { WsEvent } from '@/api/types/websocket'
+import type {
+  Artifact,
+  ArtifactType,
+  CreateArtifactRequest,
+  WsEvent,
+} from '@/api/types'
 
 export interface ArtifactsState {
   // List page
   artifacts: readonly Artifact[]
-  totalArtifacts: number
+  /** Opaque cursor for the next page; null on the final page. */
+  nextCursor: string | null
+  /** Whether more items follow the current page. */
+  hasMore: boolean
   listLoading: boolean
   listError: string | null
 
@@ -27,6 +33,7 @@ export interface ArtifactsState {
   // Actions. Mutations follow the canonical store error contract:
   // log + error toast + return sentinel (`false`) on failure.
   fetchArtifacts: () => Promise<void>
+  fetchMoreArtifacts: () => Promise<void>
   fetchArtifactDetail: (id: string) => Promise<void>
   createArtifact: (data: CreateArtifactRequest) => Promise<Artifact | null>
   deleteArtifact: (id: string) => Promise<boolean>

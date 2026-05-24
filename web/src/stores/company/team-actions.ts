@@ -5,6 +5,7 @@ import {
   updateTeam as apiUpdateTeam,
 } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import type {
   CompanyConfig,
   CreateTeamRequest,
@@ -17,6 +18,7 @@ import {
   emitErrorToast,
   emitSuccessToast,
   endMutation,
+  log,
   patchConfig,
 } from './_helpers'
 import type { CompanyGet, CompanySet } from './types'
@@ -100,31 +102,43 @@ async function deleteTeamImpl(
   beginMutation(set)
   try {
     await apiDeleteTeam(deptName, teamName, reassignTo)
-    if (reassignTo) {
-      // Reassign rebalances agents across teams; refetch to pick
-      // up the canonical post-reassign config rather than try to
-      // re-derive it locally.
-      await get().fetchCompanyData()
-      endMutation(set)
-    } else {
-      set((s) => ({
-        savingCount: Math.max(0, s.savingCount - 1),
-        ...patchConfig(
-          get,
-          withDepartmentPatch(deptName, (d) => ({
-            ...d,
-            teams: d.teams.filter((t) => t.name !== teamName),
-          })),
-        ),
-      }))
-    }
-    emitSuccessToast(`Team ${teamName} deleted`)
-    return true
   } catch (err) {
     endMutation(set, getErrorMessage(err))
     emitErrorToast(err, 'Failed to delete team', 'Delete team failed')
     return false
   }
+  // Delete succeeded on the server. A failure in the follow-up
+  // refetch is a separate concern: do NOT report the delete as
+  // failed (that would invite duplicate retries of an already
+  // applied mutation). Surface refetch failures via the
+  // fetchCompanyData error state and a warning log.
+  if (reassignTo) {
+    try {
+      // Reassign rebalances agents across teams; refetch to pick
+      // up the canonical post-reassign config rather than try to
+      // re-derive it locally.
+      await get().fetchCompanyData()
+    } catch (refreshErr) {
+      log.warn(
+        'Team deleted but refresh failed:',
+        sanitizeForLog(refreshErr),
+      )
+    }
+    endMutation(set)
+  } else {
+    set((s) => ({
+      savingCount: Math.max(0, s.savingCount - 1),
+      ...patchConfig(
+        get,
+        withDepartmentPatch(deptName, (d) => ({
+          ...d,
+          teams: d.teams.filter((t) => t.name !== teamName),
+        })),
+      ),
+    }))
+  }
+  emitSuccessToast(`Team ${teamName} deleted`)
+  return true
 }
 
 async function reorderTeamsImpl(
@@ -145,6 +159,7 @@ async function reorderTeamsImpl(
         withDepartmentPatch(deptName, (d) => ({ ...d, teams: reordered })),
       ),
     }))
+    emitSuccessToast('Teams reordered')
     return true
   } catch (err) {
     endMutation(set, getErrorMessage(err))

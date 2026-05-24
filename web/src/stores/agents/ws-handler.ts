@@ -1,19 +1,19 @@
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
 import { isObject } from '@/utils/type-guards'
-import { sanitizeWsString } from '@/stores/notifications'
-import type { WsEvent } from '@/api/types/websocket'
+import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
+import type { WsEvent } from '@/api/types'
 import type { AgentRuntimeStatus } from '@/lib/utils'
 import type { AgentsSet } from './types'
 
 const log = createLogger('agents')
 
-const VALID_RUNTIME_STATUSES: ReadonlySet<string> = new Set([
+const AGENT_RUNTIME_STATUS_VALUES = [
   'active',
   'idle',
   'error',
   'offline',
-])
+] as const satisfies readonly AgentRuntimeStatus[]
 
 interface AgentStatusFields {
   sanitizedAgentId: string
@@ -30,11 +30,9 @@ function extractAgentStatusFields(
   const sanitizedAgentId = typeof rawAgentId === 'string'
     ? sanitizeWsString(rawAgentId)
     : undefined
-  const status = payload.status
-  if (!sanitizedAgentId || typeof status !== 'string' || !status.trim()) {
-    log.warn('agent.status_changed payload missing required fields', {
+  if (!sanitizedAgentId) {
+    log.warn('agent.status_changed payload missing required agent_id', {
       hasAgentId: typeof rawAgentId === 'string',
-      hasStatus: typeof status === 'string',
     })
     return null
   }
@@ -45,14 +43,13 @@ function extractAgentStatusFields(
     )
     return null
   }
-  if (!VALID_RUNTIME_STATUSES.has(status)) {
-    log.warn('agent.status_changed received unknown status', {
-      status: sanitizeForLog(status),
-      knownStatuses: [...VALID_RUNTIME_STATUSES],
-    })
-    return null
-  }
-  return { sanitizedAgentId, status: status as AgentRuntimeStatus }
+  const status = sanitizeWsEnum<AgentRuntimeStatus>(
+    payload.status,
+    AGENT_RUNTIME_STATUS_VALUES,
+    'offline',
+    { field: 'agent.status_changed.status' },
+  )
+  return { sanitizedAgentId, status }
 }
 
 function handleStatusChanged(

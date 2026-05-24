@@ -3,7 +3,11 @@ import {
   deleteProject as deleteProjectApi,
 } from '@/api/endpoints/projects'
 import { useToastStore } from '@/stores/toast'
-import { formatBatchErrors, getErrorMessage } from '@/utils/errors'
+import {
+  formatBatchErrors,
+  getCrudErrorTitle,
+  getErrorMessage,
+} from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
@@ -26,13 +30,9 @@ async function createProjectImpl(
     const project = await createProjectApi(data)
     // Optimistically add to local state for immediate UI update.
     set((state) => {
-      const exists = state.projects.some((p) => p.id === project.id)
       const filtered = state.projects.filter((p) => p.id !== project.id)
       return {
         projects: [project, ...filtered],
-        totalProjects: exists
-          ? state.totalProjects
-          : state.totalProjects + 1,
       }
     })
     useToastStore.getState().add({
@@ -44,7 +44,7 @@ async function createProjectImpl(
     log.error('Create project failed:', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to create project',
+      ...getCrudErrorTitle(err, 'Failed to create project'),
       description: getErrorMessage(err),
     })
     return null
@@ -62,12 +62,7 @@ async function deleteProjectImpl(
   const removedProject = get().projects.find((p) => p.id === id) ?? null
   set((state) => {
     const filtered = state.projects.filter((p) => p.id !== id)
-    return {
-      projects: filtered,
-      totalProjects: state.projects.length !== filtered.length
-        ? Math.max(0, state.totalProjects - 1)
-        : state.totalProjects,
-    }
+    return { projects: filtered }
   })
   try {
     await deleteProjectApi(id)
@@ -81,15 +76,12 @@ async function deleteProjectImpl(
     if (removedProject) {
       set((state) => {
         if (state.projects.some((p) => p.id === id)) return state
-        return {
-          projects: [removedProject, ...state.projects],
-          totalProjects: state.totalProjects + 1,
-        }
+        return { projects: [removedProject, ...state.projects] }
       })
     }
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to delete project',
+      ...getCrudErrorTitle(err, 'Failed to delete project'),
       description: getErrorMessage(err),
     })
     return false
@@ -134,13 +126,7 @@ function applyOptimisticBatchRemoval(
   set((state) => {
     removed = state.projects.filter((p) => idSet.has(p.id))
     const filtered = state.projects.filter((p) => !idSet.has(p.id))
-    // Compute the actual removed count from the local list rather
-    // than trusting the input length.
-    const actuallyRemoved = state.projects.length - filtered.length
-    return {
-      projects: filtered,
-      totalProjects: Math.max(0, state.totalProjects - actuallyRemoved),
-    }
+    return { projects: filtered }
   })
   return removed
 }
@@ -157,10 +143,7 @@ function rollbackFailedDeletes(
     const existing = new Set(state.projects.map((p) => p.id))
     const toRestore = rollback.filter((p) => !existing.has(p.id))
     if (toRestore.length === 0) return state
-    return {
-      projects: [...toRestore, ...state.projects],
-      totalProjects: state.totalProjects + toRestore.length,
-    }
+    return { projects: [...toRestore, ...state.projects] }
   })
 }
 

@@ -1,6 +1,6 @@
 import * as approvalsApi from '@/api/endpoints/approvals'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
@@ -68,7 +68,10 @@ async function fetchApprovalsImpl(
       approvals: merged,
       total: merged.length,
       loading: false,
-      selectedIds: prunedSelected as Set<string>,
+      // ``prunedSelected`` is a ReadonlySet when prunePendingSelection
+      // returns the input unchanged; copy into a fresh mutable Set so
+      // downstream code can never accidentally mutate shared state.
+      selectedIds: new Set(prunedSelected),
       selectedApproval: freshSelected,
     })
   } catch (err) {
@@ -121,7 +124,7 @@ async function approveOneImpl(
     log.error('Approve approval failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Could not approve',
+      ...getCrudErrorTitle(err, 'Could not approve'),
       description: getErrorMessage(err),
     })
     return null
@@ -145,7 +148,7 @@ async function rejectOneImpl(
     log.error('Reject approval failed', sanitizeForLog(err))
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Could not reject',
+      ...getCrudErrorTitle(err, 'Could not reject'),
       description: getErrorMessage(err),
     })
     return null

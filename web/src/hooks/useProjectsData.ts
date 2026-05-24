@@ -21,7 +21,7 @@ export interface UseProjectsDataReturn {
 
 export function useProjectsData(): UseProjectsDataReturn {
   const projects = useProjectsStore((s) => s.projects)
-  const totalProjects = useProjectsStore((s) => s.totalProjects)
+  const totalProjects = projects.length
   const loading = useProjectsStore((s) => s.listLoading)
   const error = useProjectsStore((s) => s.listError)
   const searchQuery = useProjectsStore((s) => s.searchQuery)

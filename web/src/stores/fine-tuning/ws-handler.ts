@@ -1,8 +1,9 @@
 import { createLogger } from '@/lib/logger'
 import { sanitizeForLog } from '@/utils/logging'
+import { sanitizeWsEnum, sanitizeWsString } from '@/utils/ws-sanitize'
 import type { FineTuneStatus } from '@/api/endpoints/fine-tuning'
 import type { WsEvent } from '@/api/types/websocket'
-import { VALID_STAGES } from './_helpers'
+import { VALID_STAGE_VALUES } from './_helpers'
 import type { FineTuningGet, FineTuningSet } from './types'
 
 const log = createLogger('fine-tuning-store')
@@ -13,18 +14,8 @@ interface ParsedStageProgress {
   runId: string | null
 }
 
-function resolveStage(
-  rawStage: string | undefined,
-  currentStatus: FineTuneStatus | null,
-): FineTuneStatus['stage'] {
-  if (rawStage != null && VALID_STAGES.has(rawStage)) {
-    return rawStage as FineTuneStatus['stage']
-  }
-  return currentStatus?.stage ?? 'idle'
-}
-
-function clampProgress(raw: number | undefined): number | null {
-  if (raw == null) return null
+function clampProgress(raw: unknown): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null
   return Math.min(1, Math.max(0, raw))
 }
 
@@ -32,10 +23,17 @@ function parseStageAndProgress(
   data: Record<string, unknown>,
   currentStatus: FineTuneStatus | null,
 ): ParsedStageProgress {
+  const stage = sanitizeWsEnum<FineTuneStatus['stage']>(
+    data.stage,
+    VALID_STAGE_VALUES,
+    currentStatus?.stage ?? 'idle',
+    { field: 'memory.fine_tune.stage' },
+  )
+  const sanitizedRunId = sanitizeWsString(data.run_id, 128)
   return {
-    stage: resolveStage(data.stage as string | undefined, currentStatus),
-    progress: clampProgress(data.progress as number | undefined),
-    runId: (data.run_id as string) ?? currentStatus?.run_id ?? null,
+    stage,
+    progress: clampProgress(data.progress),
+    runId: sanitizedRunId ?? currentStatus?.run_id ?? null,
   }
 }
 

@@ -21,7 +21,7 @@ export interface UseArtifactsDataReturn {
 
 export function useArtifactsData(): UseArtifactsDataReturn {
   const artifacts = useArtifactsStore((s) => s.artifacts)
-  const totalArtifacts = useArtifactsStore((s) => s.totalArtifacts)
+  const totalArtifacts = artifacts.length
   const loading = useArtifactsStore((s) => s.listLoading)
   const error = useArtifactsStore((s) => s.listError)
   const searchQuery = useArtifactsStore((s) => s.searchQuery)

@@ -3,13 +3,13 @@ import {
   deleteArtifact as deleteArtifactApi,
 } from '@/api/endpoints/artifacts'
 import { useToastStore } from '@/stores/toast'
-import { getErrorMessage } from '@/utils/errors'
+import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
 import { createLogger } from '@/lib/logger'
 import type {
   Artifact,
   CreateArtifactRequest,
-} from '@/api/types/artifacts'
+} from '@/api/types'
 import {
   bumpDetailRequestToken,
   bumpListRequestToken,
@@ -31,13 +31,9 @@ async function createArtifactImpl(
     // older snapshot.
     bumpListRequestToken()
     set((state) => {
-      const exists = state.artifacts.some((a) => a.id === created.id)
       const filtered = state.artifacts.filter((a) => a.id !== created.id)
       return {
         artifacts: [created, ...filtered],
-        totalArtifacts: exists
-          ? state.totalArtifacts
-          : state.totalArtifacts + 1,
         // Bumping the list token strands any in-flight ``fetchArtifacts``
         // -- it bails on the stale check without ever clearing
         // ``listLoading``. Reset it here so the page does not stay on
@@ -57,7 +53,7 @@ async function createArtifactImpl(
     )
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to create artifact',
+      ...getCrudErrorTitle(err, 'Failed to create artifact'),
       description: getErrorMessage(err),
     })
     return null
@@ -66,7 +62,6 @@ async function createArtifactImpl(
 
 interface DeleteSnapshot {
   artifacts: ArtifactsState['artifacts']
-  totalArtifacts: number
   selectedArtifact: ArtifactsState['selectedArtifact']
   contentPreview: ArtifactsState['contentPreview']
   detailLoading: boolean
@@ -76,7 +71,6 @@ interface DeleteSnapshot {
 function captureSnapshot(state: ArtifactsState): DeleteSnapshot {
   return {
     artifacts: state.artifacts,
-    totalArtifacts: state.totalArtifacts,
     selectedArtifact: state.selectedArtifact,
     contentPreview: state.contentPreview,
     detailLoading: state.detailLoading,
@@ -116,7 +110,6 @@ function applyOptimisticDelete(
   )
   set({
     artifacts: state.artifacts.filter((a) => a.id !== id),
-    totalArtifacts: Math.max(0, state.totalArtifacts - 1),
     selectedArtifact: invalidatesDetail ? null : state.selectedArtifact,
     contentPreview: invalidatesDetail ? null : state.contentPreview,
     detailLoading: invalidatesDetail ? false : state.detailLoading,
@@ -164,7 +157,7 @@ async function deleteArtifactImpl(
     )
     useToastStore.getState().add({
       variant: 'error',
-      title: 'Failed to delete artifact',
+      ...getCrudErrorTitle(err, 'Failed to delete artifact'),
       description: getErrorMessage(err),
     })
     return false

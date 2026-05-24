@@ -1,7 +1,16 @@
 import * as approvalsApi from '@/api/endpoints/approvals'
-import { getErrorMessage } from '@/utils/errors'
+import { createLogger } from '@/lib/logger'
+import { useToastStore } from '@/stores/toast'
+import {
+  formatBatchErrors,
+  getCrudErrorTitle,
+  getErrorMessage,
+} from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import { MAX_BATCH_SIZE } from './_state'
 import type { ApprovalsGet } from './types'
+
+const log = createLogger('approvals')
 
 interface BatchOutcome {
   succeeded: number
@@ -59,23 +68,84 @@ async function runBatch(
   return { succeeded, failed, failedReasons }
 }
 
+function emitBatchOutcomeToast(
+  outcome: BatchOutcome,
+  successTitle: string,
+  failureTitle: string,
+  sentinelErr: Error,
+): void {
+  if (outcome.failed === 0 && outcome.succeeded > 0) {
+    useToastStore.getState().add({ variant: 'success', title: successTitle })
+    return
+  }
+  if (outcome.failed === 0) return
+  const description = outcome.failedReasons.length > 0
+    ? formatBatchErrors(outcome.failedReasons)
+    : undefined
+  useToastStore.getState().add({
+    variant: 'error',
+    ...getCrudErrorTitle(sentinelErr, failureTitle),
+    description,
+  })
+}
+
 export function createBatchActions(get: ApprovalsGet) {
   return {
     async batchApprove(ids: string[], comment?: string): Promise<BatchOutcome> {
-      return runBatch(get, {
+      const outcome = await runBatch(get, {
         ids,
         call: (id) =>
           approvalsApi.approveApproval(id, comment ? { comment } : undefined),
         rollbackFor: (id) => get().optimisticApprove(id),
       })
+      if (outcome.failed > 0) {
+        log.error('Batch approve failed', sanitizeForLog({
+          failed: outcome.failed,
+          reasons: outcome.failedReasons,
+        }))
+      }
+      const sentinel = new Error(
+        outcome.failedReasons[0] ?? 'Batch approve failed',
+      )
+      emitBatchOutcomeToast(
+        outcome,
+        outcome.succeeded === 1
+          ? 'Approval granted'
+          : `${String(outcome.succeeded)} approvals granted`,
+        outcome.failed === 1
+          ? 'Could not approve'
+          : `${String(outcome.failed)} approvals failed`,
+        sentinel,
+      )
+      return outcome
     },
 
     async batchReject(ids: string[], reason: string): Promise<BatchOutcome> {
-      return runBatch(get, {
+      const outcome = await runBatch(get, {
         ids,
         call: (id) => approvalsApi.rejectApproval(id, { reason }),
         rollbackFor: (id) => get().optimisticReject(id),
       })
+      if (outcome.failed > 0) {
+        log.error('Batch reject failed', sanitizeForLog({
+          failed: outcome.failed,
+          reasons: outcome.failedReasons,
+        }))
+      }
+      const sentinel = new Error(
+        outcome.failedReasons[0] ?? 'Batch reject failed',
+      )
+      emitBatchOutcomeToast(
+        outcome,
+        outcome.succeeded === 1
+          ? 'Approval rejected'
+          : `${String(outcome.succeeded)} approvals rejected`,
+        outcome.failed === 1
+          ? 'Could not reject'
+          : `${String(outcome.failed)} approvals failed`,
+        sentinel,
+      )
+      return outcome
     },
   }
 }

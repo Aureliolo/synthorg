@@ -1,4 +1,5 @@
 import { createLogger } from '@/lib/logger'
+import { sanitizeForLog } from '@/utils/logging'
 import type { ApprovalResponse } from '@/api/types/approvals'
 import { pendingTransitions } from './_state'
 import type { ApprovalsGet, ApprovalsSet, ApprovalsState } from './types'
@@ -21,7 +22,10 @@ function applyOptimisticTransition(
   const approvals = get().approvals
   const idx = approvals.findIndex((a) => a.id === id)
   if (idx === -1) {
-    log.warn(`optimistic${newStatus}: approval not found in store`, id)
+    log.warn('Optimistic transition skipped: approval not found in store', {
+      status: sanitizeForLog(newStatus),
+      id: sanitizeForLog(id),
+    })
     return null
   }
   pendingTransitions.add(id)

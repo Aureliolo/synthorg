@@ -5,11 +5,11 @@ import {
   updateAgentOrg as apiUpdateAgent,
 } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
-import type { AgentConfig } from '@/api/types/agents'
 import type {
+  AgentConfig,
   CreateAgentOrgRequest,
   UpdateAgentOrgRequest,
-} from '@/api/types/org'
+} from '@/api/types'
 import {
   beginMutation,
   emitErrorToast,
@@ -119,6 +119,7 @@ async function reorderAgentsImpl(
     // Refetch to pick up the reordered agents consistently.
     await get().fetchCompanyData()
     endMutation(set)
+    emitSuccessToast('Agents reordered')
     return true
   } catch (err) {
     endMutation(set, getErrorMessage(err))
