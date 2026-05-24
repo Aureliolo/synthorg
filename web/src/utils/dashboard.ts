@@ -113,6 +113,14 @@ let wsActivityCounter = 0
 
 type WsEventPayload = NonNullable<WsEvent['payload']>
 
+/**
+ * Typed empty payload used when a WsEvent arrives without a payload.
+ * Every WsEventPayload field is optional, so an empty object is a
+ * valid value; binding it to a named constant of the precise type
+ * avoids the looser `as WsEventPayload` cast on the read site.
+ */
+const EMPTY_WS_EVENT_PAYLOAD: WsEventPayload = {}
+
 function _isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value !== ''
 }
@@ -160,7 +168,7 @@ function _resolveActivityId({ event, payload, taskId, agentName }: ActivityIdArg
 }
 
 export function wsEventToActivityItem(event: WsEvent): ActivityItem {
-  const payload = (event.payload ?? {}) as WsEventPayload
+  const payload: WsEventPayload = event.payload ?? EMPTY_WS_EVENT_PAYLOAD
   const agentName = _resolveAgentName(payload)
   const taskId = _resolveTaskId(payload)
   return {

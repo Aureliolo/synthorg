@@ -308,8 +308,10 @@ function _extractBackendClientError(
   status: number | undefined,
 ): string | null {
   if (!_isClientStatus(status)) return null
-  const err = data?.error
-  return typeof err === 'string' ? err : null
+  // Empty / whitespace `data.error` must not short-circuit the
+  // fallback chain; blank strings would otherwise surface as an
+  // empty user-visible message in `_formatAxiosErrorMessage`.
+  return _trimmedOrNull(data?.error)
 }
 
 /** Canned per-status copy from `STATUS_FALLBACK_MESSAGES`, or null. */

@@ -225,19 +225,13 @@ export function useUnsavedChangesGuard<T = unknown>({
 
   const proceed = useCallback(() => {
     if (blocker.state !== 'blocked') return
-    // Kill any pending debounced write first so proceed() never leaves a
-    // phantom draft behind after the user confirmed discard.
-    if (draft.draftTimerRef.current) {
-      clearTimeout(draft.draftTimerRef.current)
-      draft.draftTimerRef.current = null
-    }
-    if (draftKey) {
-      removeDraft(draftKey)
-      draft.setHasDraft(false)
-    }
+    // discardDraft() centralises the cancel-timer / remove-storage /
+    // flip-state sequence; calling it here keeps proceed() from
+    // reimplementing the same teardown.
+    draft.discardDraft()
     onDiscard?.()
     blocker.proceed()
-  }, [blocker, draftKey, onDiscard, draft])
+  }, [blocker, onDiscard, draft])
 
   const cancel = useCallback(() => {
     if (blocker.state === 'blocked') blocker.reset()

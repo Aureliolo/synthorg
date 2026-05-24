@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 
@@ -117,12 +117,21 @@ function usePollRefs(
   const runIdRef = useRef(0)
   const inFlightRef = useRef(false)
   const pendingResumeRef = useRef(false)
+  // Stabilise the refs bundle so consumers can list it in dependency
+  // arrays without forcing an `eslint-disable @eslint-react/exhaustive-deps`
+  // override. Ref identities themselves are stable across renders, but
+  // returning a fresh object literal each render would re-trigger any
+  // memoised hook that depends on `refs`.
+  const refs = useMemo<PollRefs>(
+    () => ({
+      activeRef, timerRef, fnRef, skipIfFreshRef,
+      runIdRef, inFlightRef, pendingResumeRef,
+    }),
+    [],
+  )
   fnRef.current = fn
   skipIfFreshRef.current = options.skipIfFresh
-  return {
-    activeRef, timerRef, fnRef, skipIfFreshRef,
-    runIdRef, inFlightRef, pendingResumeRef,
-  }
+  return refs
 }
 
 /** Create the visibilitychange handler used by the resume effect. */
@@ -174,7 +183,12 @@ export function usePolling(
   const [error, setError] = useState<string | null>(null)
   const [isRefetching, setIsRefetching] = useState(false)
   const refs = usePollRefs(fn, options)
-  const handlers: PollHandlers = { setError, setIsRefetching }
+  // `setError` / `setIsRefetching` are stable identities from `useState`,
+  // so the memoised handlers object is also stable across renders.
+  const handlers = useMemo<PollHandlers>(
+    () => ({ setError, setIsRefetching }),
+    [],
+  )
   const { activeRef, timerRef, runIdRef, pendingResumeRef } = refs
   const isValidInterval = Number.isFinite(intervalMs) && intervalMs >= MIN_POLL_INTERVAL
 

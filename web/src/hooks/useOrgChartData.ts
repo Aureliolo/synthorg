@@ -155,19 +155,37 @@ function _deriveView(args: DeriveViewArgs): {
  */
 function useOrgInitialFetch(start: () => void, stop: () => void): void {
   useEffect(() => {
+    // Mounted flag prevents `start()` from arming a polling timer
+    // after the component has unmounted (the fetch promises resolve
+    // asynchronously, so without the guard a quick navigation away
+    // orphans the polling loop). Cleanup also calls `stop()` so any
+    // in-flight schedule is torn down even on the happy path.
+    let mounted = true
     const companyStore = useCompanyStore.getState()
-    companyStore.fetchCompanyData().then(() => {
-      if (useCompanyStore.getState().config) {
-        companyStore.fetchDepartmentHealths().catch((err: unknown) => {
-          log.warn('fetchDepartmentHealths failed:', err)
-        })
-      }
-      start()
-    }).catch((err: unknown) => {
-      log.warn('fetchCompanyData failed:', err)
-      start()
-    })
-    return () => stop()
+    void companyStore.fetchCompanyData()
+      .then(async () => {
+        if (!mounted) return
+        // Await the initial health fetch BEFORE arming polling, so
+        // the first polling tick cannot overlap the initial health
+        // load and produce out-of-order store writes.
+        if (useCompanyStore.getState().config) {
+          try {
+            await companyStore.fetchDepartmentHealths()
+          } catch (err: unknown) {
+            log.warn('fetchDepartmentHealths failed:', err)
+          }
+        }
+      })
+      .catch((err: unknown) => {
+        log.warn('fetchCompanyData failed:', err)
+      })
+      .finally(() => {
+        if (mounted) start()
+      })
+    return () => {
+      mounted = false
+      stop()
+    }
     // eslint-disable-next-line @eslint-react/exhaustive-deps -- mount-only effect; start / stop are stable
   }, [])
 }
