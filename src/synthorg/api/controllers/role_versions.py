@@ -5,7 +5,7 @@ from typing import Annotated, Final
 
 from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import PathParameter
 
 from synthorg.api.cursor import decode_cursor
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -15,6 +15,7 @@ from synthorg.api.pagination import (
     CursorParam,
     encode_repo_seek_meta,
 )
+from synthorg.api.path_params import PathName  # noqa: TC001 -- runtime annotation
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.role import Role
 from synthorg.observability import get_logger
@@ -40,7 +41,7 @@ class RoleVersionController(Controller):
     async def list_versions(
         self,
         state: State,
-        role_name: str,
+        role_name: PathName,
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> Response[PaginatedResponse[SnapshotT]]:
@@ -79,10 +80,10 @@ class RoleVersionController(Controller):
     async def get_version(
         self,
         state: State,
-        role_name: str,
+        role_name: PathName,
         version_num: Annotated[
             int,
-            Parameter(
+            PathParameter(
                 ge=1,
                 description="Role version (one-based; 1 = first revision).",
             ),

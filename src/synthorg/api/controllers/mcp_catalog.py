@@ -3,11 +3,11 @@
 Browse and install MCP servers from the bundled catalog.
 """
 
-from typing import Final, Literal
+from typing import Annotated, Final, Literal
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import DEFAULT_LIMIT, ApiResponse, PaginatedResponse
@@ -181,10 +181,13 @@ class MCPCatalogController(Controller):
     async def search_catalog(
         self,
         state: State,
-        q: str = Parameter(
-            description="Search query",
-            max_length=512,
-        ),
+        q: Annotated[
+            str,
+            QueryParameter(
+                description="Search query",
+                max_length=512,
+            ),
+        ],
         limit: CursorLimit = DEFAULT_LIMIT,
         cursor: CursorParam = None,
     ) -> PaginatedResponse[CatalogEntry]:

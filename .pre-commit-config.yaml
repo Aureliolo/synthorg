@@ -41,7 +41,7 @@ ci:
   # local-only pre-push hook surface) so pre-commit.ci does not pick
   # them up; their CI counterpart is the ``Lint`` job in ``ci.yml``
   # which runs the same scripts on every PR.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, litestar-path-parameter, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -645,6 +645,18 @@ repos:
         # itself, or this config so a PR that weakens the gate cannot
         # bypass it by not touching scanned Python files.
         files: ^(src/synthorg/.*\.py|scripts/check_frozen_model_extra_forbid\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: litestar-path-parameter
+        name: Litestar 2.22 path / query / header parameter style gate
+        entry: uv run python scripts/check_litestar_path_parameter.py
+        language: system
+        # Trigger on any controller change, the path-alias modules,
+        # the checker itself, or this config -- so a PR that weakens
+        # the gate cannot bypass the check by not touching the
+        # controllers tree.
+        files: ^(src/synthorg/api/.*\.py|scripts/check_litestar_path_parameter\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 

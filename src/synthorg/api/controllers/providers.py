@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 from litestar import Controller, delete, get, patch, post, put
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import PathParameter, QueryParameter
 from litestar.response import ServerSentEvent
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
@@ -592,7 +592,7 @@ class ProviderController(Controller):
         name: PathName,
         preset_hint: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=64,
                 description=(
                     'Canonical preset hint (e.g. "example-provider", "test-provider").'
@@ -881,7 +881,7 @@ class ProviderController(Controller):
         name: PathName,
         model_id: Annotated[
             str,
-            Parameter(
+            PathParameter(
                 max_length=256,
                 min_length=1,
                 description="Local provider model id (may contain colons).",
@@ -956,7 +956,7 @@ class ProviderController(Controller):
         name: PathName,
         model_id: Annotated[
             str,
-            Parameter(
+            PathParameter(
                 max_length=256,
                 min_length=1,
                 description="Local provider model whose launch parameters to update.",

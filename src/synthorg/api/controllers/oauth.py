@@ -8,7 +8,7 @@ from typing import Annotated, Any, Final
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
@@ -157,15 +157,21 @@ class OAuthController(Controller):
     async def callback(
         self,
         state: State,
-        code: str = Parameter(
-            description="Authorization code",
-            max_length=_MAX_OAUTH_CODE_LEN,
-        ),
-        state_param: str = Parameter(
-            query="state",
-            description="OAuth state token",
-            max_length=_MAX_OAUTH_STATE_LEN,
-        ),
+        code: Annotated[
+            str,
+            QueryParameter(
+                description="Authorization code",
+                max_length=_MAX_OAUTH_CODE_LEN,
+            ),
+        ],
+        state_param: Annotated[
+            str,
+            QueryParameter(
+                name="state",
+                description="OAuth state token",
+                max_length=_MAX_OAUTH_STATE_LEN,
+            ),
+        ],
     ) -> ApiResponse[dict[str, Any]]:
         """Handle OAuth provider callback.
 

@@ -218,7 +218,7 @@ class CoordinationController(Controller):
     async def _get_task(
         self,
         app_state: AppState,
-        task_id: str,
+        task_id: PathId,
     ) -> Task:
         """Fetch task or raise 404."""
         task = await app_state.task_engine.get_task(task_id)
@@ -262,7 +262,7 @@ class CoordinationController(Controller):
         app_state: AppState,
         request: Request[Any, Any, Any],
         context: CoordinationContext,
-        task_id: str,
+        task_id: PathId,
     ) -> CoordinationResultWithAttribution:
         """Run coordination and publish WS events."""
         try:
@@ -337,7 +337,7 @@ class CoordinationController(Controller):
         self,
         app_state: AppState,
         data: CoordinateTaskRequest,
-        task_id: str,
+        task_id: PathId,
     ) -> tuple[AgentIdentity, ...]:
         """Resolve agent identities from request or registry.
 

@@ -12,7 +12,6 @@ Endpoints:
 """
 
 from datetime import UTC, datetime
-from typing import Annotated
 from uuid import UUID
 
 from litestar import Controller, get, post
@@ -20,7 +19,7 @@ from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.guards import require_read_access, require_write_access
-from synthorg.api.path_params import PathId
+from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.errors import RunHardCeilingTooLowError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
@@ -176,7 +175,7 @@ class ForecastBudgetController(Controller):
     @get("/forecasts/{forecast_id:str}")
     async def get_forecast(
         self,
-        forecast_id: Annotated[str, PathId],
+        forecast_id: PathId,
         state: State,
     ) -> Forecast:
         """Retrieve a stored forecast by id."""
@@ -190,7 +189,7 @@ class ForecastBudgetController(Controller):
     @post("/forecasts/{forecast_id:str}/approve", guards=[require_write_access])
     async def approve_forecast(
         self,
-        forecast_id: Annotated[str, PathId],
+        forecast_id: PathId,
         data: ForecastApproveRequest,
         state: State,
     ) -> Forecast:
@@ -221,7 +220,7 @@ class ForecastBudgetController(Controller):
     @post("/forecasts/{forecast_id:str}/reject", guards=[require_write_access])
     async def reject_forecast(
         self,
-        forecast_id: Annotated[str, PathId],
+        forecast_id: PathId,
         data: ForecastRejectRequest,
         state: State,
     ) -> Forecast:
@@ -250,7 +249,7 @@ class ForecastBudgetController(Controller):
     @post("/forecasts/{forecast_id:str}/raise_ceiling", guards=[require_write_access])
     async def raise_ceiling(
         self,
-        forecast_id: Annotated[str, PathId],
+        forecast_id: PathId,
         data: RaiseCeilingRequest,
         state: State,
     ) -> Forecast:

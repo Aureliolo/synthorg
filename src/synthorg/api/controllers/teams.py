@@ -1,10 +1,11 @@
 """Team CRUD controller -- sub-resource of departments."""
 
 import json
-from typing import Any
+from typing import Annotated, Any
 
 from litestar import Controller, delete, patch, post
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -526,7 +527,7 @@ class TeamController(Controller):
         state: State,
         dept_name: PathName,
         team_name: PathName,
-        reassign_to: NotBlankStr | None = None,
+        reassign_to: Annotated[NotBlankStr | None, QueryParameter()] = None,
     ) -> None:
         """Delete a team from a department.
 

@@ -11,7 +11,7 @@ from typing import Annotated, Any
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access
@@ -62,7 +62,7 @@ class CeremonyPolicyController(Controller):
         state: State,
         department: Annotated[
             NotBlankStr | None,
-            Parameter(
+            QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 description="Department to resolve against; omit for project policy.",
             ),

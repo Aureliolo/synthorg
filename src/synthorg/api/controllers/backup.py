@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.exceptions import InternalServerException
-from litestar.params import Parameter
+from litestar.params import HeaderParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.cursor import decode_cursor
@@ -105,8 +105,8 @@ class BackupController(Controller):
         state: State,
         idempotency_key: Annotated[
             NotBlankStr,
-            Parameter(
-                header="Idempotency-Key",
+            HeaderParameter(
+                name="Idempotency-Key",
                 description=(
                     "RFC-style retry-safe key. Required: identical keys "
                     "within 24h return the cached manifest instead of "

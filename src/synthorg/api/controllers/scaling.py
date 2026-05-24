@@ -4,8 +4,11 @@ Exposes scaling strategies, decisions, signals, and manual
 evaluation triggers.
 """
 
+from typing import Annotated
+
 from litestar import Controller, get, post, put
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import PathParameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import (
@@ -391,7 +394,7 @@ class ScalingController(Controller):
     async def update_strategy(
         self,
         state: State,
-        strategy_name: str,
+        strategy_name: Annotated[str, PathParameter()],
         data: StrategyUpdateRequest,
     ) -> ApiResponse[ScalingStrategyResponse]:
         """Enable or disable a scaling strategy.

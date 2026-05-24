@@ -5,7 +5,7 @@ from typing import Annotated, Final
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 from litestar.status_codes import (
     HTTP_200_OK,
     HTTP_202_ACCEPTED,
@@ -165,18 +165,18 @@ class TaskController(Controller):
         state: State,
         status: Annotated[
             TaskStatus | None,
-            Parameter(description="Filter to tasks in this status."),
+            QueryParameter(description="Filter to tasks in this status."),
         ] = None,
         assigned_to: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=256,
                 description="Filter to tasks assigned to this agent.",
             ),
         ] = None,
         project: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=256,
                 description="Filter to tasks scoped to this project.",
             ),

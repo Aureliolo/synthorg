@@ -7,7 +7,7 @@ from typing import Annotated
 
 from litestar import Controller, Response, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import ValidationError
 
@@ -86,7 +86,7 @@ def _service(state: State) -> WorkflowService:
 
 WorkflowTypeFilter = Annotated[
     NotBlankStr | None,
-    Parameter(
+    QueryParameter(
         required=False,
         max_length=QUERY_MAX_LENGTH,
         description="Filter by workflow type",

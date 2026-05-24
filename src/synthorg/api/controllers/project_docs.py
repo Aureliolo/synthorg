@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Annotated, Final
 
 from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
@@ -49,7 +49,7 @@ def _docs_service(state: State) -> DocsService:
 
 DocTypeFilter = Annotated[
     NotBlankStr | None,
-    Parameter(
+    QueryParameter(
         required=False,
         max_length=QUERY_MAX_LENGTH,
         description="Filter by doc_type (status_report / deliverable / knowledge_note)",
@@ -58,7 +58,7 @@ DocTypeFilter = Annotated[
 
 TagFilter = Annotated[
     NotBlankStr | None,
-    Parameter(
+    QueryParameter(
         required=False,
         max_length=QUERY_MAX_LENGTH,
         description="Filter by tag (exact match)",
@@ -67,7 +67,7 @@ TagFilter = Annotated[
 
 SearchQuery = Annotated[
     NotBlankStr,
-    Parameter(
+    QueryParameter(
         required=True,
         max_length=QUERY_MAX_LENGTH,
         description="Search query text",
@@ -76,7 +76,7 @@ SearchQuery = Annotated[
 
 SearchLimit = Annotated[
     int,
-    Parameter(
+    QueryParameter(
         required=False,
         ge=1,
         le=DOCS_SEARCH_MAX_LIMIT,

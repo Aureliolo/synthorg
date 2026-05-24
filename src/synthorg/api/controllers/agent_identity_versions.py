@@ -4,7 +4,7 @@ from typing import Annotated, Final
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import PathParameter, QueryParameter
 
 from synthorg.api.auth import get_authenticated_user_id
 from synthorg.api.cursor import decode_cursor
@@ -124,7 +124,7 @@ class AgentIdentityVersionController(Controller):
         agent_id: PathId,
         from_version: Annotated[
             int,
-            Parameter(
+            QueryParameter(
                 required=True,
                 ge=1,
                 description="Source version",
@@ -132,7 +132,7 @@ class AgentIdentityVersionController(Controller):
         ],
         to_version: Annotated[
             int,
-            Parameter(
+            QueryParameter(
                 required=True,
                 ge=1,
                 description="Target version",
@@ -184,7 +184,7 @@ class AgentIdentityVersionController(Controller):
         agent_id: PathId,
         version_num: Annotated[
             int,
-            Parameter(
+            PathParameter(
                 ge=1,
                 description="Agent identity version (one-based; 1 = first revision).",
             ),

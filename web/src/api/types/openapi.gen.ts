@@ -15682,6 +15682,7 @@ export interface operations {
             readonly path: {
                 /** @description Resource name */
                 readonly agent_name: string;
+                /** @description Resource identifier */
                 readonly plan_id: string;
             };
             readonly cookie?: never;
@@ -16374,6 +16375,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly session_id: string;
             };
             readonly cookie?: never;
@@ -16598,6 +16600,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly forecast_id: string;
             };
             readonly cookie?: never;
@@ -16626,6 +16629,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly forecast_id: string;
             };
             readonly cookie?: never;
@@ -16660,6 +16664,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly forecast_id: string;
             };
             readonly cookie?: never;
@@ -16694,6 +16699,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly forecast_id: string;
             };
             readonly cookie?: never;
@@ -16947,6 +16953,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly client_id: string;
             };
             readonly cookie?: never;
@@ -16975,6 +16982,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly client_id: string;
             };
             readonly cookie?: never;
@@ -17002,6 +17010,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly client_id: string;
             };
             readonly cookie?: never;
@@ -17036,6 +17045,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly client_id: string;
             };
             readonly cookie?: never;
@@ -19134,6 +19144,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly message_id: string;
             };
             readonly cookie?: never;
@@ -19223,6 +19234,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly proposal_id: string;
             };
             readonly cookie?: never;
@@ -19376,6 +19388,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly charter_id: string;
             };
             readonly cookie?: never;
@@ -19404,6 +19417,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly charter_id: string;
             };
             readonly cookie?: never;
@@ -19438,6 +19452,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly charter_id: string;
             };
             readonly cookie?: never;
@@ -19472,6 +19487,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly charter_id: string;
             };
             readonly cookie?: never;
@@ -19684,6 +19700,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly rule_id: string;
             };
             readonly cookie?: never;
@@ -19712,6 +19729,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly rule_id: string;
             };
             readonly cookie?: never;
@@ -19739,6 +19757,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly rule_id: string;
             };
             readonly cookie?: never;
@@ -19773,6 +19792,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly rule_id: string;
             };
             readonly cookie?: never;
@@ -22061,6 +22081,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly request_id: string;
             };
             readonly cookie?: never;
@@ -22089,6 +22110,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly request_id: string;
             };
             readonly cookie?: never;
@@ -22119,6 +22141,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly request_id: string;
             };
             readonly cookie?: never;
@@ -22153,6 +22176,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly request_id: string;
             };
             readonly cookie?: never;
@@ -22187,6 +22211,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly task_id: string;
             };
             readonly cookie?: never;
@@ -22215,7 +22240,9 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource name */
                 readonly stage_name: string;
+                /** @description Resource identifier */
                 readonly task_id: string;
             };
             readonly cookie?: never;
@@ -22255,6 +22282,7 @@ export interface operations {
             };
             readonly header?: never;
             readonly path: {
+                /** @description Resource name */
                 readonly role_name: string;
             };
             readonly cookie?: never;
@@ -22283,6 +22311,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource name */
                 readonly role_name: string;
                 /** @description Role version (one-based; 1 = first revision). */
                 readonly version_num: number;
@@ -23333,6 +23362,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly simulation_id: string;
             };
             readonly cookie?: never;
@@ -23361,6 +23391,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly simulation_id: string;
             };
             readonly cookie?: never;
@@ -23393,6 +23424,7 @@ export interface operations {
             };
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly simulation_id: string;
             };
             readonly cookie?: never;
@@ -24189,6 +24221,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource name */
                 readonly role: string;
                 /** @description Resource identifier */
                 readonly user_id: string;
@@ -24283,6 +24316,7 @@ export interface operations {
             readonly query?: never;
             readonly header?: never;
             readonly path: {
+                /** @description Resource identifier */
                 readonly receipt_id: string;
             };
             readonly cookie?: never;

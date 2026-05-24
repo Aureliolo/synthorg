@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 from litestar import Controller, Request, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 
 from synthorg.api.dto import PaginatedResponse
 from synthorg.api.guards import has_write_role, require_read_access
@@ -325,21 +325,21 @@ class ActivityController(Controller):
         limit: CursorLimit = _DEFAULT_LIMIT,
         event_type: Annotated[
             ActivityEventType | None,
-            Parameter(
-                query="type",
+            QueryParameter(
+                name="type",
                 description="Filter by event_type",
             ),
         ] = None,
         agent_id: Annotated[
             str | None,
-            Parameter(
+            QueryParameter(
                 max_length=128,
                 description="Filter by agent_id",
             ),
         ] = None,
         last_n_hours: Annotated[
             ActivityWindowHours,
-            Parameter(description="Time window (24, 48, or 168 hours)"),
+            QueryParameter(description="Time window (24, 48, or 168 hours)"),
         ] = ActivityWindowHours.DAY,
     ) -> PaginatedResponse[ActivityEvent]:
         """Return a paginated org-wide activity feed.

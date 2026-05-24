@@ -12,7 +12,7 @@ from typing import Annotated, Any, Final
 
 from litestar import Controller, Request, get, post
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 from litestar.response import ServerSentEvent
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -568,7 +568,7 @@ class EventStreamController(Controller):
         request: Request[Any, Any, Any],
         session_id: Annotated[
             NotBlankStr,
-            Parameter(
+            QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 pattern=_SESSION_ID_PATTERN,
                 description="Session ID whose AG-UI stream to subscribe to.",
@@ -646,7 +646,7 @@ class InterruptController(Controller):
         state: State,
         session_id: Annotated[
             NotBlankStr | None,
-            Parameter(
+            QueryParameter(
                 max_length=QUERY_MAX_LENGTH,
                 pattern=_SESSION_ID_PATTERN,
                 description="Filter to interrupts for this session; omit to list all.",

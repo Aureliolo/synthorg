@@ -5,9 +5,11 @@ Handles agent personality preset assignment and preset listing.
 """
 
 import json
+from typing import Annotated
 
 from litestar import Controller, get, put
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import PathParameter
 from litestar.status_codes import HTTP_200_OK
 
 from synthorg.api.controllers.setup.agent_helpers import (
@@ -55,7 +57,7 @@ class SetupPersonalityController(Controller):
     )
     async def update_agent_personality(
         self,
-        agent_index: int,
+        agent_index: Annotated[int, PathParameter()],
         data: UpdateAgentPersonalityRequest,
         state: State,
     ) -> ApiResponse[SetupAgentSummary]:

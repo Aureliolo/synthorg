@@ -33,6 +33,7 @@ from synthorg.api.auth.service import AuthService  # noqa: TC001
 from synthorg.api.auth.system_user import SYSTEM_USERNAME, is_system_user
 from synthorg.api.auth.ticket_store import TicketLimitExceededError
 from synthorg.api.dto import ApiResponse
+from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.core.auth.roles import HumanRole
@@ -70,8 +71,7 @@ logger = get_logger(__name__)
 # username doesn't exist -- prevents timing-based username enumeration.
 # The actual password is irrelevant; only the verification time matters.
 _DUMMY_ARGON2_HASH = (
-    "$argon2id$v=19$m=65536,t=3,p=4$"
-    "c2FsdHNhbHRzYWx0$"
+    "$argon2id$v=19$m=65536,t=3,p=4$c2FsdHNhbHRzYWx0$"
     "mB0bZKSNwOhSdxMQfsldT3qGmFyjVqbkntMkutMfdUs"
 )
 
@@ -752,7 +752,7 @@ class AuthController(Controller):
     async def revoke_session(
         self,
         request: Request[Any, Any, Any],
-        session_id: str,
+        session_id: PathId,
     ) -> None:
         """Revoke a session. Own sessions or CEO any."""
         auth_user = request.scope.get("user")

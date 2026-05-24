@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Annotated, Final
 
 from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
-from litestar.params import Parameter
+from litestar.params import QueryParameter
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
@@ -44,7 +44,7 @@ def _knowledge_service(state: State) -> KnowledgeService:
 
 IncludeGlobal = Annotated[
     bool,
-    Parameter(
+    QueryParameter(
         required=False,
         description="Include global (project-unscoped) sources in the listing",
     ),
@@ -52,17 +52,21 @@ IncludeGlobal = Annotated[
 
 StaleOnly = Annotated[
     bool,
-    Parameter(required=False, description="Only sources needing a refresh"),
+    QueryParameter(required=False, description="Only sources needing a refresh"),
 ]
 
 SearchQuery = Annotated[
     NotBlankStr,
-    Parameter(required=True, max_length=QUERY_MAX_LENGTH, description="Search text"),
+    QueryParameter(
+        required=True,
+        max_length=QUERY_MAX_LENGTH,
+        description="Search text",
+    ),
 ]
 
 SearchLimit = Annotated[
     int,
-    Parameter(
+    QueryParameter(
         required=False,
         ge=1,
         le=KNOWLEDGE_SEARCH_MAX_LIMIT,
