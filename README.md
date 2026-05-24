@@ -134,7 +134,7 @@ SynthOrg vs [other agent frameworks](https://synthorg.io/compare/) across organi
 | [Guides](https://synthorg.io/docs/guides/) | Quickstart, company config, agents, budget, security, MCP tools, deployment, logging, memory |
 | [Design Specification](https://synthorg.io/docs/design/) | The designed behaviour of every subsystem (the source of truth; states current wiring status per area) |
 | [Architecture](https://synthorg.io/docs/architecture/) | System overview, tech stack, decision log |
-| [REST API](https://synthorg.io/docs/rest-api/) | Scalar/OpenAPI reference |
+| [REST API](https://synthorg.io/docs/openapi/) | Scalar/OpenAPI reference |
 | [Library Reference](https://synthorg.io/docs/api/) | Auto-generated from docstrings |
 | [Security](https://synthorg.io/docs/security/) | Application security, container hardening, CI/CD security |
 | [Licensing](https://synthorg.io/docs/licensing/) | BUSL 1.1 terms, Additional Use Grant, commercial options |

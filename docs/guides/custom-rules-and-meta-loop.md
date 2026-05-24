@@ -115,4 +115,4 @@ The `synthorg_meta_rule_evaluations_total` counter has bounded labels `rule` (re
 
 ## Where this fits
 
-A failing rule does NOT itself mutate the system: it returns a verdict that the meta-loop coordinator aggregates. Adaptation lands through the evolution pipeline (see [docs/design/evolution.md](../design/evolution.md)). For the broader meta-loop architecture, see [docs/design/meta-loop.md](../design/meta-loop.md).
+A failing rule does NOT itself mutate the system: it returns a verdict that the meta-loop coordinator aggregates. Adaptation lands through the evolution pipeline. For the broader meta-loop and self-improvement architecture, see [docs/design/self-improvement.md](../design/self-improvement.md).

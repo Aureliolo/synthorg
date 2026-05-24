@@ -191,8 +191,8 @@ feature isolation).
 
 ### New docs / SQL / YAML tools
 
-Landed: `markdownlint`, `yamllint`, `sqlfluff`. Deferred (see Exemption
-ledger): `lychee` (Markdown link check) and `vale` (Google style +
+Landed: `markdownlint`, `yamllint`, `sqlfluff`, `lychee` (Markdown link
+check). Deferred (see Exemption ledger): `vale` (Google style +
 British dictionary).
 
 ## Consequences
@@ -329,7 +329,6 @@ and closed for the project to reach 100% strict enforcement.
 | `sqlfluff` `exclude_rules = RF04` (keywords-as-identifiers) | Same SQL style issue | Trivial |
 | Typeguard never landed | Issue #2068: "Wire typeguard after #2048 lands" | Medium |
 | Vale prose linter never landed | Issue #2069: "Wire Vale + binary install script" | Small |
-| Lychee CI workflow never landed | Issue #2070: "Wire Lychee CI workflow + scripts/install_cli_tools.sh" | Trivial |
 | `knip --no-exit-code` (report-only, never blocks) | Issue #2071: "Knip blocking: eliminate unused exports surfaced by knip" | Medium |
 | `dpdm --skip-imports` for `stores/auth.ts -> api/client.ts` cycle | Issue #2072: "Fix auth -> client circular dependency" | Small |
 | `_module_size_baseline.json` residue: 109 files not covered by PR 3 / PR 4 / #2051 / #2052 (oversized files in `persistence/`, `engine/`, `api/`, `meta/`, etc. that no existing PR addresses) | Issue #2077: "EPIC: Drain residual module-size baseline" | Very large (per-package decomposition program) |

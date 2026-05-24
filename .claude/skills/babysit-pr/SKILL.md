@@ -480,6 +480,28 @@ Render the full triage table only when there's something to fix.
 - **Self-comments:** when scanning reviews and inline comments, exclude `synthorg-repo-bot[bot]` and your own GitHub username (resolve via `gh api user --jq .login` once and cache in `state.self_login`).
 - **Outside-diff-range comments:** CodeRabbit embeds these in `<details>` blocks at the top of the review body when the affected lines are outside the diff. Parse them as actionable inline comments. They're NOT optional. (Same parser as `/aurelio-review-pr` Phase 4.)
 
+#### Per-reviewer auto-clear behaviour (which reviews to dismiss, which to leave alone)
+
+GitHub keeps every prior `CHANGES_REQUESTED` review attached to a PR until either (a) the reviewer submits a new review with `APPROVED` / `COMMENTED`, or (b) someone calls the dismissal API. Which path to take depends on whether the bot re-reviews on each push:
+
+| Reviewer | Re-reviews on each commit? | Auto-clears its own stale `CHANGES_REQUESTED`? | Action when previous review is now stale |
+|---|---|---|---|
+| **CodeRabbit** (`coderabbitai[bot]`) | Yes | Yes, by submitting a new review with no actionable items on the new head | **Never call the dismissal API.** Post replies to its inline comments (or `@coderabbitai resolve` on the thread) and let the next CR review auto-clear the prior `CHANGES_REQUESTED`. Manual dismissal is wasted work AND erases reviewer context that humans use to trace the conversation. |
+| **Gemini** (`gemini-code-assist[bot]`) | **No.** Only reviews on PR open; subsequent reviews require an explicit `/gemini review` command on the PR | No (without a re-review, its state is frozen on the head it first saw) | If Gemini left `CHANGES_REQUESTED` (rare; Gemini typically uses `COMMENTED` which doesn't block `reviewDecision`), and every cited finding has been addressed in subsequent commits, **dismissal is the right answer**. Gemini will not update on its own. Verify each finding is actually fixed against current code before dismissing. |
+| **Other bots** (Copilot, Greptile, Socket Security, ...) | Varies; check the bot's docs or empirical behaviour on the current PR | Varies | Default to "reply, don't dismiss" unless the bot's documented behaviour confirms no auto-update. Err on the side of leaving the review attached so the audit trail is intact. |
+| **Human reviewers** | n/a | Never auto-clears | Don't dismiss without explicit operator consent. The right path is to address the feedback in a new commit and request a re-review. |
+
+**Default rule:** if you don't know whether the reviewer auto-clears, **reply, don't dismiss**. The cost of an extra `CHANGES_REQUESTED` sitting in `reviewDecision` for a tick or two is low; the cost of dismissing a still-valid finding (or erasing a reviewer thread the next operator was about to read) is high.
+
+**When you do dismiss** (Gemini-style frozen `CHANGES_REQUESTED`), call the API per-review with a `message` body that names (a) the commit SHA the review was attached to, (b) the inline findings it raised, (c) the commit(s) that resolved each one:
+
+```bash
+gh api -X PUT "repos/$OWNER_REPO/pulls/$PR/reviews/$REVIEW_ID/dismissals" \
+  -f message="Stale: review on commit <SHA>; finding(s) <summary> addressed in commit(s) <SHA list>. Dismissing because <bot> does not auto-re-review."
+```
+
+Log every dismissal in the round-history entry: `{round, action: "stale_review_dismissed", reviewer, review_id, original_head_sha, addressed_in_sha}`. Dismissals are auditable; never call the API without the entry.
+
 ### Mechanics
 
 - **Never `durable: true`** on any cron primitive. Session-only. (`feedback_no_cloud_schedule.md`.)

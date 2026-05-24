@@ -929,11 +929,19 @@ def _reset_prometheus_label_snapshot() -> Iterator[None]:
 _TEMPLATE_DB: Path | None = None
 """Worker-local cache of the session-wide migrated template DB path."""
 
-# 180s matches ``tests/conformance/persistence/conftest.py``'s
-# postgres-container coordinator. Bounds a worker that dies mid-acquire
-# so peers don't sit forever on a stuck lockfile; covers the yoyo
-# migration chain on cold caches with generous headroom.
-_FILE_LOCK_TIMEOUT_SECONDS: Final[int] = 180
+# Catastrophe ceiling, not the expected wait. Followers (non-builders)
+# spend their actual wait in the poll-loop below: ~5s after the leader
+# finishes, regardless of how long the leader's build took. 600s only
+# fires if the leader genuinely hangs (deadlock, segv before fcntl
+# release, etc.) and ``filelock``'s OS-level auto-release on death
+# fails to fire. The conformance/persistence postgres coordinator
+# carries the same 600s ceiling for the same reason.
+_FILE_LOCK_TIMEOUT_SECONDS: Final[int] = 600
+
+# Poll-slice for follower acquire attempts. Short enough that a
+# follower exits within one slice of the leader finishing; long enough
+# that we don't thrash on the lockfile under heavy contention.
+_FILE_LOCK_POLL_SLICE_SECONDS: Final[float] = 5.0
 
 
 async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
@@ -949,8 +957,19 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     per-test wall-clock guard would fire on the first persistence
     test in each worker once the migration chain grows past ~7 steps.
 
-    Pattern mirrors ``tests/conformance/persistence/conftest.py``'s
-    Postgres testcontainer coordination.
+    Followers use a poll-acquire loop (short slices + db-existence
+    re-check between slices) instead of a single
+    ``lock.acquire(timeout=_FILE_LOCK_TIMEOUT_SECONDS)`` so the
+    follower wait tracks the leader's ACTUAL build time, not the
+    catastrophe ceiling. PR #2080's matrix sharding + sysmon coverage
+    pushed cold-cache leader builds past the previous 180s budget on
+    slow CI runners; the poll-loop makes the budget elastic upward
+    without making the worst-case-success wait any longer than
+    necessary. Pattern mirrors ``tests/conformance/persistence/
+    conftest.py``'s Postgres testcontainer coordination; that path
+    bumped its raw timeout (refcount semantics there require an
+    acquire on every worker, so polling doesn't help) but the
+    ceiling is aligned with this one.
     """
     global _TEMPLATE_DB  # noqa: PLW0603
     if _TEMPLATE_DB is not None and await asyncio.to_thread(_TEMPLATE_DB.exists):
@@ -960,45 +979,72 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     shared_dir = tmp_path_factory.getbasetemp().parent / "yoyo_template_shared"
     await asyncio.to_thread(shared_dir.mkdir, parents=True, exist_ok=True)
     db_path = shared_dir / "template.db"
+    building_path = shared_dir / "template.db.building"
     lock_path = shared_dir / "template.lock"
-    from filelock import FileLock
+    from filelock import FileLock, Timeout
 
-    # Fast path: template already built by another process. Skip the
-    # FileLock acquire entirely -- a 5-process xdist session would
-    # otherwise serialise all 5 processes behind the lock just to
-    # confirm the file exists, and any one of them stalling
-    # (e.g. master holding the lock for its 30+s sysmon-instrumented
-    # yoyo build) blocks the others up to ``_FILE_LOCK_TIMEOUT_SECONDS``.
-    # The existence check is a read-only stat; concurrent readers do
-    # not race because we never PARTIAL-WRITE the template file (the
-    # build below writes to a temp path implicit in migrate_apply and
-    # the SQLite file rename is atomic).
+    # Fast path: template already built by another process. The
+    # builder below writes to ``template.db.building`` and atomically
+    # renames to ``template.db``, so a present ``db_path`` is always
+    # the complete migrated file -- followers can read it without
+    # holding the lock and without racing a partial write.
     if await asyncio.to_thread(db_path.exists):
         _TEMPLATE_DB = db_path
         return _TEMPLATE_DB
 
-    # ``FileLock`` is sync; ``asyncio.to_thread`` keeps the event loop
-    # responsive while waiting for the cross-worker lock. Generation
-    # itself only happens once per session; the lock serialises only
-    # the builders (not the readers above).
-    def _acquire() -> FileLock:
-        lock = FileLock(str(lock_path), timeout=_FILE_LOCK_TIMEOUT_SECONDS)
-        lock.acquire()
+    # Poll-acquire: try the lock in short slices, re-checking
+    # ``db_path.exists()`` between slices. A follower exits the loop
+    # via the existence check (leader finished) OR via a successful
+    # acquire (this worker is the new leader). Total wall-clock is
+    # bounded by ``_FILE_LOCK_TIMEOUT_SECONDS`` so a wedged lock
+    # eventually raises rather than blocking forever.
+    def _try_acquire(slice_s: float) -> FileLock | None:
+        lock = FileLock(str(lock_path), timeout=slice_s)
+        try:
+            lock.acquire()
+        except Timeout:
+            return None
         return lock
 
+    deadline = time.monotonic() + _FILE_LOCK_TIMEOUT_SECONDS
+    lock: FileLock | None = None
+    while True:
+        if await asyncio.to_thread(db_path.exists):
+            _TEMPLATE_DB = db_path
+            return _TEMPLATE_DB
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            msg = (
+                f"Timed out after {_FILE_LOCK_TIMEOUT_SECONDS}s waiting "
+                f"for the cross-worker template DB build at {lock_path}. "
+                f"Either the leader's yoyo migration chain exceeded the "
+                f"catastrophe ceiling or the lock is wedged."
+            )
+            raise TimeoutError(msg)
+        slice_s = min(_FILE_LOCK_POLL_SLICE_SECONDS, remaining)
+        lock = await asyncio.to_thread(_try_acquire, slice_s)
+        if lock is not None:
+            break
+
     global _template_build_secs  # noqa: PLW0603
-    lock = await asyncio.to_thread(_acquire)
     try:
         # Re-check existence under the lock: another worker may have
-        # built it between our fast-path check above and our acquire
-        # below.
+        # built it between our poll-loop existence check above and our
+        # acquire below.
         if not await asyncio.to_thread(db_path.exists):
             build_start = time.monotonic()
             rev_path = migrations.copy_revisions(shared_dir / "revisions")
+            # Build to a sibling path then atomically rename. SQLite
+            # creates the .db file at first open, so a direct migration
+            # to ``db_path`` would make a partial file visible to the
+            # fast-path existence check above; rename makes the file
+            # appear atomically only when the build is complete.
+            await asyncio.to_thread(building_path.unlink, missing_ok=True)
             await migrations.migrate_apply(
-                migrations.to_sqlite_url(str(db_path)),
+                migrations.to_sqlite_url(str(building_path)),
                 revisions_path=rev_path,
             )
+            await asyncio.to_thread(building_path.replace, db_path)
             # Credit the one-time build so the triggering test's per-test
             # wall-clock guard does not count it (see _template_build_secs).
             _template_build_secs += time.monotonic() - build_start

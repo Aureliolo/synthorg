@@ -98,4 +98,4 @@ The approval gate's reliance on identity-aware reviewers means the surrounding a
 - Reviewer-group membership checked AT decide time, not just at session start.
 - Audit chain enabled in production (an unsigned audit log silently loses tamper evidence).
 
-See [docs/design/approval.md](../design/approval.md) for the broader design and [docs/reference/sec-prompt-safety.md](../reference/sec-prompt-safety.md) for the redaction rules around the rationale payload.
+See [docs/reference/sec-prompt-safety.md](../reference/sec-prompt-safety.md) for the redaction rules around the rationale payload.

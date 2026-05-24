@@ -14,8 +14,11 @@ ci:
   #     (actionlint is NOT skipped: no dedicated CI job covers it, and
   #     pre-commit.ci is the only enforcement layer for contributors who
   #     skipped local hooks.)
-  #   - mypy / pytest-unit / go-* / eslint-web:
+  #   - mypy / pytest-unit / go-* / lychee / eslint-web:
   #     too slow / toolchain-heavy for the cloud runner.
+  #     lychee is also a Rust binary not bundled with pre-commit-uv;
+  #     operators install it via `bash scripts/install_cli_tools.sh`,
+  #     and CI runs it via .github/workflows/lychee.yml.
   #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
   #     persistence-boundary / no-new-logger-exception-str-exc /
   #     orphan-fixtures / boundary-typed / setting-to-startup-trace /
@@ -38,7 +41,7 @@ ci:
   # local-only pre-push hook surface) so pre-commit.ci does not pick
   # them up; their CI counterpart is the ``Lint`` job in ``ci.yml``
   # which runs the same scripts on every PR.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -139,12 +142,6 @@ repos:
         files: ^(README|CLAUDE|cli/CLAUDE|web/CLAUDE)\.md$|^docs/.*\.md$
         # ``stages: [pre-commit]`` (the default) so editors get fast
         # feedback on the docs they're touching.
-
-  # lychee is a Rust binary not bundled with the pre-commit-hook runtime;
-  # operators install it via `bash scripts/install_cli_tools.sh`. Until
-  # the install script is updated to include lychee, run it CI-only via
-  # a dedicated workflow (lychee-action). Skip in pre-commit.ci too.
-  #   - repo: https://github.com/lycheeverse/lychee
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
@@ -413,6 +410,19 @@ repos:
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false
+        stages: [pre-push]
+
+      - id: lychee
+        name: lychee (Markdown link-checker)
+        entry: lychee
+        args: ["--config", "lychee.toml", "--no-progress"]
+        language: system
+        # Top-level README, every CLAUDE.md tier, and every Markdown
+        # under docs/. The CI workflow .github/workflows/lychee.yml
+        # mirrors this glob set; the local hook is pre-push only
+        # because the network probes take 8-15s.
+        files: ^(README|CLAUDE|cli/CLAUDE|web/CLAUDE)\.md$|^docs/.*\.md$
+        pass_filenames: true
         stages: [pre-push]
 
       - id: eslint-web
