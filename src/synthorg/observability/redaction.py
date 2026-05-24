@@ -312,6 +312,20 @@ def log_exception_redacted(
             "remove them from the kwargs."
         )
         raise TypeError(msg)
+    if "exc_info" in kwargs:
+        # structlog's ``format_exc_info`` processor walks the live
+        # traceback's frame-locals into the event record. Allowing
+        # ``exc_info=True`` (or any truthy value) through here would
+        # serialise any in-scope credential the moment the helper is
+        # invoked, defeating the whole point of routing through it.
+        # Reject at runtime so a stray ``exc_info=...`` cannot silently
+        # downgrade the redaction guarantee.
+        msg = (
+            "log_exception_redacted forbids 'exc_info'; remove it from kwargs. "
+            "The helper deliberately suppresses traceback attachment to keep "
+            "frame-locals out of the structured log record."
+        )
+        raise TypeError(msg)
     logger.error(
         event,
         **kwargs,

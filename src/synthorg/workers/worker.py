@@ -495,6 +495,8 @@ class Worker:
                 await JetStreamTaskQueue.ack(raw)
             else:
                 await JetStreamTaskQueue.nack(raw)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             log_exception_redacted(
                 logger,

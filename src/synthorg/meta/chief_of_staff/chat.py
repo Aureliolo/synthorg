@@ -249,6 +249,8 @@ class ChiefOfStaffChat:
                     self._config.chat_model,
                     config=config,
                 )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             log_exception_redacted(logger, COS_CHAT_FAILED, exc)
             raise

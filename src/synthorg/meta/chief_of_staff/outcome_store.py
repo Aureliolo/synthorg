@@ -80,6 +80,8 @@ class MemoryBackendOutcomeStore:
         )
         try:
             memory_id = await self._backend.store(self._agent_id, request)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             log_exception_redacted(
                 logger,

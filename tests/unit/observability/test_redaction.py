@@ -443,6 +443,35 @@ class TestLogExceptionRedacted:
             log_exception_redacted(logger, "E", exc, error="manual override")
         assert logger.calls == []
 
+    @pytest.mark.parametrize("exc_info_value", [True, False, None, 1, "x"])
+    def test_rejects_caller_exc_info_kwarg(
+        self,
+        exc_info_value: object,
+    ) -> None:
+        """``exc_info=`` in kwargs raises TypeError, regardless of truthiness.
+
+        Even ``exc_info=False`` is rejected: the helper deliberately does
+        not pass ``exc_info`` to ``logger.error``, so accepting a False
+        value would mislead callers into thinking the kwarg is supported
+        and break the guarantee the moment the value flips to truthy.
+        Both `True` and `False` must raise; `None` and odd types too.
+        """
+        logger = _CapturingLogger()
+        exc = ValueError("v")
+
+        with pytest.raises(TypeError, match="exc_info"):
+            log_exception_redacted(logger, "E", exc, exc_info=exc_info_value)
+        assert logger.calls == [], "no log emitted when the call is rejected"
+
+    def test_rejects_exc_info_via_dict_unpack(self) -> None:
+        """``**{"exc_info": True}`` is the canonical bypass and must also raise."""
+        logger = _CapturingLogger()
+        exc = ValueError("v")
+
+        with pytest.raises(TypeError, match="exc_info"):
+            log_exception_redacted(logger, "E", exc, exc_info=True)
+        assert logger.calls == []
+
     def test_event_and_exc_are_positional_only(self) -> None:
         """Signature pins the first three params as positional-only."""
         logger = _CapturingLogger()

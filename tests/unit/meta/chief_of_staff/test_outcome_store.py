@@ -71,6 +71,34 @@ class TestRecordOutcome:
         assert results[0].decision == "rejected"
         assert results[0].source_rule == "budget_overrun"
 
+    @pytest.mark.parametrize("exc_cls", [MemoryError, RecursionError])
+    async def test_record_outcome_propagates_catastrophic_errors(
+        self,
+        exc_cls: type[BaseException],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """``MemoryError`` / ``RecursionError`` from the backend escape
+        the broad ``except Exception`` redacted-logging handler.
+
+        ``record_outcome`` logs application errors via
+        ``log_exception_redacted`` and re-raises; catastrophic interpreter
+        state must bypass that helper entirely so the surrounding event
+        loop sees the failure without any additional log-handler work
+        (which may itself recurse or allocate).
+        """
+        backend = await _connected_backend()
+
+        async def _raising_store(*_args: object, **_kwargs: object) -> str:
+            raise exc_cls
+
+        monkeypatch.setattr(backend, "store", _raising_store)
+        store = MemoryBackendOutcomeStore(
+            backend=backend,
+            agent_id=_AGENT_ID,
+        )
+        with pytest.raises(exc_cls):
+            await store.record_outcome(_make_outcome())
+
 
 class TestGetStats:
     """MemoryBackendOutcomeStore.get_stats tests."""

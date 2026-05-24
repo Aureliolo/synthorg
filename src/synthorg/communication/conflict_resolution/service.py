@@ -199,6 +199,8 @@ class ConflictResolutionService:
 
         try:
             resolution = await resolver.resolve(conflict)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             log_exception_redacted(
                 logger,

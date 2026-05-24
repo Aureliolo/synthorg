@@ -66,6 +66,8 @@ class AIClient:
         single = context.model_copy(update={"count": 1})
         try:
             produced = await self._generator.generate(single)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             log_exception_redacted(
                 logger,
@@ -100,6 +102,8 @@ class AIClient:
         )
         try:
             return await self._feedback.evaluate(context)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             log_exception_redacted(
                 logger,
