@@ -60,13 +60,21 @@ def _force_writable_then_retry(
     Git pack-object files under ``.git/objects`` are written read-only
     on Windows. ``shutil.rmtree`` raises ``PermissionError`` rather than
     stripping the attribute, which would leave an orphan ``.git`` tree
-    behind after a backend kind switch (the exact regression
-    ``test_embedded_to_local_path_preserves_row`` guards against).
+    behind after a backend kind switch. The next backend's
+    ``is_git_repo`` short-circuit would then keep the old layout alive
+    despite the persisted row claiming the new kind.
+
+    The chmod ORs the write bit into the existing mode (rather than
+    replacing it) so read + execute bits are preserved; without them a
+    directory entry would lose traversability mid-walk. ``lstat`` +
+    ``follow_symlinks=False`` keep the operation pinned to the named
+    entry instead of any symlink target a third-party repo planted.
     """
     if not isinstance(exc, PermissionError):
         raise exc
     try:
-        Path(path).chmod(stat.S_IWRITE)
+        current_mode = Path(path).lstat().st_mode
+        Path(path).chmod(current_mode | stat.S_IWRITE, follow_symlinks=False)
     except OSError:
         raise exc from None
     func(path)

@@ -175,3 +175,18 @@ class TestForceWritableThenRetry:
         original = PermissionError("WinError 5")
         with pytest.raises(PermissionError, match="WinError 5"):
             _force_writable_then_retry(_never_called, str(missing), original)
+
+    def test_func_exception_propagates_after_chmod_success(
+        self, tmp_path: Path
+    ) -> None:
+        target = tmp_path / "pack-readonly.idx"
+        target.write_text("placeholder")
+        target.chmod(stat.S_IREAD)
+
+        def _retry_raises(path: str) -> None:
+            raise FileNotFoundError(path)
+
+        with pytest.raises(FileNotFoundError):
+            _force_writable_then_retry(
+                _retry_raises, str(target), PermissionError("WinError 5")
+            )
