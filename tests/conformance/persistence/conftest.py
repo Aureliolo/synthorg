@@ -321,11 +321,15 @@ def _pre_acquire_postgres_container_state(session: pytest.Session) -> None:
         shared_dir = tmp_path_factory.getbasetemp().parent
     state_file = shared_dir / "postgres_container_state.json"
     lock_path = str(shared_dir / "postgres_container.lock")
-    # 180s matches the previous fixture timeout: gives peers enough
-    # headroom to wait through the image pull + readiness polling on
-    # cold caches without timing out, while still bounding a worker
-    # that dies mid-acquire.
-    lock_timeout: Final[int] = 180
+    # Catastrophe ceiling, aligned with ``tests/conftest.py``'s
+    # ``_FILE_LOCK_TIMEOUT_SECONDS``. Refcount semantics here require
+    # every worker to acquire the lock to bump the refcount, so we
+    # cannot poll-and-skip the way ``_get_template_db`` does. Followers
+    # genuinely block for the leader's container start + readiness
+    # poll; cold-cache image pulls on slow CI runners can take several
+    # minutes, so the previous 180s was tight enough to trip when the
+    # leader hit the long tail.
+    lock_timeout: Final[int] = 600
     with FileLock(lock_path, timeout=lock_timeout):
         try:
             data = _acquire_shared_postgres(state_file)
