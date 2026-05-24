@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for the training session methods.
 
 Exercises the in-memory session store that :meth:`TrainingService.start_session`

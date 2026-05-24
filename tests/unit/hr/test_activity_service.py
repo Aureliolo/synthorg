@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for :class:`ActivityFeedService`."""
 
 from datetime import UTC, datetime, timedelta

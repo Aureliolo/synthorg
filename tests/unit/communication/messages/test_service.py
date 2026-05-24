@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for :class:`MessageService`.
 
 Covers the rewritten ``delete_message`` path: routes through the

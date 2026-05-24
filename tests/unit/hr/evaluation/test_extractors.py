@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Direct unit tests for the per-pillar ``MetricExtractor`` implementations.
 
 These tests exercise each extractor's ``extract()`` method in

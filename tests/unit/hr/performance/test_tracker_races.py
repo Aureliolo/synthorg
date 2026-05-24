@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """TOCTOU race tests for PerformanceTracker.
 
 Each test is written to fail reliably against the un-synchronized

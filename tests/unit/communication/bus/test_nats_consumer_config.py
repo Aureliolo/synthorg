@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """NATS subscriber bounding parity tests.
 
 The in-memory bus bounds each subscriber's in-flight queue via

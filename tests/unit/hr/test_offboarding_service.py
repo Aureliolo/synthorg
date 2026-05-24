@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for OffboardingService."""
 
 from collections.abc import Sequence

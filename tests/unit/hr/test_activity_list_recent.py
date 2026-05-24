@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for ActivityFeedService.list_recent_activity().
 
 The new entry point is the no-agent-required variant of

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Shared fixtures and factories for HR unit tests."""
 
 from datetime import UTC, date, datetime

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for training mode service orchestrator."""
 
 from datetime import UTC, datetime

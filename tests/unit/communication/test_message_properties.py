@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Property-based tests for Message model roundtrips and alias handling."""
 
 from datetime import UTC, datetime

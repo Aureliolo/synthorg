@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for interrupt models."""
 
 from datetime import UTC, datetime

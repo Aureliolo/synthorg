@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override"
 """TOCTOU race tests for MeetingScheduler.start.
 
 ``MeetingScheduler.start()`` at ``communication/meeting/scheduler.py``

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Shared fixtures for scaling unit tests."""
 
 from datetime import UTC, datetime
