@@ -732,7 +732,15 @@ func TestNormalizeMasksVolatileImageFields(t *testing.T) {
 // reference shape changed (in which case update the regex above and
 // this test's setup expectation together).
 func TestGoldensSurviveDigestRotation(t *testing.T) {
-	t.Parallel()
+	// Skip parallel scheduling under UPDATE_GOLDEN=1 because compareGolden
+	// then calls os.WriteFile on cli/testdata/compose_default.yml, the
+	// same file TestGenerateDefault writes; concurrent non-atomic
+	// WriteFile calls can interleave truncate + write between the two
+	// goroutines. Under the default read-only mode (no env var) the
+	// parallel scheduling is safe and we keep it.
+	if os.Getenv("UPDATE_GOLDEN") != "1" {
+		t.Parallel()
+	}
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "latest",
