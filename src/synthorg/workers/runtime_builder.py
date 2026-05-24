@@ -181,12 +181,15 @@ def _select_active_provider(
     Logs the empty-company path and the unsupported multi-provider
     fan-in so the boot decision is observable.
     """
+    security = app_state.config.security
     if not app_state.has_active_provider:
         logger.info(
             API_APP_STARTUP,
             service="runtime_services",
             mode="no_provider",
             note="empty company -- task execution rejected at the seam",
+            security_enabled=security.enabled,
+            security_enforcement_mode=security.enforcement_mode.value,
         )
         return None
 
@@ -198,6 +201,8 @@ def _select_active_provider(
             service="runtime_services",
             mode="no_provider",
             note="provider registry present but empty",
+            security_enabled=security.enabled,
+            security_enforcement_mode=security.enforcement_mode.value,
         )
         return None
     if len(names) > 1:
@@ -752,12 +757,15 @@ async def build_runtime_services(
         provider,
         coordination_metrics_collector,
     )
+    security = app_state.config.security
     logger.info(
         API_APP_STARTUP,
         service="runtime_services",
         mode="agent_engine",
         provider=names[0],
         tool_count=tool_count,
+        security_enabled=security.enabled,
+        security_enforcement_mode=security.enforcement_mode.value,
     )
     # The env runner provisions the declaration into the same backend the
     # build/test tool categories resolve to (not necessarily Docker), so

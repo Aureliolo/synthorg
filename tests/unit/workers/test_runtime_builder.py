@@ -1,10 +1,12 @@
 """Unit tests for the provider-present runtime-services switch."""
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from synthorg.api.state import AppState
 from synthorg.budget.coordination_collector import CoordinationMetricsCollector
@@ -19,6 +21,7 @@ from synthorg.engine.intake.models import IntakeResult
 from synthorg.engine.pipeline.service import DefaultWorkPipeline
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.providers.registry import ProviderRegistry
@@ -281,6 +284,74 @@ class TestProviderPresentSwitch:
         )
         assert isinstance(result.coordinator, MultiAgentCoordinator)
         assert deep.is_dir()
+
+
+class TestBootLogSafetySpineState:
+    """The boot log carries the safety-spine state on every branch.
+
+    Operators reading ``synthorg.log`` must see whether the SecOps
+    interceptor is ``active`` / ``shadow`` / ``disabled`` at startup
+    without grepping config files; the agent runtime's go/no-go decision
+    log is the single observable place for it.
+    """
+
+    @staticmethod
+    def _runtime_services_logs(
+        logs: Sequence[Mapping[str, Any]],
+    ) -> list[Mapping[str, Any]]:
+        return [
+            entry
+            for entry in logs
+            if entry.get("event") == API_APP_STARTUP
+            and entry.get("service") == "runtime_services"
+        ]
+
+    async def test_no_provider_log_carries_safety_spine_state(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        app_state = mock_of[AppState](
+            has_active_provider=False,
+            config=RootConfig(company_name="empty-co"),
+        )
+        with capture_logs() as logs:
+            await build_runtime_services(app_state, workspace_root=tmp_path)
+        runtime_logs = self._runtime_services_logs(logs)
+        assert runtime_logs, "no runtime_services boot log captured"
+        no_provider = next(e for e in runtime_logs if e.get("mode") == "no_provider")
+        assert no_provider["security_enabled"] is True
+        assert no_provider["security_enforcement_mode"] == "active"
+
+    async def test_empty_registry_log_carries_safety_spine_state(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        app_state = mock_of[AppState](
+            has_active_provider=True,
+            provider_registry=ProviderRegistry({}),
+            config=RootConfig(company_name="registry-empty-co"),
+        )
+        with capture_logs() as logs:
+            await build_runtime_services(app_state, workspace_root=tmp_path)
+        runtime_logs = self._runtime_services_logs(logs)
+        no_provider = next(e for e in runtime_logs if e.get("mode") == "no_provider")
+        assert no_provider["security_enabled"] is True
+        assert no_provider["security_enforcement_mode"] == "active"
+
+    async def test_provider_present_log_carries_safety_spine_state(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        registry = ProviderRegistry.from_config(
+            {"test-provider": ProviderConfig(driver="scripted")}
+        )
+        app_state = _provider_app_state(registry, tmp_path)
+        with capture_logs() as logs:
+            await build_runtime_services(app_state, workspace_root=tmp_path)
+        runtime_logs = self._runtime_services_logs(logs)
+        agent_engine = next(e for e in runtime_logs if e.get("mode") == "agent_engine")
+        assert agent_engine["security_enabled"] is True
+        assert agent_engine["security_enforcement_mode"] == "active"
 
 
 class TestCoordinationMetricsWiring:
