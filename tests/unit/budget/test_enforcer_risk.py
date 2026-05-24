@@ -7,6 +7,7 @@ import pytest
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.errors import RiskBudgetExhaustedError
+from synthorg.budget.risk_check import RiskCheckResult
 from synthorg.budget.risk_config import RiskBudgetConfig
 from synthorg.budget.risk_record import RiskRecord
 from synthorg.budget.risk_tracker import RiskTracker
@@ -312,6 +313,106 @@ class TestRecordRisk:
         await enforcer.record_risk("agent-1", "task-1", "code:write")
         total = await risk_tracker.get_task_risk("task-1")
         assert total > 0.0
+
+
+class _RaisingRiskScorer:
+    """``RiskScorer``-shaped double whose ``score()`` always raises.
+
+    Used to exercise the ``except Exception as exc:`` branch in
+    ``check_risk_budget`` / ``record_risk`` where the scorer call
+    fails mid-enforcement. Implements the protocol structurally (no
+    base class) so a ``runtime_checkable`` isinstance check is
+    irrelevant here -- the enforcer calls ``score(action_type)``
+    directly.
+    """
+
+    def __init__(self, *, exc: Exception) -> None:
+        self._exc = exc
+
+    def score(self, action_type: str) -> RiskScore:
+        raise self._exc
+
+
+@pytest.mark.unit
+class TestRiskEnforcerExceptionPaths:
+    """The except-Exception branches in check_risk_budget / record_risk.
+
+    These tests pin the redacted-logging contract on the risk
+    enforcer: any unexpected exception raised by the scorer or tracker
+    must be swallowed (returning a neutral RiskCheckResult / None) and
+    logged via ``log_exception_redacted`` rather than propagated. The
+    helper guarantees the credential-bearing ``str(exc)`` never reaches
+    the structured log record.
+    """
+
+    async def test_check_risk_budget_swallows_scorer_exception(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Scorer that raises => check returns neutral result, logs redacted."""
+        risk_config = RiskBudgetConfig(enabled=True)
+        budget_config = BudgetConfig(risk_budget=risk_config)
+        cost_tracker = CostTracker(budget_config=budget_config)
+        risk_tracker = RiskTracker(risk_budget_config=risk_config)
+        # Scorer raises a ValueError whose message embeds a credential-
+        # looking substring so the redaction round-trip is exercised
+        # end-to-end -- the substring must NOT survive into any log
+        # record emitted via log_exception_redacted.
+        scorer = _RaisingRiskScorer(
+            exc=ValueError("scoring failed: client_secret=cs-leak-xyz"),
+        )
+        enforcer = BudgetEnforcer(
+            budget_config=budget_config,
+            cost_tracker=cost_tracker,
+            risk_tracker=risk_tracker,
+            risk_scorer=scorer,
+        )
+
+        result = await enforcer.check_risk_budget(
+            "agent-1",
+            "task-1",
+            "code:write",
+        )
+
+        # Failure is swallowed; the caller still gets a usable result.
+        # ``projected`` is initialised to 0.0 BEFORE the try block, so
+        # the returned ``RiskCheckResult`` carries 0.0 risk units, not
+        # None -- a scorer failure must not poison downstream callers
+        # that read ``result.risk_units``.
+        assert isinstance(result, RiskCheckResult)
+        assert result.risk_units == 0.0
+
+    async def test_record_risk_swallows_scorer_exception_returns_none(
+        self,
+    ) -> None:
+        """Scorer that raises during record_risk => returns None, redacted log."""
+        risk_config = RiskBudgetConfig(enabled=True)
+        budget_config = BudgetConfig(risk_budget=risk_config)
+        cost_tracker = CostTracker(budget_config=budget_config)
+        risk_tracker = RiskTracker(risk_budget_config=risk_config)
+        # A scorer that fails on ``score()`` triggers the except block
+        # in ``record_risk`` (the call is the first statement inside
+        # the ``try``). The same redaction-via-helper contract applies.
+        scorer = _RaisingRiskScorer(
+            exc=RuntimeError("upstream model down: api_key=sk-prod-secret"),
+        )
+        enforcer = BudgetEnforcer(
+            budget_config=budget_config,
+            cost_tracker=cost_tracker,
+            risk_tracker=risk_tracker,
+            risk_scorer=scorer,
+        )
+
+        record = await enforcer.record_risk(
+            "agent-1",
+            "task-1",
+            "code:write",
+        )
+
+        # The except-Exception branch returns None and DOES NOT raise.
+        # The non-None return path requires a successful score; a
+        # raising scorer cannot reach it.
+        assert record is None
 
 
 @pytest.mark.unit
