@@ -463,15 +463,6 @@ class TestLogExceptionRedacted:
             log_exception_redacted(logger, "E", exc, exc_info=exc_info_value)
         assert logger.calls == [], "no log emitted when the call is rejected"
 
-    def test_rejects_exc_info_via_dict_unpack(self) -> None:
-        """``**{"exc_info": True}`` is the canonical bypass and must also raise."""
-        logger = _CapturingLogger()
-        exc = ValueError("v")
-
-        with pytest.raises(TypeError, match="exc_info"):
-            log_exception_redacted(logger, "E", exc, exc_info=True)
-        assert logger.calls == []
-
     def test_event_and_exc_are_positional_only(self) -> None:
         """Signature pins the first three params as positional-only."""
         logger = _CapturingLogger()

@@ -29,9 +29,9 @@ The supported pattern is::
 The other severity methods are accepted but discarded so the production
 helper's ``logger.debug`` / ``logger.info`` calls during the same flow
 do not crash the test. Only ``error`` and ``warning`` records are
-captured because those are the severities the SEC-1 redaction helpers
-emit; extending the captured set is a one-line change if a future
-test needs to assert on ``info``-level records too.
+captured because those are the severities the redacted-error logging
+helpers emit; extending the captured set is a one-line change if a
+future test needs to assert on ``info``-level records too.
 """
 
 from typing import Any
@@ -43,9 +43,10 @@ class CapturingErrorLogger:
     Substitute for the module-level ``logger`` via ``monkeypatch.setattr``
     so tests can verify a structlog event was emitted with the expected
     structured kwargs. The shape matches the subset of
-    ``structlog.BoundLogger`` the SEC-1 redaction helpers
-    (``log_exception_redacted``, manual ``logger.error(EVENT, ...)``)
-    actually exercise.
+    ``structlog.BoundLogger`` the redacted-error logging helpers
+    (``log_exception_redacted``, manual ``logger.error(EVENT, ...,
+    error_type=..., error=safe_error_description(exc))``) actually
+    exercise.
     """
 
     def __init__(self) -> None:
@@ -62,7 +63,7 @@ class CapturingErrorLogger:
         Some redaction-helper call sites use ``logger.warning`` (e.g.
         rollback-step partial-failure paths). Captured alongside
         ``error`` because both severities flow through the same
-        SEC-1 redacted-kwargs contract.
+        redacted-kwargs contract.
         """
         self.calls.append((event, dict(kwargs)))
 
