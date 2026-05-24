@@ -89,16 +89,26 @@ func TestWriteRejectsDuplicateTargets(t *testing.T) {
 	}
 }
 
-func TestWriteRejectsEmptyContent(t *testing.T) {
+func TestWriteAcceptsEmptyContent(t *testing.T) {
+	// Empty contents are legitimate scaffold output (e.g. an empty
+	// __init__.py marker). The writer now accepts them; malformed-
+	// template detection belongs in the renderer, not here.
 	t.Parallel()
 	root := t.TempDir()
-	files := []RenderedFile{{Path: "ok.py", Contents: []byte{}}}
-	_, err := Write(files, WriteOptions{RootDir: root})
-	if err == nil {
-		t.Fatal("empty content accepted; want rejection")
+	files := []RenderedFile{{Path: "marker.py", Contents: []byte{}}}
+	written, err := Write(files, WriteOptions{RootDir: root})
+	if err != nil {
+		t.Fatalf("empty content rejected: %v", err)
 	}
-	if !strings.Contains(err.Error(), "empty content") {
-		t.Errorf("error %q does not mention empty content", err)
+	if len(written) != 1 {
+		t.Fatalf("written = %d files, want 1", len(written))
+	}
+	data, err := os.ReadFile(written[0])
+	if err != nil {
+		t.Fatalf("read written file: %v", err)
+	}
+	if len(data) != 0 {
+		t.Errorf("expected empty file, got %d bytes", len(data))
 	}
 }
 

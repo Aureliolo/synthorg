@@ -23,6 +23,7 @@ func resetRootCmd(t testing.TB) {
 func TestConfigSetBackendPort(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -50,6 +51,7 @@ func TestConfigSetBackendPortRejectsInvalid(t *testing.T) {
 	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -70,6 +72,7 @@ func TestConfigSetPortUniqueness(t *testing.T) {
 	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -98,6 +101,7 @@ func TestConfigSetWebPort(t *testing.T) {
 	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -124,6 +128,7 @@ func TestConfigSetSandbox(t *testing.T) {
 	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	state.Sandbox = false
 	if err := config.Save(state); err != nil {
@@ -151,6 +156,7 @@ func TestConfigSetImageTag(t *testing.T) {
 	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -179,6 +185,7 @@ func TestConfigSetColor(t *testing.T) {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
 			state := config.DefaultState()
+			state.EncryptSecrets = false
 			state.DataDir = dir
 			if err := config.Save(state); err != nil {
 				t.Fatal(err)
@@ -207,6 +214,7 @@ func TestConfigSetColorRejectsInvalid(t *testing.T) {
 	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -229,6 +237,7 @@ func TestConfigSetOutput(t *testing.T) {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
 			state := config.DefaultState()
+			state.EncryptSecrets = false
 			state.DataDir = dir
 			if err := config.Save(state); err != nil {
 				t.Fatal(err)
@@ -259,6 +268,7 @@ func TestConfigSetTimestamps(t *testing.T) {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
 			state := config.DefaultState()
+			state.EncryptSecrets = false
 			state.DataDir = dir
 			if err := config.Save(state); err != nil {
 				t.Fatal(err)
@@ -289,6 +299,7 @@ func TestConfigSetHints(t *testing.T) {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
 			state := config.DefaultState()
+			state.EncryptSecrets = false
 			state.DataDir = dir
 			if err := config.Save(state); err != nil {
 				t.Fatal(err)
@@ -335,6 +346,7 @@ func seedConfig(t *testing.T) (string, config.State) {
 	t.Helper()
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -373,6 +385,7 @@ func TestConfigUnsetChannel(t *testing.T) {
 	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	state.Channel = "dev"
 	if err := config.Save(state); err != nil {
@@ -400,6 +413,7 @@ func TestConfigUnsetBackendPort(t *testing.T) {
 	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	state.BackendPort = 9000
 	if err := config.Save(state); err != nil {
@@ -427,6 +441,7 @@ func TestConfigUnsetRejectsUnknownKey(t *testing.T) {
 	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -445,6 +460,7 @@ func TestConfigListShowsAllKeys(t *testing.T) {
 	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -470,6 +486,7 @@ func TestConfigListSourceDefault(t *testing.T) {
 	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -518,6 +535,7 @@ func TestConfigGetNewKeys(t *testing.T) {
 	resetRootCmd(t)
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	state.Color = "never"
 	state.Output = "json"
@@ -578,6 +596,7 @@ func FuzzConfigSetBackendPort(f *testing.F) {
 		resetRootCmd(t)
 		dir := t.TempDir()
 		state := config.DefaultState()
+		state.EncryptSecrets = false
 		state.DataDir = dir
 		if err := config.Save(state); err != nil {
 			t.Fatalf("Save: %v", err)
@@ -612,6 +631,7 @@ func FuzzConfigSetColor(f *testing.F) {
 		resetRootCmd(t)
 		dir := t.TempDir()
 		state := config.DefaultState()
+		state.EncryptSecrets = false
 		state.DataDir = dir
 		if err := config.Save(state); err != nil {
 			t.Fatalf("Save: %v", err)

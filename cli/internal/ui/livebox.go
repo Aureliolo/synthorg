@@ -116,20 +116,31 @@ func (lb *LiveBox) UpdateLine(index int, status string) {
 	lb.lines[index].finished = true
 
 	if lb.ui.quiet {
-		// Quiet/JSON mode: suppress human output. Errors will propagate
+		// Quiet/JSON mode: suppress human output. Errors propagate
 		// through return values to the caller.
-	} else if !lb.ui.isTTY || lb.ui.plain {
-		// Non-TTY or plain: print a status line immediately.
-		errorIcon := IconError
-		if lb.ui.plain {
-			errorIcon = PlainIconError
-		}
-		if lb.lines[index].status == errorIcon {
-			lb.ui.Error(lb.lines[index].label)
-		} else {
-			lb.ui.Success(lb.lines[index].label)
-		}
+		return
 	}
+	if lb.ui.isTTY && !lb.ui.plain {
+		// TTY mode: animation goroutine handles drawing.
+		return
+	}
+	// Non-TTY or plain: print a status line immediately.
+	lb.printPlainStatusLine(index)
+}
+
+// printPlainStatusLine emits the line's final status as a single
+// UI.Success or UI.Error call, picking the error icon variant that
+// matches plain/non-plain mode.
+func (lb *LiveBox) printPlainStatusLine(index int) {
+	errorIcon := IconError
+	if lb.ui.plain {
+		errorIcon = PlainIconError
+	}
+	if lb.lines[index].status == errorIcon {
+		lb.ui.Error(lb.lines[index].label)
+		return
+	}
+	lb.ui.Success(lb.lines[index].label)
 }
 
 // Finish stops the animation and leaves the final box state on screen.

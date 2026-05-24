@@ -16,103 +16,27 @@ import (
 // file carries the extensions added with the tunables feature.
 
 // applyTunableConfigValue is the delegation target called from
-// applyConfigValue for tunable keys. Returns (true, err) if the key
-// was handled (regardless of success), (false, nil) if the key is not
-// a tunable so the caller falls through to the default-case.
+// applyConfigValue for tunable keys. Returns (true, err) if the key was
+// handled (regardless of success), (false, nil) if the key is not a
+// tunable so the caller falls through to the default-case. Per-key
+// specs live in tunableSpecs (config_tunables_dispatch.go).
 func applyTunableConfigValue(state *config.State, key, value string) (bool, error) {
-	switch key {
-	case "registry_host":
-		return true, setRegistryHost(value, "registry_host", &state.RegistryHost)
-	case "image_repo_prefix":
-		return true, setImageRepoPrefix(value, &state.ImageRepoPrefix)
-	case "dhi_registry":
-		return true, setRegistryHost(value, "dhi_registry", &state.DHIRegistry)
-	case "postgres_image_tag":
-		return true, setTag(value, "postgres_image_tag", &state.PostgresImageTag)
-	case "nats_image_tag":
-		return true, setTag(value, "nats_image_tag", &state.NATSImageTag)
-	case "default_nats_stream_prefix":
-		return true, setStreamPrefix(value, &state.DefaultNATSStreamPrefix)
-	case "backup_create_timeout":
-		return true, setDuration(value, "backup_create_timeout", &state.BackupCreateTimeout)
-	case "backup_restore_timeout":
-		return true, setDuration(value, "backup_restore_timeout", &state.BackupRestoreTimeout)
-	case "health_check_timeout":
-		return true, setDuration(value, "health_check_timeout", &state.HealthCheckTimeout)
-	case "self_update_http_timeout":
-		return true, setDuration(value, "self_update_http_timeout", &state.SelfUpdateHTTPTimeout)
-	case "self_update_api_timeout":
-		return true, setDuration(value, "self_update_api_timeout", &state.SelfUpdateAPITimeout)
-	case "tuf_fetch_timeout":
-		return true, setDuration(value, "tuf_fetch_timeout", &state.TUFFetchTimeout)
-	case "attestation_http_timeout":
-		return true, setDuration(value, "attestation_http_timeout", &state.AttestationHTTPTimeout)
-	case "image_verify_timeout":
-		return true, setDuration(value, "image_verify_timeout", &state.ImageVerifyTimeout)
-	case "image_pull_retry_delay":
-		return true, setDuration(value, "image_pull_retry_delay", &state.ImagePullRetryDelay)
-	case "image_pull_attempts":
-		return true, setIntInRange(
-			value, "image_pull_attempts",
-			1, config.MaxImagePullAttempts,
-			&state.ImagePullAttempts,
-		)
-	case "max_api_response_bytes":
-		return true, setByteSize(value, "max_api_response_bytes", &state.MaxAPIResponseBytes)
-	case "max_binary_bytes":
-		return true, setByteSize(value, "max_binary_bytes", &state.MaxBinaryBytes)
-	case "max_archive_entry_bytes":
-		return true, setByteSize(value, "max_archive_entry_bytes", &state.MaxArchiveEntryBytes)
+	spec, ok := tunableSpecs[key]
+	if !ok {
+		return false, nil
 	}
-	return false, nil
+	return true, spec.set(state, value)
 }
 
 // resetTunableConfigValue resets a tunable key to its zero value (empty
 // string for durations and strings, 0 for byte sizes) so configGetValue
 // falls back to the compiled-in default. Returns true when handled.
 func resetTunableConfigValue(state *config.State, key string) bool {
-	switch key {
-	case "registry_host":
-		state.RegistryHost = ""
-	case "image_repo_prefix":
-		state.ImageRepoPrefix = ""
-	case "dhi_registry":
-		state.DHIRegistry = ""
-	case "postgres_image_tag":
-		state.PostgresImageTag = ""
-	case "nats_image_tag":
-		state.NATSImageTag = ""
-	case "default_nats_stream_prefix":
-		state.DefaultNATSStreamPrefix = ""
-	case "backup_create_timeout":
-		state.BackupCreateTimeout = ""
-	case "backup_restore_timeout":
-		state.BackupRestoreTimeout = ""
-	case "health_check_timeout":
-		state.HealthCheckTimeout = ""
-	case "self_update_http_timeout":
-		state.SelfUpdateHTTPTimeout = ""
-	case "self_update_api_timeout":
-		state.SelfUpdateAPITimeout = ""
-	case "tuf_fetch_timeout":
-		state.TUFFetchTimeout = ""
-	case "attestation_http_timeout":
-		state.AttestationHTTPTimeout = ""
-	case "image_verify_timeout":
-		state.ImageVerifyTimeout = ""
-	case "image_pull_retry_delay":
-		state.ImagePullRetryDelay = ""
-	case "image_pull_attempts":
-		state.ImagePullAttempts = ""
-	case "max_api_response_bytes":
-		state.MaxAPIResponseBytes = 0
-	case "max_binary_bytes":
-		state.MaxBinaryBytes = 0
-	case "max_archive_entry_bytes":
-		state.MaxArchiveEntryBytes = 0
-	default:
+	spec, ok := tunableSpecs[key]
+	if !ok {
 		return false
 	}
+	spec.reset(state)
 	return true
 }
 
@@ -120,91 +44,18 @@ func resetTunableConfigValue(state *config.State, key string) bool {
 // falling back to the compiled-in default when the state field is
 // empty/zero. Returns (value, true) when handled.
 func tunableConfigGetValue(state config.State, key string) (string, bool) {
-	switch key {
-	case "registry_host":
-		return displayOrFallback(state.RegistryHost, config.DefaultRegistryHost), true
-	case "image_repo_prefix":
-		return displayOrFallback(state.ImageRepoPrefix, config.DefaultImageRepoPrefix), true
-	case "dhi_registry":
-		return displayOrFallback(state.DHIRegistry, config.DefaultDHIRegistry), true
-	case "postgres_image_tag":
-		return displayOrFallback(state.PostgresImageTag, config.DefaultPostgresImageTag), true
-	case "nats_image_tag":
-		return displayOrFallback(state.NATSImageTag, config.DefaultNATSImageTag), true
-	case "default_nats_stream_prefix":
-		return displayOrFallback(state.DefaultNATSStreamPrefix, config.DefaultNATSStreamPrefixValue), true
-	case "backup_create_timeout":
-		return displayOrFallback(state.BackupCreateTimeout, config.DefaultBackupCreateTimeout.String()), true
-	case "backup_restore_timeout":
-		return displayOrFallback(state.BackupRestoreTimeout, config.DefaultBackupRestoreTimeout.String()), true
-	case "health_check_timeout":
-		return displayOrFallback(state.HealthCheckTimeout, config.DefaultHealthCheckTimeout.String()), true
-	case "self_update_http_timeout":
-		return displayOrFallback(state.SelfUpdateHTTPTimeout, config.DefaultSelfUpdateHTTPTimeout.String()), true
-	case "self_update_api_timeout":
-		return displayOrFallback(state.SelfUpdateAPITimeout, config.DefaultSelfUpdateAPITimeout.String()), true
-	case "tuf_fetch_timeout":
-		return displayOrFallback(state.TUFFetchTimeout, config.DefaultTUFFetchTimeout.String()), true
-	case "attestation_http_timeout":
-		return displayOrFallback(state.AttestationHTTPTimeout, config.DefaultAttestationHTTPTimeout.String()), true
-	case "image_verify_timeout":
-		return displayOrFallback(state.ImageVerifyTimeout, config.DefaultImageVerifyTimeout.String()), true
-	case "image_pull_retry_delay":
-		return displayOrFallback(state.ImagePullRetryDelay, config.DefaultImagePullRetryDelay.String()), true
-	case "image_pull_attempts":
-		return displayOrFallback(state.ImagePullAttempts, strconv.Itoa(config.DefaultImagePullAttempts)), true
-	case "max_api_response_bytes":
-		return int64OrDefault(state.MaxAPIResponseBytes, config.DefaultMaxAPIResponseBytes), true
-	case "max_binary_bytes":
-		return int64OrDefault(state.MaxBinaryBytes, config.DefaultMaxBinaryBytes), true
-	case "max_archive_entry_bytes":
-		return int64OrDefault(state.MaxArchiveEntryBytes, config.DefaultMaxArchiveEntryBytes), true
+	spec, ok := tunableSpecs[key]
+	if !ok {
+		return "", false
 	}
-	return "", false
+	return spec.get(state), true
 }
 
 // tunableEnvVarForKey maps a tunable config key to its SYNTHORG_* env
 // var name. Returns "" for non-tunable keys so the caller falls through.
 func tunableEnvVarForKey(key string) string {
-	switch key {
-	case "registry_host":
-		return EnvRegistryHost
-	case "image_repo_prefix":
-		return EnvImageRepoPrefix
-	case "dhi_registry":
-		return EnvDHIRegistry
-	case "postgres_image_tag":
-		return EnvPostgresImageTag
-	case "nats_image_tag":
-		return EnvNATSImageTag
-	case "default_nats_stream_prefix":
-		return EnvDefaultNATSStreamPfx
-	case "backup_create_timeout":
-		return EnvBackupCreateTimeout
-	case "backup_restore_timeout":
-		return EnvBackupRestoreTimeout
-	case "health_check_timeout":
-		return EnvHealthCheckTimeout
-	case "self_update_http_timeout":
-		return EnvSelfUpdateHTTPTimeout
-	case "self_update_api_timeout":
-		return EnvSelfUpdateAPITimeout
-	case "tuf_fetch_timeout":
-		return EnvTUFFetchTimeout
-	case "attestation_http_timeout":
-		return EnvAttestationHTTPTimeout
-	case "image_verify_timeout":
-		return EnvImageVerifyTimeout
-	case "image_pull_retry_delay":
-		return EnvImagePullRetryDelay
-	case "image_pull_attempts":
-		return EnvImagePullAttempts
-	case "max_api_response_bytes":
-		return EnvMaxAPIResponseBytes
-	case "max_binary_bytes":
-		return EnvMaxBinaryBytes
-	case "max_archive_entry_bytes":
-		return EnvMaxArchiveEntryBytes
+	if spec, ok := tunableSpecs[key]; ok {
+		return spec.envVar
 	}
 	return ""
 }

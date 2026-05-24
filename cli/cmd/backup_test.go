@@ -244,6 +244,10 @@ func writeConfigJSON(t *testing.T, dir string, backendPort int) {
 		"persistence_backend": "sqlite",
 		"memory_backend":      "mem0",
 		"jwt_secret":          "test-backup-secret-at-least-32-chars",
+		// encrypt_secrets defaults to true (DefaultState), which now
+		// requires a master_key. These tests target backup behaviour,
+		// not encryption, so opt out.
+		"encrypt_secrets": false,
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {

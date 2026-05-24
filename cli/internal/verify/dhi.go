@@ -17,6 +17,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"runtime"
@@ -296,13 +297,23 @@ func verifyAttestationContent(ctx context.Context, repo, attDigest, expectedPlat
 	if err != nil {
 		return fmt.Errorf("parsing ref: %w", err)
 	}
-
 	img, err := remote.Image(parsed, dhiRemoteOpts(ctx)...)
 	if err != nil {
 		return fmt.Errorf("fetching attestation: %w", err)
 	}
+	if err := verifyAttestationSubject(img, expectedPlatformDigest); err != nil {
+		return err
+	}
+	stmtBytes, err := readAttestationStatement(img)
+	if err != nil {
+		return err
+	}
+	return verifyInTotoStatement(stmtBytes, expectedPlatformDigest)
+}
 
-	// Verify subject matches expected platform manifest.
+// verifyAttestationSubject reads the attestation manifest and asserts
+// its Subject digest matches the expected platform manifest digest.
+func verifyAttestationSubject(img v1.Image, expectedPlatformDigest string) error {
 	manifest, err := img.Manifest()
 	if err != nil {
 		return fmt.Errorf("reading manifest: %w", err)
@@ -314,40 +325,46 @@ func verifyAttestationContent(ctx context.Context, repo, attDigest, expectedPlat
 		return fmt.Errorf("subject mismatch: got %s, want %s",
 			manifest.Subject.Digest.String()[:16], expectedPlatformDigest[:16])
 	}
+	return nil
+}
 
-	// Verify the layer is a valid in-toto statement with SLSA v1 predicate.
+// readAttestationStatement reads the first attestation layer (capped at
+// maxBundleBytes) and returns the raw in-toto statement bytes.
+func readAttestationStatement(img v1.Image) ([]byte, error) {
 	layers, err := img.Layers()
 	if err != nil || len(layers) == 0 {
-		return fmt.Errorf("no layers in attestation")
+		return nil, fmt.Errorf("no layers in attestation")
 	}
-
 	reader, err := layers[0].Uncompressed()
 	if err != nil {
-		return fmt.Errorf("reading layer: %w", err)
+		return nil, fmt.Errorf("reading layer: %w", err)
 	}
 	defer func() { _ = reader.Close() }()
 
 	stmtBytes, err := io.ReadAll(io.LimitReader(reader, maxBundleBytes+1))
 	if err != nil {
-		return fmt.Errorf("reading statement: %w", err)
+		return nil, fmt.Errorf("reading statement: %w", err)
 	}
 	if int64(len(stmtBytes)) > maxBundleBytes {
-		return fmt.Errorf("statement too large")
+		return nil, fmt.Errorf("statement too large")
 	}
+	return stmtBytes, nil
+}
 
+// verifyInTotoStatement parses stmtBytes as an in-toto statement and
+// asserts the statement type, predicate type, and subject digest match
+// the SLSA v1 contract for expectedPlatformDigest.
+func verifyInTotoStatement(stmtBytes []byte, expectedPlatformDigest string) error {
 	var stmt inTotoStatement
 	if err := json.Unmarshal(stmtBytes, &stmt); err != nil {
 		return fmt.Errorf("parsing in-toto statement: %w", err)
 	}
-
 	if stmt.Type != dhiInTotoStatementType {
 		return fmt.Errorf("unexpected statement type %q", stmt.Type)
 	}
 	if stmt.PredicateType != dhiSLSAv1PredicateType {
 		return fmt.Errorf("unexpected predicate type %q, want %s", stmt.PredicateType, dhiSLSAv1PredicateType)
 	}
-
-	// Verify the statement's subject includes our platform digest.
 	for _, subj := range stmt.Subject {
 		for algo, hash := range subj.Digest {
 			if fmt.Sprintf("%s:%s", algo, hash) == expectedPlatformDigest {
@@ -360,6 +377,11 @@ func verifyAttestationContent(ctx context.Context, repo, attDigest, expectedPlat
 
 // ── Cosign signature verification ──────────────────────────────────
 
+// errSkipCosignLayer is returned by verifyCosignLayer when the caller
+// should try the next layer (e.g. missing annotation, invalid signature,
+// payload does not reference our attestation).
+var errSkipCosignLayer = errors.New("skip cosign layer")
+
 // verifyCosignDHISignature fetches the cosign signature image, extracts
 // the simplesigning payload and ECDSA signature, and verifies it against
 // the embedded DHI public key. Also verifies the Rekor transparency log
@@ -367,92 +389,116 @@ func verifyAttestationContent(ctx context.Context, repo, attDigest, expectedPlat
 //
 // Returns the Rekor log index on success.
 func verifyCosignDHISignature(ctx context.Context, repo string, sigDesc v1.Descriptor, attDigest string, pubKey *ecdsa.PublicKey) (int64, error) {
-	ref := fmt.Sprintf("%s/%s@%s", dhiRegistry, repo, sigDesc.Digest.String())
-	parsed, err := name.NewDigest(ref)
+	sigImg, sigManifest, err := fetchCosignSignatureImage(ctx, repo, sigDesc, attDigest)
 	if err != nil {
-		return -1, fmt.Errorf("parsing sig ref: %w", err)
+		return -1, err
 	}
-
-	sigImg, err := remote.Image(parsed, dhiRemoteOpts(ctx)...)
-	if err != nil {
-		return -1, fmt.Errorf("fetching signature image: %w", err)
-	}
-
-	sigManifest, err := sigImg.Manifest()
-	if err != nil {
-		return -1, fmt.Errorf("reading signature manifest: %w", err)
-	}
-
-	// Verify the signature's subject is the attestation we verified.
-	if sigManifest.Subject == nil {
-		return -1, fmt.Errorf("signature has no subject field")
-	}
-	if sigManifest.Subject.Digest.String() != attDigest {
-		return -1, fmt.Errorf("signature subject %s does not match attestation %s",
-			sigManifest.Subject.Digest.String()[:16], attDigest[:16])
-	}
-
-	// Each layer is a simplesigning payload with signature in annotations.
 	layers, err := sigImg.Layers()
 	if err != nil || len(layers) == 0 {
 		return -1, fmt.Errorf("no layers in signature image")
 	}
-
-	// Try each layer -- first valid signature wins.
+	// Try each layer; first valid signature wins.
 	for i := range sigManifest.Layers {
-		sigB64 := sigManifest.Layers[i].Annotations["dev.cosignproject.cosign/signature"]
-		if sigB64 == "" {
-			continue
+		logIndex, err := verifyCosignLayer(layers[i], sigManifest.Layers[i], attDigest, pubKey)
+		if err == nil {
+			return logIndex, nil
 		}
-
-		sigBytes, err := base64.StdEncoding.DecodeString(sigB64)
-		if err != nil {
-			continue
+		if !errors.Is(err, errSkipCosignLayer) {
+			return -1, err
 		}
-
-		// Read the simplesigning payload (layer content).
-		reader, err := layers[i].Uncompressed()
-		if err != nil {
-			continue
-		}
-		payload, err := io.ReadAll(io.LimitReader(reader, maxBundleBytes))
-		_ = reader.Close()
-		if err != nil {
-			continue
-		}
-
-		// Cosign signs sha256(payload).
-		payloadHash := sha256.Sum256(payload)
-		if !ecdsa.VerifyASN1(pubKey, payloadHash[:], sigBytes) {
-			continue
-		}
-
-		// Signature valid. Verify the payload references our attestation.
-		var ss simpleSigningPayload
-		if err := json.Unmarshal(payload, &ss); err != nil {
-			continue
-		}
-		if ss.Critical.Image.DockerManifestDigest != attDigest {
-			continue
-		}
-
-		// Verify the Rekor transparency log entry.
-		bundleJSON := sigManifest.Layers[i].Annotations["dev.sigstore.cosign/bundle"]
-		if bundleJSON == "" {
-			// Signature is cryptographically valid but no Rekor bundle
-			// is attached. Accept with index -1 (no transparency log
-			// entry). This trades auditability for compatibility with
-			// signatures that predate Rekor or are signed offline.
-			return -1, nil
-		}
-		logIndex, err := verifyRekorBundle(bundleJSON, payloadHash[:], pubKey)
-		if err != nil {
-			return -1, fmt.Errorf("rekor verification: %w", err)
-		}
-		return logIndex, nil
 	}
-
 	return -1, fmt.Errorf("no valid cosign signature verified with DHI key")
+}
+
+// fetchCosignSignatureImage resolves the signature ref, fetches the
+// image, and validates the manifest Subject equals attDigest before
+// returning the layers manifest.
+func fetchCosignSignatureImage(ctx context.Context, repo string, sigDesc v1.Descriptor, attDigest string) (v1.Image, *v1.Manifest, error) {
+	ref := fmt.Sprintf("%s/%s@%s", dhiRegistry, repo, sigDesc.Digest.String())
+	parsed, err := name.NewDigest(ref)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parsing sig ref: %w", err)
+	}
+	sigImg, err := remote.Image(parsed, dhiRemoteOpts(ctx)...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetching signature image: %w", err)
+	}
+	sigManifest, err := sigImg.Manifest()
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading signature manifest: %w", err)
+	}
+	if sigManifest.Subject == nil {
+		return nil, nil, fmt.Errorf("signature has no subject field")
+	}
+	if sigManifest.Subject.Digest.String() != attDigest {
+		return nil, nil, fmt.Errorf("signature subject %s does not match attestation %s",
+			sigManifest.Subject.Digest.String()[:16], attDigest[:16])
+	}
+	return sigImg, sigManifest, nil
+}
+
+// verifyCosignLayer validates one signature layer. Returns the Rekor
+// log index on success. Returns errSkipCosignLayer if this layer should
+// be skipped (the caller iterates to the next). Returns any other error
+// to halt the search (Rekor verification failure is terminal).
+func verifyCosignLayer(layer v1.Layer, desc v1.Descriptor, attDigest string, pubKey *ecdsa.PublicKey) (int64, error) {
+	sigB64 := desc.Annotations["dev.cosignproject.cosign/signature"]
+	if sigB64 == "" {
+		return -1, errSkipCosignLayer
+	}
+	sigBytes, err := base64.StdEncoding.DecodeString(sigB64)
+	if err != nil {
+		return -1, errSkipCosignLayer
+	}
+	payload, err := readCosignPayload(layer)
+	if err != nil {
+		return -1, errSkipCosignLayer
+	}
+	payloadHash := sha256.Sum256(payload)
+	if !ecdsa.VerifyASN1(pubKey, payloadHash[:], sigBytes) {
+		return -1, errSkipCosignLayer
+	}
+	var ss simpleSigningPayload
+	if err := json.Unmarshal(payload, &ss); err != nil {
+		return -1, errSkipCosignLayer
+	}
+	if ss.Critical.Image.DockerManifestDigest != attDigest {
+		return -1, errSkipCosignLayer
+	}
+	bundleJSON := desc.Annotations["dev.sigstore.cosign/bundle"]
+	if bundleJSON == "" {
+		// Signature is cryptographically valid but no Rekor bundle is
+		// attached. Accept with index -1 (no transparency-log entry).
+		// Trades auditability for compatibility with signatures that
+		// predate Rekor or are signed offline.
+		return -1, nil
+	}
+	logIndex, err := verifyRekorBundle(bundleJSON, payloadHash[:], pubKey)
+	if err != nil {
+		return -1, fmt.Errorf("rekor verification: %w", err)
+	}
+	return logIndex, nil
+}
+
+// readCosignPayload reads the layer content (capped at maxBundleBytes),
+// closing the reader before returning. Reads up to maxBundleBytes+1 and
+// rejects exact-cap+1 so an oversize payload surfaces as an explicit
+// error instead of being silently truncated (mirrors the
+// readAttestationStatement contract).
+func readCosignPayload(layer v1.Layer) ([]byte, error) {
+	reader, err := layer.Uncompressed()
+	if err != nil {
+		return nil, err
+	}
+	payload, err := io.ReadAll(io.LimitReader(reader, maxBundleBytes+1))
+	_ = reader.Close()
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(payload)) > maxBundleBytes {
+		return nil, fmt.Errorf("cosign payload too large")
+	}
+	return payload, nil
 }
 
 // ── Rekor verification ─────────────────────────────────────────────

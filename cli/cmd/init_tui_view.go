@@ -13,51 +13,63 @@ import (
 // ── View ────────────────────────────────────────────────────────────
 
 func (m setupTUI) View() tea.View {
-	var lines []string
+	lines := renderSetupTUILogo(m.version)
+	lines = append(lines, m.phaseLines()...)
+	indent := computeCenteringIndent(lines, m.width)
+	for i, l := range lines {
+		lines[i] = indent + l
+	}
+	content := strings.Join(lines, "\n")
+	tp := (m.height - len(lines)) / 2
+	if tp < 0 {
+		tp = 0
+	}
+	v := tea.NewView(strings.Repeat("\n", tp) + content)
+	v.AltScreen = true
+	return v
+}
 
+func renderSetupTUILogo(version string) []string {
+	lines := make([]string, 0, len(ui.LogoLines)+2)
 	for i, art := range ui.LogoLines {
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color(ui.LogoGradientHex[i])).Bold(true)
 		lines = append(lines, style.Render(art))
 	}
-	lines = append(lines, sVersion.Render("v"+m.version))
+	lines = append(lines, sVersion.Render("v"+version))
 	lines = append(lines, "")
+	return lines
+}
 
+// phaseLines dispatches to the phase-specific renderer. Unknown phases
+// return an empty slice rather than crash.
+func (m setupTUI) phaseLines() []string {
 	switch m.phase {
 	case phaseReinit:
-		lines = append(lines, m.viewReinit()...)
+		return m.viewReinit()
 	case phaseSetup:
-		lines = append(lines, m.viewSetup()...)
+		return m.viewSetup()
 	case phaseTelemetry:
-		lines = append(lines, m.viewTelemetry()...)
+		return m.viewTelemetry()
 	case phaseSummary:
-		lines = append(lines, m.viewSummary()...)
+		return m.viewSummary()
 	}
+	return nil
+}
 
-	// Center horizontally
+// computeCenteringIndent returns the leading-space indent that centres
+// the widest line in width columns. Always returns at least one space.
+func computeCenteringIndent(lines []string, width int) string {
 	maxW := 0
 	for _, l := range lines {
 		if w := lipgloss.Width(l); w > maxW {
 			maxW = w
 		}
 	}
-	lp := (m.width - maxW) / 2
+	lp := (width - maxW) / 2
 	if lp < 1 {
 		lp = 1
 	}
-	indent := strings.Repeat(" ", lp)
-	for i, l := range lines {
-		lines[i] = indent + l
-	}
-
-	content := strings.Join(lines, "\n")
-	tp := (m.height - len(lines)) / 2
-	if tp < 0 {
-		tp = 0
-	}
-
-	v := tea.NewView(strings.Repeat("\n", tp) + content)
-	v.AltScreen = true
-	return v
+	return strings.Repeat(" ", lp)
 }
 
 // ── Phase views ─────────────────────────────────────────────────────
@@ -83,28 +95,48 @@ func (m setupTUI) viewReinit() []string {
 }
 
 func (m setupTUI) viewSetup() []string {
-	// Toggle rows depend on the final box width because they distribute their
-	// own internal padding. We compute width from the non-toggle content first
-	// (longest contributor is the data-directory path), then render toggles at
-	// that width.
+	// Toggle rows depend on the final box width because they distribute
+	// their own internal padding. We compute width from the non-toggle
+	// content first (longest contributor is the data-directory path),
+	// then render toggles at that width.
 	dataDirLabel := flabel("Data directory", m.focus == fDataDir)
 	dataDirValue := "  " + m.dataDir.View()
+	w := contentBoxWidth(m.preliminaryContentLines(dataDirLabel, dataDirValue), m.width)
 
-	prelim := []string{"", dataDirLabel, dataDirValue}
-	if m.advExpanded {
-		prelim = append(prelim,
-			"  "+m.backendPort.View(),
-			"  "+m.webPort.View(),
-		)
-		if m.persistence == 1 {
-			prelim = append(prelim, "  "+m.postgresPort.View())
-		}
-		if m.busBackend == 1 {
-			prelim = append(prelim, "  "+m.natsPort.View())
-		}
+	content := m.buildSetupContent(dataDirLabel, dataDirValue, w)
+	main := renderBox("Setup", content, w)
+	main = append(main, sDim.Render(m.setupHelpFooter()))
+
+	helpLines := m.helpForFocus()
+	if len(helpLines) == 0 || m.width < 100 {
+		return main
 	}
-	w := contentBoxWidth(prelim, m.width)
+	return sideBySide(main, renderHelpPanel(helpLines, 28), 2)
+}
 
+// preliminaryContentLines builds the width-determining content (data dir
+// plus any expanded ports) so the toggle rows below can be sized to it.
+func (m setupTUI) preliminaryContentLines(dataDirLabel, dataDirValue string) []string {
+	prelim := []string{"", dataDirLabel, dataDirValue}
+	if !m.advExpanded {
+		return prelim
+	}
+	prelim = append(prelim,
+		"  "+m.backendPort.View(),
+		"  "+m.webPort.View(),
+	)
+	if m.persistence == 1 {
+		prelim = append(prelim, "  "+m.postgresPort.View())
+	}
+	if m.busBackend == 1 {
+		prelim = append(prelim, "  "+m.natsPort.View())
+	}
+	return prelim
+}
+
+// buildSetupContent renders the full setup box body for the given
+// content width.
+func (m setupTUI) buildSetupContent(dataDirLabel, dataDirValue string, w int) []string {
 	content := []string{
 		"",
 		dataDirLabel,
@@ -117,212 +149,126 @@ func (m setupTUI) viewSetup() []string {
 		m.fineTuningToggle(w),
 	}
 	if m.fineTuning {
-		// Variant row appears only when fine-tuning is enabled. The dependent
-		// relationship is signalled by the "  Variant" label in
-		// fineTuneVariantToggle, which keeps the toggle column aligned with
-		// its parent row.
+		// Variant row appears only when fine-tuning is enabled. The
+		// dependent relationship is signalled by the "  Variant" label
+		// in fineTuneVariantToggle, which keeps the toggle column
+		// aligned with its parent row.
 		content = append(content, m.fineTuneVariantToggle(w))
 	}
 	content = append(content, "")
-
-	arrow := "\u25b8"
+	content = append(content, m.advancedSettingsToggleLine())
 	if m.advExpanded {
-		arrow = "\u25be"
+		content = append(content, m.advancedSettingsBlock(w)...)
 	}
-	togTxt := arrow + " Advanced settings"
-	if m.focus == fAdvToggle {
-		content = append(content, sBrand.Render(togTxt))
-	} else {
-		content = append(content, sDim.Render(togTxt))
-	}
-
-	if m.advExpanded {
-		content = append(content,
-			"",
-			m.sandboxToggle(w),
-			"",
-			m.encryptSecretsToggle(w),
-			"",
-			flabel("Backend port", m.focus == fBackendPort),
-			"  "+m.backendPort.View(),
-			"",
-			flabel("Dashboard port", m.focus == fWebPort),
-			"  "+m.webPort.View(),
-		)
-		if m.persistence == 1 {
-			content = append(content,
-				"",
-				flabel("Postgres port", m.focus == fPostgresPort),
-				"  "+m.postgresPort.View(),
-			)
-		}
-		if m.busBackend == 1 {
-			content = append(content,
-				"",
-				flabel("NATS port", m.focus == fNatsPort),
-				"  "+m.natsPort.View(),
-			)
-		}
-	}
-
 	content = append(content,
 		"",
 		btnCenter("Continue", m.focus == fContinue, w),
 		"",
 	)
-	main := renderBox("Setup", content, w)
-
-	help := "\u2191\u2193 navigate  enter select  esc quit"
-	isToggle := m.focus == fSandbox || m.focus == fBusBackend || m.focus == fPersistence || m.focus == fFineTuning || m.focus == fFineTuneVariant || m.focus == fEncryptSecrets
-	if isToggle {
-		help = "\u2191\u2193 navigate  \u2190\u2192/space toggle  esc quit"
-	}
-	main = append(main, sDim.Render(help))
-
-	// Side help panel (only if terminal is wide enough)
-	helpLines := m.helpForFocus()
-	if len(helpLines) > 0 && m.width >= 100 {
-		hw := 28
-		panel := make([]string, 0, len(helpLines)+4)
-		panel = append(panel, boxTop("", hw))
-		panel = append(panel, brow("", hw))
-		for _, hl := range helpLines {
-			panel = append(panel, brow(sMuted.Render(hl), hw))
-		}
-		panel = append(panel, brow("", hw))
-		panel = append(panel, boxBottom(hw))
-
-		return sideBySide(main, panel, 2)
-	}
-
-	return main
+	return content
 }
 
-// helpForFocus returns contextual help lines for the currently focused field.
+// advancedSettingsToggleLine renders the "Advanced settings" expander
+// line with the correct arrow + focus styling.
+func (m setupTUI) advancedSettingsToggleLine() string {
+	arrow := "\u25b8"
+	if m.advExpanded {
+		arrow = "\u25be"
+	}
+	txt := arrow + " Advanced settings"
+	if m.focus == fAdvToggle {
+		return sBrand.Render(txt)
+	}
+	return sDim.Render(txt)
+}
+
+// advancedSettingsBlock renders the expanded advanced-settings panel
+// (toggles + port inputs).
+func (m setupTUI) advancedSettingsBlock(w int) []string {
+	block := []string{
+		"",
+		m.sandboxToggle(w),
+		"",
+		m.encryptSecretsToggle(w),
+		"",
+		flabel("Backend port", m.focus == fBackendPort),
+		"  " + m.backendPort.View(),
+		"",
+		flabel("Dashboard port", m.focus == fWebPort),
+		"  " + m.webPort.View(),
+	}
+	if m.persistence == 1 {
+		block = append(block,
+			"",
+			flabel("Postgres port", m.focus == fPostgresPort),
+			"  "+m.postgresPort.View(),
+		)
+	}
+	if m.busBackend == 1 {
+		block = append(block,
+			"",
+			flabel("NATS port", m.focus == fNatsPort),
+			"  "+m.natsPort.View(),
+		)
+	}
+	return block
+}
+
+// setupHelpFooter returns the keyboard-shortcut help line that varies
+// by whether the currently focused field is a toggle or an input.
+func (m setupTUI) setupHelpFooter() string {
+	if isToggleFocus(m.focus) {
+		return "\u2191\u2193 navigate  \u2190\u2192/space toggle  esc quit"
+	}
+	return "\u2191\u2193 navigate  enter select  esc quit"
+}
+
+// isToggleFocus reports whether f names one of the toggle-style focus
+// targets (where left/right or space cycles the value).
+func isToggleFocus(f int) bool {
+	switch f {
+	case fSandbox, fBusBackend, fPersistence, fFineTuning, fFineTuneVariant, fEncryptSecrets:
+		return true
+	}
+	return false
+}
+
+// renderHelpPanel wraps helpLines in a side-by-side panel of width hw.
+func renderHelpPanel(helpLines []string, hw int) []string {
+	panel := make([]string, 0, len(helpLines)+4)
+	panel = append(panel, boxTop("", hw))
+	panel = append(panel, brow("", hw))
+	for _, hl := range helpLines {
+		panel = append(panel, brow(sMuted.Render(hl), hw))
+	}
+	panel = append(panel, brow("", hw))
+	panel = append(panel, boxBottom(hw))
+	return panel
+}
+
+// helpForFocus returns contextual help lines for the currently focused
+// field. Per-focus blocks live in helper functions: input fields, two-
+// choice toggles, and feature toggles each follow a different shape, so
+// keeping them separate avoids one giant switch.
 func (m setupTUI) helpForFocus() []string {
-	switch m.focus {
+	if lines := helpForInputField(m.focus); lines != nil {
+		return lines
+	}
+	if lines := m.helpForBackendChoice(); lines != nil {
+		return lines
+	}
+	return m.helpForFeatureToggle()
+}
+
+// helpForInputField returns the help text for a text-input field or
+// button focus that has no state-dependent variation.
+func helpForInputField(focus int) []string {
+	switch focus {
 	case fDataDir:
 		return []string{
 			"Where SynthOrg stores",
 			"configuration, database,",
 			"and agent memory files.",
-		}
-	case fPersistence:
-		if m.persistence == 1 {
-			return []string{
-				"Dedicated PostgreSQL 18",
-				"container. Best for",
-				"production and high",
-				"concurrency workloads.",
-			}
-		}
-		return []string{
-			"In-process SQLite database.",
-			"Zero setup, lightweight.",
-			"Ideal for single-node and",
-			"development environments.",
-		}
-	case fBusBackend:
-		if m.busBackend == 1 {
-			return []string{
-				"NATS JetStream in a ~20 MB",
-				"container. Crash-safe",
-				"queues, multi-process",
-				"agents, stream replay.",
-			}
-		}
-		return []string{
-			"In-process asyncio queues.",
-			"Zero setup, microsecond",
-			"latency. Messages lost",
-			"on crash, single process.",
-		}
-	case fFineTuning:
-		if m.fineTuning {
-			return []string{
-				"Sidecar that trains",
-				"embedding models on your",
-				"agents' memory for better",
-				"retrieval quality.",
-				"",
-				"Pick GPU or CPU below:",
-				"GPU ~4 GB, fast training.",
-				"CPU ~1.7 GB, slow but",
-				"works anywhere.",
-			}
-		}
-		return []string{
-			"Adapts embedding models to",
-			"your agents' data. Improves",
-			"memory retrieval over time.",
-			"",
-			"Not required -- standard",
-			"embeddings work well out of",
-			"the box. Choose GPU or CPU",
-			"image when enabled.",
-		}
-	case fFineTuneVariant:
-		if m.fineTuneVariant == 1 {
-			return []string{
-				"CPU torch (~1.7 GB image).",
-				"Runs on any amd64 host, no",
-				"GPU driver required. Slower",
-				"training but safer default",
-				"for laptops / no-GPU",
-				"deployments.",
-			}
-		}
-		return []string{
-			"GPU torch with bundled CUDA",
-			"runtime (~4 GB image).",
-			"Requires an NVIDIA GPU with",
-			"a compatible host driver.",
-			"Much faster training -- the",
-			"default for proper rigs.",
-		}
-	case fSandbox:
-		if m.sandbox {
-			return []string{
-				"Docker-based code sandbox.",
-				"Agents can safely execute",
-				"code, run shell commands,",
-				"and use file-system tools.",
-			}
-		}
-		return []string{
-			"No code execution. Agents",
-			"cannot run code, shell",
-			"commands, or file-system",
-			"operations.",
-		}
-	case fEncryptSecrets:
-		if m.encryptSecrets {
-			return []string{
-				"Connection secrets (API keys,",
-				"OAuth tokens) are Fernet-",
-				"encrypted at rest inside the",
-				"database. A master key is",
-				"generated and stored in",
-				"config.json.",
-				"",
-				"Pair with disk/volume",
-				"encryption for at-rest",
-				"protection of non-secret",
-				"data.",
-			}
-		}
-		return []string{
-			"Secrets are read from",
-			"SYNTHORG_SECRET_* env vars",
-			"at runtime. No at-rest",
-			"storage, no OAuth token",
-			"persistence.",
-			"",
-			"Only pick this if you",
-			"manage secrets in an",
-			"external system (Docker",
-			"secrets, k8s Secrets,",
-			"vault, etc.).",
 		}
 	case fBackendPort:
 		return []string{
@@ -356,6 +302,157 @@ func (m setupTUI) helpForFocus() []string {
 		}
 	}
 	return nil
+}
+
+// helpForBackendChoice returns help text for the two cyclable backend
+// pickers (persistence + message bus) which depend on the current
+// selection index.
+func (m setupTUI) helpForBackendChoice() []string {
+	switch m.focus {
+	case fPersistence:
+		if m.persistence == 1 {
+			return []string{
+				"Dedicated PostgreSQL 18",
+				"container. Best for",
+				"production and high",
+				"concurrency workloads.",
+			}
+		}
+		return []string{
+			"In-process SQLite database.",
+			"Zero setup, lightweight.",
+			"Ideal for single-node and",
+			"development environments.",
+		}
+	case fBusBackend:
+		if m.busBackend == 1 {
+			return []string{
+				"NATS JetStream in a ~20 MB",
+				"container. Crash-safe",
+				"queues, multi-process",
+				"agents, stream replay.",
+			}
+		}
+		return []string{
+			"In-process asyncio queues.",
+			"Zero setup, microsecond",
+			"latency. Messages lost",
+			"on crash, single process.",
+		}
+	}
+	return nil
+}
+
+// helpForFeatureToggle returns help text for the feature toggles
+// (fine-tuning + variant, sandbox, encrypt secrets). Per-toggle copy
+// lives in helper functions so the dispatcher stays small.
+func (m setupTUI) helpForFeatureToggle() []string {
+	switch m.focus {
+	case fFineTuning:
+		return helpFineTuning(m.fineTuning)
+	case fFineTuneVariant:
+		return helpFineTuneVariant(m.fineTuneVariant == 1)
+	case fSandbox:
+		return helpSandbox(m.sandbox)
+	case fEncryptSecrets:
+		return helpEncryptSecrets(m.encryptSecrets)
+	}
+	return nil
+}
+
+func helpFineTuning(enabled bool) []string {
+	if enabled {
+		return []string{
+			"Sidecar that trains",
+			"embedding models on your",
+			"agents' memory for better",
+			"retrieval quality.",
+			"",
+			"Pick GPU or CPU below:",
+			"GPU ~4 GB, fast training.",
+			"CPU ~1.7 GB, slow but",
+			"works anywhere.",
+		}
+	}
+	return []string{
+		"Adapts embedding models to",
+		"your agents' data. Improves",
+		"memory retrieval over time.",
+		"",
+		"Not required -- standard",
+		"embeddings work well out of",
+		"the box. Choose GPU or CPU",
+		"image when enabled.",
+	}
+}
+
+func helpFineTuneVariant(cpu bool) []string {
+	if cpu {
+		return []string{
+			"CPU torch (~1.7 GB image).",
+			"Runs on any amd64 host, no",
+			"GPU driver required. Slower",
+			"training but safer default",
+			"for laptops / no-GPU",
+			"deployments.",
+		}
+	}
+	return []string{
+		"GPU torch with bundled CUDA",
+		"runtime (~4 GB image).",
+		"Requires an NVIDIA GPU with",
+		"a compatible host driver.",
+		"Much faster training -- the",
+		"default for proper rigs.",
+	}
+}
+
+func helpSandbox(enabled bool) []string {
+	if enabled {
+		return []string{
+			"Docker-based code sandbox.",
+			"Agents can safely execute",
+			"code, run shell commands,",
+			"and use file-system tools.",
+		}
+	}
+	return []string{
+		"No code execution. Agents",
+		"cannot run code, shell",
+		"commands, or file-system",
+		"operations.",
+	}
+}
+
+func helpEncryptSecrets(enabled bool) []string {
+	if enabled {
+		return []string{
+			"Connection secrets (API keys,",
+			"OAuth tokens) are Fernet-",
+			"encrypted at rest inside the",
+			"database. A master key is",
+			"generated and stored in",
+			"config.json.",
+			"",
+			"Pair with disk/volume",
+			"encryption for at-rest",
+			"protection of non-secret",
+			"data.",
+		}
+	}
+	return []string{
+		"Secrets are read from",
+		"SYNTHORG_SECRET_* env vars",
+		"at runtime. No at-rest",
+		"storage, no OAuth token",
+		"persistence.",
+		"",
+		"Only pick this if you",
+		"manage secrets in an",
+		"external system (Docker",
+		"secrets, k8s Secrets,",
+		"vault, etc.).",
+	}
 }
 
 // sideBySide joins two sets of lines horizontally with a gap.

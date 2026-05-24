@@ -122,7 +122,7 @@ func newCommitWalkModel(in CommitWalkInput) commitWalkModel {
 }
 
 // Init implements tea.Model.
-func (m commitWalkModel) Init() tea.Cmd {
+func (commitWalkModel) Init() tea.Cmd {
 	return tea.RequestWindowSize
 }
 
@@ -130,44 +130,55 @@ func (m commitWalkModel) Init() tea.Cmd {
 func (m commitWalkModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		m.viewport.SetWidth(msg.Width)
-		m.viewport.SetHeight(m.viewportHeight())
-		// Re-render with the new width so subject truncation tracks resize.
-		m.viewport.SetContent(RenderCommitList(m.commits, msg.Width, m.opts))
-		return m, nil
+		return m.handleResize(msg), nil
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			m.outcome = CommitWalkQuit
-			return m, tea.Quit
-		case "enter":
-			m.outcome = CommitWalkDone
-			return m, tea.Quit
-		case "j", "down":
-			m.viewport.ScrollDown(1)
-			return m, nil
-		case "k", "up":
-			m.viewport.ScrollUp(1)
-			return m, nil
-		case "pgdown", " ", "space":
-			m.viewport.PageDown()
-			return m, nil
-		case "pgup":
-			m.viewport.PageUp()
-			return m, nil
-		case "g", "home":
-			m.viewport.GotoTop()
-			return m, nil
-		case "G", "end":
-			m.viewport.GotoBottom()
-			return m, nil
+		if model, cmd, handled := m.handleKey(msg.String()); handled {
+			return model, cmd
 		}
 	}
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
+}
+
+// handleResize updates the viewport for a new terminal size and
+// re-renders the commit list so subject truncation tracks the width.
+func (m commitWalkModel) handleResize(msg tea.WindowSizeMsg) commitWalkModel {
+	m.width = msg.Width
+	m.height = msg.Height
+	m.viewport.SetWidth(msg.Width)
+	m.viewport.SetHeight(m.viewportHeight())
+	m.viewport.SetContent(RenderCommitList(m.commits, msg.Width, m.opts))
+	return m
+}
+
+// handleKey processes a key press. Returns handled=false for keys this
+// walk does not own, so the caller can forward them to the viewport for
+// default scroll handling.
+func (m commitWalkModel) handleKey(key string) (tea.Model, tea.Cmd, bool) {
+	switch key {
+	case "ctrl+c", "q":
+		m.outcome = CommitWalkQuit
+		return m, tea.Quit, true
+	case "enter":
+		m.outcome = CommitWalkDone
+		return m, tea.Quit, true
+	case "j", "down":
+		m.viewport.ScrollDown(1)
+	case "k", "up":
+		m.viewport.ScrollUp(1)
+	case "pgdown", " ", "space":
+		m.viewport.PageDown()
+	case "pgup":
+		m.viewport.PageUp()
+	case "g", "home":
+		m.viewport.GotoTop()
+	case "G", "end":
+		m.viewport.GotoBottom()
+	default:
+		return m, nil, false
+	}
+	return m, nil, true
 }
 
 // View implements tea.Model.

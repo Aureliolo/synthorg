@@ -25,6 +25,7 @@ func TestConfigSetChangelogView(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
 			state := config.DefaultState()
+			state.EncryptSecrets = false
 			state.DataDir = dir
 			if err := config.Save(state); err != nil {
 				t.Fatal(err)
@@ -60,6 +61,7 @@ func TestConfigSetChangelogView(t *testing.T) {
 func TestConfigGetChangelogViewDefault(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
@@ -81,6 +83,7 @@ func TestConfigGetChangelogViewDefault(t *testing.T) {
 func TestConfigGetChangelogViewSet(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	state.ChangelogView = "commits"
 	if err := config.Save(state); err != nil {
@@ -103,6 +106,7 @@ func TestConfigGetChangelogViewSet(t *testing.T) {
 func TestConfigUnsetChangelogView(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
+	state.EncryptSecrets = false
 	state.DataDir = dir
 	state.ChangelogView = "commits"
 	if err := config.Save(state); err != nil {

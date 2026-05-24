@@ -97,30 +97,37 @@ type githubAttestationResponse struct {
 // fetchGitHubAttestations queries the GitHub attestation API for Sigstore
 // bundles associated with the given image digest.
 func fetchGitHubAttestations(ctx context.Context, digest string) ([]json.RawMessage, error) {
-	url := fmt.Sprintf("%s/repos/%s/attestations/%s", githubAPIBase, githubAttestationOwnerRepo, digest)
+	body, err := fetchAttestationResponseBody(ctx, digest)
+	if err != nil {
+		return nil, err
+	}
+	return parseAttestationBundles(body, digest)
+}
 
+// fetchAttestationResponseBody issues the API request, classifies the
+// response status, and returns the body bytes capped at
+// maxAttestationResponseBytes.
+func fetchAttestationResponseBody(ctx context.Context, digest string) ([]byte, error) {
+	url := fmt.Sprintf("%s/repos/%s/attestations/%s", githubAPIBase, githubAttestationOwnerRepo, digest)
 	reqCtx, cancel := context.WithTimeout(ctx, attestationHTTPTimeout)
 	defer cancel()
-
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating attestation request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
-
 	resp, err := attestationHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching attestations from GitHub API: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode == http.StatusNotFound {
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound:
 		return nil, fmt.Errorf("%w via GitHub API for digest %s", ErrNoProvenanceAttestations, digest)
-	}
-	if resp.StatusCode != http.StatusOK {
+	default:
 		return nil, fmt.Errorf("GitHub attestation API returned HTTP %d for digest %s", resp.StatusCode, digest)
 	}
-
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAttestationResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("reading attestation response: %w", err)
@@ -128,16 +135,19 @@ func fetchGitHubAttestations(ctx context.Context, digest string) ([]json.RawMess
 	if int64(len(body)) > maxAttestationResponseBytes {
 		return nil, fmt.Errorf("attestation response too large (>%d bytes)", maxAttestationResponseBytes)
 	}
+	return body, nil
+}
 
+// parseAttestationBundles parses an attestation API response and returns
+// every non-empty bundle. digest is used only for error messages.
+func parseAttestationBundles(body []byte, digest string) ([]json.RawMessage, error) {
 	var apiResp githubAttestationResponse
 	if err := json.Unmarshal(body, &apiResp); err != nil {
 		return nil, fmt.Errorf("parsing attestation response: %w", err)
 	}
-
 	if len(apiResp.Attestations) == 0 {
 		return nil, fmt.Errorf("%w via GitHub API for digest %s", ErrNoProvenanceAttestations, digest)
 	}
-
 	bundles := make([]json.RawMessage, 0, len(apiResp.Attestations))
 	for _, a := range apiResp.Attestations {
 		if len(a.Bundle) > 0 {

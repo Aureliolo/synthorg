@@ -366,7 +366,7 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	val := configGetValue(state, key)
+	val := configGetDisplayValue(state, key)
 	// Apply env var override (same resolution as config list).
 	if envVar := envVarForKey(key); envVar != "" {
 		if envVal := os.Getenv(envVar); envVal != "" {
@@ -375,6 +375,29 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 	}
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), val)
 	return nil
+}
+
+// configGetDisplays maps keys whose `config get` output should be the
+// EFFECTIVE value (after default-fallback) instead of the raw persisted
+// value runConfigList needs for its "config vs default" source
+// detection. Most keys share the runConfigList reader; only the few
+// with distinct effective/raw semantics live here.
+var configGetDisplays = map[string]configReader{
+	// fine_tuning_variant: raw value is "" when unset, effective is
+	// "gpu". config get should show "gpu" (matches what the runtime
+	// actually uses); config list still uses the raw reader so an
+	// explicit "gpu" can be distinguished from an unset field.
+	"fine_tuning_variant": func(s config.State) string { return s.FineTuneVariantOrDefault() },
+}
+
+// configGetDisplayValue returns the operator-facing display value for a
+// `config get` command. Falls back to configGetValue for keys without
+// a display-only override.
+func configGetDisplayValue(state config.State, key string) string {
+	if r, ok := configGetDisplays[key]; ok {
+		return r(state)
+	}
+	return configGetValue(state, key)
 }
 
 // isKnownGettableKey reports whether key is in the gettableConfigKeys list.
@@ -431,41 +454,23 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// hintAfterConfigSet emits contextual guidance after a config set operation.
+// hintAfterConfigSet emits contextual guidance after a config set
+// operation. The compose-restart hint fires for any compose-affecting
+// key; per-key/per-value hints come from hintAfterConfigSetRules.
 func hintAfterConfigSet(out *ui.UI, key, value, dataDir string) {
 	if composeAffectingKeys[key] {
 		hintComposeRestart(out, dataDir, "new value")
 	}
-
-	switch key {
-	case "hints":
-		// Use Step() instead of HintGuidance() because the UI was created with the
-		// old hints mode -- HintGuidance would be swallowed when changing from "never".
-		switch value {
-		case "always":
-			out.Step("All hints enabled. You'll see tips, guidance, and next steps.")
-		case "auto":
-			out.Step("Tips shown once per session. Guidance hidden. Error and next-step hints always shown.")
-		case "never":
-			out.Step("Tips and guidance suppressed. Error and next-step hints still shown.")
+	for _, rule := range hintAfterConfigSetRules[key] {
+		if rule.value != value {
+			continue
 		}
-	case "color":
-		switch value {
-		case "always":
-			out.HintGuidance("Color forced on, even in non-TTY output.")
-		case "never":
-			out.HintGuidance("Color disabled. Equivalent to NO_COLOR=1.")
-		case "auto":
-			out.HintGuidance("Color auto-detected from terminal capabilities.")
+		if rule.step {
+			out.Step(rule.hint)
+		} else {
+			out.HintGuidance(rule.hint)
 		}
-	case "output":
-		if value == "json" {
-			out.HintGuidance("Machine-readable JSON output. Human messages suppressed.")
-		}
-	case "timestamps":
-		if value == "iso8601" {
-			out.HintGuidance("Timestamps shown in ISO 8601 format.")
-		}
+		return
 	}
 }
 
@@ -479,75 +484,21 @@ func hintComposeRestart(out *ui.UI, dataDir, what string) {
 		return
 	}
 	if _, statErr := os.Stat(filepath.Join(safeDir, "compose.yml")); statErr == nil {
-		out.HintGuidance(fmt.Sprintf("Restart containers with 'synthorg stop && synthorg start' to apply the %s.", what))
+		out.HintNextStep(fmt.Sprintf("Restart containers with 'synthorg stop && synthorg start' to apply the %s.", what))
 	}
 }
 
 // applyConfigValue validates and applies a single key=value to state.
+// Per-key setters live in configSetters (config_dispatch.go); unknown
+// keys fall through to the tunables layer.
 func applyConfigValue(state *config.State, key, value string) error {
-	switch key {
-	case "auto_apply_compose":
-		return setBool(value, key, &state.AutoApplyCompose)
-	case "auto_cleanup":
-		return setBool(value, key, &state.AutoCleanup)
-	case "auto_pull":
-		return setBool(value, key, &state.AutoPull)
-	case "auto_restart":
-		return setBool(value, key, &state.AutoRestart)
-	case "auto_start_after_wipe":
-		return setBool(value, key, &state.AutoStartAfterWipe)
-	case "auto_update_cli":
-		return setBool(value, key, &state.AutoUpdateCLI)
-	case "backend_port":
-		return setPort(value, "backend_port", state.WebPort, &state.BackendPort)
-	case "changelog_view":
-		return setEnum(value, key, config.IsValidChangelogView, config.ChangelogViewNames, &state.ChangelogView)
-	case "channel":
-		return setEnum(value, key, config.IsValidChannel, config.ChannelNames, &state.Channel)
-	case "color":
-		return setEnum(value, key, config.IsValidColorMode, config.ColorModeNames, &state.Color)
-	case "docker_sock":
-		if err := validateDockerSock(value); err != nil {
-			return fmt.Errorf("invalid docker_sock: %w", err)
-		}
-		state.DockerSock = value
-	case "hints":
-		return setEnum(value, key, config.IsValidHintsMode, config.HintsModeNames, &state.Hints)
-	case "image_tag":
-		if !config.IsValidImageTag(value) {
-			return fmt.Errorf("invalid image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", value)
-		}
-		state.ImageTag = value
-	case "log_level":
-		return setEnum(value, key, config.IsValidLogLevel, config.LogLevelNames, &state.LogLevel)
-	case "output":
-		return setEnum(value, key, config.IsValidOutputMode, config.OutputModeNames, &state.Output)
-	case "sandbox":
-		return setBool(value, key, &state.Sandbox)
-	case "fine_tuning":
-		// Cross-field validation (requires sandbox + amd64) runs in
-		// runConfigSet via State.Validate() after every apply, so this
-		// branch only needs to parse the bool.
-		return setBool(value, key, &state.FineTuning)
-	case "fine_tuning_variant":
-		if value != config.FineTuneVariantGPU && value != config.FineTuneVariantCPU {
-			return fmt.Errorf("invalid fine_tuning_variant %q: must be %q or %q", value, config.FineTuneVariantGPU, config.FineTuneVariantCPU)
-		}
-		state.FineTuningVariant = value
-		return nil
-	case "telemetry_opt_in":
-		return setBool(value, key, &state.TelemetryOptIn)
-	case "timestamps":
-		return setEnum(value, key, config.IsValidTimestampMode, config.TimestampModeNames, &state.Timestamps)
-	case "web_port":
-		return setPort(value, "web_port", state.BackendPort, &state.WebPort)
-	default:
-		if handled, err := applyTunableConfigValue(state, key, value); handled {
-			return err
-		}
-		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(supportedConfigKeys, ", "))
+	if setter, ok := configSetters[key]; ok {
+		return setter(state, value)
 	}
-	return nil
+	if handled, err := applyTunableConfigValue(state, key, value); handled {
+		return err
+	}
+	return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(supportedConfigKeys, ", "))
 }
 
 // setBool validates and sets a boolean config field.
@@ -667,33 +618,25 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 	key := args[0]
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
 	if err := resetConfigValue(&state, key); err != nil {
 		return fmt.Errorf("resetting config value: %w", err)
 	}
-	// Validate port uniqueness after resetting to default.
-	if key == "backend_port" && state.BackendPort == state.WebPort {
-		return fmt.Errorf("default backend_port %d conflicts with current web_port %d", state.BackendPort, state.WebPort)
-	}
-	if key == "web_port" && state.WebPort == state.BackendPort {
-		return fmt.Errorf("default web_port %d conflicts with current backend_port %d", state.WebPort, state.BackendPort)
+	if err := validatePortUniquenessAfterUnset(key, state); err != nil {
+		return err
 	}
 	if invalidatesVerifiedDigests(key) {
 		state.VerifiedDigests = nil
 		state.VerifiedImageTag = ""
 	}
-
 	if composeAffectingKeys[key] {
 		if err := regenerateCompose(state); err != nil {
 			return fmt.Errorf("regenerating compose after unset: %w", err)
 		}
 	}
-
 	if err := config.Save(state); err != nil {
 		return fmt.Errorf("saving config: %w", err)
 	}
@@ -704,63 +647,34 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// resetConfigValue resets a single config key to its default value.
-func resetConfigValue(state *config.State, key string) error {
-	defaults := config.DefaultState()
+// validatePortUniquenessAfterUnset rejects an unset that would default
+// the named port into a collision with the other one.
+func validatePortUniquenessAfterUnset(key string, state config.State) error {
 	switch key {
-	case "auto_apply_compose":
-		state.AutoApplyCompose = defaults.AutoApplyCompose
-	case "auto_cleanup":
-		state.AutoCleanup = defaults.AutoCleanup
-	case "auto_pull":
-		state.AutoPull = defaults.AutoPull
-	case "auto_restart":
-		state.AutoRestart = defaults.AutoRestart
-	case "auto_start_after_wipe":
-		state.AutoStartAfterWipe = defaults.AutoStartAfterWipe
-	case "auto_update_cli":
-		state.AutoUpdateCLI = defaults.AutoUpdateCLI
 	case "backend_port":
-		state.BackendPort = defaults.BackendPort
-	case "changelog_view":
-		state.ChangelogView = ""
-	case "channel":
-		state.Channel = defaults.Channel
-	case "color":
-		state.Color = ""
-	case "docker_sock":
-		state.DockerSock = ""
-	case "hints":
-		state.Hints = ""
-	case "image_tag":
-		state.ImageTag = defaults.ImageTag
-	case "log_level":
-		state.LogLevel = defaults.LogLevel
-	case "output":
-		state.Output = ""
-	case "sandbox":
-		state.Sandbox = defaults.Sandbox
-	case "fine_tuning":
-		state.FineTuning = defaults.FineTuning
-		// Clearing FineTuning also clears the variant so a re-enable via
-		// `config set fine_tuning true` picks up the configured default
-		// instead of a stale variant from a previous enable cycle.
-		state.FineTuningVariant = defaults.FineTuningVariant
-	case "fine_tuning_variant":
-		state.FineTuningVariant = defaults.FineTuningVariant
-	case "telemetry_opt_in":
-		state.TelemetryOptIn = defaults.TelemetryOptIn
-	case "timestamps":
-		state.Timestamps = ""
-	case "web_port":
-		state.WebPort = defaults.WebPort
-	default:
-		if resetTunableConfigValue(state, key) {
-			return nil
+		if state.BackendPort == state.WebPort {
+			return fmt.Errorf("default backend_port %d conflicts with current web_port %d", state.BackendPort, state.WebPort)
 		}
-		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(supportedConfigKeys, ", "))
+	case "web_port":
+		if state.WebPort == state.BackendPort {
+			return fmt.Errorf("default web_port %d conflicts with current backend_port %d", state.WebPort, state.BackendPort)
+		}
 	}
 	return nil
+}
+
+// resetConfigValue resets a single config key to its default value.
+// Per-key reset actions live in configResetters (config_dispatch.go);
+// unknown keys fall through to the tunables layer.
+func resetConfigValue(state *config.State, key string) error {
+	if reset, ok := configResetters[key]; ok {
+		reset(state, config.DefaultState())
+		return nil
+	}
+	if resetTunableConfigValue(state, key) {
+		return nil
+	}
+	return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(supportedConfigKeys, ", "))
 }
 
 // configEntry represents a config key with its resolved value and source.
@@ -836,65 +750,17 @@ func runConfigList(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// configGetValue returns the string representation of a config key's value.
+// configGetValue returns the string representation of a config key's
+// value. Per-key readers live in configReaders (config_dispatch.go);
+// unknown keys fall through to the tunables layer.
 func configGetValue(state config.State, key string) string {
-	switch key {
-	case "auto_apply_compose":
-		return strconv.FormatBool(state.AutoApplyCompose)
-	case "auto_cleanup":
-		return strconv.FormatBool(state.AutoCleanup)
-	case "auto_pull":
-		return strconv.FormatBool(state.AutoPull)
-	case "auto_restart":
-		return strconv.FormatBool(state.AutoRestart)
-	case "auto_start_after_wipe":
-		return strconv.FormatBool(state.AutoStartAfterWipe)
-	case "auto_update_cli":
-		return strconv.FormatBool(state.AutoUpdateCLI)
-	case "backend_port":
-		return strconv.Itoa(state.BackendPort)
-	case "changelog_view":
-		return state.ChangelogViewOrDefault()
-	case "channel":
-		return state.DisplayChannel()
-	case "color":
-		return state.Color
-	case "docker_sock":
-		return state.DockerSock
-	case "hints":
-		return state.Hints
-	case "image_tag":
-		return state.ImageTag
-	case "log_level":
-		return state.LogLevel
-	case "memory_backend":
-		return state.MemoryBackend
-	case "output":
-		return state.Output
-	case "persistence_backend":
-		return state.PersistenceBackend
-	case "sandbox":
-		return strconv.FormatBool(state.Sandbox)
-	case "fine_tuning":
-		return strconv.FormatBool(state.FineTuning)
-	case "fine_tuning_variant":
-		// Return the raw persisted value so runConfigList's source
-		// comparison ("config" vs "default") can distinguish an
-		// explicit `gpu` from an unset field. Callers that need the
-		// effective variant call FineTuneVariantOrDefault() themselves.
-		return state.FineTuningVariant
-	case "telemetry_opt_in":
-		return strconv.FormatBool(state.TelemetryOptIn)
-	case "timestamps":
-		return state.Timestamps
-	case "web_port":
-		return strconv.Itoa(state.WebPort)
-	default:
-		if val, ok := tunableConfigGetValue(state, key); ok {
-			return val
-		}
-		return ""
+	if reader, ok := configReaders[key]; ok {
+		return reader(state)
 	}
+	if val, ok := tunableConfigGetValue(state, key); ok {
+		return val
+	}
+	return ""
 }
 
 // resolveSource determines where a config value came from.

@@ -3,6 +3,7 @@ package cmd
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,8 +40,8 @@ var initCmd = &cobra.Command{
 
 When all required flags are provided, the interactive wizard is skipped
 (useful for CI/automation).`,
-	Example: `  synthorg init                                         # interactive setup wizard
-  synthorg init --backend-port 3001 --web-port 3000 --sandbox true  # non-interactive`,
+	Example: `  synthorg init                                                                                # interactive setup wizard
+  synthorg init --backend-port 3001 --web-port 3000 --sandbox true --log-level info            # non-interactive`,
 	RunE: runInit,
 }
 
@@ -106,43 +107,8 @@ func runInitInteractive(cmd *cobra.Command, out *ui.UI) error {
 		state.NatsClientPort = result.natsPort
 	}
 
-	if existing := config.StatePath(state.DataDir); fileExists(existing) {
-		if !result.answers.reinitConfirmed {
-			errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), GetGlobalOpts(cmd.Context()).UIOptions())
-			errOut.Warn(fmt.Sprintf("Existing configuration found at %s -- secrets will be regenerated.", existing))
-		}
-		oldState, loadErr := config.Load(state.DataDir)
-		if loadErr != nil {
-			return fmt.Errorf("existing config unreadable: %w", loadErr)
-		}
-		if oldState.SettingsKey != "" {
-			state.SettingsKey = oldState.SettingsKey
-		}
-		if oldState.MasterKey != "" {
-			state.MasterKey = oldState.MasterKey
-		}
-		if oldState.CursorSecret != "" {
-			// Cursor secret rotation invalidates every outstanding pagination
-			// token; preserve across re-init for the same reason as MasterKey.
-			state.CursorSecret = oldState.CursorSecret
-		}
-		// Only reuse Postgres settings from the old state when the user did
-		// not switch backends or change the Postgres port interactively.
-		// Otherwise the TUI choice would be silently reverted.
-		userChangedBackend := result.answers.persistenceBackend != oldState.PersistenceBackend
-		userChangedPostgresPort := result.answers.persistenceBackend == "postgres" &&
-			result.answers.postgresPort != 0 &&
-			result.answers.postgresPort != oldState.PostgresPort
-		if !userChangedBackend && !userChangedPostgresPort {
-			if err := preservePostgresFromOldState(cmd, &state, oldState); err != nil {
-				return fmt.Errorf("preserving postgres settings: %w", err)
-			}
-		} else if state.PersistenceBackend == "postgres" && oldState.PostgresPassword != "" {
-			// When the user changed only the Postgres port (not the backend),
-			// keep the existing password so the running container can still
-			// authenticate against persisted data.
-			state.PostgresPassword = oldState.PostgresPassword
-		}
+	if err := reuseExistingStateForInteractive(cmd, &state, result); err != nil {
+		return err
 	}
 
 	safeDir, err := writeInitFiles(state)
@@ -250,33 +216,47 @@ func hintAfterInit(out *ui.UI, state config.State) {
 	out.HintGuidance("Customize settings later with 'synthorg config set <key> <value>'. Run 'synthorg config list' to see all options.")
 }
 
-// handleReinit loads the existing config, confirms overwrite (interactive or
-// --yes), and preserves the settings key in state. Returns false if declined.
+// handleReinit loads the existing config, confirms overwrite (interactive
+// or --yes), and preserves the settings key in state. Returns false if
+// declined.
 func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bool, error) {
 	oldState, loadErr := config.Load(state.DataDir)
+	if errors.Is(loadErr, config.ErrMissingMasterKey) {
+		// Recovery path: encrypt_secrets is on but no master_key was
+		// ever generated on disk. Re-read via the permissive variant so
+		// reinit can carry forward the rest of the state; the new key
+		// (already generated on `state`) is preserved through the
+		// normal reinit-Yes / reinit-Interactive flows below.
+		oldState, loadErr = config.LoadAllowMissingMasterKey(state.DataDir)
+	}
 	if loadErr != nil {
 		return false, fmt.Errorf("existing config at %s is unreadable: %w (delete it manually to force a fresh init)",
 			config.StatePath(state.DataDir), loadErr)
 	}
 	if opts.Yes {
-		if oldState.SettingsKey != "" {
-			state.SettingsKey = oldState.SettingsKey
-		}
-		if oldState.MasterKey != "" {
-			state.MasterKey = oldState.MasterKey
-		}
-		if oldState.CursorSecret != "" {
-			state.CursorSecret = oldState.CursorSecret
-		}
-		if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
-			return false, err
-		}
-		return true, nil
+		return applyReinitYes(cmd, state, oldState)
 	}
 	if !isInteractive() {
 		return false, fmt.Errorf("existing config found at %s; pass --yes to overwrite",
 			config.StatePath(state.DataDir))
 	}
+	return applyReinitInteractive(cmd, state, oldState, opts)
+}
+
+// applyReinitYes is the --yes path: silently preserve secrets +
+// Postgres settings and proceed.
+func applyReinitYes(cmd *cobra.Command, state *config.State, oldState config.State) (bool, error) {
+	copyPreservedSecrets(state, oldState)
+	if err := preservePostgresFromOldState(cmd, state, oldState); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// applyReinitInteractive is the prompt path: ask the user whether to
+// keep the existing settings key, then preserve master key + cursor
+// secret + Postgres settings.
+func applyReinitInteractive(cmd *cobra.Command, state *config.State, oldState config.State, opts *GlobalOpts) (bool, error) {
 	kept, err := confirmReinit(cmd, oldState, opts)
 	if err != nil {
 		return false, err
@@ -288,13 +268,14 @@ func handleReinit(cmd *cobra.Command, state *config.State, opts *GlobalOpts) (bo
 		state.SettingsKey = *kept
 	}
 	// Preserve the secret-storage master key so existing ciphertext
-	// stays decryptable after re-init. Regenerating it would silently
-	// orphan every stored connection secret.
+	// stays decryptable after re-init. Regenerating would orphan every
+	// stored connection secret.
 	if oldState.MasterKey != "" {
 		state.MasterKey = oldState.MasterKey
 	}
-	// Preserve the pagination cursor secret -- rotating it invalidates every
-	// outstanding cursor token across every restart, same hazard as MasterKey.
+	// Preserve the pagination cursor secret. Rotating it invalidates
+	// every outstanding cursor token across every restart (same hazard
+	// as MasterKey).
 	if oldState.CursorSecret != "" {
 		state.CursorSecret = oldState.CursorSecret
 	}
@@ -405,81 +386,16 @@ type setupAnswers struct {
 }
 
 // validateInitFlags checks that provided CLI flag values are valid before
-// the interactive/non-interactive branch. Only validates flags that were set.
+// the interactive/non-interactive branch. Only validates flags that were
+// set. Per-section validators live in init_helpers.go.
 func validateInitFlags(dataDir string) error {
-	if initBackendPort != 0 && (initBackendPort < 1 || initBackendPort > 65535) {
-		return fmt.Errorf("invalid --backend-port %d: must be 1-65535", initBackendPort)
+	if err := validatePortFlags(); err != nil {
+		return err
 	}
-	if initWebPort != 0 && (initWebPort < 1 || initWebPort > 65535) {
-		return fmt.Errorf("invalid --web-port %d: must be 1-65535", initWebPort)
+	if err := validateEnumFlags(); err != nil {
+		return err
 	}
-	if initBackendPort != 0 && initWebPort != 0 && initBackendPort == initWebPort {
-		return fmt.Errorf("--backend-port and --web-port must differ, both are %d", initBackendPort)
-	}
-	if initSandbox != "" && !config.IsValidBool(initSandbox) {
-		return fmt.Errorf("invalid --sandbox %q: must be \"true\" or \"false\"", initSandbox)
-	}
-	if initEncryptSecrets != "" && !config.IsValidBool(initEncryptSecrets) {
-		return fmt.Errorf("invalid --encrypt-secrets %q: must be \"true\" or \"false\"", initEncryptSecrets)
-	}
-	if initLogLevel != "" && !config.IsValidLogLevel(initLogLevel) {
-		return fmt.Errorf("invalid --log-level %q: must be one of %s", initLogLevel, config.LogLevelNames())
-	}
-	if initImageTag != "" && !config.IsValidImageTag(initImageTag) {
-		return fmt.Errorf("invalid --image-tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", initImageTag)
-	}
-	if initChannel != "" && !config.IsValidChannel(initChannel) {
-		return fmt.Errorf("invalid --channel %q: must be one of %s", initChannel, config.ChannelNames())
-	}
-	if initBusBackend != "" && !config.IsValidBusBackend(initBusBackend) {
-		return fmt.Errorf("invalid --bus-backend %q: must be one of %s", initBusBackend, config.BusBackendNames())
-	}
-	if initPersistenceBackend != "" && !config.IsValidPersistenceBackend(initPersistenceBackend) {
-		return fmt.Errorf("invalid --persistence-backend %q: must be one of %s", initPersistenceBackend, config.PersistenceBackendNames())
-	}
-	if initPostgresPort != 0 {
-		// --postgres-port only applies when postgres is the effective backend.
-		// Resolution order: (1) explicit --persistence-backend flag wins,
-		// (2) during re-init the persisted backend from dataDir wins,
-		// (3) otherwise the State default (sqlite).
-		effectiveBackend := initPersistenceBackend
-		if effectiveBackend == "" && dataDir != "" {
-			// Best-effort preload: if the config doesn't exist yet or
-			// can't be parsed, fall through to the State default and
-			// let the real error surface during writeInitFiles. A
-			// corrupted config is not a reason to reject a valid
-			// --postgres-port flag here.
-			if oldState, err := config.Load(dataDir); err == nil {
-				effectiveBackend = oldState.PersistenceBackend
-			}
-		}
-		if effectiveBackend == "" {
-			effectiveBackend = config.DefaultState().PersistenceBackend
-		}
-		if effectiveBackend != "postgres" {
-			return fmt.Errorf(
-				"--postgres-port %d is only valid with --persistence-backend postgres "+
-					"(current effective backend: %q)",
-				initPostgresPort, effectiveBackend,
-			)
-		}
-		if initPostgresPort < 1 || initPostgresPort > 65535 {
-			return fmt.Errorf("invalid --postgres-port %d: must be 1-65535", initPostgresPort)
-		}
-		if initBackendPort != 0 && initPostgresPort == initBackendPort {
-			return fmt.Errorf(
-				"invalid --postgres-port %d: conflicts with --backend-port %d",
-				initPostgresPort, initBackendPort,
-			)
-		}
-		if initWebPort != 0 && initPostgresPort == initWebPort {
-			return fmt.Errorf(
-				"invalid --postgres-port %d: conflicts with --web-port %d",
-				initPostgresPort, initWebPort,
-			)
-		}
-	}
-	return nil
+	return validatePostgresFlag(dataDir)
 }
 
 // buildAnswersFromFlags constructs setupAnswers from CLI flags for non-interactive mode.

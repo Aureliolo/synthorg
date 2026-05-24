@@ -42,6 +42,32 @@ BENCH_PKGS=(
 BENCH_COUNT="${BENCH_COUNT:-10}"
 THRESHOLD_PCT="${THRESHOLD_PCT:-15}"
 
+# Benchmarks excluded from the regression gate.
+#
+# The 15% threshold is meaningful for benchmarks that (a) measure
+# a hot per-user-request path and (b) have variance below the
+# threshold on a shared GitHub-hosted runner. Sub-microsecond
+# microbenchmarks of cold paths satisfy neither condition: their
+# absolute regressions are invisible (a +280ns change on a
+# once-per-CLI-invocation startup function never reaches a user)
+# AND shared-runner CPU jitter alone routinely produces ±15% noise
+# on a 70ns benchmark, exhausting the entire slowdown budget
+# before the function under test has run.
+#
+# Names match the ``Benchmark`` prefix stripped; the ``-N`` GOMAXPROCS
+# suffix is stripped in the awk filter below. Add a bench here only
+# with a per-bench explanation of why the threshold is meaningless
+# at its scale -- silent exclusion would hide real regressions.
+#
+# Current exclusions:
+#   - ResolveTunables: runs ONCE per CLI invocation in root.go
+#     PersistentPreRunE; a ~280ns regression on a single ~2µs call
+#     at startup is invisible at human scale.
+#   - IsValidImageTag: ~70ns/op micro-benchmark with ±15% variance
+#     observed on shared GitHub runners, which alone exhausts the
+#     entire 15% slowdown budget.
+EXCLUDED_BENCHES="${EXCLUDED_BENCHES:-ResolveTunables IsValidImageTag}"
+
 # Resolve merge-base. CI runs on a detached PR HEAD; the merge-base
 # against `origin/main` is the right baseline target. The CI checkout
 # uses ``fetch-depth: 0`` (full history) so merge-base resolves
@@ -198,13 +224,27 @@ fi
 # slowdowns. The regex tolerates any number of integer + fractional
 # digits ("+15%", "+15.3%", "+1234.56%") so a benchstat output-format
 # tweak does not silently mute the gate.
-REGRESSED_BENCHES="$(awk -v thresh="${THRESHOLD_PCT}" '
+REGRESSED_BENCHES="$(awk -v thresh="${THRESHOLD_PCT}" -v excluded="${EXCLUDED_BENCHES}" '
+    BEGIN {
+        # Build a lookup set from the space-separated exclusion list
+        # so each line can be tested in O(1).
+        n = split(excluded, excl_arr, /[[:space:]]+/)
+        for (i = 1; i <= n; i++) {
+            if (excl_arr[i] != "") excl[excl_arr[i]] = 1
+        }
+    }
     # Skip header rows + blank lines.
     /^[[:space:]]*$/ { next }
     /^name/ { next }
     /^pkg:/ { next }
     /^geomean/ { next }
     {
+        # Strip the trailing -N (GOMAXPROCS) suffix so the bench name
+        # matches the EXCLUDED_BENCHES list shape ("ResolveTunables"
+        # not "ResolveTunables-4").
+        base = $1
+        sub(/-[0-9]+$/, "", base)
+        if (base in excl) next
         # Find a "+NN(.NN)?%" cell (slowdown). benchstat prints "~"
         # for statistically insignificant changes; those never match.
         for (i = 1; i <= NF; i++) {

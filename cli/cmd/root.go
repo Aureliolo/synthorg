@@ -255,22 +255,30 @@ func applyConfigOverrides(opts *GlobalOpts) {
 	if state.Hints != "" {
 		opts.Hints = state.Hints
 	}
-	// Only apply color config when no flag AND no env var overrode it.
-	// Check opts.NoColor (which reflects env) rather than flagNoColor alone.
-	if !flagNoColor && !opts.NoColor {
-		if state.Color == "never" {
-			opts.NoColor = true
-		}
+	applyColorOverride(opts, state.Color)
+	// Persisted `output=json` is honoured only when the operator did
+	// not request --plain (or set its env equivalent). --plain implies
+	// "ASCII-only, no machine output"; silently upgrading to JSON
+	// because of stale state would defeat the explicit user choice.
+	if !flagJSON && !opts.JSON && !flagPlain && !opts.Plain && state.Output == "json" {
+		opts.JSON = true
 	}
+}
+
+// applyColorOverride applies the persisted color preference, respecting
+// the flag > env > config precedence. A flag or env value already
+// forcing no-color preempts the config; otherwise "never" forces
+// no-color on and "always" forces it off.
+func applyColorOverride(opts *GlobalOpts, color string) {
 	if flagNoColor || opts.NoColor {
-		// Flag or env already forced no-color; config "always" must not override.
-	} else if state.Color == "always" {
-		opts.NoColor = false
+		// Flag or env already set; config "always" must not override.
+		return
 	}
-	if !flagJSON && !opts.JSON {
-		if state.Output == "json" {
-			opts.JSON = true
-		}
+	switch color {
+	case "never":
+		opts.NoColor = true
+	case "always":
+		opts.NoColor = false
 	}
 }
 
@@ -340,25 +348,23 @@ func isTransportError(err error) bool {
 
 // Execute runs the root command.
 func Execute() error {
-	if err := rootCmd.Execute(); err != nil {
-		// Don't print ChildExitError to stderr -- its internal message
-		// ("re-launched CLI exited with code N") is not user-facing.
-		// main.go handles the exit code propagation.
-		var ce *ChildExitError
-		var ee *ExitError
-		if errors.As(err, &ce) || errors.As(err, &ee) {
-			// ChildExitError / ExitError: don't print user-facing message,
-			// main.go handles exit code propagation.
-		} else {
-			_, _ = fmt.Fprintln(rootCmd.ErrOrStderr(), err)
-			if hint := errorHint(err); hint != "" {
-				errUI := ui.NewUIWithOptions(rootCmd.ErrOrStderr(), globalUIOptions())
-				errUI.HintError(hint)
-			}
-		}
+	err := rootCmd.Execute()
+	if err == nil {
+		return nil
+	}
+	// ChildExitError / ExitError: main.go handles exit code propagation;
+	// their internal messages are not user-facing.
+	var ce *ChildExitError
+	var ee *ExitError
+	if errors.As(err, &ce) || errors.As(err, &ee) {
 		return err
 	}
-	return nil
+	_, _ = fmt.Fprintln(rootCmd.ErrOrStderr(), err)
+	if hint := errorHint(err); hint != "" {
+		errUI := ui.NewUIWithOptions(rootCmd.ErrOrStderr(), globalUIOptions())
+		errUI.HintError(hint)
+	}
+	return err
 }
 
 // printAllHelp recursively prints help for all available commands.
@@ -388,26 +394,54 @@ func globalUIOptions() ui.Options {
 	}
 }
 
+// errorHintRule maps an error-message substring (or any-of-many
+// substrings) to a contextual hint.
+type errorHintRule struct {
+	substrings []string
+	hint       string
+	guard      func(error) bool
+}
+
+var errorHintRules = []errorHintRule{
+	{substrings: []string{"connection refused", "backend unreachable"}, hint: "Is Docker running? Try 'synthorg doctor' for diagnostics."},
+	{substrings: []string{"compose.yml not found"}, hint: "Run 'synthorg init' to set up your installation."},
+	{substrings: []string{"loading config"}, hint: "Run 'synthorg init' to create a configuration."},
+	{substrings: []string{"permission denied"}, hint: "Check file permissions on the data directory."},
+	{substrings: []string{"image verification failed"}, hint: "Try --skip-verify for air-gapped environments.", guard: isTransportError},
+	// Init-specific must precede the generic "requires an interactive
+	// terminal" rule: init does NOT accept --yes for full automation
+	// (it needs explicit flags), so the generic "Use --yes" hint is
+	// misleading. The init error already lists the four required
+	// flags; this hint surfaces the optional ones operators commonly
+	// want when scripting an install.
+	{substrings: []string{"synthorg init requires"}, hint: "Optional init flags: --image-tag, --channel, --bus-backend, --persistence-backend, --postgres-port, --encrypt-secrets."},
+	{substrings: []string{"requires an interactive terminal"}, hint: "Use --yes for non-interactive mode."},
+	{substrings: []string{"Docker not available", "docker: not found", "Cannot connect to the Docker daemon"}, hint: "Ensure Docker is installed and running."},
+}
+
 // errorHint returns a contextual suggestion for common error patterns.
 // Returns "" if no hint is applicable.
 func errorHint(err error) string {
 	msg := err.Error()
-	switch {
-	case strings.Contains(msg, "connection refused") || strings.Contains(msg, "backend unreachable"):
-		return "Is Docker running? Try 'synthorg doctor' for diagnostics."
-	case strings.Contains(msg, "compose.yml not found"):
-		return "Run 'synthorg init' to set up your installation."
-	case strings.Contains(msg, "loading config"):
-		return "Run 'synthorg init' to create a configuration."
-	case strings.Contains(msg, "permission denied"):
-		return "Check file permissions on the data directory."
-	case strings.Contains(msg, "image verification failed") && isTransportError(err):
-		return "Try --skip-verify for air-gapped environments."
-	case strings.Contains(msg, "requires an interactive terminal"):
-		return "Use --yes for non-interactive mode."
-	case strings.Contains(msg, "Docker not available") || strings.Contains(msg, "docker: not found") || strings.Contains(msg, "Cannot connect to the Docker daemon"):
-		return "Ensure Docker is installed and running."
-	default:
-		return ""
+	for _, rule := range errorHintRules {
+		if !messageMatches(msg, rule.substrings) {
+			continue
+		}
+		if rule.guard != nil && !rule.guard(err) {
+			continue
+		}
+		return rule.hint
 	}
+	return ""
+}
+
+// messageMatches reports whether msg contains any of the given
+// substrings.
+func messageMatches(msg string, substrings []string) bool {
+	for _, s := range substrings {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
 }

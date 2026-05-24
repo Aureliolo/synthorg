@@ -61,49 +61,49 @@ func init() {
 func runStatus(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
-
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
-	// --check: silent exit code mode (validates response body, not just HTTP status).
 	if statusCheck {
-		body, statusCode, fetchErr := fetchHealth(ctx, state.BackendPort)
-		if fetchErr != nil {
-			return NewExitError(ExitUnreachable, fetchErr)
-		}
-		if statusCode < 200 || statusCode >= 300 {
-			return NewExitError(ExitUnhealthy, nil)
-		}
-		var envelope struct {
-			Data healthResponse `json:"data"`
-		}
-		if json.Unmarshal(body, &envelope) != nil || envelope.Data.Status != "ok" {
-			return NewExitError(ExitUnhealthy, nil)
-		}
-		return nil // exit 0
+		return runStatusCheckExitCode(ctx, state)
 	}
-
-	// Parse --interval early (even without --watch, catch invalid values).
 	interval, parseErr := time.ParseDuration(statusInterval)
 	if parseErr != nil {
 		return fmt.Errorf("invalid --interval %q: %w", statusInterval, parseErr)
 	}
-
 	if statusWatch {
 		if interval <= 0 {
 			return fmt.Errorf("invalid --interval %q: must be > 0", statusInterval)
 		}
 		return runStatusWatch(cmd, state, opts, interval)
 	}
-
 	if err := runStatusOnce(cmd, state, opts); err != nil {
 		return fmt.Errorf("running status check: %w", err)
 	}
-
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	out.HintGuidance("Use --watch for continuous monitoring, or --check for scripted health checks.")
+	return nil
+}
+
+// runStatusCheckExitCode implements --check: a silent mode that returns
+// an ExitError with the appropriate code (0 healthy, 3 unhealthy, 4
+// unreachable). Validates the response body for status="ok" rather than
+// trusting the HTTP status alone.
+func runStatusCheckExitCode(ctx context.Context, state config.State) error {
+	body, statusCode, fetchErr := fetchHealth(ctx, state.BackendPort)
+	if fetchErr != nil {
+		return NewExitError(ExitUnreachable, fetchErr)
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		return NewExitError(ExitUnhealthy, nil)
+	}
+	var envelope struct {
+		Data healthResponse `json:"data"`
+	}
+	if json.Unmarshal(body, &envelope) != nil || envelope.Data.Status != "ok" {
+		return NewExitError(ExitUnhealthy, nil)
+	}
 	return nil
 }
 
@@ -420,26 +420,22 @@ func gatherStatusSnapshot(ctx context.Context, info docker.Info, safeDir string,
 // per-container failures, then the half-up persistence/bus signals.
 func computeVerdict(snap statusSnapshot) statusVerdict {
 	v := statusVerdict{level: statusLevelOK}
+	v.absorbContainerVerdict(snap)
+	v.absorbHealthVerdict(snap)
+	v.finaliseSummary()
+	return v
+}
 
+// absorbContainerVerdict folds the container-fleet signals (query
+// error, unhealthy / restarting counts, empty filter) into v. Critical
+// > Degraded; signals never downgrade an already-Critical verdict.
+func (v *statusVerdict) absorbContainerVerdict(snap statusSnapshot) {
 	if snap.containerErr != nil {
 		v.level = statusLevelCritical
 		v.issues = append(v.issues, fmt.Sprintf("could not query containers: %v", snap.containerErr))
 		v.hints = append(v.hints, "Check Docker is running: docker ps")
 	}
-
-	unhealthy, restarting, total := 0, 0, 0
-	for _, c := range snap.containers {
-		if statusServices != "" && !filterAllowsService(c.Service) {
-			continue
-		}
-		total++
-		switch {
-		case c.Health == "unhealthy":
-			unhealthy++
-		case c.State == "restarting":
-			restarting++
-		}
-	}
+	unhealthy, restarting, total := countContainerStates(snap)
 	if total == 0 && snap.containerErr == nil && snap.servicesFilterEmpty {
 		if v.level < statusLevelCritical {
 			v.level = statusLevelCritical
@@ -459,36 +455,78 @@ func computeVerdict(snap statusSnapshot) statusVerdict {
 		v.issues = append(v.issues, fmt.Sprintf("%d container(s) restarting", restarting))
 		v.hints = append(v.hints, "Tail restart-loop logs: synthorg logs <service> --follow")
 	}
+}
 
+// countContainerStates returns (unhealthy, restarting, total) honouring
+// the --services filter.
+func countContainerStates(snap statusSnapshot) (unhealthy, restarting, total int) {
+	for _, c := range snap.containers {
+		if statusServices != "" && !filterAllowsService(c.Service) {
+			continue
+		}
+		total++
+		switch {
+		case c.Health == "unhealthy":
+			unhealthy++
+		case c.State == "restarting":
+			restarting++
+		}
+	}
+	return unhealthy, restarting, total
+}
+
+// absorbHealthVerdict folds the backend `/healthz` envelope and the
+// half-up persistence/bus signals into v.
+func (v *statusVerdict) absorbHealthVerdict(snap statusSnapshot) {
+	if v.absorbHealthEnvelope(snap) {
+		return
+	}
+	v.absorbWiringVerdict(snap)
+}
+
+// absorbHealthEnvelope handles the /healthz envelope itself (reach,
+// parseability, status field). Returns true when the envelope is
+// terminal-bad (caller should NOT continue with wiring checks).
+func (v *statusVerdict) absorbHealthEnvelope(snap statusSnapshot) bool {
 	switch {
 	case snap.healthErr != nil:
 		v.level = statusLevelCritical
 		v.issues = append(v.issues, fmt.Sprintf("backend unreachable: %v", snap.healthErr))
 		v.hints = append(v.hints, "Confirm backend is up: synthorg logs backend")
+		return true
 	case !snap.healthEnvelopeOK:
 		v.level = statusLevelCritical
 		v.issues = append(v.issues, fmt.Sprintf("backend returned unparseable health (HTTP %d)", snap.healthStatusCode))
 		v.hints = append(v.hints, "Backend may be starting or misconfigured: synthorg logs backend")
-	default:
-		if snap.healthStatusCode < 200 || snap.healthStatusCode >= 300 || snap.healthData.Status != "ok" {
-			v.level = statusLevelCritical
-			v.issues = append(v.issues, fmt.Sprintf("backend reports status=%q (HTTP %d)", snap.healthData.Status, snap.healthStatusCode))
-			v.hints = append(v.hints, "Run 'synthorg doctor' for diagnostics")
-		}
-		if snap.expectsPersistent && !snap.persistenceWired {
-			v.level = statusLevelCritical
-			v.issues = append(v.issues, "persistence backend not wired (controllers will return 503)")
-			v.hints = append(v.hints, "Backend env or DB URL is wrong: check synthorg logs backend for 'persistence' warnings")
-		}
-		if snap.expectsMessageBus && !snap.messageBusWired {
-			if v.level < statusLevelDegraded {
-				v.level = statusLevelDegraded
-			}
-			v.issues = append(v.issues, "message bus not connected")
-			v.hints = append(v.hints, "Check NATS container if distributed bus mode is enabled: synthorg logs nats")
-		}
+		return true
 	}
+	if snap.healthStatusCode < 200 || snap.healthStatusCode >= 300 || snap.healthData.Status != "ok" {
+		v.level = statusLevelCritical
+		v.issues = append(v.issues, fmt.Sprintf("backend reports status=%q (HTTP %d)", snap.healthData.Status, snap.healthStatusCode))
+		v.hints = append(v.hints, "Run 'synthorg doctor' for diagnostics")
+	}
+	return false
+}
 
+// absorbWiringVerdict handles persistence and message-bus wiring
+// signals: persistence not wired is Critical (controllers 503), message
+// bus not wired is Degraded.
+func (v *statusVerdict) absorbWiringVerdict(snap statusSnapshot) {
+	if snap.expectsPersistent && !snap.persistenceWired {
+		v.level = statusLevelCritical
+		v.issues = append(v.issues, "persistence backend not wired (controllers will return 503)")
+		v.hints = append(v.hints, "Backend env or DB URL is wrong: check synthorg logs backend for 'persistence' warnings")
+	}
+	if snap.expectsMessageBus && !snap.messageBusWired {
+		if v.level < statusLevelDegraded {
+			v.level = statusLevelDegraded
+		}
+		v.issues = append(v.issues, "message bus not connected")
+		v.hints = append(v.hints, "Check NATS container if distributed bus mode is enabled: synthorg logs nats")
+	}
+}
+
+func (v *statusVerdict) finaliseSummary() {
 	switch v.level {
 	case statusLevelOK:
 		v.summary = "All systems operational"
@@ -497,7 +535,6 @@ func computeVerdict(snap statusSnapshot) statusVerdict {
 	case statusLevelCritical:
 		v.summary = fmt.Sprintf("CRITICAL: %d issue(s)", len(v.issues))
 	}
-	return v
 }
 
 // filterAllowsService mirrors filterByServices' filter logic against a
@@ -553,33 +590,60 @@ func renderTopBanner(out *ui.UI, snap statusSnapshot) {
 // above the container table so the highest-signal information leads.
 func renderHealthSection(out *ui.UI, snap statusSnapshot, jsonOut bool) {
 	if jsonOut {
-		w := out.Writer()
-		_, _ = fmt.Fprintln(w, "Health check:")
-		if snap.healthBody != nil {
-			_, _ = fmt.Fprintf(w, "  %s\n", string(snap.healthBody))
-		} else if snap.healthErr != nil {
-			_, _ = fmt.Fprintf(w, "  error: %v\n", snap.healthErr)
-		}
+		renderHealthSectionJSON(out, snap)
 		return
 	}
+	if !renderHealthSectionBackend(out, snap) {
+		return
+	}
+	renderHealthSectionPersistence(out, snap)
+	hr := snap.healthData
+	if hr.MessageBus != nil {
+		out.KeyValue("Message bus", fmt.Sprintf("%v", hr.MessageBus))
+	}
+	if hr.Telemetry != "" {
+		out.KeyValue("Telemetry", hr.Telemetry)
+	}
+	out.Blank()
+}
 
+func renderHealthSectionJSON(out *ui.UI, snap statusSnapshot) {
+	w := out.Writer()
+	_, _ = fmt.Fprintln(w, "Health check:")
+	if snap.healthBody != nil {
+		_, _ = fmt.Fprintf(w, "  %s\n", string(snap.healthBody))
+	} else if snap.healthErr != nil {
+		_, _ = fmt.Fprintf(w, "  error: %v\n", snap.healthErr)
+	}
+}
+
+// renderHealthSectionBackend prints the top-level backend reachability
+// line. Returns true if the section should continue (envelope parsed)
+// or false if the caller should stop here.
+func renderHealthSectionBackend(out *ui.UI, snap statusSnapshot) bool {
 	if snap.healthErr != nil {
 		out.Error(fmt.Sprintf("Backend unreachable: %v", snap.healthErr))
 		out.HintError("Run 'synthorg logs backend' to see why.")
-		return
+		return false
 	}
 	if !snap.healthEnvelopeOK {
 		out.Warn(fmt.Sprintf("Backend health: unparseable response (HTTP %d)", snap.healthStatusCode))
-		return
+		return false
 	}
 	hr := snap.healthData
 	if snap.healthStatusCode >= 200 && snap.healthStatusCode < 300 && hr.Status == "ok" {
 		out.Success(fmt.Sprintf("Backend healthy (v%s, uptime %s)", hr.Version, formatUptime(hr.Uptime)))
-	} else {
-		out.Error(fmt.Sprintf("Backend unhealthy (HTTP %d)", snap.healthStatusCode))
-		out.HintError("Run 'synthorg doctor' for diagnostics.")
+		return true
 	}
+	out.Error(fmt.Sprintf("Backend unhealthy (HTTP %d)", snap.healthStatusCode))
+	out.HintError("Run 'synthorg doctor' for diagnostics.")
+	return true
+}
 
+// renderHealthSectionPersistence prints the persistence-wiring line,
+// emitting an explicit "NOT WIRED" error when the backend is half-up.
+func renderHealthSectionPersistence(out *ui.UI, snap statusSnapshot) {
+	hr := snap.healthData
 	switch {
 	case snap.expectsPersistent && !snap.persistenceWired:
 		out.Error("Persistence: NOT WIRED -- controllers depending on persistence will return 503")
@@ -589,13 +653,6 @@ func renderHealthSection(out *ui.UI, snap statusSnapshot, jsonOut bool) {
 	default:
 		out.KeyValue("Persistence", "not configured")
 	}
-	if hr.MessageBus != nil {
-		out.KeyValue("Message bus", fmt.Sprintf("%v", hr.MessageBus))
-	}
-	if hr.Telemetry != "" {
-		out.KeyValue("Telemetry", hr.Telemetry)
-	}
-	out.Blank()
 }
 
 // renderContainersSection prints the per-container table with health
@@ -638,7 +695,7 @@ func renderContainersSection(out *ui.UI, snap statusSnapshot, jsonOut bool) {
 			out.HintGuidance("Use --wide to show port mappings.")
 		}
 	}
-	out.HintTip("Run 'synthorg logs' to view container logs")
+	out.HintNextStep("Run 'synthorg logs' to view container logs")
 	_, _ = fmt.Fprintln(w)
 }
 

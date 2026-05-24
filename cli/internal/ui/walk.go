@@ -263,7 +263,7 @@ func versionHeader(r selfupdate.Release, opts Options) string {
 // Init implements tea.Model. We request an initial window size so the
 // viewport sizes itself correctly on terminals that did not deliver one
 // at startup.
-func (m walkModel) Init() tea.Cmd {
+func (walkModel) Init() tea.Cmd {
 	return tea.RequestWindowSize
 }
 
@@ -301,40 +301,53 @@ func (m walkModel) handleKey(key string) (tea.Model, tea.Cmd) {
 		// space back on the next render.
 		m.viewport.SetHeight(m.viewportHeight())
 	}
+	if model, cmd, handled := m.handleNavigationKey(key); handled {
+		return model, cmd
+	}
+	return m.handleScrollKey(key), nil
+}
+
+// handleNavigationKey processes keys that change batch state (quit,
+// advance, next-batch, toggle-view). Returns handled=false for keys it
+// does not own, so the caller can dispatch to scroll handling.
+func (m walkModel) handleNavigationKey(key string) (tea.Model, tea.Cmd, bool) {
 	switch key {
 	case "ctrl+c", "q":
 		m.result = WalkBatchResult{Outcome: WalkOutcomeQuit, FinalView: m.view}
-		return m, tea.Quit
+		return m, tea.Quit, true
 	case "enter":
-		return m.advance()
+		model, cmd := m.advance()
+		return model, cmd, true
 	case "n":
 		if m.onLastInBatch() && !m.isFinalBatch {
 			m.result = WalkBatchResult{Outcome: WalkOutcomeNextBatch, FinalView: m.view}
-			return m, tea.Quit
+			return m, tea.Quit, true
 		}
-		return m, nil
+		return m, nil, true
 	case "c":
-		return m.toggleView(), nil
+		return m.toggleView(), nil, true
+	}
+	return m, nil, false
+}
+
+// handleScrollKey processes viewport-scroll keys. Unknown keys are a
+// no-op (the model is returned unchanged).
+func (m walkModel) handleScrollKey(key string) tea.Model {
+	switch key {
 	case "j", "down":
 		m.viewport.ScrollDown(1)
-		return m, nil
 	case "k", "up":
 		m.viewport.ScrollUp(1)
-		return m, nil
 	case "pgdown", "space":
 		m.viewport.PageDown()
-		return m, nil
 	case "pgup":
 		m.viewport.PageUp()
-		return m, nil
 	case "g", "home":
 		m.viewport.GotoTop()
-		return m, nil
 	case "G", "end":
 		m.viewport.GotoBottom()
-		return m, nil
 	}
-	return m, nil
+	return m
 }
 
 // advance moves to the next version in the batch, or quits with the

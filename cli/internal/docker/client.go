@@ -146,48 +146,59 @@ func DaemonHint(goos string) string {
 	}
 }
 
-// versionAtLeast returns true if got >= min using semver-like comparison.
-func versionAtLeast(got, min string) (bool, error) {
-	got = strings.TrimPrefix(got, "v")
-	min = strings.TrimPrefix(min, "v")
-
-	gParts := strings.SplitN(got, ".", 3)
-	mParts := strings.SplitN(min, ".", 3)
-
-	// parsePart extracts the leading integer from a version component,
-	// stripping non-numeric suffixes (e.g. "1-rc1" -> 1).
-	parsePart := func(parts []string, i int, ver string) (int, error) {
-		if i >= len(parts) {
-			return 0, nil
+// parseSemverComponents extracts up to three integer components from a
+// semver-like version string. The leading "v" is stripped; non-numeric
+// suffixes on any component are dropped (e.g. "1.0.0-rc1" -> [1, 0, 0]);
+// missing components default to 0. NON-empty components that contain
+// no digit run at all (e.g. "abc.def" or "1.x.0") are rejected so a
+// malformed input cannot silently coerce to 0.0.0 and be treated as
+// "version 0"; empty components ("" or "1.") are accepted as 0 to
+// preserve compatibility with relaxed tag schemes.
+func parseSemverComponents(ver string) ([3]int, error) {
+	ver = strings.TrimPrefix(ver, "v")
+	parts := strings.SplitN(ver, ".", 3)
+	var components [3]int
+	for i, part := range parts {
+		if part == "" {
+			continue
 		}
-		numStr := strings.FieldsFunc(parts[i], func(r rune) bool {
+		numStr := strings.FieldsFunc(part, func(r rune) bool {
 			return r < '0' || r > '9'
 		})
 		if len(numStr) == 0 {
-			return 0, nil
+			return [3]int{}, fmt.Errorf("invalid version component %q in %q: no digit run", part, ver)
 		}
 		v, err := strconv.Atoi(numStr[0])
 		if err != nil {
-			return 0, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], ver, err)
+			return [3]int{}, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], ver, err)
 		}
-		return v, nil
+		components[i] = v
 	}
+	return components, nil
+}
 
+// compareSemverComponents returns -1 if a<b, 0 if a==b, +1 if a>b.
+func compareSemverComponents(a, b [3]int) int {
 	for i := range 3 {
-		g, err := parsePart(gParts, i, got)
-		if err != nil {
-			return false, err
+		if a[i] > b[i] {
+			return 1
 		}
-		m, err := parsePart(mParts, i, min)
-		if err != nil {
-			return false, err
-		}
-		if g > m {
-			return true, nil
-		}
-		if g < m {
-			return false, nil
+		if a[i] < b[i] {
+			return -1
 		}
 	}
-	return true, nil // equal
+	return 0
+}
+
+// versionAtLeast returns true if got >= min using semver-like comparison.
+func versionAtLeast(got, min string) (bool, error) {
+	g, err := parseSemverComponents(got)
+	if err != nil {
+		return false, err
+	}
+	m, err := parseSemverComponents(min)
+	if err != nil {
+		return false, err
+	}
+	return compareSemverComponents(g, m) >= 0, nil
 }

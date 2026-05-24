@@ -96,38 +96,84 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 	if !wipeDryRun && !isInteractive() && !opts.Yes {
 		return fmt.Errorf("wipe requires an interactive terminal or --yes flag (destructive operation)")
 	}
-
-	ctx := cmd.Context()
-
-	state, err := config.Load(opts.DataDir)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
-
-	safeDir, err := safeStateDir(state)
-	if err != nil {
-		return err
-	}
-	composePath := filepath.Join(safeDir, "compose.yml")
-	if _, err := os.Stat(composePath); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
-		}
-		return fmt.Errorf("cannot access compose.yml in %s: %w", safeDir, err)
-	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
-
+	// Dry-run path tolerates a half-installed state (missing compose.yml,
+	// unreadable config). loadWipeStateForPreview returns whatever it
+	// could resolve so the operator can still inspect what wipe WOULD
+	// do without first having to run init. The mandatory full-load
+	// runs only when the operator is about to commit a wipe.
 	if wipeDryRun {
+		state, safeDir, composePath := loadWipeStateForPreview(opts.DataDir)
+		_ = state
 		return wipeDryRunPreview(out, safeDir, composePath)
 	}
-
-	info, err := docker.Detect(ctx)
+	state, safeDir, composePath, err := loadWipeState(opts.DataDir)
 	if err != nil {
 		return err
 	}
+	_ = composePath
+	info, err := docker.Detect(cmd.Context())
+	if err != nil {
+		return err
+	}
+	wc := newWipeContext(cmd.Context(), cmd, state, info, safeDir, out, errOut)
+	proceed, err := wc.runOptionalBackup()
+	if err != nil {
+		return err
+	}
+	if !proceed {
+		return nil
+	}
+	return wc.confirmAndWipe()
+}
 
-	wc := &wipeContext{
+// loadWipeState loads the persisted state, resolves the safe data
+// directory, and asserts the compose file exists. Returns the three
+// values together so runWipe can stay flat.
+func loadWipeState(dataDir string) (config.State, string, string, error) {
+	state, err := config.Load(dataDir)
+	if err != nil {
+		return config.State{}, "", "", fmt.Errorf("loading config: %w", err)
+	}
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return config.State{}, "", "", err
+	}
+	composePath, err := requireComposeFile(safeDir)
+	if err != nil {
+		return config.State{}, "", "", err
+	}
+	return state, safeDir, composePath, nil
+}
+
+// loadWipeStateForPreview is the dry-run variant of loadWipeState. It
+// silently tolerates a missing compose.yml AND an unreadable config so
+// the operator can preview what wipe would do on a half-installed
+// state. Returns empty strings for any piece it could not resolve;
+// wipeDryRunPreview formats those as "(unavailable)" in the output.
+func loadWipeStateForPreview(dataDir string) (config.State, string, string) {
+	state, loadErr := config.Load(dataDir)
+	if loadErr != nil {
+		// Seed with --data-dir so safeStateDir still has somewhere to
+		// resolve; everything else stays zero.
+		state = config.State{DataDir: dataDir}
+	}
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return state, "", ""
+	}
+	composePath, err := requireComposeFile(safeDir)
+	if err != nil {
+		// Half-installed: no compose.yml on disk. Return safeDir so
+		// the preview can still show where wipe would operate.
+		return state, safeDir, ""
+	}
+	return state, safeDir, composePath
+}
+
+func newWipeContext(ctx context.Context, cmd *cobra.Command, state config.State, info docker.Info, safeDir string, out, errOut *ui.UI) *wipeContext {
+	return &wipeContext{
 		ctx:     ctx,
 		cmd:     cmd,
 		state:   state,
@@ -136,29 +182,67 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 		out:     out,
 		errOut:  errOut,
 	}
+}
 
-	// --no-backup: skip the entire backup workflow.
-	if !wipeNoBackup {
-		if err := wc.offerBackup(); err != nil {
-			if errors.Is(err, errWipeCancelled) {
-				return nil
-			}
-			return err
-		}
+// runOptionalBackup runs the offerBackup workflow unless --no-backup is
+// set. Returns proceed=false when the user cancelled (errWipeCancelled
+// is treated as a clean exit, not an error).
+func (wc *wipeContext) runOptionalBackup() (proceed bool, err error) {
+	if wipeNoBackup {
+		return true, nil
 	}
+	if err := wc.offerBackup(); err != nil {
+		if errors.Is(err, errWipeCancelled) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
 
-	return wc.confirmAndWipe()
+// requireComposeFile asserts the compose.yml under safeDir exists and
+// returns its path. A missing file produces the canonical "run init
+// first" hint; any other stat error is surfaced as-is.
+//
+// safeDir is the output of safeStateDir -> config.SecurePath, which
+// canonicalises and validates the operator-supplied --data-dir before
+// it reaches this helper. CodeQL alert #516 (go/path-injection) flagged
+// the os.Stat below because the data-flow tracer cannot see through
+// the helper boundary -- dismissed as false-positive on the strength
+// of the upstream sanitiser.
+func requireComposeFile(safeDir string) (string, error) {
+	composePath := filepath.Join(safeDir, "compose.yml")
+	if _, err := os.Stat(composePath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
+		}
+		return "", fmt.Errorf("cannot access compose.yml in %s: %w", safeDir, err)
+	}
+	return composePath, nil
 }
 
 // wipeDryRunPreview shows what a wipe would do without executing.
+// Empty safeDir / composePath strings render as "(unavailable)" so a
+// half-installed state (missing compose.yml, unreadable config) still
+// produces useful preview output instead of a confusing blank field.
 func wipeDryRunPreview(out *ui.UI, safeDir, composePath string) error {
 	out.Section("Dry run: wipe preview")
-	out.KeyValue("Data directory", safeDir)
-	out.KeyValue("Compose file", composePath)
+	out.KeyValue("Data directory", presentOrUnavailable(safeDir))
+	out.KeyValue("Compose file", presentOrUnavailable(composePath))
 	out.KeyValue("Backup", boolToYesNo(!wipeNoBackup))
 	out.KeyValue("Remove images", boolToYesNo(!wipeKeepImages))
 	out.HintNextStep("Remove --dry-run to execute the wipe")
 	return nil
+}
+
+// presentOrUnavailable returns v unchanged when non-empty, or
+// "(unavailable)" when empty so KeyValue renders something meaningful
+// for half-installed wipe-preview rows.
+func presentOrUnavailable(v string) string {
+	if v == "" {
+		return "(unavailable)"
+	}
+	return v
 }
 
 // confirmAndWipe asks for final confirmation, stops containers, removes
@@ -173,12 +257,28 @@ func (wc *wipeContext) confirmAndWipe() error {
 		wc.out.HintNextStep("Wipe cancelled.")
 		return nil
 	}
+	if err := wc.stopAndPrune(); err != nil {
+		return err
+	}
+	if wipeNoBackup {
+		wc.out.HintNextStep("Backup skipped. Data cannot be recovered after wipe.")
+	}
+	if err := wc.removeDataDirectory(); err != nil {
+		return err
+	}
+	wc.out.Blank()
+	wc.out.Success("Wipe complete -- back to clean state")
+	wc.out.HintNextStep("Run 'synthorg init' to set up again.")
+	return nil
+}
 
+// stopAndPrune runs `compose down -v` (plus --rmi all when images are
+// not preserved) and renders the per-mode success message.
+func (wc *wipeContext) stopAndPrune() error {
 	downArgs := []string{"down", "-v"}
 	if !wipeKeepImages {
 		downArgs = append(downArgs, "--rmi", "all")
 	}
-
 	sp := wc.out.StartSpinner("Stopping containers and removing volumes...")
 	if err := composeRunQuiet(wc.ctx, wc.info, wc.safeDir, downArgs...); err != nil {
 		sp.Error("Failed to stop containers")
@@ -187,49 +287,68 @@ func (wc *wipeContext) confirmAndWipe() error {
 	if wipeKeepImages {
 		sp.Success("Containers stopped and volumes removed (images preserved)")
 		wc.out.HintNextStep("Container images preserved. Run 'synthorg cleanup --all' to remove them later.")
-	} else {
-		sp.Success("Containers stopped, volumes and images removed")
+		return nil
 	}
+	sp.Success("Containers stopped, volumes and images removed")
+	return nil
+}
 
-	if wipeNoBackup {
-		wc.out.HintNextStep("Backup skipped. Data cannot be recovered after wipe.")
+// pathContainsTraversal reports whether path -- after lexical cleaning
+// -- contains a ".." element. Compares whole path components rather
+// than a substring so names like "foo..bar" or ".." (only as a literal
+// component) are evaluated correctly. Both / and \ are tolerated as
+// separators so the same check works on Windows.
+func pathContainsTraversal(path string) bool {
+	cleaned := filepath.Clean(path)
+	for _, part := range strings.FieldsFunc(cleaned, func(r rune) bool {
+		return r == '/' || r == '\\'
+	}) {
+		if part == ".." {
+			return true
+		}
 	}
+	return false
+}
 
-	// Remove the data directory (config, compose.yml, state.json).
-	// This returns the system to a clean state -- only the CLI binary
-	// remains. Users must run 'synthorg init' to set up again.
+// removeDataDirectory deletes the safeDir contents after checking the
+// path looks safe. On Windows the running CLI binary is preserved when
+// it lives inside the dir (we cannot remove a running executable).
+func (wc *wipeContext) removeDataDirectory() error {
 	// Guard: safeDir was validated by safeStateDir -> config.SecurePath
 	// (absolute + clean). Reject anything that looks like a traversal
-	// or root path to prevent accidental destruction.
-	if strings.Contains(wc.safeDir, "..") || wc.safeDir == "/" || wc.safeDir == filepath.VolumeName(wc.safeDir)+string(filepath.Separator) {
+	// or root path to prevent accidental destruction. The traversal
+	// check splits on filepath.Separator and matches whole ".."
+	// elements rather than substring ".." -- legitimate names such as
+	// "/var/lib/synthorg..bak" would otherwise be rejected. The bare
+	// volume-name check (no trailing separator) catches UNC roots such
+	// as "\\\\server\\share" which filepath.Clean normalises by
+	// stripping the trailing separator; without it
+	// removeDataDirExceptSelf could recurse over an entire share.
+	volume := filepath.VolumeName(wc.safeDir)
+	if pathContainsTraversal(wc.safeDir) ||
+		wc.safeDir == "/" ||
+		wc.safeDir == volume+string(filepath.Separator) ||
+		wc.safeDir == volume {
 		return fmt.Errorf("refusing to remove suspicious path: %s", wc.safeDir)
 	}
-	sp2 := wc.out.StartSpinner("Removing data directory...")
-	rmErr := removeDataDirExceptSelf(wc.safeDir)
-	if rmErr != nil {
-		// A partial wipe is not success. Surface the error so the
-		// CLI exits with a non-zero status (exit code 1 per
-		// cli/CLAUDE.md's Exit Codes table) and the user sees a
-		// loud failure instead of "Wipe complete" printed over a
-		// half-cleaned data dir.
-		sp2.Warn(fmt.Sprintf("Could not remove data directory: %v", rmErr))
+	sp := wc.out.StartSpinner("Removing data directory...")
+	if rmErr := removeDataDirExceptSelf(wc.safeDir); rmErr != nil {
+		// A partial wipe is not success. Surface the error so the CLI
+		// exits with a non-zero status and the user sees a loud failure
+		// instead of "Wipe complete" printed over a half-cleaned dir.
+		sp.Warn(fmt.Sprintf("Could not remove data directory: %v", rmErr))
 		wc.errOut.HintError(fmt.Sprintf("Manually delete %s to complete the wipe.", wc.safeDir))
 		return fmt.Errorf("removing data directory: %w", rmErr)
 	}
 	if selfPathInside(wc.safeDir) {
 		// Expected on Windows when the running CLI lives inside the
-		// data dir -- wipe is supposed to leave config and state gone,
-		// not nuke the tool the user just invoked.
-		sp2.Success("Data directory cleared (CLI binary kept in place)")
+		// data dir: wipe should leave config and state gone, not nuke
+		// the tool the user just invoked.
+		sp.Success("Data directory cleared (CLI binary kept in place)")
 		wc.out.HintNextStep("Run 'synthorg uninstall' to remove the binary too.")
-	} else {
-		sp2.Success("Data directory removed")
+		return nil
 	}
-
-	wc.out.Blank()
-	wc.out.Success("Wipe complete -- back to clean state")
-	wc.out.HintNextStep("Run 'synthorg init' to set up again.")
-
+	sp.Success("Data directory removed")
 	return nil
 }
 
@@ -379,7 +498,7 @@ func (wc *wipeContext) startContainers() error {
 		return err
 	}
 	wc.out.Blank()
-	return pullStartAndWait(wc.ctx, wc.info, wc.safeDir, wc.state, wc.out, wc.errOut)
+	return pullStartAndWait(wc.ctx, wc.cmd, wc.info, wc.safeDir, wc.state, wc.out, wc.errOut)
 }
 
 // verifyAndPin runs cache-aware verification of both image groups, writes
