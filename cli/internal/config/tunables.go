@@ -100,96 +100,120 @@ func DefaultTunables() Tunables {
 // but typically invoked exactly once from root.go PersistentPreRunE.
 func ResolveTunables(s State) (Tunables, error) {
 	t := DefaultTunables()
-
-	// Registry / tag strings.
-	t.RegistryHost = firstNonEmpty(os.Getenv(EnvRegistryHost), s.RegistryHost, t.RegistryHost)
-	t.ImageRepoPrefix = firstNonEmpty(os.Getenv(EnvImageRepoPrefix), s.ImageRepoPrefix, t.ImageRepoPrefix)
-	t.DHIRegistry = firstNonEmpty(os.Getenv(EnvDHIRegistry), s.DHIRegistry, t.DHIRegistry)
-	t.PostgresImageTag = firstNonEmpty(os.Getenv(EnvPostgresImageTag), s.PostgresImageTag, t.PostgresImageTag)
-	t.NATSImageTag = firstNonEmpty(os.Getenv(EnvNATSImageTag), s.NATSImageTag, t.NATSImageTag)
-
-	if !IsValidRegistryHost(t.RegistryHost) {
-		return Tunables{}, fmt.Errorf("invalid registry_host %q", t.RegistryHost)
+	if err := resolveRegistryTunables(&t, s); err != nil {
+		return Tunables{}, err
 	}
-	if !IsValidRegistryHost(t.DHIRegistry) {
-		return Tunables{}, fmt.Errorf("invalid dhi_registry %q", t.DHIRegistry)
+	if err := resolveDurationTunables(&t, s); err != nil {
+		return Tunables{}, err
 	}
-	if !IsValidImageRepoPrefix(t.ImageRepoPrefix) {
-		return Tunables{}, fmt.Errorf("invalid image_repo_prefix %q", t.ImageRepoPrefix)
+	if err := resolveCountTunables(&t, s); err != nil {
+		return Tunables{}, err
 	}
-	if !IsValidImageTag(t.PostgresImageTag) {
-		return Tunables{}, fmt.Errorf("invalid postgres_image_tag %q", t.PostgresImageTag)
-	}
-	if !IsValidImageTag(t.NATSImageTag) {
-		return Tunables{}, fmt.Errorf("invalid nats_image_tag %q", t.NATSImageTag)
-	}
-
-	// NATS stream prefix default. The NATS URL itself is no longer
-	// resolved here -- the worker reads ``SYNTHORG_NATS_URL`` directly
-	// so the CLI and the backend's ``communication.nats_url`` setting
-	// share a single env var.
-	t.DefaultNATSStreamPrefix = firstNonEmpty(os.Getenv(EnvDefaultNATSStreamPfx), s.DefaultNATSStreamPrefix, t.DefaultNATSStreamPrefix)
-	if !IsValidStreamPrefix(t.DefaultNATSStreamPrefix) {
-		return Tunables{}, fmt.Errorf("invalid default_nats_stream_prefix %q", t.DefaultNATSStreamPrefix)
-	}
-
-	// Durations.
-	var err error
-	if t.BackupCreateTimeout, err = resolveDuration(EnvBackupCreateTimeout, s.BackupCreateTimeout, t.BackupCreateTimeout); err != nil {
-		return Tunables{}, fmt.Errorf("backup_create_timeout: %w", err)
-	}
-	if t.BackupRestoreTimeout, err = resolveDuration(EnvBackupRestoreTimeout, s.BackupRestoreTimeout, t.BackupRestoreTimeout); err != nil {
-		return Tunables{}, fmt.Errorf("backup_restore_timeout: %w", err)
-	}
-	if t.HealthCheckTimeout, err = resolveDuration(EnvHealthCheckTimeout, s.HealthCheckTimeout, t.HealthCheckTimeout); err != nil {
-		return Tunables{}, fmt.Errorf("health_check_timeout: %w", err)
-	}
-	if t.SelfUpdateHTTPTimeout, err = resolveDuration(EnvSelfUpdateHTTPTimeout, s.SelfUpdateHTTPTimeout, t.SelfUpdateHTTPTimeout); err != nil {
-		return Tunables{}, fmt.Errorf("self_update_http_timeout: %w", err)
-	}
-	if t.SelfUpdateAPITimeout, err = resolveDuration(EnvSelfUpdateAPITimeout, s.SelfUpdateAPITimeout, t.SelfUpdateAPITimeout); err != nil {
-		return Tunables{}, fmt.Errorf("self_update_api_timeout: %w", err)
-	}
-	if t.TUFFetchTimeout, err = resolveDuration(EnvTUFFetchTimeout, s.TUFFetchTimeout, t.TUFFetchTimeout); err != nil {
-		return Tunables{}, fmt.Errorf("tuf_fetch_timeout: %w", err)
-	}
-	if t.AttestationHTTPTimeout, err = resolveDuration(EnvAttestationHTTPTimeout, s.AttestationHTTPTimeout, t.AttestationHTTPTimeout); err != nil {
-		return Tunables{}, fmt.Errorf("attestation_http_timeout: %w", err)
-	}
-	if t.ImageVerifyTimeout, err = resolveDuration(EnvImageVerifyTimeout, s.ImageVerifyTimeout, t.ImageVerifyTimeout); err != nil {
-		return Tunables{}, fmt.Errorf("image_verify_timeout: %w", err)
-	}
-	if t.ImageVerifyTimeout < MinImageVerifyTimeout {
-		return Tunables{}, fmt.Errorf(
-			"image_verify_timeout: %v is below the %v minimum floor; a shorter timeout would bypass cosign/SLSA verification by silently timing out",
-			t.ImageVerifyTimeout, MinImageVerifyTimeout,
-		)
-	}
-	if t.ImagePullRetryDelay, err = resolveDuration(EnvImagePullRetryDelay, s.ImagePullRetryDelay, t.ImagePullRetryDelay); err != nil {
-		return Tunables{}, fmt.Errorf("image_pull_retry_delay: %w", err)
-	}
-	if t.ImagePullAttempts, err = resolveInt(EnvImagePullAttempts, s.ImagePullAttempts, t.ImagePullAttempts, 1, MaxImagePullAttempts); err != nil {
-		return Tunables{}, fmt.Errorf("image_pull_attempts: %w", err)
-	}
-
-	// Byte sizes.
-	if t.MaxAPIResponseBytes, err = resolveBytes(EnvMaxAPIResponseBytes, s.MaxAPIResponseBytes, t.MaxAPIResponseBytes); err != nil {
-		return Tunables{}, fmt.Errorf("max_api_response_bytes: %w", err)
-	}
-	if t.MaxBinaryBytes, err = resolveBytes(EnvMaxBinaryBytes, s.MaxBinaryBytes, t.MaxBinaryBytes); err != nil {
-		return Tunables{}, fmt.Errorf("max_binary_bytes: %w", err)
-	}
-	if t.MaxArchiveEntryBytes, err = resolveBytes(EnvMaxArchiveEntryBytes, s.MaxArchiveEntryBytes, t.MaxArchiveEntryBytes); err != nil {
-		return Tunables{}, fmt.Errorf("max_archive_entry_bytes: %w", err)
-	}
-
 	t.CustomRegistry = t.RegistryHost != DefaultRegistryHost ||
 		t.ImageRepoPrefix != DefaultImageRepoPrefix ||
 		t.DHIRegistry != DefaultDHIRegistry ||
 		t.PostgresImageTag != DefaultPostgresImageTag ||
 		t.NATSImageTag != DefaultNATSImageTag
-
 	return t, nil
+}
+
+// resolveRegistryTunables fills the registry/tag string fields on t,
+// applying the env > state > default precedence and validating each
+// against its format predicate.
+func resolveRegistryTunables(t *Tunables, s State) error {
+	t.RegistryHost = firstNonEmpty(os.Getenv(EnvRegistryHost), s.RegistryHost, t.RegistryHost)
+	t.ImageRepoPrefix = firstNonEmpty(os.Getenv(EnvImageRepoPrefix), s.ImageRepoPrefix, t.ImageRepoPrefix)
+	t.DHIRegistry = firstNonEmpty(os.Getenv(EnvDHIRegistry), s.DHIRegistry, t.DHIRegistry)
+	t.PostgresImageTag = firstNonEmpty(os.Getenv(EnvPostgresImageTag), s.PostgresImageTag, t.PostgresImageTag)
+	t.NATSImageTag = firstNonEmpty(os.Getenv(EnvNATSImageTag), s.NATSImageTag, t.NATSImageTag)
+	t.DefaultNATSStreamPrefix = firstNonEmpty(os.Getenv(EnvDefaultNATSStreamPfx), s.DefaultNATSStreamPrefix, t.DefaultNATSStreamPrefix)
+
+	checks := []struct {
+		name  string
+		value string
+		valid func(string) bool
+	}{
+		{"registry_host", t.RegistryHost, IsValidRegistryHost},
+		{"dhi_registry", t.DHIRegistry, IsValidRegistryHost},
+		{"image_repo_prefix", t.ImageRepoPrefix, IsValidImageRepoPrefix},
+		{"postgres_image_tag", t.PostgresImageTag, IsValidImageTag},
+		{"nats_image_tag", t.NATSImageTag, IsValidImageTag},
+		{"default_nats_stream_prefix", t.DefaultNATSStreamPrefix, IsValidStreamPrefix},
+	}
+	for _, c := range checks {
+		if !c.valid(c.value) {
+			return fmt.Errorf("invalid %s %q", c.name, c.value)
+		}
+	}
+	return nil
+}
+
+// resolveDurationTunables fills every duration field on t, plus the
+// image-verify floor and image_pull_attempts integer (kept together
+// because both gate image-pull behaviour).
+func resolveDurationTunables(t *Tunables, s State) error {
+	bindings := []struct {
+		key   string
+		env   string
+		state string
+		def   time.Duration
+		set   func(time.Duration)
+	}{
+		{"backup_create_timeout", EnvBackupCreateTimeout, s.BackupCreateTimeout, t.BackupCreateTimeout, func(d time.Duration) { t.BackupCreateTimeout = d }},
+		{"backup_restore_timeout", EnvBackupRestoreTimeout, s.BackupRestoreTimeout, t.BackupRestoreTimeout, func(d time.Duration) { t.BackupRestoreTimeout = d }},
+		{"health_check_timeout", EnvHealthCheckTimeout, s.HealthCheckTimeout, t.HealthCheckTimeout, func(d time.Duration) { t.HealthCheckTimeout = d }},
+		{"self_update_http_timeout", EnvSelfUpdateHTTPTimeout, s.SelfUpdateHTTPTimeout, t.SelfUpdateHTTPTimeout, func(d time.Duration) { t.SelfUpdateHTTPTimeout = d }},
+		{"self_update_api_timeout", EnvSelfUpdateAPITimeout, s.SelfUpdateAPITimeout, t.SelfUpdateAPITimeout, func(d time.Duration) { t.SelfUpdateAPITimeout = d }},
+		{"tuf_fetch_timeout", EnvTUFFetchTimeout, s.TUFFetchTimeout, t.TUFFetchTimeout, func(d time.Duration) { t.TUFFetchTimeout = d }},
+		{"attestation_http_timeout", EnvAttestationHTTPTimeout, s.AttestationHTTPTimeout, t.AttestationHTTPTimeout, func(d time.Duration) { t.AttestationHTTPTimeout = d }},
+		{"image_verify_timeout", EnvImageVerifyTimeout, s.ImageVerifyTimeout, t.ImageVerifyTimeout, func(d time.Duration) { t.ImageVerifyTimeout = d }},
+		{"image_pull_retry_delay", EnvImagePullRetryDelay, s.ImagePullRetryDelay, t.ImagePullRetryDelay, func(d time.Duration) { t.ImagePullRetryDelay = d }},
+	}
+	for _, b := range bindings {
+		d, err := resolveDuration(b.env, b.state, b.def)
+		if err != nil {
+			return fmt.Errorf("%s: %w", b.key, err)
+		}
+		b.set(d)
+	}
+	if t.ImageVerifyTimeout < MinImageVerifyTimeout {
+		return fmt.Errorf(
+			"image_verify_timeout: %v is below the %v minimum floor; a shorter timeout would bypass cosign/SLSA verification by silently timing out",
+			t.ImageVerifyTimeout, MinImageVerifyTimeout,
+		)
+	}
+	return nil
+}
+
+// resolveCountTunables fills image_pull_attempts and the byte-size fields
+// on t. Bytes are kept together because they share an identical resolve
+// helper and ceiling check.
+func resolveCountTunables(t *Tunables, s State) error {
+	attempts, err := resolveInt(EnvImagePullAttempts, s.ImagePullAttempts, t.ImagePullAttempts, 1, MaxImagePullAttempts)
+	if err != nil {
+		return fmt.Errorf("image_pull_attempts: %w", err)
+	}
+	t.ImagePullAttempts = attempts
+
+	bytes := []struct {
+		key string
+		env string
+		st  int64
+		def int64
+		set func(int64)
+	}{
+		{"max_api_response_bytes", EnvMaxAPIResponseBytes, s.MaxAPIResponseBytes, t.MaxAPIResponseBytes, func(n int64) { t.MaxAPIResponseBytes = n }},
+		{"max_binary_bytes", EnvMaxBinaryBytes, s.MaxBinaryBytes, t.MaxBinaryBytes, func(n int64) { t.MaxBinaryBytes = n }},
+		{"max_archive_entry_bytes", EnvMaxArchiveEntryBytes, s.MaxArchiveEntryBytes, t.MaxArchiveEntryBytes, func(n int64) { t.MaxArchiveEntryBytes = n }},
+	}
+	for _, b := range bytes {
+		n, err := resolveBytes(b.env, b.st, b.def)
+		if err != nil {
+			return fmt.Errorf("%s: %w", b.key, err)
+		}
+		b.set(n)
+	}
+	return nil
 }
 
 // firstNonEmpty returns the first whitespace-trimmed non-empty string
@@ -298,50 +322,20 @@ func ParseBytes(s string) (int64, error) {
 	if s == "" {
 		return 0, fmt.Errorf("empty value")
 	}
-	// Split trailing alphabetic suffix from the leading numeric part.
-	// Only digits and a single decimal point may appear; a leading '-'
-	// or any other character fails parsing (rather than producing a
-	// negative number that would be rejected later -- catching it here
-	// produces a clearer error and avoids float edge cases).
-	cut := len(s)
-	for i, r := range s {
-		if (r >= '0' && r <= '9') || r == '.' {
-			continue
-		}
-		cut = i
-		break
-	}
-	numPart := s[:cut]
-	unit := strings.ToLower(strings.TrimSpace(s[cut:]))
+	numPart, unit := splitBytesInput(s)
 	n, err := strconv.ParseFloat(numPart, 64)
 	if err != nil {
 		return 0, fmt.Errorf("parse number %q: %w", numPart, err)
 	}
 	if n <= 0 {
-		// Per CLAUDE.md tunable-value spec: byte sizes reject negative
-		// AND zero values. Tunables that feed io.LimitReader or HTTP
-		// response-size caps would disable the protection entirely at
-		// zero, so the contract is "strictly positive".
+		// Tunables that feed io.LimitReader / HTTP response-size caps
+		// would disable the protection entirely at zero; the contract
+		// is "strictly positive".
 		return 0, fmt.Errorf("non-positive size %v", n)
 	}
-	var mult float64
-	switch unit {
-	case "", "b":
-		mult = 1
-	case "k", "kb":
-		mult = 1000
-	case "ki", "kib":
-		mult = 1024
-	case "m", "mb":
-		mult = 1000 * 1000
-	case "mi", "mib":
-		mult = 1024 * 1024
-	case "g", "gb":
-		mult = 1000 * 1000 * 1000
-	case "gi", "gib":
-		mult = 1024 * 1024 * 1024
-	default:
-		return 0, fmt.Errorf("unknown unit %q", unit)
+	mult, err := byteUnitMultiplier(unit)
+	if err != nil {
+		return 0, err
 	}
 	// Reject values that exceed the runtime ceiling while still in
 	// float64 space, BEFORE the cast to int64. Comparing against
@@ -364,4 +358,45 @@ func ParseBytes(s string) (int64, error) {
 		return 0, fmt.Errorf("size %s resolves to non-positive byte count", s)
 	}
 	return result, nil
+}
+
+// splitBytesInput separates the leading numeric portion from any trailing
+// alphabetic unit suffix. Only digits and a single decimal point are
+// accepted in the numeric part; a leading '-' or any other character
+// would fall through to strconv.ParseFloat with a clearer error than
+// producing a negative number we reject later.
+func splitBytesInput(s string) (numPart, unit string) {
+	cut := len(s)
+	for i, r := range s {
+		if (r >= '0' && r <= '9') || r == '.' {
+			continue
+		}
+		cut = i
+		break
+	}
+	return s[:cut], strings.ToLower(strings.TrimSpace(s[cut:]))
+}
+
+// byteUnitMultiplier maps a normalised unit suffix to its byte multiplier.
+// Empty/"b" is 1. IEC (KiB, MiB, GiB) use 1024 powers; SI (K/KB, M/MB,
+// G/GB) use 1000 powers.
+func byteUnitMultiplier(unit string) (float64, error) {
+	switch unit {
+	case "", "b":
+		return 1, nil
+	case "k", "kb":
+		return 1000, nil
+	case "ki", "kib":
+		return 1024, nil
+	case "m", "mb":
+		return 1000 * 1000, nil
+	case "mi", "mib":
+		return 1024 * 1024, nil
+	case "g", "gb":
+		return 1000 * 1000 * 1000, nil
+	case "gi", "gib":
+		return 1024 * 1024 * 1024, nil
+	default:
+		return 0, fmt.Errorf("unknown unit %q", unit)
+	}
 }

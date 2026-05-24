@@ -210,54 +210,74 @@ func installPowerShell(ctx context.Context, res Result) (Result, error) {
 	return res, appendToFile(profile, snippet)
 }
 
-// powershellProfilePath resolves the PowerShell profile path.
+// powershellProfilePath resolves the PowerShell profile path. It probes
+// `pwsh` (PowerShell Core) and falls back to `powershell` (Windows
+// PowerShell); if neither responds with a path inside the user's home
+// directory, it returns the platform default.
 func powershellProfilePath(ctx context.Context) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("cannot determine home directory: %w", err)
 	}
 
-	// Resolve home through symlinks for reliable containment check.
 	resolvedHome, err := filepath.EvalSymlinks(home)
 	if err != nil {
 		resolvedHome = home
 	}
 
-	// Try pwsh (PowerShell Core) first, then powershell (Windows PowerShell).
 	for _, shell := range []string{"pwsh", "powershell"} {
-		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		out, err := exec.CommandContext(probeCtx, shell, "-NoProfile", "-Command", "echo $PROFILE").Output()
-		cancel()
-		if err != nil {
-			continue
+		if path, ok := probeShellProfile(ctx, shell, resolvedHome); ok {
+			return path, nil
 		}
-		p := strings.TrimSpace(string(out))
-		if p == "" || len(p) > 2048 {
-			continue
-		}
-		p = filepath.Clean(p)
-		if !filepath.IsAbs(p) {
-			continue
-		}
-		// Resolve symlinks and verify path is inside user's home directory.
-		resolvedP, err := filepath.EvalSymlinks(filepath.Dir(p))
-		if err != nil {
-			// Parent dir may not exist yet -- fall back to lexical check.
-			resolvedP = filepath.Clean(filepath.Dir(p))
-		}
-		resolvedP = filepath.Join(resolvedP, filepath.Base(p))
-		rel, relErr := filepath.Rel(resolvedHome, resolvedP)
-		if relErr != nil || strings.HasPrefix(rel, "..") {
-			continue
-		}
-		return resolvedP, nil
 	}
 
-	// Fallback: construct the default path (home already resolved above).
-	if runtime.GOOS == "windows" {
-		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1"), nil
+	return defaultPowerShellProfile(home), nil
+}
+
+// probeShellProfile runs `<shell> -NoProfile -Command echo $PROFILE` and
+// returns the reported path if it is absolute, well-formed, and resolves
+// to a location inside the user's home directory.
+func probeShellProfile(ctx context.Context, shell, resolvedHome string) (string, bool) {
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(probeCtx, shell, "-NoProfile", "-Command", "echo $PROFILE").Output()
+	if err != nil {
+		return "", false
 	}
-	return filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1"), nil
+	raw := strings.TrimSpace(string(out))
+	if raw == "" || len(raw) > 2048 {
+		return "", false
+	}
+	cleaned := filepath.Clean(raw)
+	if !filepath.IsAbs(cleaned) {
+		return "", false
+	}
+	resolved := resolveProfileDir(cleaned)
+	rel, relErr := filepath.Rel(resolvedHome, resolved)
+	if relErr != nil || strings.HasPrefix(rel, "..") {
+		return "", false
+	}
+	return resolved, true
+}
+
+// resolveProfileDir resolves symlinks on the parent directory of path
+// while preserving the base name. The parent may not exist yet (the
+// profile is created on demand); in that case the lexical parent is used.
+func resolveProfileDir(path string) string {
+	parent, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		parent = filepath.Clean(filepath.Dir(path))
+	}
+	return filepath.Join(parent, filepath.Base(path))
+}
+
+// defaultPowerShellProfile returns the platform's default PowerShell
+// profile path when no installed shell reports a usable one.
+func defaultPowerShellProfile(home string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
+	}
+	return filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1")
 }
 
 // fileContains checks whether a file contains the given substring.
@@ -358,37 +378,58 @@ func removeMarkerBlock(path string) error {
 	if !strings.Contains(content, marker) {
 		return nil
 	}
+	return os.WriteFile(path, []byte(stripMarkerBlock(content)), info.Mode())
+}
 
-	var result []string
+// stripMarkerBlock returns content with the first marker block removed.
+// The block runs from the marker line, through up to maxSnippetLines
+// contiguous non-empty lines, plus a single terminating empty line.
+// If the cap is reached on a non-empty line, that line is retained.
+func stripMarkerBlock(content string) string {
 	lines := strings.Split(content, "\n")
-	inBlock := false
-	found := false
-	blockLines := 0
+	result := make([]string, 0, len(lines))
+	state := markerScannerState{}
 	for _, line := range lines {
-		if !found && strings.TrimSpace(line) == marker {
-			inBlock = true
-			found = true
-			blockLines = 0
+		if state.consume(line) {
 			continue
-		}
-		if inBlock {
-			if strings.TrimSpace(line) != "" && blockLines < maxSnippetLines {
-				blockLines++
-				continue
-			}
-			// Empty line or cap reached -- end the block.
-			inBlock = false
-			if strings.TrimSpace(line) == "" {
-				// Consume the terminating empty line.
-				continue
-			}
-			// Cap reached on a non-empty line -- keep it.
 		}
 		result = append(result, line)
 	}
+	return strings.Join(result, "\n")
+}
 
-	cleaned := strings.Join(result, "\n")
-	return os.WriteFile(path, []byte(cleaned), info.Mode())
+// markerScannerState walks a shell-profile line by line and reports
+// which lines belong to the first marker block. The state is initialised
+// to "looking for marker"; once the marker is consumed, subsequent
+// non-empty lines (up to maxSnippetLines) and the closing empty line
+// are reported as inside-block; everything else (including lines after
+// the first block) is reported as outside.
+type markerScannerState struct {
+	found      bool
+	inBlock    bool
+	blockLines int
+}
+
+// consume reports whether line is inside the marker block and advances
+// the scanner state. Lines reported as inside-block should be dropped
+// by the caller.
+func (s *markerScannerState) consume(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if !s.found && trimmed == marker {
+		s.found = true
+		s.inBlock = true
+		s.blockLines = 0
+		return true
+	}
+	if !s.inBlock {
+		return false
+	}
+	if trimmed != "" && s.blockLines < maxSnippetLines {
+		s.blockLines++
+		return true
+	}
+	s.inBlock = false
+	return trimmed == ""
 }
 
 // appendToFile appends content to a file, creating it if needed.

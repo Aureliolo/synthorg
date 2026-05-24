@@ -52,23 +52,50 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 	if err := validateCleanupFlags(); err != nil {
 		return fmt.Errorf("validating cleanup flags: %w", err)
 	}
-
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
-
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
-
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		return fmt.Errorf("detecting docker: %w", err)
 	}
+	old, err := collectCleanupCandidates(ctx, cmd, info, state, errOut)
+	if err != nil {
+		return err
+	}
+	if old == nil {
+		// nothing to clean (collectCleanupCandidates emitted its own hint)
+		hintAutoCleanupIfDisabled(out, state, false)
+		return nil
+	}
+	displayOldImages(out, old)
+	if cleanupAll {
+		out.HintGuidance("--all includes current images. Running containers will prevent removal.")
+	}
+	if cleanupDryRun {
+		out.HintNextStep(fmt.Sprintf("Dry run: %d image(s) would be removed", len(old)))
+		return nil
+	}
+	removedAny, err := confirmAndCleanup(ctx, cmd, info, out, old)
+	if err != nil {
+		return fmt.Errorf("confirming cleanup: %w", err)
+	}
+	hintAutoCleanupIfDisabled(out, state, removedAny)
+	return nil
+}
 
+// collectCleanupCandidates returns the candidate list with --keep
+// applied. Returns nil (no error) when the call would be a no-op so
+// the caller can short-circuit; nil also covers the "fewer than --keep
+// images exist" early-return shape.
+func collectCleanupCandidates(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, errOut *ui.UI) ([]oldImage, error) {
 	var old []oldImage
+	var err error
 	if cleanupAll {
 		// --all: include ALL SynthOrg images (same as uninstall).
 		old, err = listNonCurrentImages(ctx, errOut.Writer(), info, nil)
@@ -76,47 +103,40 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 		old, err = findOldImages(ctx, cmd.ErrOrStderr(), info, state)
 	}
 	if err != nil {
-		return fmt.Errorf("finding images: %w", err)
+		return nil, fmt.Errorf("finding images: %w", err)
 	}
 	if len(old) == 0 {
+		out := ui.NewUIWithOptions(cmd.OutOrStdout(), GetGlobalOpts(ctx).UIOptions())
 		out.Success("No images found -- nothing to clean up")
-		if !state.AutoCleanup {
-			out.HintTip("Run 'synthorg config set auto_cleanup true' to clean up automatically after updates.")
-		}
-		return nil
+		return nil, nil
 	}
-
 	// --keep: preserve N most recent (remove from the end of the list,
 	// Docker returns images in most-recent-first order).
 	if cleanupKeep > 0 && len(old) > cleanupKeep {
-		old = old[cleanupKeep:]
-	} else if cleanupKeep > 0 {
+		return old[cleanupKeep:], nil
+	}
+	if cleanupKeep > 0 {
+		out := ui.NewUIWithOptions(cmd.OutOrStdout(), GetGlobalOpts(ctx).UIOptions())
 		out.Success(fmt.Sprintf("Only %d image(s) found, keeping all (--keep %d)", len(old), cleanupKeep))
-		return nil
+		return nil, nil
 	}
+	return old, nil
+}
 
-	displayOldImages(out, old)
-
-	if cleanupAll {
-		out.HintGuidance("--all includes current images. Running containers will prevent removal.")
+// hintAutoCleanupIfDisabled emits the auto_cleanup hint when at least
+// one image was removed and the user has not enabled auto-cleanup. When
+// removedAny is false but state.AutoCleanup is also false this still
+// emits the hint (from the empty-candidates branch).
+func hintAutoCleanupIfDisabled(out *ui.UI, state config.State, removedAny bool) {
+	if state.AutoCleanup {
+		return
 	}
-
-	if cleanupDryRun {
-		out.HintNextStep(fmt.Sprintf("Dry run: %d image(s) would be removed", len(old)))
-		return nil
+	if !removedAny {
+		out.HintTip("Run 'synthorg config set auto_cleanup true' to clean up automatically after updates.")
+		return
 	}
-
-	removedAny, err := confirmAndCleanup(ctx, cmd, info, out, old)
-	if err != nil {
-		return fmt.Errorf("confirming cleanup: %w", err)
-	}
-
-	// Hint about auto-cleanup when images were removed and flag is not enabled.
-	if removedAny && !state.AutoCleanup {
-		out.Blank()
-		out.HintTip("Tip: run 'synthorg config set auto_cleanup true' to clean up old images automatically after updates.")
-	}
-	return nil
+	out.Blank()
+	out.HintTip("Tip: run 'synthorg config set auto_cleanup true' to clean up old images automatically after updates.")
 }
 
 // displayOldImages renders the image list with total size.
@@ -144,30 +164,46 @@ func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info
 		out.HintNextStep("Non-interactive mode: run interactively or use --yes to remove, or use 'docker rmi <id>'.")
 		return false, nil
 	}
-
-	// --yes auto-confirms; otherwise prompt interactively.
-	remove := opts.Yes
-	if !remove {
-		form := huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().
-				Title(fmt.Sprintf("Remove %d old image(s)?", len(old))).
-				Value(&remove),
-		))
-		if err := form.WithInput(cmd.InOrStdin()).WithOutput(cmd.OutOrStdout()).Run(); err != nil {
-			return false, err
-		}
+	confirmed, err := confirmCleanupPrompt(cmd, opts, old)
+	if err != nil {
+		return false, err
 	}
-	if !remove {
+	if !confirmed {
 		return false, nil
 	}
+	removed, freedB := removeOldImages(ctx, info, out, old)
+	emitCleanupSummary(out, old, removed, freedB)
+	return removed > 0, nil
+}
 
-	// Remove images one at a time without --force (gentle cleanup -- only
-	// removes untagged/unused images; tagged images need 'synthorg uninstall').
+// confirmCleanupPrompt asks the operator whether to proceed. --yes
+// auto-confirms; otherwise the huh form prompts interactively.
+func confirmCleanupPrompt(cmd *cobra.Command, opts *GlobalOpts, old []oldImage) (bool, error) {
+	if opts.Yes {
+		return true, nil
+	}
+	var remove bool
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().
+			Title(fmt.Sprintf("Remove %d old image(s)?", len(old))).
+			Value(&remove),
+	))
+	if err := form.WithInput(cmd.InOrStdin()).WithOutput(cmd.OutOrStdout()).Run(); err != nil {
+		return false, err
+	}
+	return remove, nil
+}
+
+// removeOldImages iterates `docker rmi` one image at a time without
+// --force (gentle cleanup: only untagged/unused images come off; tagged
+// images need 'synthorg uninstall'). Returns the count removed and the
+// total bytes freed.
+func removeOldImages(ctx context.Context, info docker.Info, out *ui.UI, old []oldImage) (int, float64) {
 	var freedB float64
 	var removed int
 	for _, img := range old {
 		if ctx.Err() != nil {
-			return removed > 0, ctx.Err()
+			return removed, freedB
 		}
 		_, rmiErr := docker.RunCmd(ctx, info.DockerPath, "rmi", img.id)
 		if rmiErr != nil {
@@ -176,13 +212,17 @@ func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info
 			} else {
 				out.Error(fmt.Sprintf("%-12s failed: %v", img.id, rmiErr))
 			}
-		} else {
-			out.Success(fmt.Sprintf("%-12s removed", img.id))
-			removed++
-			freedB += img.sizeB
+			continue
 		}
+		out.Success(fmt.Sprintf("%-12s removed", img.id))
+		removed++
+		freedB += img.sizeB
 	}
+	return removed, freedB
+}
 
+// emitCleanupSummary prints the post-cleanup totals + hints.
+func emitCleanupSummary(out *ui.UI, old []oldImage, removed int, freedB float64) {
 	out.Blank()
 	if removed > 0 && freedB > 0 {
 		out.Success(fmt.Sprintf("Freed %s (%d image(s) removed)", formatBytes(freedB), removed))
@@ -195,8 +235,6 @@ func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info
 	if removed > 0 {
 		out.HintGuidance("Use --keep N to preserve N recent previous versions.")
 	}
-
-	return removed > 0, nil
 }
 
 // isImageInUse checks if a docker rmi error indicates the image is in use

@@ -282,47 +282,70 @@ func backupAPIRequest(ctx context.Context, port int, method, path string, body [
 	if path != "" && path != "/restore" {
 		return nil, 0, fmt.Errorf("unexpected API path %q", path)
 	}
-
-	base := fmt.Sprintf("http://localhost:%d/api/v1/admin/backups", port)
-	apiURL, err := url.JoinPath(base, path)
+	apiURL, err := url.JoinPath(fmt.Sprintf("http://localhost:%d/api/v1/admin/backups", port), path)
 	if err != nil {
 		return nil, 0, fmt.Errorf("building URL: %w", err)
 	}
-
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
-	var bodyReader io.Reader
-	if body != nil {
-		bodyReader = bytes.NewReader(body)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, apiURL, bodyReader)
+	req, err := buildBackupRequest(ctx, method, apiURL, body, jwtSecret)
 	if err != nil {
-		return nil, 0, fmt.Errorf("building request: %w", err)
+		return nil, 0, err
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if jwtSecret != "" {
-		token, err := buildLocalJWT(jwtSecret)
-		if err != nil {
-			return nil, 0, fmt.Errorf("building JWT: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-
 	resp, err := backupClient.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("backend unreachable: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1 MB limit
 	if err != nil {
 		return nil, 0, fmt.Errorf("reading response: %w", err)
 	}
 	return respBody, resp.StatusCode, nil
+}
+
+// buildBackupRequest constructs the HTTP request, setting Content-Type
+// for any JSON body and attaching a short-lived Bearer token when the
+// caller supplied a JWT signing secret.
+func buildBackupRequest(ctx context.Context, method, apiURL string, body []byte, jwtSecret string) (*http.Request, error) {
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, apiURL, bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("building request: %w", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if jwtSecret == "" {
+		return req, nil
+	}
+	token, err := buildLocalJWT(jwtSecret)
+	if err != nil {
+		return nil, fmt.Errorf("building JWT: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	return req, nil
+}
+
+// resolveBackupTimeout returns the effective backup timeout for cmd.
+// Precedence: explicit flag > env/config (resolved into Tunables) >
+// the literal default. flagName must be the Cobra flag name ("timeout").
+func resolveBackupTimeout(cmd *cobra.Command, flagValue, flagName string, fallback time.Duration) (time.Duration, error) {
+	value := flagValue
+	if !cmd.Flags().Changed(flagName) {
+		value = fallback.String()
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid --%s %q: %w", flagName, value, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("invalid --%s %q: must be > 0", flagName, value)
+	}
+	return d, nil
 }
 
 // parseAPIResponse decodes the ApiResponse envelope and returns the raw data
@@ -389,20 +412,9 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
 
-	// Flag default is intentionally a literal so `--help` shows the
-	// compile-time baseline; the env/config override is applied here
-	// when the user did not pass --timeout explicitly. Precedence:
-	// explicit flag > env/config (resolved into Tunables) > literal default.
-	timeoutStr := backupCreateTimeout
-	if !cmd.Flags().Changed("timeout") {
-		timeoutStr = opts.Tunables.BackupCreateTimeout.String()
-	}
-	timeout, err := time.ParseDuration(timeoutStr)
+	timeout, err := resolveBackupTimeout(cmd, backupCreateTimeout, "timeout", opts.Tunables.BackupCreateTimeout)
 	if err != nil {
-		return fmt.Errorf("invalid --timeout %q: %w", timeoutStr, err)
-	}
-	if timeout <= 0 {
-		return fmt.Errorf("invalid --timeout %q: must be > 0", timeoutStr)
+		return err
 	}
 
 	state, err := config.Load(opts.DataDir)
@@ -473,58 +485,55 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 	if err := validateBackupListFlags(); err != nil {
 		return err
 	}
-
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
-
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
-
-	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodGet, "", nil, 10*time.Second, state.JWTSecret)
+	backups, err := fetchBackupList(ctx, state, errOut)
 	if err != nil {
-		return fmt.Errorf("listing backups: %w", err)
-	}
-
-	if statusCode < 200 || statusCode >= 300 {
-		msg := sanitizeAPIMessage(apiErrorMessage(body, "failed to list backups"))
-		errOut.Error(msg)
-		return errors.New(msg)
-	}
-
-	data, err := parseAPIResponse(body)
-	if err != nil {
-		errOut.Error(sanitizeAPIMessage(err.Error()))
 		return err
 	}
-
-	var backups []backupInfo
-	if err := json.Unmarshal(data, &backups); err != nil {
-		errOut.Error(fmt.Sprintf("parsing backup list: %v", err))
-		return fmt.Errorf("parsing backup list: %w", err)
-	}
-
 	if len(backups) == 0 {
 		errOut.Warn("No backups found")
 		errOut.HintNextStep("Run 'synthorg backup' to create one")
 		return nil
 	}
-
-	// --sort: sort by criterion.
 	sortBackups(backups, backupListSort)
-
-	// --limit: truncate to N most recent.
 	if backupListLimit > 0 && len(backups) > backupListLimit {
 		backups = backups[:backupListLimit]
 	}
-
 	printBackupTable(out, backups)
 	out.HintTip("Run 'synthorg backup restore <id> --confirm' to restore a backup")
 	out.HintGuidance("Use --limit N to show fewer results, or --sort size to find the largest.")
 	return nil
+}
+
+// fetchBackupList calls the admin/backups API and decodes the envelope.
+func fetchBackupList(ctx context.Context, state config.State, errOut *ui.UI) ([]backupInfo, error) {
+	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodGet, "", nil, 10*time.Second, state.JWTSecret)
+	if err != nil {
+		return nil, fmt.Errorf("listing backups: %w", err)
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		msg := sanitizeAPIMessage(apiErrorMessage(body, "failed to list backups"))
+		errOut.Error(msg)
+		return nil, errors.New(msg)
+	}
+	data, err := parseAPIResponse(body)
+	if err != nil {
+		errOut.Error(sanitizeAPIMessage(err.Error()))
+		return nil, err
+	}
+	var backups []backupInfo
+	if err := json.Unmarshal(data, &backups); err != nil {
+		errOut.Error(fmt.Sprintf("parsing backup list: %v", err))
+		return nil, fmt.Errorf("parsing backup list: %w", err)
+	}
+	return backups, nil
 }
 
 // sortBackups sorts a backup list by the specified criterion.
@@ -577,16 +586,9 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		return NewExitError(ExitUsage, errors.New("--confirm flag is required"))
 	}
 
-	timeoutStr := backupRestoreTimeout
-	if !cmd.Flags().Changed("timeout") {
-		timeoutStr = opts.Tunables.BackupRestoreTimeout.String()
-	}
-	timeout, parseErr := time.ParseDuration(timeoutStr)
-	if parseErr != nil {
-		return fmt.Errorf("invalid --timeout %q: %w", timeoutStr, parseErr)
-	}
-	if timeout <= 0 {
-		return fmt.Errorf("invalid --timeout %q: must be > 0", timeoutStr)
+	timeout, err := resolveBackupTimeout(cmd, backupRestoreTimeout, "timeout", opts.Tunables.BackupRestoreTimeout)
+	if err != nil {
+		return err
 	}
 
 	state, err := config.Load(opts.DataDir)

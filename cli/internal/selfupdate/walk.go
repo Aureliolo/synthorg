@@ -59,29 +59,9 @@ func releasesBetweenFromURL(ctx context.Context, baseURL, installed, target stri
 	if err != nil {
 		return nil, err
 	}
-
 	filtered := make([]Release, 0, len(all))
 	for _, r := range all {
-		if r.Draft {
-			continue
-		}
-		if !includeDev && isDevTag(r.TagName) {
-			continue
-		}
-		// Strictly above installed.
-		cmpInst, err := compareWithDev(r.TagName, installed)
-		if err != nil {
-			continue // malformed tag -- skip silently
-		}
-		if cmpInst <= 0 {
-			continue
-		}
-		// At or below target.
-		cmpTar, err := compareWithDev(r.TagName, target)
-		if err != nil {
-			continue
-		}
-		if cmpTar > 0 {
+		if !inReleaseWindow(r, installed, target, includeDev) {
 			continue
 		}
 		filtered = append(filtered, Release{
@@ -91,13 +71,33 @@ func releasesBetweenFromURL(ctx context.Context, baseURL, installed, target stri
 			Assets:      r.Assets,
 		})
 	}
-
 	sort.SliceStable(filtered, func(i, j int) bool {
 		c, _ := compareWithDev(filtered[i].TagName, filtered[j].TagName)
 		return c < 0
 	})
-
 	return filtered, nil
+}
+
+// inReleaseWindow reports whether r belongs in the (installed, target]
+// window. Drafts are always rejected; dev pre-releases are rejected
+// unless includeDev is true. Malformed tags (compareWithDev error) are
+// silently skipped.
+func inReleaseWindow(r devRelease, installed, target string, includeDev bool) bool {
+	if r.Draft {
+		return false
+	}
+	if !includeDev && isDevTag(r.TagName) {
+		return false
+	}
+	cmpInst, err := compareWithDev(r.TagName, installed)
+	if err != nil || cmpInst <= 0 {
+		return false
+	}
+	cmpTar, err := compareWithDev(r.TagName, target)
+	if err != nil || cmpTar > 0 {
+		return false
+	}
+	return true
 }
 
 // listReleases paginates the releases endpoint with per_page=releasesPerPage

@@ -218,7 +218,7 @@ func (m *setupTUI) syncFocus() {
 
 // ── Tea interface ───────────────────────────────────────────────────
 
-func (m setupTUI) Init() tea.Cmd { return textinput.Blink }
+func (setupTUI) Init() tea.Cmd { return textinput.Blink }
 
 func (m setupTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {

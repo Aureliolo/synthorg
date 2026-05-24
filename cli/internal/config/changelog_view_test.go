@@ -55,28 +55,28 @@ func TestChangelogViewValidation(t *testing.T) {
 	t.Run("empty_passes", func(t *testing.T) {
 		s := base
 		s.ChangelogView = ""
-		if err := s.validate(); err != nil {
+		if err := s.Validate(); err != nil {
 			t.Errorf("validate(empty) = %v, want nil", err)
 		}
 	})
 	t.Run("highlights_passes", func(t *testing.T) {
 		s := base
 		s.ChangelogView = "highlights"
-		if err := s.validate(); err != nil {
+		if err := s.Validate(); err != nil {
 			t.Errorf("validate(highlights) = %v, want nil", err)
 		}
 	})
 	t.Run("commits_passes", func(t *testing.T) {
 		s := base
 		s.ChangelogView = "commits"
-		if err := s.validate(); err != nil {
+		if err := s.Validate(); err != nil {
 			t.Errorf("validate(commits) = %v, want nil", err)
 		}
 	})
 	t.Run("invalid_rejected", func(t *testing.T) {
 		s := base
 		s.ChangelogView = "foo"
-		err := s.validate()
+		err := s.Validate()
 		if err == nil {
 			t.Fatal("validate(foo) = nil, want error")
 		}

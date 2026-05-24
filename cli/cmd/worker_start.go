@@ -209,11 +209,7 @@ func validateContainerName(name string) error {
 		return nil
 	}
 	for _, r := range name {
-		ok := (r >= 'a' && r <= 'z') ||
-			(r >= 'A' && r <= 'Z') ||
-			(r >= '0' && r <= '9') ||
-			r == '_' || r == '-' || r == '.'
-		if !ok {
+		if !isContainerNameRune(r) {
 			return fmt.Errorf(
 				"invalid --container %q: must match [a-zA-Z0-9_.-]",
 				name,
@@ -221,6 +217,15 @@ func validateContainerName(name string) error {
 		}
 	}
 	return nil
+}
+
+// isContainerNameRune reports whether r is a character Docker accepts
+// in a container name: ASCII alphanumeric plus underscore, hyphen, dot.
+func isContainerNameRune(r rune) bool {
+	return (r >= 'a' && r <= 'z') ||
+		(r >= 'A' && r <= 'Z') ||
+		(r >= '0' && r <= '9') ||
+		r == '_' || r == '-' || r == '.'
 }
 
 // redactNatsURL strips credentials from a NATS URL so the caller can

@@ -175,64 +175,88 @@ func CheckDevFromURL(ctx context.Context, url string) (CheckResult, error) {
 	return result, nil
 }
 
-// selectBestRelease picks the best release from a list that may contain both
-// stable and dev pre-releases. Prefers stable if it is newer than or equal to
-// the latest dev release. Compares all candidates by version rather than
-// relying on API ordering, which is not guaranteed to be newest-first
-// (draft-then-publish releases may appear out of version order).
+// selectBestRelease picks the best release from a list that may contain
+// both stable and dev pre-releases. Prefers stable if it is newer than
+// or equal to the latest dev release. Compares all candidates by version
+// rather than relying on API ordering, which is not guaranteed to be
+// newest-first (draft-then-publish releases may appear out of version
+// order).
 func selectBestRelease(releases []devRelease) (*devRelease, error) {
 	var latestDev, latestStable *devRelease
 	for i := range releases {
 		r := &releases[i]
-		if r.Draft {
+		if !isUsableRelease(r) {
 			continue
 		}
-		// Validate tag before using it as a baseline or candidate.
-		// Malformed tags (err != nil) are silently skipped -- tags
-		// come from the GitHub API and are expected to be well-formed.
-		if _, err := compareWithDev(r.TagName, r.TagName); err != nil {
-			continue
-		}
-		tag := strings.TrimPrefix(r.TagName, "v")
-		if r.Prerelease && strings.Contains(r.TagName, "-dev.") {
-			// Verify the dev suffix actually parsed to a number.
-			// splitDev returns devNum == -1 for malformed suffixes
-			// like "0.5.0-dev.NaN", which would be mis-ranked as
-			// stable by compareWithDev. Skip these.
-			if devNum, _ := splitDev(tag); devNum < 0 {
-				continue
-			}
-			if latestDev == nil {
-				latestDev = r
-			} else if cmp, err := compareWithDev(r.TagName, latestDev.TagName); err == nil && cmp > 0 {
-				latestDev = r
-			}
+		if isDevRelease(r) {
+			latestDev = pickNewerRelease(latestDev, r)
 		} else if !r.Prerelease {
-			if latestStable == nil {
-				latestStable = r
-			} else if cmp, err := compareWithDev(r.TagName, latestStable.TagName); err == nil && cmp > 0 {
-				latestStable = r
-			}
+			latestStable = pickNewerRelease(latestStable, r)
 		}
 	}
+	return rankReleasePair(latestStable, latestDev)
+}
 
-	switch {
-	case latestDev == nil && latestStable == nil:
-		return nil, fmt.Errorf("no suitable releases found")
-	case latestDev == nil:
-		return latestStable, nil
-	case latestStable == nil:
-		return latestDev, nil
-	default:
-		cmp, err := compareWithDev(latestStable.TagName, latestDev.TagName)
-		if err != nil {
-			return nil, fmt.Errorf("comparing release tags %q and %q: %w", latestStable.TagName, latestDev.TagName, err)
-		}
-		if cmp >= 0 {
-			return latestStable, nil
-		}
-		return latestDev, nil
+// isUsableRelease returns true if r is not a draft and its tag parses
+// as a valid version. Malformed tags are silently skipped because tags
+// come from the GitHub API and are expected to be well-formed.
+func isUsableRelease(r *devRelease) bool {
+	if r.Draft {
+		return false
 	}
+	if _, err := compareWithDev(r.TagName, r.TagName); err != nil {
+		return false
+	}
+	return true
+}
+
+// isDevRelease reports whether r is a well-formed dev pre-release.
+// splitDev returns devNum == -1 for malformed suffixes like
+// "0.5.0-dev.NaN" which compareWithDev would mis-rank as stable; those
+// are filtered out here.
+func isDevRelease(r *devRelease) bool {
+	if !r.Prerelease || !strings.Contains(r.TagName, "-dev.") {
+		return false
+	}
+	tag := strings.TrimPrefix(r.TagName, "v")
+	devNum, _ := splitDev(tag)
+	return devNum >= 0
+}
+
+// pickNewerRelease returns whichever of current and candidate has the
+// higher version. A nil current always loses; a compareWithDev error
+// keeps current (the failure mode is "tag we cannot rank", which we do
+// not want to elevate above a known-good baseline).
+func pickNewerRelease(current, candidate *devRelease) *devRelease {
+	if current == nil {
+		return candidate
+	}
+	cmp, err := compareWithDev(candidate.TagName, current.TagName)
+	if err == nil && cmp > 0 {
+		return candidate
+	}
+	return current
+}
+
+// rankReleasePair returns the winner between the best stable and the
+// best dev release. Stable wins ties; either side may be nil.
+func rankReleasePair(stable, dev *devRelease) (*devRelease, error) {
+	switch {
+	case stable == nil && dev == nil:
+		return nil, fmt.Errorf("no suitable releases found")
+	case dev == nil:
+		return stable, nil
+	case stable == nil:
+		return dev, nil
+	}
+	cmp, err := compareWithDev(stable.TagName, dev.TagName)
+	if err != nil {
+		return nil, fmt.Errorf("comparing release tags %q and %q: %w", stable.TagName, dev.TagName, err)
+	}
+	if cmp >= 0 {
+		return stable, nil
+	}
+	return dev, nil
 }
 
 // fetchJSON fetches a URL and JSON-decodes the response into target.

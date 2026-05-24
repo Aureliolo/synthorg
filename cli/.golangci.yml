@@ -46,36 +46,15 @@ linters:
     # Absorb existing CLI complexity via path-scoped exclusions. The
     # complexity linters (gocyclo, funlen, gocognit, nestif, revive
     # cognitive-complexity / unused-receiver) catch shapes the existing
-    # CLI carries: the compose generator and the doctor / verify
-    # subcommands hit these thresholds today. The rules still apply to
-    # any new package not listed below.
+    # CLI carries. The rules still apply to any new package not listed
+    # below. Table tests and OS-conditional branches in test files are
+    # excluded from all five complexity rules: signal lives in
+    # production code, not in test data enumeration.
     rules:
-      - path: 'internal/compose/'
-        linters: [gocyclo, funlen, gocognit, nestif, revive]
-      - path: 'internal/verify/'
-        linters: [gocyclo, funlen, gocognit, nestif, revive]
-      - path: 'internal/diagnostics/'
-        linters: [gocyclo, funlen, gocognit, nestif]
-      - path: 'internal/health/'
-        linters: [gocyclo, funlen, gocognit, nestif]
-      - path: 'internal/ui/'
-        linters: [gocyclo, funlen, gocognit, nestif, revive]
-      - path: 'internal/selfupdate/'
-        linters: [gocyclo, funlen, gocognit, nestif, revive]
-      - path: 'internal/backup/'
-        linters: [gocyclo, funlen, gocognit, nestif]
-      - path: 'internal/config/'
-        linters: [gocyclo, funlen, gocognit, nestif, revive]
-      - path: 'internal/scaffold/'
-        linters: [gocyclo, funlen, gocognit, nestif, revive]
-      - path: 'internal/completion/'
-        linters: [gocyclo, funlen, gocognit, nestif, revive]
-      - path: 'internal/docker/'
-        linters: [gocyclo, funlen, gocognit, nestif, revive]
       - path: 'cmd/'
         linters: [gocyclo, funlen, gocognit, nestif, revive]
       - path: '_test\.go$'
-        linters: [gocognit, revive]
+        linters: [gocyclo, funlen, gocognit, nestif, revive]
 
 formatters:
   enable:
