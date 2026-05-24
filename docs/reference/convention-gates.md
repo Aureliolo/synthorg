@@ -94,7 +94,7 @@ The hook layer is fail-closed: the OpenCode plugin treats hook execution errors 
 
 Three third-party linters run as pre-push hooks on Markdown to enforce style + link integrity without needing custom `check_*.py` scripts. They are listed here for completeness alongside the custom gates above:
 
-- `markdownlint` (`igorshubovych/markdownlint-cli` v0.48.0): Markdown formatting rules (list indent, heading levels, fenced-code language tags, blanks-around-lists). Config in `.markdownlint.json`. Runs on README + every CLAUDE.md tier + `docs/**/*.md` at pre-commit stage.
+- `markdownlint` (`igorshubovych/markdownlint-cli`): Markdown formatting rules (list indent, heading levels, fenced-code language tags, blanks-around-lists). Config in `.markdownlint.json`; version pinned in `.pre-commit-config.yaml`. Runs on README + every CLAUDE.md tier + `docs/**/*.md` at pre-commit stage.
 - `lychee` (`lycheeverse/lychee`): Markdown link-checker. Config in `lychee.toml`. Runs on the same glob as markdownlint, but at pre-push stage (network probes take 8-15s). Binary installed via `bash scripts/install_cli_tools.sh lychee`; CI runs it via `.github/workflows/lychee.yml`.
 - `vale` (`errata-ai/vale`): prose linter for Google style + a British-English vocabulary. Config in `.vale.ini`; vocabularies under `.vale/styles/config/vocabularies/{British,SynthOrg}/`. Runs on the same glob as markdownlint + lychee, at pre-push stage. Binary installed via `bash scripts/install_cli_tools.sh vale` (which also runs `vale sync` to materialise the gitignored `.vale/styles/Google/` style package).
 

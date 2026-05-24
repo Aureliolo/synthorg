@@ -377,7 +377,6 @@
 (?i)spoilt
 (?i)leapt
 (?i)kneel
-(?i)kneeled
 (?i)knelt
 (?i)cosying
 (?i)autonomously

@@ -538,7 +538,7 @@ install_vale() {
 # binary already on PATH still needs `.vale/styles/Google/` populated. Cheap
 # when the package is already current.
 sync_vale_packages() {
-  local repo_root vale_ini vale_bin
+  local repo_root vale_ini vale_bin install_dir binary_name
   repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
   vale_ini="${repo_root}/.vale.ini"
 
@@ -547,7 +547,21 @@ sync_vale_packages() {
     return 0
   fi
 
+  # Prefer PATH; fall back to the install_dir copy so the "all" target works
+  # on a first-run setup where the binary just landed but ~/.local/bin is not
+  # yet on PATH. install_vale already warned about PATH; we don't need to
+  # repeat that here -- just use the binary we know exists.
   vale_bin="$(vale_on_path)"
+  if [ -z "${vale_bin}" ]; then
+    install_dir="${VALE_INSTALL_DIR:-${HOME}/.local/bin}"
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*) binary_name="vale.exe" ;;
+      *)                    binary_name="vale" ;;
+    esac
+    if [ -x "${install_dir}/${binary_name}" ]; then
+      vale_bin="${install_dir}/${binary_name}"
+    fi
+  fi
   if [ -z "${vale_bin}" ]; then
     echo "error: vale not on PATH; run 'bash scripts/install_cli_tools.sh vale' first" >&2
     return 1
