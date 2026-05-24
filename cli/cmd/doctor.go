@@ -138,7 +138,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	if doctorFix {
 		fixed := doctorAutoFix(ctx, cmd, out, errOut, state, filteredReport, safeDir)
 		if fixed {
-			out.HintGuidance("Run 'synthorg doctor' again to verify fixes.")
+			out.HintNextStep("Run 'synthorg doctor' again to verify fixes.")
 		}
 	}
 
