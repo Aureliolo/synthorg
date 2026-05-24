@@ -79,13 +79,13 @@ class JudgeEvaluator(Protocol):
     async def evaluate(
         self,
         conflict: Conflict,
-        judge_agent_id: NotBlankStr,
+        _judge_agent_id: NotBlankStr,
     ) -> JudgeDecision:
         """Evaluate conflict positions and pick a winner.
 
         Args:
             conflict: The conflict with agent positions.
-            judge_agent_id: The agent acting as judge.
+            _judge_agent_id: The agent acting as judge.
 
         Returns:
             Decision containing the winning agent ID and reasoning.

@@ -60,9 +60,9 @@ class _StubBenchmark:
         self,
         *,
         case: EvalTestCase,
-        agent_output: str,
+        _agent_output: str,
     ) -> BenchmarkGrade:
-        passed = agent_output == case.expected_output
+        passed = _agent_output == case.expected_output
         return BenchmarkGrade(
             passed=passed,
             score=1.0 if passed else 0.0,

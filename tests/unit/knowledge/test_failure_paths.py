@@ -236,10 +236,10 @@ class TestRepoLoaderEdgeCases:
 class _WrongTicketFetcher:
     """Returns a thread whose ticket_id does not match the requested uri."""
 
-    async def fetch(self, ticket_uri: str) -> TicketThread:
+    async def fetch(self, _ticket_uri: str) -> TicketThread:
         # Deliberately return a different id to test the loader's guard.
         return TicketThread(
-            ticket_id=NotBlankStr(f"OTHER-{ticket_uri}"),
+            ticket_id=NotBlankStr(f"OTHER-{_ticket_uri}"),
             comments=(
                 TicketComment(comment_id=NotBlankStr("c1"), body="mismatched body"),
             ),

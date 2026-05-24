@@ -36,9 +36,9 @@ class FakeJudgeEvaluator:
     async def evaluate(
         self,
         conflict: Conflict,
-        judge_agent_id: str,
+        _judge_agent_id: str,
     ) -> JudgeDecision:
-        self.calls.append((conflict, judge_agent_id))
+        self.calls.append((conflict, _judge_agent_id))
         return JudgeDecision(self._winner_id, self._reasoning)
 
 
@@ -52,9 +52,9 @@ class RaisingJudgeEvaluator:
     async def evaluate(
         self,
         conflict: Conflict,
-        judge_agent_id: str,
+        _judge_agent_id: str,
     ) -> JudgeDecision:
-        self.calls.append((conflict, judge_agent_id))
+        self.calls.append((conflict, _judge_agent_id))
         raise self._error
 
 

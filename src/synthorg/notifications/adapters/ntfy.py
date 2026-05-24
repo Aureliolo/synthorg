@@ -172,7 +172,7 @@ class NtfyNotificationSink:
         self,
         exc_type: type[BaseException] | None,
         exc: BaseException | None,
-        tb: TracebackType | None,
+        _tb: TracebackType | None,
     ) -> None:
         """Close the sink on ``async with`` exit (ignores exception args)."""
         await self.close()

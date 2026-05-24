@@ -55,9 +55,9 @@ class _FakeHtmlFetcher:
 
 
 class _FakeTicketFetcher(TicketFetcher):
-    async def fetch(self, ticket_uri: str) -> TicketThread:
+    async def fetch(self, _ticket_uri: str) -> TicketThread:
         return TicketThread(
-            ticket_id=NotBlankStr(ticket_uri),
+            ticket_id=NotBlankStr(_ticket_uri),
             comments=(
                 TicketComment(
                     comment_id=NotBlankStr("c1"),

@@ -60,13 +60,13 @@ class ExternalBenchmark(Protocol):
         self,
         *,
         case: EvalTestCase,
-        agent_output: str,
+        _agent_output: str,
     ) -> BenchmarkGrade:
         """Grade an agent's output for a test case.
 
         Args:
             case: The test case.
-            agent_output: Agent's raw output string.
+            _agent_output: Agent's raw output string.
 
         Returns:
             Grade with pass/fail and explanation.
