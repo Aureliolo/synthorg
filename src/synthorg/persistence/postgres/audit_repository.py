@@ -83,11 +83,12 @@ class PostgresAuditRepository:
                 await cur.execute(sql, values)
                 await conn.commit()
         except psycopg.Error as exc:
-            raise classify_audit_save_error(
+            error = classify_audit_save_error(
                 exc,
                 entry_id=entry.id,
                 is_duplicate=_postgres_is_duplicate,
-            ) from exc
+            )
+            raise error from exc
         # No mutation log emitted from the persistence layer: per
         # CLAUDE.md "Repositories should not log mutations themselves
         # -- the service layer is the canonical logging point so audit
