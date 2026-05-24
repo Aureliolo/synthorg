@@ -1,0 +1,81 @@
+name: Go Mod Download (retry-wrapped)
+description: |
+  Run ``go mod download`` with bounded exponential-with-cap retry on
+  transient network failures, then leave the module cache populated
+  so subsequent ``go test`` / ``go build`` / ``go vet`` calls do not
+  hit the network at all.
+
+  Why a dedicated prefetch step:
+  ``proxy.golang.org`` serves module ZIPs via a GCS-backed signed
+  URL.  The first hop returns 307 to ``storage.googleapis.com``; the
+  GCS hop occasionally fails at the TCP layer (``no route to host``
+  on the IPv6 GCS endpoint, GHA runners losing IPv6 routing under
+  network maintenance, GCS regional blips).  These are NOT 404/410
+  responses, so Go's built-in ``GOPROXY=...,direct`` fallback does
+  not fire -- the whole command aborts and the job goes red.
+
+  Wrapping the implicit fetch performed by ``go test`` / ``go build``
+  with a retry loop would silently retry on real test or build
+  failures.  Splitting the fetch into a dedicated step keeps retry
+  scoped to network errors only: if prefetch succeeds, the real
+  command runs once against an on-disk cache.
+
+  Retry posture matches ``cla.yml::gh_api_retry`` and the docker.yml
+  cosign sign retry: 8 attempts, 15s base delay doubling to a 120s
+  cap (15+30+60+120*5 = ~10 min budget).  Same defaults as
+  ``actions/setup-go``'s internal retry, kept independent so the
+  step-level retry timer survives across attempts.
+
+inputs:
+  working-directory:
+    description: Directory containing ``go.mod``.
+    required: true
+  max-attempts:
+    description: Maximum number of attempts before failing the step.
+    required: false
+    default: "8"
+  base-delay:
+    description: Initial delay between attempts in seconds.
+    required: false
+    default: "15"
+  max-delay:
+    description: Cap on per-attempt delay in seconds.
+    required: false
+    default: "120"
+
+runs:
+  using: composite
+  steps:
+    - name: go mod download (with retry)
+      working-directory: ${{ inputs.working-directory }}
+      shell: bash
+      env:
+        MAX_ATTEMPTS: ${{ inputs.max-attempts }}
+        BASE_DELAY: ${{ inputs.base-delay }}
+        MAX_DELAY: ${{ inputs.max-delay }}
+      run: |
+        set -euo pipefail
+        attempt=0
+        delay="$BASE_DELAY"
+        while :; do
+          attempt=$((attempt + 1))
+          # ``-x`` prints the underlying HTTP fetches, making any
+          # retry visible in the log with the exact failing URL.
+          if go mod download -x; then
+            if [ "$attempt" -gt 1 ]; then
+              echo "::notice::go mod download succeeded on attempt $attempt"
+            fi
+            exit 0
+          fi
+          rc=$?
+          if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+            echo "::error::go mod download failed after $attempt attempts" >&2
+            exit "$rc"
+          fi
+          echo "::warning::go mod download transient failure (attempt $attempt/$MAX_ATTEMPTS), retrying in ${delay}s" >&2
+          sleep "$delay"
+          delay=$((delay * 2))
+          if [ "$delay" -gt "$MAX_DELAY" ]; then
+            delay="$MAX_DELAY"
+          fi
+        done
