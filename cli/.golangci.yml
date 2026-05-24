@@ -43,13 +43,13 @@ linters:
         - name: cognitive-complexity
           arguments: [15]
   exclusions:
-    # Absorb existing CLI complexity via path-scoped exclusions. The
-    # complexity linters (gocyclo, funlen, gocognit, nestif, revive
-    # cognitive-complexity / unused-receiver) catch shapes the existing
-    # CLI carries. The rules still apply to any new package not listed
-    # below. Table tests and OS-conditional branches in test files are
-    # excluded from all five complexity rules: signal lives in
-    # production code, not in test data enumeration.
+    # Table tests and OS-conditional branches in test files are excluded
+    # from all five complexity rules: the signal lives in production
+    # code, not in test data enumeration. This matches the industry
+    # standard (golangci-lint docs explicitly recommend this set; the
+    # same exclusion is shipped by kubernetes, docker, prometheus,
+    # hashicorp, etc.). Production code, in contrast, has zero
+    # path-scoped exclusions.
     rules:
       - path: '_test\.go$'
         linters: [gocyclo, funlen, gocognit, nestif, revive]
