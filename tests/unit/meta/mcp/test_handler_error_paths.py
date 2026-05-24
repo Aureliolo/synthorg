@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
 """Error-path coverage for every MCP handler in every domain.
 
 The per-domain handler test files mostly exercise happy paths; this

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
 """Unit tests for the tool-creation applier."""
 
 from datetime import UTC, datetime, timedelta

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
 """Smoke + destructive-op tests for tasks and workflows handlers."""
 
 import json

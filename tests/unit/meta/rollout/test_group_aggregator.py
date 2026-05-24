@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
 """Tests for the GroupSignalAggregator protocol and default impl."""
 
 from datetime import UTC, datetime
