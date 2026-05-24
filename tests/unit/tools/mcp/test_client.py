@@ -337,19 +337,29 @@ class TestMCPClientHTTPTransport:
             name="test-http",
             transport="streamable_http",
             url="http://localhost:8080/mcp",
+            headers={"Authorization": "Bearer test-token"},
         )
         client = MCPClient(config)
         mock_session = AsyncMock()
         mock_session.initialize = AsyncMock()
+        mock_http_client = AsyncMock()
 
         with (
             patch(
-                "synthorg.tools.mcp.client.streamablehttp_client",
+                "synthorg.tools.mcp.client.create_mcp_http_client",
+            ) as mock_factory,
+            patch(
+                "synthorg.tools.mcp.client.streamable_http_client",
             ) as mock_http,
             patch(
                 "synthorg.tools.mcp.client.ClientSession",
             ) as mock_cls,
         ):
+            factory_cm = AsyncMock()
+            factory_cm.__aenter__ = AsyncMock(return_value=mock_http_client)
+            factory_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_factory.return_value = factory_cm
+
             mock_cm = AsyncMock()
             mock_cm.__aenter__ = AsyncMock(
                 return_value=(AsyncMock(), AsyncMock(), AsyncMock()),
@@ -366,4 +376,11 @@ class TestMCPClientHTTPTransport:
 
             await client.connect()
 
+        mock_factory.assert_called_once_with(
+            headers={"Authorization": "Bearer test-token"},
+        )
+        mock_http.assert_called_once_with(
+            url="http://localhost:8080/mcp",
+            http_client=mock_http_client,
+        )
         assert client.is_connected

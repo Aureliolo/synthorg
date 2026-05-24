@@ -635,7 +635,7 @@ disable_error_code = ["explicit-override"]
 [[tool.mypy.overrides]]
 module = "synthorg.tools.*"
 disallow_any_explicit = false
-disable_error_code = ["explicit-override", "unused-awaitable", "deprecated"]
+disable_error_code = ["explicit-override", "unused-awaitable"]
 
 [[tool.mypy.overrides]]
 module = "synthorg.workers.*"

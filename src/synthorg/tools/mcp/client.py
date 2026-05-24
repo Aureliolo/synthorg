@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING, Any, Self
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
+from mcp.shared._httpx_utils import create_mcp_http_client
 
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -476,10 +477,15 @@ class MCPClient:
                 msg,
                 context={"server": self._config.name},
             )
+        http_client = await stack.enter_async_context(
+            create_mcp_http_client(
+                headers=dict(self._config.headers) if self._config.headers else None,
+            ),
+        )
         read_stream, write_stream, _ = await stack.enter_async_context(
-            streamablehttp_client(
+            streamable_http_client(
                 url=self._config.url,
-                headers=(dict(self._config.headers) if self._config.headers else None),
+                http_client=http_client,
             ),
         )
         return await stack.enter_async_context(
