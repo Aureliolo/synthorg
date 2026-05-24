@@ -49,5 +49,5 @@ export interface TaskFilters {
   assigned_to?: string
   project?: string
   limit?: number
-  cursor?: string
+  cursor?: string | null
 }
