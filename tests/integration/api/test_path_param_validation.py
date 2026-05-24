@@ -198,6 +198,24 @@ class TestConnectionsPathParams:
         # the framework rejected the input before the handler ran.
         assert resp.status_code in (400, 422), resp.text
 
+    def test_oversized_name_with_valid_query_string_still_rejects(
+        self, path_param_client: TestClient[Any]
+    ) -> None:
+        """Path-param validation is independent of the query string.
+
+        Without this assertion, a future framework regression where a
+        clean query string accidentally short-circuits path-param
+        binding (or vice-versa: where a query string influences
+        path-param parsing) would slip past the bare-path tests above.
+        The handler must still reject the oversized path segment even
+        when sibling query params are well-formed.
+        """
+        resp = path_param_client.get(
+            f"/api/v1/connections/{_OVER_128_CHARS}",
+            params={"action": "retrieve"},
+        )
+        assert resp.status_code in (400, 422), resp.text
+
     def test_check_health_rejects_oversized_name(
         self, path_param_client: TestClient[Any]
     ) -> None:

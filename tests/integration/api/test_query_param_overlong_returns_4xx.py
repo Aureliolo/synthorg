@@ -83,3 +83,52 @@ class TestQueryParamOverlongReturns4xx:
             "pass for any unrelated 4xx and silently mask the real "
             "regression -- this control case is the negative."
         )
+
+    def test_omitted_optional_query_param_uses_default(self) -> None:
+        """An omitted optional QueryParameter must bind to the default.
+
+        The three production handlers (`approvals.py`, `budget.py`,
+        `meetings.py`) all declare ``action_type: Annotated[str | None,
+        QueryParameter(...)] = None``. If a future Litestar bump
+        starts rejecting the missing-key case as a validation error,
+        every callsite that omits the filter would break with no
+        codepath change. This test pins the current behaviour.
+        """
+        app = Litestar(route_handlers=[_probe_handler])
+        client = TestClient(app)
+        response = client.get("/probe")
+        assert response.status_code == 200, (
+            "Omitting an optional QueryParameter should bind to its "
+            f"default; got {response.status_code}."
+        )
+        assert response.json()["action_type"] is None
+
+    def test_multibyte_query_param_uses_character_count(self) -> None:
+        """``max_length`` is character-count, not byte-count, on Litestar 2.22.
+
+        The pre-2.22 manual checks in `approvals.py` / `budget.py` /
+        `meetings.py` did ``len(str)`` (character count). Litestar's
+        typed ``QueryParameter(max_length=N)`` must match: a multibyte
+        string at the character bound is accepted, one character over
+        is rejected. Pinning this here means a future Litestar bump
+        that flips to byte-count semantics is caught loudly instead of
+        silently rejecting legitimate non-ASCII filter values (or, in
+        the reverse direction, silently accepting oversize byte
+        payloads).
+        """
+        app = Litestar(route_handlers=[_probe_handler])
+        client = TestClient(app)
+        # Euro sign is 3 bytes in UTF-8 but one character.
+        at_bound_chars = "€" * QUERY_MAX_LENGTH
+        response = client.get("/probe", params={"action_type": at_bound_chars})
+        assert response.status_code == 200, (
+            "Multibyte value at the character bound should be accepted "
+            f"(char-count semantics); got {response.status_code}."
+        )
+
+        over_bound_chars = "€" * (QUERY_MAX_LENGTH + 1)
+        response = client.get("/probe", params={"action_type": over_bound_chars})
+        assert 400 <= response.status_code < 500, (
+            "Multibyte value one character over the bound should be "
+            f"rejected (char-count semantics); got {response.status_code}."
+        )

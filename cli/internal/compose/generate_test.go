@@ -25,10 +25,15 @@ import (
 //   - `busybox:<tag>-musl`
 //   - `postgres:<tag>-(alpine|debianN)` (no DHI prefix; the digest
 //     pattern already covers the postgres digest portion)
+//   - `nats:<tag>-debianN` (DefaultNATSImageTag uses the same
+//     version-suffix pattern as postgres; tunnel-mode goldens that
+//     render the NATS service would otherwise drift on Renovate's
+//     weekly DHI rotation alongside postgres)
 var (
 	sha256DigestRE = regexp.MustCompile(`@sha256:[0-9a-f]{64}`)
 	busyboxTagRE   = regexp.MustCompile(`busybox:[0-9.]+-musl`)
 	postgresTagRE  = regexp.MustCompile(`postgres:[0-9.]+-(alpine|debian[0-9]+)`)
+	natsTagRE      = regexp.MustCompile(`nats:[0-9.]+-debian[0-9]+`)
 )
 
 // normalize masks Renovate-rotated digest and version-suffixed tag
@@ -40,6 +45,7 @@ func normalize(s string) string {
 	s = sha256DigestRE.ReplaceAllString(s, "@sha256:<DIGEST>")
 	s = busyboxTagRE.ReplaceAllString(s, "busybox:<TAG>-musl")
 	s = postgresTagRE.ReplaceAllString(s, "postgres:<TAG>-$1")
+	s = natsTagRE.ReplaceAllString(s, "nats:<TAG>-debianN")
 	return s
 }
 
@@ -681,6 +687,11 @@ func TestNormalizeMasksVolatileImageFields(t *testing.T) {
 			name:  "postgres_debian_tag_masked",
 			input: "image: dhi.io/postgres:18.2-debian12",
 			want:  "image: dhi.io/postgres:<TAG>-debian12",
+		},
+		{
+			name:  "nats_debian_tag_masked",
+			input: "image: dhi.io/nats:2.14-debian13",
+			want:  "image: dhi.io/nats:<TAG>-debianN",
 		},
 		{
 			name:  "ports_and_env_untouched",
