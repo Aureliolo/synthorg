@@ -27,11 +27,13 @@ This module provides three helpers:
     ``logger.error`` call on a secret-bearing code path.
 
 ``log_exception_redacted(logger, event, exc, **kwargs)``
-    Single-call replacement for the manual SEC-1 boilerplate
+    Single-call replacement for the manual redacted-error boilerplate
     ``logger.error(EVENT, ..., error_type=type(exc).__name__,
     error=safe_error_description(exc))``.  Use anywhere an ``except``
     branch needs to emit a redacted-error log without attaching the
-    traceback (the ``logger.exception`` shape forbidden by SEC-1).
+    traceback (the ``logger.exception`` shape forbidden by the
+    secret-log redaction rule enforced in
+    ``scripts/check_logger_exception_str_exc.py``).
 
 Callers that need to remove traceback attachment as well as scrub the
 message should pair this helper with ``logger.warning`` (which does not
@@ -276,9 +278,9 @@ def log_exception_redacted(
     /,
     **kwargs: Any,
 ) -> None:
-    """Emit an ERROR log for *exc* with SEC-1 redaction kwargs applied.
+    """Emit an ERROR log for *exc* with the redacted-error kwargs applied.
 
-    Single-call replacement for the canonical SEC-1 boilerplate::
+    Single-call replacement for the canonical secret-log-safe boilerplate::
 
         logger.error(
             EVENT,
@@ -289,9 +291,11 @@ def log_exception_redacted(
 
     Use anywhere an ``except`` branch needs a redacted-error log
     without attaching the traceback (the ``logger.exception`` shape
-    that SEC-1 forbids; see ``check_logger_exception_str_exc.py``).
-    Caller-supplied ``error_type`` / ``error`` kwargs are rejected at
-    runtime to keep the redaction pair authoritative.
+    forbidden by ``scripts/check_logger_exception_str_exc.py`` because
+    structlog's ``format_exc_info`` processor serialises frame-locals
+    into the log record).  Caller-supplied ``error_type`` / ``error``
+    kwargs are rejected at runtime to keep the redaction pair
+    authoritative.
 
     Args:
         logger: A structlog (or compatible) logger with an ``error()``
