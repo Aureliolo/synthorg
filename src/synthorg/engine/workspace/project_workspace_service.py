@@ -14,8 +14,12 @@ the new backend reports).
 
 import asyncio
 import shutil
+import stat
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import GitBackendType
@@ -44,6 +48,28 @@ logger = get_logger(__name__)
 
 _PROJECTS_SUBDIR: Final[str] = "projects"
 _DEFAULT_BRANCH: NotBlankStr = NotBlankStr("main")
+
+
+def _force_writable_then_retry(
+    func: Callable[[str], object],
+    path: str,
+    exc: BaseException,
+) -> None:
+    """``shutil.rmtree`` ``onexc`` handler: strip read-only, retry once.
+
+    Git pack-object files under ``.git/objects`` are written read-only
+    on Windows. ``shutil.rmtree`` raises ``PermissionError`` rather than
+    stripping the attribute, which would leave an orphan ``.git`` tree
+    behind after a backend kind switch (the exact regression
+    ``test_embedded_to_local_path_preserves_row`` guards against).
+    """
+    if not isinstance(exc, PermissionError):
+        raise exc
+    try:
+        Path(path).chmod(stat.S_IWRITE)
+    except OSError:
+        raise exc from None
+    func(path)
 
 
 class ProjectWorkspaceService:
@@ -132,7 +158,9 @@ class ProjectWorkspaceService:
         if not await asyncio.to_thread(git_dir.exists):
             return
         try:
-            await asyncio.to_thread(shutil.rmtree, git_dir)
+            await asyncio.to_thread(
+                shutil.rmtree, git_dir, onexc=_force_writable_then_retry
+            )
         except OSError as exc:
             # Best-effort: surface the failure but let the new
             # backend's provision report whatever it sees on disk.

@@ -1,6 +1,7 @@
 """Unit tests for ``ProjectWorkspaceService.get_or_provision``."""
 
 import asyncio
+import stat
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from synthorg.engine.workspace.git_backend import (
 )
 from synthorg.engine.workspace.project_workspace_service import (
     ProjectWorkspaceService,
+    _force_writable_then_retry,
 )
 from tests._shared import FakeClock, mock_of
 
@@ -134,3 +136,42 @@ class TestProjectWorkspaceService:
         assert a == b
         backend.provision.assert_awaited_once()  # type: ignore[attr-defined]
         assert repo.save_calls == 1
+
+
+class TestForceWritableThenRetry:
+    """``shutil.rmtree`` ``onexc`` handler for Windows-read-only git packs."""
+
+    def test_strips_read_only_and_retries(self, tmp_path: Path) -> None:
+        target = tmp_path / "pack-readonly.idx"
+        target.write_text("placeholder")
+        target.chmod(stat.S_IREAD)
+        calls: list[str] = []
+
+        def _retry(path: str) -> None:
+            calls.append(path)
+            Path(path).unlink()
+
+        _force_writable_then_retry(_retry, str(target), PermissionError("WinError 5"))
+
+        assert calls == [str(target)]
+        assert not target.exists()
+
+    def test_re_raises_non_permission_error(self, tmp_path: Path) -> None:
+        target = tmp_path / "irrelevant"
+
+        def _never_called(path: str) -> None:
+            pytest.fail(f"unexpected retry of {path}")
+
+        original = OSError("not a permission failure")
+        with pytest.raises(OSError, match="not a permission failure"):
+            _force_writable_then_retry(_never_called, str(target), original)
+
+    def test_re_raises_when_chmod_itself_fails(self, tmp_path: Path) -> None:
+        missing = tmp_path / "does-not-exist"
+
+        def _never_called(path: str) -> None:
+            pytest.fail(f"unexpected retry of {path}")
+
+        original = PermissionError("WinError 5")
+        with pytest.raises(PermissionError, match="WinError 5"):
+            _force_writable_then_retry(_never_called, str(missing), original)
