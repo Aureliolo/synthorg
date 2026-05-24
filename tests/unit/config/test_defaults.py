@@ -22,7 +22,7 @@ class TestDefaultConfigDict:
         assert result["company_type"] == "custom"
 
     def test_constructs_valid_root_config(self) -> None:
-        data: dict[str, Any] = default_config_dict()  # narrow for **unpacking
+        data: dict[str, Any] = default_config_dict()  # type: ignore[explicit-any]  # narrow for **unpacking; RootConfig fields are heterogeneous
         cfg = RootConfig(**data)
         assert cfg.company_name == "SynthOrg"
         assert cfg.company_type.value == "custom"

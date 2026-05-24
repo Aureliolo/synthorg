@@ -90,11 +90,18 @@ class TestDeepMergeProperties:
     ) -> None:
         override = {"nested": {"z": override_z}}
         result = deep_merge(base, override)
+        # ``result["nested"]`` is JsonValue but the strategy guarantees it
+        # is a dict-typed branch; narrow once and re-use for the three
+        # subscript assertions below.
+        result_nested = result["nested"]
+        base_nested = base["nested"]
+        assert isinstance(result_nested, dict)
+        assert isinstance(base_nested, dict)
         # Original nested keys preserved
-        assert result["nested"]["x"] == base["nested"]["x"]  # type: ignore[index]
-        assert result["nested"]["y"] == base["nested"]["y"]  # type: ignore[index]
+        assert result_nested["x"] == base_nested["x"]
+        assert result_nested["y"] == base_nested["y"]
         # New key added
-        assert result["nested"]["z"] == override_z  # type: ignore[index]
+        assert result_nested["z"] == override_z
 
     @given(a=_str_key_dicts, b=_str_key_dicts)
     def test_override_values_win_for_non_dict(

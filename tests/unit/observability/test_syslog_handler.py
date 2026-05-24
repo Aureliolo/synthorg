@@ -26,7 +26,7 @@ from synthorg.observability.syslog_handler import (
 
 
 def _syslog_sink(**overrides: Any) -> SinkConfig:  # type: ignore[explicit-any]  # SinkConfig has heterogeneous typed fields (enums, optionals); test builder forwards arbitrary kwargs
-    defaults: dict[str, Any] = {
+    defaults: dict[str, Any] = {  # type: ignore[explicit-any]  # same rationale as the param above
         "sink_type": SinkType.SYSLOG,
         "syslog_host": "localhost",
     }

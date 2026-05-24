@@ -24,7 +24,7 @@ _task_types = st.sampled_from(TaskType)
 _priorities = st.sampled_from(Priority)
 _complexities = st.sampled_from(Complexity)
 
-_TASK_DEFAULTS: dict[str, Any] = {
+_TASK_DEFAULTS: dict[str, Any] = {  # type: ignore[explicit-any]  # Task field types are heterogeneous (enums, str, tuple, None)
     "id": "task-001",
     "title": "Test task",
     "description": "A test task",
@@ -38,7 +38,7 @@ _TASK_DEFAULTS: dict[str, Any] = {
 }
 
 
-def _make_task_kwargs(**overrides: Any) -> dict[str, Any]:
+def _make_task_kwargs(**overrides: Any) -> dict[str, Any]:  # type: ignore[explicit-any]  # forwards Task field overrides (heterogeneous types)
     return {**_TASK_DEFAULTS, **overrides}
 
 
@@ -56,7 +56,7 @@ _roundtrip_st = st.fixed_dictionaries(
 
 class TestTaskRoundtripProperties:
     @given(data=_roundtrip_st)
-    def test_model_dump_validate_roundtrip(self, data: dict[str, Any]) -> None:
+    def test_model_dump_validate_roundtrip(self, data: dict[str, Any]) -> None:  # type: ignore[explicit-any]  # hypothesis fixed_dictionaries strategy mixes enums + str + float
         task = Task(
             id="task-rt-001",
             title=data["title"],

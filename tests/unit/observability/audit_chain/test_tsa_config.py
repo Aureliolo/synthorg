@@ -78,9 +78,9 @@ def test_preset_resolves_to_canonical_url(
         (TsaPreset.CUSTOM, {"tsa_url": "https://tsa.example.com/tsr"}),
     ],
 )
-def test_tsa_missing_roots_rejected_when_verifying(
+def test_tsa_missing_roots_rejected_when_verifying(  # type: ignore[explicit-any]  # extra_kwargs forwarded to AuditChainConfig which has heterogeneous typed fields (Literal, Path, float, bool)
     tsa_preset: TsaPreset,
-    extra_kwargs: dict[str, Any],  # type: ignore[explicit-any]  # extra_kwargs forwarded to AuditChainConfig which has heterogeneous typed fields (Literal, Path, float, bool)
+    extra_kwargs: dict[str, Any],
 ) -> None:
     """Verifying presets reject configs without ``tsa_trusted_roots_path``."""
     with pytest.raises(ValidationError, match="tsa_trusted_roots_path"):
