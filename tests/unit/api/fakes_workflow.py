@@ -1,7 +1,7 @@
 """In-memory fake workflow repositories for API unit tests."""
 
 import copy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from packaging.version import InvalidVersion, Version
 
@@ -15,6 +15,9 @@ from synthorg.engine.workflow.subworkflow_models import (
     SubworkflowSummary,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence.workflow_definition_protocol import (
+    WorkflowDefinitionFilterSpec,
+)
 from synthorg.persistence.workflow_execution_protocol import (
     WorkflowExecutionFilterSpec,
 )
@@ -53,7 +56,7 @@ class FakeWorkflowDefinitionRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: WorkflowDefinitionFilterSpec,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
@@ -72,7 +75,7 @@ class FakeWorkflowDefinitionRepository:
         result = sorted(self._definitions.values(), key=lambda d: d.id)
         return tuple(copy.deepcopy(d) for d in result[offset : offset + limit])
 
-    async def count(self, filter_spec: Any) -> int:
+    async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
         result = list(self._definitions.values())
         if filter_spec.workflow_type is not None:
             result = [d for d in result if d.workflow_type == filter_spec.workflow_type]

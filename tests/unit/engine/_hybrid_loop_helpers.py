@@ -4,7 +4,9 @@ Extracted to keep individual test files under 800 lines.
 """
 
 import json
-from typing import Any
+from typing import Any, override
+
+from pydantic import JsonValue
 
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.context import AgentContext
@@ -32,7 +34,7 @@ def _usage(
     )
 
 
-def _plan_response(steps: list[dict[str, Any]]) -> CompletionResponse:
+def _plan_response(steps: list[dict[str, JsonValue]]) -> CompletionResponse:
     """Build a plan response with JSON-formatted steps."""
     plan = {"steps": steps}
     return CompletionResponse(
@@ -140,7 +142,8 @@ class _StubTool(BaseTool):
             category=ToolCategory.CODE_EXECUTION,
         )
 
-    async def execute(
+    @override
+    async def execute(  # type: ignore[explicit-any]  # arguments mirrors ToolCall.arguments dict[str, Any] in synthorg.providers (under #2056 override)
         self,
         *,
         arguments: dict[str, Any],

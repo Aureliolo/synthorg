@@ -26,7 +26,6 @@ deterministic logic invariants only.
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
 
 from synthorg.workers.claim import TaskClaim
 
@@ -153,7 +152,7 @@ class FakeJetStreamTaskQueue:
     async def core_subscribe(
         self,
         subject: str,
-        cb: Callable[[Any], Awaitable[None]],
+        cb: Callable[[bytes], Awaitable[None]],
     ) -> FakeSubscription:
         """Register a core-NATS subscription; returns an unsub handle."""
         self.subscribed_subject = subject

@@ -60,7 +60,10 @@ import sys
 import time
 from collections.abc import AsyncGenerator, Iterable, Iterator
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final, override
+
+if TYPE_CHECKING:
+    from unittest.mock import AsyncMock
 
 # Boot-time guard parity (see synthorg.api.app create_app): every backend
 # boot -- dev, pre-release, prod -- refuses to start with an ephemeral
@@ -163,7 +166,7 @@ socket.getfqdn = _fast_getfqdn
 try:
     import pytest_timeout as _pytest_timeout  # type: ignore[import-untyped]
 
-    def _timeout_timer_with_faulthandler(item: Any, settings: Any) -> None:
+    def _timeout_timer_with_faulthandler(item: Any, settings: Any) -> None:  # type: ignore[explicit-any]  # pytest-timeout boundary: item / settings are pytest_timeout's untyped Item / Settings types
         # 1) Dump Python frames for every thread via faulthandler (raw
         #    fd write, bypasses pytest/xdist IPC -> always reaches log).
         sys.stderr.write(
@@ -251,16 +254,16 @@ faulthandler.enable(file=sys.stderr, all_threads=True)
 if sys.platform == "win32":  # pragma: no cover -- Windows-only branch
     from typing import cast
 
-    _original_popen_init: Any = subprocess.Popen.__init__
+    _original_popen_init: Any = subprocess.Popen.__init__  # type: ignore[explicit-any]  # subprocess.Popen.__init__ has dozens of overloads; Any lets us forward args opaquely
 
-    def _no_console_popen_init(self: Any, *args: Any, **kwargs: Any) -> None:
+    def _no_console_popen_init(self: Any, *args: Any, **kwargs: Any) -> None:  # type: ignore[explicit-any]  # monkeypatch shim must accept the full Popen.__init__ signature variants
         existing = kwargs.get("creationflags", 0)
         if not isinstance(existing, int):
             existing = 0
         kwargs["creationflags"] = existing | subprocess.CREATE_NO_WINDOW
         _original_popen_init(self, *args, **kwargs)
 
-    subprocess.Popen.__init__ = cast(Any, _no_console_popen_init)  # type: ignore[method-assign]
+    subprocess.Popen.__init__ = cast(Any, _no_console_popen_init)  # type: ignore[method-assign,explicit-any]  # forced rebinding of dunder __init__ via Any-cast
 
 
 # ── pytest-xdist loadscope crash-during-collection guard ───────────
@@ -295,7 +298,7 @@ def _install_xdist_loadscope_crash_guard() -> None:
     if getattr(original, "_synthorg_crash_guarded", False):
         return
 
-    def _guarded_reschedule(self: Any, node: Any) -> Any:
+    def _guarded_reschedule(self: Any, node: Any) -> Any:  # type: ignore[explicit-any]  # xdist LoadScopeScheduling._reschedule boundary: self/node/result are xdist-internal untyped
         if node not in self.registered_collections:
             return None
         return original(self, node)
@@ -319,15 +322,19 @@ class _WriteOnlyDatabase(ExampleDatabase):
         super().__init__()
         self._db = db
 
+    @override
     def save(self, key: bytes, value: bytes) -> None:
         self._db.save(key, value)
 
+    @override
     def fetch(self, key: bytes) -> Iterable[bytes]:
         return iter(())
 
+    @override
     def delete(self, key: bytes, value: bytes) -> None:
         pass  # No-op: shared DB is a failure log, never delete entries
 
+    @override
     def move(
         self,
         src: bytes,
@@ -1056,7 +1063,7 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture
-def mock_dispatcher() -> Any:
+def mock_dispatcher() -> AsyncMock:
     """``AsyncMock`` conforming to the full ``NotificationDispatcher`` contract.
 
     Spec covers ``register`` / ``start`` / ``aclose`` / ``dispatch`` so a

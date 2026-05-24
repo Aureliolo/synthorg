@@ -39,7 +39,7 @@ class _MockOfFactory[T]:
     def __init__(self, spec: type[T]) -> None:
         self._spec = spec
 
-    def __call__(self, **overrides: Any) -> Any:
+    def __call__(self, **overrides: Any) -> Any:  # type: ignore[explicit-any]  # mock API surface: overrides accept any mock object; return Any so callers configure via unittest.mock without a per-call cast
         """Return an autospec'd instance of ``T`` with overrides applied.
 
         Each override key must name an attribute that exists on the
@@ -97,7 +97,7 @@ class _MockOfMeta(type):
     callable-like object, so the looser annotation is faithful.
     """
 
-    def __getitem__(cls, spec: Any) -> _MockOfFactory[Any]:
+    def __getitem__(cls, spec: Any) -> _MockOfFactory[Any]:  # type: ignore[explicit-any]  # spec is loose so callers can subscript with abstract Protocol classes (forwarded to create_autospec)
         return _MockOfFactory(spec)
 
 

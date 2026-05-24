@@ -11,7 +11,7 @@ from synthorg.approval.models import EscalationInfo
 from synthorg.core.enums import ApprovalRiskLevel
 
 
-def make_escalation(**overrides: Any) -> EscalationInfo:
+def make_escalation(**overrides: Any) -> EscalationInfo:  # type: ignore[explicit-any]  # builder accepts arbitrary EscalationInfo field overrides validated below via model_fields
     """Build an ``EscalationInfo`` with safe defaults.
 
     Any field can be overridden via keyword arguments.  Unknown keys
@@ -23,7 +23,7 @@ def make_escalation(**overrides: Any) -> EscalationInfo:
     if unknown:
         msg = f"Unknown EscalationInfo override(s): {sorted(unknown)}"
         raise KeyError(msg)
-    defaults: dict[str, Any] = {
+    defaults: dict[str, Any] = {  # type: ignore[explicit-any]  # mixed field-value types match EscalationInfo's heterogeneous fields
         "approval_id": "approval-1",
         "tool_call_id": "tc-1",
         "tool_name": "deploy_to_prod",

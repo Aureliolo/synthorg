@@ -174,7 +174,7 @@ class ScriptedProvider:
 assert isinstance(ScriptedProvider([]), CompletionProvider)
 
 
-def build_tool_call_response(  # noqa: PLR0913
+def build_tool_call_response(  # type: ignore[explicit-any]  # noqa: PLR0913 -- tool_arguments mirrors ToolCall.arguments dict[str, Any] in synthorg.providers.models (under #2056 override)
     tool_name: str,
     tool_arguments: dict[str, Any],
     *,
