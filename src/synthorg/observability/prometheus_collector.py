@@ -153,9 +153,10 @@ async def _fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
         # the workflow / department fetchers; an uncaught exception
         # here would cancel its siblings via the structured-concurrency
         # contract and lose their snapshot updates too. Catch broadly,
-        # log via ``logger.exception`` so the traceback survives, and
-        # fall back to ``None`` so the merge step preserves the prior
-        # tool-name allowlist.
+        # emit a redacted structured error (the helper logs WITHOUT
+        # attaching the traceback so frame-locals stay out of the
+        # event), and fall back to ``None`` so the merge step preserves
+        # the prior tool-name allowlist.
         log_exception_redacted(
             logger, METRICS_SCRAPE_FAILED, exc, component="tool_registry"
         )

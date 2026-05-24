@@ -98,6 +98,8 @@ class BehaviorTaggerMiddleware(BaseAgentMiddleware):
         """
         try:
             tags = self._infer_tags(ctx)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             log_exception_redacted(
                 logger,

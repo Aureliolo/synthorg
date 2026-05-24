@@ -164,11 +164,13 @@ class SQLitePersistenceComponentHandler:
                 str(source_file),
             )
         except IntegrityCheckError as exc:
-            # Using ``logger.error`` (not ``logger.exception``) is
-            # deliberate: structlog's exc-info processor serialises
-            # traceback frame-locals into the event, leaking any
-            # in-scope credential. We pass the redacted exception
-            # description via ``safe_error_description`` instead.
+            # Route through ``log_exception_redacted`` rather than
+            # ``logger.exception``: the helper centralises the
+            # error_type + scrubbed-message pair AND skips traceback
+            # attachment, so frame-locals (potentially carrying any
+            # in-scope credential) cannot reach the structured log
+            # sink. The raised ComponentBackupError below carries the
+            # same scrubbed description for the caller.
             log_exception_redacted(
                 logger,
                 BACKUP_COMPONENT_FAILED,

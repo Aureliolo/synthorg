@@ -364,3 +364,33 @@ class TestRuleEngine:
         matches = engine.evaluate(_snap(quality=7.0))
         assert len(matches) == 1
         assert matches[0].rule_name == "quality_declining"
+
+    @pytest.mark.parametrize("exc_cls", [MemoryError, RecursionError])
+    def test_propagates_catastrophic_interpreter_errors(
+        self,
+        exc_cls: type[BaseException],
+    ) -> None:
+        """Catastrophic interpreter errors from a rule must escape the loop.
+
+        Per-rule exceptions are swallowed and logged so a single bad
+        rule cannot mask the rest of the rule set, but ``MemoryError``
+        and ``RecursionError`` are catastrophic interpreter state and
+        MUST propagate so the surrounding orchestrator can fail fast
+        instead of silently dropping every subsequent rule.
+        """
+
+        class CatastrophicRule:
+            @property
+            def name(self) -> str:
+                return "catastrophic"
+
+            @property
+            def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
+                return (ProposalAltitude.CONFIG_TUNING,)
+
+            def evaluate(self, snapshot: OrgSignalSnapshot) -> None:
+                raise exc_cls
+
+        engine = RuleEngine(rules=(CatastrophicRule(),))
+        with pytest.raises(exc_cls):
+            engine.evaluate(_snap())

@@ -203,7 +203,10 @@ class SQLiteDynamicToolRepository:
                 await self._db.execute(_UPSERT_SQL, _upsert_params(entity))
                 await self._db.commit()
             except sqlite3.IntegrityError as exc:
-                await self._rollback()
+                await self._rollback(
+                    event=PERSISTENCE_DYNAMIC_TOOL_SAVE_FAILED,
+                    operation="save",
+                )
                 msg = f"Constraint violation saving dynamic_tool {entity.id!r}"
                 logger.warning(
                     PERSISTENCE_DYNAMIC_TOOL_SAVE_FAILED,
@@ -213,7 +216,10 @@ class SQLiteDynamicToolRepository:
                 )
                 raise ConstraintViolationError(msg, constraint=str(exc)) from exc
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._rollback()
+                await self._rollback(
+                    event=PERSISTENCE_DYNAMIC_TOOL_SAVE_FAILED,
+                    operation="save",
+                )
                 msg = f"Failed to save dynamic_tool {entity.id!r}"
                 logger.warning(
                     PERSISTENCE_DYNAMIC_TOOL_SAVE_FAILED,
@@ -395,7 +401,10 @@ class SQLiteDynamicToolRepository:
                 cursor = await self._db.execute(sql, params)
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._rollback()
+                await self._rollback(
+                    event=PERSISTENCE_DYNAMIC_TOOL_TRANSITION_FAILED,
+                    operation="transition_if",
+                )
                 msg = f"Failed to transition dynamic_tool {entity_id!r}"
                 logger.warning(
                     PERSISTENCE_DYNAMIC_TOOL_TRANSITION_FAILED,
@@ -414,7 +423,10 @@ class SQLiteDynamicToolRepository:
                 cursor = await self._db.execute(sql, (entity_id,))
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
-                await self._rollback()
+                await self._rollback(
+                    event=PERSISTENCE_DYNAMIC_TOOL_DELETE_FAILED,
+                    operation="delete",
+                )
                 msg = f"Failed to delete dynamic_tool {entity_id!r}"
                 logger.warning(
                     PERSISTENCE_DYNAMIC_TOOL_DELETE_FAILED,
@@ -425,15 +437,27 @@ class SQLiteDynamicToolRepository:
                 raise QueryError(msg) from exc
         return cursor.rowcount > 0
 
-    async def _rollback(self) -> None:
-        """Roll back the current transaction, swallowing rollback errors."""
+    async def _rollback(self, *, event: str, operation: str) -> None:
+        """Roll back the current transaction, swallowing rollback errors.
+
+        Args:
+            event: Event constant identifying the originating operation
+                so alerting can attribute rollback failures to the
+                correct ``save`` / ``transition`` / ``delete`` path
+                rather than the SAVE-only event the shared helper used
+                to hard-code.
+            operation: Short operation tag (``save`` / ``transition_if`` /
+                ``delete``) added as a structured kwarg so the same
+                rollback failure can be filtered on operation type
+                without parsing the event constant.
+        """
         try:
             await self._db.rollback()
         except MemoryError, RecursionError:
             raise
         except (sqlite3.Error, aiosqlite.Error) as exc:
             log_exception_redacted(
-                logger, PERSISTENCE_DYNAMIC_TOOL_SAVE_FAILED, exc, phase="rollback"
+                logger, event, exc, phase="rollback", operation=operation
             )
 
 

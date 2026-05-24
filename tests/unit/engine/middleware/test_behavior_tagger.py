@@ -160,3 +160,28 @@ class TestAfterModel:
         ctx = _make_ctx()
         await mw.after_model(ctx)
         ctx.with_metadata.assert_called_once()
+
+    @pytest.mark.parametrize("exc_cls", [MemoryError, RecursionError])
+    async def test_propagates_catastrophic_interpreter_errors(
+        self,
+        exc_cls: type[BaseException],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Catastrophic interpreter errors escape the broad fail-open ``except``.
+
+        ``after_model`` deliberately catches ``Exception`` and returns
+        the unmodified context so a tag-inference bug never blocks the
+        agent loop. ``MemoryError`` / ``RecursionError`` MUST escape
+        that net (per CLAUDE.md ``## Logging``) so the surrounding
+        execution surface sees the catastrophic state instead of a
+        silently-untagged context.
+        """
+        mw = BehaviorTaggerMiddleware()
+        ctx = _make_ctx(pending_tool_calls=("read_file",))
+
+        def _raise(_self: object, _ctx: object) -> object:
+            raise exc_cls
+
+        monkeypatch.setattr(BehaviorTaggerMiddleware, "_infer_tags", _raise)
+        with pytest.raises(exc_cls):
+            await mw.after_model(ctx)

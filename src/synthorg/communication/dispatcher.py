@@ -255,10 +255,11 @@ class MessageDispatcher:
             # errors[index] -- they must propagate through the wrapping
             # TaskGroup so sibling handlers cancel and the process can
             # surface the failure rather than silently degrading. Log
-            # at ERROR with exc_info=True before re-raising so the
-            # traceback is captured for diagnostics, per the
-            # carve-out for catastrophic interpreter state in
-            # CLAUDE.md ``## Logging``.
+            # via ``log_exception_redacted`` (no traceback attachment,
+            # so frame-locals stay out of the event) before re-raising,
+            # per the redacted-error logging discipline in CLAUDE.md
+            # ``## Logging`` -- never ``logger.exception`` /
+            # ``exc_info=True`` / ``span.record_exception``.
             log_exception_redacted(
                 logger,
                 COMM_DISPATCH_HANDLER_ERROR,

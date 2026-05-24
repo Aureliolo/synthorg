@@ -70,6 +70,8 @@ class EvolutionSignalAggregator:
                 domain="evolution",
                 total_proposals=summary.total_proposals,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             log_exception_redacted(
                 logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain="evolution"

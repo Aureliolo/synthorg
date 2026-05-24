@@ -299,6 +299,8 @@ class SimulationRunner:
             if self._feedback_sink is not None:
                 try:
                     await self._feedback_sink(feedback)
+                except MemoryError, RecursionError:
+                    raise
                 except Exception as exc:
                     log_exception_redacted(
                         logger,

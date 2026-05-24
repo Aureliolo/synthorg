@@ -78,6 +78,8 @@ class BudgetSignalAggregator:
                 META_SIGNAL_AGGREGATION_COMPLETED,
                 domain="budget",
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             log_exception_redacted(
                 logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain="budget"

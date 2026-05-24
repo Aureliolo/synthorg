@@ -71,9 +71,7 @@ from synthorg.persistence.fine_tune_protocol import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.memory.embedding.fine_tune_orchestrator import (
-        FineTuneOrchestrator,
-    )
+    from synthorg.memory.embedding.fine_tune_orchestrator import FineTuneOrchestrator
     from synthorg.memory.protocol import MemoryBackend
     from synthorg.settings.service import SettingsService
 
@@ -991,6 +989,8 @@ class MemoryService:
         """
         try:
             await coro
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # Emit both the aggregate event (broad dashboards /
             # alerting) AND the step-specific event so alerts can pick

@@ -78,6 +78,8 @@ class RuleEngine:
                         description=match.description,
                     )
                     matches.append(match)
+            except MemoryError, RecursionError:
+                raise
             except Exception as exc:
                 log_exception_redacted(
                     logger, META_RULE_EVALUATION_FAILED, exc, rule=rule.name

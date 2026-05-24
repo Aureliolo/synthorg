@@ -22,7 +22,11 @@ if TYPE_CHECKING:
 
     from synthorg.core.types import NotBlankStr
     from synthorg.meta.rollout.inverse_dispatch import RollbackHandler
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.meta import (
     META_ROLLBACK_COMPLETED,
     META_ROLLBACK_FAILED,
@@ -109,7 +113,12 @@ class RollbackExecutor:
                     operation_type=operation.operation_type,
                     target=operation.target,
                 )
-                return _fail(proposal, str(exc), total_changes)
+                return _fail(
+                    proposal,
+                    safe_error_description(exc),
+                    total_changes,
+                    error_type=type(exc).__name__,
+                )
             total_changes += changes
             logger.info(
                 META_ROLLBACK_OPERATION_APPLIED,
@@ -132,14 +141,24 @@ def _fail(
     proposal: ImprovementProposal,
     error_message: str,
     changes_applied: int,
+    *,
+    error_type: str | None = None,
 ) -> ApplyResult:
-    """Log and return a failure ``ApplyResult`` preserving partial count."""
-    logger.warning(
-        META_ROLLBACK_FAILED,
-        proposal_id=str(proposal.id),
-        error=error_message,
-        changes_applied=changes_applied,
-    )
+    """Log and return a failure ``ApplyResult`` preserving partial count.
+
+    Callers from a typed-exception path supply ``error_type`` so the
+    structured log carries both the redacted message and the exception
+    class. The keyword is optional for legacy / validation callers that
+    do not have an exception in hand.
+    """
+    log_kwargs: dict[str, object] = {
+        "proposal_id": str(proposal.id),
+        "error": error_message,
+        "changes_applied": changes_applied,
+    }
+    if error_type is not None:
+        log_kwargs["error_type"] = error_type
+    logger.warning(META_ROLLBACK_FAILED, **log_kwargs)
     return ApplyResult(
         success=False,
         error_message=error_message,

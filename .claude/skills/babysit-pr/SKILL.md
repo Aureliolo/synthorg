@@ -398,7 +398,7 @@ Steps:
 
 6. **Iteration cap.** If Phase 9b loops more than 3 times in a single round (i.e. every fix attempt races a new comment or CI failure), stop and `AskUserQuestion`: "Pre-push sweep has loop-bounced 3 times on PR #N; reviewer / CI is moving faster than fixes ship. Push current batch / wait / pause loop?" The user picks. This prevents pathological live-review situations from blocking the loop indefinitely.
 
-The sweep is read-only -- no API mutations, no commits, no pushes -- so it costs only the API budget of the five `gh` calls (four `gh api` for reviews / inline / issue / security plus one `gh pr view` for the CI rollup). Time budget on a quiet PR: under 5 seconds.
+The sweep is read-only -- no API mutations, no commits, no pushes -- so it only consumes the API budget for the same fetch set as Phase 1 (reviews, inline comments, issue comments, both code-scanning refs, the dependency-graph compare endpoint, secret-scanning, plus one `gh pr view` for the CI rollup). Time budget on a quiet PR: under 5 seconds.
 
 ## Phase 10: commit + push
 

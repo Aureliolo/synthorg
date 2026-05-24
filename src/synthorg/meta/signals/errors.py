@@ -70,6 +70,8 @@ class ErrorSignalAggregator:
                 domain="errors",
                 total_findings=summary.total_findings,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             log_exception_redacted(
                 logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain="errors"
