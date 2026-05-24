@@ -5,8 +5,11 @@ import {
   updateAgentOrg as apiUpdateAgent,
 } from '@/api/endpoints/company'
 import { getErrorMessage } from '@/utils/errors'
+// AgentConfig stays from ``@/api/types/agents`` because the dashboard
+// overlay (id? / status? / hiring_date? extras) is needed here;
+// the barrel exports the wire-only AgentConfig which lacks ``id``.
+import type { AgentConfig } from '@/api/types/agents'
 import type {
-  AgentConfig,
   CreateAgentOrgRequest,
   UpdateAgentOrgRequest,
 } from '@/api/types'

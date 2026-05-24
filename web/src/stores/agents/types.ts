@@ -1,7 +1,15 @@
 import type { StoreApi } from 'zustand'
+// AgentConfig is the dashboard overlay (id? / status? / hiring_date?
+// extras over the wire shape) so it stays imported from
+// ``@/api/types/agents`` rather than the barrel; the barrel exports
+// the wire-only AgentConfig which lacks those fields. Same reason for
+// AgentActivityEvent: the barrel doesn't carry the alias that
+// agents.ts re-exports.
 import type {
   AgentActivityEvent,
   AgentConfig,
+} from '@/api/types/agents'
+import type {
   AgentPerformanceSummary,
   AgentStatus,
   CareerEvent,
