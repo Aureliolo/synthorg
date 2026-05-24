@@ -243,6 +243,50 @@ class TestExternalRemotePushHardening:
             )
         assert fake.push_count == 3
 
+    @pytest.mark.parametrize(
+        "stderr",
+        [
+            # Regression for the substring-match false-positive: a localhost
+            # URL with a random port containing "429" as a substring
+            # ("42919", "1429", "4290", ...) must NOT classify as a
+            # rate-limit. The integration test test_lazy_create_on_missing_remote
+            # tripped this because Python's http.server picks ephemeral
+            # ports in the 32k-60k range, occasionally hitting "429"
+            # substrings, which then misclassified a clean "repo not
+            # found" as a rate-limit and exhausted the retry budget.
+            "fatal: repository 'https://localhost:42919/acme/proj-new.git/' not found",
+            "fatal: repository 'https://localhost:14290/acme/proj-new.git/' not found",
+            "fatal: repository 'https://localhost:34291/acme/proj-new.git/' not found",
+        ],
+    )
+    async def test_port_containing_429_substring_not_rate_limit(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        stderr: str,
+    ) -> None:
+        # Push fails with a "repo not found" stderr whose URL embeds a
+        # port that contains "429" as a digit-substring. The classifier
+        # must reach the remote-missing branch (forge.exists=False) and
+        # raise GitBackendRemoteMissingError-driven lazy-create, NOT
+        # raise GitBackendRateLimitError. The second push attempt
+        # (after lazy create) succeeds.
+        fake = _FakeGit([(1, stderr), (0, "")])
+        _patch_git(monkeypatch, fake)
+        forge = _fake_forge(exists=False)
+        _patch_forge(monkeypatch, forge)
+        backend = _hardened_backend(_catalog_forge())
+
+        result = await backend.push(
+            project_id=NotBlankStr("proj-new"),
+            repo_root=tmp_path,
+            branch=NotBlankStr("main"),
+            base_branch=NotBlankStr("main"),
+        )
+        assert forge.create_repo.await_count == 1
+        assert fake.push_count == 2
+        assert str(result.head_sha)
+
     async def test_missing_remote_creates_repo_then_retries(
         self,
         monkeypatch: pytest.MonkeyPatch,
