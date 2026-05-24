@@ -117,7 +117,7 @@ All significant design and architecture decisions in force today, organized by d
 
 **Decision:** Stay on `nats-py==2.14.0` with the scoped `filterwarnings` entry. Unpin to `nats-py>=2.15` and drop the filter the moment that release ships (`nats-io/nats.py` PR [#932](https://github.com/nats-io/nats.py/pull/932), merged 2026-05-13, contains the `inspect.iscoroutinefunction` swap).
 
-**Context:** PR #1214 introduced `nats-py==2.14.0` for the JetStream message bus and task queue. Python 3.14 CI fails because `nats-py` calls `asyncio.iscoroutinefunction`, deprecated in 3.14 and slated for removal in 3.16. The fix has landed on `nats-py` main but has not yet been tagged for release: latest is still 2.14.0 (2026-02-23).
+**Context:** `nats-py==2.14.0` backs the JetStream message bus and task queue (`SYNTHORG_BUS`, `SYNTHORG_TASKS`). Python 3.14 CI fails because `nats-py` calls `asyncio.iscoroutinefunction`, deprecated in 3.14 and slated for removal in 3.16. The fix has landed on `nats-py` main but has not yet been tagged for release: latest is still 2.14.0 (2026-02-23).
 
 In parallel, the `nats-io/nats.py` repository is publishing a modular client family that mirrors the `nats.js` v3 split. The protocol layer (`nats-core`), the JetStream layer (`nats-jetstream`), and the KV layer (`nats-key-value`) are separate packages. The original ADR evaluated only the protocol layer in isolation and concluded the new family was missing JetStream/KV/consumers. It is not -- those surfaces live in the companion packages.
 
