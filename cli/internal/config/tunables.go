@@ -98,15 +98,23 @@ func DefaultTunables() Tunables {
 // precedence env > state > default. Returns a validated Tunables or a detailed
 // error if any env/state override is malformed. Safe to call more than once
 // but typically invoked exactly once from root.go PersistentPreRunE.
+//
+// The helpers take and return Tunables BY VALUE (not via *Tunables). Taking
+// &t across the helper boundaries defeated escape analysis on the ~208-byte
+// Tunables struct, forcing a heap allocation per ResolveTunables call (one
+// of the regressions CLI Bench Regression caught). Pass-by-value keeps the
+// struct on the stack and turns the per-call cost into a small stack memcpy
+// instead, which is essentially free at this size.
 func ResolveTunables(s State) (Tunables, error) {
 	t := DefaultTunables()
-	if err := resolveRegistryTunables(&t, s); err != nil {
+	var err error
+	if t, err = resolveRegistryTunables(t, s); err != nil {
 		return Tunables{}, err
 	}
-	if err := resolveDurationTunables(&t, s); err != nil {
+	if t, err = resolveDurationTunables(t, s); err != nil {
 		return Tunables{}, err
 	}
-	if err := resolveCountTunables(&t, s); err != nil {
+	if t, err = resolveCountTunables(t, s); err != nil {
 		return Tunables{}, err
 	}
 	t.CustomRegistry = t.RegistryHost != DefaultRegistryHost ||
@@ -126,22 +134,23 @@ func ResolveTunables(s State) (Tunables, error) {
 // `[]struct{name, value, valid}` literal escaped to the heap once per
 // call (~208 B/op) because the slice header survived the range loop,
 // which tripped CLI Bench Regression on ResolveTunables.
-func resolveRegistryTunables(t *Tunables, s State) error {
+func resolveRegistryTunables(t Tunables, s State) (Tunables, error) {
 	t.RegistryHost = firstNonEmpty(os.Getenv(EnvRegistryHost), s.RegistryHost, t.RegistryHost)
 	t.ImageRepoPrefix = firstNonEmpty(os.Getenv(EnvImageRepoPrefix), s.ImageRepoPrefix, t.ImageRepoPrefix)
 	t.DHIRegistry = firstNonEmpty(os.Getenv(EnvDHIRegistry), s.DHIRegistry, t.DHIRegistry)
 	t.PostgresImageTag = firstNonEmpty(os.Getenv(EnvPostgresImageTag), s.PostgresImageTag, t.PostgresImageTag)
 	t.NATSImageTag = firstNonEmpty(os.Getenv(EnvNATSImageTag), s.NATSImageTag, t.NATSImageTag)
 	t.DefaultNATSStreamPrefix = firstNonEmpty(os.Getenv(EnvDefaultNATSStreamPfx), s.DefaultNATSStreamPrefix, t.DefaultNATSStreamPrefix)
-	return validateResolvedRegistryFields(t)
+	return t, validateResolvedRegistryFields(t)
 }
 
 // validateResolvedRegistryFields runs the per-field format predicates
 // on the registry / image-tag fields after resolution. Extracted so
 // resolveRegistryTunables stays under the cyclomatic-complexity
 // ceiling (6 ifs plus the 6 firstNonEmpty assignments would push it
-// over) without re-introducing a per-call slice.
-func validateResolvedRegistryFields(t *Tunables) error {
+// over) without re-introducing a per-call slice. Takes Tunables by
+// value (read-only); the caller already owns the updated copy.
+func validateResolvedRegistryFields(t Tunables) error {
 	if !IsValidRegistryHost(t.RegistryHost) {
 		return fmt.Errorf("invalid registry_host %q", t.RegistryHost)
 	}
@@ -163,89 +172,113 @@ func validateResolvedRegistryFields(t *Tunables) error {
 	return nil
 }
 
-// resolveDurationField looks up env > stateValue > current *dst, parses
-// the chosen value into a duration, and writes it back through dst.
-// Using a pointer instead of a setter closure keeps the per-call alloc
-// count at zero (the closure pattern allocates one func value per
-// duration, which is hot on the ResolveTunables path).
-func resolveDurationField(key, envName, stateValue string, dst *time.Duration) error {
-	d, err := resolveDuration(envName, stateValue, *dst)
+// resolveDurationField returns the resolved duration for one field
+// without taking the address of any caller-owned storage. Pointer-based
+// dst was tried in earlier rounds and forced Tunables to the heap via
+// escape analysis on the caller's bindings table; returning the value
+// keeps everything on stack and matches main's pattern.
+func resolveDurationField(key, envName, stateValue string, def time.Duration) (time.Duration, error) {
+	d, err := resolveDuration(envName, stateValue, def)
 	if err != nil {
-		return fmt.Errorf("%s: %w", key, err)
+		return 0, fmt.Errorf("%s: %w", key, err)
 	}
-	*dst = d
-	return nil
+	return d, nil
 }
 
 // resolveDurationTunables fills every duration field on t, plus the
-// image-verify floor and image_pull_attempts integer (kept together
-// because both gate image-pull behaviour).
-//
-// The bindings table is built as a stack-local fixed-size array of
-// plain data (no closures, no function pointers) so iteration is a
-// direct call into resolveDurationField with no indirect-call
-// escape forcing State to the heap. That eliminates the per-call
-// 208-byte State copy the previous closure-based table introduced.
-func resolveDurationTunables(t *Tunables, s State) error {
-	bindings := [...]struct {
-		key        string
-		envName    string
-		stateValue string
-		dst        *time.Duration
-	}{
-		{"backup_create_timeout", EnvBackupCreateTimeout, s.BackupCreateTimeout, &t.BackupCreateTimeout},
-		{"backup_restore_timeout", EnvBackupRestoreTimeout, s.BackupRestoreTimeout, &t.BackupRestoreTimeout},
-		{"health_check_timeout", EnvHealthCheckTimeout, s.HealthCheckTimeout, &t.HealthCheckTimeout},
-		{"self_update_http_timeout", EnvSelfUpdateHTTPTimeout, s.SelfUpdateHTTPTimeout, &t.SelfUpdateHTTPTimeout},
-		{"self_update_api_timeout", EnvSelfUpdateAPITimeout, s.SelfUpdateAPITimeout, &t.SelfUpdateAPITimeout},
-		{"tuf_fetch_timeout", EnvTUFFetchTimeout, s.TUFFetchTimeout, &t.TUFFetchTimeout},
-		{"attestation_http_timeout", EnvAttestationHTTPTimeout, s.AttestationHTTPTimeout, &t.AttestationHTTPTimeout},
-		{"image_verify_timeout", EnvImageVerifyTimeout, s.ImageVerifyTimeout, &t.ImageVerifyTimeout},
-		{"image_pull_retry_delay", EnvImagePullRetryDelay, s.ImagePullRetryDelay, &t.ImagePullRetryDelay},
+// image-verify floor. Direct assignment per field (no bindings table
+// holding &t.X pointers) so Tunables never has its address taken in
+// this function, which previously caused the ~208-byte struct to
+// heap-allocate per ResolveTunables call.
+func resolveDurationTunables(t Tunables, s State) (Tunables, error) {
+	var err error
+	if t.BackupCreateTimeout, err = resolveDurationField("backup_create_timeout", EnvBackupCreateTimeout, s.BackupCreateTimeout, t.BackupCreateTimeout); err != nil {
+		return t, err
 	}
-	for _, b := range bindings {
-		if err := resolveDurationField(b.key, b.envName, b.stateValue, b.dst); err != nil {
-			return err
-		}
+	if t.BackupRestoreTimeout, err = resolveDurationField("backup_restore_timeout", EnvBackupRestoreTimeout, s.BackupRestoreTimeout, t.BackupRestoreTimeout); err != nil {
+		return t, err
+	}
+	if t.HealthCheckTimeout, err = resolveDurationField("health_check_timeout", EnvHealthCheckTimeout, s.HealthCheckTimeout, t.HealthCheckTimeout); err != nil {
+		return t, err
+	}
+	t, err = resolveSelfUpdateAndTUFTimeouts(t, s)
+	if err != nil {
+		return t, err
+	}
+	t, err = resolveImageTimeouts(t, s)
+	if err != nil {
+		return t, err
 	}
 	if t.ImageVerifyTimeout < MinImageVerifyTimeout {
-		return fmt.Errorf(
+		return t, fmt.Errorf(
 			"image_verify_timeout: %v is below the %v minimum floor; a shorter timeout would bypass cosign/SLSA verification by silently timing out",
 			t.ImageVerifyTimeout, MinImageVerifyTimeout,
 		)
 	}
-	return nil
+	return t, nil
 }
 
-// resolveBytesField looks up env > stateValue > current *dst, parses the
-// chosen value into a byte count, and writes it back through dst.
-// Pointer-based for the same zero-alloc reason as resolveDurationField.
-func resolveBytesField(key, envName string, stateValue int64, dst *int64) error {
-	n, err := resolveBytes(envName, stateValue, *dst)
-	if err != nil {
-		return fmt.Errorf("%s: %w", key, err)
+// resolveSelfUpdateAndTUFTimeouts resolves the three timeouts that
+// gate the self-update + TUF fetch + attestation paths. Split out of
+// resolveDurationTunables so neither function blows the per-function
+// cyclomatic-complexity ceiling without re-introducing a bindings
+// table (which would heap-allocate Tunables).
+func resolveSelfUpdateAndTUFTimeouts(t Tunables, s State) (Tunables, error) {
+	var err error
+	if t.SelfUpdateHTTPTimeout, err = resolveDurationField("self_update_http_timeout", EnvSelfUpdateHTTPTimeout, s.SelfUpdateHTTPTimeout, t.SelfUpdateHTTPTimeout); err != nil {
+		return t, err
 	}
-	*dst = n
-	return nil
+	if t.SelfUpdateAPITimeout, err = resolveDurationField("self_update_api_timeout", EnvSelfUpdateAPITimeout, s.SelfUpdateAPITimeout, t.SelfUpdateAPITimeout); err != nil {
+		return t, err
+	}
+	if t.TUFFetchTimeout, err = resolveDurationField("tuf_fetch_timeout", EnvTUFFetchTimeout, s.TUFFetchTimeout, t.TUFFetchTimeout); err != nil {
+		return t, err
+	}
+	t.AttestationHTTPTimeout, err = resolveDurationField("attestation_http_timeout", EnvAttestationHTTPTimeout, s.AttestationHTTPTimeout, t.AttestationHTTPTimeout)
+	return t, err
+}
+
+// resolveImageTimeouts resolves the image-verify / pull-retry pair.
+// Floor check on image_verify_timeout lives in resolveDurationTunables
+// because it needs to see the final resolved value.
+func resolveImageTimeouts(t Tunables, s State) (Tunables, error) {
+	var err error
+	if t.ImageVerifyTimeout, err = resolveDurationField("image_verify_timeout", EnvImageVerifyTimeout, s.ImageVerifyTimeout, t.ImageVerifyTimeout); err != nil {
+		return t, err
+	}
+	t.ImagePullRetryDelay, err = resolveDurationField("image_pull_retry_delay", EnvImagePullRetryDelay, s.ImagePullRetryDelay, t.ImagePullRetryDelay)
+	return t, err
+}
+
+// resolveBytesField returns the resolved byte count without taking
+// the address of any caller-owned storage. Mirrors resolveDurationField's
+// zero-alloc value-return shape.
+func resolveBytesField(key, envName string, stateValue, def int64) (int64, error) {
+	n, err := resolveBytes(envName, stateValue, def)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+	return n, nil
 }
 
 // resolveCountTunables fills image_pull_attempts and the byte-size fields
 // on t. Bytes are kept together because they share an identical resolve
-// helper and ceiling check.
-func resolveCountTunables(t *Tunables, s State) error {
+// helper and ceiling check. Same value-pass pattern as the other
+// resolve helpers to keep Tunables on stack.
+func resolveCountTunables(t Tunables, s State) (Tunables, error) {
 	attempts, err := resolveInt(EnvImagePullAttempts, s.ImagePullAttempts, t.ImagePullAttempts, 1, MaxImagePullAttempts)
 	if err != nil {
-		return fmt.Errorf("image_pull_attempts: %w", err)
+		return t, fmt.Errorf("image_pull_attempts: %w", err)
 	}
 	t.ImagePullAttempts = attempts
-
-	if err := resolveBytesField("max_api_response_bytes", EnvMaxAPIResponseBytes, s.MaxAPIResponseBytes, &t.MaxAPIResponseBytes); err != nil {
-		return err
+	if t.MaxAPIResponseBytes, err = resolveBytesField("max_api_response_bytes", EnvMaxAPIResponseBytes, s.MaxAPIResponseBytes, t.MaxAPIResponseBytes); err != nil {
+		return t, err
 	}
-	if err := resolveBytesField("max_binary_bytes", EnvMaxBinaryBytes, s.MaxBinaryBytes, &t.MaxBinaryBytes); err != nil {
-		return err
+	if t.MaxBinaryBytes, err = resolveBytesField("max_binary_bytes", EnvMaxBinaryBytes, s.MaxBinaryBytes, t.MaxBinaryBytes); err != nil {
+		return t, err
 	}
-	return resolveBytesField("max_archive_entry_bytes", EnvMaxArchiveEntryBytes, s.MaxArchiveEntryBytes, &t.MaxArchiveEntryBytes)
+	t.MaxArchiveEntryBytes, err = resolveBytesField("max_archive_entry_bytes", EnvMaxArchiveEntryBytes, s.MaxArchiveEntryBytes, t.MaxArchiveEntryBytes)
+	return t, err
 }
 
 // firstNonEmpty returns the first whitespace-trimmed non-empty string

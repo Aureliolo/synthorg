@@ -506,30 +506,71 @@ func doctorComposeError(r diagnostics.Report) (string, bool) {
 }
 
 func collectDoctorWarnings(r diagnostics.Report) []string {
-	var warnings []string
-	// The "no containers" warning is only meaningful when the
-	// containers category is actually part of the report. When the
-	// operator scoped --checks AWAY from containers, the filtered
-	// report has a zeroed ContainerSummary; emitting "no containers
-	// detected" anyway would surface a finding from a category the
-	// operator explicitly excluded.
-	if doctorCheckEnabled("containers") && len(r.ContainerSummary) == 0 && r.ComposeFileExists {
-		warnings = append(warnings, "no containers detected")
+	// Upper bound: at most one "no containers" + one per ContainerSummary
+	// + one per ImageStatus + one compose-validity warning.
+	warnings := make([]string, 0, 2+len(r.ContainerSummary)+len(r.ImageStatus))
+	warnings = append(warnings, doctorNoContainersWarning(r)...)
+	warnings = append(warnings, doctorContainerStartingWarnings(r)...)
+	warnings = append(warnings, doctorImageStatusWarnings(r)...)
+	warnings = append(warnings, doctorComposeValidityWarning(r)...)
+	return warnings
+}
+
+// doctorNoContainersWarning emits "no containers detected" only when
+// the containers category is part of the (possibly --checks-filtered)
+// report. filterReportByDoctorChecks zeros ContainerSummary when the
+// operator scopes containers out, so without the gate the warning
+// surfaces a finding from an excluded category.
+func doctorNoContainersWarning(r diagnostics.Report) []string {
+	if !doctorCheckEnabled("containers") {
+		return nil
 	}
+	if len(r.ContainerSummary) != 0 || !r.ComposeFileExists {
+		return nil
+	}
+	return []string{"no containers detected"}
+}
+
+// doctorContainerStartingWarnings emits a "still starting" warning
+// per container caught mid-start. The ContainerSummary slice is
+// already empty when filterReportByDoctorChecks scopes containers
+// out, so no extra gate is needed.
+func doctorContainerStartingWarnings(r diagnostics.Report) []string {
+	var warnings []string
 	for _, c := range r.ContainerSummary {
 		if c.Health == "starting" {
 			warnings = append(warnings, fmt.Sprintf("%s still starting", c.Name))
 		}
 	}
+	return warnings
+}
+
+// doctorImageStatusWarnings emits each non-"available" image status
+// line. ImageStatus is nil when filterReportByDoctorChecks scopes
+// images out, so no extra gate is needed.
+func doctorImageStatusWarnings(r diagnostics.Report) []string {
+	var warnings []string
 	for _, img := range r.ImageStatus {
 		if !strings.HasSuffix(img, ": available") {
 			warnings = append(warnings, img)
 		}
 	}
-	if r.ComposeFileExists && r.ComposeFileValid == nil {
-		warnings = append(warnings, "compose.yml exists, validity not checked")
-	}
 	return warnings
+}
+
+// doctorComposeValidityWarning emits "compose.yml exists, validity
+// not checked" only when the compose category is part of the report.
+// filterReportByDoctorChecks forces ComposeFileExists=true and clears
+// ComposeFileValid when the operator scopes compose out, so without
+// the gate the warning fires for an excluded category.
+func doctorComposeValidityWarning(r diagnostics.Report) []string {
+	if !doctorCheckEnabled("compose") {
+		return nil
+	}
+	if !r.ComposeFileExists || r.ComposeFileValid != nil {
+		return nil
+	}
+	return []string{"compose.yml exists, validity not checked"}
 }
 
 // renderDoctorSummary prints a final summary box showing overall system status.
