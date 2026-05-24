@@ -107,7 +107,7 @@
       "description": "Binary tool version env vars in CI workflows and local dev install scripts (Trivy, Grype, Gitleaks, D2, apko, melange, lychee, etc.)",
       "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/", "/scripts/install_.*\\.sh$/"],
       "matchStrings": [
-        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+[A-Z0-9_]+_VERSION[:=]\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
+        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s*[A-Z0-9_]+_VERSION[:=]\\s*[\"']?(?<currentValue>[^\"'\\s]+)[\"']?"
       ],
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver"
@@ -124,10 +124,10 @@
     },
     {
       "customType": "regex",
-      "description": "GitHub Action version: input parameters",
+      "description": "GitHub Action version: input parameters (also matches lycheeVersion: for lycheeverse/lychee-action v2+)",
       "managerFilePatterns": ["/\\.github/.*\\.ya?ml$/"],
       "matchStrings": [
-        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+version:\\s*(?<currentValue>[^\\s]+)"
+        "# renovate: datasource=github-releases depName=(?<depName>[^\\s]+)\\n\\s+(?:version|lycheeVersion):\\s*(?<currentValue>[^\\s]+)"
       ],
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "semver"

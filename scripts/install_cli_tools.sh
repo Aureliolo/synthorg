@@ -74,7 +74,11 @@ install_golangci_lint() {
   local gobin gopath install_dir installed_binary
   gobin=$(go env GOBIN 2>/dev/null || true)
   gopath=$(go env GOPATH 2>/dev/null || true)
-  install_dir="${gobin:-${gopath}/bin}"
+  # GOPATH may be a colon-separated list (PATH-style) on POSIX or
+  # semicolon-separated on Windows; ``go install`` writes the binary to
+  # the first entry's bin/. Strip everything after the first separator
+  # so install_dir is always a single directory, not a joined string.
+  install_dir="${gobin:-$(printf '%s' "${gopath}" | tr ':;' '\n' | head -n1)/bin}"
   installed_binary="${install_dir}/golangci-lint"
 
   if ! command -v golangci-lint >/dev/null 2>&1; then
@@ -110,7 +114,7 @@ install_golangci_lint
 LYCHEE_VERSION="v0.24.2"
 
 # Upstream release tags are prefixed `lychee-` (e.g. `lychee-v0.24.2`); the
-# bare `v...` form here matches the `version:` input shape of
+# bare `v...` form here matches the `lycheeVersion:` input shape of
 # `lycheeverse/lychee-action` and the value Renovate writes back after
 # stripping the prefix via the packageRules entry for `lycheeverse/lychee`
 # in renovate.json. The download URL prepends the prefix below.
@@ -210,7 +214,12 @@ install_lychee() {
 
   local tmpdir
   tmpdir="$(mktemp -d -t lychee-install.XXXXXX)"
-  trap 'rm -rf "${tmpdir}"' RETURN
+  # Use EXIT not RETURN: ``set -e`` aborts the script on a failed
+  # curl/sha256sum/tar before the RETURN trap would fire, leaking the
+  # temp dir. EXIT runs on both normal return AND set -e bailout.
+  # Double quotes expand ${tmpdir} now (function-local), since the
+  # trap body fires at script exit when the local has gone out of scope.
+  trap "rm -rf '${tmpdir}'" EXIT
 
   echo "Installing lychee ${LYCHEE_VERSION} (${triplet}) to ${install_dir}..."
   curl --fail --silent --show-error --location \
