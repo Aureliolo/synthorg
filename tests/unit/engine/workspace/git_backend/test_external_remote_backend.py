@@ -283,7 +283,7 @@ class TestExternalRemotePushHardening:
             branch=NotBlankStr("main"),
             base_branch=NotBlankStr("main"),
         )
-        assert forge.create_repo.await_count == 1
+        forge.create_repo.assert_awaited_once()
         assert fake.push_count == 2
         assert str(result.head_sha)
 

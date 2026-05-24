@@ -238,13 +238,21 @@ install_lychee() {
   # temp dir. EXIT runs on both normal return AND set -e bailout.
   # Double quotes expand ${tmpdir} now (function-local), since the
   # trap body fires at script exit when the local has gone out of scope.
-  # shellcheck disable=SC2064 -- early expansion intentional: ${tmpdir} is function-local.
+  # shellcheck disable=SC2064  # early expansion intentional: ${tmpdir} is function-local.
   trap "rm -rf '${tmpdir}'" EXIT
 
   echo "Installing lychee ${LYCHEE_VERSION} (${triplet}) to ${install_dir}..."
+  # --retry covers transient 5xx (e.g. github.com releases CDN returns
+  # 502 intermittently on cold CDN paths); --retry-all-errors widens
+  # the retry set to include curl-level errors (DNS, connection reset)
+  # plus any HTTP error code, not just the default 408/429/500/502/503/504.
+  # 3 attempts with 2s linear backoff is enough to absorb realistic
+  # transient blips without masking sustained outages.
   curl --fail --silent --show-error --location \
+    --retry 3 --retry-delay 2 --retry-all-errors \
     --output "${tmpdir}/${archive}" "${download_url}"
   curl --fail --silent --show-error --location \
+    --retry 3 --retry-delay 2 --retry-all-errors \
     --output "${tmpdir}/${archive}.sha256" "${sha_url}"
 
   # Upstream `.sha256` files are heterogeneous: Linux/macOS releases ship
