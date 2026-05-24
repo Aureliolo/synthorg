@@ -5,7 +5,7 @@ credential material embedded inside exception ``str(exc)`` output.
 """
 
 import json
-from typing import Any
+from typing import Any, override
 
 import httpx
 import pytest
@@ -292,6 +292,7 @@ class TestSafeErrorDescriptionBasics:
         # propagate that failure -- a broken description is better than
         # a dropped log event.
         class BrokenStrError(Exception):
+            @override
             def __str__(self) -> str:
                 msg = "no str for you"
                 raise RuntimeError(msg)
@@ -368,9 +369,9 @@ class _CapturingLogger:
     """
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.calls: list[tuple[str, dict[str, Any]]] = []  # type: ignore[explicit-any]  # mirrors structlog BoundLogger.error kwargs (Any-typed boundary)
 
-    def error(self, event: str | None = None, *args: Any, **kwargs: Any) -> None:
+    def error(self, event: str | None = None, *args: Any, **kwargs: Any) -> None:  # type: ignore[explicit-any]  # mirrors structlog BoundLogger.error structural surface
         # ``*args`` is part of the structural surface but unused by
         # ``log_exception_redacted``; record kwargs only. The Any-typed
         # ``**kwargs`` mirrors the production ``_ErrorLogger`` Protocol

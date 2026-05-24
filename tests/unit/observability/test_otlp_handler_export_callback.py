@@ -7,11 +7,11 @@ depending on AppState.
 
 import logging
 from collections.abc import Iterator
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 import structlog
+from structlog.typing import EventDict
 
 from synthorg.observability.events.metrics import METRICS_OTLP_CALLBACK_ERROR
 from synthorg.observability.otlp_handler import OtlpHandler
@@ -32,7 +32,7 @@ def _make_record(level: int = logging.INFO, message: str = "x") -> logging.LogRe
 
 
 @pytest.fixture
-def captured_logs() -> Iterator[Any]:
+def captured_logs() -> Iterator[list[EventDict]]:
     """Capture structlog events emitted by the handler's internal logger."""
     with structlog.testing.capture_logs() as cap:
         yield cap
@@ -69,7 +69,7 @@ def test_export_callback_outcomes(
 
 
 def test_export_callback_exceptions_are_swallowed(
-    captured_logs: Any,
+    captured_logs: list[EventDict],
 ) -> None:
     handler = OtlpHandler(
         endpoint="http://example.invalid:4318",

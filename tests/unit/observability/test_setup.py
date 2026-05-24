@@ -3,7 +3,7 @@
 import json
 import logging
 import sys
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 import pytest
 import structlog
@@ -567,7 +567,8 @@ class TestTameThirdPartyLoggers:
     ) -> None:
         """A handler whose close() raises warns to stderr but is still removed."""
 
-        class _BadHandler(logging.StreamHandler[Any]):
+        class _BadHandler(logging.StreamHandler[Any]):  # type: ignore[explicit-any]  # logging.StreamHandler is generic over the underlying stream type
+            @override
             def close(self) -> None:
                 msg = "close failed"
                 raise RuntimeError(msg)

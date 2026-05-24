@@ -132,8 +132,8 @@ def test_update_label_snapshot_replaces_atomically() -> None:
     ],
 )
 def test_per_source_validator_rejects_unknown_accepts_known(
-    validator: Any,
-    snapshot_kwargs: dict[str, Any],
+    validator: Any,  # type: ignore[explicit-any]  # validator-under-test is one of N Pydantic field-validator callables with heterogeneous signatures
+    snapshot_kwargs: dict[str, Any],  # type: ignore[explicit-any]  # constructor kwargs forwarded to multiple snapshot classes with disjoint field sets
     label_substring: str,
     unknown: str,
     known: str,

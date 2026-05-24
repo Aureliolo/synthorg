@@ -1,9 +1,9 @@
 """Tests for sink routing (logger name + event name + exact level filters)."""
 
 import logging
-from typing import Any
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.observability.sinks import (
     SINK_EVENT_EXCLUDES,
@@ -41,7 +41,10 @@ def _make_structlog_record(
     structured kwargs).  This helper builds that exact shape so
     filter tests exercise the production record layout.
     """
-    msg: dict[str, Any] = {"event": event, "level": logging.getLevelName(level).lower()}
+    msg: dict[str, JsonValue] = {
+        "event": event,
+        "level": logging.getLevelName(level).lower(),
+    }
     return logging.LogRecord(
         name=name,
         level=level,
