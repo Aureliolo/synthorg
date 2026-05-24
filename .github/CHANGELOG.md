@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.8.8](https://github.com/Aureliolo/synthorg/compare/v0.8.7...v0.8.8) (2026-05-24)
+
+
+### Features
+
+* brownfield codebase intake (merger/acquisition entry mode) ([#2042](https://github.com/Aureliolo/synthorg/issues/2042)) ([e287621](https://github.com/Aureliolo/synthorg/commit/e287621b08405bcd28556e192a00015f829f8d53)), closes [#1975](https://github.com/Aureliolo/synthorg/issues/1975)
+* deep CEO interview to project charter ([#2045](https://github.com/Aureliolo/synthorg/issues/2045)) ([904f2fb](https://github.com/Aureliolo/synthorg/commit/904f2fb147010da193d0bfb76fe2a7c0b2e01c68))
+* mission control + flight recorder operator cockpit ([#2044](https://github.com/Aureliolo/synthorg/issues/2044)) ([1c2660b](https://github.com/Aureliolo/synthorg/commit/1c2660b33b4607eba1505430ae77d144f520a78a))
+* research mode ([#2041](https://github.com/Aureliolo/synthorg/issues/2041)) ([f81a5ac](https://github.com/Aureliolo/synthorg/commit/f81a5acc3d36bad8ec959520dcee8429ea123286)), closes [#1989](https://github.com/Aureliolo/synthorg/issues/1989)
+* surface safety-spine state in runtime-services boot log (closes [#2096](https://github.com/Aureliolo/synthorg/issues/2096)) ([#2097](https://github.com/Aureliolo/synthorg/issues/2097)) ([f187b31](https://github.com/Aureliolo/synthorg/commit/f187b31579067a5066c190dde3b071a59e3dca14))
+
+
+### Refactoring
+
+* add __init__.py to 21 leaf test directories (INP001) ([#2081](https://github.com/Aureliolo/synthorg/issues/2081)) ([2592118](https://github.com/Aureliolo/synthorg/commit/25921183f274c930bf473dc0339376bda0961eaf)), closes [#2064](https://github.com/Aureliolo/synthorg/issues/2064)
+* codebase modularity (1/4) - module-size gates + lint tightening + tools ([#2078](https://github.com/Aureliolo/synthorg/issues/2078)) ([556fbd9](https://github.com/Aureliolo/synthorg/commit/556fbd9afe880c0b13e69425d5f861865e3dbce8)), closes [#2047](https://github.com/Aureliolo/synthorg/issues/2047) [#2040](https://github.com/Aureliolo/synthorg/issues/2040)
+* promote 6 transitive deps to direct deps ([#2083](https://github.com/Aureliolo/synthorg/issues/2083)) ([adedc6a](https://github.com/Aureliolo/synthorg/commit/adedc6a52ca621b0f8a008498f89f0f0ce66fabe))
+* split codespell ignore-words-list into vocab + source renames ([#2085](https://github.com/Aureliolo/synthorg/issues/2085)) ([917d98a](https://github.com/Aureliolo/synthorg/commit/917d98a08db0b309a00de71560fb9d158b2b8e64)), closes [#2074](https://github.com/Aureliolo/synthorg/issues/2074)
+* **web:** PR A foundation, decompose oversized utils/hooks/lib ([#2092](https://github.com/Aureliolo/synthorg/issues/2092)) ([#2098](https://github.com/Aureliolo/synthorg/issues/2098)) ([aedbba5](https://github.com/Aureliolo/synthorg/commit/aedbba5a5368dcc2c2de450cfa1f3f8ec71ae271))
+
+
+### CI/CD
+
+* exclude slsa.dev from lychee (transient timeout on canonical badge) ([#2090](https://github.com/Aureliolo/synthorg/issues/2090)) ([346c51d](https://github.com/Aureliolo/synthorg/commit/346c51d49cb32a27d988689ded0b4021ed9094be))
+* fix paths-filter shallow-clone race and scorecard allowlist ([#2089](https://github.com/Aureliolo/synthorg/issues/2089)) ([7cd7ce8](https://github.com/Aureliolo/synthorg/commit/7cd7ce831014a3d148150a84237d42edf8793015))
+* refresh .test_durations.{unit,integration} ([#2087](https://github.com/Aureliolo/synthorg/issues/2087)) ([ddf2d86](https://github.com/Aureliolo/synthorg/commit/ddf2d86030713bf3d52f8f8349011c5cd5af42d6))
+* retry cosign sign on transient GHCR/Rekor failures ([#2100](https://github.com/Aureliolo/synthorg/issues/2100)) ([da9422a](https://github.com/Aureliolo/synthorg/commit/da9422abcd7ea80340a6feb05905fbadb4cde2f5))
+* shard test-unit + test-integration, sysmon coverage, Postgres service container ([#2080](https://github.com/Aureliolo/synthorg/issues/2080)) ([0768787](https://github.com/Aureliolo/synthorg/commit/076878778eea270324b887cb4b73a492e3e5f3b0))
+* wire Lychee link-checker (workflow + installer + pre-push hook) ([#2084](https://github.com/Aureliolo/synthorg/issues/2084)) ([1c0694a](https://github.com/Aureliolo/synthorg/commit/1c0694a3a6b6d54d40705d12bd5fb8619c50b132))
+
+
+### Maintenance
+
+* Lock file maintenance ([#2086](https://github.com/Aureliolo/synthorg/issues/2086)) ([a78810a](https://github.com/Aureliolo/synthorg/commit/a78810a5989543fa134a26925e413a90ad33c12c))
+* Update Infrastructure dependencies ([#2055](https://github.com/Aureliolo/synthorg/issues/2055)) ([041ad8b](https://github.com/Aureliolo/synthorg/commit/041ad8bdb8d730f40570779e54550f055e939140))
+* Update Web dependencies ([#2054](https://github.com/Aureliolo/synthorg/issues/2054)) ([4d57b9a](https://github.com/Aureliolo/synthorg/commit/4d57b9a7bc09f4f06116b6a1a7e590f23d24b209))
+
 ## [0.8.7](https://github.com/Aureliolo/synthorg/compare/v0.8.6...v0.8.7) (2026-05-22)
 
 
