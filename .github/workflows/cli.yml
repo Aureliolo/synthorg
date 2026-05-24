@@ -272,7 +272,7 @@ jobs:
               if [ "$attempt" -gt 1 ]; then
                 echo "::notice::go install govulncheck succeeded on attempt $attempt"
               fi
-              break
+              exit 0
             fi
             rc=$?
             if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
