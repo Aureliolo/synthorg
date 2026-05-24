@@ -26,6 +26,63 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
+function _hasModifier<T extends HTMLElement>(event: KeyboardEvent<T>): boolean {
+  return event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
+}
+
+/**
+ * True when arrow / Home / End should belong to the focused element
+ * rather than the toolbar (caret nav inside a text input, content-
+ * editable region, etc.).
+ */
+function _isEditableElement(el: Element | null): boolean {
+  if (!(el instanceof HTMLElement)) return false
+  const tag = el.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  return el.isContentEditable
+}
+
+type IndexFn = (activeIndex: number, count: number) => number
+
+/** Forward wrap: -1 starts from the first item; everywhere else moves cyclically. */
+const _forward: IndexFn = (i, n) => (i < 0 ? 0 : (i + 1) % n)
+/** Backward wrap: -1 starts from the last item; everywhere else moves cyclically. */
+const _backward: IndexFn = (i, n) => (i < 0 ? n - 1 : (i - 1 + n) % n)
+const _first: IndexFn = () => 0
+const _last: IndexFn = (_i, n) => n - 1
+
+const TOOLBAR_INDEX_FNS: Readonly<Record<string, IndexFn>> = {
+  ArrowRight: _forward,
+  ArrowDown: _forward,
+  ArrowLeft: _backward,
+  ArrowUp: _backward,
+  Home: _first,
+  End: _last,
+}
+
+/**
+ * Cyclic index of the next focusable child given an arrow / Home / End
+ * key. Returns null for any other key so the caller knows to skip the
+ * focus move. `activeIndex < 0` means no toolbar child is currently
+ * focused, so a forward key lands on the first item and a backward key
+ * on the last.
+ */
+function _nextToolbarIndex(
+  key: string,
+  activeIndex: number,
+  count: number,
+): number | null {
+  const fn = TOOLBAR_INDEX_FNS[key]
+  if (!fn) return null
+  return fn(activeIndex, count)
+}
+
+function _collectToolbarItems(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+  ).filter((el) => !el.hasAttribute('data-toolbar-skip'))
+}
+
 export function useToolbarKeyboardNav<
   T extends HTMLElement = HTMLDivElement,
 >(): ToolbarKeyboardNav<T> {
@@ -34,65 +91,18 @@ export function useToolbarKeyboardNav<
   const onKeyDown = useCallback((event: KeyboardEvent<T>) => {
     const container = ref.current
     if (!container) return
-
     // Let nested composite controls own the event when they call
     // preventDefault themselves (e.g. a Menu or Combobox inside the
     // toolbar). Without this guard the toolbar would re-handle the
     // arrow key and move focus away mid-interaction.
     if (event.defaultPrevented) return
-
-    // Preserve browser and assistive-tech shortcuts (Ctrl/Cmd/Alt/Shift
-    // chords) -- the toolbar only owns plain arrow/Home/End navigation.
-    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
-      return
-    }
-
-    // Do not intercept arrow keys inside editable controls -- the
-    // native caret/value navigation must take precedence. Home/End
-    // inside inputs also matters for text editing and we intentionally
-    // leave them to the browser.
-    const active = document.activeElement
-    if (active instanceof HTMLElement) {
-      const editable =
-        active.tagName === 'INPUT' ||
-        active.tagName === 'TEXTAREA' ||
-        active.tagName === 'SELECT' ||
-        active.isContentEditable
-      if (editable) return
-    }
-
-    const items = Array.from(
-      container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-    ).filter((el) => !el.hasAttribute('data-toolbar-skip'))
+    if (_hasModifier(event)) return
+    if (_isEditableElement(document.activeElement)) return
+    const items = _collectToolbarItems(container)
     if (items.length === 0) return
-
-    const activeIndex = items.indexOf(active as HTMLElement)
-
-    let nextIndex: number
-    switch (event.key) {
-      case 'ArrowRight':
-      case 'ArrowDown':
-        // -1 (no active item) starts from the first control; from any
-        // live index, wrap forward via the cyclic modulo.
-        nextIndex = activeIndex < 0 ? 0 : (activeIndex + 1) % items.length
-        break
-      case 'ArrowLeft':
-      case 'ArrowUp':
-        nextIndex =
-          activeIndex < 0
-            ? items.length - 1
-            : (activeIndex - 1 + items.length) % items.length
-        break
-      case 'Home':
-        nextIndex = 0
-        break
-      case 'End':
-        nextIndex = items.length - 1
-        break
-      default:
-        return
-    }
-
+    const activeIndex = items.indexOf(document.activeElement as HTMLElement)
+    const nextIndex = _nextToolbarIndex(event.key, activeIndex, items.length)
+    if (nextIndex === null) return
     event.preventDefault()
     items[nextIndex]?.focus()
   }, [])

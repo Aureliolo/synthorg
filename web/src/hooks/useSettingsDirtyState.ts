@@ -8,6 +8,57 @@ import { saveSettingsBatch } from '@/pages/settings/utils'
 
 const log = createLogger('useSettingsDirtyState')
 
+interface RunBatchSaveArgs {
+  readonly dirtyValues: Map<string, string>
+  readonly updateSetting: (
+    ns: SettingNamespace,
+    key: string,
+    value: string,
+  ) => Promise<unknown | null>
+  readonly setDirtyValues: React.Dispatch<React.SetStateAction<Map<string, string>>>
+}
+
+/**
+ * Run one batch-save pass: persist every pending edit, then prune the
+ * dirty map for the keys that landed cleanly. Failures are passed
+ * back via the `failedKeys` returned by `saveSettingsBatch`; those
+ * stay in the dirty map for retry. No aggregate success/failure toast
+ * fires here because the store fires one toast per mutation per the
+ * CRUD contract.
+ */
+async function _runBatchSave(args: RunBatchSaveArgs): Promise<void> {
+  const pending = new Map(args.dirtyValues)
+  const failedKeys = await saveSettingsBatch(pending, args.updateSetting)
+  args.setDirtyValues((prev) => {
+    const next = new Map(prev)
+    for (const [key, value] of pending) {
+      if (!failedKeys.has(key) && next.get(key) === value) {
+        next.delete(key)
+      }
+    }
+    return next
+  })
+}
+
+/**
+ * Defence-in-depth fallback: per-mutation failures are tracked via
+ * `failedKeys` and toasted at the store layer, so this only fires on
+ * programming errors, network failures in the batch coordinator, or
+ * exceptions in the state updater. Log + toast so the user sees
+ * feedback and the dirty state stays intact for retry.
+ */
+function _onBatchSaveError(error: unknown, dirtyValues: Map<string, string>): void {
+  log.error('Unexpected error during batch save', {
+    pendingKeys: Array.from(dirtyValues.keys()).map(sanitizeForLog),
+    error: sanitizeForLog(getErrorMessage(error)),
+  })
+  useToastStore.getState().add({
+    variant: 'error',
+    title: 'Save failed',
+    description: 'Some settings could not be saved. Please try again.',
+  })
+}
+
 export interface UseSettingsDirtyStateReturn {
   dirtyValues: Map<string, string>
   setDirtyValues: React.Dispatch<
@@ -62,49 +113,13 @@ export function useSettingsDirtyState(
   }, [])
 
   const isSavingRef = useRef(false)
-
   const handleSave = useCallback(async () => {
     if (isSavingRef.current) return
     isSavingRef.current = true
     try {
-      const pending = new Map(dirtyValues)
-      const failedKeys = await saveSettingsBatch(
-        pending,
-        updateSetting,
-      )
-
-      setDirtyValues((prev) => {
-        const next = new Map(prev)
-        for (const [key, value] of pending) {
-          if (
-            !failedKeys.has(key) &&
-            next.get(key) === value
-          ) {
-            next.delete(key)
-          }
-        }
-        return next
-      })
-
-      // No aggregate toast (success or failure) on batch saves: the
-      // store fires one toast per mutation per the CRUD contract,
-      // so an aggregate at this level would just stack on top.
+      await _runBatchSave({ dirtyValues, updateSetting, setDirtyValues })
     } catch (error) {
-      // Defence-in-depth: per-mutation failures are tracked via
-      // ``failedKeys`` and toasted at the store layer, so this catch
-      // should only fire on programming errors, network failures in
-      // the batch coordination logic, or exceptions in the state
-      // updater.  Log + toast so the user sees feedback and the
-      // dirty state stays intact for retry.
-      log.error('Unexpected error during batch save', {
-        pendingKeys: Array.from(dirtyValues.keys()).map(sanitizeForLog),
-        error: sanitizeForLog(getErrorMessage(error)),
-      })
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Save failed',
-        description: 'Some settings could not be saved. Please try again.',
-      })
+      _onBatchSaveError(error, dirtyValues)
     } finally {
       isSavingRef.current = false
     }

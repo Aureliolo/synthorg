@@ -111,33 +111,65 @@ export function describeEvent(eventType: WsEventType): string {
 
 let wsActivityCounter = 0
 
+type WsEventPayload = NonNullable<WsEvent['payload']>
+
+function _isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value !== ''
+}
+
+function _resolveAgentName(payload: WsEventPayload): string {
+  if (_isNonEmptyString(payload.agent_name)) return payload.agent_name
+  if (_isNonEmptyString(payload.assigned_to)) return payload.assigned_to
+  return 'System'
+}
+
+function _resolveTaskId(payload: WsEventPayload): string | null {
+  return _isNonEmptyString(payload.task_id) ? payload.task_id : null
+}
+
+function _resolveDepartment(payload: WsEventPayload): ActivityItem['department'] {
+  if (
+    typeof payload.department === 'string'
+    && isDepartmentName(payload.department)
+  ) {
+    return payload.department
+  }
+  return null
+}
+
+function _resolveDescription(
+  payload: WsEventPayload,
+  eventType: WsEventType,
+): string {
+  if (_isNonEmptyString(payload.description)) return payload.description
+  return describeEvent(eventType)
+}
+
+interface ActivityIdArgs {
+  readonly event: WsEvent
+  readonly payload: WsEventPayload
+  readonly taskId: string | null
+  readonly agentName: string
+}
+
+function _resolveActivityId({ event, payload, taskId, agentName }: ActivityIdArgs): string {
+  if (_isNonEmptyString(payload.id)) return payload.id
+  if (taskId !== null) return taskId
+  wsActivityCounter += 1
+  return `${event.timestamp}-${event.event_type}-${agentName}-${wsActivityCounter}`
+}
+
 export function wsEventToActivityItem(event: WsEvent): ActivityItem {
-  const payload = event.payload ?? {}
-  const agentName =
-    (typeof payload.agent_name === 'string' && payload.agent_name) ||
-    (typeof payload.assigned_to === 'string' && payload.assigned_to) ||
-    'System'
-  const taskId =
-    typeof payload.task_id === 'string' ? payload.task_id : null
-  const department =
-    typeof payload.department === 'string' && isDepartmentName(payload.department)
-      ? payload.department
-      : null
-
-  const description =
-    typeof payload.description === 'string' && payload.description
-      ? payload.description
-      : describeEvent(event.event_type)
-
+  const payload = (event.payload ?? {}) as WsEventPayload
+  const agentName = _resolveAgentName(payload)
+  const taskId = _resolveTaskId(payload)
   return {
-    id: (typeof payload.id === 'string' && payload.id)
-      || taskId
-      || `${event.timestamp}-${event.event_type}-${agentName}-${++wsActivityCounter}`,
+    id: _resolveActivityId({ event, payload, taskId, agentName }),
     timestamp: event.timestamp,
     agent_name: agentName,
     action_type: event.event_type,
-    description,
+    description: _resolveDescription(payload, event.event_type),
     task_id: taskId,
-    department,
+    department: _resolveDepartment(payload),
   }
 }

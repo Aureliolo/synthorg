@@ -52,43 +52,57 @@ export const cookieJar: Record<string, string> = Object.create(null) as Record<
   string
 >
 
+const RESERVED_COOKIE_NAMES = new Set(['__proto__', 'constructor', 'prototype'])
+
+function _isReservedCookieName(name: string): boolean {
+  return name === '' || RESERVED_COOKIE_NAMES.has(name)
+}
+
+/**
+ * Inspect one attribute segment of a `Set-Cookie` string. Returns true
+ * when the segment encodes a deletion (Max-Age=0 or a past Expires).
+ */
+function _segmentMarksDelete(segment: string): boolean {
+  const attr = segment.trim().toLowerCase()
+  if (attr === 'max-age=0') return true
+  if (!attr.startsWith('expires=')) return false
+  const expiresAt = Date.parse(attr.slice('expires='.length))
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now()
+}
+
+function _attrsRequestDelete(segments: readonly string[]): boolean {
+  return segments.some(_segmentMarksDelete)
+}
+
+function _commitCookieWrite(raw: string): void {
+  if (typeof raw !== 'string') return
+  const segments = raw.split(';')
+  const pair = segments[0] ?? ''
+  const eq = pair.indexOf('=')
+  if (eq === -1) return
+  const name = pair.slice(0, eq).trim()
+  if (_isReservedCookieName(name)) return
+  const value = pair.slice(eq + 1).trim()
+  if (_attrsRequestDelete(segments.slice(1))) {
+    delete cookieJar[name]
+    return
+  }
+  cookieJar[name] = value
+}
+
+function _readCookieHeader(): string {
+  return Object.entries(cookieJar)
+    .map(([k, v]) => `${k}=${v}`)
+    .join('; ')
+}
+
 export function installCookieShim(seedCsrf?: string): void {
   if (typeof document === 'undefined') return
 
   Object.defineProperty(Document.prototype, 'cookie', {
     configurable: true,
-    get: () =>
-      Object.entries(cookieJar)
-        .map(([k, v]) => `${k}=${v}`)
-        .join('; '),
-    set: (raw: string) => {
-      if (typeof raw !== 'string') return
-      const segments = raw.split(';')
-      const pair = segments[0] ?? ''
-      const eq = pair.indexOf('=')
-      if (eq === -1) return
-      const name = pair.slice(0, eq).trim()
-      const value = pair.slice(eq + 1).trim()
-      if (
-        !name ||
-        name === '__proto__' ||
-        name === 'constructor' ||
-        name === 'prototype'
-      )
-        return
-      const isDelete = segments.slice(1).some((segment) => {
-        const attr = segment.trim().toLowerCase()
-        if (attr === 'max-age=0') return true
-        if (!attr.startsWith('expires=')) return false
-        const expiresAt = Date.parse(attr.slice('expires='.length))
-        return Number.isFinite(expiresAt) && expiresAt <= Date.now()
-      })
-      if (isDelete) {
-        delete cookieJar[name]
-        return
-      }
-      cookieJar[name] = value
-    },
+    get: _readCookieHeader,
+    set: _commitCookieWrite,
   })
 
   if (seedCsrf !== undefined) {

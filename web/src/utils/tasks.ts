@@ -161,45 +161,49 @@ export interface TaskBoardFilters {
   dateTo?: string
 }
 
+type TaskPredicate = (task: Task) => boolean
+
+function _searchPredicate(search: string): TaskPredicate {
+  const query = search.toLowerCase()
+  return (t) =>
+    t.title.toLowerCase().includes(query)
+    || t.description.toLowerCase().includes(query)
+}
+
+function _dateFromPredicate(from: string): TaskPredicate {
+  return (t) => Boolean(t.deadline) && t.deadline! >= from
+}
+
+function _dateToPredicate(rawTo: string): TaskPredicate {
+  // A date-only string ("2026-05-24") clamps to end-of-day so a task
+  // whose deadline lives anywhere inside that calendar day is included.
+  const to = rawTo.includes('T') ? rawTo : `${rawTo}T23:59:59.999Z`
+  return (t) => Boolean(t.deadline) && t.deadline! <= to
+}
+
+/**
+ * Build the active filter predicates from the caller's filter selection.
+ * Each entry in the table corresponds to one optional filter; entries
+ * with falsy filter values produce no predicate. Keeping the per-field
+ * branching here (not in `filterTasks`) keeps the dispatcher under the
+ * complexity cap.
+ */
+function _buildTaskPredicates(filters: TaskBoardFilters): TaskPredicate[] {
+  const preds: TaskPredicate[] = []
+  if (filters.status) preds.push((t) => t.status === filters.status)
+  if (filters.priority) preds.push((t) => t.priority === filters.priority)
+  if (filters.assignee) preds.push((t) => t.assigned_to === filters.assignee)
+  if (filters.taskType) preds.push((t) => t.type === filters.taskType)
+  if (filters.search) preds.push(_searchPredicate(filters.search))
+  if (filters.dateFrom) preds.push(_dateFromPredicate(filters.dateFrom))
+  if (filters.dateTo) preds.push(_dateToPredicate(filters.dateTo))
+  return preds
+}
+
 export function filterTasks(tasks: readonly Task[], filters: TaskBoardFilters): Task[] {
-  let result = tasks as Task[]
-
-  if (filters.status) {
-    result = result.filter((t) => t.status === filters.status)
-  }
-
-  if (filters.priority) {
-    result = result.filter((t) => t.priority === filters.priority)
-  }
-
-  if (filters.assignee) {
-    result = result.filter((t) => t.assigned_to === filters.assignee)
-  }
-
-  if (filters.taskType) {
-    result = result.filter((t) => t.type === filters.taskType)
-  }
-
-  if (filters.search) {
-    const query = filters.search.toLowerCase()
-    result = result.filter(
-      (t) =>
-        t.title.toLowerCase().includes(query) ||
-        t.description.toLowerCase().includes(query),
-    )
-  }
-
-  if (filters.dateFrom) {
-    const from = filters.dateFrom
-    result = result.filter((t) => t.deadline && t.deadline >= from)
-  }
-
-  if (filters.dateTo) {
-    const to = filters.dateTo.includes('T') ? filters.dateTo : filters.dateTo + 'T23:59:59.999Z'
-    result = result.filter((t) => t.deadline && t.deadline <= to)
-  }
-
-  return result
+  const preds = _buildTaskPredicates(filters)
+  if (preds.length === 0) return [...tasks]
+  return tasks.filter((t) => preds.every((p) => p(t)))
 }
 
 // ── Status transition validation ────────────────────────────

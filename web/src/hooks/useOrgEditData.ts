@@ -51,38 +51,37 @@ export interface UseOrgEditDataReturn {
   optimisticReorderAgents: (deptName: string, orderedIds: string[]) => () => void
 }
 
-export function useOrgEditData(): UseOrgEditDataReturn {
-  const config = useCompanyStore((s) => s.config)
-  const departmentHealths = useCompanyStore((s) => s.departmentHealths)
-  const loading = useCompanyStore((s) => s.loading)
-  const error = useCompanyStore((s) => s.error)
-  const saving = useCompanyStore((s) => s.savingCount > 0)
-  const saveError = useCompanyStore((s) => s.saveError)
+type CompanyMutations = Pick<
+  UseOrgEditDataReturn,
+  | 'updateCompany'
+  | 'createDepartment' | 'updateDepartment' | 'deleteDepartment' | 'reorderDepartments'
+  | 'createAgent' | 'updateAgent' | 'deleteAgent' | 'reorderAgents'
+  | 'createTeam' | 'updateTeam' | 'deleteTeam' | 'reorderTeams'
+  | 'optimisticReorderDepartments' | 'optimisticReorderAgents'
+>
 
-  // Mutations (stable references via store actions)
-  const updateCompany = useCompanyStore((s) => s.updateCompany)
-  const createDepartment = useCompanyStore((s) => s.createDepartment)
-  const updateDepartment = useCompanyStore((s) => s.updateDepartment)
-  const deleteDepartment = useCompanyStore((s) => s.deleteDepartment)
-  const reorderDepartments = useCompanyStore((s) => s.reorderDepartments)
-  const createAgent = useCompanyStore((s) => s.createAgent)
-  const updateAgent = useCompanyStore((s) => s.updateAgent)
-  const deleteAgent = useCompanyStore((s) => s.deleteAgent)
-  const reorderAgents = useCompanyStore((s) => s.reorderAgents)
-  const createTeam = useCompanyStore((s) => s.createTeam)
-  const updateTeam = useCompanyStore((s) => s.updateTeam)
-  const deleteTeam = useCompanyStore((s) => s.deleteTeam)
-  const reorderTeams = useCompanyStore((s) => s.reorderTeams)
-  const optimisticReorderDepartments = useCompanyStore((s) => s.optimisticReorderDepartments)
-  const optimisticReorderAgents = useCompanyStore((s) => s.optimisticReorderAgents)
+function useCompanyMutations(): CompanyMutations {
+  return {
+    updateCompany: useCompanyStore((s) => s.updateCompany),
+    createDepartment: useCompanyStore((s) => s.createDepartment),
+    updateDepartment: useCompanyStore((s) => s.updateDepartment),
+    deleteDepartment: useCompanyStore((s) => s.deleteDepartment),
+    reorderDepartments: useCompanyStore((s) => s.reorderDepartments),
+    createAgent: useCompanyStore((s) => s.createAgent),
+    updateAgent: useCompanyStore((s) => s.updateAgent),
+    deleteAgent: useCompanyStore((s) => s.deleteAgent),
+    reorderAgents: useCompanyStore((s) => s.reorderAgents),
+    createTeam: useCompanyStore((s) => s.createTeam),
+    updateTeam: useCompanyStore((s) => s.updateTeam),
+    deleteTeam: useCompanyStore((s) => s.deleteTeam),
+    reorderTeams: useCompanyStore((s) => s.reorderTeams),
+    optimisticReorderDepartments: useCompanyStore((s) => s.optimisticReorderDepartments),
+    optimisticReorderAgents: useCompanyStore((s) => s.optimisticReorderAgents),
+  }
+}
 
-  // Polling for department health refresh
-  const pollFn = useCallback(async () => {
-    await useCompanyStore.getState().fetchDepartmentHealths()
-  }, [])
-  const polling = usePolling(pollFn, ORG_EDIT_POLL_INTERVAL)
-
-  // Initial data fetch (sequential: health depends on config)
+/** Sequential initial fetch: department health depends on config being loaded. */
+function useCompanyInitialFetch(start: () => void, stop: () => void): void {
   useEffect(() => {
     let mounted = true
     const store = useCompanyStore.getState()
@@ -94,19 +93,34 @@ export function useOrgEditData(): UseOrgEditDataReturn {
         }
       })
       .then(() => {
-        if (mounted) polling.start()
+        if (mounted) start()
       })
       .catch(() => {
         // Errors are set in store state by the respective fetch methods
       })
     return () => {
       mounted = false
-      polling.stop()
+      stop()
     }
-    // eslint-disable-next-line @eslint-react/exhaustive-deps -- mount-only effect; polling ref identity is stable
+    // eslint-disable-next-line @eslint-react/exhaustive-deps -- mount-only effect; start / stop are stable
   }, [])
+}
 
-  // WebSocket bindings for real-time updates
+export function useOrgEditData(): UseOrgEditDataReturn {
+  const config = useCompanyStore((s) => s.config)
+  const departmentHealths = useCompanyStore((s) => s.departmentHealths)
+  const loading = useCompanyStore((s) => s.loading)
+  const error = useCompanyStore((s) => s.error)
+  const saving = useCompanyStore((s) => s.savingCount > 0)
+  const saveError = useCompanyStore((s) => s.saveError)
+  const mutations = useCompanyMutations()
+
+  const pollFn = useCallback(async () => {
+    await useCompanyStore.getState().fetchDepartmentHealths()
+  }, [])
+  const polling = usePolling(pollFn, ORG_EDIT_POLL_INTERVAL)
+  useCompanyInitialFetch(polling.start, polling.stop)
+
   const bindings: ChannelBinding[] = useMemo(
     () =>
       ORG_EDIT_CHANNELS.map((channel) => ({
@@ -117,10 +131,7 @@ export function useOrgEditData(): UseOrgEditDataReturn {
       })),
     [],
   )
-
-  const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({
-    bindings,
-  })
+  const { connected: wsConnected, setupError: wsSetupError } = useWebSocket({ bindings })
 
   return {
     config,
@@ -131,20 +142,6 @@ export function useOrgEditData(): UseOrgEditDataReturn {
     saveError,
     wsConnected,
     wsSetupError,
-    updateCompany,
-    createDepartment,
-    updateDepartment,
-    deleteDepartment,
-    reorderDepartments,
-    createAgent,
-    updateAgent,
-    deleteAgent,
-    reorderAgents,
-    createTeam,
-    updateTeam,
-    deleteTeam,
-    reorderTeams,
-    optimisticReorderDepartments,
-    optimisticReorderAgents,
+    ...mutations,
   }
 }

@@ -19,38 +19,75 @@ export interface UseConnectionsDataReturn {
   checkingHealth: readonly string[]
 }
 
+const HEALTH_ORDER: Record<ConnectionHealthStatus, number> = {
+  unhealthy: 0,
+  degraded: 1,
+  unknown: 2,
+  healthy: 3,
+}
+
+function _effectiveHealth(
+  conn: Connection,
+  healthMap: Record<string, HealthReport>,
+): ConnectionHealthStatus {
+  return healthMap[conn.name]?.status ?? conn.health_status ?? 'unknown'
+}
+
+type ConnComparator = (
+  a: Connection,
+  b: Connection,
+  healthMap: Record<string, HealthReport>,
+) => number
+
+/**
+ * Comparator per `ConnectionSortKey`. `satisfies` keeps the table
+ * exhaustive: a new sort key added to the type breaks the build until
+ * a comparator is supplied here.
+ */
+const CONN_COMPARATORS = {
+  name: (a, b) => a.name.localeCompare(b.name),
+  type: (a, b) => a.connection_type.localeCompare(b.connection_type),
+  created_at: (a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''),
+  health: (a, b, h) =>
+    HEALTH_ORDER[_effectiveHealth(a, h)] - HEALTH_ORDER[_effectiveHealth(b, h)],
+} as const satisfies Record<ConnectionSortKey, ConnComparator>
+
 function sortConnections(
   connections: readonly Connection[],
   healthMap: Record<string, HealthReport>,
   sortBy: ConnectionSortKey,
   direction: 'asc' | 'desc',
 ): readonly Connection[] {
-  const sorted = [...connections]
+  const compare = CONN_COMPARATORS[sortBy]
   const multiplier = direction === 'asc' ? 1 : -1
-  const healthOrder: Record<ConnectionHealthStatus, number> = {
-    unhealthy: 0,
-    degraded: 1,
-    unknown: 2,
-    healthy: 3,
+  return [...connections].sort((a, b) => compare(a, b, healthMap) * multiplier)
+}
+
+interface FilterCriteria {
+  readonly healthMap: Record<string, HealthReport>
+  readonly typeFilter: string | null
+  readonly healthFilter: ConnectionHealthStatus | null
+  readonly query: string
+}
+
+function _matchesFilters(conn: Connection, criteria: FilterCriteria): boolean {
+  if (criteria.typeFilter !== null && conn.connection_type !== criteria.typeFilter) {
+    return false
   }
-  sorted.sort((a, b) => {
-    switch (sortBy) {
-      case 'name':
-        return a.name.localeCompare(b.name) * multiplier
-      case 'type':
-        return a.connection_type.localeCompare(b.connection_type) * multiplier
-      case 'created_at':
-        return (a.created_at ?? '').localeCompare(b.created_at ?? '') * multiplier
-      case 'health': {
-        const aHealth = healthMap[a.name]?.status ?? a.health_status ?? 'unknown'
-        const bHealth = healthMap[b.name]?.status ?? b.health_status ?? 'unknown'
-        return (healthOrder[aHealth] - healthOrder[bHealth]) * multiplier
-      }
-      default:
-        return 0
-    }
-  })
-  return sorted
+  if (criteria.healthFilter !== null) {
+    if (_effectiveHealth(conn, criteria.healthMap) !== criteria.healthFilter) return false
+  }
+  if (criteria.query.length > 0) {
+    return conn.name.toLowerCase().includes(criteria.query)
+  }
+  return true
+}
+
+function filterConnections(
+  connections: readonly Connection[],
+  criteria: FilterCriteria,
+): readonly Connection[] {
+  return connections.filter((conn) => _matchesFilters(conn, criteria))
 }
 
 export function useConnectionsData(): UseConnectionsDataReturn {
@@ -77,19 +114,11 @@ export function useConnectionsData(): UseConnectionsDataReturn {
   }, [])
 
   const filteredConnections = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase()
-    const filtered = connections.filter((conn) => {
-      if (typeFilter !== null && conn.connection_type !== typeFilter) {
-        return false
-      }
-      if (healthFilter !== null) {
-        const effectiveHealth = healthMap[conn.name]?.status ?? conn.health_status ?? 'unknown'
-        if (effectiveHealth !== healthFilter) return false
-      }
-      if (normalizedQuery.length > 0) {
-        return conn.name.toLowerCase().includes(normalizedQuery)
-      }
-      return true
+    const filtered = filterConnections(connections, {
+      healthMap,
+      typeFilter,
+      healthFilter,
+      query: searchQuery.trim().toLowerCase(),
     })
     return sortConnections(filtered, healthMap, sortBy, sortDirection)
   }, [connections, healthMap, searchQuery, typeFilter, healthFilter, sortBy, sortDirection])

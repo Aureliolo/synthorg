@@ -142,10 +142,22 @@ export default tseslint.config(
     // Existing src/ files exceed the new caps in 500+ sites. Mirroring
     // the Python ruff per-file-ignore pattern for src/synthorg/**, the
     // same rules are absorbed here until later decomposition (controllers,
-    // store slicing) brings the surface under the tier limits. New
-    // components landing in clean modules can re-enable locally; the
-    // top-level config block declares the cap globally.
+    // store slicing) brings the surface under the tier limits.
+    //
+    // EPIC #2066 lifts the override one bucket at a time. Each PR moves
+    // a cleaned area into the `ignores:` list (which excludes those
+    // paths from this override block, so the global four caps apply).
+    // The final PR deletes the whole override block.
+    //
+    // Cleaned (rules apply normally):
+    //   PR A (#2092): src/utils/**, src/hooks/**, src/lib/**, src/cookie-shim.ts
     files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/utils/**',
+      'src/hooks/**',
+      'src/lib/**',
+      'src/cookie-shim.ts',
+    ],
     rules: {
       complexity: 'off',
       'max-lines': 'off',
