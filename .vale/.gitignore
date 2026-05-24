@@ -1,0 +1,7 @@
+# Vale sync output: the Google style package is downloaded by
+# `vale sync` from scripts/install_cli_tools.sh, never committed.
+# Run `bash scripts/install_cli_tools.sh vale` on a fresh clone to
+# materialise it. The vocabulary under styles/config/ IS committed
+# (the .gitignore excludes only the synced upstream packages).
+styles/Google/
+styles/.vale-config/

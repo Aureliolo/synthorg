@@ -10,7 +10,7 @@ auto-generated from failed and successful executions, surfaced through one
 of three injection strategies, and managed through the `MemoryService`
 single entry point for REST and MCP callers.
 
-See also: [Memory and Persistence](memory.md) (storage + retrieval pipeline), [Operational Data Persistence](memory-operational.md), [Shared Organizational Memory](memory-organizational.md).
+See also: [Memory and Persistence](memory.md) (storage + retrieval pipeline), [Operational Data Persistence](memory-operational.md), [Shared Organisational Memory](memory-organizational.md).
 
 ## Procedural Memory Auto-Generation
 
@@ -108,10 +108,10 @@ the source agent.
 
 ### Cross-Agent Skill Pool
 
-Organization-wide shared skills extend procedural memory with an `ORG` scope.
+Organisation-wide shared skills extend procedural memory with an `ORG` scope.
 
 **`ProceduralMemoryScope` enum**: `AGENT` (per-agent private), `ROLE`,
-`DEPARTMENT`, `ORG` (organization-wide shared pool).
+`DEPARTMENT`, `ORG` (organisation-wide shared pool).
 
 **Extended `ProceduralMemoryProposal`** adds fields for org-scope lifecycle:
 
@@ -219,20 +219,20 @@ the agent during execution.
 
     When `fusion_strategy: rrf` is configured, multiple pre-ranked lists (e.g., from different
     retrieval sources) are merged via RRF: `score(doc) = sum(1 / (k + rank_i))` across all
-    lists containing the document. Scores are min-max normalized to [0.0, 1.0]. The smoothing
+    lists containing the document. Scores are min-max normalised to [0.0, 1.0]. The smoothing
     constant `k` (default 60, configurable via `rrf_k`) controls rank-difference amplification.
     RRF is the de facto standard for hybrid search fusion
     ([Qdrant](https://qdrant.tech/articles/hybrid-search/),
     [NeMo Retriever](https://huggingface.co/blog/nvidia/nemo-retriever-agentic-retrieval)). It is
     intended for multi-source scenarios (BM25 + vector, multi-round tool-based retrieval); the
-    linear strategy remains the default for single-source retrieval.  Results are truncated to
+    linear strategy remains the default for single-source retrieval. Results are truncated to
     `max_results` (default 20) after scoring and sorting.
 
     **Diversity Re-ranking (MMR)**
 
     When `diversity_penalty_enabled: true` is set on the config, the
     `ContextInjectionStrategy` pipeline runs `apply_diversity_penalty()` after
-    filtering and before token-budget packing.  Running the filter first ensures
+    filtering and before token-budget packing. Running the filter first ensures
     that privacy-excluded entries are not used as MMR anchors (which could
     otherwise suppress visible candidates that happen to be textually similar to
     excluded ones).  The re-ranker uses Maximal Marginal Relevance:
@@ -241,13 +241,13 @@ the agent during execution.
 
     where `diversity_lambda` (default 0.7, range `[0.0, 1.0]`) controls the
     trade-off: `1.0` = pure relevance (no diversity penalty), `0.0` = maximum
-    diversity.  The default similarity function is word-bigram Jaccard; callers
+    diversity. The default similarity function is word-bigram Jaccard; callers
     can inject a custom `similarity_fn` (e.g., cosine on embeddings) for
-    domain-specific redundancy measures.  Bigram sets are pre-computed once per
+    domain-specific redundancy measures. Bigram sets are pre-computed once per
     entry to keep complexity at `O(n**2)` rather than `O(n**2 * k)`.  When
     diversity is enabled, the backend over-fetches by a configurable
     `candidate_pool_multiplier` (default 3x, range 1--10) so MMR can promote
-    diverse candidates that would otherwise fall below the top-K cutoff.  This
+    diverse candidates that would otherwise fall below the top-K cutoff. This
     feature applies only to `ContextInjectionStrategy`; a `model_validator`
     warns when `diversity_penalty_enabled=True` is combined with a strategy
     that ignores it (e.g. `TOOL_BASED`).
@@ -287,9 +287,9 @@ the agent during execution.
       `search_memory` runs an iterative **Search-and-Ask** loop: retrieve -> check
       sufficiency -> reformulate query -> re-retrieve, up to `max_reformulation_rounds`
       rounds (default 2, max 5).  Results from all rounds are merged by entry ID,
-      keeping the highest-relevance version of any duplicate.  Sufficiency checker
+      keeping the highest-relevance version of any duplicate. Sufficiency checker
       and reformulator failures degrade gracefully to the current cumulative entries
-      rather than propagating.  Diversity (MMR) re-ranking is applied only
+      rather than propagating. Diversity (MMR) re-ranking is applied only
       in the `ContextInjectionStrategy` pipeline, not in the tool-based handler.
 
     **ToolRegistry integration**: `SearchMemoryTool` and `RecallMemoryTool` are `BaseTool`
@@ -298,13 +298,13 @@ the agent during execution.
     factory augments a `ToolRegistry` with these tools when the strategy is
     `ToolBasedInjectionStrategy`.  `AgentEngine` accepts an optional
     `memory_injection_strategy` parameter and wires the tools into each agent's registry
-    at execution time.  This ensures memory tools participate in the standard `ToolInvoker`
+    at execution time. This ensures memory tools participate in the standard `ToolInvoker`
     dispatch pipeline, including permission checking (`ToolCategory.MEMORY`), security
     interceptors, and invocation tracking.
 
     **MCP bridge evaluation**: Both context injection and tool-based strategies hold direct
     `MemoryBackend` references and run in-process. The memory hot path bypasses MCP by design;
-    no additional optimization needed.
+    no additional optimisation needed.
 
 === "Self-Editing Memory"
 

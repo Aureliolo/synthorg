@@ -142,7 +142,7 @@ protocol decides how to handle the findings. Each policy sets a `ScanOutcome` en
 returned `OutputScanResult` so downstream consumers (primarily `ToolInvoker`) can
 distinguish intentional policy decisions from scanner failures:
 
-| Policy | Behavior | `ScanOutcome` | Default for |
+| Policy | Behaviour | `ScanOutcome` | Default for |
 |--------|----------|---------------|-------------|
 | **Redact** (default) | Return scanner's redacted content as-is | `REDACTED` | `SEMI`, `SUPERVISED` autonomy |
 | **Withhold** | Clear redacted content; content withheld by policy | `WITHHELD` | `LOCKED` autonomy |
@@ -178,7 +178,7 @@ at three layers, each independently sufficient:
    catch bugs in any caller that bypasses the service layer.
 3. **SQL `CHECK` constraint**: the `decision_records` table carries
    `CHECK(reviewer_agent_id != executing_agent_id)`, providing a last-resort
-   defense at the database boundary. If a direct SQL caller somehow bypasses
+   defence at the database boundary. If a direct SQL caller somehow bypasses
    both the service and the model, the DB rejects the write.
 
 ### Auditable Decisions Drop-Box
@@ -226,8 +226,8 @@ Credentials flow exclusively through the **hands** plane (tool execution) via th
 
 Two enforcement points maintain this boundary:
 
-1. **Task metadata validator**: `engine/_validation.py::validate_task_metadata()` runs at the engine input boundary before execution begins.  It recursively scans all dict keys in `Task.metadata` (including nested dicts and dicts inside lists), rejecting any key matching credential patterns (`token`, `secret`, `api_key`, `password`, `bearer`) with an `EXECUTION_CREDENTIAL_ISOLATION_VIOLATION` error event (`execution.credential_isolation.violation`) and raises `ExecutionStateError`.
-2. **Sandbox credential manager**: `tools/sandbox/credential_manager.py::SandboxCredentialManager` strips 14 credential-like patterns from environment variable overrides before they enter sandbox containers.  Stripped keys are logged via `SANDBOX_CREDENTIAL_STRIPPED`.
+1. **Task metadata validator**: `engine/_validation.py::validate_task_metadata()` runs at the engine input boundary before execution begins. It recursively scans all dict keys in `Task.metadata` (including nested dicts and dicts inside lists), rejecting any key matching credential patterns (`token`, `secret`, `api_key`, `password`, `bearer`) with an `EXECUTION_CREDENTIAL_ISOLATION_VIOLATION` error event (`execution.credential_isolation.violation`) and raises `ExecutionStateError`.
+2. **Sandbox credential manager**: `tools/sandbox/credential_manager.py::SandboxCredentialManager` strips 14 credential-like patterns from environment variable overrides before they enter sandbox containers. Stripped keys are logged via `SANDBOX_CREDENTIAL_STRIPPED`.
 
 See also: [Engine > Brain / Hands / Session](agent-execution.md#brain--hands--session).
 
@@ -239,9 +239,9 @@ does not respond. All policies implement a `TimeoutPolicy` protocol, configurabl
 level and per action risk tier.
 
 During any wait (regardless of policy) the agent **parks** the blocked task (saving its
-full serialized `AgentContext` state: conversation, progress, accumulated cost, turn count)
+full serialised `AgentContext` state: conversation, progress, accumulated cost, turn count)
 and picks up other available tasks from its queue. When approval arrives, the agent **resumes**
-the original context exactly where it left off. This mirrors real company behavior: a developer
+the original context exactly where it left off. This mirrors real company behaviour: a developer
 starts another task while waiting for a code review, then returns to the original work when
 feedback arrives.
 
@@ -281,7 +281,7 @@ shutdown-time mechanism.
 
 === "Tiered Timeout"
 
-    Different timeout behavior based on action risk level. Low-risk actions auto-approve after
+    Different timeout behaviour based on action risk level. Low-risk actions auto-approve after
     a short wait. Medium-risk actions auto-deny. High-risk/security-critical actions wait
     forever.
 
@@ -324,7 +324,7 @@ shutdown-time mechanism.
       on_chain_exhausted: "deny"         # deny if entire chain times out
     ```
 
-    Mirrors real organizations: if one approver is unavailable, the next in line covers.
+    Mirrors real organisations: if one approver is unavailable, the next in line covers.
     Requires configuring an escalation chain.
 
 !!! info "Approval API Response Enrichment"
@@ -351,11 +351,11 @@ shutdown-time mechanism.
 
     - **D19: Risk Tier Classification.** Pluggable `RiskTierClassifier` protocol. Configurable
       YAML mapping with sensible defaults. Unknown action types default to HIGH (fail-safe).
-    - **D20: Context Serialization.** Pydantic JSON via persistence backend. `ParkedContext`
+    - **D20: Context Serialisation.** Pydantic JSON via persistence backend. `ParkedContext`
       model with metadata columns + `context_json` blob. Conversation stored verbatim;
       summarization is a context window management concern at resume time, not a persistence
       concern.
-    - **D21: Resume Injection.** Tool result injection. Approval requests modeled as tool
+    - **D21: Resume Injection.** Tool result injection. Approval requests modelled as tool
       calls (`request_human_approval`). Approval decision returned as `ToolResult`,
       semantically correct (approval IS the tool's return value).
 
@@ -528,7 +528,7 @@ External agent identity is verified through two independent layers, both configu
 
 Allowlist (default, always available)
 :   The `a2a.allowed_agents` list controls which external agents can interact with the
-    organization. Entries are matched against the Agent Card URL or agent ID. An empty
+    organisation. Entries are matched against the Agent Card URL or agent ID. An empty
     allowlist with `a2a.enabled: true` rejects all inbound requests (fail-closed). The
     allowlist is operator-managed via the A2A configuration.
 
@@ -548,7 +548,7 @@ Agent Card signature verification (opt-in)
     ```
 
 The two layers are independent: the allowlist gates access (who may connect), signatures
-verify identity (who is connecting). Both can be enabled simultaneously for defense in
+verify identity (who is connecting). Both can be enabled simultaneously for defence in
 depth.
 
 ### Push Notification Webhook Security
@@ -598,9 +598,9 @@ proposed below.
 
 Four built-in strategies are planned:
 
-| Strategy | Behavior | Default |
+| Strategy | Behaviour | Default |
 |----------|----------|---------|
-| `alert_only` | Current behavior; detect and notify via `NotificationDispatcher` | Yes |
+| `alert_only` | Current behaviour; detect and notify via `NotificationDispatcher` | Yes |
 | `soft_throttle` | Auto-tighten rate limiter for affected agent group by `rate_reduction_factor` | No |
 | `hard_block` | Reject new connections when agent count exceeds `max_agent_connections` | No |
 | `disabled` | No detection or enforcement | No |

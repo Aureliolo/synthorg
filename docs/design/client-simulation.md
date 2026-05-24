@@ -1,6 +1,6 @@
 ---
 title: Client Simulation
-description: Synthetic client framework for generating task requirements, reviewing deliverables, and evaluating agent organization performance.
+description: Synthetic client framework for generating task requirements, reviewing deliverables, and evaluating agent organisation performance.
 ---
 
 # Client Simulation
@@ -9,7 +9,7 @@ The client simulation subsystem generates synthetic workloads that exercise the 
 task lifecycle end-to-end. Simulated clients (AI-driven, human, or hybrid) submit task
 requirements through an intake pipeline and review completed deliverables via a
 configurable review pipeline. This enables systematic evaluation of agent performance,
-organizational throughput, and quality metrics without real external clients.
+organisational throughput, and quality metrics without real external clients.
 
 ---
 

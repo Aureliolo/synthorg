@@ -1,6 +1,6 @@
 ---
 title: Agent Management
-description: Hire, fire, promote, and customize agents via the REST API. Covers personality assignment, rehiring from archive, and lifecycle events.
+description: Hire, fire, promote, and customise agents via the REST API. Covers personality assignment, rehiring from archive, and lifecycle events.
 ---
 
 # Agent Management
@@ -87,7 +87,7 @@ curl -X DELETE http://localhost:3001/api/v1/agents/${AGENT_NAME} \
 
 The `DELETE /api/v1/agents/{agent_name}` endpoint does not accept a request body. Approval metadata (reason, justification) is recorded separately when the `CRITICAL`-risk approval gate captures the decision.
 
-Current behavior (`delete_agent` in `src/synthorg/api/services/_org_agent_mutations.py`):
+Current behaviour (`delete_agent` in `src/synthorg/api/services/_org_agent_mutations.py`):
 
 1. The API validates the agent exists and runs org-mutation guard checks.
 2. The agent record is removed from the active org configuration.

@@ -11,7 +11,7 @@ date: 2026-04-07
 
 The New Stack article "Agentic AI Control Plane: What It Needs in Production" argues that
 enterprise agentic AI requires a dedicated control-plane layer (a system that inventories
-agents, enforces behavioral policies at runtime, provides token metering and cost tracking,
+agents, enforces behavioural policies at runtime, provides token metering and cost tracking,
 and delivers end-to-end observability). The article references Galileo Agent Control as an
 open-source example and frames this as a distinct architectural tier above individual agents.
 
@@ -89,7 +89,7 @@ agents at runtime, without per-agent configuration.
 - `src/synthorg/security/autonomy/resolver.py` implements a 3-level inheritance chain: agent >
   department > company. Most specific wins.
 - `src/synthorg/security/trust/service.py` defines `TrustService`: per-agent trust state with
-  mandatory human approval gate for ELEVATED promotion (defense-in-depth, enforced twice).
+  mandatory human approval gate for ELEVATED promotion (defence-in-depth, enforced twice).
 
 **API surface**:
 
@@ -127,7 +127,7 @@ retroactively to active long-running sessions.
 pairs) but there is no bulk policy export/import. Operators cannot version-control their
 policy as a single declarative document, export it for peer review, or import a pre-approved
 policy bundle. The `SecurityConfig` Pydantic model is internally structured but has no
-serialization API endpoint.
+serialisation API endpoint.
 
 **Gap G5**: The `AuditLog` in `src/synthorg/security/audit.py` records every security
 evaluation with agent, tool, verdict, and evidence, but there is no `GET /security/audit`
@@ -146,9 +146,9 @@ queryable history and enforcement at multiple boundaries.
 - `src/synthorg/budget/enforcer.py` defines `BudgetEnforcer`: three-layer enforcement:
   - Pre-flight: monthly hard stop, daily agent limit, provider quota check
   - In-flight: per-turn closure checking task limit, monthly limit, daily limit
-  - Task boundary: model auto-downgrade when monthly utilization exceeds threshold
+  - Task boundary: model auto-downgrade when monthly utilisation exceeds threshold
 - `src/synthorg/budget/tracker.py` defines `CostTracker`: in-memory store with TTL eviction
-  (168h / 7 days), asyncio.Lock for concurrent writes, category breakdown, provider usage,
+  (168h / 7 days), `asyncio.Lock` for concurrent writes, category breakdown, provider usage,
   orchestration ratio.
 - `src/synthorg/budget/quota.py` provides `QuotaTracker` with degradation strategies (alert,
   fallback, queue) and `SubscriptionConfig`.
@@ -182,7 +182,7 @@ endpoint. Operators cannot query the coordination efficiency, overhead ratio, or
 ceiling for a completed multi-agent run. The `POST /tasks/{id}/coordinate` endpoint only
 triggers coordination; it does not return or expose computed metrics. This is significant
 for control-plane positioning: coordination overhead is a key indicator of whether a
-multi-agent organization is operating efficiently.
+multi-agent organisation is operating efficiently.
 
 ---
 
@@ -221,6 +221,7 @@ OpenTelemetry (OTLP) exporter. The HTTP batch handler (`SinkType.HTTP`) is a log
 that ships JSON log records to a configured URL; it does not implement the Prometheus
 exposition format (counters, gauges, histograms with labels) or OTLP gRPC/HTTP. External
 monitoring systems (Prometheus/Grafana, Datadog, Honeycomb) need one of:
+
 - A `/metrics` endpoint scrapable by Prometheus
 - An OTLP exporter sending traces and metrics to a collector
 
@@ -256,8 +257,8 @@ agent sessions. The 3-level autonomy resolution (agent > department > company) e
 company-wide defaults are inherited by all agents without per-agent configuration.
 
 The constraint is session lifecycle: `SecOpsService` takes config at construction. Active
-long-running sessions do not receive policy updates mid-session. This is correct behavior
-(consistency within a session) but should be documented explicitly. The effective behavior
+long-running sessions do not receive policy updates mid-session. This is correct behaviour
+(consistency within a session) but should be documented explicitly. The effective behaviour
 is: "write policies once, enforce across all new agent sessions."
 
 An additional consideration: custom policy rules in `SecurityConfig.custom_policy_rules`
@@ -300,8 +301,8 @@ For enterprise positioning as an agentic control plane, the highest-priority gap
 
 SynthOrg should be framed as an **orchestrated agent control plane**, distinct from
 infrastructure control planes (Kubernetes, Terraform) that manage compute, and distinct from
-swarm-style agent frameworks that lack centralized policy enforcement. The value proposition:
-policy-as-code, metered coordination, and observable agent behavior, all enforced from a
+swarm-style agent frameworks that lack centralised policy enforcement. The value proposition:
+policy-as-code, metered coordination, and observable agent behaviour, all enforced from a
 single control surface.
 
 This framing is accurate today for inventory, policy, and metering. Telemetry export is the
@@ -321,9 +322,9 @@ Priority order for closing gaps to support control-plane positioning:
    `PerformanceTracker.get_snapshot()`, `TrustService.get_trust_state()`, and last-active
    timestamp. Scope: small (new route + service composition).
 
-3. **Policy export/import** (G3): `GET /settings/security/export` serializing
+3. **Policy export/import** (G3): `GET /settings/security/export` serialising
    `SecurityConfig` to JSON, `POST /settings/security/import` validating and loading it.
-   Scope: small-medium (serialization + validation).
+   Scope: small-medium (serialisation + validation).
 
 4. **Coordination metrics API** (G4): `GET /coordination/metrics` endpoint backed by
    `CoordinationMetricsService`. Scope: medium (new route + metrics aggregation across

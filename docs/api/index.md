@@ -27,7 +27,7 @@ This section documents every public class, function, and model in the SynthOrg f
 | [Communication](communication.md) | Message bus, delegation, conflict resolution, meetings |
 | [Memory](memory.md) | Persistent agent memory, retrieval pipeline, org memory |
 | [Security](security.md) | Rule engine, trust, autonomy, output scanning |
-| [Budget](budget.md) | Cost tracking, enforcement, optimization |
+| [Budget](budget.md) | Cost tracking, enforcement, optimisation |
 | [HR](hr.md) | Agent lifecycle, performance tracking, promotions |
 | [Tools](tools.md) | Tool registry, built-in tools, MCP bridge |
 

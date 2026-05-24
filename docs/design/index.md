@@ -8,7 +8,7 @@ description: Core vision, design principles, and foundational concepts of SynthO
 ## Core Vision
 
 SynthOrg is a **configurable AI company framework** where AI agents operate within a virtual
-organization. Each agent has a defined role, personality, skills, memory, and model backend.
+organisation. Each agent has a defined role, personality, skills, memory, and model backend.
 The company can be configured from a 2-person startup to a 50+ enterprise, handling software
 development, business operations, creative work, or any domain.
 
@@ -50,7 +50,7 @@ development, business operations, creative work, or any domain.
 
     ---
 
-    Built-in budget tracking, model routing optimization, and spending controls.
+    Built-in budget tracking, model routing optimisation, and spending controls.
 
 -   **Extensible**
 
@@ -72,7 +72,7 @@ development, business operations, creative work, or any domain.
 - Not locked to software development only (though that is a primary use case)
 - Not a wrapper around a single model or provider
 - Not a toy/demo: designed for real, production-quality output
-- Not a reasoning parallelizer. Single-agent reasoning is typically more token-efficient on isolated multi-hop questions, and SynthOrg's [auto topology selector](coordination.md#task-decomposability--coordination-topology) defaults to single-agent for such tasks. SynthOrg's value is role-specialized work-stream parallelism, organizational simulation fidelity, and audit-grade decision trails, not reasoning parallelism. See [S1 Multi-Agent Architecture Decision](../research/s1-multi-agent-decision.md) for the full reconciliation.
+- Not a reasoning parallelizer. Single-agent reasoning is typically more token-efficient on isolated multi-hop questions, and SynthOrg's [auto topology selector](coordination.md#task-decomposability--coordination-topology) defaults to single-agent for such tasks. SynthOrg's value is role-specialised work-stream parallelism, organisational simulation fidelity, and audit-grade decision trails, not reasoning parallelism. See [S1 Multi-Agent Architecture Decision](../research/s1-multi-agent-decision.md) for the full reconciliation.
 
 !!! warning "Pre-alpha: heavy development, not yet usable"
 
@@ -118,7 +118,7 @@ configuration reference.
 | Term | Definition |
 |------|-----------|
 | **Agent** | An AI entity with a role, personality, model backend, memory, and tool access. The primary entity in the framework. Within a company context, agents serve as the company's employees. |
-| **Company** | A configured organization of agents with structure, hierarchy, and workflows |
+| **Company** | A configured organisation of agents with structure, hierarchy, and workflows |
 | **Department** | A grouping of related roles (Engineering, Product, Design, Operations, etc.) |
 | **Role** | A job definition with required skills, responsibilities, authority level, and tool access |
 | **Skill** | A capability an agent possesses (coding, writing, analysis, design, etc.) |
@@ -181,11 +181,11 @@ Queue: Hiring Queue
     HR lifecycle: seniority, role catalog, hiring, firing, performance tracking,
     evaluation, promotions, and evolution.
 
--   [**Organization & Templates**](organization.md)
+-   [**Organisation & Templates**](organization.md)
 
     ---
 
-    Company types, organizational hierarchy, department configuration, template system,
+    Company types, organisational hierarchy, department configuration, template system,
     and dynamic scaling.
 
 -   [**Communication**](communication.md)
@@ -204,7 +204,7 @@ Queue: Hiring Queue
 
     ---
 
-    Agent memory, retrieval pipeline, shared organizational memory, and consolidation.
+    Agent memory, retrieval pipeline, shared organisational memory, and consolidation.
 
 -   [**Semantic Ontology**](ontology.md)
 
@@ -223,7 +223,8 @@ Queue: Hiring Queue
 
     ---
 
-    Structured logging, correlation tracking, operator alerts, backup and restore, container runtime.
+    Structured logging, correlation tracking, operator alerts,
+    backup-and-restore, and container runtime.
 
 -   [**Integrations**](integrations.md)
 
@@ -243,7 +244,7 @@ Queue: Hiring Queue
 
     ---
 
-    Visual identity, semantic color system, theme architecture, typography, density,
+    Visual identity, semantic colour system, theme architecture, typography, density,
     and animation guidelines.
 
 </div>

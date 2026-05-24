@@ -33,7 +33,7 @@ Task title / description, acceptance criteria, artifact payloads, tool results, 
 
 ### Key reference call sites
 
-This list is non-exhaustive; treat it as a navigational starting point for new SEC-1 audits. Any LLM call site that interpolates an attacker-controllable string is in scope, whether or not it appears here.
+This list is non-exhaustive; treat it as a navigational starting point for new SEC-1 audits. Any LLM call site that interpolates an attacker-controllable string is in scope, even when not listed here.
 
 - `format_task_instruction`
 - `TaskLedgerMiddleware`

@@ -49,13 +49,13 @@ All commands accept these persistent flags (precedence: flag > env var > config 
 | `--skip-verify` | | `SYNTHORG_NO_VERIFY` / `SYNTHORG_SKIP_VERIFY` | Skip image signature verification |
 | `--quiet` | `-q` | `SYNTHORG_QUIET` | Errors only, no spinners/hints/boxes |
 | `--verbose` | `-v` | | Increase verbosity (`-v`=verbose, `-vv`=trace) |
-| `--no-color` | | `NO_COLOR`, `CLICOLOR=0`, `TERM=dumb` | Disable ANSI color output |
+| `--no-color` | | `NO_COLOR`, `CLICOLOR=0`, `TERM=dumb` | Disable ANSI colour output |
 | `--plain` | | | ASCII-only output (no Unicode, no spinners) |
 | `--json` | | | Machine-readable JSON output |
 | `--yes` | `-y` | `SYNTHORG_YES` | Auto-accept all prompts (non-interactive) |
 | `--help-all` | | | Show help for all commands (recursive) |
 
-Config-driven overrides (set via `synthorg config set`): `color never` implies `--no-color`, `color always` forces color on non-TTYs, `output json` implies `--json`, `hints` mode is config-only (always/auto/never).
+Config-driven overrides (set via `synthorg config set`): `color never` implies `--no-color`, `color always` forces colour on non-TTYs, `output json` implies `--json`, `hints` mode is config-only (always/auto/never).
 
 ## Hint Tiers
 

@@ -206,7 +206,7 @@ mcp:
 MCP tools are treated like any other tool in SynthOrg:
 
 - **All invocations pass through SecOps**: the rule engine evaluates tool calls against security policies, autonomy levels, and trust configuration
-- **MCP tools are categorized as `mcp`** in the tool category taxonomy, which means they are gated by the agent's tool access level
+- **MCP tools are categorised as `mcp`** in the tool category taxonomy, which means they are gated by the agent's tool access level
 - **Output scanning** applies to MCP tool results: secrets and PII are redacted according to the configured output scan policy
 - **Audit logging** records every MCP tool invocation when `security.audit_enabled` is `true`
 

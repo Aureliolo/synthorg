@@ -1,6 +1,6 @@
 # Architecture Overview
 
-SynthOrg is organized as a modular, protocol-driven framework. Every major subsystem is defined by a protocol interface, enabling pluggable strategy implementations.
+SynthOrg is organised as a modular, protocol-driven framework. Every major subsystem is defined by a protocol interface, enabling pluggable strategy implementations.
 
 ## Module Map
 
@@ -40,7 +40,7 @@ Templates -> Config
 | **communication** | Inter-agent messaging: bus, dispatcher, delegation, loop prevention, conflict resolution (4 strategies), meeting protocols (3) |
 | **memory** | Persistent agent memory: retrieval pipeline (ranking, filtering, injection), shared org memory, consolidation/archival |
 | **security** | Security subsystem: SecOps agent, rule engine (soft-allow/hard-deny), output scanner, progressive trust (4 strategies), autonomy levels, timeout policies |
-| **budget** | Cost management: cost tracking, budget enforcement (pre-flight/in-flight), auto-downgrade, quota/subscription, CFO optimizer, spending reports |
+| **budget** | Cost management: cost tracking, budget enforcement (pre-flight/in-flight), auto-downgrade, quota/subscription, CFO optimiser, spending reports |
 | **hr** | Agent lifecycle: hiring, firing, onboarding, offboarding, registry, performance tracking, promotion/demotion |
 | **tools** | Tool system: registry, built-in tools (file system, git, sandbox, code runner), MCP bridge, role-based access |
 | **api** | REST + WebSocket API: Litestar controllers, JWT + API key + WS ticket auth, guards, channels, RFC 9457 structured error responses |
@@ -67,6 +67,6 @@ Templates -> Config
 
 - [Design Specification](../design/index.md): full design spec split into multiple focused pages
 - [Tech Stack](tech-stack.md): technology choices and engineering conventions
-- [Decision Log](decisions.md): all design decisions, organized by domain
+- [Decision Log](decisions.md): all design decisions, organised by domain
 - [REST API](../openapi/index.md): REST + WebSocket API reference (Scalar/OpenAPI)
 - [Library Reference](../api/index.md): auto-generated from source code

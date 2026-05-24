@@ -7,7 +7,7 @@ description: Pluggable distributed bus backend design, NATS JetStream first impl
 
 SynthOrg runs in a single Python process by default. Agents communicate over an in-memory `MessageBus` (per-(channel, subscriber) `asyncio.Queue`) and the `TaskEngine` dispatches work through its own single-writer mutation queue inside that same process. For a laptop running one synthetic org, this is the right answer: lowest latency, no extra containers, nothing to operate.
 
-This page describes the **first distributed backend** that plugs into the existing `MessageBus` protocol without changing it, and the **distributed task queue** that sits on top of that backend. Both are opt-in. The in-memory path stays the default and must remain byte-identical in behavior for users who do not turn on distribution.
+This page describes the **first distributed backend** that plugs into the existing `MessageBus` protocol without changing it, and the **distributed task queue** that sits on top of that backend. Both are opt-in. The in-memory path stays the default and must remain byte-identical in behaviour for users who do not turn on distribution.
 
 This page is for:
 
@@ -15,7 +15,7 @@ This page is for:
 - Contributors adding a new distributed backend behind the pluggable `MessageBus` factory after the first one ships
 - Reviewers of Issues #236 and #237
 
-If you are running SynthOrg on one machine for one organization, you can skip this page. Nothing changes for you.
+If you are running SynthOrg on one machine for one organisation, you can skip this page. Nothing changes for you.
 
 ---
 
@@ -125,7 +125,7 @@ The stream is configured with `allow_msg_ttl=True` so individual messages can ex
 
 `MessageBus.publish_batch()` publishes multiple messages using JetStream's pipelined async publish API for reduced round-trip overhead. The implementation is three-phased:
 
-1. **Validation (fail-fast)**: resolve all target channels and serialize all payloads. If any channel is missing or any payload exceeds `MAX_BUS_PAYLOAD_BYTES`, the batch fails before any message is sent.
+1. **Validation (fail-fast)**: resolve all target channels and serialise all payloads. If any channel is missing or any payload exceeds `MAX_BUS_PAYLOAD_BYTES`, the batch fails before any message is sent.
 2. **Pipelined publish**: fire all `publish_async()` calls, buffering acknowledgments on the server side.
 3. **Ack collection**: `publish_async_completed()` waits for all server acks. Any individual publish failures are collected and surfaced as an `ExceptionGroup`.
 
@@ -175,7 +175,7 @@ Callers that are blocked in `receive()` at shutdown time get back `None`, exactl
 
 `get_channel_history(channel_name, limit=N)` queries JetStream for the last `N` messages on the channel's subject. The implementation lives in a new `bus/persistence.py` helper (`HistoryAccessor` protocol + two implementations) so the query path is unit-testable independently of the driver:
 
-- **`DequeHistoryAccessor`**: wraps the existing `deque` already used by the in-memory backend. Zero behavior change.
+- **`DequeHistoryAccessor`**: wraps the existing `deque` already used by the in-memory backend. Zero behaviour change.
 - **`JetStreamHistoryAccessor`**: gets the stream's current `last_seq` via `stream.info()`, then fetches the last `N` messages by sequence with a subject filter. Returns them in chronological order.
 
 Both accessors satisfy the same `HistoryAccessor` protocol so each backend's `get_channel_history` is a one-liner delegating to its accessor.
@@ -234,7 +234,7 @@ The existing `TaskEngine.register_observer(callback)` at `src/synthorg/engine/ta
 2. Watches `TaskStateChanged` events for the transition to the runnable state.
 3. On match, publishes a claim message to `synthorg.tasks.ready.<task_id>` on the `SYNTHORG_TASKS` stream.
 
-Because the dispatcher only observes and publishes, the engine's single-writer path is unchanged. Reads still bypass the mutation queue as they do today. Tests with `queue.enabled = false` show byte-identical behavior to the pre-PR engine.
+Because the dispatcher only observes and publishes, the engine's single-writer path is unchanged. Reads still bypass the mutation queue as they do today. Tests with `queue.enabled = false` show byte-identical behaviour to the pre-PR engine.
 
 ---
 
@@ -242,7 +242,7 @@ Because the dispatcher only observes and publishes, the engine's single-writer p
 
 ### Defaults
 
-`internal` is and stays the default in `MessageBusConfig.backend` and in the Go CLI `synthorg init` picker. Existing deployments that do nothing see zero behavior change: same bus implementation, same single-process execution, same config file.
+`internal` is and stays the default in `MessageBusConfig.backend` and in the Go CLI `synthorg init` picker. Existing deployments that do nothing see zero behaviour change: same bus implementation, same single-process execution, same config file.
 
 The distributed **task queue** is governed by a separate switch, `config.queue.enabled`, and **ships `false`**. This is the deliberate, validated shipped default:
 
@@ -290,7 +290,7 @@ First-run users hit the picker in the Go CLI, which is unbiased and surfaces the
 
 The picker is a generic `PickOne[T]` helper in `cli/internal/ui/picker.go` wrapping the `charmbracelet/huh` library already in the CLI dependency graph. The `BusBackends` registry in `cli/internal/ui/options.go` is data-driven: each entry has an ID, label, one-line summary, bullet-list pros, bullet-list cons, a default flag, and the value it writes to the config. Adding a new backend later is one struct literal in `options.go` plus the matching Python implementation in `src/synthorg/communication/bus/`. No UI code changes.
 
-Non-interactive mode honors the existing `--yes` / `SYNTHORG_YES` convention by writing `internal` without prompting. A new `--bus-backend` flag on `init` lets scripted setup pick any value in the registry. Invalid values exit with code 2 and a message listing the valid backends.
+Non-interactive mode honours the existing `--yes` / `SYNTHORG_YES` convention by writing `internal` without prompting. A new `--bus-backend` flag on `init` lets scripted setup pick any value in the registry. Invalid values exit with code 2 and a message listing the valid backends.
 
 ### Unbiased backend copy
 
@@ -388,7 +388,7 @@ Points to resolve during Phase 1 review. Each becomes a decision the Phase 2 imp
 - **Should `publish()` wait for server ack?** `nats-py` exposes fire-and-forget and ack-waiting publish variants. In-memory is synchronous so a caller knows the message reached the queue before `publish()` returns. Recommendation: ack-waiting publish in the default code path, with a config knob to downgrade to fire-and-forget for latency-sensitive deployments. Adds ~1 ms per publish, preserves semantics.
 - **`NotSubscribedError` semantics for DIRECT channels.** In-memory raises `NotSubscribedError` for a non-subscriber attempting `receive()` on a TOPIC or DIRECT channel. On JetStream, a durable consumer only exists if the subscriber has called `subscribe()`, so the error condition is naturally enforced. Recommendation: mirror the in-memory check by tracking subscription state in-process and raising `NotSubscribedError` before calling `fetch()`. Same exception, same condition.
 - **Testcontainer strategy for conformance tests.** Phase 2 extracts the existing bus tests into a shared contract and runs them against both backends. The NATS runs need a real server. Recommendation: `testcontainers-python` with the `nats` image (the canonical tag pin lives in `tests/integration/communication/test_bus_nats.py` and is kept current by Renovate's testcontainers customManager), marked `@pytest.mark.integration`, skipped in unit runs. Works cross-platform (Windows laptop dev + Linux CI).
-- **CLI picker fallback when TTY is absent.** Non-interactive contexts (CI, scripts, `--yes`, `SYNTHORG_YES=1`) cannot render the picker. Recommendation: honor `--yes` and `--bus-backend` flags first; if neither is set and no TTY is attached, default to `internal` silently. Invalid explicit values exit 2.
+- **CLI picker fallback when TTY is absent.** Non-interactive contexts (CI, scripts, `--yes`, `SYNTHORG_YES=1`) cannot render the picker. Recommendation: honour `--yes` and `--bus-backend` flags first; if neither is set and no TTY is attached, default to `internal` silently. Invalid explicit values exit 2.
 
 ---
 

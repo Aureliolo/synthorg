@@ -51,7 +51,7 @@ Personality is split into two tiers:
     - **20% Conflict approach:** constructive pairs score 1.0, destructive pairs 0.2,
       mixed 0.4--0.6. Uses `itertools.combinations` for team-level averaging
 
-=== "Behavioral Enums"
+=== "Behavioural Enums"
 
     Injected into system prompts as natural-language labels that LLMs respond to:
 
@@ -114,11 +114,11 @@ class SkillSet(BaseModel):
   between `primary` and `secondary` (pre-alpha, no compatibility coercion from any prior
   string-based shape)
 
-**Routing impact:** `AgentTaskScorer` uses the structured skill data directly.  Primary
+**Routing impact:** `AgentTaskScorer` uses the structured skill data directly. Primary
 skill overlap is weighted at 40% and secondary at 20%, each contribution scaled by the
 agent's `proficiency` for every matched skill (default `1.0`, which reproduces
 boolean-match scoring).  When a subtask declares `required_tags`, matched skills whose
-tags cover every required tag earn an additional 10% bonus.  Proficiency thus drives
+tags cover every required tag earn an additional 10% bonus. Proficiency thus drives
 quality-aware routing ("route to the agent with the highest Python proficiency") and
 tags drive multi-faceted matching when callers opt in.
 
@@ -279,7 +279,7 @@ in issue #1113):
   `saved_at`. Version numbers are monotonically increasing per entity.
 - **`compute_content_hash(model)`** (`versioning/hashing.py`): SHA-256 of
   `json.dumps(model.model_dump(mode="json"), sort_keys=True)`; stable across
-  field-ordering variations in Pydantic serialization.
+  field-ordering variations in Pydantic serialisation.
 - **`VersioningService[T]`** (`versioning/service.py`): Wraps a `VersionRepository`
   to provide content-addressable snapshot creation. `snapshot_if_changed` skips the
   write when the content hash matches the latest stored version.
@@ -288,7 +288,7 @@ in issue #1113):
   `get_by_content_hash`, `list_versions`, `count_versions`,
   `delete_versions_for_entity`.
 - **`SQLiteVersionRepository[T]`** (`persistence/sqlite/version_repo.py`):
-  Parameterized by `table_name`, `serialize_snapshot`, and `deserialize_snapshot`
+  Parameterised by `table_name`, `serialize_snapshot`, and `deserialize_snapshot`
   callables. Table name is validated at construction against
   `^[a-z][a-z0-9_]*$` to prevent SQL injection.
 
@@ -319,7 +319,7 @@ Identity version history is exposed under `/api/v1/agents/{agent_id}/versions`
 | `GET` | `/` | read | Paginated list of version snapshots (`offset`, `limit` default 20) |
 | `GET` | `/{version_num}` | read | Single version snapshot by monotonic version number |
 | `GET` | `/diff?from_version=N&to_version=M` | read | Field-level `AgentIdentityDiff` between two versions (`from_version < to_version` required) |
-| `POST` | `/rollback` | write | Restore a prior version.  Body: `{"target_version": <int>, "reason": "<text>"}` (reason optional).  Executed via `evolve_identity`, producing a new snapshot whose content hash equals the restored version; rollbacks never mutate history. |
+| `POST` | `/rollback` | write | Restore a prior version. Body: `{"target_version": <int>, "reason": "<text>"}` (reason optional).  Executed via `evolve_identity`, producing a new snapshot whose content hash equals the restored version; rollbacks never mutate history. |
 
 All endpoints additionally verify that the stored snapshot's encoded owner id
 matches the path `agent_id` (cross-agent rows are rejected with 400).
@@ -382,6 +382,6 @@ role is special:
 ## See Also
 
 - [HR & Agent Lifecycle](hr-lifecycle.md): seniority, hiring, firing, performance, evaluation, promotions, evolution, five-pillar framework, client agents
-- [Organization](organization.md): company types, departments, templates
+- [Organisation](organization.md): company types, departments, templates
 - [Tools & Capabilities](tools.md): tool access levels, progressive trust
 - [Design Overview](index.md): full index

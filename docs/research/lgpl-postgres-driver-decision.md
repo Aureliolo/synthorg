@@ -33,7 +33,7 @@ The 2026-05-01 codebase audit (agent 119, license compatibility) flagged the opt
 
 2. **Optional extra.** Operators install the postgres extra explicitly (`pip install synthorg[postgres]` or `uv sync --extra postgres`). The default install path (SQLite-only) carries no LGPL dependencies. Operators who object to LGPL distribution simply do not install the extra.
 
-3. **BUSL-1.1 narrowed Additional Use Grant does not conflict.** Our Additional Use Grant restricts production use by competing-use cases and 500+ employee organizations; it does not impose redistribution terms that contradict LGPL. The two licenses operate on orthogonal axes (licensing-the-source vs. distribution-of-binaries-with-replacement-rights). A SynthOrg redistributor must satisfy both: BUSL for SynthOrg's own source, LGPL for the psycopg portion of any combined binary they ship.
+3. **BUSL-1.1 narrowed Additional Use Grant does not conflict.** Our Additional Use Grant restricts production use by competing-use cases and 500+ employee organisations; it does not impose redistribution terms that contradict LGPL. The two licenses operate on orthogonal axes (licensing-the-source vs. distribution-of-binaries-with-replacement-rights). A SynthOrg redistributor must satisfy both: BUSL for SynthOrg's own source, LGPL for the psycopg portion of any combined binary they ship.
 
 4. **Industry precedent.** psycopg2 (older sibling, also LGPL) ships in major commercial-license SaaS frameworks (e.g. Sentry, GitLab CE/EE) without ever triggering compliance complications. The dynamic-linkage interpretation is settled in the Python ecosystem.
 

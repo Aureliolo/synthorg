@@ -67,7 +67,7 @@ See the [User Guide](../user_guide.md) for alternative installation methods and 
 
 ---
 
-## Step 2: Initialize
+## Step 2: Initialise
 
 Run the interactive setup wizard:
 

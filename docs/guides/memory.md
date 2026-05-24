@@ -5,7 +5,7 @@ description: Configure agent memory, shared org memory, retrieval pipeline, and 
 
 # Memory Configuration
 
-SynthOrg agents have persistent memory that spans conversations and tasks. The memory system stores experiences, knowledge, skills, and relationships, and retrieves relevant memories to inject into the agent's context. This guide covers how to configure memory backends, persistence levels, retrieval tuning, shared organizational memory, and consolidation.
+SynthOrg agents have persistent memory that spans conversations and tasks. The memory system stores experiences, knowledge, skills, and relationships, and retrieves relevant memories to inject into the agent's context. This guide covers how to configure memory backends, persistence levels, retrieval tuning, shared organisational memory, and consolidation.
 
 ---
 
@@ -51,7 +51,7 @@ Agents store five types of memory:
 
 The `level` field controls how long memories persist:
 
-| Level | Value | Behavior |
+| Level | Value | Behaviour |
 |-------|-------|----------|
 | Persistent | `persistent` | Memories survive across all sessions and projects |
 | Project | `project` | Memories persist for the duration of a project |
@@ -96,7 +96,7 @@ memory:
 | `backend` | string | `"mem0"` | Memory backend (currently only `"mem0"`) |
 | `level` | MemoryLevel | `"session"` | Default persistence level |
 | `storage` | MemoryStorageConfig | *(defaults)* | Storage backend settings |
-| `options` | MemoryOptionsConfig | *(defaults)* | Behavior options |
+| `options` | MemoryOptionsConfig | *(defaults)* | Behaviour options |
 | `retrieval` | MemoryRetrievalConfig | *(defaults)* | Retrieval pipeline settings |
 | `consolidation` | ConsolidationConfig | *(defaults)* | Consolidation settings |
 
@@ -165,9 +165,9 @@ retrieval:
 
 ---
 
-## Shared Organizational Memory
+## Shared Organisational Memory
 
-Beyond per-agent memory, SynthOrg supports shared organizational memory: knowledge available to all agents.
+Beyond per-agent memory, SynthOrg supports shared organisational memory: knowledge available to all agents.
 
 ```yaml
 org_memory:
@@ -195,7 +195,7 @@ org_memory:
 The **hybrid prompt + retrieval** backend uses two layers:
 
 1. **Core policies**: short, critical rules injected directly into every agent's system prompt. These are always available and never filtered.
-2. **Extended store**: a searchable database of organizational facts, procedures, and conventions. These are retrieved on demand via the retrieval pipeline (up to `max_retrieved_per_query` per query).
+2. **Extended store**: a searchable database of organisational facts, procedures, and conventions. These are retrieved on demand via the retrieval pipeline (up to `max_retrieved_per_query` per query).
 
 ---
 
@@ -268,7 +268,7 @@ The archival system classifies each memory by density score and routes to the ap
 
 ## Practical Example
 
-A complete memory configuration for a research lab that prioritizes long-term knowledge retention:
+A complete memory configuration for a research lab that prioritises long-term knowledge retention:
 
 ```yaml
 memory:
@@ -370,7 +370,7 @@ curl -X DELETE http://localhost:3001/api/v1/admin/memory/fine-tune/checkpoints/$
 
 ### Admin endpoints on the backlog
 
-Consolidation, reindex, procedural-skill management, and organization-memory promotion are described in the [Memory design page](../design/memory.md#consolidation-and-retention) but are not exposed as REST endpoints today. These operations happen on agent-lifecycle boundaries (consolidation cycles, startup reindex, procedural-memory auto-generation); a dedicated admin surface is tracked on the GitHub issue tracker under the memory label.
+Consolidation, reindex, procedural-skill management, and organisation-memory promotion are described in the [Memory design page](../design/memory.md#consolidation-and-retention) but are not exposed as REST endpoints today. These operations happen on agent-lifecycle boundaries (consolidation cycles, startup reindex, procedural-memory auto-generation); a dedicated admin surface is tracked on the GitHub issue tracker under the memory label.
 
 ---
 

@@ -14,7 +14,7 @@ procedural, semantic, and social memory types.
 
 The [LMEB benchmark](https://arxiv.org/abs/2603.12572) (Zhao et al., March 2026) evaluates
 exactly this: 22 datasets, 193 zero-shot retrieval tasks across four memory types. Its key finding
-is that **MTEB performance does not generalize to memory retrieval**:
+is that **MTEB performance does not generalise to memory retrieval**:
 
 | Correlation | Pearson | Spearman |
 |-------------|---------|----------|
@@ -87,7 +87,7 @@ All scores are NDCG@10 (with instruction prompts unless noted). Source: LMEB pap
    well below episodic (70.89) and semantic (62.18). This affects SynthOrg's SOCIAL memory quality.
 
 4. **No universal embedding model exists.** No single model excels across all memory types.
-   Model selection must be optimized for the deployment's primary memory retrieval pattern.
+   Model selection must be optimised for the deployment's primary memory retrieval pattern.
 
 ---
 
@@ -150,7 +150,7 @@ incompatible). Plan model selection before first production deployment.
 
 ## Domain Fine-Tuning Pipeline
 
-Even with LMEB-optimized model selection, domain-specific fine-tuning can improve retrieval
+Even with LMEB-optimised model selection, domain-specific fine-tuning can improve retrieval
 quality by 10-27% ([NVIDIA blog](https://huggingface.co/blog/nvidia/domain-specific-embedding-finetune),
 tested on NVDocs and Jira datasets). The pipeline requires no manual annotation and runs on a
 single GPU.
@@ -170,7 +170,7 @@ graph LR
 
 **Stage 1: Synthetic Data Generation**
 
-- Input: organization documents (policies, ADRs, procedures, coding standards, meeting notes)
+- Input: organisation documents (policies, ADRs, procedures, coding standards, meeting notes)
 - Process: LLM generates realistic retrieval queries for each document chunk
 - Output: `(query, positive_document)` pairs
 - No GPU required (API-based LLM calls)
@@ -208,13 +208,13 @@ graph LR
 - Save fine-tuned model checkpoint to configured path
 - Update `Mem0EmbedderConfig` to point to the fine-tuned model (via custom Mem0 provider or
   local model path)
-- On next backend initialization, the fine-tuned model can be used by pointing configuration to the checkpoint
+- On next backend initialisation, the fine-tuned model can be used by pointing configuration to the checkpoint
 
 ### Integration Design
 
 Fine-tuning is an **offline pipeline**, not a runtime operation. The `EmbeddingFineTuneConfig`
 (see [Memory Design Spec](../design/memory.md#embedding-model-selection))
-stores the configuration. Initialization behavior in the Mem0 adapter:
+stores the configuration. Initialisation behaviour in the Mem0 adapter:
 
 1. If `fine_tune.enabled` and `checkpoint_path` is set: the checkpoint path is used as the model
    identifier passed to the Mem0 SDK (the embedding provider must serve the fine-tuned model)
@@ -234,7 +234,7 @@ Based on the NVIDIA evaluation:
 | NVDocs | Recall@10 | 0.630 | 0.693 | +10.0% |
 | Jira (Atlassian) | Recall@60 | 0.751 | 0.951 | +26.7% |
 
-Domain-specific corpora (like organizational documents) tend to see higher gains because the base
+Domain-specific corpora (like organisational documents) tend to see higher gains because the base
 model's generic training does not cover domain-specific terminology and relationships.
 
 ---

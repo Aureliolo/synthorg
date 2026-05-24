@@ -17,26 +17,26 @@ last_reviewed: 2026-05-05
 
 ## Bottom line
 
-SynthOrg keeps multi-agent as a foundational capability but treats it as **topology-per-task, not topology-per-company**, with single-agent as the default for all task types where multi-agent cannot demonstrate a per-task justification. The three S1 papers **confirm** this direction; they do not overturn it. Kim et al. 2025 (already integrated in the engine design) set up the heuristic; papers 2 and 3 formalize the math and empirics behind it; paper 1 supplies the emergent-risk catalog the existing guardrails do not yet fully cover.
+SynthOrg keeps multi-agent as a foundational capability but treats it as **topology-per-task, not topology-per-company**, with single-agent as the default for all task types where multi-agent cannot demonstrate a per-task justification. The three S1 papers **confirm** this direction; they do not overturn it. Kim et al. 2025 (already integrated in the engine design) set up the heuristic; papers 2 and 3 formalise the math and empirics behind it; paper 1 supplies the emergent-risk catalog the existing guardrails do not yet fully cover.
 
 The **critical new work** S1 surfaces is encoding the 15 emergent-risk mitigations (especially authority-deference) because SynthOrg's default conflict resolver is literally `authority + dissent_log`, which is the exact structural shape paper 1 shows produces 10/10 deterministic errors under an authority cue.
 
 ---
 
-## Section 1. Decision Matrix: Centralized vs Distributed
+## Section 1. Decision Matrix: Centralised vs Distributed
 
 The existing `CoordinationTopology` selector in `src/synthorg/engine/routing/topology_selector.py` already implements most of this matrix. The papers support refining it:
 
 | Task property | Topology | Justification |
 |---|---|---|
 | `sequential` + any size | **SAS** (single-agent) | Kim 2025: -39% to -70% multi-agent effect. Paper 3: Data Processing Inequality. Coordination tokens displace reasoning tokens under equal budget. No change needed. |
-| `parallel` + structured + common-evidence regime | **Centralized** (orchestrator + sub-agents, orchestrator synthesizes) | Paper 2 **formal theorem**: delegated networks are decision-theoretically dominated by a centralized Bayes decision maker under common-evidence. Lowest error amplification (4.4x, Kim 2025). |
-| `parallel` + exploratory / high-entropy / **novel per-agent information sources** | **Decentralized** (peer debate) | Paper 2 boundary case: distributed CAN outperform when agents access non-shared information. Paper 3 boundary case: diverse specialized knowledge, error-checking via independent reasoning paths, asymmetric agent expertise. |
+| `parallel` + structured + common-evidence regime | **Centralised** (orchestrator + sub-agents, orchestrator synthesises) | Paper 2 **formal theorem**: delegated networks are decision-theoretically dominated by a centralised Bayes decision maker under common-evidence. Lowest error amplification (4.4x, Kim 2025). |
+| `parallel` + exploratory / high-entropy / **novel per-agent information sources** | **Decentralised** (peer debate) | Paper 2 boundary case: distributed CAN outperform when agents access non-shared information. Paper 3 boundary case: diverse specialised knowledge, error-checking via independent reasoning paths, asymmetric agent expertise. |
 | `mixed` (sequential backbone + parallel sub-phases) | **Context-dependent** | Kim 2025; per-phase selection already implemented as `ContextDependentDispatcher`. |
 | Low-stakes / single-file / simple-complexity | **SAS** regardless of structure | Paper 3 + existing `AutoLoopConfig` rule (`simple → ReAct`). |
-| High-stakes / production-consequence / adversarial-input | **Centralized + verification stages** | Not a topology decision; a **gate** decision. Ties to R2 (verification stages). See Section 5. |
+| High-stakes / production-consequence / adversarial-input | **Centralised + verification stages** | Not a topology decision; a **gate** decision. Ties to R2 (verification stages). See Section 5. |
 
-**New constraint from Section 3 (risks)**: any topology that routes through a chain of agents where one carries an authority marker MUST activate the `AuthorityDeferenceGuard` mitigation path before downstream agents synthesize.
+**New constraint from Section 3 (risks)**: any topology that routes through a chain of agents where one carries an authority marker MUST activate the `AuthorityDeferenceGuard` mitigation path before downstream agents synthesise.
 
 ---
 
@@ -48,7 +48,7 @@ Existing company templates span 1→50+ agents. The empirical literature (Kim 20
 |---|---|---|---|
 | **Per-coordination-group** (agents working on a single `coordination_topology` wave) | **3-4 active agents** (recommended) | Kim 2025 180-experiment cap; per-agent reasoning degrades sharply beyond this | **Soft cap**: `CoordinationConfig.max_concurrency_per_wave`, current settings-registry default **5** (range 1-50, `None` in the Pydantic model = unlimited). Adopting 3-4 as the recommended default is a follow-up change tracked on R1 (#1250). Legitimate 5-6 sub-agent decompositions exist in the +57% to +81% parallel regime. |
 | **Per-task total team (including orchestrator + verifiers)** | **~7 agents** | Kim 2025 hybrid overhead; paper 1 coalition-formation risk rises with team size | **Soft cap**: logged warning above threshold. |
-| **Per-company / org size** | **No hard bound** | Organizational simulation value (Enterprise Org 20-50+ template) is NOT the same as per-task reasoning efficiency | **No constraint**: templates must make clear that a 50-agent Enterprise Org does NOT run 50-agent coordination waves. |
+| **Per-company / org size** | **No hard bound** | Organisational simulation value (Enterprise Org 20-50+ template) is NOT the same as per-task reasoning efficiency | **No constraint**: templates must make clear that a 50-agent Enterprise Org does NOT run 50-agent coordination waves. |
 | **Per-meeting participants** | **3-5 ideal, 8 hard cap** | Existing `round_robin` "small groups (3-5 agents)" note + token cost quadratic growth warning | Confirmed; no change. |
 
 ---
@@ -76,6 +76,7 @@ For each risk: coverage status, SynthOrg design location, and action.
 | **4.3** | Semantic drift in sequential handoffs | **Partial** | `DelegationGuard` prevents loops; `sanitize_message()` redacts paths | **NEW WORK (small)**: content hash of original task formulation on `TurnRecord` / `TaskExecution.delegation_chain`. Low effort. Ties to R4. |
 
 **Summary**:
+
 - **5 risks fully covered** by existing design (3.1, 3.4, 3.5, 4.1, and partial/by-design coverage).
 - **3 risks partially covered** (1.3, 3.2, 4.3); small additions needed.
 - **2 HIGH-PRIORITY structural gaps** (2.1 majority sway, 2.2 authority deference).
@@ -88,16 +89,16 @@ For each risk: coverage status, SynthOrg design location, and action.
 
 Paper 3 challenges multi-agent's value claim by showing single-agent matches or beats it **on multi-hop reasoning under equal token budgets**. If SynthOrg's value proposition were "more agents = better reasoning", the paper would be a direct refutation. It is not. SynthOrg's value proposition is:
 
-1. **Role specialization as work-stream parallelism, not reasoning parallelism.** An engineer writing code while a PM writes the spec while a QA writes tests is not competing for reasoning tokens on the same multi-hop question; it is three concurrent workstreams. Paper 3's equal-budget comparison does not apply because the budgets are not pooled on a single task.
-2. **Organizational simulation fidelity.** A synthetic "company" of one single-agent is not a company. The framework exists to simulate org dynamics (department budgets, hiring, performance tracking, meeting cadences, approval chains) that are inherently multi-entity. Paper 2's formal theorem about decision-theoretic dominance applies to *delegated decision networks solving a single decision*, not to *organizations running many concurrent workflows*.
-3. **File-level parallel execution via git worktrees.** `WorkspaceIsolationStrategy.planner_worktrees` enables true filesystem parallelism that a single agent cannot achieve without serializing edits. This is orthogonal to reasoning efficiency; it is execution-throughput efficiency.
+1. **Role specialisation as work-stream parallelism, not reasoning parallelism.** An engineer writing code while a PM writes the spec while a QA writes tests is not competing for reasoning tokens on the same multi-hop question; it is three concurrent workstreams. Paper 3's equal-budget comparison does not apply because the budgets are not pooled on a single task.
+2. **Organisational simulation fidelity.** A synthetic "company" of one single-agent is not a company. The framework exists to simulate org dynamics (department budgets, hiring, performance tracking, meeting cadences, approval chains) that are inherently multi-entity. Paper 2's formal theorem about decision-theoretic dominance applies to *delegated decision networks solving a single decision*, not to *organisations running many concurrent workflows*.
+3. **File-level parallel execution via git worktrees.** `WorkspaceIsolationStrategy.planner_worktrees` enables true filesystem parallelism that a single agent cannot achieve without serialising edits. This is orthogonal to reasoning efficiency; it is execution-throughput efficiency.
 4. **Persistent institutional memory across role boundaries.** `OrgMemoryBackend`, `DissentRecord`, `DecisionRepository` accumulate knowledge that is structured by role. A single-agent cannot produce "engineering decided X over QA's objection" as a queryable audit artifact.
 5. **Audit-grade decision trails with role attribution.** `ReviewGateService` + `DecisionRecord` + `charter_version` identity versioning produce multi-party accountability that is meaningless in a single-agent system.
 6. **Per-task topology auto-selection as a first-class primitive.** SynthOrg's position is not "multi-agent everywhere"; it is "choose the right topology per task". Papers 2 and 3 are citation-worthy *backing* for this choice, not critiques of it.
 
 **What SynthOrg should NOT claim**: that multi-agent reasoning beats single-agent reasoning on multi-hop questions under equal token budgets. That claim is now refuted.
 
-**What SynthOrg SHOULD claim**: that for work that decomposes into parallel role-specialized streams with shared institutional memory, multi-agent organizations produce outputs a single-agent cannot: namely parallel execution throughput, role-attributed decision artifacts, and simulation fidelity for org dynamics.
+**What SynthOrg SHOULD claim**: that for work that decomposes into parallel role-specialised streams with shared institutional memory, multi-agent organisations produce outputs a single-agent cannot: namely parallel execution throughput, role-attributed decision artifacts, and simulation fidelity for org dynamics.
 
 ---
 
@@ -113,7 +114,7 @@ Paper 3 challenges multi-agent's value claim by showing single-agent matches or 
 **R2 ([#1251](https://github.com/Aureliolo/synthorg/issues/1251), verification stages)**: **IMPLEMENTED** via [#1262](https://github.com/Aureliolo/synthorg/issues/1262). Inherits:
 
 - Deliberation-stage synthesis hook as a first-class stage hosting `AuthorityDeferenceGuard` + `EvidenceWeightedSynthesizer`.
-- High-stakes task classes require a centralized verification stage even if the task was executed decentralized (paper 2 theorem applies to decisions, not executions).
+- High-stakes task classes require a centralised verification stage even if the task was executed decentralised (paper 2 theorem applies to decisions, not executions).
 - Pre-decomposition clarification gate runs **before** `DecompositionService`, not after. R2's stage ordering must allow pre-decomposition stages.
 
 **R4 ([#1253](https://github.com/Aureliolo/synthorg/issues/1253), inter-agent comms)** inherits:

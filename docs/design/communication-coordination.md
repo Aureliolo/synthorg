@@ -65,7 +65,7 @@ department, or per conflict type.
     (incomparable authority) escalate to the lowest common manager in the
     hierarchy. The losing agent's reasoning is preserved as a **dissent record**
     (a structured log entry containing the conflict context, both positions,
-    and the resolution). Dissent records feed into organizational learning and
+    and the resolution). Dissent records feed into organisational learning and
     can be reviewed during retrospectives.
 
     ```yaml
@@ -83,7 +83,7 @@ department, or per conflict type.
         10/10 errors with the cue, same evidence, same agents. Downstream
         Auditor / Summarizer roles "lock onto" the authority signal and cease
         independent checks, and `DissentRecord` preservation alone is only a
-        partial defense because downstream consumers override evidence anyway.
+        partial defence because downstream consumers override evidence anyway.
 
         This strategy is safe for **1-2 downstream agents**. For deliberation
         stacks with more than two downstream agents, `AuthorityDeferenceGuard`
@@ -116,7 +116,7 @@ department, or per conflict type.
 === "Strategy 3: Human Escalation"
 
     All genuine conflicts go to the human approval queue with both positions
-    summarized. The agent(s) park the conflicting task and work on other tasks
+    summarised. The agent(s) park the conflicting task and work on other tasks
     while waiting (see [Approval Timeout](security.md#approval-timeout-policy)).
 
     ```yaml
@@ -166,8 +166,8 @@ types naturally suit different protocols. All protocols implement a
 registered and selected per meeting type. Cost bounds are enforced by
 `duration_tokens` in the [communication config](communication.md#communication-config).
 
-!!! note "SEC-1: lateral prompt-injection defenses"
-    Every protocol below carries the same prompt-injection defense: agenda
+!!! note "SEC-1: lateral prompt-injection defences"
+    Every protocol below carries the same prompt-injection defence: agenda
     fields (title, context, items) are wrapped in `<task-data>` and each peer
     agent's contribution is wrapped in `<peer-contribution>` before being
     interpolated into the next agent's user message. The meeting agent
@@ -185,7 +185,7 @@ registered and selected per meeting type. Cost bounds are enforced by
 
     - **Majority sway bias (risk 2.1)**: in a news-summarization experiment with
       7 fast-retrieval agents (wrong answer) vs. 3 deep-verification agents
-      (accurate evidence), **6/10 runs** synthesized to the majority position
+      (accurate evidence), **6/10 runs** synthesised to the majority position
       despite the minority providing verifiable evidence.
     - **Authority deference (risk 2.2)**: when any one participant carries an
       authority marker, downstream synthesis locks onto the authority signal
@@ -204,7 +204,7 @@ registered and selected per meeting type. Cost bounds are enforced by
 
     The meeting leader calls each participant in turn. A shared transcript
     grows as each agent responds, seeing all prior contributions. The leader
-    summarizes and extracts action items at the end.
+    summarises and extracts action items at the end.
 
     ```yaml
     meeting_protocol: "round_robin"
@@ -257,7 +257,7 @@ registered and selected per meeting type. Cost bounds are enforced by
        and identify failure modes, risks, and hidden assumptions
     5. **Devil's advocate** *(optional)*: injected automatically when
        consensus velocity detector identifies premature agreement
-    6. **Decision + action items**: leader synthesizes, creates tasks from
+    6. **Decision + action items**: leader synthesises, creates tasks from
        action items
 
     ```yaml
@@ -436,17 +436,17 @@ All four conflict resolution strategies terminate with bounded resource use:
   ``/conflicts/escalations`` REST surface (#1418).
 
     **Multi-worker wake-up (#1444):** ``PendingFuturesRegistry`` is
-    process-local by design.  When the API runs across multiple workers
+    process-local by design. When the API runs across multiple workers
     or pods sharing a Postgres backend, a decision submitted through
-    worker B must still wake a resolver blocked on worker A.  The queue
+    worker B must still wake a resolver blocked on worker A. The queue
     wires this via Postgres ``LISTEN`` / ``NOTIFY``: the Postgres
     repository publishes ``<id>:<status>`` on the
     ``conflict_escalation_events`` channel from the *application* side
     after every terminal transition (``mark_decided``, ``mark_expired``,
     ``cancel``); no database trigger is installed, so operators need
-    no elevated privileges to ship the schema.  An
+    no elevated privileges to ship the schema. An
     ``EscalationNotifySubscriber`` running in each worker listens on
-    that channel and forwards the signal to its local registry.  The
+    that channel and forwards the signal to its local registry. The
     subscriber is controlled by
     ``EscalationQueueConfig.cross_instance_notify`` (``auto``: default,
     enables it automatically for the Postgres backend; ``on``: force
@@ -456,11 +456,11 @@ All four conflict resolution strategies terminate with bounded resource use:
     **Timeout re-read fallback.** Because the NOTIFY publish is
     app-side and best-effort, a subscriber restart, network blip, or
     deployment rollover can drop the wake-up for an in-flight
-    resolver.  To keep the decision path correct under those windows,
+    resolver. To keep the decision path correct under those windows,
     ``HumanEscalationResolver`` re-reads the escalation row on
     ``TimeoutError`` and, if it finds a persisted ``DECIDED`` payload,
     hands the operator's decision to the processor instead of
-    returning the generic ``ESCALATED_TO_HUMAN`` fallback.  The
+    returning the generic ``ESCALATED_TO_HUMAN`` fallback. The
     sweeper and per-resolver timeout still bound stale rows; the
     re-read guarantees that an operator's choice is never masked by a
     missed notification.

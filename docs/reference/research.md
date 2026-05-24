@@ -7,7 +7,7 @@ The following table compares major multi-agent frameworks that informed the desi
 | Framework | Stars | Architecture | Roles | Models | Memory | Custom Roles | Production Ready |
 |-----------|-------|-------------|-------|--------|--------|-------------|-----------------|
 | **MetaGPT** | 64.5k | SOP-driven pipeline | PM, Architect, Engineer, QA | OpenAI, Ollama, Groq, Azure | Limited | Partial | Research; MGX commercial |
-| **ChatDev 2.0** | 31.2k | Zero-code visual workflows | CEO, CTO, Programmer, Tester, Designer | Multiple via config | Limited | Yes (YAML) | Improving (v2.0 Jan 2026) |
+| **ChatDev 2.0** | 31.2k | Zero-code visual workflows | CEO, CTO, Programmer, Tester, Designer | Multiple via config | Limited | Yes (YAML) | Improving (v2.0, January 2026) |
 | **CrewAI** | ~50k+ | Role-based crews + flows | Fully custom | Multi-provider | Basic (crew memory) | Yes | Yes (100k+ developers) |
 | **AutoGen** | ~40k+ | Conversation-driven async | Custom agents | OpenAI primary, others | Session-based | Yes | Transitioning to MS Agent Framework |
 | **LangGraph** | Large | Graph-based DAG | Custom nodes | LangChain ecosystem | Stateful graphs | Yes (nodes) | Yes |
@@ -47,11 +47,11 @@ The following table compares major multi-agent frameworks that informed the desi
 - **Tiered coordination overhead** (`O%`): optimal band is 200-300%, with over-coordination above 400%. Informs the orchestration ratio metric interpretation.
 - **Error taxonomy** (logical contradiction, numerical drift, context omission, coordination failure) with architecture-specific patterns. Adopted as opt-in classification in the coordination error classification pipeline.
 - **Auto topology selection** achieves 87% accuracy from measurable task properties. Informs the auto topology selector in the task routing subsystem.
-- **Centralized verification** contains error amplification to 4.4x vs 17.2x for independent agents.
+- **Centralised verification** contains error amplification to 4.4x vs 17.2x for independent agents.
 
 !!! note "Applicability"
 
-    The paper tested identical agents on individual tasks. SynthOrg uses role-differentiated agents in an organizational structure. Thresholds (e.g., 45% capability ceiling, 3-4 agent sweet spot) are directional and will be validated empirically in this context.
+    The paper tested identical agents on individual tasks. SynthOrg uses role-differentiated agents in an organisational structure. Thresholds (e.g., 45% capability ceiling, 3-4 agent sweet spot) are directional and will be validated empirically in this context.
 
 ---
 
@@ -95,5 +95,5 @@ Rather than forking a framework, SynthOrg builds on battle-tested libraries:
 - [Kim et al., "Towards a Science of Scaling Agent Systems" (2025)](https://arxiv.org/abs/2512.08296): empirical agent scaling research (180 experiments, 3 LLM families)
 - [Cemri et al., "Why Do Multi-Agent LLM Systems Fail?" (2025)](https://arxiv.org/abs/2503.13657): introduces the Multi-Agent System Failure Taxonomy (MAST); MAS coordination error classification
 - [Gloaguen et al., "Evaluating AGENTS.md" (2026)](https://arxiv.org/abs/2602.11988): context files reduce success rates; non-inferable-only principle for system prompts
-- [Zhao et al., "LMEB: Long-horizon Memory Embedding Benchmark" (2026)](https://arxiv.org/abs/2603.12572): 22 datasets, 193 tasks across episodic/dialogue/semantic/procedural memory. MTEB performance does not generalize to memory retrieval (Spearman: -0.130). Larger models not always better. Adopted as the evaluation framework for SynthOrg embedding model selection
+- [Zhao et al., "LMEB: Long-horizon Memory Embedding Benchmark" (2026)](https://arxiv.org/abs/2603.12572): 22 datasets, 193 tasks across episodic/dialogue/semantic/procedural memory. MTEB performance does not generalise to memory retrieval (Spearman: -0.130). Larger models not always better. Adopted as the evaluation framework for SynthOrg embedding model selection
 - [NVIDIA, "Domain-Specific Embedding Fine-Tuning"](https://huggingface.co/blog/nvidia/domain-specific-embedding-finetune): automated pipeline (synthetic data gen, hard negative mining, contrastive fine-tuning). +10-27% retrieval improvement on domain corpora. Single GPU, no manual annotation. Informs the optional EmbeddingFineTuneConfig pipeline design

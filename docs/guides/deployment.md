@@ -131,7 +131,7 @@ After the containers are running, open `http://localhost:3000`. The setup wizard
 
 Three distinct health endpoints live in this deployment; don't conflate them.
 
-| Endpoint | Layer | Purpose | Behavior |
+| Endpoint | Layer | Purpose | Behaviour |
 |----------|-------|---------|----------|
 | `GET /api/v1/healthz` | Backend (API) | Liveness | Always 200 while the API process is alive. Fails only on process death. Use for **container restart policies** (`docker compose` `healthcheck`, Kubernetes `livenessProbe`). |
 | `GET /api/v1/readyz` | Backend (API) | Readiness | 200 when persistence + message bus + runtime services are healthy; 503 otherwise. Use for **load-balancer drain** and `docker compose` readiness gates (`depends_on.condition: service_healthy`). |

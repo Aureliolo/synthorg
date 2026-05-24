@@ -34,6 +34,7 @@ and LangChain Deep Agents context engineering thresholds.
 ### Implementation Inventory
 
 **Configuration** (`src/synthorg/engine/compaction/models.py`):
+
 ```python
 class CompactionConfig(BaseModel):
     fill_threshold_percent: float = 80.0  # trigger at 80% fill
@@ -42,6 +43,7 @@ class CompactionConfig(BaseModel):
 ```
 
 **Trigger mechanism** (`src/synthorg/engine/compaction/summarizer.py`):
+
 ```python
 def _do_compaction(ctx, config, estimator):
     if ctx.context_fill_percent < config.fill_threshold_percent:
@@ -55,11 +57,13 @@ Trigger checked at turn boundaries in all three loops via shared `invoke_compact
 are re-raised.
 
 **Conversation splitting** (`_split_conversation`):
+
 - Head: leading SYSTEM messages (preserved verbatim: system prompt, etc.)
 - Archivable: middle messages (compressed)
 - Recent: last `preserve_recent_turns * 2` messages (preserved verbatim)
 
 **Summary quality** (`_build_summary`, lines 209-250):
+
 ```python
 for msg in messages:
     if msg.role == MessageRole.ASSISTANT and msg.content:
@@ -75,6 +79,7 @@ return f"[Archived {len(messages)} messages. Summary of prior work: {joined}]"
 This is a mechanical text concatenation with no semantic understanding.
 
 **Context fill estimation** (`src/synthorg/engine/context_budget.py`):
+
 ```python
 def estimate_context_fill(ctx, estimator):
     system_tokens = estimator.estimate(system_prompt)
@@ -91,7 +96,7 @@ def estimate_context_fill(ctx, estimator):
   kills agent execution. The loop continues even if compaction fails completely.
 - **Configurable thresholds**: `CompactionConfig` is part of `AgentEngine` construction,
   giving operators control over trigger point and retention.
-- **Compression metadata preserved**: `CompressionMetadata` is serialized with `AgentContext`
+- **Compression metadata preserved**: `CompressionMetadata` is serialised with `AgentContext`
   checkpoints, enabling recovery to resume after compaction correctly.
 - **Turn-boundary invocation**: Compaction only fires at turn boundaries (never mid-response
   or mid-tool-call), consistent with the "no mid-execution changes" principle.
@@ -102,6 +107,7 @@ def estimate_context_fill(ctx, estimator):
 
 **Summary quality is poor.** `_build_summary()` truncates assistant message snippets to 100
 characters and concatenates them. This loses:
+
 - Reasoning chains (multi-step thinking truncated at 100 chars)
 - Tool use context (what was called, what was found)
 - Decision rationale (why a particular approach was chosen)
@@ -110,6 +116,7 @@ characters and concatenates them. This loses:
 The resulting summary is a list of sentence fragments with no structure.
 
 **No semantic awareness.** Compaction triggers at 80% fill regardless of:
+
 - Whether the agent is mid-reasoning (within a complex multi-step analysis)
 - Whether the current turn boundary is semantically significant
 - The complexity of the task (SIMPLE vs. COMPLEX/EPIC tasks need different strategies)
@@ -160,6 +167,7 @@ concatenation of message snippets will strip "wait, I think I made an error, let
 reconsider the approach" to "wait, I think I made an error" or less.
 
 The research finding also clarifies when preservation matters:
+
 - **Narrow/repetitive tasks**: Concise reasoning is fine, marker preservation is not critical
 - **Diverse/novel/complex tasks**: Full uncertainty-aware style must be preserved
 
@@ -194,6 +202,7 @@ def _count_epistemic_markers(text: str) -> int:
 When splitting into (head, archivable, recent), promote archivable messages with marker
 density above a threshold from archivable to recent (preserved verbatim). The threshold
 depends on `task.estimated_complexity`:
+
 - SIMPLE/MEDIUM: promote if `_count_epistemic_markers(msg.content) >= 3`
 - COMPLEX/EPIC: promote if `_count_epistemic_markers(msg.content) >= 1`
 
@@ -214,6 +223,7 @@ inflection points in the archived section.
 
 Reasoning as Compression / CIB (arXiv:2603.08462, ICML 2025) proposes using surprisal
 under a frozen base model to assign per-token compression cost:
+
 - High-surprisal tokens (novel, unexpected content) = high cost to remove = preserve
 - Low-surprisal tokens (predictable filler) = low cost to remove = compress aggressively
 - Result: 41% token reduction with <1.5% accuracy drop
@@ -230,6 +240,7 @@ from the active completion provider) for surprisal scoring. This conflicts with 
 of being provider-agnostic (LiteLLM-based).
 
 **Proxy options** (lighter approximation):
+
 1. **TF-IDF importance**: Score tokens by inverse document frequency across the
    conversation. Repeated, common tokens score low; rare, specific tokens score high.
    O(V) computation (vocabulary size), no model inference required.
@@ -260,7 +271,8 @@ instead of 3). This is the beta parameter expressed via existing degradation inf
 
 The fundamental insight from LangChain's Autonomous Context Compression is that an agent
 executing a task knows when it is at a semantically good moment to compact:
-- After completing a sub-goal ("I've gathered all the data I need, now I'll analyze it")
+
+- After completing a sub-goal ("I've gathered all the data I need, now I'll analyse it")
 - Before ingesting a large new tool result
 - At a plan step boundary (already natural in HybridLoop)
 
@@ -343,6 +355,7 @@ based compaction remains as a safety net but at a higher threshold:
 | `agent_controlled=True` (proposed) | `compress_context` tool available | Auto-compact at `safety_threshold_percent` (95%) |
 
 New `CompactionConfig` fields:
+
 ```python
 agent_controlled: bool = False              # opt-in
 safety_threshold_percent: float = 95.0     # system fallback when agent_controlled=True
@@ -350,7 +363,7 @@ safety_threshold_percent: float = 95.0     # system fallback when agent_controll
 
 The 95% safety net ensures context overflow cannot happen even if an agent never invokes
 the tool. Log event `CONTEXT_BUDGET_COMPACTION_SAFETY_NET` when system falls back, for
-monitoring agent compaction behavior.
+monitoring agent compaction behaviour.
 
 ---
 
@@ -366,7 +379,7 @@ Target files: `src/synthorg/engine/compaction/summarizer.py`, `src/synthorg/engi
 
 2. **Safety net threshold field**: Add `safety_threshold_percent: float = 95.0` to
    `CompactionConfig`. Use this when `agent_controlled=True` (which defaults to False, so
-   no behavior change in Phase 1, just preparatory).
+   no behaviour change in Phase 1, just preparatory).
 
 3. **Relative retention option**: Add `preserve_recent_percent: float | None = None` to
    `CompactionConfig`. When set, retain the larger of `preserve_recent_turns` and

@@ -84,8 +84,8 @@ analysis pass is the agent step. Scanners are pluggable
 (`StructureMapScanner` protocol + factory + config discriminator). Python,
 Node, Go, and Rust scanners ship; a generic file-tree scanner is the
 always-present safe-default fallback, used only when no ecosystem-specific
-scanner matched. The aggregator runs every matching scanner, merges and
-de-duplicates their contributions, and stamps a `content_hash` over the
+scanner matched. The aggregator runs every matching scanner, deduplicates
+their contributions, and stamps a `content_hash` over the
 structural facts only (independent of project id and scan time) so a
 same-source re-import short-circuits when nothing changed.
 

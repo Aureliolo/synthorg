@@ -1,25 +1,25 @@
 ---
 title: Brand Identity & UX Design System
-description: Visual identity, theme architecture, color system, typography, density, animation, and UI guidelines for the SynthOrg dashboard.
+description: Visual identity, theme architecture, colour system, typography, density, animation, and UI guidelines for the SynthOrg dashboard.
 ---
 
 # Brand Identity & UX Design System
 
 ## Design Direction
 
-**Chosen direction**: Warm Ops, a warm, approachable aesthetic with balanced density and spring-physics interactions, combined with semantic state-driven color encoding where every color communicates system status rather than serving as decoration.
+**Chosen direction**: Warm Ops, a warm, approachable aesthetic with balanced density and spring-physics interactions, combined with semantic state-driven colour encoding where every colour communicates system status rather than serving as decoration.
 
-**Why this direction**: Warmth makes an AI operations tool feel approachable without losing professionalism. Tying color exclusively to state (green = rising, amber = attention, red = critical) gives operators instant comprehension of system health. The brand accent is a warm soft blue, deliberately neutral so that semantic state colors dominate the visual hierarchy. Orange/amber means "attention needed," not "this is SynthOrg."
+**Why this direction**: Warmth makes an AI operations tool feel approachable without losing professionalism. Tying colour exclusively to state (green = rising, amber = attention, red = critical) gives operators instant comprehension of system health. The brand accent is a warm soft blue, deliberately neutral so that semantic state colours dominate the visual hierarchy. Orange/amber means "attention needed," not "this is SynthOrg."
 
-**What was rejected and why**: A cool blue-cyan palette (data center aesthetic) was too generic, indistinguishable from Grafana/Datadog screenshots. A neutral gray palette (no hue) lacked enough identity to be recognizable. A high-energy violet/purple palette was visually fatiguing for sustained 8-hour use. These directions scored well on individual criteria but failed the combination of identity distinctiveness + sustained usability.
+**What was rejected and why**: A cool blue-cyan palette (data centre aesthetic) was too generic, indistinguishable from Grafana/Datadog screenshots. A neutral grey palette (no hue) lacked enough identity to be recognisable. A high-energy violet/purple palette was visually fatiguing for sustained 8-hour use. These directions scored well on individual criteria but failed the combination of identity distinctiveness + sustained usability.
 
 **Design influences**: Linear (clean layout, balanced density), Vercel (status-first design), Dust.tt (warm approachability), Grafana (data density as a user preference).
 
-## Color System
+## Colour System
 
-### Semantic Color Tokens
+### Semantic Colour Tokens
 
-Colors are **state-driven**, not decorative. Every colored element answers: "what is the system telling me?"
+Colours are **state-driven**, not decorative. Every coloured element answers: "what is the system telling me?"
 
 | Token | Purpose | Example hex | When to use |
 |-------|---------|-------------|-------------|
@@ -38,28 +38,28 @@ Colors are **state-driven**, not decorative. Every colored element answers: "wha
 | `border` | Default borders | `#1e1e2e` | Card borders, dividers |
 | `border-bright` | Interactive/hover borders | `#2a2a3e` | Focus rings, hover states |
 
-### Dynamic Color Assignment
+### Dynamic Colour Assignment
 
-Metric cards, sparklines, and trend indicators use colors dynamically based on direction of change:
+Metric cards, sparklines, and trend indicators use colours dynamically based on direction of change:
 
-| Data state | Color token | Rationale |
+| Data state | Colour token | Rationale |
 |------------|-------------|-----------|
 | Improving / rising | `success` | Green = things getting better |
 | Stable / normal | `accent` or `text-muted` | Neutral; no action needed |
 | Declining / degrading | `warning` | Amber = attention warranted |
 | Critical / threshold | `danger` | Red = act now |
 
-This ensures operators instantly understand system state from colors alone, without reading values. The same metric card shows green when tasks are completing faster and amber when they are slowing down.
+This ensures operators instantly understand system state from colours alone, without reading values. The same metric card shows green when tasks are completing faster and amber when they are slowing down.
 
-### How to Add a New Color Theme
+### How to Add a New Colour Theme
 
-Each theme is a single configuration object (~50 lines). All colors are CSS custom properties consumed via `var(--theme-*)` tokens. To add a new theme:
+Each theme is a single configuration object (~50 lines). All colours are CSS custom properties consumed via `var(--theme-*)` tokens. To add a new theme:
 
-1. Create a new theme config (e.g. `themes/midnight.ts`) with all color tokens
+1. Create a new theme config (e.g. `themes/midnight.ts`) with all colour tokens
 2. Register it in the theme index
 3. Done; all components automatically pick up the new palette
 
-No component code changes required. The 5 exploration themes (Ice Station, Warm Ops, Stealth, Signal, Neon) demonstrate this pattern: each theme is ~50 lines of color token definitions with zero component changes.
+No component code changes required. The 5 exploration themes (Ice Station, Warm Ops, Stealth, Signal, Neon) demonstrate this pattern: each theme is ~50 lines of colour token definitions with zero component changes.
 
 ## Typography
 
@@ -72,18 +72,19 @@ No component code changes required. The 5 exploration themes (Ice Station, Warm 
 
 **Rationale**: Geist was designed by Vercel specifically for developer dashboards. Excellent readability at small sizes, clean number rendering in mono, professional but not clinical in sans.
 
-**Typography is a theme axis**: other pairings (JetBrains Mono + Inter, IBM Plex Mono + IBM Plex Sans) are available and can be selected independently of colors.
+**Typography is a theme axis**: other pairings (JetBrains Mono + Inter, IBM Plex Mono + IBM Plex Sans) are available and can be selected independently of colours.
 
 ### Self-Hosted Fonts
 
 All fonts are bundled via `@fontsource` packages. No external CDN (Google Fonts) dependencies. This ensures:
+
 - No privacy concerns from third-party font loading
 - Consistent rendering regardless of network
 - Faster first contentful paint (no font fetch waterfall)
 
 ## Density
 
-Density is an **independent user preference**, not tied to theme colors.
+Density is an **independent user preference**, not tied to theme colours.
 
 | Level | Padding | Section gap | Grid gap | Metric size | Body size | Use case |
 |-------|---------|-------------|----------|-------------|-----------|----------|
@@ -116,7 +117,7 @@ Animation is an **independent user preference**, controlling motion intensity.
 
 Sidebar mode is an **independent user preference**.
 
-| Mode | Behavior | Width | Best for |
+| Mode | Behaviour | Width | Best for |
 |------|----------|-------|----------|
 | Rail | Always visible, icon + label | 220px | Standard desktop use |
 | Collapsible (default) | Expanded by default, can collapse to icon rail. Remembers user preference. | 220px / 56px | Most users (full nav when needed, compact when focused) |
@@ -138,7 +139,7 @@ The theme system has 5 orthogonal axes that users can configure independently:
 Color Palette  x  Density  x  Typography  x  Animation  x  Sidebar Mode
 ```
 
-This gives users full control without combinatorial explosion in theme definitions. A user can run "warm blue colors + dense layout + IBM Plex fonts + minimal animation + compact sidebar" without any custom theme code.
+This gives users full control without combinatorial explosion in theme definitions. A user can run "warm blue colours + dense layout + IBM Plex fonts + minimal animation + compact sidebar" without any custom theme code.
 
 ### Implementation Pattern
 
@@ -169,7 +170,7 @@ This was discovered during the design exploration (#765) and caused layout break
 
 ## Dark Mode
 
-**Dark mode only** (confirmed in #762 research). No light mode planned. All color tokens assume dark backgrounds. WCAG AA contrast ratios are validated against dark card/surface backgrounds.
+**Dark mode only** (confirmed in #762 research). No light mode planned. All colour tokens assume dark backgrounds. WCAG AA contrast ratios are validated against dark card/surface backgrounds.
 
 ## Accessibility
 
@@ -198,18 +199,18 @@ The following shared components live in `web/src/components/ui/` and form the bu
 
 | Component | File | Props | Purpose |
 |-----------|------|-------|---------|
-| `StatusBadge` | `status-badge.tsx` | `status`, `label?`, `pulse?` | Status indicator dot. `label` is a boolean that toggles display of the built-in status text (not a custom string). Maps `AgentRuntimeStatus` to semantic colors via `getStatusColor()`. |
+| `StatusBadge` | `status-badge.tsx` | `status`, `label?`, `pulse?` | Status indicator dot. `label` is a boolean that toggles display of the built-in status text (not a custom string). Maps `AgentRuntimeStatus` to semantic colours via `getStatusColor()`. |
 | `MetricCard` | `metric-card.tsx` | `label`, `value`, `change?`, `sparklineData?`, `progress?`, `subText?` | Numeric KPI display with optional sparkline, change badge (+/-%), and progress bar. |
 | `Sparkline` | `sparkline.tsx` | `data`, `color?`, `width?`, `height?`, `animated?` | Pure SVG sparkline with gradient fill and animated draw. `color` defaults to `var(--so-accent)`. Standalone or inside MetricCard. |
 | `SectionCard` | `section-card.tsx` | `title`, `icon?`, `action?`, `children` | Titled card wrapper with Lucide icon, action slot, and content area. Use for every content section. |
 | `AgentCard` | `agent-card.tsx` | `name`, `role`, `department`, `status`, `currentTask?`, `timestamp?` | Consistent agent display. Composes Avatar + StatusBadge internally. Must look identical everywhere. |
-| `DeptHealthBar` | `dept-health-bar.tsx` | `name`, `health?`, `agentCount` | Animated horizontal fill bar with utilization percentage (null-safe; shows N/A when utilization unavailable). Color auto-mapped via `getHealthColor()`. |
-| `ProgressGauge` | `progress-gauge.tsx` | `value`, `max?`, `label?`, `variant?`, `size?` | Circular or linear gauge for budget/utilization. `variant` defaults to `'circular'`, `max` defaults to 100. |
+| `DeptHealthBar` | `dept-health-bar.tsx` | `name`, `health?`, `agentCount` | Animated horizontal fill bar with utilisation percentage (null-safe; shows N/A when utilisation unavailable). Colour auto-mapped via `getHealthColor()`. |
+| `ProgressGauge` | `progress-gauge.tsx` | `value`, `max?`, `label?`, `variant?`, `size?` | Circular or linear gauge for budget/utilisation. `variant` defaults to `'circular'`, `max` defaults to 100. |
 | `StatPill` | `stat-pill.tsx` | `label`, `value` | Compact inline label + value pair for metadata rows. |
-| `Avatar` | `avatar.tsx` | `name`, `size?`, `borderColor?` | Circular initials avatar with optional colored border. Sizes: sm (24px), md (32px), lg (40px). |
+| `Avatar` | `avatar.tsx` | `name`, `size?`, `borderColor?` | Circular initials avatar with optional coloured border. Sizes: sm (24px), md (32px), lg (40px). |
 | `Button` | `button.tsx` | shadcn standard | Standard button component (shadcn/ui). |
 | `TaskStatusIndicator` | `task-status-indicator.tsx` | `status: TaskStatus`, `label?: boolean`, `pulse?: boolean`, `className?: string` | Task status dot with optional label and pulse animation. |
-| `PriorityBadge` | `task-status-indicator.tsx` | `priority: Priority`, `className?: string` | Task priority colored pill badge. |
+| `PriorityBadge` | `task-status-indicator.tsx` | `priority: Priority`, `className?: string` | Task priority coloured pill badge. |
 | `ProviderHealthBadge` | `provider-health-badge.tsx` | `status: ProviderHealthStatus`, `label?: boolean`, `pulse?: boolean`, `className?: string` | Provider health status dot (up/degraded/down/unknown) with optional label. |
 
 ### Interaction Components
@@ -226,21 +227,21 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `AnimatedPresence` | `animated-presence.tsx` | `routeKey`, `className?` | Page transition wrapper. Uses Motion AnimatePresence with reduced-motion fallback. |
 | `StaggerGroup` / `StaggerItem` | `stagger-group.tsx` | `staggerDelay?`, `animate?`, `layoutId?`, `layout?` | Card entrance stagger container with configurable delay and layout animation support. |
 | `Drawer` | `drawer.tsx` | `open`, `onClose`, `title?`, `ariaLabel?`, `side?`, `contentClassName?`, `children`, `className?` | Slide-in panel (left or right via `side`, default right) with overlay, spring animation, focus trap, and Escape-to-close. At least one of `title` or `ariaLabel` must be provided for accessible naming. Header omitted when `title` is absent. |
-| `InputField` | `input-field.tsx` | `label`, `error?`, `hint?`, `multiline?`, `rows?`, `placeholder?`, `required?`, `disabled?`, `type?`, `value`, `onChange` | Labeled text input with inline error/hint display and optional textarea mode. Extends native input/textarea props. |
-| `SelectField` | `select-field.tsx` | `label`, `options`, `value`, `onChange`, `error?`, `hint?`, `placeholder?`, `required?`, `disabled?`, `className?` | Labeled select dropdown with error/hint display and placeholder support. |
-| `SliderField` | `slider-field.tsx` | `label`, `value`, `onChange`, `min`, `max`, `step?`, `formatValue?`, `disabled?`, `className?` | Labeled range slider with custom value formatter and aria-live value display. |
-| `ToggleField` | `toggle-field.tsx` | `label`, `checked`, `onChange`, `description?`, `disabled?` | Labeled toggle switch (role="switch") with optional description text. |
+| `InputField` | `input-field.tsx` | `label`, `error?`, `hint?`, `multiline?`, `rows?`, `placeholder?`, `required?`, `disabled?`, `type?`, `value`, `onChange` | Labelled text input with inline error/hint display and optional textarea mode. Extends native input/textarea props. |
+| `SelectField` | `select-field.tsx` | `label`, `options`, `value`, `onChange`, `error?`, `hint?`, `placeholder?`, `required?`, `disabled?`, `className?` | Labelled select dropdown with error/hint display and placeholder support. |
+| `SliderField` | `slider-field.tsx` | `label`, `value`, `onChange`, `min`, `max`, `step?`, `formatValue?`, `disabled?`, `className?` | Labelled range slider with custom value formatter and aria-live value display. |
+| `ToggleField` | `toggle-field.tsx` | `label`, `checked`, `onChange`, `description?`, `disabled?` | Labelled toggle switch (role="switch") with optional description text. |
 | `TagInput` | `tag-input.tsx` | `label`, `value`, `onChange`, `placeholder?`, `disabled?`, `className?` | Chip-style multi-value input with add/remove, keyboard support (Enter to add, Backspace to remove), paste splitting. |
-| `TokenUsageBar` | `token-usage-bar.tsx` | `data`, `segments?`, `max?`, `animated?`, `className?` | Segmented horizontal meter bar for token usage (multi-segment with auto-colors, `role="meter"`, animated transitions). |
+| `TokenUsageBar` | `token-usage-bar.tsx` | `data`, `segments?`, `max?`, `animated?`, `className?` | Segmented horizontal meter bar for token usage (multi-segment with auto-colours, `role="meter"`, animated transitions). |
 | `CodeMirrorEditor` | `code-mirror-editor.tsx` | `value`, `onChange`, `language`, `readOnly?`, `aria-label?`, `className?` | CodeMirror 6 editor with JSON/YAML modes, design-token dark theme, line numbers, bracket matching, and `readOnly` support. |
 | `SegmentedControl` | `segmented-control.tsx` | `label`, `options`, `value`, `onChange`, `disabled?`, `size?`, `className?` | Accessible radiogroup with keyboard navigation (arrow keys + wrapping), size variants (`sm`/`md`), generic `<T extends string>` typing. |
-| `ThemeToggle` | `theme-toggle.tsx` | `className?` | Base UI Popover with 5-axis theme controls (color, density, typography, animation, sidebar). Rendered in StatusBar for global access. |
+| `ThemeToggle` | `theme-toggle.tsx` | `className?` | Base UI Popover with 5-axis theme controls (colour, density, typography, animation, sidebar). Rendered in StatusBar for global access. |
 | `LiveRegion` | `live-region.tsx` | `children`, `politeness?`, `debounceMs?`, `className?` | Debounced ARIA live region wrapper for real-time WS updates without overwhelming screen readers. Default: 500ms polite, 0ms assertive. |
 | `MobileUnsupportedOverlay` | `mobile-unsupported.tsx` | (none, self-managing) | Full-screen overlay at <768px viewports directing users to desktop or CLI. Self-manages visibility via `useBreakpoint`. |
 | `LazyCodeMirrorEditor` | `lazy-code-mirror-editor.tsx` | Same as `CodeMirrorEditor` | Suspense-wrapped lazy-loaded CodeMirrorEditor. Drop-in replacement that defers ~200KB+ CodeMirror bundle. |
 | `MetadataGrid` | `metadata-grid.tsx` | `items`, `columns?`, `className?` | Key-value metadata grid for detail pages with configurable 2/3/4 columns and density-aware spacing. |
-| `ProjectStatusBadge` | `project-status-badge.tsx` | `status`, `showLabel?`, `className?` | Project status dot with optional label and semantic colors (planning/active/on_hold/completed/cancelled). |
-| `ContentTypeBadge` | `content-type-badge.tsx` | `contentType`, `className?` | MIME content type pill badge with semantic colors (JSON, PDF, Image, Text, Markdown, CSV, Binary). |
+| `ProjectStatusBadge` | `project-status-badge.tsx` | `status`, `showLabel?`, `className?` | Project status dot with optional label and semantic colours (planning/active/on_hold/completed/cancelled). |
+| `ContentTypeBadge` | `content-type-badge.tsx` | `contentType`, `className?` | MIME content type pill badge with semantic colours (JSON, PDF, Image, Text, Markdown, CSV, Binary). |
 
 ### Utility Functions
 
@@ -279,7 +280,7 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | Hook | File | Purpose |
 |------|------|---------|
 | `useFlash()` | `hooks/useFlash.ts` | Real-time update flash effect. Returns `{ flashing, flashClassName, triggerFlash, flashStyle }`. Uses `STATUS_FLASH` timing constants. |
-| `useStatusTransition()` | `hooks/useStatusTransition.ts` | Animate between agent status colors. Returns `{ displayColor, motionProps }` for spreading on `motion.div`. |
+| `useStatusTransition()` | `hooks/useStatusTransition.ts` | Animate between agent status colours. Returns `{ displayColor, motionProps }` for spreading on `motion.div`. |
 | `useCommandPalette()` | `hooks/useCommandPalette.ts` | Global command palette state. `registerCommands()` adds page-local commands (cleanup on unmount). `open()` / `close()` / `toggle()`. |
 | `useAnimationPreset()` | `hooks/useAnimationPreset.ts` | Returns animation config (`spring`, `tween`, `staggerDelay`, `enableLayout`) based on the user's theme animation preference. Components use this instead of directly referencing `lib/motion.ts` constants. |
 | `useCountAnimation()` | `hooks/useCountAnimation.ts` | Animated numeric value transitions for metric displays. Uses rAF with ease-out cubic and `prefers-reduced-motion` support. |
@@ -308,13 +309,13 @@ Create a new component in `web/src/components/ui/` when:
 
 1. The same UI pattern appears (or will appear) on **2+ pages**
 2. It represents a **semantic concept** (not just a styled div)
-3. It has **configurable behavior** via props (variants, states, sizes)
+3. It has **configurable behaviour** via props (variants, states, sizes)
 
 Every new shared component must have:
 
 - A `.stories.tsx` file with all states (default, hover, loading, error, empty)
 - A TypeScript props interface
-- Design token usage exclusively (no hardcoded colors/fonts/spacing)
+- Design token usage exclusively (no hardcoded colours/fonts/spacing)
 - `cn()` for conditional class merging
 
 ### Enforcement

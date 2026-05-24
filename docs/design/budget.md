@@ -140,7 +140,7 @@ summaries (aggregated from **all** matching records, not just the current page):
 
 The CFO agent (when enabled) acts as a cost management system. Budget tracking, per-task cost
 recording, and cost controls are enforced by `BudgetEnforcer` (a service the engine composes).
-CFO cost optimization is implemented via `CostOptimizer`.
+CFO cost optimisation is implemented via `CostOptimizer`.
 
 - Monitor real-time spending across all agents
 - Alert when departments approach budget limits
@@ -148,10 +148,10 @@ CFO cost optimization is implemented via `CostOptimizer`.
 - Report daily/weekly spending summaries
 - Recommend hiring/firing based on cost efficiency
 - Block tasks that would exceed remaining budget
-- Optimize model routing for cost/quality balance
+- Optimise model routing for cost/quality balance
 
 `CostOptimizer` implements anomaly detection (sigma + spike factor), per-agent efficiency
-analysis, model downgrade recommendations (via `ModelResolver`), routing optimization
+analysis, model downgrade recommendations (via `ModelResolver`), routing optimisation
 suggestions, and operation approval evaluation. `ReportGenerator` produces multi-dimensional
 spending reports with task/provider/model breakdowns and period-over-period comparison.
 
@@ -271,7 +271,7 @@ downgrade callouts link to the agent settings surface rather than mutating model
 When a provider's quota is exhausted, the framework applies the configured degradation
 strategy before failing. Each provider has a `DegradationConfig` specifying the strategy:
 
-| Strategy | Behavior |
+| Strategy | Behaviour |
 |----------|----------|
 | `alert` (default) | Raise `QuotaExhaustedError` immediately |
 | `fallback` | Walk the `fallback_providers` list, use the first provider with available quota |
@@ -292,8 +292,8 @@ providers:
 ```
 
 `QuotaTracker` also exposes a synchronous `peek_quota_available()` method that returns
-a `dict[str, bool]` snapshot of per-provider quota availability.  This is used by the
-`QuotaAwareSelector` at routing time to prefer providers with remaining quota.  The
+a `dict[str, bool]` snapshot of per-provider quota availability. This is used by the
+`QuotaAwareSelector` at routing time to prefer providers with remaining quota. The
 method reads cached counters without acquiring the async lock (safe on the single-threaded
 asyncio event loop) and tolerates TOCTOU for heuristic selection decisions.
 
@@ -330,7 +330,7 @@ These are natural overhead indicators; a task consuming 15 turns and 50k tokens 
 one-line fix signals a problem. Metrics are captured in `TaskCompletionMetrics`, a frozen
 Pydantic model with a `from_run_result()` factory method.
 
-### Call Categorization and Orchestration Ratio
+### Call Categorisation and Orchestration Ratio
 
 When multi-agent coordination exists, each `CostRecord` is tagged with a **call category**:
 
@@ -354,9 +354,9 @@ etc.).
 
     | Metric | Symbol | Definition | What It Signals |
     |--------|--------|------------|-----------------|
-    | **Coordination efficiency** | `Ec` | `success_rate / (turns / turns_sas)`: success normalized by relative turn count vs single-agent baseline | Overall coordination ROI. Low Ec = coordination costs exceed benefits |
+    | **Coordination efficiency** | `Ec` | `success_rate / (turns / turns_sas)`: success normalised by relative turn count vs single-agent baseline | Overall coordination ROI. Low Ec = coordination costs exceed benefits |
     | **Coordination overhead** | `O%` | `(turns_mas - turns_sas) / turns_sas * 100%`: relative turn increase | Communication cost. Optimal band: 200--300%. Above 400% = over-coordination |
-    | **Error amplification** | `Ae` | `error_rate_mas / error_rate_sas`: relative failure probability | Whether MAS corrects or propagates errors. Centralized ~4.4x, Independent ~17.2x |
+    | **Error amplification** | `Ae` | `error_rate_mas / error_rate_sas`: relative failure probability | Whether MAS corrects or propagates errors. Centralised ~4.4x, Independent ~17.2x |
     | **Message density** | `c` | Inter-agent messages per reasoning turn | Communication intensity. Performance saturates at ~0.39 messages/turn |
     | **Redundancy rate** | `R` | Mean cosine similarity of agent output embeddings | Agent agreement. Optimal at ~0.41 (balances fusion with independence) |
     | **Amdahl ceiling** | `Sc` | Theoretical max speedup from Amdahl's Law given parallelizable fraction | Diminishing returns threshold. Recommends ideal team size |
@@ -444,7 +444,7 @@ Cross-agent data is sanitized via `sanitize_message` before inclusion.
 | Error Category | Description | Heuristic Variant | Semantic Variant | Default Scope |
 |---------------|-------------|-------------------|------------------|--------------|
 | **Logical contradiction** | Agent asserts both "X is true" and "X is false" | Regex assertion matching | LLM reasoning over assistant texts | SAME_TASK |
-| **Numerical drift** | Accumulated errors from cascading rounding (>5% deviation) | Context-labeled number extraction + % drift | LLM cross-verification of numerical claims | SAME_TASK |
+| **Numerical drift** | Accumulated errors from cascading rounding (>5% deviation) | Context-labelled number extraction + % drift | LLM cross-verification of numerical claims | SAME_TASK |
 | **Context omission** | Failure to reference previously established entities | Capitalized entity set diff (first-half/second-half) | LLM entity introduction/disposition tracking | SAME_TASK |
 | **Coordination failure** | Message misinterpretation, task allocation conflicts | Tool errors + error finish reasons | LLM classification of coordination breakdowns | SAME_TASK |
 | **Delegation protocol violation** | Broken delegation chains, missing parent linkage | Structural check: parent_task_id, delegation_chain integrity | - | TASK_TREE |
@@ -514,7 +514,7 @@ Zero limits mean unlimited. Risk budget is disabled by default.
 ### Risk Tracker
 
 `RiskTracker` mirrors `CostTracker`: append-only `RiskRecord` entries with
-TTL-based eviction (7 days), asyncio.Lock concurrency safety, and
+TTL-based eviction (7 days), `asyncio.Lock` concurrency safety, and
 per-agent/per-task/total aggregation queries.
 
 ### Enforcement
@@ -531,7 +531,7 @@ per-agent/per-task/total aggregation queries.
 
 `SecurityEnforcementMode` (on `SecurityConfig`) controls enforcement:
 
-| Mode | Behavior |
+| Mode | Behaviour |
 |------|----------|
 | `active` (default) | Full enforcement; verdicts applied as-is |
 | `shadow` | Full pipeline runs, audit recorded, but blocking verdicts convert to ALLOW |
@@ -543,7 +543,7 @@ weights and limits before switching to active enforcement.
 
 ## Automated Reporting
 
-The framework generates periodic reports summarizing spending, performance,
+The framework generates periodic reports summarising spending, performance,
 task completion, and risk trends. Reports are generated on demand via API
 or on a schedule.
 
@@ -553,7 +553,7 @@ or on a schedule.
 |--------|----------|
 | `daily` | Previous day (00:00 UTC to 00:00 UTC) |
 | `weekly` | Previous week (Monday 00:00 UTC to Monday 00:00 UTC) |
-| `monthly` | Previous month (1st 00:00 UTC to 1st 00:00 UTC) |
+| `monthly` | Previous month (first-of-month 00:00 UTC to first-of-month 00:00 UTC) |
 
 ### Report Templates
 

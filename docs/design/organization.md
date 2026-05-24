@@ -1,13 +1,13 @@
 ---
-title: Organization & Templates
-description: Company types, organizational hierarchy, department configuration, template system, and dynamic scaling in the SynthOrg framework.
+title: Organisation & Templates
+description: Company types, organisational hierarchy, department configuration, template system, and dynamic scaling in the SynthOrg framework.
 ---
 
-# Organization & Templates
+# Organisation & Templates
 
 ## Company Types
 
-SynthOrg provides pre-built company templates for common organizational patterns:
+SynthOrg provides pre-built company templates for common organisational patterns:
 
 | Template | Size | Autonomy | Communication | Workflow | Use Case |
 |----------|------|----------|---------------|----------|----------|
@@ -33,7 +33,7 @@ SynthOrg provides pre-built company templates for common organizational patterns
     for the full bounds and [S1 Multi-Agent Architecture Decision §2](../research/s1-multi-agent-decision.md#section-2-team-size-bounds).
 
 See the [Template System](#template-system) section for details on how templates are defined,
-inherited, and customized.
+inherited, and customised.
 
 ### Skill Pattern Taxonomy
 
@@ -43,7 +43,7 @@ interact to accomplish work. Based on
 
 | Pattern | Description |
 |---------|-------------|
-| **Tool Wrapper** | On-demand domain expertise; agents self-direct using specialized context |
+| **Tool Wrapper** | On-demand domain expertise; agents self-direct using specialised context |
 | **Generator** | Consistent structured output from reusable templates |
 | **Reviewer** | Modular rubric-based evaluation; separates what to check from how to check it |
 | **Inversion** | Agent interviews user before acting; structured requirements gathering |
@@ -69,9 +69,9 @@ activate different Tool Wrapper skills depending on the domain.
 
 ---
 
-## Organizational Hierarchy
+## Organisational Hierarchy
 
-The framework supports a full organizational hierarchy with reporting lines and
+The framework supports a full organisational hierarchy with reporting lines and
 delegation authority:
 
 ```mermaid
@@ -164,11 +164,11 @@ delegation rights, and typical model tier.
 
 Each department defines:
 
-- **head** (optional): the agent who leads the department (typically a C-suite or Lead role).  Defaults to ``None`` when no head is designated; hierarchy resolution skips the team-lead-to-head link for headless departments.  When multiple agents share the same role name, use the companion ``head_id`` field to disambiguate.  In template YAML this is written as ``head_merge_id`` (matching the agent's ``merge_id``); the renderer maps it to ``head_id`` at runtime, paralleling how ``subordinate_id``/``supervisor_id`` work in ``reporting_lines``
+- **head** (optional): the agent who leads the department (typically a C-suite or Lead role).  Defaults to ``None`` when no head is designated; hierarchy resolution skips the team-lead-to-head link for headless departments. When multiple agents share the same role name, use the companion ``head_id`` field to disambiguate. In template YAML this is written as ``head_merge_id`` (matching the agent's ``merge_id``); the renderer maps it to ``head_id`` at runtime, paralleling how ``subordinate_id``/``supervisor_id`` work in ``reporting_lines``
 - **budget_percent**: the share of the company's task-execution budget allocated to this department (covers agent compute and API costs, not provider subscriptions or seat licensing)
 - **teams**: named sub-groups within the department, each with a lead and members
-- **reporting_lines**: explicit subordinate/supervisor relationships within the department.  Each entry has ``subordinate`` and ``supervisor`` (role names), plus optional ``subordinate_id``/``supervisor_id`` for disambiguating agents that share the same role name (typically matching the agent's ``merge_id``)
-- **policies** (optional): department-level operational policies.  Contains ``review_requirements`` (minimum reviewers, required reviewer roles, self-review toggle) and ``approval_chains`` (ordered approver lists keyed by action type such as ``code_review``, ``security_review``, or ``change_management``).  Defaults to a single required reviewer and no approval chains when omitted
+- **reporting_lines**: explicit subordinate/supervisor relationships within the department. Each entry has ``subordinate`` and ``supervisor`` (role names), plus optional ``subordinate_id``/``supervisor_id`` for disambiguating agents that share the same role name (typically matching the agent's ``merge_id``)
+- **policies** (optional): department-level operational policies. Contains ``review_requirements`` (minimum reviewers, required reviewer roles, self-review toggle) and ``approval_chains`` (ordered approver lists keyed by action type such as ``code_review``, ``security_review``, or ``change_management``).  Defaults to a single required reviewer and no approval chains when omitted
 
 ---
 
@@ -180,7 +180,7 @@ The company can dynamically grow or shrink through several mechanisms:
   [hires](agents.md#hiring-process)
 - **Manual scale**: a human adds or removes agents via config or UI
 - **Budget-driven**: the CFO agent caps headcount based on budget constraints
-- **Skill-gap**: HR analyzes team capabilities, identifies missing skills, and proposes
+- **Skill-gap**: HR analyses team capabilities, identifies missing skills, and proposes
   targeted hires
 
 ---
@@ -188,7 +188,7 @@ The company can dynamically grow or shrink through several mechanisms:
 ## Template System
 
 Templates are YAML/JSON files defining a complete company setup. The framework uses templates as
-the primary mechanism for bootstrapping organizations.
+the primary mechanism for bootstrapping organisations.
 
 ### Template Structure
 
@@ -374,7 +374,7 @@ Standalone (no inheritance): agency, full_company, consultancy
 
 ### Merge Semantics
 
-The merge behavior during template inheritance follows these rules:
+The merge behaviour during template inheritance follows these rules:
 
 Scalars (`company_name`, `company_type`)
 :   Child wins if present.
@@ -393,7 +393,7 @@ Scalars (`company_name`, `company_type`)
     A child department with `_remove: true` removes the matching parent department.
 
 `workflow_config` dict
-:   Not merged during inheritance.  Each template's ``workflow_config`` is
+:   Not merged during inheritance. Each template's ``workflow_config`` is
     transformed into a ``workflow`` dict by ``_build_workflow_dict`` during
     rendering (before the merge step).  A child template that uses ``extends``
     must declare its own ``workflow_config`` if it needs one; the parent's
@@ -402,7 +402,7 @@ Scalars (`company_name`, `company_type`)
 `workflow` dict
 :   The renderer always produces a ``workflow`` dict from ``workflow_config``
     (or schema defaults), so ``workflow`` is always present in the child's
-    rendered output.  At merge time the child's ``workflow`` replaces the
+    rendered output. At merge time the child's ``workflow`` replaces the
     parent's entirely; the "inherit from parent" path cannot trigger.
 
 `workflow_handoffs` and `escalation_paths`
@@ -424,7 +424,7 @@ via the `uses_packs` field.
 
 | Pack | Agents | Description |
 |------|--------|-------------|
-| `security-team` | Security Engineer, Security Operations | Threat modeling and compliance |
+| `security-team` | Security Engineer, Security Operations | Threat modelling and compliance |
 | `data-team` | Data Analyst, Data Engineer, ML Engineer | Data analytics pipeline |
 | `qa-pipeline` | QA Lead, QA Engineer, Automation Engineer | Quality assurance |
 | `creative-marketing` | Content Writer, Brand Strategist | Content and brand |
@@ -469,11 +469,11 @@ agent count, departments, autonomy level, and workflow), Company (name, descript
 currency, and model tier profile), Providers (configure LLM providers with auto-detection
 for local instances (with probe-detected base URLs) and full provider form supporting
 API key, subscription, custom configurations, and manually entered base URLs),
-Agents (customize names, roles, personality presets, and model assignments),
+Agents (customise names, roles, personality presets, and model assignments),
 Theme (set UI preferences for palette, density, animation, sidebar, and typography), and
 Complete (review summary and launch). Quick mode steps: Mode, Company, Providers, and
 Complete, skipping template, agents, and theme. Providers are configured before agents so
-model assignment is available during agent customization. When a template is selected, all
+model assignment is available during agent customisation. When a template is selected, all
 template agents are auto-created with models matched to configured providers via a tier
 classification engine that respects each agent's priority axis (quality, speed, cost, or
 balanced). All configuration is persisted to the database via REST API calls. To re-run the
@@ -496,7 +496,7 @@ wipes all data, and optionally restarts the stack to re-open the wizard).
 
 ## MCP Service Facades
 
-The organization domain exposes four service facades on `AppState` for
+The organisation domain exposes four service facades on `AppState` for
 MCP handler shims:
 
 | Facade | Module | Tools shimmed |

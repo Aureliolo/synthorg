@@ -63,7 +63,7 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 | LLM re-prompted with prior-attempt context, no sleep                | Inline loop (Pattern B)              |
 | CAS / version-race retry that branches on driver constraint name    | Inline loop (Pattern C/CAS)          |
 | Sync code inside a stdlib `logging.Handler` thread                  | Inline loop (Pattern C/Sync)         |
-| None of the above                                                   | Stop and ask before adding a 4th family |
+| None of the above                                                   | Stop and ask before adding a fourth family |
 
 ## Adding a new retry site
 
@@ -71,7 +71,7 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 2. If it lands in Pattern A, use `GeneralRetryHandler` and pass a `retryable` predicate plus your backoff parameters. Add a comment of the form `# See docs/reference/retry-patterns.md: Pattern A` if the site is not obviously a transient-I/O retry.
 3. If it lands in Pattern B or C, add the comment so the next reader can match the inline loop to the rationale on this page.
 4. If it does not fit any of the four cells, the page is wrong. Update this page first, get the new family agreed, then add the loop.
-5. **Update the per-pattern Sites lists above** so this page stays synchronized with the codebase. A stale list teaches the next reader the wrong assumption (e.g. "there are only 2 Pattern A sites") and the doc-link comments at each site only point back here, so the page is the single source of truth for the inventory.
+5. **Update the per-pattern Sites lists above** so this page stays synchronised with the codebase. A stale list teaches the next reader the wrong assumption (e.g. "there are only 2 Pattern A sites") and the doc-link comments at each site only point back here, so the page is the single source of truth for the inventory.
 
 ## See also
 

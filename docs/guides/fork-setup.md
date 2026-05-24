@@ -70,7 +70,7 @@ If you do not need the release pipeline at all (you are running a research fork 
 
 | Environment | Secret | Source |
 |-------------|--------|--------|
-| `cloudflare-preview` | `CLOUDFLARE_API_TOKEN` | https://dash.cloudflare.com/profile/api-tokens (Pages-deploy-scoped) |
+| `cloudflare-preview` | `CLOUDFLARE_API_TOKEN` | <https://dash.cloudflare.com/profile/api-tokens> (Pages-deploy-scoped) |
 | `cloudflare-preview` | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard sidebar |
 
 `image-push` needs no secrets; the workflow uses the auto-provided `${{ github.token }}` against your fork's GHCR namespace. The environment exists purely for branch-policy gating.

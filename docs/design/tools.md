@@ -41,7 +41,7 @@ exception for one, `ExceptionGroup` for multiple).
 1. `get_permitted_definitions()` filters tool definitions sent to the LLM; the agent only
    sees tools it is permitted to use
 2. At invocation time, denied tools return `ToolResult(is_error=True)` with a descriptive
-   denial reason (defense-in-depth against LLM hallucinating unpresented tools)
+   denial reason (defence-in-depth against LLM hallucinating unpresented tools)
 
 Resolution order: denied list (highest) > allowed list > access-level categories > deny (default).
 
@@ -110,9 +110,9 @@ Per-category backend selection is implemented in `tools/sandbox/factory.py` via 
 `build_sandbox_backends` (instantiates only the backends referenced by config),
 `resolve_sandbox_for_category` (looks up the correct backend for a `ToolCategory`), and
 `cleanup_sandbox_backends` (parallel cleanup with error isolation). The tool factory
-(`build_default_tools_from_config`) wires tool categories.  Core tools
+(`build_default_tools_from_config`) wires tool categories. Core tools
 (`FILE_SYSTEM`, `VERSION_CONTROL`, web, etc.) are part of the default toolset
-and always registered.  The
+and always registered. The
 auxiliary categories `DESIGN`, `COMMUNICATION`, and `ANALYTICS` are opt-in: tools
 are only registered when the corresponding config section is present, and some
 individual tools additionally require a runtime dependency (e.g. image tools
@@ -135,7 +135,7 @@ low-risk categories (file_system, git) continue to run via subprocess
 `DockerSandbox` collects structured logs from both sandbox and sidecar containers
 before removal and ships them through the backend's observability pipeline.
 Sidecar JSON stdout is parsed line-by-line; malformed lines are skipped.
-Sandbox stdout/stderr are shipped alongside the sidecar entries.  All shipped
+Sandbox stdout/stderr are shipped alongside the sidecar entries. All shipped
 events carry correlation context (`agent_id`, `session_id`, `task_id`,
 `request_id`) injected via structlog contextvars, and the same IDs are set as
 `SYNTHORG_AGENT_ID`, `SYNTHORG_SESSION_ID`, `SYNTHORG_TASK_ID`,
@@ -151,7 +151,7 @@ propagated) and bounded by `ContainerLogShippingConfig.collection_timeout_second
 and `max_log_bytes`.  By default only metadata (sizes, counts, timing) is
 shipped; raw stdout/stderr/sidecar payloads require explicit opt-in via
 `ship_raw_logs=True` to prevent secrets from bypassing key-name-based
-redaction.  Configuration lives on `LogConfig.container_log_shipping`
+redaction. Configuration lives on `LogConfig.container_log_shipping`
 (default: enabled).
 
 !!! info "Scaling Path"
@@ -238,7 +238,7 @@ Git servers bypass the private-IP check.
 
 Both mitigations are configurable via `GitCloneNetworkPolicy.dns_rebinding_mitigation`
 (default: enabled). Disable for hosts behind CDNs or geo-DNS where resolved IPs
-legitimately vary between queries. For full defense-in-depth, combine with
+legitimately vary between queries. For full defence-in-depth, combine with
 network-level egress controls (firewall, HTTP CONNECT proxy) or container
 network isolation (see Tool Sandboxing above).
 
@@ -260,7 +260,7 @@ External tools are integrated via the **Model Context Protocol** (MCP).
 
 SynthOrg exposes its own MCP server offering 200+ tools across 15 domain
 modules (agents, analytics, approvals, budget, communication, coordination,
-infrastructure, integrations, memory, meta, organization, quality, signals,
+infrastructure, integrations, memory, meta, organisation, quality, signals,
 tasks, workflows). Tool definitions are classified
 by capability action via the
 `read_tool` / `write_tool` / `admin_tool` builders
@@ -597,8 +597,8 @@ triggered by engine-level operations. No LLM in the security classification path
 The `ToolPermissionChecker` implements two layers of enforcement: **category-level gating**
 (each access level maps to permitted `ToolCategory` values) and **granular sub-constraints**
 (`SubConstraintEnforcer`) checking file system scope, network mode, terminal access, git access,
-code execution isolation, and approval requirements against each tool invocation.  Per-agent
-overrides can customize all six dimensions via `ToolPermissions.sub_constraints`.  K8s sandbox
+code execution isolation, and approval requirements against each tool invocation. Per-agent
+overrides can customise all six dimensions via `ToolPermissions.sub_constraints`.  K8s sandbox
 backend integration is on the roadmap.
 
 ## Progressive Trust

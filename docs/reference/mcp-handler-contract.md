@@ -4,7 +4,7 @@ On-demand reference for implementing tool handlers in `src/synthorg/meta/mcp/han
 
 ## Surface
 
-SynthOrg exposes 200+ tools across the 15 domain modules under `src/synthorg/meta/mcp/domains/` (tasks, agents, meta, budget, analytics, coordination, quality, signals, approvals, workflows, organization, communication, integrations, infrastructure, memory). Tools are classified by capability action (`read_tool` / `write_tool` / `admin_tool`) via the builders in `src/synthorg/meta/mcp/tool_builder.py`; only the `admin_tool` subset is destructive and subject to the guardrail triple.
+SynthOrg exposes 200+ tools across the 15 domain modules under `src/synthorg/meta/mcp/domains/` (tasks, agents, meta, budget, analytics, coordination, quality, signals, approvals, workflows, organisation, communication, integrations, infrastructure, memory). Tools are classified by capability action (`read_tool` / `write_tool` / `admin_tool`) via the builders in `src/synthorg/meta/mcp/tool_builder.py`; only the `admin_tool` subset is destructive and subject to the guardrail triple.
 
 ## ToolHandler protocol
 
@@ -67,7 +67,7 @@ In every case, catch `ArgumentValidationError` and return `err(exc)`. Never let 
 
 ## Structured logging
 
-Three centralized helpers in `common_logging.py`; handlers must not redeclare them locally:
+Three centralised helpers in `common_logging.py`; handlers must not redeclare them locally:
 
 - `log_handler_argument_invalid(tool, exc)` after catching `ArgumentValidationError`.
 - `log_handler_invoke_failed(tool, exc, **context)` after catching a generic `Exception`. Pass correlation ids (e.g. `task_id=`, `decision_id=`) as keyword args. Keys that would shadow the canonical event fields (`tool_name`, `error_type`, `error`, `event`, `log_level`) are rejected with `ValueError` so audit trails cannot be silently corrupted.

@@ -13,7 +13,7 @@ Every tool invocation in SynthOrg passes through the SecOps security pipeline. T
 
 Autonomy levels control which actions require human approval. Set the company-wide level in `config.autonomy.level`, with optional per-agent overrides:
 
-| Level | Value | Behavior |
+| Level | Value | Behaviour |
 |-------|-------|----------|
 | Full | `full` | Agents execute all actions without approval |
 | Semi | `semi` | Risky actions (deploy, db:admin, org:fire) require approval |
@@ -142,7 +142,7 @@ Trust strategies control how agents earn (or lose) access to higher-privilege to
 
     `auto_promote` and `requires_human_approval` are mutually exclusive per milestone.
 
-    **When to use:** Organizations that want time-based gates and periodic re-verification.
+    **When to use:** Organisations that want time-based gates and periodic re-verification.
 
 !!! warning "Security invariant: standard_to_elevated"
 
@@ -332,7 +332,7 @@ security:
 
 After tool execution, the output scanner checks for leaked secrets and PII:
 
-| Policy | Value | Behavior |
+| Policy | Value | Behaviour |
 |--------|-------|----------|
 | Redact | `redact` | Replace matches with `[REDACTED]` and return |
 | Withhold | `withhold` | Clear the entire output (fail-closed) |
@@ -348,7 +348,7 @@ security:
 
 ## Autonomy & Permissions (Runtime Operations)
 
-This section covers runtime operations on the autonomy and tool-permission surface: promoting an agent, setting a department-level override, granting or revoking tool categories per-agent, and querying the audit trail.
+This section covers runtime operations on the autonomy and tool-permission surface: promoting an agent, setting a department-level override, granting (or revoking) tool categories per-agent, and querying the audit trail.
 
 ### Promote or demote an agent's autonomy
 

@@ -5,7 +5,7 @@ search:
 
 # Budget
 
-Cost tracking, budget enforcement, auto-downgrade, quota management, and CFO optimization.
+Cost tracking, budget enforcement, auto-downgrade, quota management, and CFO optimisation.
 
 ## Config
 
@@ -45,7 +45,7 @@ Cost tracking, budget enforcement, auto-downgrade, quota management, and CFO opt
 
 ::: synthorg.budget.billing
 
-## Optimizer
+## Optimiser
 
 ::: synthorg.budget.optimizer
 

@@ -6,7 +6,7 @@ SynthOrg aligns with emerging industry standards for agent-to-tool and agent-to-
 
 | Standard | Owner | Purpose | SynthOrg Usage |
 |----------|-------|---------|----------------|
-| **MCP** (Model Context Protocol) | Linux Foundation (AAIF) | Standardized LLM-to-tool integration | Tool system backbone |
+| **MCP** (Model Context Protocol) | Linux Foundation (AAIF) | Standardised LLM-to-tool integration | Tool system backbone |
 | **A2A** (Agent-to-Agent Protocol) | Linux Foundation | Agent-to-agent communication | Future agent interoperability |
 | **Chat completions API format** | De facto industry standard | LLM API | Via provider abstraction layer (LiteLLM) |
 
@@ -14,7 +14,7 @@ SynthOrg aligns with emerging industry standards for agent-to-tool and agent-to-
 
 ## Model Context Protocol (MCP)
 
-MCP provides a standardized interface for LLM agents to discover and invoke external tools. SynthOrg uses the official MCP SDK (`mcp` Python package) as the backbone of its tool integration system.
+MCP provides a standardised interface for LLM agents to discover and invoke external tools. SynthOrg uses the official MCP SDK (`mcp` Python package) as the backbone of its tool integration system.
 
 The MCP bridge subsystem (`tools/mcp/`) connects to MCP-compliant tool servers, discovers available tools at runtime, and exposes them through the same `BaseTool` interface used by built-in tools. This means agents interact with MCP tools identically to native tools, through the `ToolInvoker` with the same permission checking and sandboxing applied.
 
@@ -28,9 +28,9 @@ Key integration points:
 
 ## Agent-to-Agent Protocol (A2A)
 
-The A2A protocol defines how autonomous agents discover each other's capabilities and delegate tasks across organizational boundaries. SynthOrg's communication layer is designed to be A2A-compatible for future inter-agent interoperability.
+The A2A protocol defines how autonomous agents discover each other's capabilities and delegate tasks across organisational boundaries. SynthOrg's communication layer is designed to be A2A-compatible for future inter-agent interoperability.
 
-The framework currently uses an internal message bus for inter-agent communication within a single organization. A2A support is planned for scenarios where multiple synthetic organizations need to collaborate, or where SynthOrg agents need to interact with agents from other frameworks.
+The framework currently uses an internal message bus for inter-agent communication within a single organisation. A2A support is planned for scenarios where multiple synthetic organisations need to collaborate, or where SynthOrg agents need to interact with agents from other frameworks.
 
 ---
 

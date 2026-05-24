@@ -1,10 +1,10 @@
 # Cross-Deployment Analytics Privacy Policy
 
-Cross-deployment analytics is an **opt-in** feature that aggregates anonymized improvement outcomes across multiple SynthOrg deployments to identify patterns and recommend improved default thresholds.
+Cross-deployment analytics is an **opt-in** feature that aggregates anonymised improvement outcomes across multiple SynthOrg deployments to identify patterns and recommend improved default thresholds.
 
 ## What Is Collected
 
-When enabled, the following anonymized fields are sent to the configured collector endpoint after each proposal decision and rollout result:
+When enabled, the following anonymised fields are sent to the configured collector endpoint after each proposal decision and rollout result:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -25,7 +25,7 @@ When enabled, the following anonymized fields are sent to the configured collect
 
 ## What Is NOT Collected
 
-The following fields are **explicitly dropped** during anonymization and never leave the deployment:
+The following fields are **explicitly dropped** during anonymisation and never leave the deployment:
 
 - **Company names, org identifiers**: Not present in any event
 - **Agent IDs, agent names**: Not present in any event
@@ -37,14 +37,14 @@ The following fields are **explicitly dropped** during anonymization and never l
 - **Exact timestamps**: Coarsened to day granularity (no time, no timezone)
 - **Custom rule names**: Mapped to generic `"custom"` to prevent logic leakage
 
-## How Anonymization Works
+## How Anonymisation Works
 
 1. **Strict allowlist**: Only the fields listed above survive. Everything else is dropped.
 2. **Salted hashing**: The `deployment_id` is computed as `SHA-256(salt)` where the salt is a secret string configured by the deployment operator. Changing the salt invalidates all correlation.
 3. **Timestamp coarsening**: Timestamps are truncated to day granularity (`YYYY-MM-DD`), removing time-of-day information that could enable timing correlation.
 4. **Rule classification**: Custom rule names are replaced with the generic string `"custom"` to prevent leaking deployment-specific detection logic.
 
-The anonymization is implemented as a **pure function** (`anonymize_decision` / `anonymize_rollout`) that is easy to audit and test.
+The anonymisation is implemented as a **pure function** (`anonymize_decision` / `anonymize_rollout`) that is easy to audit and test.
 
 ## How to Opt In
 
@@ -60,12 +60,13 @@ self_improvement:
 ```
 
 Required fields when `enabled: true`:
-- `collector_url`: HTTPS endpoint to POST anonymized events to
+
+- `collector_url`: HTTPS endpoint to POST anonymised events to
 - `deployment_id_salt`: Secret salt for deployment identification
 
 ## How to Inspect Events
 
-Enabling DEBUG logging for the `synthorg.meta.telemetry` logger emits queue/flush operational metadata (event type, queue depth, batch size, HTTP status). The full serialized event payload is **not logged**; only diagnostics metadata is emitted:
+Enabling DEBUG logging for the `synthorg.meta.telemetry` logger emits queue/flush operational metadata (event type, queue depth, batch size, HTTP status). The full serialised event payload is **not logged**; only diagnostics metadata is emitted:
 
 ```yaml
 logging:
@@ -73,7 +74,8 @@ logging:
     synthorg.meta.telemetry: DEBUG
 ```
 
-Events are visible in the structured log output with event metadata (event type, queue depth, batch size, HTTP status). Note: the full serialized event payload is not logged; only operational metadata is emitted for diagnostics. Event names:
+Events are visible in the structured log output with event metadata (event type, queue depth, batch size, HTTP status). Note: the full serialised event payload is not logged; only operational metadata is emitted for diagnostics. Event names:
+
 - `cross_deployment.event.queued`: event buffered (logs event_type and pending count)
 - `cross_deployment.batch.flushed`: batch sent to collector (logs event_count and HTTP status)
 
@@ -98,4 +100,4 @@ self_improvement:
     collector_enabled: true  # enable collector role
 ```
 
-The collector never sees unanonymized data; it only receives the anonymized events described above.
+The collector never sees unanonymized data; it only receives the anonymised events described above.

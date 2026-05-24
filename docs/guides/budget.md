@@ -70,7 +70,7 @@ budget:
 
 ## Alert Thresholds
 
-Alert thresholds trigger notifications and behavior changes as spending approaches the budget limit:
+Alert thresholds trigger notifications and behaviour changes as spending approaches the budget limit:
 
 ```yaml
 budget:

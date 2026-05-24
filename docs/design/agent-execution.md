@@ -126,7 +126,7 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
 
     The agent creates a high-level plan (3 to 7 steps). Each step is executed as a
     mini-ReAct loop with its own turn limit. After each step, the agent
-    checkpoints, summarizing progress and optionally replanning remaining
+    checkpoints, summarising progress and optionally replanning remaining
     steps. Checkpoints are natural points for human inspection or task
     suspension.
 
@@ -169,7 +169,7 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
        react).  All loop types in rules, `hybrid_fallback`, and
        `default_loop_type` are validated against the known set at
        construction time.
-    2. **Budget-aware downgrade**: when monthly budget utilization is at
+    2. **Budget-aware downgrade**: when monthly budget utilisation is at
        or above `budget_tight_threshold` (default 80%), hybrid selections
        are downgraded to plan_execute to conserve budget.
     3. **Hybrid fallback**: when `hybrid_fallback` is set (default:
@@ -227,7 +227,7 @@ async run(
    API's `tools` parameter ([Decision Log](../architecture/decisions.md) D22).
    Follows the **non-inferable-only principle**: system prompts include only
    information the agent cannot discover by reading the codebase or environment
-   (role constraints, custom conventions, organizational policies).
+   (role constraints, custom conventions, organisational policies).
 5. **Create context**: `AgentContext.from_identity()` with the configured
    `max_turns`.
 6. **Seed conversation**: injects system prompt, optional memory messages, and
@@ -240,11 +240,11 @@ async run(
    alone when no enforcer is configured.
 9. **Resolve execution loop**: if `auto_loop_config` is set, calls
    `select_loop_type()` with the task's `estimated_complexity` and current
-   budget utilization (via `BudgetEnforcer.get_budget_utilization_pct()`).
+   budget utilisation (via `BudgetEnforcer.get_budget_utilization_pct()`).
    Budget-aware downgrade: hybrid is downgraded to plan_execute when
-   utilization >= threshold.  Optional hybrid fallback applies when
-   `hybrid_fallback` is configured.  When no auto config is set, uses
-   the statically configured loop.  The auto-selected loop receives the
+   utilisation >= threshold. Optional hybrid fallback applies when
+   `hybrid_fallback` is configured. When no auto config is set, uses
+   the statically configured loop. The auto-selected loop receives the
    engine's `compaction_callback`, `plan_execute_config` (for
    plan-execute), and `hybrid_loop_config` (for hybrid), along with the
    approval gate and stagnation detector.
@@ -255,7 +255,7 @@ async run(
    post-execution processing still occur.
    When escalations are detected after tool execution (via
    `ToolInvoker.pending_escalations`), the `ApprovalGate` evaluates whether
-   parking is needed. If so, the context is serialized via `ParkService`
+   parking is needed. If so, the context is serialised via `ParkService`
    and persisted when a `ParkedContextRepository` is configured; the loop
    then returns a `PARKED` result. When an `EventStreamHub` is configured,
    the gate also emits an `APPROVAL_INTERRUPT` SSE event and creates an
@@ -279,13 +279,13 @@ async run(
       the decider equals ``task.assigned_to``, it raises
       ``SelfReviewError`` (surfaced as HTTP 403 at the approval
       controller, with a generic message that never echoes internal
-      agent/task identifiers) and no transition occurs.  The check
+      agent/task identifiers) and no transition occurs. The check
       runs in two phases: the approval controller calls
       ``check_can_decide`` as a **preflight** *before*
       ``approval_store.save_if_pending``; this guarantees a rejected
       self-review attempt never leaves a decided approval row or a
       broadcast WebSocket event behind.  ``complete_review``
-      independently re-runs the check as defense-in-depth at the
+      independently re-runs the check as defence-in-depth at the
       service boundary; the service makes no assumption that the
       caller ran the preflight.  ``TaskNotFoundError`` maps to 404
       and ``TaskVersionConflictError`` to 409, both with generic
@@ -302,7 +302,7 @@ async run(
       is the audit trail).  Programming errors (``ValidationError``,
       ``TypeError``, ``AttributeError``) are deliberately NOT caught;
       they propagate loudly so schema drift surfaces in dev/CI instead
-      of being masked as silent audit loss.  See the "Review Gate
+      of being masked as silent audit loss. See the "Review Gate
       Invariants" section of ``docs/design/security.md`` for the
       full three-layer enforcement model (service preflight, Pydantic
       validator, SQL CHECK constraint).
@@ -342,9 +342,9 @@ async run(
       result.
 13. **Procedural memory generation** (non-critical): when
     `ProceduralMemoryConfig` is enabled and the execution failed
-    (recovery_result exists), a separate proposer LLM call analyzes the
+    (recovery_result exists), a separate proposer LLM call analyses the
     failure and stores a `PROCEDURAL` memory entry for future retrieval.
-    Optionally materializes a SKILL.md file. Failures are logged but do
+    Optionally materialises a SKILL.md file. Failures are logged but do
     not affect the result (see [Memory Learning: Procedural Memory Auto-Generation](memory-learning.md#procedural-memory-auto-generation)).
 14. **Return result**: wraps `ExecutionResult` in `AgentRunResult` with
     engine-level metadata.
@@ -376,7 +376,7 @@ each model tier.
 
 | Profile    | Tier   | Personality          | Max Personality Tokens | Org Policies | Acceptance Criteria | Autonomy |
 |------------|--------|----------------------|------------------------|--------------|---------------------|----------|
-| **full**   | large  | Full behavioral enums | 500                   | Included     | Nested list         | Full     |
+| **full**   | large  | Full behavioural enums | 500                   | Included     | Nested list         | Full     |
 | **standard** | medium | Description + style + traits | 200              | Included     | Nested list         | Summary  |
 | **basic**  | small  | Style keyword only   | 80                     | Excluded     | Flat semicolon line | Minimal  |
 
@@ -385,7 +385,7 @@ each model tier.
 When the personality section exceeds `max_personality_tokens`, progressive
 trimming enforces the budget as a secondary control after `personality_mode`:
 
-1. **Tier 1, Drop enums**: override mode to `"condensed"` (removes behavioral
+1. **Tier 1, Drop enums**: override mode to `"condensed"` (removes behavioural
    enum fields like risk_tolerance, creativity, verbosity, etc.)
 2. **Tier 2, Truncate description**: shorten `personality_description` to fit
    the remaining budget (word-boundary aware, appends `"..."`)
@@ -442,7 +442,7 @@ factory to build a callback bound to the live `ChannelsPlugin`.
 ## Stagnation Detection
 
 Agents can persist in unproductive loops, repeating the same tool calls without
-making progress. Stagnation detection analyzes `TurnRecord` tool call history
+making progress. Stagnation detection analyses `TurnRecord` tool call history
 across a sliding window, intervenes with a corrective prompt injection, and
 terminates early with `STAGNATION` if correction fails.
 
@@ -482,7 +482,7 @@ sorted per-turn for order-independent comparison.
 | Field                  | Default | Description                                       |
 |------------------------|---------|---------------------------------------------------|
 | `enabled`              | `True`  | Whether stagnation detection is active             |
-| `window_size`          | `5`     | Number of recent tool-bearing turns to analyze     |
+| `window_size`          | `5`     | Number of recent tool-bearing turns to analyse     |
 | `repetition_threshold` | `0.6`   | Duplicate ratio that triggers detection            |
 | `cycle_detection`      | `True`  | Whether to detect repeating patterns               |
 | `max_corrections`      | `1`     | Corrective prompts before terminating (0 = none)   |
@@ -569,7 +569,7 @@ advisory, not critical.
 
 ### Compressed Checkpoint Recovery
 
-`CompressionMetadata` is persisted on `AgentContext` and serialized into
+`CompressionMetadata` is persisted on `AgentContext` and serialised into
 checkpoint JSON. On resume, `deserialize_and_reconcile()` detects compressed
 checkpoints and includes compression-aware information in the reconciliation
 message:
@@ -601,21 +601,21 @@ The engine's architecture maps onto three decoupled planes. Each plane has a dis
 
 | Plane | SynthOrg Modules | Purpose |
 |-------|-----------------|---------|
-| **Brain** | `engine/agent_engine.py`, `AgentContext`, loop protocol (`ReactLoop`, `PlanExecuteLoop`, `HybridLoop`) | Inference loop, middleware, decision-making.  Stateless between turns; all state lives in the immutable `AgentContext`. |
-| **Hands** | `ToolInvoker`, `tools/sandbox/`, `SandboxCredentialManager`, `engine/_validation.py::validate_task_metadata` | Tool execution, side effects, credential scope.  Credentials are stripped at the engine input boundary (task metadata validator) and at the sandbox boundary (credential manager); they never enter the brain or session planes. |
-| **Session** | `observability/events/`, `engine/session.py` (`Session.replay`), checkpoint/resume | Durable event history, replay, audit.  Every significant action emits a structured event; the event stream is the session's source of truth. |
+| **Brain** | `engine/agent_engine.py`, `AgentContext`, loop protocol (`ReactLoop`, `PlanExecuteLoop`, `HybridLoop`) | Inference loop, middleware, decision-making. Stateless between turns; all state lives in the immutable `AgentContext`. |
+| **Hands** | `ToolInvoker`, `tools/sandbox/`, `SandboxCredentialManager`, `engine/_validation.py::validate_task_metadata` | Tool execution, side effects, credential scope. Credentials are stripped at the engine input boundary (task metadata validator) and at the sandbox boundary (credential manager); they never enter the brain or session planes. |
+| **Session** | `observability/events/`, `engine/session.py` (`Session.replay`), checkpoint/resume | Durable event history, replay, audit. Every significant action emits a structured event; the event stream is the session's source of truth. |
 
 ### Resilience Property
 
-The brain can fail (crash, OOM, timeout) without losing session state.  Because every turn emits structured events (`execution.context.turn`, `execution.task.transition`, etc.) to the configured observability sinks, a new brain instance can reconstruct the execution context via `Session.replay(execution_id)`.
+The brain can fail (crash, OOM, timeout) without losing session state. Because every turn emits structured events (`execution.context.turn`, `execution.task.transition`, etc.) to the configured observability sinks, a new brain instance can reconstruct the execution context via `Session.replay(execution_id)`.
 
-`Session.replay()` walks the event log for a given execution and reconstructs `AgentContext` (turn count, accumulated cost, task status).  It is a **best-effort** read-only reconstruction; conversation message content is not stored in events, so the replayed context has synthetic placeholder messages.  The `ReplayResult.replay_completeness` field (0.0 to 1.0) indicates how much state was recovered, scored by event coverage (engine start, context creation, turn contiguity, cost data, task transitions).
+`Session.replay()` walks the event log for a given execution and reconstructs `AgentContext` (turn count, accumulated cost, task status).  It is a **best-effort** read-only reconstruction; conversation message content is not stored in events, so the replayed context has synthetic placeholder messages. The `ReplayResult.replay_completeness` field (0.0 to 1.0) indicates how much state was recovered, scored by event coverage (engine start, context creation, turn contiguity, cost data, task transitions).
 
-This is lighter-weight than full checkpoint/resume (`checkpoint/resume.py`), which persists complete `AgentContext` snapshots and supports mid-execution suspend/resume with full message history.  Use session replay for recovery after brain failure; use checkpoint/resume for deliberate pause/resume of long-running tasks.
+This is lighter-weight than full checkpoint/resume (`checkpoint/resume.py`), which persists complete `AgentContext` snapshots and supports mid-execution suspend/resume with full message history. Use session replay for recovery after brain failure; use checkpoint/resume for deliberate pause/resume of long-running tasks.
 
 ### Credential Isolation Boundary
 
-Credentials never enter the brain or session planes.  Two enforcement points:
+Credentials never enter the brain or session planes. Two enforcement points:
 
 1. **Task metadata validator** (`engine/_validation.py::validate_task_metadata`): rejects `Task.metadata` keys matching credential patterns (token, secret, api_key, password, bearer) at the engine input boundary before execution starts.
 2. **Sandbox credential manager** (`tools/sandbox/credential_manager.py`): strips credential-like environment variables before they enter sandbox containers.
@@ -636,7 +636,7 @@ external audiences; use SynthOrg terms in implementation discussions.
 | ACG Term | SynthOrg Equivalent | Fidelity | Notes |
 |----------|--------------------|---------:|-------|
 | ACG Template | `CompanyConfig` + company YAML | Partial | ACG is graph-level; SynthOrg operates at org-level |
-| Realized Graph | `AgentContext` + `TaskExecution` + `CoordinationResult` | Strong | Runtime execution state |
+| Realised Graph | `AgentContext` + `TaskExecution` + `CoordinationResult` | Strong | Runtime execution state |
 | Execution Trace | `TurnRecord` tuple + observability events (100+ constants) | Strong | SynthOrg's trace is richer than ACG baseline |
 | Nodes | LLM calls (`call_provider`), tool invocations, validation checks | Strong | Typed via `NodeType` enum on `TurnRecord.node_types` |
 | Edges | `SubtaskDefinition.dependencies`, `DecompositionPlan` DAG | Strong | Multi-agent; implicit in single-agent loops |
@@ -649,7 +649,7 @@ external audiences; use SynthOrg terms in implementation discussions.
 | Node Cost | `TurnRecord.cost`, `TokenUsage` | Strong | Per-turn cost attribution |
 
 **SynthOrg concepts not captured by ACG**: agent personality, episodic and procedural
-memory, trust levels, autonomy presets, hiring/firing lifecycle. These are organizational
+memory, trust levels, autonomy presets, hiring/firing lifecycle. These are organisational
 abstractions above the computation graph level.
 
 ## Agent-Controlled Context Compaction

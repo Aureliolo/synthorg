@@ -11,7 +11,7 @@ messages, audit logs) is a separate concern managed by a pluggable `PersistenceB
 Application code depends only on repository protocols; the storage engine is an implementation
 detail swappable via config.
 
-See also: [Memory and Persistence](memory.md) (agent memory), [Memory Learning](memory-learning.md) (procedural memory auto-generation + injection strategies), [Shared Organizational Memory](memory-organizational.md).
+See also: [Memory and Persistence](memory.md) (agent memory), [Memory Learning](memory-learning.md) (procedural memory auto-generation + injection strategies), [Shared Organisational Memory](memory-organizational.md).
 
 ## Architecture
 

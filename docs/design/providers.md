@@ -118,7 +118,7 @@ The framework uses **LiteLLM** as the provider abstraction layer:
 - Built-in cost tracking
 - Automatic retries and fallbacks
 - Load balancing across providers
-- Chat completions-compatible interface (all providers normalized)
+- Chat completions-compatible interface (all providers normalised)
 - **Model database**: `litellm.model_cost` provides pricing and context window data for all known models. Used at provider creation to dynamically populate model lists with up-to-date metadata. Provider-specific version filters (for example, a newer generation filter applied per provider) exclude older generations. Deduplicates dated model variants (e.g. prefers `example-large-002` over `example-large-002-20260205`). Falls back to preset `default_models` when no models are found in the database.
 
 ## Provider Management
@@ -162,7 +162,7 @@ Providers can be managed at runtime through the API without restarting:
 Model routing determines which LLM handles a given request. Six strategies are available,
 selectable via configuration:
 
-| Strategy | Behavior |
+| Strategy | Behaviour |
 |----------|----------|
 | `manual` | Resolve an explicit model override; fails if not set |
 | `role_based` | Match agent seniority level to routing rules, then catalog default |
@@ -220,7 +220,7 @@ tuple.
 
 Two built-in selectors are provided:
 
-| Selector | Behavior |
+| Selector | Behaviour |
 |----------|----------|
 | `QuotaAwareSelector` (default) | Prefer providers with available quota, then cheapest among those; falls back to cheapest overall when all providers are exhausted |
 | `CheapestSelector` | Always pick the cheapest candidate by total cost per 1k tokens, ignoring quota state |
@@ -238,6 +238,6 @@ selection is transparent to the strategy layer.
 
 ## See Also
 
-- [Budget & Cost Management](budget.md) -- token metering, cost tracking, CFO optimization, quota degradation
+- [Budget & Cost Management](budget.md) -- token metering, cost tracking, CFO optimisation, quota degradation
 - [Tools](tools.md) -- tool categories, sandboxing, MCP integration
 - [Design Overview](index.md) -- full index

@@ -2,7 +2,7 @@
 
 The self-improvement meta-loop observes company-wide signals from 7 existing subsystems and produces deployment and product-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval.
 
-Company autonomy ships at `supervised` so most state-mutating agent actions queue for approval before execution; raise to `semi` or `full` via `company.autonomy_level` (or `config.autonomy.level` in the company YAML) once operators trust the organization. Rank order: `full` > `semi` > `supervised` > `locked`.
+Company autonomy ships at `supervised` so most state-mutating agent actions queue for approval before execution; raise to `semi` or `full` via `company.autonomy_level` (or `config.autonomy.level` in the company YAML) once operators trust the organisation. Rank order: `full` > `semi` > `supervised` > `locked`.
 
 ## Architecture Overview
 
@@ -157,7 +157,7 @@ src/synthorg/meta/
 |----------|--------|-----------|
 | Meta-analyst | Interactive Chief of Staff agent | Company metaphor, conversational UX, evolvable via #243 |
 | Signal access | MCP tools | First slice of API-as-MCP; agents use native tool interface |
-| Proposal generation | Rule-first hybrid | Rules detect (cheap, auditable); LLM synthesizes (creative, scoped) |
+| Proposal generation | Rule-first hybrid | Rules detect (cheap, auditable); LLM synthesises (creative, scoped) |
 | Altitudes | Config + Architecture + Prompt + Code + Tool Creation | All pluggable, config enabled by default, others opt-in |
 | Scope | Deployment + product level | Code modification altitude for framework improvements |
 | Rollout | Before/after default, canary + A/B test opt-in | Per-proposal choice; A/B uses group assignment + statistical comparison |
@@ -166,7 +166,7 @@ src/synthorg/meta/
 | Evolution boundary | Org-wide default; override + advisory alternatives | Clear separation from per-agent #243 |
 | Safe defaults | Disabled, opt-in, mandatory approval | Never auto-applies without human review |
 | Cross-deployment analytics | Dedicated protocol in `meta/telemetry/` | Domain events, not log records; follows meta/ pluggable pattern |
-| Analytics anonymization | Strict allowlist (enums + numerics only) | Maximum privacy; free text dropped, UUIDs hashed, timestamps coarsened |
+| Analytics anonymisation | Strict allowlist (enums + numerics only) | Maximum privacy; free text dropped, UUIDs hashed, timestamps coarsened |
 | Analytics aggregation | In-process API endpoints | Zero extra infra; any deployment can be emitter and/or collector |
 
 ## Signal Domains
@@ -212,7 +212,7 @@ All thresholds are configurable via constructor arguments.
 
 ### Runtime override setting (`meta.self_improvement`)
 
-`SelfImprovementConfig` ships with safe defaults in code.  Operators can override any subset at runtime via the `meta.self_improvement` JSON setting (namespace `META`, advanced level, default `"{}"`).  The loader `load_self_improvement_config(settings_service)`:
+`SelfImprovementConfig` ships with safe defaults in code. Operators can override any subset at runtime via the `meta.self_improvement` JSON setting (namespace `META`, advanced level, default `"{}"`).  The loader `load_self_improvement_config(settings_service)`:
 
 - reads the JSON blob,
 - performs a shallow merge onto the defaults (unknown keys are dropped, malformed JSON falls back to pure defaults),
@@ -228,7 +228,7 @@ Every meta-loop entry point (`GET /meta/config`, `GET /meta/rules`, `GET /meta/s
 
 ### Interactive endpoints
 
-- **`POST /meta/chat`** (Chief of Staff explain-only entry point): rate-limited via `per_op_rate_limit_from_policy("meta.chat", key="user")` at **5 requests per 60 seconds per authenticated user**.  The policy is defined in `api/rate_limits/policies.py` under the `meta.chat` key.  Clients exceeding the limit receive HTTP 429 with `Retry-After`; clients that want automatic retry on 429 must attach an `Idempotency-Key` header.
+- **`POST /meta/chat`** (Chief of Staff explain-only entry point): rate-limited via `per_op_rate_limit_from_policy("meta.chat", key="user")` at **5 requests per 60 seconds per authenticated user**.  The policy is defined in `api/rate_limits/policies.py` under the `meta.chat` key. Clients exceeding the limit receive HTTP 429 with `Retry-After`; clients that want automatic retry on 429 must attach an `Idempotency-Key` header.
 
 - **`POST /meta/chat/propose`** (Chief of Staff clarify-and-propose entry point): the same human conversation, but the model either asks ONE clarifying question or emits one or more concrete `WorkItem`s parked behind the human approval queue (source `CONVERSATIONAL_INTAKE`). Nothing executes until the human approves; on approval the parked `WorkItem` runs through the work pipeline via the approval-decision seam (still no autonomous acting). Same rate-limit policy shape as `/meta/chat` (`meta.chat.propose`, 5/60s/user) and the same `Idempotency-Key` discipline. Opt-in via `meta.chief_of_staff.propose_enabled`; requires a registered LLM provider, a connected persistence backend, and a wired work pipeline (503 otherwise).
 
@@ -332,7 +332,7 @@ reports owns async job lifecycle + artifact storage.
 
 1. ~~Full API-as-MCP server~~: completed via #1353 (issue #1339; 204 tools, 15 domains, capability-based scoping)
 2. ~~Product-level improvement~~: completed via #1340 (CODE_MODIFICATION altitude, LLM code gen, CI validation, draft PR creation)
-3. ~~Cross-deployment analytics~~: completed via #1341 (opt-in anonymized telemetry, pattern aggregation, threshold recommendations; see `docs/cross-deployment-privacy.md`)
+3. ~~Cross-deployment analytics~~: completed via #1341 (opt-in anonymised telemetry, pattern aggregation, threshold recommendations; see `docs/cross-deployment-privacy.md`)
 4. ~~Chief of Staff advanced capabilities~~: completed via #1342 (outcome learning, proactive alerts, NL chat)
 5. ~~Custom rule authoring UI (visual rule builder)~~: shipped (#1343 / PR #1355)
 6. MCP handler remaining gaps: tracked in #1528 (CRUD writes) and #1529 (observability + memory + coordination), scoped as parallel-safe followups from META-MCP-2.

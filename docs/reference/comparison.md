@@ -19,7 +19,7 @@ Last updated: 2026-05-15
 !!! tip "Interactive Version"
     For a filterable, sortable version of this comparison, visit the [interactive comparison page](https://synthorg.io/compare/).
 
-## Organization & Coordination
+## Organisation & Coordination
 
 | Framework | Category | License | Pricing | Self-Hosted | Org Structure | Multi-Agent | Task Delegation | Human-in-the-Loop |
 |:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|:---:|:---:|

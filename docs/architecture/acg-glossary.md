@@ -20,13 +20,13 @@ design, and agent pruning recommendations, see
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
 | ACG Template | `CompanyConfig` + Company YAML / `WorkflowDefinition` | `core/company.py`, `config/schema.py` | Partial | ACG templates are graph-level (workflow topology). SynthOrg's YAML is org-level (agent roster, tool permissions, budget). `WorkflowDefinition` is the closer analogue for workflow templates. |
-| Realized Graph | `AgentContext` + `TaskExecution` + `CoordinationResult` | `engine/context.py`, `engine/coordination/models.py` | Strong | The realized graph IS the running state: context, history, accumulated cost, current position. Multi-agent coordination adds `CoordinationPhaseResult` per phase. |
+| Realised Graph | `AgentContext` + `TaskExecution` + `CoordinationResult` | `engine/context.py`, `engine/coordination/models.py` | Strong | The realised graph IS the running state: context, history, accumulated cost, current position. Multi-agent coordination adds `CoordinationPhaseResult` per phase. |
 | Execution Trace | `tuple[TurnRecord, ...]` in `ExecutionResult` + observability events | `engine/loop_protocol.py`, `observability/events/` | Strong | SynthOrg's trace is richer than ACG baseline: per-turn cost, token usage, tool fingerprints, stagnation signals, quality scores. numerous event constant domains (see `observability/events/`). |
 | Nodes (atomic actions) | LLM calls (`call_provider`), tool invocations (`execute_tool_calls`), validation gates (`check_budget`, `check_stagnation`) | `engine/loop_helpers.py` | Partial | Node typing is implicit in loop control flow, not a first-class abstraction. There is no `Node` type; actions are identified by function names and turn records. |
 | Edges (control/data flow) | `SubtaskDefinition.dependencies` DAG, `DecompositionPlan.dependency_edges` | `engine/decomposition/models.py` | Strong (multi-agent) | Edges are explicit in multi-agent decomposition (dependency DAG). Implicit in single-agent loops (sequential execution order, no formal edge representation). |
-| Scheduling Policies | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` + `AutoTopologyConfig` | `engine/loop_selector.py`, `engine/routing/models.py` | Strong | Three-way loop selection (react/plan-execute/hybrid) and topology selection (SAS/centralized/decentralized/context-dependent) are scheduling policies. Budget-aware downgrade is a resource-constrained policy. |
+| Scheduling Policies | `AutoLoopConfig` + `select_loop_type()` + `CoordinationConfig` + `AutoTopologyConfig` | `engine/loop_selector.py`, `engine/routing/models.py` | Strong | Three-way loop selection (react/plan-execute/hybrid) and topology selection (SAS/centralised/decentralised/context-dependent) are scheduling policies. Budget-aware downgrade is a resource-constrained policy. |
 
-### Dynamic Behavior Concepts
+### Dynamic Behaviour Concepts
 
 | ACG Concept | SynthOrg Equivalent | Source | Fidelity | Notes |
 |---|---|---|---|---|
@@ -52,7 +52,7 @@ Reverse lookup for readers starting from SynthOrg terminology.
 | SynthOrg Concept | ACG Equivalent | Notes |
 |---|---|---|
 | `CompanyConfig` / Company YAML | ACG Template | Org-level; `WorkflowDefinition` maps more precisely to graph-level templates |
-| `AgentContext` + `TaskExecution` | Realized Graph | Running state with full context |
+| `AgentContext` + `TaskExecution` | Realised Graph | Running state with full context |
 | `TurnRecord` tuple | Execution Trace | Per-turn cost/token data exceeds ACG baseline |
 | LLM calls, tool invocations, validation gates | Nodes | Implicit typing via function names, not a `Node` type |
 | `SubtaskDefinition.dependencies` | Edges | Explicit in multi-agent DAG, implicit in single-agent |
@@ -73,7 +73,7 @@ The following SynthOrg concepts have no equivalent in the ACG formalism:
 | Concept | Module | Description |
 |---|---|---|
 | **Progressive trust** | `security/trust/service.py` | Agent trust levels (RESTRICTED/STANDARD/ELEVATED) with mandatory human approval for promotion. |
-| **Personality and behavioral config** | `core/personality.py` | Big Five traits + behavioral enums affecting decision style. |
+| **Personality and behavioural config** | `core/personality.py` | Big Five traits + behavioural enums affecting decision style. |
 | **Memory injection** | `memory/retrieval/` | Episodic and procedural memory retrieval shaping context before execution. |
 | **Prompt profiles** | `engine/prompt/profiles.py` | Verbosity adaptation by model tier. |
 | **Autonomy levels** | `security/autonomy/resolver.py` | 4 presets (full/semi/supervised/locked) with tool permission gating. |
