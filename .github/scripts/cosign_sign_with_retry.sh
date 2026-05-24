@@ -37,7 +37,12 @@ REF="${1:?usage: cosign_sign_with_retry.sh <ref>}"
 # both scripts in lockstep so a new transient signature added in one
 # place automatically protects every signing call too.
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-TRANSIENT_RE="$("$SCRIPT_DIR/docker_push_with_retry.sh" --print-transient-re)"
+# Invoke the sibling helper via `bash` rather than relying on the
+# execute bit. Both scripts ship as git mode 100644 (no execute bit),
+# matching the existing publish-* action call sites which always use
+# `bash "$RETRY" ...`; a bare `"$SCRIPT_DIR/..."` would fail
+# "Permission denied" on the Linux runner.
+TRANSIENT_RE="$(bash "$SCRIPT_DIR/docker_push_with_retry.sh" --print-transient-re)"
 
 # 4 attempts, backoff 15s -> 30s -> 60s = ~1m45s of wait in the worst
 # case before the final attempt. Matches docker_push_with_retry.sh so
@@ -58,7 +63,7 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
   # Idempotency branch: a re-sign that lost the createLogEntry race is
   # success, not a transient error. Check this BEFORE the regex so
   # attempt 1 -> 5xx -> attempt 2 -> conflict resolves cleanly.
-  if printf '%s' "$out" | grep -q 'createLogEntryConflict'; then
+  if printf -- '%s\n' "$out" | grep -q 'createLogEntryConflict'; then
     printf '%s\n' "$out"
     echo "::notice::Image ${REF} already signed -- skipping"
     exit 0
@@ -70,7 +75,10 @@ for ((i = 1; i <= ATTEMPTS; i++)); do
     exit "$rc"
   fi
 
-  if printf '%s' "$out" | grep -qiE "$TRANSIENT_RE"; then
+  # Guard against an empty `$TRANSIENT_RE` (e.g. sibling helper drift
+  # that silently prints nothing) - `grep -E ""` matches every line,
+  # which would retry auth failures and other non-transient errors.
+  if [[ -n "$TRANSIENT_RE" ]] && printf -- '%s\n' "$out" | grep -qiE "$TRANSIENT_RE"; then
     printf '%s\n' "$out" >&2
     echo "::warning::cosign sign ${REF} hit transient error (attempt ${i}/${ATTEMPTS}, rc=${rc}); sleeping ${BACKOFF}s before retry" >&2
     sleep "$BACKOFF"
