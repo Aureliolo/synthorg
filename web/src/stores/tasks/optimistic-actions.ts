@@ -23,7 +23,16 @@ export function createOptimisticActions(set: TasksSet, get: TasksGet) {
         pendingTransitions.delete(taskId)
         set((s) => {
           const currentIdx = s.tasks.findIndex((t) => t.id === taskId)
-          if (currentIdx === -1) return {}
+          if (currentIdx === -1) {
+            // Task no longer exists (e.g. concurrent delete). Clear
+            // selectedTask if it points at the gone task so the detail
+            // drawer does not keep showing a phantom row.
+            return {
+              selectedTask: s.selectedTask?.id === taskId
+                ? null
+                : s.selectedTask,
+            }
+          }
           const currentTask = s.tasks[currentIdx]!
           const restored = [...s.tasks]
           restored[currentIdx] = { ...currentTask, status: oldTask.status }
