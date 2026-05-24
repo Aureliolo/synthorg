@@ -214,13 +214,28 @@ Inspect the most recent CodeRabbit-authored item across reviews + issue comments
 | `i'll be back` / `back online` / `try again later` | CodeRabbit deferred review | Ping + sleep |
 | `you've reached your` / `quota` | Quota exhaustion | Ping + sleep |
 
-**Ping action:** post `@coderabbitai review` as an issue comment via the GitHub API:
+**Refill-time parsing (mandatory before deciding ping vs. defer).** CodeRabbit's `Review limit reached` body explicitly states the refill ETA: `Refill in <N> minutes (and <M> seconds)?`. Parse this against the rolling-summary comment's `created_at` (or `updated_at` if the comment was edited after the limit was hit) to compute an absolute `refill_at_iso` in UTC. Regex: `/Refill in (?:(\d+) minutes?(?: and (\d+) seconds?)?|(\d+) seconds?)/i` -- accept either "X minutes [and Y seconds]" or bare "Z seconds". If parsing succeeds:
+
+- `refill_at_iso = comment.updated_at + parsed_duration` (treat the comment timestamp as the moment the limit was reported; updated_at handles edits).
+- `seconds_until_refill = refill_at_iso - now()` (clamp negatives to 0).
+
+Decision table:
+
+| Condition | Action |
+|---|---|
+| `seconds_until_refill > 0` (still inside the rate-limited window) | **Do NOT ping** -- the ping would just be eaten and CodeRabbit re-posts the same limit message. Skip the API call. Schedule wakeup for `max(60, seconds_until_refill + 60)` (60s buffer past refill). Append history `{round, action: "rate_limit_defer", refill_at: refill_at_iso, sleep_seconds: K}`. |
+| `seconds_until_refill <= 0` (refill window has already passed) | Ping `@coderabbitai review` and schedule the default `cadence_seconds`. The ping should now actually trigger a review. |
+| Refill regex did not match (CodeRabbit changed wording, or marker came from a non-rate-limit message like "currently processing" / "I'll be back") | Fall back to the legacy behaviour: ping immediately and schedule `cadence_seconds`. |
+
+The "no ping during rate-limit window" rule matters because pinging inside the window does not stack -- CodeRabbit doesn't queue your `@coderabbitai review` for later, it just rejects it with another rate-limit comment, which then becomes the *new* most-recent marker on the next tick and resets the perceived refill window. The loop ends up looking busy without making progress.
+
+**Ping action (when the decision table says ping):** post `@coderabbitai review` as an issue comment via the GitHub API:
 
 ```bash
 gh api "repos/$OWNER_REPO/issues/$PR/comments" -X POST -f body='@coderabbitai review'
 ```
 
-Then increment `rate_limit_pings`, append history `{round, action: "rate_limit_ping", ping_count: K}`, ScheduleWakeup, exit.
+Then increment `rate_limit_pings`, append history `{round, action: "rate_limit_ping", ping_count: K, refill_at: <iso-or-null>}`, ScheduleWakeup, exit.
 
 **Important:** when scanning issue comments later, exclude any comment authored by `synthorg-repo-bot[bot]` OR with body exactly `@coderabbitai review` so the skill doesn't trip on its own pings.
 
