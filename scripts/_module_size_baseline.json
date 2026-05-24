@@ -156,6 +156,6 @@
     "src/synthorg/tools/sandbox/subprocess_sandbox.py": 630,
     "src/synthorg/workers/claim.py": 612,
     "src/synthorg/workers/execution_service.py": 772,
-    "src/synthorg/workers/runtime_builder.py": 840
+    "src/synthorg/workers/runtime_builder.py": 842
   }
 }

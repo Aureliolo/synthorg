@@ -831,6 +831,8 @@ async def build_runtime_services(
         work_pipeline_wired=work_pipeline is not None,
         red_team_wired=red_team_runtime is not None,
         vision_gate_wired=vision_gate is not None,
+        security_enabled=security.enabled,
+        security_enforcement_mode=security.enforcement_mode.value,
     )
     return RuntimeServices(
         worker_execution_service=worker_execution_service,
