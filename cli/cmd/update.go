@@ -345,21 +345,46 @@ func resolveUpdateChannel(ctx context.Context) string {
 // can propagate the exit code rather than printing a generic error.
 func reexecUpdate(cmd *cobra.Command) error {
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Re-launching updated CLI to continue...")
+	execPath, err := resolveCurrentExecutable(cmd)
+	if err != nil {
+		return err
+	}
+	c := exec.CommandContext(cmd.Context(), execPath, buildReexecArgs(cmd)...)
+	c.Stdin = os.Stdin
+	c.Stdout = cmd.OutOrStdout()
+	c.Stderr = cmd.ErrOrStderr()
+	if runErr := c.Run(); runErr != nil {
+		// Preserve the child's exit code so the parent can propagate it.
+		if exitErr, ok := errors.AsType[*exec.ExitError](runErr); ok {
+			return &ChildExitError{Code: exitErr.ExitCode()}
+		}
+		return fmt.Errorf("re-launching updated CLI: %w", runErr)
+	}
+	return nil
+}
 
+// resolveCurrentExecutable returns the absolute, symlink-resolved path
+// to the running binary. Failure to resolve symlinks is non-fatal and
+// produces a warning (selfupdate.Replace writes to the resolved path,
+// so a mismatch surfaces as a stale-binary re-exec).
+func resolveCurrentExecutable(cmd *cobra.Command) (string, error) {
 	execPath, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("finding executable path: %w", err)
+		return "", fmt.Errorf("finding executable path: %w", err)
 	}
-	// Resolve symlinks to match the pattern in uninstall.go --
-	// selfupdate.Replace writes to the resolved path.
-	if resolved, resolveErr := filepath.EvalSymlinks(execPath); resolveErr == nil {
-		execPath = resolved
-	} else {
+	resolved, resolveErr := filepath.EvalSymlinks(execPath)
+	if resolveErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not resolve executable symlink: %v\n", resolveErr)
+		return execPath, nil
 	}
+	return resolved, nil
+}
 
-	// Reconstruct args from known flags instead of forwarding os.Args
-	// to avoid silently propagating unexpected flags.
+// buildReexecArgs reconstructs the argv for the re-exec'd child from
+// the known flag set. Forwarding os.Args would silently propagate
+// unexpected flags; rebuilding from typed values keeps the contract
+// explicit.
+func buildReexecArgs(cmd *cobra.Command) []string {
 	reArgs := []string{"update", "--skip-cli-update"}
 	if flagDataDir != "" {
 		reArgs = append(reArgs, "--data-dir", flagDataDir)
@@ -374,45 +399,35 @@ func reexecUpdate(cmd *cobra.Command) error {
 	for range flagVerbose {
 		reArgs = append(reArgs, "-v")
 	}
-	if flagNoColor {
-		reArgs = append(reArgs, "--no-color")
-	}
-	if flagPlain {
-		reArgs = append(reArgs, "--plain")
-	}
-	if flagJSON {
-		reArgs = append(reArgs, "--json")
-	}
-	if flagYes {
-		reArgs = append(reArgs, "--yes")
-	}
-	// Forward per-command flags added in PR 3.
-	if updateNoRestart {
-		reArgs = append(reArgs, "--no-restart")
-	}
+	reArgs = appendBoolFlags(reArgs, []boolFlag{
+		{"--no-color", flagNoColor},
+		{"--plain", flagPlain},
+		{"--json", flagJSON},
+		{"--yes", flagYes},
+		{"--no-restart", updateNoRestart},
+		{"--images-only", updateImagesOnly},
+		{"--cli-only", updateCLIOnly},
+	})
 	if cmd.Flags().Changed("timeout") {
 		reArgs = append(reArgs, "--timeout", updateTimeout)
 	}
-	if updateImagesOnly {
-		reArgs = append(reArgs, "--images-only")
-	}
-	if updateCLIOnly {
-		reArgs = append(reArgs, "--cli-only")
-	}
+	return reArgs
+}
 
-	c := exec.CommandContext(cmd.Context(), execPath, reArgs...)
-	c.Stdin = os.Stdin
-	c.Stdout = cmd.OutOrStdout()
-	c.Stderr = cmd.ErrOrStderr()
+type boolFlag struct {
+	name string
+	set  bool
+}
 
-	if runErr := c.Run(); runErr != nil {
-		// Preserve the child's exit code so the parent can propagate it.
-		if exitErr, ok := errors.AsType[*exec.ExitError](runErr); ok {
-			return &ChildExitError{Code: exitErr.ExitCode()}
+// appendBoolFlags appends every flag whose set field is true. Keeps
+// buildReexecArgs flat instead of carrying a long if-chain.
+func appendBoolFlags(args []string, flags []boolFlag) []string {
+	for _, f := range flags {
+		if f.set {
+			args = append(args, f.name)
 		}
-		return fmt.Errorf("re-launching updated CLI: %w", runErr)
 	}
-	return nil
+	return args
 }
 
 // targetImageTag converts a CLI version string to a Docker image tag.

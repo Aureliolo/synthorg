@@ -70,28 +70,7 @@ func autoCleanupOldImages(cmd *cobra.Command, info docker.Info, state config.Sta
 
 	out.Blank()
 	out.Step(fmt.Sprintf("Auto-cleaning %d old image(s)...", len(old)))
-
-	var freedB float64
-	var removed int
-	for _, img := range old {
-		if ctx.Err() != nil {
-			_, _ = fmt.Fprintf(errOut, "Warning: auto-cleanup interrupted\n")
-			break
-		}
-		_, rmiErr := docker.RunCmd(ctx, info.DockerPath, "rmi", img.id)
-		if rmiErr != nil {
-			if isImageInUse(rmiErr) {
-				out.Warn(fmt.Sprintf("%-12s skipped (in use)", img.id))
-			} else {
-				out.Warn(fmt.Sprintf("%-12s skipped: %v", img.id, rmiErr))
-			}
-		} else {
-			out.Success(fmt.Sprintf("%-12s removed", img.id))
-			removed++
-			freedB += img.sizeB
-		}
-	}
-
+	removed, freedB := runAutoCleanupRemovals(ctx, info, out, errOut, old)
 	if removed > 0 && freedB > 0 {
 		out.Success(fmt.Sprintf("Freed %s (%d image(s) removed)", formatBytes(freedB), removed))
 	} else if removed > 0 {
@@ -100,6 +79,32 @@ func autoCleanupOldImages(cmd *cobra.Command, info docker.Info, state config.Sta
 	if removed > 0 {
 		out.HintGuidance("Run 'synthorg cleanup --keep N' to preserve recent previous versions.")
 	}
+}
+
+// runAutoCleanupRemovals iterates docker rmi one image at a time
+// without --force. Returns (removed-count, bytes-freed). In-use images
+// are warned but do not abort the loop; ctx cancellation does.
+func runAutoCleanupRemovals(ctx context.Context, info docker.Info, out *ui.UI, errOut io.Writer, old []oldImage) (int, float64) {
+	var freedB float64
+	var removed int
+	for _, img := range old {
+		if ctx.Err() != nil {
+			_, _ = fmt.Fprintf(errOut, "Warning: auto-cleanup interrupted\n")
+			return removed, freedB
+		}
+		if _, rmiErr := docker.RunCmd(ctx, info.DockerPath, "rmi", img.id); rmiErr != nil {
+			if isImageInUse(rmiErr) {
+				out.Warn(fmt.Sprintf("%-12s skipped (in use)", img.id))
+			} else {
+				out.Warn(fmt.Sprintf("%-12s skipped: %v", img.id, rmiErr))
+			}
+			continue
+		}
+		out.Success(fmt.Sprintf("%-12s removed", img.id))
+		removed++
+		freedB += img.sizeB
+	}
+	return removed, freedB
 }
 
 // mergeKeepIDs combines current and previous image ID sets into a single

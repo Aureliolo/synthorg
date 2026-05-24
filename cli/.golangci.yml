@@ -51,8 +51,6 @@ linters:
     # excluded from all five complexity rules: signal lives in
     # production code, not in test data enumeration.
     rules:
-      - path: 'cmd/'
-        linters: [gocyclo, funlen, gocognit, nestif, revive]
       - path: '_test\.go$'
         linters: [gocyclo, funlen, gocognit, nestif, revive]
 

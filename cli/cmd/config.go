@@ -595,39 +595,47 @@ func runConfigUnset(cmd *cobra.Command, args []string) error {
 	key := args[0]
 	opts := GetGlobalOpts(cmd.Context())
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-
 	state, err := config.Load(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-
 	if err := resetConfigValue(&state, key); err != nil {
 		return fmt.Errorf("resetting config value: %w", err)
 	}
-	// Validate port uniqueness after resetting to default.
-	if key == "backend_port" && state.BackendPort == state.WebPort {
-		return fmt.Errorf("default backend_port %d conflicts with current web_port %d", state.BackendPort, state.WebPort)
-	}
-	if key == "web_port" && state.WebPort == state.BackendPort {
-		return fmt.Errorf("default web_port %d conflicts with current backend_port %d", state.WebPort, state.BackendPort)
+	if err := validatePortUniquenessAfterUnset(key, state); err != nil {
+		return err
 	}
 	if invalidatesVerifiedDigests(key) {
 		state.VerifiedDigests = nil
 		state.VerifiedImageTag = ""
 	}
-
 	if composeAffectingKeys[key] {
 		if err := regenerateCompose(state); err != nil {
 			return fmt.Errorf("regenerating compose after unset: %w", err)
 		}
 	}
-
 	if err := config.Save(state); err != nil {
 		return fmt.Errorf("saving config: %w", err)
 	}
 	out.Success(fmt.Sprintf("Reset %s to default", key))
 	if composeAffectingKeys[key] {
 		hintComposeRestart(out, state.DataDir, "default value")
+	}
+	return nil
+}
+
+// validatePortUniquenessAfterUnset rejects an unset that would default
+// the named port into a collision with the other one.
+func validatePortUniquenessAfterUnset(key string, state config.State) error {
+	switch key {
+	case "backend_port":
+		if state.BackendPort == state.WebPort {
+			return fmt.Errorf("default backend_port %d conflicts with current web_port %d", state.BackendPort, state.WebPort)
+		}
+	case "web_port":
+		if state.WebPort == state.BackendPort {
+			return fmt.Errorf("default web_port %d conflicts with current backend_port %d", state.WebPort, state.BackendPort)
+		}
 	}
 	return nil
 }

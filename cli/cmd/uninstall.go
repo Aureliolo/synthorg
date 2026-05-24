@@ -112,6 +112,31 @@ func uninstallData(cmd *cobra.Command, safeDir string, autoAccept bool, out *ui.
 	return nil
 }
 
+// shouldRemoveVolumes decides whether `compose down` should pass -v.
+// --keep-data forces false (volumes hold app data we must preserve);
+// --yes accepts without prompting; otherwise we prompt interactively.
+func shouldRemoveVolumes(keepData, autoAccept bool) (bool, error) {
+	if keepData {
+		return false, nil
+	}
+	if autoAccept {
+		return true, nil
+	}
+	var remove bool
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Remove Docker volumes? (ALL DATA WILL BE LOST)").
+				Description("This removes the persistent database and memory data.").
+				Value(&remove),
+		),
+	)
+	if err := form.Run(); err != nil {
+		return false, err
+	}
+	return remove, nil
+}
+
 // removeAllShellCompletions removes the SynthOrg snippet from every
 // supported shell profile (the user may have installed completions for
 // multiple shells).
@@ -129,27 +154,10 @@ func removeAllShellCompletions(ctx context.Context, out, errUI *ui.UI) {
 
 func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, out *ui.UI, autoAccept bool, keepData bool) error {
 	ctx := cmd.Context()
-
-	// When --keep-data is set, never remove volumes (they contain app data).
-	removeVolumes := false
-	if !keepData {
-		if autoAccept {
-			removeVolumes = true
-		} else {
-			form := huh.NewForm(
-				huh.NewGroup(
-					huh.NewConfirm().
-						Title("Remove Docker volumes? (ALL DATA WILL BE LOST)").
-						Description("This removes the persistent database and memory data.").
-						Value(&removeVolumes),
-				),
-			)
-			if err := form.Run(); err != nil {
-				return err
-			}
-		}
+	removeVolumes, err := shouldRemoveVolumes(keepData, autoAccept)
+	if err != nil {
+		return err
 	}
-
 	downArgs := []string{"down"}
 	if removeVolumes {
 		downArgs = append(downArgs, "-v")
@@ -298,7 +306,10 @@ func isDriveRoot(dir string) bool {
 // inside UNC shares are legitimate install targets.
 func isUNCShareRoot(dir string) bool {
 	vol := filepath.VolumeName(dir)
-	if vol == "" || !(strings.HasPrefix(vol, `\\`) || strings.HasPrefix(vol, "//")) {
+	if vol == "" {
+		return false
+	}
+	if !strings.HasPrefix(vol, `\\`) && !strings.HasPrefix(vol, "//") {
 		return false
 	}
 	return dir == vol || dir == vol+`\` || dir == vol+"/"

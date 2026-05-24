@@ -478,23 +478,40 @@ func countContainerStates(snap statusSnapshot) (unhealthy, restarting, total int
 // absorbHealthVerdict folds the backend `/healthz` envelope and the
 // half-up persistence/bus signals into v.
 func (v *statusVerdict) absorbHealthVerdict(snap statusSnapshot) {
+	if v.absorbHealthEnvelope(snap) {
+		return
+	}
+	v.absorbWiringVerdict(snap)
+}
+
+// absorbHealthEnvelope handles the /healthz envelope itself (reach,
+// parseability, status field). Returns true when the envelope is
+// terminal-bad (caller should NOT continue with wiring checks).
+func (v *statusVerdict) absorbHealthEnvelope(snap statusSnapshot) bool {
 	switch {
 	case snap.healthErr != nil:
 		v.level = statusLevelCritical
 		v.issues = append(v.issues, fmt.Sprintf("backend unreachable: %v", snap.healthErr))
 		v.hints = append(v.hints, "Confirm backend is up: synthorg logs backend")
-		return
+		return true
 	case !snap.healthEnvelopeOK:
 		v.level = statusLevelCritical
 		v.issues = append(v.issues, fmt.Sprintf("backend returned unparseable health (HTTP %d)", snap.healthStatusCode))
 		v.hints = append(v.hints, "Backend may be starting or misconfigured: synthorg logs backend")
-		return
+		return true
 	}
 	if snap.healthStatusCode < 200 || snap.healthStatusCode >= 300 || snap.healthData.Status != "ok" {
 		v.level = statusLevelCritical
 		v.issues = append(v.issues, fmt.Sprintf("backend reports status=%q (HTTP %d)", snap.healthData.Status, snap.healthStatusCode))
 		v.hints = append(v.hints, "Run 'synthorg doctor' for diagnostics")
 	}
+	return false
+}
+
+// absorbWiringVerdict handles persistence and message-bus wiring
+// signals: persistence not wired is Critical (controllers 503), message
+// bus not wired is Degraded.
+func (v *statusVerdict) absorbWiringVerdict(snap statusSnapshot) {
 	if snap.expectsPersistent && !snap.persistenceWired {
 		v.level = statusLevelCritical
 		v.issues = append(v.issues, "persistence backend not wired (controllers will return 503)")

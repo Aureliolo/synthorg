@@ -274,66 +274,110 @@ func (m setupTUI) updateReinit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m setupTUI) updateSetup(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c", "esc":
-		m.cancelled = true
-		return m, tea.Quit
-	case "tab", "down":
-		m.focusNext()
-		return m, nil
-	case "shift+tab", "up":
-		m.focusPrev()
-		return m, nil
-	case "enter":
-		if m.focus == fAdvToggle {
-			m.advExpanded = !m.advExpanded
-			return m, nil
-		}
-		if m.focus == fContinue {
-			m.phase = phaseTelemetry
-			m.focus = fTelNo // default: not opted in
-			return m, nil
-		}
-	case "left", "right", " ":
-		switch m.focus {
-		case fSandbox:
-			m.sandbox = !m.sandbox
-			// Fine-tuning requires sandbox (State.Validate enforces the
-			// invariant at write time). Turning sandbox OFF auto-disables
-			// fine-tuning so the summary and generated config never report
-			// a combination that would fail at compose generation.
-			if !m.sandbox && m.fineTuning {
-				m.fineTuning = false
-			}
-			return m, nil
-		case fBusBackend:
-			m.busBackend = 1 - m.busBackend
-			return m, nil
-		case fPersistence:
-			m.persistence = 1 - m.persistence
-			return m, nil
-		case fFineTuning:
-			m.fineTuning = !m.fineTuning
-			// Turning fine-tuning ON auto-enables sandbox (required by
-			// State.Validate). This keeps the TUI from letting the user
-			// reach phaseSummary with an invariant-violating combination.
-			if m.fineTuning && !m.sandbox {
-				m.sandbox = true
-			}
-			return m, nil
-		case fFineTuneVariant:
-			m.fineTuneVariant = 1 - m.fineTuneVariant
-			return m, nil
-		case fEncryptSecrets:
-			m.encryptSecrets = !m.encryptSecrets
-			return m, nil
-		case fAdvToggle:
-			if msg.String() == " " {
-				m.advExpanded = !m.advExpanded
-			}
-			return m, nil
+	if next, cmd, handled := m.handleSetupNavKey(msg.String()); handled {
+		return next, cmd
+	}
+	if msg.String() == "enter" {
+		if next, handled := m.handleSetupEnter(); handled {
+			return next, nil
 		}
 	}
+	if msg.String() == "left" || msg.String() == "right" || msg.String() == " " {
+		if next, handled := m.handleSetupToggle(msg.String()); handled {
+			return next, nil
+		}
+	}
+	return m.forwardSetupKeyToInput(msg)
+}
+
+// handleSetupNavKey processes navigation and quit keys that are not
+// focus-specific. Returns handled=false when the key is not owned by
+// this layer.
+func (m setupTUI) handleSetupNavKey(key string) (tea.Model, tea.Cmd, bool) {
+	switch key {
+	case "ctrl+c", "esc":
+		m.cancelled = true
+		return m, tea.Quit, true
+	case "tab", "down":
+		m.focusNext()
+		return m, nil, true
+	case "shift+tab", "up":
+		m.focusPrev()
+		return m, nil, true
+	}
+	return m, nil, false
+}
+
+// handleSetupEnter processes the enter key, which differs by focus:
+// fAdvToggle expands/collapses, fContinue advances to the telemetry
+// phase, anything else is unhandled (the input field receives it).
+func (m setupTUI) handleSetupEnter() (tea.Model, bool) {
+	switch m.focus {
+	case fAdvToggle:
+		m.advExpanded = !m.advExpanded
+		return m, true
+	case fContinue:
+		m.phase = phaseTelemetry
+		m.focus = fTelNo // default: not opted in
+		return m, true
+	}
+	return m, false
+}
+
+// handleSetupToggle processes left/right/space against the currently
+// focused toggle. Returns handled=false when focus is not on a toggle.
+func (m setupTUI) handleSetupToggle(key string) (tea.Model, bool) {
+	switch m.focus {
+	case fSandbox:
+		return m.toggleSandbox(), true
+	case fBusBackend:
+		m.busBackend = 1 - m.busBackend
+		return m, true
+	case fPersistence:
+		m.persistence = 1 - m.persistence
+		return m, true
+	case fFineTuning:
+		return m.toggleFineTuning(), true
+	case fFineTuneVariant:
+		m.fineTuneVariant = 1 - m.fineTuneVariant
+		return m, true
+	case fEncryptSecrets:
+		m.encryptSecrets = !m.encryptSecrets
+		return m, true
+	case fAdvToggle:
+		if key == " " {
+			m.advExpanded = !m.advExpanded
+		}
+		return m, true
+	}
+	return m, false
+}
+
+// toggleSandbox flips sandbox and auto-disables fine-tuning if sandbox
+// is being turned off (State.Validate forbids fine_tuning without
+// sandbox).
+func (m setupTUI) toggleSandbox() setupTUI {
+	m.sandbox = !m.sandbox
+	if !m.sandbox && m.fineTuning {
+		m.fineTuning = false
+	}
+	return m
+}
+
+// toggleFineTuning flips fine-tuning and auto-enables sandbox when
+// turning on (State.Validate requires sandbox for fine-tuning).
+func (m setupTUI) toggleFineTuning() setupTUI {
+	m.fineTuning = !m.fineTuning
+	if m.fineTuning && !m.sandbox {
+		m.sandbox = true
+	}
+	return m
+}
+
+// forwardSetupKeyToInput delegates an unowned key to the text-input
+// component for the currently focused field. Non-input focuses produce
+// a no-op (cmd is nil).
+func (m setupTUI) forwardSetupKeyToInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch m.focus {
 	case fDataDir:

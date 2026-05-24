@@ -32,9 +32,11 @@ var tunableSpecs = map[string]tunableSpec{
 		envVar: EnvRegistryHost,
 	},
 	"image_repo_prefix": {
-		set:    func(s *config.State, v string) error { return setImageRepoPrefix(v, &s.ImageRepoPrefix) },
-		reset:  func(s *config.State) { s.ImageRepoPrefix = "" },
-		get:    func(s config.State) string { return displayOrFallback(s.ImageRepoPrefix, config.DefaultImageRepoPrefix) },
+		set:   func(s *config.State, v string) error { return setImageRepoPrefix(v, &s.ImageRepoPrefix) },
+		reset: func(s *config.State) { s.ImageRepoPrefix = "" },
+		get: func(s config.State) string {
+			return displayOrFallback(s.ImageRepoPrefix, config.DefaultImageRepoPrefix)
+		},
 		envVar: EnvImageRepoPrefix,
 	},
 	"dhi_registry": {
@@ -44,9 +46,11 @@ var tunableSpecs = map[string]tunableSpec{
 		envVar: EnvDHIRegistry,
 	},
 	"postgres_image_tag": {
-		set:    func(s *config.State, v string) error { return setTag(v, "postgres_image_tag", &s.PostgresImageTag) },
-		reset:  func(s *config.State) { s.PostgresImageTag = "" },
-		get:    func(s config.State) string { return displayOrFallback(s.PostgresImageTag, config.DefaultPostgresImageTag) },
+		set:   func(s *config.State, v string) error { return setTag(v, "postgres_image_tag", &s.PostgresImageTag) },
+		reset: func(s *config.State) { s.PostgresImageTag = "" },
+		get: func(s config.State) string {
+			return displayOrFallback(s.PostgresImageTag, config.DefaultPostgresImageTag)
+		},
 		envVar: EnvPostgresImageTag,
 	},
 	"nats_image_tag": {

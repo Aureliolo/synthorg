@@ -65,69 +65,93 @@ func runStart(cmd *cobra.Command, _ []string) error {
 	if err := validateStartFlags(cmd); err != nil {
 		return err
 	}
-	healthTimeout, parseErr := time.ParseDuration(startTimeout)
-	if parseErr != nil {
-		return fmt.Errorf("invalid --timeout %q: %w", startTimeout, parseErr)
-	}
-	if !startNoWait && healthTimeout <= 0 {
-		return fmt.Errorf("invalid --timeout %q: must be > 0", startTimeout)
-	}
-
-	ctx := cmd.Context()
-	opts := GetGlobalOpts(ctx)
-	if startNoVerify {
-		opts.SkipVerify = true
-		cmd.SetContext(SetGlobalOpts(ctx, opts))
-		ctx = cmd.Context()
-	}
-
-	state, err := config.Load(opts.DataDir)
+	healthTimeout, err := parseStartTimeout()
 	if err != nil {
-		// config.Load(...) returns DefaultState silently when the file
-		// is absent, so a non-nil error here means the file exists but
-		// is unreadable, malformed, or fails schema validation.
-		// Distinguish each shape via typed sentinels so the operator
-		// knows whether to repair the file or check permissions
-		// instead of guessing from a generic ``loading config:``
-		// wrapper.
-		switch {
-		case errors.Is(err, config.ErrParsing):
-			return fmt.Errorf(
-				"config file is malformed (invalid JSON); "+
-					"edit it manually or remove it and re-run "+
-					"'synthorg init': %w", err,
-			)
-		case errors.Is(err, config.ErrReading):
-			return fmt.Errorf(
-				"config file is unreadable (check filesystem "+
-					"permissions): %w", err,
-			)
-		default:
-			// Anything else (validation / DataDir canonicalisation) is
-			// surfaced as-is with a ``config:`` prefix so the operator
-			// reads the wrapped detail directly.
-			return fmt.Errorf("config: %w", err)
-		}
+		return err
+	}
+	ctx := applyStartNoVerify(cmd)
+	opts := GetGlobalOpts(ctx)
+	state, err := loadStartState(opts.DataDir)
+	if err != nil {
+		return err
 	}
 	safeDir, err := safeStateDir(state)
 	if err != nil {
 		return err
 	}
-	composePath := filepath.Join(safeDir, "compose.yml")
-	if _, err := os.Stat(composePath); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
-		}
-		return fmt.Errorf("checking compose.yml: %w", err)
+	if err := assertComposeExists(safeDir); err != nil {
+		return err
 	}
-
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
-
 	if startDryRun {
 		return printStartDryRun(out, state, opts)
 	}
 	return startContainers(cmd, ctx, state, safeDir, out, errOut, healthTimeout)
+}
+
+func parseStartTimeout() (time.Duration, error) {
+	d, err := time.ParseDuration(startTimeout)
+	if err != nil {
+		return 0, fmt.Errorf("invalid --timeout %q: %w", startTimeout, err)
+	}
+	if !startNoWait && d <= 0 {
+		return 0, fmt.Errorf("invalid --timeout %q: must be > 0", startTimeout)
+	}
+	return d, nil
+}
+
+// applyStartNoVerify mutates the GlobalOpts in cmd's context when
+// --no-verify is set so downstream packages observe SkipVerify=true.
+// Returns the (possibly refreshed) context.
+func applyStartNoVerify(cmd *cobra.Command) context.Context {
+	ctx := cmd.Context()
+	if !startNoVerify {
+		return ctx
+	}
+	opts := GetGlobalOpts(ctx)
+	opts.SkipVerify = true
+	cmd.SetContext(SetGlobalOpts(ctx, opts))
+	return cmd.Context()
+}
+
+// loadStartState wraps config.Load so the start path can surface the
+// three distinguishable failure shapes (parse / read / validate) with
+// repair hints instead of a generic "loading config:" wrapper.
+func loadStartState(dataDir string) (config.State, error) {
+	state, err := config.Load(dataDir)
+	if err == nil {
+		return state, nil
+	}
+	switch {
+	case errors.Is(err, config.ErrParsing):
+		return config.State{}, fmt.Errorf(
+			"config file is malformed (invalid JSON); "+
+				"edit it manually or remove it and re-run "+
+				"'synthorg init': %w", err,
+		)
+	case errors.Is(err, config.ErrReading):
+		return config.State{}, fmt.Errorf(
+			"config file is unreadable (check filesystem permissions): %w", err,
+		)
+	default:
+		// Validation / DataDir canonicalisation is surfaced as-is with a
+		// "config:" prefix so the operator reads the wrapped detail
+		// directly.
+		return config.State{}, fmt.Errorf("config: %w", err)
+	}
+}
+
+func assertComposeExists(safeDir string) error {
+	composePath := filepath.Join(safeDir, "compose.yml")
+	_, err := os.Stat(composePath)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
+	}
+	return fmt.Errorf("checking compose.yml: %w", err)
 }
 
 func validateStartFlags(cmd *cobra.Command) error {
@@ -211,21 +235,33 @@ func verifyAndPullStartImages(_ *cobra.Command, ctx context.Context, info docker
 	}
 
 	if result.SynthOrgReverified || result.DHIReverified {
-		state.VerifiedDigests = result.Pins
-		state.VerifiedImageTag = state.ImageTag
-		if err := config.Save(state); err != nil {
-			errOut.Warn(fmt.Sprintf("Could not cache verified digests: %v", err))
-		} else {
-			reloaded, reloadErr := config.Load(GetGlobalOpts(ctx).DataDir)
-			if reloadErr != nil {
-				return state, fmt.Errorf("reloading config after verification: %w", reloadErr)
-			}
-			state = reloaded
+		next, err := cacheVerifiedDigests(ctx, state, result.Pins, errOut)
+		if err != nil {
+			return state, err
 		}
+		state = next
 	}
 
 	out.Blank()
 	return pullAllImages(ctx, info, safeDir, state, out)
+}
+
+// cacheVerifiedDigests stamps result.Pins onto state, persists, and
+// reloads. A persist failure is non-fatal (warned to errOut); a reload
+// failure is fatal because the live state would otherwise drift from
+// disk after the next write.
+func cacheVerifiedDigests(ctx context.Context, state config.State, pins map[string]string, errOut *ui.UI) (config.State, error) {
+	state.VerifiedDigests = pins
+	state.VerifiedImageTag = state.ImageTag
+	if err := config.Save(state); err != nil {
+		errOut.Warn(fmt.Sprintf("Could not cache verified digests: %v", err))
+		return state, nil
+	}
+	reloaded, reloadErr := config.Load(GetGlobalOpts(ctx).DataDir)
+	if reloadErr != nil {
+		return state, fmt.Errorf("reloading config after verification: %w", reloadErr)
+	}
+	return reloaded, nil
 }
 
 func startDetached(ctx context.Context, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI, healthTimeout time.Duration) error {
@@ -282,58 +318,72 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 // standalone image pulls to use stale refs while compose-driven pulls use
 // the new refs written into compose.yml, leaving the install inconsistent.
 func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state config.State, out *ui.UI) (config.State, error) {
-	refreshed := state
+	items := buildPullItems(state)
+	emitFineTuneSizeHint(state, out)
+	return state, runPullBatch(ctx, info, safeDir, items, out)
+}
 
-	// Build the full list of images to pull.
-	type pullItem struct {
-		name    string
-		compose bool   // true = docker compose pull, false = docker pull
-		ref     string // image ref for docker pull (only when compose=false)
-	}
+// pullItem describes one image to pull. compose=true uses
+// `docker compose pull <name>`; compose=false uses `docker pull <ref>`
+// with retry/backoff.
+type pullItem struct {
+	name    string
+	compose bool
+	ref     string
+}
 
+// buildPullItems enumerates every image the start path must pull: the
+// enabled compose services plus the standalone (sandbox / sidecar /
+// fine-tune) images that compose does not own.
+func buildPullItems(state config.State) []pullItem {
 	var items []pullItem
-	// Compose services
-	for _, svc := range composeServiceNames(refreshed) {
+	for _, svc := range composeServiceNames(state) {
 		items = append(items, pullItem{name: svc, compose: true})
 	}
-	// Standalone images (only if enabled)
-	if refreshed.Sandbox {
+	if state.Sandbox {
 		items = append(items, pullItem{
 			name: "sandbox",
-			ref:  verify.FormatImageRef("sandbox", refreshed.ImageTag, refreshed.VerifiedDigests["sandbox"]),
+			ref:  verify.FormatImageRef("sandbox", state.ImageTag, state.VerifiedDigests["sandbox"]),
 		})
 		items = append(items, pullItem{
 			name: "sidecar",
-			ref:  verify.FormatImageRef("sidecar", refreshed.ImageTag, refreshed.VerifiedDigests["sidecar"]),
+			ref:  verify.FormatImageRef("sidecar", state.ImageTag, state.VerifiedDigests["sidecar"]),
 		})
 	}
-	fineTuneVariant := ""
-	if refreshed.FineTuning {
-		fineTuneVariant = refreshed.FineTuneVariantOrDefault()
-		fineTuneSvc := verify.FineTuneServiceName(fineTuneVariant)
+	if state.FineTuning {
+		variant := state.FineTuneVariantOrDefault()
+		svc := verify.FineTuneServiceName(variant)
 		items = append(items, pullItem{
-			name: fineTuneSvc,
-			ref:  verify.FormatImageRef(fineTuneSvc, refreshed.ImageTag, refreshed.VerifiedDigests[fineTuneSvc]),
+			name: svc,
+			ref:  verify.FormatImageRef(svc, state.ImageTag, state.VerifiedDigests[svc]),
 		})
 	}
+	return items
+}
 
-	// Emit the fine-tune size hint BEFORE the pull box renders, so the
-	// user understands why their terminal is about to pause. Emitting it
-	// after the pull (the old behaviour) was a logic error: by the time
-	// the warning appeared, the wait had already completed. The per-
-	// variant size matches the post-split image layout (see PR #1442).
-	if fineTuneVariant != "" {
-		sizeHint := "up to ~4 GB"
-		if fineTuneVariant == config.FineTuneVariantCPU {
-			sizeHint = "~1.7 GB"
-		}
-		out.HintTip(fmt.Sprintf(
-			"Fine-tune image is %s -- first pull can take a few minutes on typical connections.",
-			sizeHint,
-		))
+// emitFineTuneSizeHint warns the user about the fine-tune image size
+// BEFORE the pull box renders so they understand why their terminal is
+// about to pause. Emitting it after (the old behaviour) was a logic
+// error: by the time the warning appeared, the wait had already
+// completed. The per-variant size matches the post-split image layout.
+func emitFineTuneSizeHint(state config.State, out *ui.UI) {
+	if !state.FineTuning {
+		return
 	}
+	sizeHint := "up to ~4 GB"
+	if state.FineTuneVariantOrDefault() == config.FineTuneVariantCPU {
+		sizeHint = "~1.7 GB"
+	}
+	out.HintTip(fmt.Sprintf(
+		"Fine-tune image is %s -- first pull can take a few minutes on typical connections.",
+		sizeHint,
+	))
+}
 
-	// Show all pulls in one LiveBox.
+// runPullBatch fans out a pull goroutine per item and renders progress
+// in a single LiveBox. Returns the joined error covering every failed
+// pull (nil when every pull succeeds).
+func runPullBatch(ctx context.Context, info docker.Info, safeDir string, items []pullItem, out *ui.UI) error {
 	labels := make([]string, len(items))
 	for i, item := range items {
 		labels[i] = item.name
@@ -344,35 +394,37 @@ func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state 
 	var (
 		mu      sync.Mutex
 		pullErr error
+		wg      sync.WaitGroup
 	)
-	var wg sync.WaitGroup
 	for i, item := range items {
 		wg.Add(1)
 		go func(idx int, it pullItem) {
 			defer wg.Done()
-			var err error
-			if it.compose {
-				err = composeRunQuiet(ctx, info, safeDir, "pull", it.name)
-			} else {
-				tun := GetGlobalOpts(ctx).Tunables
-				err = dockerPullWithRetry(
-					ctx, info, it.ref,
-					tun.ImagePullAttempts, tun.ImagePullRetryDelay,
-				)
-			}
+			err := pullOneItem(ctx, info, safeDir, it)
 			if err != nil {
 				lb.UpdateLine(idx, ui.IconError)
 				mu.Lock()
 				pullErr = errors.Join(pullErr, fmt.Errorf("pulling %s: %w", it.name, err))
 				mu.Unlock()
-			} else {
-				lb.UpdateLine(idx, ui.IconSuccess)
+				return
 			}
+			lb.UpdateLine(idx, ui.IconSuccess)
 		}(i, item)
 	}
 	wg.Wait()
+	return pullErr
+}
 
-	return refreshed, pullErr
+// pullOneItem dispatches to the right puller for the item kind: compose
+// services go through docker-compose's own pull (so it picks up the
+// image override from compose.yml); standalone images use the retrying
+// dockerPullWithRetry.
+func pullOneItem(ctx context.Context, info docker.Info, safeDir string, it pullItem) error {
+	if it.compose {
+		return composeRunQuiet(ctx, info, safeDir, "pull", it.name)
+	}
+	tun := GetGlobalOpts(ctx).Tunables
+	return dockerPullWithRetry(ctx, info, it.ref, tun.ImagePullAttempts, tun.ImagePullRetryDelay)
 }
 
 // maxPullBackoff caps the exponential-backoff delay between image-pull

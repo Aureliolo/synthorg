@@ -566,16 +566,57 @@ func sortBackups(backups []backupInfo, criterion string) {
 
 func runBackupRestore(cmd *cobra.Command, args []string) error {
 	backupID := args[0]
-
-	// Validate backup ID format before anything else.
 	if !isValidBackupID(backupID) {
 		return fmt.Errorf("invalid backup ID %q: must be a 12-character hex string", backupID)
 	}
-
 	opts := GetGlobalOpts(cmd.Context())
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
+	if err := assertRestoreConfirmFlag(cmd, errOut, backupID); err != nil {
+		return err
+	}
+	timeout, err := resolveBackupTimeout(cmd, backupRestoreTimeout, "timeout", opts.Tunables.BackupRestoreTimeout)
+	if err != nil {
+		return err
+	}
+	state, err := config.Load(opts.DataDir)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return err
+	}
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
+	if backupRestoreDryRun {
+		return renderRestoreDryRun(out, backupID, safeDir)
+	}
+	return executeRestoreRequest(cmd, out, errOut, state, safeDir, backupID, timeout)
+}
 
-	// Check --confirm flag.
+// executeRestoreRequest posts the restore call and dispatches to the
+// success / error renderer.
+func executeRestoreRequest(cmd *cobra.Command, out, errOut *ui.UI, state config.State, safeDir, backupID string, timeout time.Duration) error {
+	out.Step("Restoring from backup " + backupID + "...")
+	reqBody, err := json.Marshal(restoreRequest{BackupID: backupID, Confirm: true})
+	if err != nil {
+		return fmt.Errorf("building restore request: %w", err)
+	}
+	body, statusCode, err := backupAPIRequest(
+		cmd.Context(), state.BackendPort, http.MethodPost, "/restore", reqBody, timeout, state.JWTSecret,
+	)
+	if err != nil {
+		return fmt.Errorf("restoring backup: %w", err)
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		return handleRestoreError(errOut, body, statusCode, backupID)
+	}
+	return renderRestoreSuccess(cmd, out, errOut, body, safeDir)
+}
+
+// assertRestoreConfirmFlag checks that --confirm was passed. Without
+// it, restore is rejected: the user must opt in to a destructive
+// rollback.
+func assertRestoreConfirmFlag(cmd *cobra.Command, errOut *ui.UI, backupID string) error {
 	confirm, err := cmd.Flags().GetBool("confirm")
 	if err != nil {
 		return fmt.Errorf("reading --confirm flag: %w", err)
@@ -585,54 +626,17 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		errOut.HintNextStep(fmt.Sprintf("Run 'synthorg backup restore %s --confirm' to proceed", backupID))
 		return NewExitError(ExitUsage, errors.New("--confirm flag is required"))
 	}
+	return nil
+}
 
-	timeout, err := resolveBackupTimeout(cmd, backupRestoreTimeout, "timeout", opts.Tunables.BackupRestoreTimeout)
-	if err != nil {
-		return err
-	}
-
-	state, err := config.Load(opts.DataDir)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
-
-	// Validate paths early, consistent with stop.go.
-	safeDir, err := safeStateDir(state)
-	if err != nil {
-		return err
-	}
-
-	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-
-	// --dry-run: show what would be restored and exit.
-	if backupRestoreDryRun {
-		out.Step("Dry run: would restore from backup " + backupID)
-		out.KeyValue("Backup ID", backupID)
-		out.KeyValue("Data directory", safeDir)
-		out.KeyValue("Restart", boolToYesNo(!backupRestoreNoRestart))
-		out.HintNextStep("Remove --dry-run to execute the restore")
-		return nil
-	}
-
-	out.Step("Restoring from backup " + backupID + "...")
-
-	reqBody, err := json.Marshal(restoreRequest{BackupID: backupID, Confirm: true})
-	if err != nil {
-		return fmt.Errorf("building restore request: %w", err)
-	}
-
-	body, statusCode, err := backupAPIRequest(
-		cmd.Context(), state.BackendPort, http.MethodPost, "/restore", reqBody, timeout, state.JWTSecret,
-	)
-	if err != nil {
-		return fmt.Errorf("restoring backup: %w", err)
-	}
-
-	if statusCode < 200 || statusCode >= 300 {
-		return handleRestoreError(errOut, body, statusCode, backupID)
-	}
-
-	return renderRestoreSuccess(cmd, out, errOut, body, safeDir)
+// renderRestoreDryRun prints what a restore would do without executing.
+func renderRestoreDryRun(out *ui.UI, backupID, safeDir string) error {
+	out.Step("Dry run: would restore from backup " + backupID)
+	out.KeyValue("Backup ID", backupID)
+	out.KeyValue("Data directory", safeDir)
+	out.KeyValue("Restart", boolToYesNo(!backupRestoreNoRestart))
+	out.HintNextStep("Remove --dry-run to execute the restore")
+	return nil
 }
 
 // renderRestoreSuccess parses and displays a successful restore response,
