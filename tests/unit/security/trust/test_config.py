@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for trust configuration models."""
 
 from typing import Any

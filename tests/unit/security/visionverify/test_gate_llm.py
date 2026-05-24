@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for the vision gate and the llm_vision verifier."""
 
 from pathlib import Path

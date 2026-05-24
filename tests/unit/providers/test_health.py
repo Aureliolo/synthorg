@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for provider health tracking."""
 
 import asyncio
@@ -309,7 +310,7 @@ class TestProviderHealthTracker:
 
         async with asyncio.TaskGroup() as tg:
             for batch in range(4):
-                tg.create_task(_record_batch(batch))
+                _ = tg.create_task(_record_batch(batch))
 
         summary = await tracker.get_summary("test-provider", now=now)
         assert summary.calls_last_24h == 200

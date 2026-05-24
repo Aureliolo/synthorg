@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override"
 """Tests for provider-error metric emission in ``BaseCompletionProvider``.
 
 When an underlying driver raises, the base class must classify the

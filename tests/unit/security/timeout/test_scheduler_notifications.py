@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Regression tests: scheduler tracks fire-and-forget escalation notifications.
 
 The approval-escalation notification must be tracked via
@@ -104,7 +105,7 @@ async def test_scheduler_stop_drains_pending_notifications() -> None:
     async def _blocked_until_cancelled() -> None:
         await blocker.wait()
 
-    scheduler._background_tasks.spawn(
+    _ = scheduler._background_tasks.spawn(
         _blocked_until_cancelled(),
         event=NOTIFICATION_ESCALATION_SEND,
     )

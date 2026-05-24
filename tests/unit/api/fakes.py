@@ -1123,7 +1123,6 @@ class FakeSettingsRepository:
     async def set_if_unchanged(
         self,
         entity: SettingRow,
-        *,
         expected_updated_at: str | None = None,
     ) -> bool:
         if expected_updated_at is not None:

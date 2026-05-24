@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override"
 """Conformance tests for the BaseCompletionProvider cost-recording chokepoint.
 
 A successful ``provider.complete()`` call inside an open
@@ -272,8 +273,8 @@ class TestCostRecordingChokepoint:
                 await asyncio.sleep(0)  # let task_b run
 
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(task_a())
-            tg.create_task(task_b())
+            _ = tg.create_task(task_a())
+            _ = tg.create_task(task_b())
 
         await tracker_a.drain_pending_records()
         # task_b ran outside any scope -> nothing recorded on tracker_b

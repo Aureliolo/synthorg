@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for CallAnalyticsService aggregation and alerting."""
 
 from datetime import UTC, datetime

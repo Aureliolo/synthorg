@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for BudgetEnforcer degradation integration."""
 
 from datetime import UTC, datetime

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for local model management (pull, delete, factory)."""
 
 from collections.abc import AsyncIterator, Callable

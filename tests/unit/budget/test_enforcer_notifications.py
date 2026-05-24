@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Regression tests: budget enforcer tracks fire-and-forget notifications.
 
 Monthly / daily budget notifications must be tracked via

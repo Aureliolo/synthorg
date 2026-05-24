@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for provider model auto-discovery."""
 
 import socket

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Shared fixtures for provider management tests."""
 
 from collections.abc import AsyncIterator
@@ -76,7 +77,7 @@ def app_state(
     return AppState(
         config=root_config,
         approval_store=ApprovalStore(),
-        persistence=fake_persistence,
+        persistence=fake_persistence,  # type: ignore[arg-type]  # FakePersistenceBackend covers the subset of PersistenceBackend exercised by these tests; protocol gaps tracked under #2056
         message_bus=fake_message_bus,
         settings_service=settings_service,
     )

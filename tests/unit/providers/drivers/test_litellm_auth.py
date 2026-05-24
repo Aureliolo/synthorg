@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for LiteLLM driver multi-auth support."""
 
 from datetime import UTC, datetime

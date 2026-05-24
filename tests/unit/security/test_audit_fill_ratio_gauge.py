@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Regression: ``AuditLog.record`` updates the fill-ratio gauge each append.
 
 The gauge value is exposed as
