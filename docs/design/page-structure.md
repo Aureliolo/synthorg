@@ -35,7 +35,7 @@ Living org visualization with real-time agent status. Two view modes toggled via
 
 Click agent nodes to open Agent Detail panel.
 
-"Edit Organization" button enters form-based edit mode (`/org/edit`) with sub-tabs: General (name, autonomy level, monthly budget, communication pattern), Agents (card grid with add/edit/delete), Departments (card grid with CRUD; nested team editing via the Department Edit drawer with create/rename/delete/reorder teams using @dnd-kit; reporting/policies editing remains deferred). This is the former Company page merged into the Org Chart; same data domain, one destination.
+"Edit Organisation" button enters form-based edit mode (`/org/edit`) with sub-tabs: General (name, autonomy level, monthly budget, communication pattern), Agents (card grid with add/edit/delete), Departments (card grid with CRUD; nested team editing via the Department Edit drawer with create/rename/delete/reorder teams using @dnd-kit; reporting/policies editing remains deferred). This is the former Company page merged into the Org Chart; same data domain, one destination.
 
 **API endpoints**: `GET /company`, `GET /company/departments`, `GET /departments`, `GET /departments/{name}`, `GET /departments/{name}/health`, `GET /agents`, `GET /agents/{name}`, `GET /messages` (communication view), `PATCH /agents/{name}` (drag-drop reassignment in hierarchy view). Edit mode adds: `PATCH /company`, `POST /departments`, `PATCH /departments/{name}`, `DELETE /departments/{name}`, `POST /company/reorder-departments`, `POST /agents`, `DELETE /agents/{name}`, `POST /departments/{name}/reorder-agents`, `POST /departments/{name}/teams`, `PATCH /departments/{name}/teams/{team_name}`, `DELETE /departments/{name}/teams/{team_name}`, `PATCH /departments/{name}/teams/reorder`.
 **WS channels**: `agents` (status changes, hired/fired). Communication view uses REST polling for message data (not WS).
@@ -79,8 +79,8 @@ Agent profiles as card grid. Each card shows name, role, department, status dot,
 - **Prose insights**: 1-3 generated narrative sentences from performance data (e.g. "Success rate of 94% across 127 completed tasks")
 - **Performance metrics**: 2x2 grid of MetricCards (tasks completed, avg completion time, success rate, cost per task) with sparklines
 - **Tool badges**: Horizontal flex-wrap of permitted tools
-- **Career timeline**: Vertical timeline with colored dots (hired=green, promoted=blue, demoted=yellow, fired=red)
-- **Task history**: Gantt-style horizontal bars sorted by time, type-colored, pulse on in-progress tasks, duration labels
+- **Career timeline**: Vertical timeline with coloured dots (hired=green, promoted=blue, demoted=yellow, fired=red)
+- **Task history**: Gantt-style horizontal bars sorted by time, type-coloured, pulse on in-progress tasks, duration labels
 - **Activity log**: Paginated chronological event list with type icons, descriptions, timestamps
 
 **Deferred to future iteration**: Spending breakdown and tabbed layout (Access tab).
@@ -230,7 +230,7 @@ System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Env
 
 #### Documentation (`/docs/`)
 
-Served as static MkDocs HTML by Caddy, not a React page. The `/docs/` Caddy handle block serves pre-built documentation directly, bypassing the SPA's `try_files` fallback. The sidebar "Docs" link renders a plain `<a href>` (full-page navigation) instead of a React Router `<NavLink>`. MkDocs Material's own search, navigation, and dark mode function independently of the React app. Theme colors are customized via `docs/overrides/extra.css` to match the dashboard design system.
+Served as static MkDocs HTML by Caddy, not a React page. The `/docs/` Caddy handle block serves pre-built documentation directly, bypassing the SPA's `try_files` fallback. The sidebar "Docs" link renders a plain `<a href>` (full-page navigation) instead of a React Router `<NavLink>`. MkDocs Material's own search, navigation, and dark mode function independently of the React app. Theme colours are customised via `docs/overrides/extra.css` to match the dashboard design system.
 
 **API endpoints**: (none; static HTML served by Caddy)
 **WS channels**: (none)
@@ -315,35 +315,35 @@ Sidebar layout (220px expanded, 56px icon rail):
 
 - **Brand**: Logo / brand mark
 - **Primary**:
-    - Dashboard, `LayoutDashboard`, `/`
-    - Org Chart, `GitBranch`, `/org`
-    - Task Board, `KanbanSquare`, `/tasks`
-    - Budget, `DollarSign`, `/budget` (amber dot when >85% spent)
-    - Approvals, `ShieldCheck`, `/approvals` (badge: pending count)
+  - Dashboard, `LayoutDashboard`, `/`
+  - Org Chart, `GitBranch`, `/org`
+  - Task Board, `KanbanSquare`, `/tasks`
+  - Budget, `DollarSign`, `/budget` (amber dot when >85% spent)
+  - Approvals, `ShieldCheck`, `/approvals` (badge: pending count)
 - **Workspace** (collapsible label):
-    - Agents, `Users`, `/agents`
-    - Projects, `FolderKanban`, `/projects`
-    - Workflows, `Workflow`, `/workflows`
-    - Subworkflows, `Layers`, `/subworkflows`
-    - Artifacts, `Package`, `/artifacts`
-    - Messages, `MessageSquare`, `/messages` (badge: unread count)
-    - Meetings, `Video`, `/meetings`
-    - Providers, `Cpu`, `/providers`
-    - Docs, `BookOpen`, `/docs/` (external; static HTML, not SPA)
-    - Fine-Tuning, `Sparkles`, `/settings/memory/fine-tuning`
-    - Settings, `Settings`, `/settings`
+  - Agents, `Users`, `/agents`
+  - Projects, `FolderKanban`, `/projects`
+  - Workflows, `Workflow`, `/workflows`
+  - Subworkflows, `Layers`, `/subworkflows`
+  - Artifacts, `Package`, `/artifacts`
+  - Messages, `MessageSquare`, `/messages` (badge: unread count)
+  - Meetings, `Video`, `/meetings`
+  - Providers, `Cpu`, `/providers`
+  - Docs, `BookOpen`, `/docs/` (external; static HTML, not SPA)
+  - Fine-Tuning, `Sparkles`, `/settings/memory/fine-tuning`
+  - Settings, `Settings`, `/settings`
 - **Bottom**:
-    - Collapse toggle
-    - Notifications bell + badge
-    - `Cmd+K` hint
-    - Connection status dot from `/health`
-    - User avatar / role badge / logout
+  - Collapse toggle
+  - Notifications bell + badge
+  - `Cmd+K` hint
+  - Connection status dot from `/health`
+  - User avatar / role badge / logout
 
 **Icon source**: Lucide React (already a project dependency).
 
 **Visual separators**: Thin border lines between Primary, Workspace, and Bottom sections. No section headers for Primary; items speak for themselves. "Workspace" label for secondary section, hidden when sidebar is collapsed to icon rail.
 
-**Badge behaviors**:
+**Badge behaviours**:
 
 - **Approvals**: Live count of pending approvals from WS `approvals` channel. Red badge. Disappears at zero.
 - **Messages**: Unread message count from WS `messages` channel. Muted badge. Disappears at zero.
@@ -413,7 +413,7 @@ Sidebar layout (220px expanded, 56px icon rail):
 
 ### Route Guards
 
-| Rule | Behavior |
+| Rule | Behaviour |
 |------|----------|
 | No JWT token | Redirect to `/login` (all routes except `/login` and `/setup`) |
 | Setup not complete | Redirect to `/setup` (all routes except `/login` and `/setup`) |
@@ -493,7 +493,7 @@ Messages have a dedicated API (`/messages` + channel filtering) and WebSocket ch
 
 ### Org Chart + Company: Merged with mode separation
 
-Both deal with the same data domain (departments, teams, agents, reporting lines). The default is an interactive visualization with two view modes: hierarchy (dagre, with drag-drop agent reassignment as an inline mutating action) and communication (d3-force). An "Edit Organization" button enters form-based edit mode using the sub-tab structure (General, Agents, Departments) as a panel overlay for bulk configuration changes.
+Both deal with the same data domain (departments, teams, agents, reporting lines). The default is an interactive visualization with two view modes: hierarchy (dagre, with drag-drop agent reassignment as an inline mutating action) and communication (d3-force). An "Edit Organisation" button enters form-based edit mode using the sub-tab structure (General, Agents, Departments) as a panel overlay for bulk configuration changes.
 
 ---
 

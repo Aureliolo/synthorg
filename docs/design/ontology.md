@@ -77,7 +77,7 @@ class Task(BaseModel):
 ```
 
 The decorator inspects the model's docstring and `Field(description=...)`
-annotations.  Registration is lazy; the decorator stores a reference to
+annotations. Registration is lazy; the decorator stores a reference to
 the class, and `EntityDefinition` objects are built on first access via
 `get_entity_registry()`.
 
@@ -103,8 +103,8 @@ The following 12 models are registered at startup:
 ## Versioning
 
 Entity definitions are versioned using the existing `VersioningService[T]`
-pattern.  Content-addressable SHA-256 hashing deduplicates unchanged
-definitions.  Version table: `entity_definition_versions` (same schema as
+pattern. Content-addressable SHA-256 hashing deduplicates unchanged
+definitions. Version table: `entity_definition_versions` (same schema as
 `agent_identity_versions`).
 
 ## Configuration

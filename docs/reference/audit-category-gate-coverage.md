@@ -26,7 +26,7 @@ The four resolution paths are:
 | Redundant per-test `pytest.mark.timeout(30)` | Standing gate | `scripts/check_no_redundant_timeout.py` |
 | Bulk edits without explicit user approval | Standing gate | `scripts/check_no_bulk_edit.py` |
 | Provider chokepoint (LLM calls bypassing `BaseCompletionProvider`) | Standing gate | `scripts/check_provider_complete_chokepoint.py` |
-| Web design tokens (hardcoded colors / spacing / motion) | Standing gate | `scripts/check_web_design_system.py` |
+| Web design tokens (hardcoded colours / spacing / motion) | Standing gate | `scripts/check_web_design_system.py` |
 | Documentation count drift (event modules) | Standing gate | `scripts/check_doc_drift_counts.py` |
 | OpenAPI liveness | Standing gate | `scripts/check_openapi_liveness.py` |
 | Orphan test fixtures | Standing gate | `scripts/check_orphan_fixtures.py` |

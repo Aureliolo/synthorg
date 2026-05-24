@@ -38,6 +38,7 @@ HYPOTHESIS_PROFILE=fuzz uv run python -m pytest tests/ -m unit --timeout=0
 bash scripts/install_git_hooks.sh                   # one-time per clone: wire core.hooksPath -> scripts/git-hooks (NOT pre-commit install)
 uv run pre-commit run --all-files
 uv run pre-commit run lychee --hook-stage pre-push --all-files                      # local Markdown link-check (lychee, 8-15s)
+vale README.md CLAUDE.md cli/CLAUDE.md web/CLAUDE.md docs/                          # prose linter (Google style + British vocab, sub-second)
 uv run python scripts/check_schema_drift_revisions.py --backend sqlite  # or --backend postgres
 PYTHONPATH=. uv run zensical build                  # docs
 ```

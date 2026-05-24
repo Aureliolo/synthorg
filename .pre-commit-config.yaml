@@ -14,11 +14,16 @@ ci:
   #     (actionlint is NOT skipped: no dedicated CI job covers it, and
   #     pre-commit.ci is the only enforcement layer for contributors who
   #     skipped local hooks.)
-  #   - mypy / pytest-unit / go-* / lychee / eslint-web:
+  #   - mypy / pytest-unit / go-* / lychee / vale / eslint-web:
   #     too slow / toolchain-heavy for the cloud runner.
   #     lychee is also a Rust binary not bundled with pre-commit-uv;
   #     operators install it via `bash scripts/install_cli_tools.sh`,
-  #     and CI runs it via .github/workflows/lychee.yml.
+  #     and CI runs it via .github/workflows/lychee.yml. vale follows the
+  #     same shape: a Go binary not bundled with pre-commit-uv, operators
+  #     install it via `bash scripts/install_cli_tools.sh vale` (which
+  #     also runs `vale sync` to materialise the Google style package
+  #     under the gitignored `.vale/styles/Google/`). No CI workflow yet
+  #     (see issue #2069 follow-up note); pre-push is the only gate.
   #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
   #     persistence-boundary / no-new-logger-exception-str-exc /
   #     orphan-fixtures / boundary-typed / setting-to-startup-trace /
@@ -41,7 +46,7 @@ ci:
   # local-only pre-push hook surface) so pre-commit.ci does not pick
   # them up; their CI counterpart is the ``Lint`` job in ``ci.yml``
   # which runs the same scripts on every PR.
-  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
+  skip: [commitizen, gitleaks, hadolint-docker, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, eslint-web, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, forbidden-literals, persistence-boundary, persistence-protocol-uniformity, dependency-inversion, provider-complete-chokepoint, no-new-logger-exception-str-exc, otlp-span-redaction, orphan-fixtures, doc-drift-counts, boundary-typed, setting-to-startup-trace, long-running-loop-kill-switch, list-pagination, domain-error-hierarchy, dead-api-endpoints, dual-backend-test-parity, schema-drift, no-magic-numbers, convention-gate-inventory, mcp-admin-guardrail, runtime-stats-freshness, dto-types-ts-in-sync, no-stdlib-logging, module-size-budget, no-growth-in-god-modules, no-central-junk-drawer, no-circular-imports, module-depth, protocol-documented, no-module-level-io, state-slice-immutability, strategy-protocol-injection, settings-namespace-complete, deptry, vulture, interrogate, sqlfluff, yamllint, web-knip, web-circular]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -421,6 +426,24 @@ repos:
         # under docs/. The CI workflow .github/workflows/lychee.yml
         # mirrors this glob set; the local hook is pre-push only
         # because the network probes take 8-15s.
+        files: ^(README|CLAUDE|cli/CLAUDE|web/CLAUDE)\.md$|^docs/.*\.md$
+        pass_filenames: true
+        stages: [pre-push]
+
+      - id: vale
+        name: vale (prose linter -- Google style + British vocab)
+        entry: vale
+        # --minAlertLevel=suggestion gates on the strictest level; the
+        # corpus is drained to zero findings in #2069 so this is safe.
+        # `.vale.ini` declares Packages = Google; the package files live
+        # under `.vale/styles/Google/` (gitignored) and are populated by
+        # `vale sync` from scripts/install_cli_tools.sh.
+        args: ["--config", ".vale.ini", "--minAlertLevel=suggestion"]
+        language: system
+        # Same glob as lychee + markdownlint: README, every CLAUDE.md
+        # tier, and every Markdown under docs/. Pre-push only -- vale
+        # itself is sub-second on this corpus but pre-push is the
+        # right surface for prose-style gates (matches lychee's posture).
         files: ^(README|CLAUDE|cli/CLAUDE|web/CLAUDE)\.md$|^docs/.*\.md$
         pass_filenames: true
         stages: [pre-push]

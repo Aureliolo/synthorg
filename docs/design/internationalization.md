@@ -8,10 +8,10 @@ The dashboard ships UI copy in International / British English (`colour`, `behav
 
 ## What this means in practice
 
-- Component authors keep user-facing strings inline. Do not extract them into a constants module "for centralization." That has indirection cost without payoff while the product remains English-only.
+- Component authors keep user-facing strings inline. Do not extract them into a constants module "for centralisation." That has indirection cost without payoff while the product remains English-only.
 - The narrow exception is when the same long error message is used three or more times verbatim. That is deduplication, not internationalization; keep it close to the consumers (e.g. a small `errors.ts` next to the components).
 - Currency, date, and number formatting still flow through `Intl` and read the operator's settings (see [Regional Defaults in CLAUDE.md](https://github.com/Aureliolo/synthorg/blob/main/CLAUDE.md)). That is locale-aware *display* of numeric data, not translation of the surrounding UI chrome.
-- Audit findings flagging "hardcoded user-facing strings should be centralized for i18n readiness" are no longer tracked. The codebase audit's agent definition has been updated accordingly.
+- Audit findings flagging "hardcoded user-facing strings should be centralised for i18n readiness" are no longer tracked. The codebase audit's agent definition has been updated accordingly.
 
 ## When to revisit
 

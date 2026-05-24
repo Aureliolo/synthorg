@@ -127,7 +127,7 @@ reasoning or plants hidden instruction backdoors.
 Poisoning detection relies on manual audit and quality verification.
 
 **New mitigation**: Threat model documentation only. The existing
-defense-in-depth (MVCC writes, procedural guards, quality verification)
+defence-in-depth (MVCC writes, procedural guards, quality verification)
 provides strong coverage. Automated RAG-store integrity verification
 is a future enhancement.
 
@@ -220,7 +220,7 @@ or disclosing sensitive information.
 **Gap**: No cognitive-bias-specific warnings in the dashboard UI.
 The EvidencePackage structure supports bias mitigation (narrative
 context, multiple recommended actions) but the UI doesn't currently
-surface bias-specific cues (e.g. "This is the 5th approval in 10
+surface bias-specific cues (e.g. "This is the fifth approval in 10
 minutes; consider slowing down").
 
 **New mitigation**: Threat model documentation only. UI-level

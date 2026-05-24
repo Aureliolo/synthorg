@@ -63,7 +63,7 @@ See [docs/reference/web-zustand-stores.md](../docs/reference/web-zustand-stores.
 
 ## Design System (MANDATORY)
 
-**ALWAYS reuse existing components from `web/src/components/ui/`** before creating new ones. NEVER hardcode hex colors, font-family declarations, pixel spacing, Motion transition durations, BCP 47 locale literals (`'en-US'`), or currency symbols / codes; use design tokens, `@/lib/motion` presets, the helpers in `@/utils/format`, and `DEFAULT_CURRENCY` from `@/utils/currencies`. Every new shared component lives in `web/src/components/ui/` with a sibling `.stories.tsx` covering all states. Base UI primitives are imported directly from `@base-ui/react/<subpath>` and use the native `render` prop for polymorphism; the local `<Slot>` helper is reserved for `<Button asChild>`.
+**ALWAYS reuse existing components from `web/src/components/ui/`** before creating new ones. NEVER hardcode hex colours, font-family declarations, pixel spacing, Motion transition durations, BCP 47 locale literals (`'en-US'`), or currency symbols / codes; use design tokens, `@/lib/motion` presets, the helpers in `@/utils/format`, and `DEFAULT_CURRENCY` from `@/utils/currencies`. Every new shared component lives in `web/src/components/ui/` with a sibling `.stories.tsx` covering all states. Base UI primitives are imported directly from `@base-ui/react/<subpath>` and use the native `render` prop for polymorphism; the local `<Slot>` helper is reserved for `<Button asChild>`.
 
 **Component file conventions** (uniform across all 50+ shared
 components in `web/src/components/ui/`):
@@ -86,7 +86,7 @@ components in `web/src/components/ui/`):
 
 A PostToolUse hook (`scripts/check_web_design_system.py`) runs on every `web/src/` edit and flags hardcoded hex / rgba / fonts / Motion durations / locale literals / bare `.toLocale*String()` calls / missing Storybook stories / duplicate component patterns / complex `.map()` blocks. Fix every violation before proceeding.
 
-See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md) for the full component inventory (badges, cards, forms, layout, feedback, animation, command palette, version rollback, provider picker), the design-token recipe book (colors, typography, spacing, shadows, responsive widths, chart SVG attributes), the Base UI integration recipe (Portal + Backdrop + Popup composition, animation state attributes, Tailwind v4 transition gotchas), and the "What NOT to do" anti-pattern list.
+See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md) for the full component inventory (badges, cards, forms, layout, feedback, animation, command palette, version rollback, provider picker), the design-token recipe book (colours, typography, spacing, shadows, responsive widths, chart SVG attributes), the Base UI integration recipe (Portal + Backdrop + Popup composition, animation state attributes, Tailwind v4 transition gotchas), and the "What NOT to do" anti-pattern list.
 
 ### Anti-patterns (lint-enforced)
 

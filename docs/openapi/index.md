@@ -1,6 +1,6 @@
 # REST API Reference
 
-SynthOrg exposes a REST + WebSocket API built on [Litestar](https://litestar.dev/). The API is the primary integration surface for the web dashboard, the Go CLI, and any external clients that want to drive a synthetic organization programmatically.
+SynthOrg exposes a REST + WebSocket API built on [Litestar](https://litestar.dev/). The API is the primary integration surface for the web dashboard, the Go CLI, and any external clients that want to drive a synthetic organisation programmatically.
 
 **[Open Interactive Reference :material-open-in-new:](reference.html){ .md-button .md-button--primary }**
 **[Download OpenAPI Schema :material-download:](openapi.json){ .md-button }**
@@ -47,7 +47,7 @@ SynthOrg uses **JWT session tokens** issued by the auth controller. The typical 
 3. **Password change.** New users are forced through `POST /api/v1/auth/change-password` before any other endpoint accepts their token; the `require_password_changed` guard blocks everything else until the temporary password is rotated.
 4. **Current identity.** `GET /api/v1/auth/me` returns the caller's `id`, `username`, `role`, and `must_change_password` flag (no session metadata).
 5. **WebSocket tickets.** Browsers can't set `Authorization` headers on WebSocket connections, so `POST /api/v1/auth/ws-ticket` mints a short-lived single-use ticket. The **preferred** way to present it is as the first WebSocket message (`{"action": "auth", "ticket": "<ticket>"}`) so the ticket never lands in URLs, access logs, or browser history. A legacy `/api/v1/ws?ticket=<ticket>` query-param form is also accepted and is validated before the WebSocket upgrade.
-6. **Session management.** `GET /api/v1/auth/sessions` lists the caller's active sessions by default; CEOs can pass `?scope=all` to list every user's sessions across the organization. `DELETE /api/v1/auth/sessions/{session_id}` revokes a specific session. `POST /api/v1/auth/logout` is the normal "log out of this browser" action and **attempts server-side revocation** of the JTI when a valid JWT is presented. Logout is **idempotent**: it always returns 204 with cookie-clearing headers (`Max-Age=0` session/CSRF/refresh cookies plus `Clear-Site-Data: "cookies"`), whether or not the caller is authenticated, so clients can recover from stale cookie state without a catch-22. Logout is excluded from both auth middleware and CSRF double-submit validation so recovery works from any stale-cookie state; the server-side revocation step is best-effort (a session-store failure still returns 204 and clears cookies rather than 500-ing the client). There is no bulk "revoke all" endpoint.
+6. **Session management.** `GET /api/v1/auth/sessions` lists the caller's active sessions by default; CEOs can pass `?scope=all` to list every user's sessions across the organisation. `DELETE /api/v1/auth/sessions/{session_id}` revokes a specific session. `POST /api/v1/auth/logout` is the normal "log out of this browser" action and **attempts server-side revocation** of the JTI when a valid JWT is presented. Logout is **idempotent**: it always returns 204 with cookie-clearing headers (`Max-Age=0` session/CSRF/refresh cookies plus `Clear-Site-Data: "cookies"`), whether or not the caller is authenticated, so clients can recover from stale cookie state without a catch-22. Logout is excluded from both auth middleware and CSRF double-submit validation so recovery works from any stale-cookie state; the server-side revocation step is best-effort (a session-store failure still returns 204 and clears cookies rather than 500-ing the client). There is no bulk "revoke all" endpoint.
 
 Passwords are hashed with Argon2id. The server performs a constant-time dummy verification on unknown usernames to prevent timing-based user enumeration.
 
@@ -71,7 +71,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Auth | `/auth` | 8 routes under Auth. |
 | Users | `/users` | 4 routes under Users. |
 
-### Organization and agents
+### Organisation and agents
 
 | Resource | Path | Purpose |
 |---|---|---|
@@ -161,7 +161,7 @@ List endpoints accept `limit` and `offset` query parameters and return a `Pagina
 
 ### Optimistic concurrency
 
-Runtime-editable settings emit an `ETag` header on reads and honor `If-Match` on writes. To update a setting without trampling a concurrent write, pass the previously-received ETag back via `If-Match`; a mismatch produces a `409 Conflict` with `error_code` `VERSION_CONFLICT` (4002).
+Runtime-editable settings emit an `ETag` header on reads and honour `If-Match` on writes. To update a setting without trampling a concurrent write, pass the previously-received ETag back via `If-Match`; a mismatch produces a `409 Conflict` with `error_code` `VERSION_CONFLICT` (4002).
 
 Workflow definitions, workflow versions, workflow executions, and tasks use a different optimistic-concurrency mechanism: an `expected_version: int` field in the **request body** (not an HTTP header). The server rejects the update with the same `VERSION_CONFLICT` code when the stored version differs from the value supplied. Both mechanisms produce identical error shapes on conflict; only the input channel differs.
 
@@ -224,7 +224,7 @@ In both shapes, `instance` is the **request correlation ID** used for log tracin
 | 7xxx | `provider_error` | Upstream LLM provider failures |
 | 8xxx | `internal` | Unhandled server errors |
 
-The `type` URI points to the category section of the [Error Reference](../errors.md), using the pattern `https://synthorg.io/docs/errors#<category>`. The full error taxonomy, including `retryable` semantics and `retry_after` behavior, lives there.
+The `type` URI points to the category section of the [Error Reference](../errors.md), using the pattern `https://synthorg.io/docs/errors#<category>`. The full error taxonomy, including `retryable` semantics and `retry_after` behaviour, lives there.
 
 ---
 

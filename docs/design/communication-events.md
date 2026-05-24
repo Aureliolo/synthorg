@@ -178,19 +178,19 @@ Prevents delegation runaway in multi-hop delegation chains.
 Research tasks need deduplicated citation tracking across parallel
 sub-agent findings.
 
-`Citation` is a frozen Pydantic model with `url` (canonical normalized
+`Citation` is a frozen Pydantic model with `url` (canonical normalised
 form), `title`, `first_seen_at`, `first_seen_by_agent_id`, and
 `accessed_via` (tool/memory/file).
 
 `CitationManager` is immutable (each operation returns a new instance).
-It tracks citations by normalized URL, deduplicating across agents:
+It tracks citations by normalised URL, deduplicating across agents:
 
-- `add()` normalizes the URL and deduplicates against existing entries
+- `add()` normalises the URL and deduplicates against existing entries
 - `render_inline()` returns `[N]` for a tracked URL
 - `render_sources_section()` renders the final `## Sources` block
 - `to_handoff_payload()` / `from_handoff_payload()` enable propagation
   through delegation chains via `HandoffArtifact`
 
-URL normalization (`normalize_url()`) lowercases scheme + host, strips
+URL normalisation (`normalize_url()`) lowercases scheme + host, strips
 default ports, drops fragment and credentials, sorts query parameters,
 strips trailing slash, and wraps IPv6 addresses in brackets.

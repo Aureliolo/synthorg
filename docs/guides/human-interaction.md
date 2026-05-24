@@ -86,14 +86,14 @@ In addition to the global three-tier limiter applied in `api/app.py`
 (10,000 req/min/IP floor, 20 req/min unauth by IP, 6,000 req/min auth
 by user ID; see `docs/security.md` for the exact behaviour), a
 pluggable sliding-window limiter throttles individual expensive or
-abuse-prone operations.  Guards are declared at the route level via
+abuse-prone operations. Guards are declared at the route level via
 `per_op_rate_limit("<op>", max_requests=N, window_seconds=W, key=...)`
 from `synthorg/api/rate_limits/guard.py`.
 
 - **Backend**: `SlidingWindowStore` protocol with an in-memory
-  implementation.  Configuration lives in `PerOpRateLimitConfig` under
+  implementation. Configuration lives in `PerOpRateLimitConfig` under
   `api.per_op_rate_limit` with an `overrides: {op -> (max_requests,
-  window_seconds)}` map that takes effect without restart.  Setting
+  window_seconds)}` map that takes effect without restart. Setting
   either component to `0` disables the operation; negative values are
   rejected at startup with a logged error for diagnosability.
 - **Keying**: `user`, `ip`, or `user_or_ip` (default).  The ``ip``
@@ -104,7 +104,7 @@ from `synthorg/api/rate_limits/guard.py`.
   `PerOperationRateLimitError` subclasses `ApiError`, responses are
   shaped by `handle_api_error()`, which emits a `Retry-After` header
   whenever the exception supplies `retry_after`; the header value
-  agrees with the envelope's `retry_after` field.  Missing wiring is
+  agrees with the envelope's `retry_after` field. Missing wiring is
   treated as a deployment error and fails closed with a 429 rather
   than silently skipping.
 - **Throttled endpoints** (initial set):
@@ -194,7 +194,7 @@ For the full-page list, navigation hierarchy, URL routing map, and WebSocket cha
 **Primary navigation** (sidebar, always visible):
 
 - **Dashboard** (`/`): org overview, department health indicators, recent activity widget, budget snapshot, active task summary, agent status counts, approval badge count
-- **Org Chart** (`/org`): living org visualization with hierarchy and communication graph views, real-time agent status, drag-drop agent reassignment. Merged with former Company page; "Edit Organization" mode (`/org/edit`) provides form-based company config CRUD with sub-tabs (General, Agents, Departments)
+- **Org Chart** (`/org`): living org visualization with hierarchy and communication graph views, real-time agent status, drag-drop agent reassignment. Merged with former Company page; "Edit Organisation" mode (`/org/edit`) provides form-based company config CRUD with sub-tabs (General, Agents, Departments)
 - **Task Board** (`/tasks`): Kanban (default) and list view toggle. Task detail includes "Coordinate" action for multi-agent coordination
 - **Budget** (`/budget`): P&L management dashboard with current spend vs budget, per-agent/department breakdowns, trend lines, forecast projections (`/budget/forecast`)
 - **Approvals** (`/approvals`): Pending decisions queue with risk-level badges, approve/reject with comment, history view

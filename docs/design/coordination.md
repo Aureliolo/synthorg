@@ -5,7 +5,7 @@ description: Agent crash recovery, graceful shutdown protocol, concurrent worksp
 
 # Coordination & Resilience
 
-This page covers system-level features that span multiple agents and protect against failure: crash recovery with checkpoint resume, graceful shutdown strategies, concurrent workspace isolation (Git worktrees / virtual filesystem / per-branch), and multi-agent coordination topology (centralized, decentralized, context-dependent dispatchers).
+This page covers system-level features that span multiple agents and protect against failure: crash recovery with checkpoint resume, graceful shutdown strategies, concurrent workspace isolation (Git worktrees / virtual filesystem / per-branch), and multi-agent coordination topology (centralised, decentralised, context-dependent dispatchers).
 
 ## Agent Crash Recovery
 
@@ -32,12 +32,12 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 | `failure_context` | `dict[str, Any]` | Structured strategy-specific failure metadata (deep-copied at construction; defaults to `{}`) |
 | `criteria_failed` | `tuple[NotBlankStr, ...]` | Acceptance criteria that were not met (unique; validated on construction) |
 | `stagnation_evidence` | `StagnationResult \| None` | Stagnation detection result when applicable |
-| `checkpoint_context_json` | `str \| None` | Serialized `AgentContext` for resume (`None` for non-checkpoint strategies) |
+| `checkpoint_context_json` | `str \| None` | Serialised `AgentContext` for resume (`None` for non-checkpoint strategies) |
 | `resume_attempt` | `int` (ge=0) | Current resume attempt number (0 when not resuming) |
 | `can_resume` | `bool` (computed) | `checkpoint_context_json is not None` |
 | `can_reassign` | `bool` (computed) | `retry_count < task.max_retries` |
 
-`failure_category` is inferred from the error message via `infer_failure_category()` (keyword-based heuristic).  `UNKNOWN` is the deliberate default when no keyword rule matches; an honest classification is more useful than a silent `TOOL_FAILURE` lie that would masquerade unknown causes in dashboards, reports, and reconciliation prompts.  Checkpoint reconciliation messages include the category and any unmet criteria (both passed through `sanitize_message` to strip paths, URLs, and prompt-injection markers) so the resumed agent has structured context about what failed without carrying leaked secrets.
+`failure_category` is inferred from the error message via `infer_failure_category()` (keyword-based heuristic).  `UNKNOWN` is the deliberate default when no keyword rule matches; an honest classification is more useful than a silent `TOOL_FAILURE` lie that would masquerade unknown causes in dashboards, reports, and reconciliation prompts. Checkpoint reconciliation messages include the category and any unmet criteria (both passed through `sanitize_message` to strip paths, URLs, and prompt-injection markers) so the resumed agent has structured context about what failed without carrying leaked secrets.
 
 **Cross-field invariants.** `RecoveryResult` enforces two cross-field rules at construction:
 
@@ -46,7 +46,7 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 
 Strategies that only have an error string (`FailAndReassignStrategy`, `CheckpointRecoveryStrategy._build_resume_result`) use `infer_failure_category_without_evidence()`, which clamps `STAGNATION` / `QUALITY_GATE_FAILED` to `UNKNOWN`; the unclamped helper would crash construction on any error message containing the keywords "stagnation", "quality", or "criteria" because those strategies cannot supply the required sidecar data.
 
-**Transition-reason wire format.** After a recovery, the post-execution pipeline embeds `failure_category` (and a sanitized summary of `criteria_failed` when present) into the task-status transition reason as `"Post-recovery status: <status> (failure_category=<value>[, unmet_criteria=<summary>])"`.  The `(failure_category=<value>)` suffix is a hook for downstream consumers (e.g. routing / reassignment components) to read category metadata from status history without re-parsing the raw error message.  The key name (`failure_category`) and value format are a stable contract: future consumers will depend on it, so changes require a coordinated rollout.
+**Transition-reason wire format.** After a recovery, the post-execution pipeline embeds `failure_category` (and a sanitized summary of `criteria_failed` when present) into the task-status transition reason as `"Post-recovery status: <status> (failure_category=<value>[, unmet_criteria=<summary>])"`.  The `(failure_category=<value>)` suffix is a hook for downstream consumers (e.g. routing / reassignment components) to read category metadata from status history without re-parsing the raw error message. The key name (`failure_category`) and value format are a stable contract: future consumers will depend on it, so changes require a coordinated rollout.
 
 **State-transition log timing.** Per CLAUDE.md, every persisted status hop emits an INFO-level `*_STATUS_TRANSITIONED` event (`WORKFLOW_EXEC_STATUS_TRANSITIONED`, `WORKFLOW_EXEC_NODE_STATUS_TRANSITIONED`) **after** persistence succeeds. A save failure raises before the log fires, so the audit trail only ever records transitions that actually landed; this avoids the "phantom transition" failure mode where a `VersionConflictError` would otherwise leave a log entry showing a hop that the database never accepted. The bootstrap `PENDING -> RUNNING` state is set inline during initial execution creation in `WorkflowExecutionService` rather than as a persisted transition, so no separate event fires for that hop; the persisted hops covered by the transition log today are the three terminal ones (`RUNNING -> COMPLETED` / `-> FAILED` / `-> CANCELLED`). Subsystems that also emit a terminal-state event (`WORKFLOW_EXEC_COMPLETED`, `WORKFLOW_EXEC_FAILED`, `WORKFLOW_EXEC_CANCELLED`) keep those for final-hop summaries; the transition-log event is the cross-hop audit-stream entry carrying `from_status` / `to_status` / identifiers.
 
@@ -92,7 +92,7 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
     exception), loads the last checkpoint, and resumes execution from the exact
     turn where it left off. The immutable `model_copy(update=...)` pattern makes
     checkpointing trivial; each `AgentContext` is a complete, self-contained
-    frozen state that serializes cleanly via `model_dump_json()`.
+    frozen state that serialises cleanly via `model_dump_json()`.
 
     ```yaml
     crash_recovery:
@@ -118,7 +118,7 @@ Strategies that only have an error string (`FailAndReassignStrategy`, `Checkpoin
 === "Lightweight Alternative: Session Replay"
 
     `Session.replay()` (`engine/session.py`) provides a lighter-weight
-    alternative to full checkpoint/resume.  It reconstructs `AgentContext`
+    alternative to full checkpoint/resume. It reconstructs `AgentContext`
     from the observability event log rather than from a persisted checkpoint
     snapshot.
 
@@ -236,7 +236,7 @@ shutdown) or loaded from the last turn (crash recovery).
 !!! info "SUSPENDED vs INTERRUPTED"
     `SUSPENDED` indicates the task was checkpointed before stop and can resume
     from the exact point of interruption.  `INTERRUPTED` indicates the task was
-    stopped without a checkpoint and requires full reassignment.  Both are
+    stopped without a checkpoint and requires full reassignment. Both are
     non-terminal: `SUSPENDED -> ASSIGNED`, `INTERRUPTED -> ASSIGNED`.
 
 ```yaml
@@ -254,7 +254,7 @@ edit overlapping files. The framework provides a pluggable
 
 ### Strategy 1: Planner + Git Worktrees (Default)
 
-The task planner decomposes work to minimize file overlap across agents. Each
+The task planner decomposes work to minimise file overlap across agents. Each
 agent operates in its own git worktree (shared `.git` object database,
 independent working tree). On completion, branches are merged sequentially.
 
@@ -305,15 +305,15 @@ flowchart TD
 Git merges catch textual conflicts (overlapping edits to the same lines), but
 many real-world integration bugs are *semantic* - the merge succeeds textually
 yet the combined code is broken. The semantic conflict detection subsystem
-analyzes merged results to catch these issues before they reach main.
+analyses merged results to catch these issues before they reach main.
 
 **SemanticAnalyzer protocol and composite pattern.** The `SemanticAnalyzer`
 protocol defines a single `analyze(workspace, changed_files, repo_root, base_sources)` method.
-The default `CompositeSemanticAnalyzer` dispatches all configured analyzers
+The default `CompositeSemanticAnalyzer` dispatches all configured analysers
 concurrently via `asyncio.TaskGroup` and deduplicates their combined results,
 allowing AST-based checks and optional LLM-based analysis to compose
-transparently. Analyzer failures are logged and skipped without aborting
-the remaining analyzers.
+transparently. Analyser failures are logged and skipped without aborting
+the remaining analysers.
 
 **AST-based checks.** Four pure-function checks run against the merged source
 without external dependencies:
@@ -330,7 +330,7 @@ without external dependencies:
    different modules.
 
 **Optional LLM-based analysis.** When `llm_model` is configured in
-`SemanticAnalysisConfig`, a provider-backed analyzer sends the diff to an LLM
+`SemanticAnalysisConfig`, a provider-backed analyser sends the diff to an LLM
 for deeper reasoning about subtle semantic issues that AST checks cannot catch.
 
 **SemanticAnalysisConfig.** A frozen Pydantic model controlling the analysis
@@ -365,7 +365,7 @@ These are complementary systems handling different types of shared state:
 
 | State Type | Coordination | Mechanism |
 |-----------|-------------|-----------|
-| Framework state (tasks, assignments, budget) | Centralized single-writer (`TaskEngine`) | `model_validate` / `with_transition` via async queue |
+| Framework state (tasks, assignments, budget) | Centralised single-writer (`TaskEngine`) | `model_validate` / `with_transition` via async queue |
 | Code and files (agent work output) | Workspace isolation (`WorkspaceIsolationStrategy`) | Git worktrees / branches |
 | Agent memory (personal) | Per-agent ownership | Each agent owns its memory exclusively |
 | Org memory (shared knowledge) | Single-writer (`OrgMemoryBackend`) | `OrgMemoryBackend` protocol with role-based write access control |
@@ -489,7 +489,7 @@ Each task carries a `task_structure` field classifying its decomposability:
 | Structure | Description | Multi-Agent Effect | Example |
 |-----------|-------------|------------|---------|
 | `sequential` | Steps must execute in strict order; each depends on prior state | **Negative** (-39% to -70%) | Multi-step build processes, ordered migrations, chained API calls |
-| `parallel` | Sub-problems can be investigated independently, then synthesized | **Positive** (+57% to +81%) | Financial analysis (revenue + cost + market), multi-file review, research across sources |
+| `parallel` | Sub-problems can be investigated independently, then synthesised | **Positive** (+57% to +81%) | Financial analysis (revenue + cost + market), multi-file review, research across sources |
 | `mixed` | Some sub-tasks are parallel, but a sequential backbone connects phases | **Variable** (depends on ratio) | Feature implementation (design // research -> implement -> test) |
 
 Classification can be:
@@ -507,8 +507,8 @@ per-task** based on task structure and properties.
 | Task Properties | Recommended Topology | Rationale |
 |----------------|---------------------|-----------|
 | `sequential` + few artifacts (<=4) | **Single-agent (SAS)** | Coordination overhead fragments reasoning capacity on sequential tasks |
-| `parallel` + structured domain | **Centralized** | Orchestrator decomposes, sub-agents execute in parallel, orchestrator synthesizes. Lowest error amplification (4.4x) |
-| `parallel` + exploratory/open-ended | **Decentralized** | Peer debate enables diverse exploration of high-entropy search spaces |
+| `parallel` + structured domain | **Centralised** | Orchestrator decomposes, sub-agents execute in parallel, orchestrator synthesises. Lowest error amplification (4.4x) |
+| `parallel` + exploratory/open-ended | **Decentralised** | Peer debate enables diverse exploration of high-entropy search spaces |
 | `mixed` | **Context-dependent** | Sequential backbone handled by single agent; parallel sub-tasks delegated to sub-agents |
 
 ### Auto Topology Selector
@@ -546,7 +546,7 @@ waves; it runs small coordination groups drawn from the roster.
 | Per-coordination-group (agents in a single `coordination_topology` wave) | **3-4 agents** (recommended) | `CoordinationConfig.max_concurrency_per_wave` |
 | Per-task total team (orchestrator + sub-agents + verifiers) | **~7 agents** | Soft cap; logged warning above threshold |
 | Per-meeting participants | **3-5 ideal, 8 hard cap** | Enforced by meeting protocol token budgets and quadratic-growth warnings (see [Meeting Protocol](communication-coordination.md#meeting-protocol)) |
-| Per-company / org roster | **No hard bound** | Organizational-simulation fidelity, not per-task reasoning efficiency |
+| Per-company / org roster | **No hard bound** | Organisational-simulation fidelity, not per-task reasoning efficiency |
 
 ### Multi-Agent Coordination Pipeline
 
@@ -582,8 +582,8 @@ Each phase produces a `CoordinationPhaseResult` (success/failure + duration).
 | Dispatcher | Topology | Workspace Isolation | Wave Strategy |
 |-----------|----------|-------------------|---------------|
 | `SasDispatcher` | SAS | Never | Sequential waves from DAG |
-| `CentralizedDispatcher` | Centralized | Optional (config-driven) | DAG waves, post-execution merge |
-| `DecentralizedDispatcher` | Decentralized | Mandatory (raises if unavailable) | DAG waves, post-execution merge |
+| `CentralizedDispatcher` | Centralised | Optional (config-driven) | DAG waves, post-execution merge |
+| `DecentralizedDispatcher` | Decentralised | Mandatory (raises if unavailable) | DAG waves, post-execution merge |
 | `ContextDependentDispatcher` | Context-dependent | Per-wave (multi-subtask waves only) | DAG waves, per-wave merge/teardown |
 
 The `select_dispatcher` factory maps a resolved `CoordinationTopology` to the

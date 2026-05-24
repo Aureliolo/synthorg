@@ -56,7 +56,7 @@ changing the wire envelope.
 Controllers return one of three shapes:
 
 * `ApiResponse[T]`: success-only path with no header or status-code
-  customization. Litestar serializes it as `{"data": ..., "error": null,
+  customisation. Litestar serialises it as `{"data": ..., "error": null,
   "success": true}`.
 * `PaginatedResponse[T]`: list endpoints that return a page of items
   plus pagination metadata. Wraps `ApiResponse[T]` and adds a
@@ -66,7 +66,7 @@ Controllers return one of three shapes:
   default; clients walk pages via the `next_cursor` token rather than
   offset arithmetic. There is no `total` count on the wire.
 * `Response[ApiResponse[T]]`: only when status code or response
-  headers must be customized (e.g. setting a `Location` header on a
+  headers must be customised (e.g. setting a `Location` header on a
   201, attaching a `Retry-After` header on a 429).
 
 Reference: `src/synthorg/api/dto.py` (`ApiResponse`,
@@ -76,7 +76,7 @@ Reference: `src/synthorg/api/dto.py` (`ApiResponse`,
 ## 4. `@model_validator(mode="after")` is the default
 
 `mode="after"` runs against the constructed model and is the default
-choice. `mode="before"` is reserved for normalizing inputs the caller
+choice. `mode="before"` is reserved for normalising inputs the caller
 might pass in non-canonical shape (lists vs tuples, dirty strings,
 missing aliases). When using `mode="before"`, **never** mutate the
 input dict in place; return a new dict via `{**data, key: value}`.
@@ -417,9 +417,9 @@ for the opt-in rule and the sink's record-shape extraction logic.
 
 `events/telemetry.py` carries two name-spaced groups:
 
-- `TELEMETRY_*` constants are observability log events emitted via
+* `TELEMETRY_*` constants are observability log events emitted via
   `logger.*(...)`.
-- `TELEMETRY_EVENT_*` constants are payload event types that go
+* `TELEMETRY_EVENT_*` constants are payload event types that go
   inside `TelemetryEvent.event_type` and ride through the privacy
   scrubber.
 
@@ -446,7 +446,7 @@ separate DEBUG "attempting transition" log alongside.
 ## 14. Repository CRUD method names
 
 Persistence repositories share a CRUD vocabulary that's uniform
-across 100+ implementations.  This section expands on §1 with the
+across 100+ implementations. This section expands on §1 with the
 extra semantic detail (return-value contracts, immutability of
 collection returns, where ``NotFoundError`` belongs).
 
@@ -466,7 +466,7 @@ A handful of older repositories (notably ``OntologyEntityRepository``
 and ``ProjectRepository``) currently raise ``OntologyNotFoundError`` /
 ``RecordNotFoundError`` directly from ``get()`` instead of returning
 ``None``; this predates the canonical pattern and is tracked as a
-follow-up migration.  New repositories follow the
+follow-up migration. New repositories follow the
 ``Entity | None`` shape so the service layer owns the
 ``NotFoundError`` raise (with the ``logger.warning(...)`` + raise
 audit trail).
@@ -502,14 +502,14 @@ file, not 200+ handler methods.
   `tests/conformance/persistence/` (the shared `backend` fixture in
   `conftest.py` runs each test against SQLite and Postgres) and
   policed by `scripts/check_dual_backend_test_parity.py` (signature
-  + body + coverage passes; pre-push hook + CI Lint job).
+  * body + coverage passes; pre-push hook + CI Lint job).
 * Every new repository MUST be exposed on `PersistenceBackend`
   (`src/synthorg/persistence/protocol.py`) as a property so
   controllers and services can resolve it through the same
   backend handle they already hold; concrete backends
   (`SQLitePersistenceBackend`, `PostgresPersistenceBackend`) fill
   in the property by constructing the per-backend repo with the
-  shared connection pool.  Without this exposure, the new repo is
+  shared connection pool. Without this exposure, the new repo is
   unreachable through the canonical service-layer access path
   and must be hand-wired at every call site.
 * The naming consistency lets `glob`-based test discovery and

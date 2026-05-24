@@ -32,7 +32,7 @@ Rather than incrementally fixing each page within the Vue stack, the team evalua
 
 The deciding factors were:
 
-1. **Component ownership**: shadcn/ui's copy-paste model means SynthOrg owns every component. No upstream dependency can break the UI on update. Components are customized in-place rather than fighting a library's opinion.
+1. **Component ownership**: shadcn/ui's copy-paste model means SynthOrg owns every component. No upstream dependency can break the UI on update. Components are customised in-place rather than fighting a library's opinion.
 
 2. **Keyboard-first interaction**: cmdk-base (the maintained cmdk port on Base UI Dialog) provides a production-ready command palette. This is central to SynthOrg's interaction model: operators manage autonomous agents and need fast, keyboard-driven access to any action.
 

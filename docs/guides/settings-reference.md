@@ -194,7 +194,7 @@ Edit `coordination.ceremony.strategy` in the `coordination` namespace. See [Cere
 
 ### Swap log sinks
 
-Use `observability.custom_sinks` (JSON-typed) to add HTTP / syslog / OTLP shipping. See [Centralized Logging](centralized-logging.md) for examples.
+Use `observability.custom_sinks` (JSON-typed) to add HTTP / syslog / OTLP shipping. See [Centralised Logging](centralized-logging.md) for examples.
 
 ---
 
@@ -202,5 +202,5 @@ Use `observability.custom_sinks` (JSON-typed) to add HTTP / syslog / OTLP shippi
 
 - [Company Configuration](company-config.md): YAML bootstrap config reference
 - [Security & Trust Policies](security.md): autonomy, approvals, trust
-- [Centralized Logging](centralized-logging.md): log sink configuration
+- [Centralised Logging](centralized-logging.md): log sink configuration
 - [Design: Observability](../design/observability.md): architecture and event taxonomy

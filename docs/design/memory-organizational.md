@@ -1,16 +1,16 @@
 ---
-title: Shared Organizational Memory
+title: Shared Organisational Memory
 description: Company-wide knowledge accessible to every agent (policies, ADRs, conventions, procedures) behind the OrgMemoryBackend protocol.
 ---
 
-# Shared Organizational Memory
+# Shared Organisational Memory
 
-Beyond individual agent memory, the framework provides **organizational memory**: company-wide
+Beyond individual agent memory, the framework provides **organisational memory**: company-wide
 knowledge that all agents can access: policies, conventions, architecture decision records (ADRs),
 coding standards, and operational procedures. This is not personal episodic memory ("what I did
 last Tuesday") but institutional knowledge ("the team always uses Litestar, not Flask").
 
-Shared organizational memory is implemented behind an `OrgMemoryBackend` protocol, making the
+Shared organisational memory is implemented behind an `OrgMemoryBackend` protocol, making the
 system modular and extensible. New backends can be added without modifying existing ones.
 
 See also: [Memory and Persistence](memory.md) (agent memory + backend protocol), [Operational Data Persistence](memory-operational.md), [Memory Learning](memory-learning.md).
@@ -39,7 +39,7 @@ org_memory:
 `OrgMemoryBackend` stays a Protocol so future backends can substitute structurally, but the configuration discriminator is gone: `HybridPromptRetrievalBackend` is the single shipping implementation and is wired directly. New backends supply their own configuration block when they ship.
 
 **Strengths:** Simple to implement. Core rules are always present. Extended knowledge scales
-with the organization.
+with the organisation.
 
 **Limitations:** Basic retrieval may miss relational connections between policies.
 
@@ -47,12 +47,12 @@ with the organization.
 
 The following backends illustrate why `OrgMemoryBackend` is a protocol; the architecture
 supports future upgrades without modifying existing code. These are research directions that
-may inform future work if organizational memory needs outgrow the Hybrid Prompt + Retrieval
+may inform future work if organisational memory needs outgrow the Hybrid Prompt + Retrieval
 approach.
 
 !!! info "Research Direction: GraphRAG Knowledge Graph"
 
-    Organizational knowledge stored as entities + relationships in a knowledge graph. Agents
+    Organisational knowledge stored as entities + relationships in a knowledge graph. Agents
     query via graph traversal, enabling multi-hop reasoning: "Litestar is the standard" is
     linked to "don't use Flask," which is linked to "exception: data team uses Django for admin."
 
@@ -84,11 +84,11 @@ approach.
 
     **Strengths:** Handles policy evolution naturally. Agents understand when and why things changed.
 
-    **Limitations:** Most complex. Potentially overkill for small organizations or local-first use.
+    **Limitations:** Most complex. Potentially overkill for small organisations or local-first use.
 
 !!! tip "Upgrade Path to GraphRAG"
 
-    If multi-hop organizational reasoning becomes a requirement (e.g., tracing which policies
+    If multi-hop organisational reasoning becomes a requirement (e.g., tracing which policies
     affect hiring across salary, budget, and compliance domains), the upgrade path is
     non-breaking:
 
@@ -117,5 +117,5 @@ Neo4j/FalkorDB, which could reduce implementation effort for the research direct
 !!! tip "Write Access Control"
 
     Core policies are human-only. ADRs and procedures can be written by senior+ agents. All
-    writes are append-only and auditable. This prevents agents from corrupting shared organizational
+    writes are append-only and auditable. This prevents agents from corrupting shared organisational
     knowledge while allowing senior agents to document decisions.

@@ -79,13 +79,13 @@ Practical guides for configuring, operating, and extending your synthetic organi
 
     [:octicons-arrow-right-24: Memory](memory.md)
 
--   :material-file-chart:{ .lg .middle } **Centralized Logging**
+-   :material-file-chart:{ .lg .middle } **Centralised Logging**
 
     ---
 
     Route structured logs to syslog, HTTP, OTLP, or external log aggregators.
 
-    [:octicons-arrow-right-24: Centralized Logging](centralized-logging.md)
+    [:octicons-arrow-right-24: Centralised Logging](centralized-logging.md)
 
 -   :material-cog-outline:{ .lg .middle } **Settings Reference**
 

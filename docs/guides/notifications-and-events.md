@@ -171,5 +171,5 @@ Keep one connection per consumer (not per user). Tickets are short-lived; the se
 
 - [Design: Notifications](../design/notifications.md): `NotificationSink` protocol and dispatcher
 - [Design: Communication](../design/communication.md): event stream hub, A2A gateway, projection layers
-- [Centralized Logging](centralized-logging.md): shipping logs (vs notifications) to external systems
+- [Centralised Logging](centralized-logging.md): shipping logs (vs notifications) to external systems
 - [Settings Reference](settings-reference.md): `notifications` namespace settings

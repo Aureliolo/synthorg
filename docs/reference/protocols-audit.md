@@ -391,7 +391,7 @@ The script's classification matched reality: zero structural impls, zero consume
 
 ### Audit re-flagged to KEEP (44 protocols)
 
-Each retained protocol carries a one-line `# <reason>` design-rationale comment immediately above the `class` line describing the implementation(s), factory dispatch, and consumer wiring that justify keeping it. The categories below explain the structural patterns the audit script's regex missed; the in-code comments name the concrete impls/factories/consumers so future readers can verify the wiring without re-running the audit.
+Each retained protocol carries a one-line `# <reason>` design-rationale comment immediately above the `class` line describing the implementations, factory dispatch, and consumer wiring that justify keeping it. The categories below explain the structural patterns the audit script's regex missed; the in-code comments name the concrete impls/factories/consumers so future readers can verify the wiring without re-running the audit.
 
 Categories of re-flag rationale:
 
@@ -450,7 +450,7 @@ The `REMOVE` and `REVIEW` candidates above are filed as separate cleanup issues 
 - `[CLEANUP] Protocols audit follow-up: fold duplicate-named protocols (ConflictDetector, SignalAggregator)`
 - `[CLEANUP] Protocols audit follow-up: meta-tracking issue umbrella`
 
-Each issue body links back to the specific row(s) in this document and requires the owner to (a) re-grep, (b) confirm no future-second-implementation plan, (c) collapse the consumer onto a concrete type or fold the duplicate.
+Each issue body links back to the specific rows in this document and requires the owner to (a) re-grep, (b) confirm no future-second-implementation plan, (c) collapse the consumer onto a concrete type or fold the duplicate.
 
 ## Post-#1891 status (RFC: pluggable subsystem cleanup)
 

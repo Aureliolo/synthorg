@@ -6,7 +6,7 @@ description: External service connection catalog, OAuth 2.1, webhooks, health ch
 # Integrations
 
 The integrations layer provides a unified infrastructure for connecting SynthOrg
-to external services.  It sits underneath every external consumer (MCP servers,
+to external services. It sits underneath every external consumer (MCP servers,
 providers, notification sinks, tools) and provides:
 
 - **Connection Catalog**: typed registry for all external service credentials
@@ -22,10 +22,10 @@ providers, notification sinks, tools) and provides:
 
 ## Connection Catalog
 
-Central registry for external service connections.  Each connection has a
+Central registry for external service connections. Each connection has a
 unique name, a typed connection type, encrypted credentials (via `SecretRef`),
 optional rate limiting and health check configuration, and a `sensitive`
-flag.  When `sensitive` is set, the governed external-access tool routes every
+flag. When `sensitive` is set, the governed external-access tool routes every
 call against the connection (read or write) to human approval, not only write
 methods.
 
@@ -84,17 +84,17 @@ Full OAuth 2.1 implementation with three grant types:
 
 ### Authorization Code + PKCE (RFC 7636)
 
-Primary web flow.  User clicks "Connect" in dashboard, browser redirects to
+Primary web flow. User clicks "Connect" in dashboard, browser redirects to
 provider, callback handler exchanges code for tokens.
 
 ### Device Flow (RFC 8628)
 
-For CLI/headless use.  Displays user code and verification URL, polls for
+For CLI/headless use. Displays user code and verification URL, polls for
 authorization.
 
 ### Client Credentials
 
-Machine-to-machine flow.  No user interaction.
+Machine-to-machine flow. No user interaction.
 
 ### Token Lifecycle
 
@@ -154,7 +154,7 @@ Per-type health check implementations with a background `HealthProberService`.
 
 ## Rate Limiting
 
-`@with_connection_rate_limit` decorator for tool implementations.  Reuses
+`@with_connection_rate_limit` decorator for tool implementations. Reuses
 `RateLimiter` from `providers/resilience/rate_limiter.py`.
 
 ---
@@ -229,13 +229,12 @@ integrations:
 
 `integrations.tunnel.auth_token_env` names the environment variable the adapter reads its auth token from. The default is `NGROK_AUTHTOKEN`; override only if you keep the token in a differently-named var.
 
-
 ---
 
 ## Provider Migration
 
 `ProviderConfig` now supports a `connection_name` field that references a
-connection in the catalog.  When set, credentials are resolved from the
+connection in the catalog. When set, credentials are resolved from the
 catalog at runtime instead of using embedded `api_key` / OAuth fields.
 
 ## MCP Service Facades

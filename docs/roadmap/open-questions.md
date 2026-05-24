@@ -2,7 +2,7 @@
 
 ## Open Questions
 
-The following design questions remain unresolved. Each carries potential impact on architecture or behavior and will be addressed as the project progresses.
+The following design questions remain unresolved. Each carries potential impact on architecture or behaviour and will be addressed as the project progresses.
 
 Numbers are stable identifiers; resolved questions are removed without renumbering to preserve cross-references.
 
@@ -37,5 +37,5 @@ Numbers are stable identifiers; resolved questions are removed without renumberi
 | Config format becoming unwieldy | Medium | Good defaults, layered config (base + overrides), validation via Pydantic v2 models, setup wizard for guided configuration. |
 | Agent execution bottlenecks | Medium | Async execution, parallel agent processing, queue-based architecture. TaskGroup for structured concurrency. |
 | Data loss on crash | Medium | WAL mode SQLite, checkpoint recovery, backup/restore with scheduled retention. |
-| Orchestration overhead exceeds productive work | Medium | LLM call analytics with proxy metrics implemented. Call categorization and orchestration ratio alerts planned. |
+| Orchestration overhead exceeds productive work | Medium | LLM call analytics with proxy metrics implemented. Call categorisation and orchestration ratio alerts planned. |
 | SQLite contention under concurrent access | Low | Single-writer with WAL mode handles read concurrency well. PostgreSQL backend planned for write-heavy workloads. |

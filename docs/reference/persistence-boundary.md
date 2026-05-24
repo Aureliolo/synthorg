@@ -21,16 +21,16 @@ Sanctioned exceptions cover three categories. The authoritative list lives in `_
 
 ## Shared helpers
 
-`src/synthorg/persistence/_shared/` is the canonical home for backend-agnostic serialization, deserialization, error-classification, and timestamp-normalization logic. Repositories pass driver-specific bits (JSON wrappers, error-class predicates) in as callables so the helpers stay portable. Current helpers:
+`src/synthorg/persistence/_shared/` is the canonical home for backend-agnostic serialisation, deserialisation, error-classification, and timestamp-normalisation logic. Repositories pass driver-specific bits (JSON wrappers, error-class predicates) in as callables so the helpers stay portable. Current helpers:
 
-- `datetime_marshaller.py`: strict pair `parse_iso_utc(str) -> datetime` and `format_iso_utc(datetime) -> str`. Both reject naive datetimes (`ValueError`) and normalize to UTC. Use these for any persistence path that round-trips ISO 8601 timestamps through TEXT columns, JSON envelopes, or settings DTOs.
-- `coerce_row_timestamp(value: str | datetime) -> datetime`: canonical row-deserialization dispatcher. Every repository `_row_to_*` helper should call it; it tolerates SQLite TEXT (`str`), SQLite TEXT with `detect_types=PARSE_DECLTYPES` (`datetime`), Postgres `TIMESTAMPTZ` (tz-aware `datetime`, possibly in the session timezone), and legacy / migrated rows persisted as ISO strings even where the column is now typed.
-    - **String path**: routed through `parse_iso_utc` (strict naive rejection; a naive ISO string surfaces as `ValueError`).
-    - **Datetime path**: routed through `normalize_utc` (treats naive as UTC and calls `astimezone(UTC)` on aware values).
-    - **Error path**: any other input type raises `TypeError` so a corrupt row surfaces loudly via the enclosing `MalformedRowError` / `QueryError` handler instead of silently producing garbage.
+- `datetime_marshaller.py`: strict pair `parse_iso_utc(str) -> datetime` and `format_iso_utc(datetime) -> str`. Both reject naive datetimes (`ValueError`) and normalise to UTC. Use these for any persistence path that round-trips ISO 8601 timestamps through TEXT columns, JSON envelopes, or settings DTOs.
+- `coerce_row_timestamp(value: str | datetime) -> datetime`: canonical row-deserialisation dispatcher. Every repository `_row_to_*` helper should call it; it tolerates SQLite TEXT (`str`), SQLite TEXT with `detect_types=PARSE_DECLTYPES` (`datetime`), Postgres `TIMESTAMPTZ` (tz-aware `datetime`, possibly in the session timezone), and legacy / migrated rows persisted as ISO strings even where the column is now typed.
+  - **String path**: routed through `parse_iso_utc` (strict naive rejection; a naive ISO string surfaces as `ValueError`).
+  - **Datetime path**: routed through `normalize_utc` (treats naive as UTC and calls `astimezone(UTC)` on aware values).
+  - **Error path**: any other input type raises `TypeError` so a corrupt row surfaces loudly via the enclosing `MalformedRowError` / `QueryError` handler instead of silently producing garbage.
 - `normalize_utc(datetime) -> datetime`: relaxed coercer (treats naive as UTC, calls `astimezone(UTC)` on aware). Used internally by `coerce_row_timestamp`'s datetime branch. Call directly only when the input is statically known to be a `datetime` (e.g. when the caller has already produced a `datetime.now(UTC)` and just needs to defend against a future code change introducing a non-UTC offset).
 - `audit.py`: shared `AuditEntry` row<->payload helpers (`audit_entry_to_payload`, `row_to_audit_entry`, `classify_audit_save_error`).
-- `custom_rule.py`: shared custom-rule deserialization (`row_to_custom_rule`, `serialize_altitudes`).
+- `custom_rule.py`: shared custom-rule deserialisation (`row_to_custom_rule`, `serialize_altitudes`).
 
 When to use which: the strict pair (`parse_iso_utc` / `format_iso_utc`) sits at the boundary where ISO strings cross the persistence layer (settings DTOs, JSON envelopes, SQLite TEXT writes); `coerce_row_timestamp` sits inside `_row_to_*` deserializers where the driver shape is uncertain; `normalize_utc` is the lowest-level primitive and is rarely called directly by repository code.
 
@@ -40,7 +40,7 @@ Adding a new shared helper: extract the duplicated logic into `_shared/`, add a 
 
 ## In-memory invariant pins (interim, schema-deferred)
 
-When a Pydantic model gains a required field but the corresponding column hasn't been added yet (e.g. a yoyo revision is queued in a follow-up issue), the repository may carry a process-local `_pinned_<field>` map keyed by the row's primary key, plus a true **per-key lock registry** (not a fixed-size stripe set): `_lock_registry: dict[str, asyncio.Lock]` lazily populated under a small `_registry_lock` so each primary key gets its own dedicated `asyncio.Lock`. Concurrent operations on different keys never block each other; the per-key lock is held across the full critical section -- check-and-set + DB I/O + deserialize -- so concurrent first-writes for the *same* key cannot diverge the in-memory dict from the durable row. Mismatched-pin writes raise the same domain error a column constraint would (e.g. `MixedCurrencyAggregationError`). On any failure mode (DB error, missing RETURNING row, deserialize failure) a `try`/`finally` around the I/O block rolls the pin back so a retry isn't blocked by a phantom pin. The read path (`get`) uses a bare `dict.get` -- atomic under the GIL, never yields -- and falls back to a sane neutral default (`DEFAULT_CURRENCY` for currency, etc.) when no pin is present, with a DEBUG log per pin-miss. The schema-gap notice is emitted at INFO **once per process** via a module-level guard, not per repo instance, so test suites that build many repositories don't flood the log.
+When a Pydantic model gains a required field but the corresponding column hasn't been added yet (e.g. a yoyo revision is queued in a follow-up issue), the repository may carry a process-local `_pinned_<field>` map keyed by the row's primary key, plus a true **per-key lock registry** (not a fixed-size stripe set): `_lock_registry: dict[str, asyncio.Lock]` lazily populated under a small `_registry_lock` so each primary key gets its own dedicated `asyncio.Lock`. Concurrent operations on different keys never block each other; the per-key lock is held across the full critical section -- check-and-set + DB I/O + deserialise -- so concurrent first-writes for the *same* key cannot diverge the in-memory dict from the durable row. Mismatched-pin writes raise the same domain error a column constraint would (e.g. `MixedCurrencyAggregationError`). On any failure mode (DB error, missing RETURNING row, deserialise failure) a `try`/`finally` around the I/O block rolls the pin back so a retry isn't blocked by a phantom pin. The read path (`get`) uses a bare `dict.get` -- atomic under the GIL, never yields -- and falls back to a sane neutral default (`DEFAULT_CURRENCY` for currency, etc.) when no pin is present, with a DEBUG log per pin-miss. The schema-gap notice is emitted at INFO **once per process** via a module-level guard, not per repo instance, so test suites that build many repositories don't flood the log.
 
 Canonical example: `ProjectCostAggregateRepository` in `persistence/{sqlite,postgres}/project_cost_aggregate_repo.py`. The `currency: CurrencyCode` field is required on `ProjectCostAggregate` but the durable column is queued under #1597; both repos hold `_pinned_currencies: dict[str, str]` plus the per-key `_lock_registry: dict[str, asyncio.Lock]` (guarded by `_registry_lock` for lazy init) and emit `PERSISTENCE_PROJECT_COST_AGG_CURRENCY_PIN_MISSING` at INFO once per process.
 
@@ -57,7 +57,7 @@ Controllers and API endpoints access persistence through domain-scoped **service
 Services:
 
 - Keep controllers thin (parse / shape / return).
-- Centralize `API_*` / `META_*` / `WORKFLOW_DEF_*` audit logging in one place.
+- Centralise `API_*` / `META_*` / `WORKFLOW_DEF_*` audit logging in one place.
 - Own cross-repo orchestration (e.g. workflow-definition delete cascading to version snapshots).
 
 Repositories **must not** log mutations themselves (enforced by `scripts/check_persistence_boundary.py`). The service layer is the canonical logging point so audit trails do not duplicate when multiple callers share a repo. Repos may still log fetch telemetry (`*_FETCHED`, `*_LISTED`, `*_COUNTED`) and error paths (`*_SAVE_FAILED`, `*_DELETE_FAILED`, `*_DUPLICATE`); the rule targets entity-mutation audit specifically.
@@ -74,7 +74,7 @@ async with backend.write_context():
 
 The mutual-exclusion guarantee, however, is backend-specific:
 
-- **SQLite** acquires a shared in-process `asyncio.Lock`. The single `aiosqlite.Connection` is shared by every repository on that backend, so concurrent writers must serialize at the statement level. Repositories receive the backend's `write_context` bound method at construction and call `async with self._write_context():` around every multi-statement transaction.
+- **SQLite** acquires a shared in-process `asyncio.Lock`. The single `aiosqlite.Connection` is shared by every repository on that backend, so concurrent writers must serialise at the statement level. Repositories receive the backend's `write_context` bound method at construction and call `async with self._write_context():` around every multi-statement transaction.
 - **Postgres** yields immediately. Each repository operation checks out an independent connection from the async pool, so writers are isolated at the database level without an in-process lock. The method exists only to keep the cross-backend interface uniform; it does not provide mutual exclusion beyond what the pool already gives.
 
 Callers must not rely on `write_context()` for distributed mutual exclusion or cross-backend serializability; for true cross-process locking, use a database-side primitive.
@@ -83,7 +83,7 @@ Repositories never own a private write lock. Tests that construct a repository i
 
 ## Migrations
 
-Adding a migration: read `docs/guides/persistence-migrations.md` first.  Never hand-edit a revision file that already exists on `origin/main`; yoyo's content-hash check refuses to re-apply an edited file.  Author a new revision with your delta instead.
+Adding a migration: read `docs/guides/persistence-migrations.md` first. Never hand-edit a revision file that already exists on `origin/main`; yoyo's content-hash check refuses to re-apply an edited file. Author a new revision with your delta instead.
 
 ## Per-line opt-out
 

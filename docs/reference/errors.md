@@ -201,7 +201,7 @@ Each handler:
 2. Returns `_build_response(...)` so the response carries the full RFC
    9457 envelope (or bare `application/problem+json` body when the
    client asks for it).
-3. Scrubs the upstream message on 5xx.  4xx behavior varies: domain
+3. Scrubs the upstream message on 5xx.  4xx behaviour varies: domain
    handlers like `handle_backup_error` and `handle_domain_error` pass a
    user-safe exception message through, while several Litestar-side
    handlers intentionally return fixed public messages

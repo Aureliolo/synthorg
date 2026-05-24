@@ -23,7 +23,7 @@ The backup system protects persistent data (persistence DB, agent memory, and co
 
 ## Backup Triggers
 
-| Trigger | When | Behavior |
+| Trigger | When | Behaviour |
 |---------|------|----------|
 | Scheduled | Configurable interval (default: 6h) | Background, non-blocking |
 | Pre-shutdown | `Company.shutdown()` / SIGTERM | Synchronous, skips compression |

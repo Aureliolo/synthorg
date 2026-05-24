@@ -16,7 +16,7 @@ Industry research shows LLMs systematically recommend trendy, context-insensitiv
 
 Controls how strategic agents frame their recommendations. Set per-agent via `AgentIdentity.strategic_output_mode` or company-wide via `strategy.output_mode`.
 
-| Mode | Behavior | Default For |
+| Mode | Behaviour | Default For |
 |------|----------|-------------|
 | `option_expander` | Present ALL options with lens analysis, no ranking | - |
 | `advisor` | Recommend top 2-3 with reasoning and caveats | C-suite, VP |
@@ -81,7 +81,7 @@ Strategic agents must provide calibrated confidence with every recommendation:
 
 | Format | Output |
 |--------|--------|
-| `structured` | Labeled fields (confidence, range, assumptions, uncertainty) |
+| `structured` | Labelled fields (confidence, range, assumptions, uncertainty) |
 | `narrative` | Prose paragraph |
 | `both` | Structured block + narrative |
 | `probability` | Calibrated probability ranges with conditions |
@@ -182,6 +182,7 @@ meeting that produces the decision.
 ### RiskCard
 
 Per-decision risk metadata (populated by premortem phase):
+
 - `decision_type`: Type of decision
 - `reversibility`: easily_reversible / moderate / locked_in
 - `blast_radius`: individual / team / department / company_wide
@@ -190,6 +191,7 @@ Per-decision risk metadata (populated by premortem phase):
 ### ConfidenceMetadata
 
 Calibrated confidence for a recommendation:
+
 - `level`: Point estimate (0.0-1.0)
 - `range_lower`, `range_upper`: Confidence range
 - `assumptions`: Key assumptions
@@ -198,6 +200,7 @@ Calibrated confidence for a recommendation:
 ### LensAttribution
 
 Which lens produced which insight (tuple, one per participant):
+
 - `lens`: Lens name
 - `insight`: Lens-specific insight
 - `weight`: Influence on final recommendation

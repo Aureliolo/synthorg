@@ -1,6 +1,6 @@
 ---
 title: UX Design Guidelines
-description: Authoritative design guidelines for the SynthOrg web dashboard. Covers color system, component patterns, interaction design, animation language, accessibility, and responsive breakpoints.
+description: Authoritative design guidelines for the SynthOrg web dashboard. Covers colour system, component patterns, interaction design, animation language, accessibility, and responsive breakpoints.
 ---
 
 # UX Design Guidelines
@@ -13,11 +13,11 @@ This document is the single source of truth for all dashboard page implementatio
 
 ## 1. Brand Identity
 
-### 1.1 Color System
+### 1.1 Colour System
 
-Colors are **state-driven**, not decorative. Every colored element answers: "what is the system telling me?"
+Colours are **state-driven**, not decorative. Every coloured element answers: "what is the system telling me?"
 
-#### Semantic Color Tokens
+#### Semantic Colour Tokens
 
 | Token | Hex | Role | Usage |
 |-------|-----|------|-------|
@@ -38,11 +38,11 @@ Colors are **state-driven**, not decorative. Every colored element answers: "wha
 
 All hex values are WCAG AA verified (see [Section 5.1](#51-wcag-aa-contrast-matrix)).
 
-#### Dynamic Color Assignment
+#### Dynamic Colour Assignment
 
-Metric cards, sparklines, and trend indicators assign color by data direction:
+Metric cards, sparklines, and trend indicators assign colour by data direction:
 
-| Data state | Color token | Visual meaning |
+| Data state | Colour token | Visual meaning |
 |------------|-------------|----------------|
 | Improving / rising | `success` | Green: things getting better |
 | Stable / normal | `accent` or `text-muted` | Neutral: no action needed |
@@ -51,7 +51,7 @@ Metric cards, sparklines, and trend indicators assign color by data direction:
 
 #### Dark Mode Only
 
-The dashboard is dark-mode only (confirmed in #762). All color tokens assume dark backgrounds. No light mode is planned. WCAG AA ratios are validated against bg-base, bg-surface, bg-card, and bg-card-hover.
+The dashboard is dark-mode only (confirmed in #762). All colour tokens assume dark backgrounds. No light mode is planned. WCAG AA ratios are validated against bg-base, bg-surface, bg-card, and bg-card-hover.
 
 ### 1.2 Typography Scale
 
@@ -106,19 +106,19 @@ Base unit: **8px**. All spacing values follow a 4px sub-grid (half the 8px base 
 
 | Rule | Spec |
 |------|------|
-| Placement | Top-left of sidebar, vertically centered in the brand zone |
+| Placement | Top-left of sidebar, vertically centred in the brand zone |
 | Minimum size | 20px height for icon mark, 80px width for wordmark |
 | Clear space | Minimum 8px (1 base unit) on all sides |
-| Collapsed sidebar | Icon mark only, centered in the 56px rail |
+| Collapsed sidebar | Icon mark only, centred in the 56px rail |
 | Expanded sidebar | Icon mark + wordmark, left-aligned with 16px left padding |
-| Color | `text-primary` (`#e2e8f0`) on `bg-surface` background |
-| Never | Do not tint the logo with accent color; do not animate the logo |
+| Colour | `text-primary` (`#e2e8f0`) on `bg-surface` background |
+| Never | Do not tint the logo with accent colour; do not animate the logo |
 
 ### 1.5 Visual Signatures
 
 These 3 elements create instant "this is SynthOrg" recognition:
 
-1. **Warm soft blue accent** (`#38bdf8`): brand-neutral so state colors dominate, but present in links, focus rings, active nav, and sparkline defaults
+1. **Warm soft blue accent** (`#38bdf8`): brand-neutral so state colours dominate, but present in links, focus rings, active nav, and sparkline defaults
 2. **Dark cards with subtle borders**: `bg-card` (`#13131f`) with 1px `border` (`#1e1e2e`), 8px border-radius. Cards float above `bg-base` without heavy shadows
 3. **Monospace data values**: Geist Mono for all numbers, metrics, agent names, and timestamps creates a "control room" feel where data is always legible and aligned
 
@@ -162,12 +162,12 @@ Card specs:
 
 ### 2.2 Status Encoding Rules
 
-Status is **never communicated by color alone**. The encoding hierarchy:
+Status is **never communicated by colour alone**. The encoding hierarchy:
 
 | Level | What to add | When |
 |-------|-------------|------|
-| 1. Color | State color (success/warning/danger/accent) | Always; base layer |
-| 2. Shape | Dot (6px circle) or icon (Lucide) | Always alongside color |
+| 1. Colour | State colour (success/warning/danger/accent) | Always; base layer |
+| 2. Shape | Dot (6px circle) or icon (Lucide) | Always alongside colour |
 | 3. Text label | "Active", "Error", "Warning" | For critical states and when space allows |
 | 4. Animation | Pulse or flash | Only during state transitions, never steady-state |
 
@@ -176,8 +176,8 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 | Property | Value |
 |----------|-------|
 | Size | 6px diameter circle |
-| Placement | Right-aligned in card header, vertically centered |
-| Colors | `success` (active/healthy), `warning` (attention), `danger` (error/critical), `text-muted` (inactive/idle) |
+| Placement | Right-aligned in card header, vertically centred |
+| Colours | `success` (active/healthy), `warning` (attention), `danger` (error/critical), `text-muted` (inactive/idle) |
 | Border | None (solid fill) |
 | Pulse | 2s ease-in-out infinite, only on state *transition* (stops after 3 cycles) |
 
@@ -191,10 +191,10 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 | Metric card size | 60 x 28px |
 | Stroke width | 1.5px |
 | Stroke cap/join | round / round |
-| Fill | Linear gradient, top: stroke color at 30% opacity, bottom: 0% opacity |
-| End dot | 2px radius circle, solid stroke color |
+| Fill | Linear gradient, top: stroke colour at 30% opacity, bottom: 0% opacity |
+| End dot | 2px radius circle, solid stroke colour |
 | Draw animation | stroke-dasharray 200, 1s ease forwards, 200ms delay |
-| Color | Dynamic; follows data state (success/accent/warning/danger) |
+| Colour | Dynamic; follows data state (success/accent/warning/danger) |
 
 #### Progress bar
 
@@ -202,8 +202,8 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 |----------|-------|
 | Height | 2px (inline metric), 6px (department health) |
 | Border-radius | 1px (2px bar) or 3px (6px bar) |
-| Track color | `border` (`#1e1e2e`) |
-| Fill color | Dynamic; follows data state |
+| Track colour | `border` (`#1e1e2e`) |
+| Fill colour | Dynamic; follows data state |
 | Fill animation | 900ms cubic-bezier(0.4, 0, 0.2, 1) |
 | Glow | 6px health bar only: `0 0 8px accent/30%` when healthy |
 
@@ -214,12 +214,12 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 | Arc angle | 180 degrees (half-circle, bottom open) |
 | Outer radius | 48px (default), 32px (compact) |
 | Stroke width | 6px |
-| Track color | `border` (`#1e1e2e`) |
-| Fill color | Dynamic; follows data state (success/accent/warning/danger) |
+| Track colour | `border` (`#1e1e2e`) |
+| Fill colour | Dynamic; follows data state (success/accent/warning/danger) |
 | Fill animation | 900ms cubic-bezier(0.4, 0, 0.2, 1), clockwise from left |
-| Value label | Centered inside the arc, Geist Mono 18px weight 700, `text-primary` |
+| Value label | Centred inside the arc, Geist Mono 18px weight 700, `text-primary` |
 | Sub-label | Below value label, 11px, `text-muted` (e.g. "of 100") |
-| Tick marks | Optional, 1px lines at 0%, 25%, 50%, 75%, 100% positions, `border` color |
+| Tick marks | Optional, 1px lines at 0%, 25%, 50%, 75%, 100% positions, `border` colour |
 
 #### Change badge
 
@@ -228,8 +228,8 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 | Font | Mono, 11px, weight 500 |
 | Padding | 2px 6px |
 | Border-radius | 4px |
-| Positive | Color: `success`, bg: `rgba(16, 185, 129, 0.08)`, border: `rgba(16, 185, 129, 0.2)` |
-| Negative | Color: `danger`, bg: `rgba(239, 68, 68, 0.08)`, border: `rgba(239, 68, 68, 0.2)` |
+| Positive | Colour: `success`, bg: `rgba(16, 185, 129, 0.08)`, border: `rgba(16, 185, 129, 0.2)` |
+| Negative | Colour: `danger`, bg: `rgba(239, 68, 68, 0.08)`, border: `rgba(239, 68, 68, 0.2)` |
 
 ### 2.4 MetricCard Layout
 
@@ -244,10 +244,10 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 
 | Element | Style |
 |---------|-------|
-| Label | 11px, uppercase, letter-spacing 0.06em, `text-muted` color |
+| Label | 11px, uppercase, letter-spacing 0.06em, `text-muted` colour |
 | Value | 26px, Geist Mono, weight 700, `text-primary`, letter-spacing -0.02em |
-| Sparkline | 60 x 28px, top-right aligned, color follows data state |
-| Sub-text | 12px, `text-muted` or state color when indicating threshold |
+| Sparkline | 60 x 28px, top-right aligned, colour follows data state |
+| Sub-text | 12px, `text-muted` or state colour when indicating threshold |
 | Change badge | Bottom-right, styled per change badge spec above |
 | Progress bar | Optional, below value, full card width minus padding |
 
@@ -268,7 +268,7 @@ Status is **never communicated by color alone**. The encoding hierarchy:
 | Avatar | 32px circle, initials on `accent-dim` background |
 | Name | 13px, sans, weight 600, `text-primary` |
 | Role | 12px, sans, weight 400, `text-secondary` |
-| Status dot | 6px, right of header, color by agent status |
+| Status dot | 6px, right of header, colour by agent status |
 | Department | 12px, `text-secondary`, label prefix in `text-muted` |
 | Current task | 12px, `text-secondary`, truncated with ellipsis |
 | Timestamp | 10px, Geist Mono, `text-muted`, bottom-right |
@@ -295,7 +295,7 @@ The AgentCard layout must be **identical** across the Agents page, Org Chart nod
 - L2 panels are URL-addressable for deep linking (e.g. `/agents/{name}`)
 - L3 navigation always creates a browser history entry
 
-### 3.2 Hover Behavior
+### 3.2 Hover Behaviour
 
 | Component | Hover effect | Transition |
 |-----------|-------------|------------|
@@ -311,13 +311,13 @@ The AgentCard layout must be **identical** across the Agents page, Org Chart nod
 
 For settings values, agent names, and editable fields:
 
-| Action | Behavior |
+| Action | Behaviour |
 |--------|----------|
 | Activate | Click on value; field becomes editable input |
 | Visual cue | Subtle border appears around field, background lightens to `bg-surface` |
 | Save | Enter key or blur (focus loss) |
 | Cancel | Escape key; reverts to previous value |
-| Validation | Inline error message below field in `danger` color |
+| Validation | Inline error message below field in `danger` colour |
 | Loading | Input disabled, spinner replaces save icon |
 | Success | Brief flash of `success/10%` background, then fade |
 
@@ -325,7 +325,7 @@ For settings values, agent names, and editable fields:
 
 For task board kanban columns and org chart hierarchy view:
 
-| Phase | Behavior |
+| Phase | Behaviour |
 |-------|----------|
 | Grab | Cursor changes to `grabbing`, card lifts (scale 1.02, shadow deepens) |
 | Drag | Semi-transparent ghost preview follows cursor, original position shows dashed border placeholder |
@@ -345,7 +345,7 @@ Built with the `cmdk-base` library (cmdk port on Base UI Dialog).
 | Panel | `bg-surface`, `border-bright` border, 12px border-radius, max-width 640px |
 | Search input | 16px, `text-primary`, no border, `bg-surface` background |
 
-#### Scope behavior
+#### Scope behaviour
 
 | Context | Scope | Result types |
 |---------|-------|--------------|
@@ -384,7 +384,7 @@ All animation values are defined in `web/src/lib/motion.ts` and imported as cons
 
 | Preset | Config | Use case |
 |--------|--------|----------|
-| `tweenDefault` | `{ type: "tween", duration: 0.2, ease: [0.4, 0, 0.2, 1] }` | Hover states, color changes, opacity |
+| `tweenDefault` | `{ type: "tween", duration: 0.2, ease: [0.4, 0, 0.2, 1] }` | Hover states, colour changes, opacity |
 | `tweenSlow` | `{ type: "tween", duration: 0.4, ease: [0.4, 0, 0.2, 1] }` | Page transitions, large layout shifts |
 | `tweenFast` | `{ type: "tween", duration: 0.15, ease: "easeOut" }` | Micro-interactions, button press |
 | `tweenExitFast` | `{ type: "tween", duration: 0.15, ease: "easeIn" }` | Panel/drawer exit, collapse animations |
@@ -415,15 +415,15 @@ When a value updates in real-time (via WebSocket):
 
 | Phase | Duration | Effect |
 |-------|----------|--------|
-| Flash | 200ms | Background flashes `accent/10%` (or relevant state color at 10%) |
-| Hold | 100ms | Holds the flash color |
+| Flash | 200ms | Background flashes `accent/10%` (or relevant state colour at 10%) |
+| Hold | 100ms | Holds the flash colour |
 | Fade | 300ms | Fades back to default background |
 
 **No animation** on initial page load; only on subsequent real-time updates after the page is settled.
 
 ### 4.5 Real-Time Update Feedback
 
-| Element | Behavior |
+| Element | Behaviour |
 |---------|----------|
 | Metric value | Number transitions with counting animation (200ms) |
 | Sparkline | New data point appends with draw animation |
@@ -438,7 +438,7 @@ When a value updates in real-time (via WebSocket):
 | Page headings | Static labels do not change state |
 | Static text content | No re-entrance flicker on re-render |
 | Already-visible cards | Cards only animate on *first* appearance, not on re-render |
-| Scrollbar | Browser-native behavior only |
+| Scrollbar | Browser-native behaviour only |
 | Focus indicators | Instant appearance for accessibility |
 
 ### 4.7 Reduced Motion
@@ -504,8 +504,8 @@ All foreground/background combinations verified with `scripts/wcag_check.py`. Th
 |----------|-------|
 | Style | 2px solid ring |
 | Offset | 2px (gap between element and ring) |
-| Color | `accent` (`#38bdf8`) |
-| Visibility | Must be visible on all background colors (verified: accent on bg-base = 9.20:1) |
+| Colour | `accent` (`#38bdf8`) |
+| Visibility | Must be visible on all background colours (verified: accent on bg-base = 9.20:1) |
 | `:focus-visible` | Show ring only on keyboard focus, not mouse click |
 
 ### 5.3 ARIA Requirements
@@ -514,7 +514,7 @@ All foreground/background combinations verified with `scripts/wcag_check.py`. Th
 |---------|--------------------|
 | Real-time data feeds | `aria-live="polite"` on metric values, task counts, agent status |
 | Icon-only buttons | `aria-label` describing the action (e.g. "Close panel", "Expand sidebar") |
-| Status dots | `aria-label` with status text (e.g. "Status: active"), never rely on color alone |
+| Status dots | `aria-label` with status text (e.g. "Status: active"), never rely on colour alone |
 | Modals/overlays | `role="dialog"`, `aria-modal="true"`, focus trap, Escape to close |
 | Tab panels | `role="tablist"`, `role="tab"`, `role="tabpanel"`, arrow key navigation |
 | Notifications | `aria-live="assertive"` for critical alerts, `"polite"` for informational |
@@ -523,13 +523,13 @@ All foreground/background combinations verified with `scripts/wcag_check.py`. Th
 
 ### 5.4 Status Encoding
 
-Status must **never** be color-only. Every status indicator includes:
+Status must **never** be colour-only. Every status indicator includes:
 
-1. **Color**: semantic state color (success/warning/danger/accent)
+1. **Colour**: semantic state colour (success/warning/danger/accent)
 2. **Shape**: dot (6px circle) or icon (Lucide icon set)
 3. **Text label**: explicit text for critical states ("Active", "Error", "Idle")
 
-For non-critical contexts where space is limited (e.g. compact table rows), color + shape is acceptable, but an `aria-label` must provide the text equivalent.
+For non-critical contexts where space is limited (e.g. compact table rows), colour + shape is acceptable, but an `aria-label` must provide the text equivalent.
 
 ### 5.5 Touch and Click Targets
 
@@ -566,7 +566,7 @@ Scope inherited from [Page Structure & IA](page-structure.md). Desktop-first wit
 | Agent cards | 3-4 column grid | 3-column grid | 2-column grid |
 | Data tables | Full columns | Horizontal scroll | Horizontal scroll |
 
-### Sidebar Behavior by Breakpoint
+### Sidebar Behaviour by Breakpoint
 
 | Breakpoint | Default state | Toggle | Width |
 |------------|---------------|--------|-------|
@@ -583,7 +583,7 @@ Sidebar state is persisted in user preferences. When resizing from >= 1280px int
 
 ### Tailwind `@theme` Snippet
 
-The following `@theme` block contains all design tokens for Tailwind v4. This replaces the existing color definitions in `web/src/styles/global.css` (to be integrated in #775).
+The following `@theme` block contains all design tokens for Tailwind v4. This replaces the existing colour definitions in `web/src/styles/global.css` (to be integrated in #775).
 
 > **Note**: The `@theme` block uses Tailwind's native property naming (`--color-*`, `--spacing-*`), while `design-tokens.css` uses the `--so-*` prefix for non-Tailwind contexts. Both define the same underlying values.
 

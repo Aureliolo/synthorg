@@ -1,12 +1,12 @@
 ---
 title: Task & Workflow Engine
-description: Task lifecycle, task definition, workflow types (sequential, parallel, Kanban, Agile sprints), workflow definitions with visual editor, task routing, and centralized TaskEngine state coordination.
+description: Task lifecycle, task definition, workflow types (sequential, parallel, Kanban, Agile sprints), workflow definitions with visual editor, task routing, and centralised TaskEngine state coordination.
 ---
 
 # Task & Workflow Engine
 
 The task and workflow engine orchestrates how work flows through a synthetic
-organization, from task creation and assignment through to review and
+organisation, from task creation and assignment through to review and
 completion. This page covers the task-engine core: lifecycle, workflows,
 routing, and the single-writer state coordinator.
 
@@ -146,7 +146,7 @@ task:
 
 ## Workflow Types
 
-The framework supports four workflow types for organizing task execution:
+The framework supports four workflow types for organising task execution:
 
 ### Sequential Pipeline
 
@@ -189,7 +189,7 @@ task status transition path.
 ### Agile Kanban
 
 The fourth workflow type combines the Kanban board columns with Agile
-sprint time-boxing.  The `WorkflowType.AGILE_KANBAN` enum value selects
+sprint time-boxing. The `WorkflowType.AGILE_KANBAN` enum value selects
 this combined mode; `WorkflowConfig` aggregates both `KanbanConfig` and
 `SprintConfig` under a single top-level section (`workflow`) in the root
 configuration.
@@ -200,10 +200,10 @@ graph LR
 ```
 
 The `SprintStatus` lifecycle is strictly linear: PLANNING, ACTIVE,
-IN_REVIEW, RETROSPECTIVE, COMPLETED.  Each sprint is a discrete
+IN_REVIEW, RETROSPECTIVE, COMPLETED. Each sprint is a discrete
 lifecycle; a new sprint is created after the previous one completes
 (no automatic cycling).  The `Sprint` model tracks task IDs, story
-points (committed and completed), dates, and duration.  Sprint backlog
+points (committed and completed), dates, and duration. Sprint backlog
 management functions enforce status-dependent gates (e.g. tasks can only be
 added during PLANNING).  `SprintConfig` defines sprint duration, task limits,
 velocity window, and ceremony configurations that integrate with the meeting
@@ -214,8 +214,8 @@ rolling average calculation.
 Builtin templates declare a `workflow_config` section with default
 Kanban/Sprint sub-configurations (WIP limits, sprint duration, ceremonies).
 The template renderer maps these into the root `WorkflowConfig` during
-rendering.  Template variables (`sprint_length`, `wip_limit`) allow users
-to customize workflow settings at template instantiation time.
+rendering. Template variables (`sprint_length`, `wip_limit`) allow users
+to customise workflow settings at template instantiation time.
 
 !!! info "Ceremony Scheduling"
     Sprint ceremony runtime scheduling (including pluggable strategies,
@@ -266,7 +266,7 @@ A **WorkflowDefinition** is a design-time blueprint: a visual directed graph tha
 
 ### Persistence
 
-`WorkflowDefinitionRepository` provides CRUD via SQLite with JSON-serialized nodes/edges. The `/workflows` API controller exposes 14 endpoints: list, get, create, update (with optimistic concurrency), delete, validate, validate draft, export, list blueprints, create from blueprint, list version history, get version diff, rollback to previous version, and get single version.
+`WorkflowDefinitionRepository` provides CRUD via SQLite with JSON-serialised nodes/edges. The `/workflows` API controller exposes 14 endpoints: list, get, create, update (with optimistic concurrency), delete, validate, validate draft, export, list blueprints, create from blueprint, list version history, get version diff, rollback to previous version, and get single version.
 
 #### Version History
 
@@ -391,7 +391,7 @@ Tasks can be assigned through multiple strategies:
 | **Load-balanced** | Distribute evenly across available agents |
 | **Auction** | Agents "bid" on tasks based on confidence/capability |
 | **Hierarchical** | Flow down through management chain |
-| **Cost-optimized** | Assign to cheapest capable agent |
+| **Cost-optimised** | Assign to cheapest capable agent |
 
 All six strategies are implemented behind the `TaskAssignmentStrategy` protocol.
 The five scoring-based strategies (role_based, load_balanced, cost_optimized,
@@ -416,7 +416,7 @@ return `AssignmentResult(selected=None)`.
 
 ---
 
-## TaskEngine: Centralized State Coordination
+## TaskEngine: Centralised State Coordination
 
 All task state mutations flow through a single-writer `TaskEngine` that owns the
 authoritative task state. This eliminates race conditions when multiple agents
@@ -455,9 +455,9 @@ obs_loop -> observers
   `Task.with_transition(...)`); the existing instance is never mutated.
 - **Optimistic concurrency**: Per-task version counters held in-memory
   (volatile).  An unknown task is seeded at version 1 on first access;
-  this is a heuristic baseline, **not** loaded from persistence.  Version
+  this is a heuristic baseline, **not** loaded from persistence. Version
   tracking resets on engine restart; durable persistence of versions is a
-  future enhancement.  Callers can pass `expected_version` to detect stale
+  future enhancement. Callers can pass `expected_version` to detect stale
   writes; on mismatch the engine returns a failed `TaskMutationResult`
   with `error_code="version_conflict"`.  Convenience methods raise
   `TaskVersionConflictError`.

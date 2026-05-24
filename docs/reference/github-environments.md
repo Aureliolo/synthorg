@@ -21,7 +21,7 @@ environment itself. Apply them via `scripts/configure_environments.sh`.
 | `lighthouse` | _none_ (see below) | `lighthouse.yml` pull_request events. Holds `LHCI_GITHUB_APP_TOKEN`. |
 
 The release path is intentionally split into two environments. GitHub's
-deployment branch policies only match ref *names*; they do NOT verify
+deployment branch policies only match ref _names_; they do NOT verify
 that a tag's commit is reachable from an allowed branch. Admitting `v*`
 on the secret-bearing environment would let any `v`-prefixed tag
 (including one forged on an unmerged feature branch) unlock the App
@@ -168,7 +168,7 @@ installation token (valid ≤1 hour) via the
   the check did not appear in the rollup; the merge UI stayed
   stuck on `CI Pass: Expected, waiting`. See PR #1615 for the
   full root cause.) `ci.yml`'s `is_release_please` skip remains
-  in place as defense-in-depth so a future change in
+  in place as defence-in-depth so a future change in
   release-please's identity does not accidentally run a full CI
   suite on a release PR. The `branch-protection-audit` job inside
   `ci.yml` keeps a `github.ref == 'refs/heads/main'` gate so any

@@ -18,7 +18,7 @@ consolidation / retention pipeline.
 
 ## Related design docs
 
-- [Shared Organizational Memory](memory-organizational.md): company-wide knowledge (policies, ADRs, procedures) behind `OrgMemoryBackend`.
+- [Shared Organisational Memory](memory-organizational.md): company-wide knowledge (policies, ADRs, procedures) behind `OrgMemoryBackend`.
 - [Operational Data Persistence](memory-operational.md): `PersistenceBackend` protocol, per-entity repositories, SQLite + Postgres backends, schema strategy, multi-tenancy, database-enforced invariants.
 - [Memory Learning and Injection](memory-learning.md): procedural memory auto-generation (failure + success capture), cross-agent skill pool, injection strategies (context / tool-based / self-editing), `MemoryService` REST + MCP entry point.
 - [Living Documentation](living-documentation.md): per-project documentation as a dual-purpose wiki + RAG namespace, integrated via the `PROJECT_DOC` memory category and `ProjectAwareMemoryFacade`.
@@ -216,7 +216,7 @@ memory:
 #   ))
 ```
 
-Configuration is modeled by `CompanyMemoryConfig` (top-level), `MemoryStorageConfig`
+Configuration is modelled by `CompanyMemoryConfig` (top-level), `MemoryStorageConfig`
 (storage paths/backends), and `MemoryOptionsConfig` (behaviour tuning). All are frozen
 Pydantic models. The `create_memory_backend(config, *, embedder=...)` factory returns an
 isolated `MemoryBackend` instance per company. The `embedder` kwarg is required for the
@@ -253,8 +253,8 @@ Key findings:
 
 **Tier inference inputs** (`auto_select_embedder`):
 
-- **`provider_preset_name`**: first registered provider name, read from the provider registry at setup-completion time.  When operators use preset names verbatim as provider names (the wizard default), the preset hint steers tier selection; otherwise tier inference falls back to heuristic defaults.
-- **`api.setup.has_gpu`** (yaml path; setting key `setup_has_gpu` under namespace `API`): operator-owned boolean, default `"false"`, advanced level.  Flipped by the setup wizard (or directly by an operator) and read via `_read_has_gpu_setting(settings_service)`.  Accepts `true`/`1`/`yes` (-> True) and `false`/`0`/`no`/empty (-> False), case-insensitive; any other value returns `None` (unknown) silently, while a settings-service read failure logs a WARNING and also returns `None`.  There is no platform probe today; the signal is operator-declared, not auto-detected.
+- **`provider_preset_name`**: first registered provider name, read from the provider registry at setup-completion time. When operators use preset names verbatim as provider names (the wizard default), the preset hint steers tier selection; otherwise tier inference falls back to heuristic defaults.
+- **`api.setup.has_gpu`** (yaml path; setting key `setup_has_gpu` under namespace `API`): operator-owned boolean, default `"false"`, advanced level. Flipped by the setup wizard (or directly by an operator) and read via `_read_has_gpu_setting(settings_service)`.  Accepts `true`/`1`/`yes` (-> True) and `false`/`0`/`no`/empty (-> False), case-insensitive; any other value returns `None` (unknown) silently, while a settings-service read failure logs a WARNING and also returns `None`.  There is no platform probe today; the signal is operator-declared, not auto-detected.
 
 Tier fallback is not a single CPU/GPU switch.  `auto_select_embedder` uses preset-name and capability heuristics to pick a `GPU_CONSUMER` or `GPU_FULL` tier when `has_gpu` is `True` or `None`; the tier only collapses to the CPU-only default when the operator has selected a local/self-hosted preset *and* has explicitly set `has_gpu=False`.  Missing or unparseable inputs degrade gracefully and never block setup completion.
 
@@ -282,7 +282,7 @@ The pipeline requires no manual annotation and runs on a single GPU.
 **Integration design:** fine-tuning is an offline pipeline triggered via
 `POST /admin/memory/fine-tune` (see `MemoryAdminController`). The optional
 `EmbeddingFineTuneConfig` (disabled by default) stores the checkpoint path. When
-`enabled=True` and `checkpoint_path` is set, backend initialization uses the
+`enabled=True` and `checkpoint_path` is set, backend initialisation uses the
 checkpoint path as the model identifier passed to the Mem0 SDK. The embedding
 provider must serve the fine-tuned model under this identifier.
 
@@ -325,7 +325,7 @@ When `enabled=True`, both `checkpoint_path` and `base_model` are required
 (enforced by model validation).  Path traversal (`..`) and Windows-style
 paths are rejected to prevent container path escapes.
 
-The `FineTuningPipeline` protocol formalizes the five stages:
+The `FineTuningPipeline` protocol formalises the five stages:
 
 ```python
 class FineTuningPipeline(Protocol):
@@ -415,21 +415,21 @@ the execution trajectory as an EPISODIC memory entry tagged `"distillation"`.
 
 `AgentEngine` wires this into `_post_execution_pipeline` when
 `distillation_capture_enabled=True` is passed to the constructor (default False
-for opt-in behavior).  Capture fires regardless of termination reason;
+for opt-in behaviour).  Capture fires regardless of termination reason;
 successful runs, errors, timeouts, and budget exhaustions all produce useful
-trajectory context for downstream consolidation.  The helper is non-critical:
+trajectory context for downstream consolidation. The helper is non-critical:
 non-system failures log at WARNING and return `None`; system errors
 (`builtins.MemoryError`, `RecursionError`) propagate.
 
 Downstream, `LLMConsolidationStrategy` picks these entries up by tag query
-when synthesizing category groups, embedding the trajectory summaries and
+when synthesising category groups, embedding the trajectory summaries and
 outcomes in the synthesis system prompt so the LLM has context about what the
 agent was trying to accomplish when the memories it is merging were created.
 
 #### Dual-Mode Archival
 
 When `ArchivalConfig.dual_mode.enabled` is `True`, consolidation classifies content density before
-choosing an archival mode. This prevents catastrophic information loss from naively summarizing
+choosing an archival mode. This prevents catastrophic information loss from naively summarising
 dense content (code, structured data, identifiers). Based on research: Memex
 ([arXiv:2603.04257](https://arxiv.org/abs/2603.04257)) and KV Cache Attention Matching
 ([arXiv:2602.16284](https://arxiv.org/abs/2602.16284)).
@@ -440,8 +440,8 @@ dense content (code, structured data, identifiers). Based on research: Memex
 | Dense (code, structured data, IDs) | `EXTRACTIVE` | Verbatim key-fact extraction + start/mid/end anchors via `ExtractivePreserver` |
 
 **Classification** is heuristic-based (`DensityClassifier`), using five weighted signals: code
-patterns, structured data markers, identifier density, numeric density, and line structure.  No LLM
-is needed for classification; only for abstractive summarization.  Groups are classified by
+patterns, structured data markers, identifier density, numeric density, and line structure. No LLM
+is needed for classification; only for abstractive summarization. Groups are classified by
 majority vote: if most entries in a category group are dense, the group uses extractive mode.
 
 **Deterministic restore**: When entries are archived, the service builds an `archival_index`

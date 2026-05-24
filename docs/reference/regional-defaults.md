@@ -35,7 +35,7 @@ PostToolUse hook on every `web/src/` `Edit`/`Write`. Flags:
 - Bare `.toLocaleString()` / `.toLocaleDateString()` / `.toLocaleTimeString()` calls; use the helpers in `@/utils/format` which all read `getLocale()`.
 - `localhost:<port>` in application code.
 
-Hardcoded hex colors, font-family literals, pixel spacing, Motion durations, and missing Storybook stories are also flagged by this same hook (see `web/CLAUDE.md`).
+Hardcoded hex colours, font-family literals, pixel spacing, Motion durations, and missing Storybook stories are also flagged by this same hook (see `web/CLAUDE.md`).
 
 ### Backend: `scripts/check_backend_regional_defaults.py`
 

@@ -64,13 +64,13 @@ The design spec covers the full intended architecture of SynthOrg, from agent id
 
     [:octicons-arrow-right-24: Agents](design/agents.md)
 
--   **Organization & Templates**
+-   **Organisation & Templates**
 
     ---
 
     Company types, hierarchy, departments, template system.
 
-    [:octicons-arrow-right-24: Organization](design/organization.md)
+    [:octicons-arrow-right-24: Organisation](design/organization.md)
 
 -   **Communication**
 
@@ -131,7 +131,7 @@ which is in active development (see the [Roadmap](roadmap/index.md)).
 |---------|-------------|
 | [Architecture](architecture/index.md) | System overview, module map, design principles |
 | [Tech Stack](architecture/tech-stack.md) | Technology choices and engineering conventions |
-| [Decision Log](architecture/decisions.md) | All design decisions, organized by domain |
+| [Decision Log](architecture/decisions.md) | All design decisions, organised by domain |
 | [REST API](openapi/index.md) | REST + WebSocket API reference (Scalar/OpenAPI) |
 | [Library Reference](api/index.md) | Auto-generated from docstrings |
 | [Roadmap](roadmap/index.md) | Status, open questions, future vision |

@@ -16,7 +16,7 @@ and container infrastructure.
 
 ### SecOps Agent & Rule Engine
 
-Every tool invocation passes through a centralized security evaluation pipeline
+Every tool invocation passes through a centralised security evaluation pipeline
 before execution. The **SecOps service** coordinates a fail-closed rule engine
 with five built-in detectors:
 
@@ -303,12 +303,12 @@ Images are **only pushed to GHCR after vulnerability scans and CIS benchmark pas
 
 - **Container images**: cosign keyless signatures (verify via `cosign verify`) + SLSA Level 3 provenance attestations (verify via `gh attestation verify`)
 - **CLI binaries**:
-    - cosign keyless signature on checksums file (verify via `cosign verify-blob`)
-    - SLSA Level 3 provenance attestations (verify via `gh attestation verify`)
-    - Sigstore provenance bundle (`.sigstore.json`, verify via `cosign verify-blob-attestation`)
+  - cosign keyless signature on checksums file (verify via `cosign verify-blob`)
+  - SLSA Level 3 provenance attestations (verify via `gh attestation verify`)
+  - Sigstore provenance bundle (`.sigstore.json`, verify via `cosign verify-blob-attestation`)
 - **Git commits**: GPG/SSH signed (enforced by branch protection ruleset)
 - **GitHub Actions**: All actions pinned by full SHA commit hash
-- **GitHub Releases**: Immutable releases enabled; once published, assets and body cannot be modified (prevents supply chain tampering). Releases are created as drafts by Release Please, finalized after all assets are attached.
+- **GitHub Releases**: Immutable releases enabled; once published, assets and body cannot be modified (prevents supply chain tampering). Releases are created as drafts by Release Please, finalised after all assets are attached.
 
 ### Software Bill of Materials (SBOM)
 
@@ -379,13 +379,13 @@ suppresses validated false positives and informational findings:
 | Debug Error Messages | 10023 | Ignore | Same trigger and rationale as 90022. |
 | Cookie No HttpOnly Flag | 10010 | Ignore | The `csrf_token` cookie is intentionally configured non-HttpOnly (`httponly=False` in `src/synthorg/api/auth/cookies.py`) as part of the double-submit CSRF pattern: the frontend reads the cookie and echoes its value back in the `X-CSRF-Token` header. Suppressing the rule prevents recurring noise on this intentional configuration. The auth/session cookie itself is HttpOnly. |
 | Authentication Request Identified | 10111 | Ignore | Under the current ZAP ruleset, this rule labels endpoints carrying a `password` field for the scanner's own auth-flow inference; not a security finding. |
-| Sensitive Information in URL | 10024 | Ignore | Under the current ZAP ruleset matching behavior, this rule fires when a URL contains substrings such as `session`. In SynthOrg, `session_id` query parameters reference domain runtime/agent session resources (a workflow ID), not HTTP/auth session tokens; auth state is carried in HttpOnly cookies. Behavior can vary across ZAP versions, so revisit on upgrade. |
+| Sensitive Information in URL | 10024 | Ignore | Under the current ZAP ruleset matching behaviour, this rule fires when a URL contains substrings such as `session`. In SynthOrg, `session_id` query parameters reference domain runtime/agent session resources (a workflow ID), not HTTP/auth session tokens; auth state is carried in HttpOnly cookies. Behaviour can vary across ZAP versions, so revisit on upgrade. |
 
 The rules file is reviewed when ZAP or the API surface changes.
 **When upgrading the ZAP action, the bundled ZAP version, or the
 ruleset it uses,** revisit each Ignore row above to confirm the
-underlying rule's matcher behavior, severity, and rule ID have not
-changed.  Action wrapper bumps and ZAP-engine bumps both alter what
+underlying rule's matcher behaviour, severity, and rule ID have not
+changed. Action wrapper bumps and ZAP-engine bumps both alter what
 each rule fires on; do not skip the revisit just because the action
 version changed by a single minor bump.
 Cache-Control is path-aware: API data endpoints use `no-store` to prevent

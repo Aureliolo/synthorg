@@ -62,7 +62,7 @@ The framework supports multiple communication patterns, configurable per company
     - Authority enforcement built into the flow
 
     Best for
-    :   Structured organizations with clear chains of command.
+    :   Structured organisations with clear chains of command.
 
 === "Pattern 3: Meeting-Based"
 
@@ -103,7 +103,7 @@ A2A Protocol (Agent-to-Agent, Linux Foundation)
     structured task lifecycle management. See [A2A External Gateway](communication-a2a.md).
 
 MCP (Model Context Protocol, Agentic AI Foundation / Linux Foundation)
-:   Agent-to-tool integration, providing standardized tool discovery and
+:   Agent-to-tool integration, providing standardised tool discovery and
     invocation.
 
 ---

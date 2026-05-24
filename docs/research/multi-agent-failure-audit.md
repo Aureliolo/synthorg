@@ -18,7 +18,7 @@ Two independent sources converge on a warning relevant to SynthOrg's architectur
 1. **CIO article**: empirical failure rates: swarm topology 68%, hierarchical 36%, gated
    pipelines 100% failure without human checkpoints. The data validates SynthOrg's
    orchestrated-hierarchical approach. But the warning is that even orchestrated systems
-   drift toward swarm behavior if agent boundaries are poorly managed.
+   drift toward swarm behaviour if agent boundaries are poorly managed.
 
 2. **Medium article**: Multi-agent systems recreate microservices problems: unowned
    services, chatty interfaces, cascading failures, observability gaps, and distributed
@@ -30,13 +30,14 @@ documents the strength of existing mitigations.
 
 ---
 
-## Meeting Protocol Audit for Swarm Behavior Potential
+## Meeting Protocol Audit for Swarm Behaviour Potential
 
 ### StructuredPhasesProtocol
 
 **Source**: `src/synthorg/communication/meeting/structured_phases.py`
 
 The structured phases protocol is bounded at every stage:
+
 - Phase 1 (agenda broadcast): no LLM call, O(n) message distribution
 - Phase 2 (parallel input): bounded by `max_tokens_per_agent` and `TokenTracker`
 - Phase 3 (discussion): bounded by `max_discussion_tokens`; skipped entirely when
@@ -90,6 +91,7 @@ async with asyncio.TaskGroup() as tg:
 ```
 
 This creates a potential feedback loop:
+
 1. Sprint planning meeting generates action items -> tasks created
 2. Task completion events trigger "post-sprint" meeting type
 3. Post-sprint meeting generates more action items -> more tasks
@@ -118,7 +120,7 @@ cooldowns. Alternatively, add a `max_tasks_per_meeting` cap to `MeetingProtocolC
 Deterministic seniority comparison. N-party conflicts use pairwise comparison. Equal
 seniority falls back to hierarchy proximity (lowest common manager). If no common manager
 exists across departments, `ConflictHierarchyError` is raised; this is the correct
-behavior (cross-department conflicts without hierarchy require human escalation).
+behaviour (cross-department conflicts without hierarchy require human escalation).
 
 **Verdict**: Safe. Always terminates; no LLM calls.
 
@@ -150,7 +152,7 @@ This is a **stub implementation** pending approval queue integration (#37). It d
 block waiting for a human; it returns a `ConflictResolution` with outcome
 `ESCALATED_TO_HUMAN` immediately. The caller receives a resolution object but with no
 winning position. What happens next depends on the caller's handling of
-`ESCALATED_TO_HUMAN`; there is no standard downstream behavior enforced by the resolver.
+`ESCALATED_TO_HUMAN`; there is no standard downstream behaviour enforced by the resolver.
 
 This means conflicts assigned to `HumanEscalationResolver` are technically "resolved" from
 the resolver's perspective but have no actual decision. Callers that do not handle
@@ -166,7 +168,8 @@ escalation for conflict resolution is a no-op that silently produces unresolved 
 **Source**: `src/synthorg/communication/conflict_resolution/hybrid_strategy.py`
 
 Single LLM review call. If the winner matches a participant, auto-resolves. On ambiguity:
-- `escalate_on_ambiguity=True`: delegates to `HumanEscalationResolver` (same stub behavior)
+
+- `escalate_on_ambiguity=True`: delegates to `HumanEscalationResolver` (same stub behaviour)
 - `escalate_on_ambiguity=False`: falls back to `AuthorityResolver`
 
 **Verdict**: Safe. Single LLM call; no loop. Ambiguity handled deterministically.
@@ -222,7 +225,7 @@ to completion (or budget exhaustion); the metric is observational only. There is
 
 **Assessment**: Detection exists; enforcement does not. Acceptable for now given the
 budget enforcer as ultimate backstop, but the detection-without-enforcement gap means
-chatty behavior can exhaust significant budget before the hard stop triggers.
+chatty behaviour can exhaust significant budget before the hard stop triggers.
 
 ### Distributed Monolith Pattern
 
@@ -231,7 +234,7 @@ deployed and coordinated together.
 
 **SynthOrg assessment**: The message bus uses a pull model (`InMemoryMessageBus` with
 async `receive()`). Agents do not share in-process state beyond the message bus. The
-`TaskEngine` single-writer actor serializes task state mutations but is not a synchronous
+`TaskEngine` single-writer actor serialises task state mutations but is not a synchronous
 coupling point for agent execution. The `CoordinationService` can operate independently of
 any specific agent being present.
 
@@ -245,7 +248,7 @@ is introduced across agent groups.
 mutations.
 
 **SynthOrg assessment**: `TaskEngine` is a single-writer actor; all task state mutations
-are serialized through its `asyncio.Queue`. Task `assigned_to` is a single agent ID field.
+are serialised through its `asyncio.Queue`. Task `assigned_to` is a single agent ID field.
 `ResourceLock` prevents concurrent execution of the same task by multiple agents.
 `DelegationService` validates authority before creating sub-tasks.
 
@@ -257,6 +260,7 @@ are serialized through its `asyncio.Queue`. Task `assigned_to` is a single agent
 system.
 
 **SynthOrg assessment**:
+
 - `fail_fast` in `CoordinationConfig` halts remaining waves when one wave fails
 - `RecoveryStrategy` per execution handles individual agent failures
 - `ParallelExecutor` captures per-task exceptions without stopping the group (unless
@@ -362,7 +366,7 @@ compute orchestration ratios but they are not wired to any enforcement action.
 
 ### Topology Locking
 
-Coordination topology (SAS, centralized, decentralized, context-dependent) is selected at
+Coordination topology (SAS, centralised, decentralised, context-dependent) is selected at
 the start of a coordination run and remains fixed throughout. There is no runtime topology
 mutation; agents cannot renegotiate their coordination structure mid-execution.
 

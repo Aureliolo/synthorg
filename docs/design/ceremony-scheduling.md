@@ -47,7 +47,7 @@ level.
 
 - Different templates naturally want different rhythms (startup vs. enterprise).
 - The `CeremonySchedulingStrategy` protocol adds minimal implementation cost
-  per strategy while maximizing flexibility.
+  per strategy while maximising flexibility.
 - Users can switch strategies between sprints without any code changes.
 
 **Key decisions:**
@@ -57,7 +57,7 @@ level.
   selection, but the effective ``CeremonySchedulingStrategy`` is resolved and
   locked per sprint.
 - **Each strategy defines its own velocity unit.** There is no forced
-  normalization to points/sprint. Each strategy ships a default
+  normalisation to points/sprint. Each strategy ships a default
   `VelocityCalculator` (e.g. task-driven uses `pts/task`, calendar uses
   `pts/day`). Users can override via settings.
 - **Ceremony triggering integrates with coordination** via the protocol's
@@ -98,7 +98,7 @@ sprint ceremony semantics into meeting system primitives.
 
 Eight pluggable strategies are available behind the `CeremonySchedulingStrategy`
 protocol. Each strategy defines its own ceremony trigger logic, sprint
-auto-transition behavior, and default velocity unit.
+auto-transition behaviour, and default velocity unit.
 
 ### Task-Driven
 
@@ -224,7 +224,7 @@ the MessageBus.
 ### Budget-Driven
 
 Ceremonies fire at cost-consumption thresholds. Ties directly into the
-existing budget module (cost tracking, quota degradation, CFO optimization).
+existing budget module (cost tracking, quota degradation, CFO optimisation).
 
 ```yaml
 sprint:
@@ -241,7 +241,7 @@ when a configured budget threshold is crossed.
 
 **Default velocity unit**: points per currency unit (`pts/<DEFAULT_CURRENCY>`, where `DEFAULT_CURRENCY` is defined in `src/synthorg/budget/currency.py` and can be overridden at runtime by the `budget.currency` setting).
 
-**Best for**: cost-conscious organizations where every agent action has a
+**Best for**: cost-conscious organisations where every agent action has a
 real dollar cost. Ensures ceremonies happen proportionally to spend.
 
 ### Throughput-Adaptive
@@ -260,7 +260,7 @@ sprint:
       measurement_window_tasks: 10       # rolling window for rate calc
 ```
 
-**Auto-transition**: when task completion rate stabilizes after final tasks
+**Auto-transition**: when task completion rate stabilises after final tasks
 complete (no anomaly-based transition; uses a completion threshold like
 task-driven).
 
@@ -302,7 +302,7 @@ sprint:
 **Default velocity unit**: points per sprint (`pts/sprint`).
 
 **Best for**: integration with real-world dev workflows, CI/CD-driven
-organizations.
+organisations.
 
 ### Milestone-Driven
 
@@ -330,7 +330,6 @@ sprint:
 
 **Best for**: phased delivery, release-oriented workflows, open-source
 projects with async contributors.
-
 
 ---
 
@@ -517,15 +516,15 @@ Resolution for any department's retrospective: `event_driven` (per-ceremony).
 ### Runtime Mutability
 
 Strategies are **locked per sprint**. Changes take effect at the next sprint
-start. This prevents confusing mid-sprint behavior changes.
+start. This prevents confusing mid-sprint behaviour changes.
 
 When a strategy change is pending:
 
 1. A **migration notification** is sent to the responsible role (scrum master,
    department head, or whoever manages the task list).
 2. A **warning** is displayed: the change will take effect at the next sprint
-   start and may cause initial optimization issues in the first few sprints
-   until the new cadence stabilizes.
+   start and may cause initial optimisation issues in the first few sprints
+   until the new cadence stabilises.
 3. The responsible role may need to reorder or reorganize the backlog for
    the new system.
 
@@ -614,7 +613,7 @@ When the ceremony strategy changes between sprints:
 - The velocity rolling-average window **resets** (previous records used a
   different unit/calculation).
 - A strategy change is logged at INFO level using the
-  `SPRINT_CEREMONY_STRATEGY_CHANGED` event.  The velocity
+  `SPRINT_CEREMONY_STRATEGY_CHANGED` event. The velocity
   rolling-average window resets; prior records are preserved but
   their computed metrics no longer carry over.
 - Historical `VelocityRecord` data is preserved (raw dimensions are always

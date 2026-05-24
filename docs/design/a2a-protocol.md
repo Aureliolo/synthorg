@@ -28,7 +28,7 @@ This page is the status-and-architecture reference: what ships today, how it map
 | Delegation guard on inbound requests (loop prevention) | Shipped |
 | Quadratic communication enforcement strategies | Planned (detection ships today; enforcement is opt-in behind `alert_only`) |
 | Full A2A skill negotiation workflow | Planned |
-| Inter-org federation patterns (delegation across organizations) | Planned |
+| Inter-org federation patterns (delegation across organisations) | Planned |
 
 A2A is **disabled by default**. Enable via `a2a.enabled: true` in company YAML and configure auth + allowlist per deployment.
 
@@ -96,7 +96,7 @@ See [Communication Coordination -> Loop Prevention](communication-coordination.m
 
 Four enforcement strategies are defined behind `QuadraticEnforcementStrategy`. Only `alert_only` is wired into `MessageBus.publish`; the other three are accepted in config and surface in resolution responses, but the per-mode behaviour is not yet implemented.
 
-| Strategy | Status | Behavior |
+| Strategy | Status | Behaviour |
 |----------|--------|-----------|
 | `alert_only` (default) | Shipped | Detect and emit `NotificationDispatcher` warnings |
 | `soft_throttle` | Planned | Auto-tighten rate limiter on the affected agent group |

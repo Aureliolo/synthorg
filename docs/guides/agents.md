@@ -5,7 +5,7 @@ description: Define agents, seniority levels, personality, departments, and repo
 
 # Agent Roles & Hierarchy
 
-Agents are the core building blocks of a synthetic organization. Each agent has an identity (role, name, personality), a position in the hierarchy (department, seniority, reporting line), and capabilities (model, tools, authority). This guide covers how to configure all of these.
+Agents are the core building blocks of a synthetic organisation. Each agent has an identity (role, name, personality), a position in the hierarchy (department, seniority, reporting line), and capabilities (model, tools, authority). This guide covers how to configure all of these.
 
 ---
 
@@ -63,7 +63,7 @@ agents:
 
 !!! note "Unique agent identity"
 
-    Agent names must be unique within the organization. For template inheritance, agent matching is keyed by `(role, department, merge_id)`. Use `merge_id` to disambiguate multiple agents sharing the same `(role, department)` pair.
+    Agent names must be unique within the organisation. For template inheritance, agent matching is keyed by `(role, department, merge_id)`. Use `merge_id` to disambiguate multiple agents sharing the same `(role, department)` pair.
 
 ---
 
@@ -80,7 +80,7 @@ Seniority determines an agent's authority scope, typical model tier, and positio
 | Principal | `principal` | Cross-team technical decisions | Large |
 | Director | `director` | Department-level strategy | Large |
 | VP | `vp` | Multi-department oversight | Large |
-| C-Suite | `c_suite` | Organization-wide authority | Large |
+| C-Suite | `c_suite` | Organisation-wide authority | Large |
 
 Higher-seniority agents can delegate tasks to lower-seniority agents within their authority scope. The engine enforces that agents cannot assign work to peers or superiors.
 
@@ -88,7 +88,7 @@ Higher-seniority agents can delegate tasks to lower-seniority agents within thei
 
 ## Built-in Roles
 
-SynthOrg ships with 50+ built-in roles organized by department:
+SynthOrg ships with 50+ built-in roles organised by department:
 
 | Department | Roles |
 |-----------|-------|
@@ -178,7 +178,7 @@ Use `subordinate_id` in reporting lines when you have multiple agents with the s
 
 ## Personality Configuration
 
-Agent personality is injected into the LLM system prompt and influences the agent's behavior, communication style, and decision-making.
+Agent personality is injected into the LLM system prompt and influences the agent's behaviour, communication style, and decision-making.
 
 ### Big Five Dimensions
 
@@ -187,12 +187,12 @@ Each dimension is a float from 0.0 to 1.0:
 | Dimension | Low (0.0) | High (1.0) |
 |-----------|-----------|------------|
 | `openness` | Conservative, routine-oriented | Curious, creative, experimental |
-| `conscientiousness` | Flexible, spontaneous | Organized, reliable, thorough |
+| `conscientiousness` | Flexible, spontaneous | Organised, reliable, thorough |
 | `extraversion` | Reserved, independent | Sociable, energetic, assertive |
 | `agreeableness` | Competitive, direct | Cooperative, empathetic |
 | `stress_response` | Reactive, anxious | Calm, resilient, composed |
 
-### Behavioral Traits
+### Behavioural Traits
 
 | Trait | Values |
 |-------|--------|
@@ -274,7 +274,7 @@ When no model is specified, the routing strategy selects one based on the agent'
 
 ## Templates as Starting Points
 
-Templates pre-populate agents, departments, and workflows. You can customize any aspect after selecting a template:
+Templates pre-populate agents, departments, and workflows. You can customise any aspect after selecting a template:
 
 | Template | Agents | Autonomy | Workflow | Communication |
 |----------|--------|----------|----------|---------------|
@@ -288,7 +288,7 @@ Templates pre-populate agents, departments, and workflows. You can customize any
 | `consultancy` | 4-6 | Supervised | Pipeline | Hierarchical |
 | `data_team` | 5-8 | Full | Kanban | Event-driven |
 
-Templates support **inheritance** via the `extends` keyword (deep merge up to 10 levels) and **variables** with Jinja2 placeholders for customization.
+Templates support **inheritance** via the `extends` keyword (deep merge up to 10 levels) and **variables** with Jinja2 placeholders for customisation.
 
 ---
 
@@ -334,4 +334,4 @@ The `priority_boost` field increases the priority of escalated tasks (0 = no cha
 - [Budget & Cost Control](budget.md): per-agent budgets and cost tracking
 - [Security & Trust Policies](security.md): autonomy levels and trust strategies
 - [Design: Agents](../design/agents.md): full design specification for agents
-- [Design: Organization](../design/organization.md): template system and hierarchy
+- [Design: Organisation](../design/organization.md): template system and hierarchy

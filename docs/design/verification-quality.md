@@ -90,7 +90,7 @@ Default chain: `clarification_gate`, `task_ledger`, `plan_review_gate`, `progres
 
 ### S1 Constraint Hooks
 
-| Middleware | Hook | Behavior |
+| Middleware | Hook | Behaviour |
 |-----------|------|----------|
 | `AuthorityDeferenceGuard` | `before_agent` | Detects authority cues in transcripts, logs patterns, injects justification header |
 | `AssumptionViolationMiddleware` | `after_model` | Detects broken assumptions, emits escalation events |
@@ -123,7 +123,7 @@ Key design decisions:
 - **Short-circuit on FAIL**: first failing stage sends the task back to
   `IN_PROGRESS` for rework with the stage name and reason in metadata.
 - **Default fallback**: when no pipeline is configured, the existing
-  `ReviewGateService` single-stage behavior runs.
+  `ReviewGateService` single-stage behaviour runs.
 
 ## Intake Engine
 

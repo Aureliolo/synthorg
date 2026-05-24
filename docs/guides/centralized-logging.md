@@ -1,13 +1,13 @@
 ---
-title: Centralized Logging
-description: Ship SynthOrg logs to centralized storage via syslog, HTTP, or Docker logging drivers.
+title: Centralised Logging
+description: Ship SynthOrg logs to centralised storage via syslog, HTTP, or Docker logging drivers.
 ---
 
-# Centralized Logging
+# Centralised Logging
 
 By default SynthOrg writes structured JSON logs to files inside the Docker volume
 (`/data/logs/`).  For production multi-instance deployments you need those logs
-shipped to a centralized system for aggregation, search, and alerting.
+shipped to a centralised system for aggregation, search, and alerting.
 
 Three approaches are available; they can be combined.
 
@@ -102,7 +102,7 @@ log { source(s_synthorg); filter(f_synthorg); destination(d_synthorg); };
 ## HTTP Shipping
 
 The `HTTP` sink type batches structured log records and POSTs them as JSON arrays
-to an HTTP endpoint.  A background thread handles batching, flushing, and retries.
+to an HTTP endpoint. A background thread handles batching, flushing, and retries.
 
 ### Configuration (Runtime JSON)
 
@@ -178,8 +178,8 @@ transform the array into the vendor-specific format.
 
 ## Docker Logging Drivers
 
-Docker's built-in logging drivers capture container stdout/stderr.  By default the
-console sink writes colored text to stderr.  For structured JSON output that Docker
+Docker's built-in logging drivers capture container stdout/stderr. By default the
+console sink writes coloured text to stderr. For structured JSON output that Docker
 drivers and downstream parsers can process, override the console sink format:
 
 ```json
@@ -224,8 +224,8 @@ x-logging: &logging
 
 ### Combining with App-Level Shipping
 
-Docker drivers capture only console (stderr) output.  The 10 JSON file sinks are
-**not** visible to Docker drivers.  For complete log coverage:
+Docker drivers capture only console (stderr) output. The 10 JSON file sinks are
+**not** visible to Docker drivers. For complete log coverage:
 
 1. **App-level syslog/HTTP** for routed, structured JSON from all 11+ sinks
 2. **Docker driver** as a safety net for console output and uncaught exceptions
@@ -264,7 +264,7 @@ logging:
         compress_rotated: true
 ```
 
-### Behavior
+### Behaviour
 
 - When `compress_rotated` is `true`, rotated backups are stored as `.log.N.gz` instead of `.log.N`
 - Compression happens synchronously during rotation (fast for 10 MB files)
@@ -288,10 +288,10 @@ and 10 backup files:
 
 For production deployments, combine rotation, compression, and shipping:
 
-1. **Ship** all logs to centralized storage (syslog or HTTP) for long-term retention
+1. **Ship** all logs to centralised storage (syslog or HTTP) for long-term retention
 2. **Rotate** local files with `builtin` strategy (10 MB, 5--10 backups)
 3. **Compress** rotated backups to reduce local disk usage
-4. **Centralized system** handles search, alerting, and long-term retention
+4. **Centralised system** handles search, alerting, and long-term retention
 
-This keeps local disk usage bounded while centralized storage provides the full
+This keeps local disk usage bounded while centralised storage provides the full
 audit trail.

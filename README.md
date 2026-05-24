@@ -1,9 +1,9 @@
-<p align="center">
+<p align="centre">
   <strong>SynthOrg</strong><br>
   <em>An autonomous product studio you operate: describe what to build, a synthetic organisation of AI agents plans and delivers it.</em>
 </p>
 
-<p align="center">
+<p align="centre">
   <a href="https://securityscorecards.dev/viewer/?uri=github.com/Aureliolo/synthorg"><img src="https://api.securityscorecards.dev/projects/github.com/Aureliolo/synthorg/badge" alt="OpenSSF Scorecard"></a>
   <a href="https://slsa.dev"><img src="https://slsa.dev/images/gh-badge-level3.svg" alt="SLSA 3"></a>
   <a href="https://codecov.io/gh/Aureliolo/synthorg"><img src="https://codecov.io/gh/Aureliolo/synthorg/branch/main/graph/badge.svg" alt="Coverage"></a>

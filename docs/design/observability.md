@@ -68,7 +68,7 @@ Eleven default sinks, activated at startup via `bootstrap_logging()`:
 
 | Sink | Type | Level | Format | Routes | Description |
 |------|------|-------|--------|--------|-------------|
-| Console | stderr | INFO | Colored text | All loggers | Human-readable development output |
+| Console | stderr | INFO | Coloured text | All loggers | Human-readable development output |
 | `synthorg.log` | File | INFO | JSON | All loggers EXCEPT `api.request.started` / `api.request.completed` | Main application log (catch-all). Request-lifecycle events from `synthorg.api.middleware` are excluded by an event-name filter so the main log is not buried under per-request noise -- those events live in `access.log` only. |
 | `audit.log` | File | INFO | JSON | `synthorg.security.*`, `synthorg.hr.*`, `synthorg.observability.*` | Audit-relevant events (security, HR, observability) |
 | `errors.log` | File | ERROR | JSON | All loggers | Errors and above only |
@@ -80,7 +80,7 @@ Eleven default sinks, activated at startup via `bootstrap_logging()`:
 | `configuration.log` | File | INFO | JSON | `synthorg.settings.*`, `synthorg.config.*` | Settings resolution, config loading |
 | `backup.log` | File | INFO | JSON | `synthorg.backup.*` | Backup/restore lifecycle |
 
-In addition to the 11 default sinks, three shipping sink types are available for centralized
+In addition to the 11 default sinks, three shipping sink types are available for centralised
 log aggregation and telemetry export:
 
 | Sink Type | Transport | Format | Description |
@@ -99,12 +99,12 @@ SynthOrg ships only the **HTTP** OTLP exporter (`opentelemetry.exporter.otlp.pro
 
 If a concrete deployment needs gRPC directly, file an enhancement issue with the target environment; there is no open design blocker, only a missing dependency opt-in.
 
-The HTTP sink sends raw JSON arrays.  Backends that expect different payload formats
+The HTTP sink sends raw JSON arrays. Backends that expect different payload formats
 (e.g., Grafana Loki's `/loki/api/v1/push`, Elasticsearch's `/_bulk`) require a
 collector/proxy (Promtail, Logstash, Vector, etc.) to translate the payload.
 
 Shipping sinks are catch-all (no logger name routing) and are configured at runtime via the
-`custom_sinks` setting or YAML. See the [Centralized Logging](../guides/centralized-logging.md)
+`custom_sinks` setting or YAML. See the [Centralised Logging](../guides/centralized-logging.md)
 guide for configuration examples and deployment patterns.
 
 Logger name routing is implemented via `_LoggerNameFilter` on file handlers. Sinks without
@@ -112,7 +112,7 @@ explicit routing are catch-all (accept all loggers at their configured level).
 
 Exception formatting differs between sink types: `format_exc_info` is applied only to sinks
 with `json_format=True` (converting `exc_info` tuples to formatted traceback strings for
-serialization). Sinks with `json_format=False` (the default console sink) omit this
+serialisation). Sinks with `json_format=False` (the default console sink) omit this
 processor because `ConsoleRenderer` handles exception rendering natively.
 
 ### Log Directory
@@ -309,7 +309,7 @@ logging-bridge change does not silently drop security events.
 | Event | When | Callback status |
 |---|---|---|
 | `audit_chain.emit_timeout` | Sign + TSA exceeded `audit_chain_signing_timeout_seconds` (default 5s) | `error` |
-| `audit_chain.emit_error` | Any other exception (serialization, signer crash, ...) | `error` |
+| `audit_chain.emit_error` | Any other exception (serialisation, signer crash, ...) | `error` |
 | `audit_chain.callback_error` | The append callback itself raised; chain still appended | (none) |
 
 All three use the `audit_chain.*` prefix (NOT `security.*`) so the
@@ -377,7 +377,7 @@ that duplicates or contradicts those structured events.
 Two layers of log management:
 
 1. **App-level** (structlog): 11 sinks (10 file + 1 console). File sinks use `RotatingFileHandler`
-   (10 MB x 5) writing JSON to `/data/logs/`. Console sink writes colored text to stderr.
+   (10 MB x 5) writing JSON to `/data/logs/`. Console sink writes coloured text to stderr.
 2. **Container-level** (Docker): `json-file` driver with 10 MB x 3 rotation on
    stdout/stderr. Captures console sink output and any uncaught stderr.
 
@@ -438,7 +438,7 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 
 - `synthorg_client_disconnects_total{transport, reason}`: counter; emitted from SSE / WebSocket / MCP disconnect handlers. `transport` ∈ {`sse`, `websocket`, `mcp_stdio`, `mcp_http`} (the two `mcp_*` values are emitted by `synthorg.tools.mcp.client` for stdio and streamable-HTTP MCP transports respectively); `reason` ∈ {`client_initiated`, `transport_error`, `cancelled`, `timeout`}. Bounded labels keep cardinality at 16 series (4 transports × 4 reasons), matching `VALID_DISCONNECT_TRANSPORTS` / `VALID_DISCONNECT_REASONS` in `prometheus_labels.py`.
 
-**Snapshot-backed registry-bound labels.** Four push-time label names (`agent_id`, `agent`, `department`, `workflow_definition_id`) are validated against a process-global `_LabelSnapshot` rebuilt on every async pre-scrape `PrometheusCollector.refresh()`. Sync `record_*` callers consult the snapshot via `validate_<label>` / `is_known_agent_id`; unknown values drop the sample with a `metrics.scrape.failed` WARN log (and `metrics.record.failed` at the metrics-hub wrapper level). Concurrency is guaranteed by atomic module-global rebinding (single bytecode op under the GIL) plus a capture-before-read pattern in every validator: the validator reads the module global once into a local before consulting the per-source `*_seeded` flags and the frozenset, so a concurrent `update_label_snapshot()` either swaps in the new snapshot before the local capture or after it -- never producing a torn `(*_seeded, frozenset)` pair. The collector additionally serializes the read/merge/write critical section in `_rebuild_label_snapshot` with a per-instance `asyncio.Lock` so two overlapping `refresh()` calls cannot clobber a partial-failure carry-forward. See `src/synthorg/observability/prometheus_labels.py`.
+**Snapshot-backed registry-bound labels.** Four push-time label names (`agent_id`, `agent`, `department`, `workflow_definition_id`) are validated against a process-global `_LabelSnapshot` rebuilt on every async pre-scrape `PrometheusCollector.refresh()`. Sync `record_*` callers consult the snapshot via `validate_<label>` / `is_known_agent_id`; unknown values drop the sample with a `metrics.scrape.failed` WARN log (and `metrics.record.failed` at the metrics-hub wrapper level). Concurrency is guaranteed by atomic module-global rebinding (single bytecode op under the GIL) plus a capture-before-read pattern in every validator: the validator reads the module global once into a local before consulting the per-source `*_seeded` flags and the frozenset, so a concurrent `update_label_snapshot()` either swaps in the new snapshot before the local capture or after it -- never producing a torn `(*_seeded, frozenset)` pair. The collector additionally serialises the read/merge/write critical section in `_rebuild_label_snapshot` with a per-instance `asyncio.Lock` so two overlapping `refresh()` calls cannot clobber a partial-failure carry-forward. See `src/synthorg/observability/prometheus_labels.py`.
 
 **Cost + tokens**
 

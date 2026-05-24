@@ -37,20 +37,20 @@ The Additional Use Grant is the part that distinguishes one BSL project from ano
 You **can** use SynthOrg freely in production if both conditions are met:
 
 1. **Not Competing Use**: you are not offering SynthOrg itself (or a product whose substantial value derives from SynthOrg's functionality) to third parties on a hosted, managed, or embedded basis
-2. **Small Organization**: your organization (including affiliates) has fewer than 500 employees and individual contractors
+2. **Small Organisation**: your organisation (including affiliates) has fewer than 500 employees and individual contractors
 
 If you meet both conditions, you need **no separate license**; just use it.
 
 ### What Requires a Commercial License
 
-- **Competing Use by any organization**: offering SynthOrg as a hosted or managed service, regardless of size
-- **Production use by organizations with 500+ employees**: even for internal use
+- **Competing Use by any organisation**: offering SynthOrg as a hosted or managed service, regardless of size
+- **Production use by organisations with 500+ employees**: even for internal use
 
 !!! tip "Commercial licenses may be free"
 
     We are generally open to granting commercial licenses at no cost, especially for:
 
-    - Organizations that contribute back to the project
+    - Organisations that contribute back to the project
     - Non-profits and educational institutions
     - Startups that grew past the 500-employee threshold while using SynthOrg
     - Companies using SynthOrg for internal tooling (not as a competing product)
@@ -74,7 +74,7 @@ Copyleft licenses (AGPL, SSPL) attempt to fix this but create friction for legit
 BSL 1.1 threads the needle:
 
 - **For most users, it behaves like Apache 2.0**: read, modify, use in production, no strings attached
-- **It only restricts the specific behavior we want to prevent**: competing commercial use without engagement
+- **It only restricts the specific behaviour we want to prevent**: competing commercial use without engagement
 - **It automatically becomes Apache 2.0**: every version converts on a fixed schedule, so there is zero long-term lock-in
 
 This is the same approach used by CockroachDB, Sentry, MariaDB MaxScale, and others. It has a strong track record.
@@ -99,7 +99,7 @@ The number 500 is a convention borrowed from other BSL projects and roughly alig
 
 Every released version of SynthOrg converts to Apache 2.0 automatically.
 
-SynthOrg sets the **Change Date** to **3 years after each release**. The BSL 1.1 license terms also include a built-in 4-year backstop (each version converts on its 4th anniversary regardless), but since our Change Date is shorter, it always takes effect first.
+SynthOrg sets the **Change Date** to **3 years after each release**. The BSL 1.1 license terms also include a built-in 4-year backstop (each version converts on its fourth anniversary regardless), but since our Change Date is shorter, it always takes effect first.
 
 This means:
 
@@ -174,7 +174,7 @@ If your company has 500+ employees, [contact us](https://synthorg.io/#contact); 
 
 ### What happens when the license converts to Apache 2.0?
 
-The version becomes fully open source under Apache 2.0, with no restrictions whatsoever. You can use it for any purpose, including competing use, at any organization size.
+The version becomes fully open source under Apache 2.0, with no restrictions whatsoever. You can use it for any purpose, including competing use, at any organisation size.
 
 ### Is this "open source"?
 

@@ -1,6 +1,6 @@
 ---
 title: CLI Persistence Backends
-description: SQLite vs Postgres orchestration in the SynthOrg Go CLI: init flags, volume ownership, container hardening, and the auto-wire precedence rule.
+description: "SQLite vs Postgres orchestration in the SynthOrg Go CLI: init flags, volume ownership, container hardening, and the auto-wire precedence rule."
 ---
 
 # CLI Persistence Backends
@@ -39,11 +39,11 @@ When `--persistence-backend postgres` is selected, `synthorg init`:
 
 ### Backend auto-wire precedence
 
-In `src/synthorg/api/app.py`: when both `SYNTHORG_DATABASE_URL` and `SYNTHORG_DB_PATH` are present, `SYNTHORG_DATABASE_URL` wins and Postgres is initialized; the SQLite path is ignored. A malformed URL raises loudly at startup rather than silently falling back to a no-persistence install.
+In `src/synthorg/api/app.py`: when both `SYNTHORG_DATABASE_URL` and `SYNTHORG_DB_PATH` are present, `SYNTHORG_DATABASE_URL` wins and Postgres is initialised; the SQLite path is ignored. A malformed URL raises loudly at startup rather than silently falling back to a no-persistence install.
 
 ### Migration application
 
-`synthorg start` brings up Postgres first (via compose ordering), then the backend applies yoyo migrations on connection.  Yoyo runs in-process via the project's Python venv (no external binary in the runtime image); the `synthorg.persistence.migrations` module wraps it and routes through psycopg 3 via the `postgresql+psycopg://` URL scheme.  `synthorg stop` preserves `synthorg-pgdata` unless `--volumes` is passed.  `synthorg status --wide` reports Postgres container health plus the `synthorg-pgdata` volume size.
+`synthorg start` brings up Postgres first (via compose ordering), then the backend applies yoyo migrations on connection. Yoyo runs in-process via the project's Python venv (no external binary in the runtime image); the `synthorg.persistence.migrations` module wraps it and routes through psycopg 3 via the `postgresql+psycopg://` URL scheme.  `synthorg stop` preserves `synthorg-pgdata` unless `--volumes` is passed.  `synthorg status --wide` reports Postgres container health plus the `synthorg-pgdata` volume size.
 
 ### Image verification
 

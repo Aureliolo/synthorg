@@ -78,7 +78,7 @@ The unit project loads `web/test-infra/active-handle-tracker.ts` as a setupFile.
 
 ## WS Payload Sanitization
 
-`sanitizeWsString()` (exported from `web/src/stores/notifications.ts`) normalizes every string field received from WebSocket events before it reaches storage or display. It strips C0 control characters and DELETE (except common whitespace `\t` / `\n` / `\r`), strips bidi-override characters (CVE-2021-42574 class), trims, and caps length at `MAX_STRING_LEN` (128) at code-point boundaries so surrogate pairs are not split.
+`sanitizeWsString()` (exported from `web/src/stores/notifications.ts`) normalises every string field received from WebSocket events before it reaches storage or display. It strips C0 control characters and DELETE (except common whitespace `\t` / `\n` / `\r`), strips bidi-override characters (CVE-2021-42574 class), trims, and caps length at `MAX_STRING_LEN` (128) at code-point boundaries so surrogate pairs are not split.
 
 Any new WS payload handler in the notifications store **or a sibling store that ingests untrusted strings** (messages, approvals, tasks, agents, ...) MUST route string fields through this sanitizer.
 

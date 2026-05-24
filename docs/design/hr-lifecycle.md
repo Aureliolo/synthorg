@@ -27,19 +27,19 @@ See [Agents](agents.md) for the identity layer (personality, skills, tool namesp
 ## Role Catalog
 
 The role catalog is extensible; users can add [custom roles](#dynamic-roles) via config.
-The built-in catalog covers common organizational roles:
+The built-in catalog covers common organisational roles:
 
 === "C-Suite / Executive"
 
     - **CEO**: Overall strategy, final decision authority, cross-department coordination
     - **CTO**: Technical vision, architecture decisions, technology choices
-    - **CFO**: Budget management, cost optimization, resource allocation
-    - **COO**: Operations, process optimization, workflow management
-    - **CPO**: Product strategy, roadmap, feature prioritization
+    - **CFO**: Budget management, cost optimisation, resource allocation
+    - **COO**: Operations, process optimisation, workflow management
+    - **CPO**: Product strategy, roadmap, feature prioritisation
 
 === "Product & Design"
 
-    - **Product Manager**: Requirements, user stories, prioritization, stakeholder communication
+    - **Product Manager**: Requirements, user stories, prioritisation, stakeholder communication
     - **UX Designer**: User research, wireframes, user flows, usability
     - **UI Designer**: Visual design, component design, design systems
     - **UX Researcher**: User interviews, analytics, A/B test design
@@ -52,7 +52,7 @@ The built-in catalog covers common organizational roles:
     - **Backend Developer** (Junior/Mid/Senior): APIs, business logic, databases
     - **Full-Stack Developer** (Junior/Mid/Senior): End-to-end implementation
     - **DevOps/SRE Engineer**: Infrastructure, CI/CD, monitoring, deployment
-    - **Database Engineer**: Schema design, query optimization, migrations
+    - **Database Engineer**: Schema design, query optimisation, migrations
     - **Security Engineer**: Security audits, vulnerability assessment, secure coding
 
 === "Quality Assurance"
@@ -60,7 +60,7 @@ The built-in catalog covers common organizational roles:
     - **QA Lead**: Test strategy, quality gates, release readiness
     - **QA Engineer**: Test plans, manual testing, bug reporting
     - **Automation Engineer**: Test frameworks, CI integration, E2E tests
-    - **Performance Engineer**: Load testing, profiling, optimization
+    - **Performance Engineer**: Load testing, profiling, optimisation
 
 === "Data & Analytics"
 
@@ -79,7 +79,7 @@ The built-in catalog covers common organizational roles:
 
     - **Content Writer**: Blog posts, marketing copy, social media
     - **Brand Strategist**: Messaging, positioning, competitive analysis
-    - **Growth Marketer**: Campaigns, analytics, conversion optimization
+    - **Growth Marketer**: Campaigns, analytics, conversion optimisation
 
 ---
 
@@ -128,7 +128,7 @@ step.
    hard limits), review gate (human approval via ApprovalStore)
 5. **Storage**: seed approved items into the new agent's memory backend with training tags
 
-**Per-hire customization:**
+**Per-hire customisation:**
 
 - `override_sources`: explicit agent IDs bypassing the selector
 - `content_types`: enable/disable specific extractors
@@ -140,7 +140,7 @@ human review required. Idempotent by plan ID.
 
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D8)"
 
-    - **D8.1: Source.** Templates + LLM customization. Templates for common roles
+    - **D8.1: Source.** Templates + LLM customisation. Templates for common roles
       (reuses existing [template system](organization.md#template-system)). LLM generates
       config for novel roles not covered by templates. Approval gate catches invalid/bad
       configs before instantiation.
@@ -216,7 +216,7 @@ Orchestrated by ``ScalingService`` in ``hr/scaling/service.py``.
 
 | Strategy | Signals | Actions | Default |
 |----------|---------|---------|---------|
-| **WorkloadAutoScale** | avg utilization, queue depth | HIRE when > 85% sustained, PRUNE when < 30% sustained | Enabled |
+| **WorkloadAutoScale** | avg utilisation, queue depth | HIRE when > 85% sustained, PRUNE when < 30% sustained | Enabled |
 | **BudgetCap** | burn rate %, alert level | PRUNE when > 90% safety margin, HOLD to block hires | Enabled |
 | **SkillGap** | coverage ratio, missing skills | HIRE with specific skill profile | Disabled (LLM cost) |
 | **PerformancePruning** | quality/collaboration trends | PRUNE via existing PruningPolicy | Enabled |
@@ -272,7 +272,7 @@ scaling:
 
 The ``/scaling`` page shows:
 
-- **Signal gauges**: utilization, budget burn, declining agent count
+- **Signal gauges**: utilisation, budget burn, declining agent count
 - **Strategy controls**: enabled status, priority order
 - **Pending decisions**: awaiting human approval
 - **Recent decisions**: history with outcome and rationale
@@ -358,7 +358,7 @@ agent_metrics:
     ---
 
     **D3: Collaboration Scoring.** Pluggable `CollaborationScoringStrategy` protocol.
-    Initial strategy: automated behavioral telemetry, computed as:
+    Initial strategy: automated behavioural telemetry, computed as:
 
     ```
     collaboration_score = weighted_average(
@@ -420,7 +420,7 @@ The ``EvalLoopCoordinator`` orchestrates existing services into cycles:
 collect metrics, enrich with five-pillar evaluation, identify failure patterns
 (stub), propose targeted fixes (stub), and validate via next-run trajectory scores.
 
-### Behavior Tagging
+### Behaviour Tagging
 
 Each turn is tagged with one or more ``BehaviorTag`` categories for fine-grained
 trace analysis and eval routing:
@@ -520,9 +520,9 @@ Agents can move between seniority levels based on performance:
 ## Agent Evolution
 
 Agents improve over time through a pluggable evolution pipeline that closes the loop
-between execution outcomes, learned knowledge, and agent behavior. The system follows
+between execution outcomes, learned knowledge, and agent behaviour. The system follows
 the [EvoSkill](https://arxiv.org/abs/2603.02766) three-agent separation principle:
-the executing agent does not propose its own identity changes; a separate analyzer
+the executing agent does not propose its own identity changes; a separate analyser
 does.
 
 ### Architecture
@@ -590,7 +590,7 @@ Both wrap ``AgentRegistryService`` + ``VersioningService[AgentIdentity]``.
 | Axis | Default | Rationale |
 |------|---------|-----------|
 | Triggers | batched (daily) + inflection | Low cost, reactive |
-| Proposer | composite (analyzer for failures, self-report for success) | EvoSkill separation |
+| Proposer | composite (analyser for failures, self-report for success) | EvoSkill separation |
 | Adapters | prompt_template ON, strategy_selection ON, identity OFF | Identity is highest risk |
 | Guards | review_gate + rollback + rate_limit ON; shadow OFF | Safety first |
 | Identity store | append_only | Audit trail by default |
@@ -665,10 +665,10 @@ The `EvaluationService` orchestrates scoring, delegating to a pluggable
 `hr/evaluation/extractors/`). The composite owns the shared
 "redistribute weights → weighted-average → clamp → confidence → log →
 `PillarScore`" pipeline so each extractor stays focused on the
-per-pillar data extraction. Human-calibrated LLM labeling uses the
+per-pillar data extraction. Human-calibrated LLM labelling uses the
 existing `LlmCalibrationSampler` infrastructure; calibration drift
 above a configurable threshold reduces the intelligence pillar's
-confidence (via the extractor's `confidence_multiplier`), signaling
+confidence (via the extractor's `confidence_multiplier`), signalling
 the need for more human labels.
 
 ???+ note "Design decisions ([Decision Log](../architecture/decisions.md) D24)"
@@ -680,7 +680,7 @@ the need for more human labels.
     - **Intelligence**: `IntelligenceMetricExtractor` blends CI quality score (70%)
       with LLM calibration score (30%). High calibration drift reduces confidence
       via the extractor's drift multiplier.
-    - **Efficiency**: `EfficiencyMetricExtractor` normalizes cost (40%), time (30%),
+    - **Efficiency**: `EfficiencyMetricExtractor` normalises cost (40%), time (30%),
       and token (30%) sub-metrics from the 30d window (with 7d fallback). The cost
       and time sub-metrics are runtime-gated by the `hr.evaluation_cost_enabled`
       and `hr.evaluation_latency_enabled` kill switches via the optional
@@ -703,7 +703,7 @@ the need for more human labels.
 
 Client agents are synthetic or real external actors that submit task requirements
 and review deliverables. Unlike internal agents (which execute tasks), client agents
-drive the organization from the outside, generating workloads and evaluating outputs.
+drive the organisation from the outside, generating workloads and evaluating outputs.
 
 All client types implement `ClientInterface` from `synthorg.client.protocols`:
 
@@ -712,7 +712,7 @@ All client types implement `ClientInterface` from `synthorg.client.protocols`:
 - **HumanClient**: delegates decisions to a human via the API/dashboard.
 - **HybridClient**: AI drafts, human confirms.
 
-Client behavior is configured via `ClientProfile` (persona, expertise domains,
+Client behaviour is configured via `ClientProfile` (persona, expertise domains,
 strictness level) and driven by pluggable strategies for requirement generation
 and feedback evaluation.
 
@@ -736,6 +736,6 @@ MCP handlers and REST controllers never reach into HR repositories directly; eve
 ## See Also
 
 - [Agents](agents.md): agent identity, personality, skills, identity versioning
-- [Organization](organization.md): company types, departments, templates
+- [Organisation](organization.md): company types, departments, templates
 - [Budget & Cost](budget.md): performance-driven downgrade, risk budget
 - [Design Overview](index.md): full index

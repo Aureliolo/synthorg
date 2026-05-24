@@ -8,7 +8,7 @@ description: Optional external interface enabling SynthOrg agents to federate wi
 The A2A gateway is an **optional** external interface that enables SynthOrg agents to
 federate with agents in other A2A-compatible systems. It is disabled by default
 (`a2a.enabled: false`). Internal communication is unchanged; the MessageBus remains the
-sole transport for intra-organization messages.
+sole transport for intra-organisation messages.
 
 See also: [Communication](communication.md) (transport), [Coordination](communication-coordination.md) (loop prevention referenced below), [Event Stream](communication-events.md) (SSE hub).
 
@@ -39,7 +39,7 @@ SynthOrg: "SynthOrg Organization" {
 }
 ```
 
-The gateway sits at the organization boundary and handles two directions:
+The gateway sits at the organisation boundary and handles two directions:
 
 Inbound (external -> internal)
 :   External A2A clients discover SynthOrg agents via Agent Cards, create tasks via
@@ -63,8 +63,8 @@ of `AgentIdentity`; only fields relevant to external capability discovery are ex
 | `name` | `name` | Yes | Public identity |
 | `role` | `description` (partial) | Yes | Capability context |
 | `skills` (SkillSet) | `skills` (AgentSkill[]) | Yes | Lossless mapping via [Skill model](agents.md#skill-model) |
-| `department` | metadata | Optional | Organizational context |
-| `personality` | - | No | Internal behavioral tuning |
+| `department` | metadata | Optional | Organisational context |
+| `personality` | - | No | Internal behavioural tuning |
 | `level` (seniority) | - | No | Internal authority hierarchy |
 | `authority` | - | No | Internal delegation rules |
 | `model` (ModelConfig) | - | No | Internal infrastructure |
@@ -73,7 +73,7 @@ of `AgentIdentity`; only fields relevant to external capability discovery are ex
 
 The [Skill model](agents.md#skill-model) is A2A AgentSkill-aligned on the shared
 capability fields (`id`, `name`, `description`, `tags`, `input_modes`,
-`output_modes`).  Those fields project losslessly in both directions.  The
+`output_modes`).  Those fields project losslessly in both directions. The
 SynthOrg-only `proficiency` field has no A2A counterpart, so:
 
 - **SynthOrg -> A2A**: `proficiency` is dropped from the projected `AgentSkill`.
@@ -151,7 +151,7 @@ external consumers.
 SynthOrg agents can delegate tasks to external A2A agents through the outbound client:
 
 1. **Discovery**: Fetch the external agent's Agent Card from its well-known URL
-2. **Skill import**: Deserialize `AgentSkill[]` into internal `Skill` model (lossless)
+2. **Skill import**: Deserialise `AgentSkill[]` into internal `Skill` model (lossless)
 3. **Task creation**: Send `tasks/send` JSON-RPC request with auth credentials
 4. **Monitoring**: Subscribe to task updates via SSE or poll via `tasks/get`
 5. **State mapping**: Map external A2A task states back to internal states (see table above)

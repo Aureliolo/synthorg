@@ -1,11 +1,11 @@
 ---
 title: Multi-Agent Memory Consistency
-description: "Consistency model for shared organizational memory: append-only writes, MVCC snapshot reads, conflict handling, and deployment rollout."
+description: "Consistency model for shared organisational memory: append-only writes, MVCC snapshot reads, conflict handling, and deployment rollout."
 ---
 
 # Multi-Agent Memory Consistency
 
-This page documents the consistency model chosen for organizational fact persistence in SynthOrg.
+This page documents the consistency model chosen for organisational fact persistence in SynthOrg.
 See [Decision Log](../architecture/decisions.md) D26 for the decision rationale and alternatives
 evaluated.
 
@@ -13,7 +13,7 @@ evaluated.
 
 ## Problem Statement
 
-Multiple agents may concurrently write to shared organizational memory. Without an explicit
+Multiple agents may concurrently write to shared organisational memory. Without an explicit
 consistency model, concurrent writes on the same fact produce undefined ordering, deleted facts
 may reappear, and there is no audit trail for "who changed this and when."
 
@@ -49,7 +49,7 @@ Both operations are O(1) append + O(log n) index update.
 
 ### Read Path (Snapshot)
 
-A **materialized snapshot** maintains the current committed state:
+A **materialised snapshot** maintains the current committed state:
 
 ```text
 snapshot row:
@@ -71,7 +71,7 @@ needed at read time; reads are fast and consistent.
 - **Writers see their own writes**: local reads include uncommitted state before append.
 - **Readers see a consistent snapshot**: all writes committed before query time T were
   applied at query time.
-- **Concurrent writes on the same fact** are serialized via version counter (CAS-like
+- **Concurrent writes on the same fact** are serialised via version counter (CAS-like
   semantics: last writer wins, earlier operation survives in the log for audit).
 - **No lost updates**: every operation is durable in the log before the snapshot is updated.
 
@@ -106,7 +106,7 @@ snapshot = await store.snapshot_at(timestamp=datetime(2026, 3, 1, tzinfo=UTC))
 log = await store.get_operation_log(fact_id="policy-jwt-auth")
 ```
 
-These methods are defined on the `OrgFactStore` protocol (the organizational fact persistence
+These methods are defined on the `OrgFactStore` protocol (the organisational fact persistence
 layer). The MVCC implementation lives in `SQLiteOrgFactStore`. Both read and write operations
 go through the `OrgFactStore` interface.
 
@@ -118,7 +118,7 @@ go through the `OrgFactStore` interface.
 
 The initial implementation with simple INSERT/DELETE and no concurrency semantics.
 
-### Phase 1.5 (current): Append-only + MVCC for organizational facts
+### Phase 1.5 (current): Append-only + MVCC for organisational facts
 
 Implementation:
 
@@ -135,7 +135,7 @@ Implementation:
    (pre-alpha, all data is ephemeral).
 
 Deviation note: MVCC methods live on `OrgFactStore` rather than `SharedKnowledgeStore`
-because organizational facts are a separate storage layer from cross-agent memory. The
+because organisational facts are a separate storage layer from cross-agent memory. The
 operation log and snapshot are implementation details of the org fact store, not of the
 Mem0-based shared knowledge system.
 

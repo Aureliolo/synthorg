@@ -5,7 +5,7 @@ description: Complete YAML reference for all SynthOrg configuration options.
 
 # Company Configuration
 
-SynthOrg organizations are configured via YAML. The configuration defines your company structure, agents, LLM providers, budget, security policies, memory, tools, and operational settings. All configuration is validated at load time using Pydantic; invalid values produce clear error messages with field paths.
+SynthOrg organisations are configured via YAML. The configuration defines your company structure, agents, LLM providers, budget, security policies, memory, tools, and operational settings. All configuration is validated at load time using Pydantic; invalid values produce clear error messages with field paths.
 
 ---
 
@@ -29,7 +29,7 @@ The top-level configuration object. Only `company_name` is required; all other f
 |-------|------|---------|-------------|
 | `company_name` | string | *(required)* | Company identifier |
 | `company_type` | CompanyType | `custom` | Company template type |
-| `departments` | list | `[]` | Organizational departments |
+| `departments` | list | `[]` | Organisational departments |
 | `agents` | list | `[]` | Agent configurations |
 | `custom_roles` | list | `[]` | User-defined role catalog |
 | `config` | CompanyConfig | *(defaults)* | Company-wide settings |
@@ -45,7 +45,7 @@ The top-level configuration object. Only `company_name` is required; all other f
 | `memory` | CompanyMemoryConfig | *(defaults)* | Memory backend settings |
 | `persistence` | PersistenceConfig | *(defaults)* | Database backend settings |
 | `cost_tiers` | CostTiersConfig | *(defaults)* | Model pricing tiers |
-| `org_memory` | OrgMemoryConfig | *(defaults)* | Shared organizational memory |
+| `org_memory` | OrgMemoryConfig | *(defaults)* | Shared organisational memory |
 | `api` | ApiConfig | *(defaults)* | API server settings |
 | `sandboxing` | SandboxingConfig | *(defaults)* | Code execution sandbox |
 | `mcp` | MCPConfig | *(defaults)* | MCP tool bridge |
@@ -64,7 +64,7 @@ The top-level configuration object. Only `company_name` is required; all other f
 
 ### Company Types
 
-The `company_type` field selects a pre-defined organizational template:
+The `company_type` field selects a pre-defined organisational template:
 
 | Type | Description | Agents |
 |------|-------------|--------|
@@ -83,7 +83,7 @@ The `company_type` field selects a pre-defined organizational template:
 
 Set the company-wide autonomy level in `config.autonomy.level`:
 
-| Level | Behavior |
+| Level | Behaviour |
 |-------|----------|
 | `full` | Agents execute all actions without approval |
 | `semi` | Risky actions require human approval |
@@ -286,7 +286,7 @@ Agent configuration is covered in detail in the [Agent Roles & Hierarchy](agents
 | `authority` | dict | `{}` | Delegation and approval authority |
 | `autonomy_level` | AutonomyLevel | `null` | Per-agent autonomy override |
 
-Agent names must be unique within the organization.
+Agent names must be unique within the organisation.
 
 ---
 
@@ -315,7 +315,7 @@ Memory configuration is covered in detail in the [Memory Configuration](memory.m
 | `backend` | string | `"mem0"` | Memory backend |
 | `level` | MemoryLevel | `"session"` | Default persistence level |
 | `storage` | MemoryStorageConfig | *(defaults)* | Storage paths |
-| `options` | MemoryOptionsConfig | *(defaults)* | Behavior options |
+| `options` | MemoryOptionsConfig | *(defaults)* | Behaviour options |
 | `retrieval` | MemoryRetrievalConfig | *(defaults)* | Retrieval pipeline |
 | `consolidation` | ConsolidationConfig | *(defaults)* | Consolidation settings |
 
@@ -465,7 +465,7 @@ SynthOrg enforces the following cross-field validation rules at load time:
 
 | Rule | Description |
 |------|-------------|
-| Unique agent names | Agent names must be unique across the organization |
+| Unique agent names | Agent names must be unique across the organisation |
 | Unique department names | Department names must not repeat |
 | Routing model references | `preferred_model` and `fallback` in routing rules must reference existing model IDs or aliases |
 | Fallback chain references | `fallback_chain` entries must reference existing model IDs or aliases |

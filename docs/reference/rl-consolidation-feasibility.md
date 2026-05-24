@@ -12,12 +12,12 @@ This page documents the feasibility analysis behind Decision D27 (see
 
 ## Problem Statement
 
-Memory consolidation transforms raw episodic memories into compressed, generalized
+Memory consolidation transforms raw episodic memories into compressed, generalised
 representations that are cheaper to store and faster to retrieve. A reinforcement
 learning (RL) consolidation policy would:
 
 1. Observe an agent's memory store at a trigger point (session end, token threshold).
-2. Decide which memories to merge, summarize, promote to semantic/procedural, or discard.
+2. Decide which memories to merge, summarise, promote to semantic/procedural, or discard.
 3. Receive a reward signal based on downstream retrieval quality and token cost.
 
 The appeal is adaptability: an RL policy can learn per-agent consolidation patterns
@@ -53,10 +53,10 @@ If RL consolidation is revisited, the minimum viable design is:
 - **Policy network**: 50M-parameter encoder (BERT-base equivalent) fine-tuned from a
   pretrained language model checkpoint. Input: memory entry text + metadata features
   (age, access count, category, tags). Output: action logits over
-  {KEEP, MERGE, SUMMARIZE, PROMOTE, DISCARD}.
+  {KEEP, MERGE, SUMMARISE, PROMOTE, DISCARD}.
 - **Reward signal**: multi-component scalar with hand-tuned weights:
 
-  ```
+  ```text
   R = w1 * retrieval_accuracy_delta
     + w2 * (1 - token_compression_ratio)
     + w3 * synthesis_fidelity_score
@@ -66,8 +66,8 @@ If RL consolidation is revisited, the minimum viable design is:
   `discard_penalty_if_later_retrieved` is the most important term; it prevents
   the policy from aggressively discarding memories that are later queried.
 
-- **Training algorithm**: Proximal Policy Optimization (PPO) on rollouts collected
-  from shadow deployments. Behavioral cloning on LLM consolidation decisions as
+- **Training algorithm**: Proximal Policy Optimisation (PPO) on rollouts collected
+  from shadow deployments. Behavioural cloning on LLM consolidation decisions as
   warm start reduces cold-start instability.
 
 ### Data Pipeline
@@ -75,7 +75,7 @@ If RL consolidation is revisited, the minimum viable design is:
 1. Run LLM consolidation in production (current approach) and log decisions.
 2. Collect human preference labels on 1,000+ session pairs (preferred vs. rejected
    consolidation outputs).
-3. Train reward model on preference data (Direct Preference Optimization is the
+3. Train reward model on preference data (Direct Preference Optimisation is the
    viable intermediate step; see D27).
 4. Train RL policy against the reward model in shadow mode.
 5. A/B test policy against LLM baseline before full rollout.
@@ -101,7 +101,7 @@ RL consolidation **must not be deployed** without:
    within 30 days. False-positive rate must be <0.1%.
 2. **Distribution shift detector**: alert when policy input distribution drifts >2
    standard deviations from training distribution (covariate shift).
-3. **Reward hacking detector**: monitor for consolidation patterns that maximize
+3. **Reward hacking detector**: monitor for consolidation patterns that maximise
    reward proxies without improving retrieval quality (e.g., keeping only
    high-frequency terms that inflate `retrieval_accuracy_delta`).
 4. **Policy checkpoint rollback**: automated rollback to previous checkpoint if
@@ -137,7 +137,7 @@ At 50,000+ agents, the economics become viable.
 
 ## Intermediate Step: DPO Fine-Tuning
 
-Before full RL, Direct Preference Optimization (DPO) fine-tuning of the LLM
+Before full RL, Direct Preference Optimisation (DPO) fine-tuning of the LLM
 consolidation policy is the recommended intermediate step:
 
 1. Collect consolidation output pairs (LLM-generated).

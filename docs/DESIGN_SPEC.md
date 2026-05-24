@@ -1,6 +1,6 @@
 # SynthOrg - High-Level Design Specification
 
-> A framework for building synthetic organizations: autonomous AI agents orchestrated as a virtual company, with configurable roles, hierarchies, communication patterns, and tool access.
+> A framework for building synthetic organisations: autonomous AI agents orchestrated as a virtual company, with configurable roles, hierarchies, communication patterns, and tool access.
 
 ---
 
@@ -13,18 +13,18 @@ The design specification has been split into focused documentation pages for bet
 | [Design Overview](design/index.md) | Vision, Core Concepts | What SynthOrg is, design principles, glossary |
 | [Agents](design/agents.md) | Agent Identity | Identity card, personality (OCEAN + behavioural enums), skill model, tool namespaces, identity versioning |
 | [HR & Agent Lifecycle](design/hr-lifecycle.md) | HR | Seniority, role catalog, hiring (templates + LLM), pruning, dynamic scaling, firing, performance, evaluation, promotions, evolution, five-pillar framework, client agents |
-| [Organization & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
+| [Organisation & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
 | [Communication](design/communication.md) | Communication Architecture | Message bus transport, patterns, message format, config and lifecycle |
 | [Communication A2A Gateway](design/communication-a2a.md) | External Federation | Optional gateway, agent cards, concept mapping, SSE streaming, outbound client |
 | [Communication Coordination](design/communication-coordination.md) | Orchestration | Loop prevention, conflict resolution, meeting protocols, scheduler, MCP facades, failure guardrails |
 | [Communication Event Stream](design/communication-events.md) | Observability + HITL | AG-UI projection, SSE endpoint, interrupt/resume, EvidencePackage, async delegation, citations |
 | [Distributed Runtime](design/distributed-runtime.md) | Transport Evaluation, Bus Backend, Task Queue, Migration | Pluggable distributed backend design, NATS JetStream first implementation, distributed task queue hook into TaskEngine |
-| [Task & Workflow Engine](design/engine.md) | Task Engine Core | Task lifecycle, routing, workflow types and definitions, TaskEngine centralized state coordination |
+| [Task & Workflow Engine](design/engine.md) | Task Engine Core | Task lifecycle, routing, workflow types and definitions, TaskEngine centralised state coordination |
 | [Agent Execution](design/agent-execution.md) | Execution Loops | Execution status, ReAct/Plan-Execute/Hybrid loops, prompt profiles, stagnation detection, context budget, brain/hands/session |
 | [Coordination & Resilience](design/coordination.md) | Multi-agent + Recovery | Crash recovery, graceful shutdown, workspace isolation, reproducible per-project environments, task decomposability, coordination topology |
 | [Verification & Quality](design/verification-quality.md) | Quality Pipeline | Verification stage, harness middleware, review pipeline, intake engine |
 | [Memory](design/memory.md) | Memory | Memory types, backends, retrieval, embedding selection, consolidation |
-| [Memory Organizational](design/memory-organizational.md) | Shared Knowledge | Company-wide policies, ADRs, OrgMemoryBackend protocol, research directions |
+| [Memory Organisational](design/memory-organizational.md) | Shared Knowledge | Company-wide policies, ADRs, OrgMemoryBackend protocol, research directions |
 | [Memory Operational](design/memory-operational.md) | Operational Data Persistence | PersistenceBackend protocol, per-entity repositories, SQLite + Postgres, multi-tenancy, invariants |
 | [Memory Learning](design/memory-learning.md) | Learning + Injection | Procedural memory auto-gen, capture / pruning / propagation strategies, injection strategies, MemoryService |
 | [Living Documentation](design/living-documentation.md) | Per-project wiki + RAG | Dual-purpose living docs (status reports, deliverables, knowledge notes): git-versioned workspace store, PROJECT_DOC RAG namespace, agent write tools + MCP, dashboard wiki |
@@ -45,9 +45,9 @@ The design specification has been split into focused documentation pages for bet
 | [Deployment](design/deployment.md) | Container runtime, image verification, sandbox resolution | apko-composed Wolfi bases, cosign + SLSA L3, Caddy web server |
 | [Web HTTP Adapter](design/web-http-adapter.md) | HTTP Transport | Axios XHR vs fetch, MSW interceptor, test teardown contract |
 | [Web Active-Handle Detection](design/web-active-handle-detection.md) | Per-Test Resource-Leak Gate | `async_hooks` snapshot + diff per test, fail-mode default, telemetry artifact, ESLint companion rules |
-| [Brand Identity & UX](design/brand-and-ux.md) | Brand, Themes, Colors, Typography, Density, Animation | Visual identity, semantic color system, theme architecture |
+| [Brand Identity & UX](design/brand-and-ux.md) | Brand, Themes, Colours, Typography, Density, Animation | Visual identity, semantic colour system, theme architecture |
 | [Page Structure & IA](design/page-structure.md) | Pages, Navigation, Routing, WebSocket, Responsive | Page list, sidebar hierarchy, URL routing map, WS subscriptions |
-| [UX Design Guidelines](design/ux-guidelines.md) | Color System, Components, Interaction, Animation, Accessibility, Responsive | Implementable specs for the web dashboard |
+| [UX Design Guidelines](design/ux-guidelines.md) | Colour System, Components, Interaction, Animation, Accessibility, Responsive | Implementable specs for the web dashboard |
 | [UX Research](design/ux-research.md) | Framework Decision, Migration | Vue-to-React evaluation, decision rationale, migration timeline |
 | [Ceremony Scheduling](design/ceremony-scheduling.md) | Strategies, Protocols, Velocity | Pluggable ceremony scheduling, 8 strategies, velocity calculation |
 | [Client Simulation](design/client-simulation.md) | Client Types, Intake, Review Pipeline, Simulation | Synthetic client framework for workload generation and evaluation |
@@ -60,7 +60,7 @@ The design specification has been split into focused documentation pages for bet
 | Page | Description |
 |------|-------------|
 | [Tech Stack](architecture/tech-stack.md) | Technology choices and engineering conventions |
-| [Decision Log](architecture/decisions.md) | All design decisions, organized by domain |
+| [Decision Log](architecture/decisions.md) | All design decisions, organised by domain |
 | [Research & Prior Art](reference/research.md) | Framework comparison and scaling research |
 | [Industry Standards](reference/standards.md) | MCP, A2A, and other standards |
 | [ACG Glossary](architecture/acg-glossary.md) | Bidirectional ACG-to-SynthOrg concept mapping |
