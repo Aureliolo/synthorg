@@ -689,9 +689,14 @@ func TestNormalizeMasksVolatileImageFields(t *testing.T) {
 			want:  "image: dhi.io/postgres:<TAG>-debian12",
 		},
 		{
+			name:  "nats_alpine_tag_masked",
+			input: "image: dhi.io/nats:2.14-alpine",
+			want:  "image: dhi.io/nats:<TAG>-alpine",
+		},
+		{
 			name:  "nats_debian_tag_masked",
 			input: "image: dhi.io/nats:2.14-debian13",
-			want:  "image: dhi.io/nats:<TAG>-debianN",
+			want:  "image: dhi.io/nats:<TAG>-debian13",
 		},
 		{
 			name:  "ports_and_env_untouched",
