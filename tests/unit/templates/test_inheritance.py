@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for template inheritance (extends) and merge logic."""
 
 from typing import TYPE_CHECKING, Any

@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any"
+# mypy: disable-error-code="explicit-any,explicit-override"
 """Tests for LlmJudgeQualityStrategy."""
 
 from collections.abc import AsyncIterator

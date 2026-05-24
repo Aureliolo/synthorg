@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any"
+# mypy: disable-error-code="explicit-any,explicit-override"
 """Unit tests for the training session methods.
 
 Exercises the in-memory session store that :meth:`TrainingService.start_session`
@@ -59,7 +59,7 @@ def _result(plan_id: str = "plan-1", new_agent_id: str = "agent-new") -> Trainin
 class _NoopSelector:
     """Minimal selector protocol stub -- never invoked in session tests."""
 
-    async def select_sources(self, plan: TrainingPlan) -> tuple:
+    async def select_sources(self, plan: TrainingPlan) -> tuple[object, ...]:
         return ()
 
 

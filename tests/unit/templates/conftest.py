@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit test configuration and fixtures for templates."""
 
 from typing import TYPE_CHECKING, Any, Protocol

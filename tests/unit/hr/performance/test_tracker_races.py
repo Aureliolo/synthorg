@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any"
+# mypy: disable-error-code="explicit-any,unused-awaitable,explicit-override"
 """TOCTOU race tests for PerformanceTracker.
 
 Each test is written to fail reliably against the un-synchronized

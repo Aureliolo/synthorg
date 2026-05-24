@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Integration tests for ``ContextInjectionStrategy`` diversity re-ranking.
 
 Verifies that the retrieval pipeline actually wires

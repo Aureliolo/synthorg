@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """OIDC id_token verification: signature, claims, and nonce binding.
 
 These tests own a module-scope RSA keypair and stub the JWKS lookup so

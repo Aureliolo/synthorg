@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for preset validation, custom preset resolution, and warn behavior."""
 
 from typing import TYPE_CHECKING, Any

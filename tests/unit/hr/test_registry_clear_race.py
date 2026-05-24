@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any"
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """Concurrency tests for HRRegistry.clear.
 
 Production-safe ``clear`` must hold the same lock as ``register`` and

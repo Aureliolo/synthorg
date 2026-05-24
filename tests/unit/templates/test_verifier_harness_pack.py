@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for the verifier-harness template pack."""
 
 from pathlib import Path

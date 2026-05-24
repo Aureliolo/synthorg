@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override"
 """Unit tests for :class:`MemoryService`.
 
 Exercises the in-process logic of the service layer (deploy / rollback

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for workflow configuration integration in templates.
 
 Verifies that templates can declare ``workflow_config`` sections with

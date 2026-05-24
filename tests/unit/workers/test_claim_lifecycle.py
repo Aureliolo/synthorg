@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Lifecycle / teardown coverage for ``JetStreamTaskQueue``.
 
 The model-only tests in ``test_claim.py`` do not exercise the

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override"
 """Failure-path coverage for the knowledge substrate.
 
 The happy paths are covered by ``test_indexer.py`` / ``test_service.py``

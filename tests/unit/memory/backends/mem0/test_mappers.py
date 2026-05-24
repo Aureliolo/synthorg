@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for Mem0 mapping functions."""
 
 from datetime import UTC, datetime, timedelta

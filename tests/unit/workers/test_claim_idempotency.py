@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit coverage for TaskClaim idempotency_key + worker dedup.
 
 The worker-side dedup tests use a stub ``SeenClaimsRepository`` that
