@@ -7,6 +7,7 @@
   "_comment_MD041": "first-line-heading: docs start with MkDocs frontmatter, not an H1",
   "_comment_MD046": "code-block-style: MkDocs Material tabbed content requires indented prose that markdownlint misreads as code",
   "_comment_MD025": "single-title: pages carry a front-matter `title:` (used by MkDocs nav) AND an in-body `# Heading` (used by direct GitHub rendering). Empty `front_matter_title` tells markdownlint not to count the front-matter title as a top-level heading.",
+  "_comment_MD060": "table-column-style: separator rows (|---|---|) read compact; data rows carry padding for readability. Tables in this project are content-heavy (exemption ledgers, tier tables, audit tables) and the mixed style is intentional.",
   "default": true,
   "MD013": false,
   "MD024": false,
@@ -15,5 +16,6 @@
   "MD033": false,
   "MD036": false,
   "MD041": false,
-  "MD046": false
+  "MD046": false,
+  "MD060": false
 }

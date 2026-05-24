@@ -4,7 +4,7 @@
 # real filename, so we use ``*package-lock.json`` (path-separator agnostic)
 # to match the lock files on both POSIX and Windows. ``.codespellrc`` is
 # self-skipped so this file's own directives are never scanned as content.
-skip = .venv,.git,.mypy_cache,.ruff_cache,.pytest_cache,.cache,.claude,node_modules,build,dist,htmlcov,coverage,.coverage,logs,*.log,*.log.*,*.lock,*.png,*.svg,*.jpg,*.jpeg,*.ico,*.gif,*.webp,*.pdf,*.bin,*_pb2.py,*.gen.*,*.min.js,_vendor,web/dist,web/build,storybook-static,site,_site,_audit,*.svg.gz,scripts/_codespell_baseline.txt,*package-lock.json,uv.lock,.codespellrc
+skip = .venv,.git,.mypy_cache,.ruff_cache,.pytest_cache,.cache,.claude,node_modules,build,dist,htmlcov,coverage,.coverage,logs,*.log,*.log.*,*.lock,*.png,*.svg,*.jpg,*.jpeg,*.ico,*.gif,*.webp,*.pdf,*.bin,*_pb2.py,*.gen.*,*.min.js,_vendor,web/dist,web/build,storybook-static,site,_site,_audit,*.svg.gz,scripts/_codespell_baseline.txt,*package-lock.json,uv.lock,.codespellrc,.test_durations.unit,.test_durations.integration
 # Project vocabulary lives in .vale/styles/Vocab/SynthOrg/accept.txt (one term per line).
 # Vale (when wired) consumes the same file; sharing it keeps the two spellers in lock-step.
 ignore-words = .vale/styles/Vocab/SynthOrg/accept.txt

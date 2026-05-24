@@ -105,6 +105,12 @@ See [docs/reference/web-design-system.md](../docs/reference/web-design-system.md
 
 Lint runs via `npm --prefix web run lint` with `--max-warnings 0`. To enumerate stale `eslint-disable` directives after a rule reshuffle: `npm --prefix web run lint -- --report-unused-disable-directives-severity=warn`.
 
+### Tiered caps + per-bucket ratchet (EPIC #2066)
+
+The four caps (`complexity: 8`, `max-lines: 400`, `max-lines-per-function: 80`, `max-params: 5`) mirror the Python pylint thresholds and the module-size tier table in `docs/decisions/0006-tiered-module-size-policy.md`. They apply globally except where the override block at `web/eslint.config.js:141-167` disables them; the override gains an `ignores:` entry per EPIC #2066 sub-issue as each bucket lands, and the final PR deletes the block entirely. New code in an already-cleaned bucket MUST respect the caps.
+
+The canonical refactor pattern for keeping a function under `complexity: 8` is **table-driven dispatch**: replace a multi-arm `if`/`switch` ladder with a `Readonly<Record<K, V>>` lookup, optionally typed with `as const satisfies Record<K, V>` for exhaustiveness against an enum/union. See `utils/errors.ts` (`CONFLICT_MESSAGES`, `CATEGORY_TITLES`, `STATUS_TITLES`, `STATUS_FALLBACK_MESSAGES`), `utils/provider-status.ts` (`_hasRequiredCredentials` exhaustive `Record<AuthType, boolean>`), `hooks/use-list-shortcuts.ts` (`KEY_TO_ACTION`), and `hooks/useToolbarKeyboardNav.ts` (`TOOLBAR_INDEX_FNS`) for worked examples. For a function whose body is too long, extract per-stage helpers (`utils/fetch-with-retry.ts` splits the retry loop into `_decideRetryWait` / `_performRetrySleep` / `_shouldKeepRetrying`); for an oversized hook, extract sub-hooks (`hooks/usePolling.ts::usePollRefs`, `hooks/useAgentDetailData.ts::{useDetailStoreSlice, useDetailLifecycle, useDetailWebSocket}`). Sub-hook names MUST start with `use` (rules-of-hooks); no leading underscore.
+
 ## Post-Training Reference
 
 TypeScript 6 and Storybook 10 were released after Claude's training cutoff. Key gotchas: TS6 `baseUrl` is deprecated and `esModuleInterop` is always true; `types` defaults to `[]` so `vitest/globals` etc. need explicit listing. Storybook 10 is ESM-only; essentials are built into core, but `@storybook/addon-docs` is now separate; imports moved to `storybook/test` and `storybook/actions`.
