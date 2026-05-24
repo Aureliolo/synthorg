@@ -65,141 +65,149 @@ export function _resetUnauthorizedRedirectGuardForTests(): void {
 
 // ── Store ───────────────────────────────────────────────────
 
-export const useAuthStore = create<AuthState>()((set, get) => {
-  /** Common post-auth flow: authenticate, fetch user profile, handle failures. */
-  async function performAuthFlow(
-    authFn: () => Promise<{ expires_in: number }>,
-    flowName: string,
-  ): Promise<void> {
+async function performAuthFlow(
+  set: (partial: Partial<AuthState>) => void,
+  get: () => AuthState,
+  authFn: () => Promise<{ expires_in: number }>,
+  flowName: string,
+): Promise<void> {
+  set({ loading: true })
+  try {
+    await authFn()
+    unauthorizedRedirectInFlight = false
+    try {
+      await get().fetchUser()
+    } catch (fetchErr) {
+      if (get().authStatus === 'unauthenticated') {
+        throw new Error(
+          `${flowName} failed: session expired. Please try again.`,
+          { cause: fetchErr },
+        )
+      }
+      throw new Error(
+        `${flowName} succeeded but failed to load user profile. Please check your connection and try again.`,
+        { cause: fetchErr },
+      )
+    }
+    if (!get().user) {
+      get().handleUnauthorized()
+      throw new Error(
+        `${flowName} succeeded but failed to load user profile. Please try again.`,
+      )
+    }
+  } finally {
+    set({ loading: false })
+  }
+}
+
+async function fetchUserImpl(
+  set: (partial: Partial<AuthState>) => void,
+  get: () => AuthState,
+): Promise<void> {
+  if (
+    get().authStatus === 'authenticated'
+    && get().user
+    && !IS_DEV_AUTH_BYPASS
+  ) return
+  try {
+    const user = await authApi.getMe()
+    set({ user, authStatus: 'authenticated' })
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.status === 401) {
+      log.warn('Session expired or invalid, clearing auth')
+      get().handleUnauthorized()
+      throw new Error('Session expired. Please log in again.', { cause: err })
+    }
+    log.error('Failed to fetch user profile:', getErrorMessage(err))
+    throw err
+  }
+}
+
+function handleUnauthorizedImpl(
+  set: (partial: Partial<AuthState>) => void,
+): void {
+  if (unauthorizedRedirectInFlight) return
+  unauthorizedRedirectInFlight = true
+  set({ authStatus: 'unauthenticated', user: null })
+  import('@/stores/websocket')
+    .then(({ useWebSocketStore }) => {
+      useWebSocketStore.getState().disconnect()
+    })
+    .catch(() => {
+      // Best-effort -- import may fail during HMR or teardown.
+    })
+  const currentPath = window.location.pathname
+  if (currentPath !== '/login' && currentPath !== '/setup') {
+    window.location.href = '/login'
+  }
+}
+
+async function checkSessionImpl(
+  set: (partial: Partial<AuthState>) => void,
+): Promise<void> {
+  if (IS_DEV_AUTH_BYPASS) {
+    set({ authStatus: 'authenticated', user: DEV_USER })
+    return
+  }
+  try {
+    const user = await authApi.getMe()
+    set({ authStatus: 'authenticated', user })
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.status === 401) {
+      set({ authStatus: 'unauthenticated', user: null })
+    } else {
+      log.error('Session check failed:', getErrorMessage(err))
+      set({ authStatus: 'unknown', user: null })
+    }
+  }
+}
+
+export const useAuthStore = create<AuthState>()((set, get) => ({
+  authStatus: IS_DEV_AUTH_BYPASS ? 'authenticated' : 'unknown',
+  user: DEV_USER,
+  loading: false,
+
+  login: (username, password) =>
+    performAuthFlow(
+      set,
+      get,
+      () => authApi.login({ username, password }),
+      'Login',
+    ),
+  setup: (username, password) =>
+    performAuthFlow(
+      set,
+      get,
+      () => authApi.setup({ username, password }),
+      'Setup',
+    ),
+  async logout() {
+    try {
+      await authApi.logout()
+    } catch (err) {
+      log.warn('Logout API call failed:', getErrorMessage(err))
+    }
+    get().handleUnauthorized()
+  },
+  fetchUser: () => fetchUserImpl(set, get),
+  async changePassword(currentPassword, newPassword) {
     set({ loading: true })
     try {
-      await authFn()
-      // A fresh authentication attempt clears the one-shot redirect
-      // guard so a future session expiry can still drive a clean
-      // redirect, not no-op against a stale "already redirecting" flag.
-      unauthorizedRedirectInFlight = false
-      // Cookie is set by the server. Fetch user profile to confirm session.
-      try {
-        await get().fetchUser()
-      } catch (fetchErr) {
-        // fetchUser already calls handleUnauthorized() on 401 before throwing
-        if (get().authStatus === 'unauthenticated') {
-          throw new Error(`${flowName} failed: session expired. Please try again.`, { cause: fetchErr })
-        }
-        // Don't invalidate the session on transient errors (network, 5xx).
-        // The auth succeeded; the profile load can be retried.
-        throw new Error(`${flowName} succeeded but failed to load user profile. Please check your connection and try again.`, { cause: fetchErr })
-      }
-      if (!get().user) {
-        get().handleUnauthorized()
-        throw new Error(`${flowName} succeeded but failed to load user profile. Please try again.`)
-      }
+      const result = await authApi.changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+      })
+      set({ user: result })
+      return result
+    } catch (err) {
+      throw new Error(getErrorMessage(err), { cause: err })
     } finally {
       set({ loading: false })
     }
-  }
-
-  return {
-    authStatus: IS_DEV_AUTH_BYPASS ? 'authenticated' : 'unknown',
-    user: DEV_USER,
-    loading: false,
-
-    async login(username: string, password: string) {
-      await performAuthFlow(() => authApi.login({ username, password }), 'Login')
-    },
-
-    async setup(username: string, password: string) {
-      await performAuthFlow(() => authApi.setup({ username, password }), 'Setup')
-    },
-
-    async logout() {
-      try {
-        await authApi.logout()
-      } catch (err) {
-        // Log but don't block -- server may have already cleared the cookie
-        log.warn('Logout API call failed:', getErrorMessage(err))
-      }
-      get().handleUnauthorized()
-    },
-
-    async fetchUser() {
-      if (get().authStatus === 'authenticated' && get().user && !IS_DEV_AUTH_BYPASS) return
-      try {
-        const user = await authApi.getMe()
-        set({ user, authStatus: 'authenticated' })
-      } catch (err) {
-        // Only clear auth on 401 (invalid/expired session)
-        if (isAxiosError(err) && err.response?.status === 401) {
-          log.warn('Session expired or invalid, clearing auth')
-          get().handleUnauthorized()
-          throw new Error('Session expired. Please log in again.', { cause: err })
-        } else {
-          log.error('Failed to fetch user profile:', getErrorMessage(err))
-          throw err
-        }
-      }
-    },
-
-    async changePassword(currentPassword: string, newPassword: string) {
-      set({ loading: true })
-      try {
-        const result = await authApi.changePassword({
-          current_password: currentPassword,
-          new_password: newPassword,
-        })
-        set({ user: result })
-        return result
-      } catch (err) {
-        throw new Error(getErrorMessage(err), { cause: err })
-      } finally {
-        set({ loading: false })
-      }
-    },
-
-    handleUnauthorized() {
-      // One-shot guard against concurrent 401s during a single page
-      // load. Without this, a burst of inflight requests each schedule
-      // their own redirect + websocket disconnect, producing the
-      // flicker the audit calls out. The guard resets on a successful
-      // login so a later session expiry still triggers cleanly.
-      if (unauthorizedRedirectInFlight) return
-      unauthorizedRedirectInFlight = true
-      set({ authStatus: 'unauthenticated', user: null })
-      // Tear down WebSocket transport so it stops reconnecting.
-      import('@/stores/websocket').then(({ useWebSocketStore }) => {
-        useWebSocketStore.getState().disconnect()
-      }).catch(() => {
-        // Best-effort -- import may fail during HMR or teardown.
-      })
-      // Hard redirect to login -- intentionally uses window.location (not
-      // react-router) because this runs in a Zustand store outside the
-      // React tree.
-      const currentPath = window.location.pathname
-      if (currentPath !== '/login' && currentPath !== '/setup') {
-        window.location.href = '/login'
-      }
-    },
-
-    async checkSession() {
-      if (IS_DEV_AUTH_BYPASS) {
-        set({ authStatus: 'authenticated', user: DEV_USER })
-        return
-      }
-      try {
-        const user = await authApi.getMe()
-        set({ authStatus: 'authenticated', user })
-      } catch (err) {
-        if (isAxiosError(err) && err.response?.status === 401) {
-          set({ authStatus: 'unauthenticated', user: null })
-        } else {
-          // Non-auth error (network, 5xx) -- don't drop valid sessions.
-          log.error('Session check failed:', getErrorMessage(err))
-          set({ authStatus: 'unknown', user: null })
-        }
-      }
-    },
-  }
-})
+  },
+  handleUnauthorized: () => handleUnauthorizedImpl(set),
+  checkSession: () => checkSessionImpl(set),
+}))
 
 // ── 401 handler registration ────────────────────────────────
 //

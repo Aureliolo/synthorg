@@ -151,12 +151,14 @@ export default tseslint.config(
     //
     // Cleaned (rules apply normally):
     //   PR A (#2092): src/utils/**, src/hooks/**, src/lib/**, src/cookie-shim.ts
+    //   PR B (#2093): src/stores/**
     files: ['src/**/*.{ts,tsx}'],
     ignores: [
       'src/utils/**',
       'src/hooks/**',
       'src/lib/**',
       'src/cookie-shim.ts',
+      'src/stores/**',
     ],
     rules: {
       complexity: 'off',

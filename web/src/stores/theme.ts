@@ -105,6 +105,29 @@ function isValid<T extends string>(value: unknown, allowed: readonly T[]): value
   return typeof value === 'string' && (allowed as readonly string[]).includes(value)
 }
 
+function mergeStoredPrefs(
+  obj: Record<string, unknown>,
+  defaults: ThemePreferences,
+): ThemePreferences {
+  return {
+    colorPalette: isValid(obj.colorPalette, COLOR_PALETTES)
+      ? obj.colorPalette
+      : defaults.colorPalette,
+    density: isValid(obj.density, DENSITIES)
+      ? obj.density
+      : defaults.density,
+    typography: isValid(obj.typography, TYPOGRAPHIES)
+      ? obj.typography
+      : defaults.typography,
+    animation: isValid(obj.animation, ANIMATION_PRESETS)
+      ? obj.animation
+      : defaults.animation,
+    sidebarMode: isValid(obj.sidebarMode, SIDEBAR_MODES)
+      ? obj.sidebarMode
+      : defaults.sidebarMode,
+  }
+}
+
 /** Exported for testing only -- the store already calls this at creation time. */
 export function loadPreferences(): ThemePreferences {
   const defaults = getDefaultPreferences()
@@ -114,13 +137,7 @@ export function loadPreferences(): ThemePreferences {
     const parsed: unknown = JSON.parse(raw)
     const obj = asObjectRecord(parsed)
     if (!obj) return defaults
-    return {
-      colorPalette: isValid(obj.colorPalette, COLOR_PALETTES) ? obj.colorPalette : defaults.colorPalette,
-      density: isValid(obj.density, DENSITIES) ? obj.density : defaults.density,
-      typography: isValid(obj.typography, TYPOGRAPHIES) ? obj.typography : defaults.typography,
-      animation: isValid(obj.animation, ANIMATION_PRESETS) ? obj.animation : defaults.animation,
-      sidebarMode: isValid(obj.sidebarMode, SIDEBAR_MODES) ? obj.sidebarMode : defaults.sidebarMode,
-    }
+    return mergeStoredPrefs(obj, defaults)
   } catch (err) {
     log.warn('Failed to load preferences, using defaults:', err)
     return defaults
@@ -177,6 +194,17 @@ function getPrefs(state: ThemeState): ThemePreferences {
     animation: state.animation,
     sidebarMode: state.sidebarMode,
   }
+}
+
+function applyPrefPatch(
+  set: (partial: Partial<ThemeState>) => void,
+  get: () => ThemeState,
+  patch: Partial<ThemePreferences>,
+): void {
+  set(patch)
+  const prefs = { ...getPrefs(get()), ...patch }
+  savePreferences(prefs)
+  applyThemeClasses(prefs)
 }
 
 // ---------------------------------------------------------------------------
@@ -249,38 +277,19 @@ export const useThemeStore = create<ThemeState>()((set, get) => {
     reducedMotionDetected: reducedMotion,
 
     setColorPalette: (colorPalette) => {
-      set({ colorPalette })
-      const prefs = { ...getPrefs(get()), colorPalette }
-      savePreferences(prefs)
-      applyThemeClasses(prefs)
+      applyPrefPatch(set, get, { colorPalette })
     },
-
     setDensity: (density) => {
-      set({ density })
-      const prefs = { ...getPrefs(get()), density }
-      savePreferences(prefs)
-      applyThemeClasses(prefs)
+      applyPrefPatch(set, get, { density })
     },
-
     setTypography: (typography) => {
-      set({ typography })
-      const prefs = { ...getPrefs(get()), typography }
-      savePreferences(prefs)
-      applyThemeClasses(prefs)
+      applyPrefPatch(set, get, { typography })
     },
-
     setAnimation: (animation) => {
-      set({ animation })
-      const prefs = { ...getPrefs(get()), animation }
-      savePreferences(prefs)
-      applyThemeClasses(prefs)
+      applyPrefPatch(set, get, { animation })
     },
-
     setSidebarMode: (sidebarMode) => {
-      set({ sidebarMode })
-      const prefs = { ...getPrefs(get()), sidebarMode }
-      savePreferences(prefs)
-      applyThemeClasses(prefs)
+      applyPrefPatch(set, get, { sidebarMode })
     },
 
     setPopoverOpen: (popoverOpen) => set({ popoverOpen }),

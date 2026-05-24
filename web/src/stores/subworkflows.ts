@@ -47,6 +47,44 @@ function isStaleRequest(token: number): boolean {
   return _listRequestToken !== token
 }
 
+async function fetchOneSubworkflowPage(
+  query: string,
+  cursor: string | null,
+): Promise<PaginatedResult<SubworkflowSummary>> {
+  return query
+    ? searchSubworkflows(query, {
+        cursor: cursor ?? undefined,
+        limit: PAGE_SIZE,
+      })
+    : listSubworkflows({
+        cursor: cursor ?? undefined,
+        limit: PAGE_SIZE,
+      })
+}
+
+interface DrainOutcome {
+  collected: SubworkflowSummary[]
+  truncated: boolean
+}
+
+async function drainAllSubworkflows(
+  query: string,
+  token: number,
+): Promise<DrainOutcome | null> {
+  const collected: SubworkflowSummary[] = []
+  let cursor: string | null = null
+  let truncated = false
+  for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex += 1) {
+    const page = await fetchOneSubworkflowPage(query, cursor)
+    if (isStaleRequest(token)) return null
+    collected.push(...page.data)
+    if (!page.hasMore || !page.nextCursor) break
+    cursor = page.nextCursor
+    if (pageIndex === MAX_PAGES - 1) truncated = true
+  }
+  return { collected, truncated }
+}
+
 export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
   subworkflows: [],
   listLoading: false,
@@ -63,38 +101,15 @@ export const useSubworkflowsStore = create<SubworkflowsState>((set, get) => ({
       subworkflowsTruncated: false,
     }))
     try {
-      const query = get().searchQuery.trim()
-      // Both the unfiltered list and the search endpoint are
-      // cursor-paginated; drain cursored pages eagerly so the page can
-      // render a numeric pager via useListPagination instead of a
-      // "Load More" button. MAX_PAGES bounds the worst case. The user
-      // expects to see every match, so a search drains the same way.
-      const collected: SubworkflowSummary[] = []
-      let cursor: string | null = null
-      let truncated = false
-      for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex += 1) {
-        const page: PaginatedResult<SubworkflowSummary> = query
-          ? await searchSubworkflows(query, {
-              cursor: cursor ?? undefined,
-              limit: PAGE_SIZE,
-            })
-          : await listSubworkflows({
-              cursor: cursor ?? undefined,
-              limit: PAGE_SIZE,
-            })
-        if (isStaleRequest(token)) return
-        collected.push(...page.data)
-        if (!page.hasMore || !page.nextCursor) break
-        cursor = page.nextCursor
-        // The loop is about to exit on the next ``pageIndex`` increment
-        // while the server still has more results; signal that the
-        // visible list is a prefix, not the whole registry.
-        if (pageIndex === MAX_PAGES - 1) truncated = true
-      }
+      const outcome = await drainAllSubworkflows(
+        get().searchQuery.trim(),
+        token,
+      )
+      if (outcome === null) return
       set(() => ({
-        subworkflows: collected,
+        subworkflows: outcome.collected,
         listLoading: false,
-        subworkflowsTruncated: truncated,
+        subworkflowsTruncated: outcome.truncated,
       }))
     } catch (err: unknown) {
       if (isStaleRequest(token)) return
