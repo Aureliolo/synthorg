@@ -90,6 +90,14 @@ Some conventions are also enforced *before* the file lands on disk so the offend
 
 The hook layer is fail-closed: the OpenCode plugin treats hook execution errors as denials, so a misbehaving hook script blocks the action rather than letting it through.
 
+## Third-party prose / formatting hooks
+
+Three third-party linters run as pre-push hooks on Markdown to enforce style + link integrity without needing custom `check_*.py` scripts. They are listed here for completeness alongside the custom gates above:
+
+- `markdownlint` (`igorshubovych/markdownlint-cli` v0.48.0): Markdown formatting rules (list indent, heading levels, fenced-code language tags, blanks-around-lists). Config in `.markdownlint.json`. Runs on README + every CLAUDE.md tier + `docs/**/*.md` at pre-commit stage.
+- `lychee` (`lycheeverse/lychee`): Markdown link-checker. Config in `lychee.toml`. Runs on the same glob as markdownlint, but at pre-push stage (network probes take 8-15s). Binary installed via `bash scripts/install_cli_tools.sh lychee`; CI runs it via `.github/workflows/lychee.yml`.
+- `vale` (`errata-ai/vale`): prose linter for Google style + a British-English vocabulary. Config in `.vale.ini`; vocabularies under `.vale/styles/config/vocabularies/{British,SynthOrg}/`. Runs on the same glob as markdownlint + lychee, at pre-push stage. Binary installed via `bash scripts/install_cli_tools.sh vale` (which also runs `vale sync` to materialise the gitignored `.vale/styles/Google/` style package).
+
 ## Registration procedure
 
 1. Wire each new gate into `.pre-commit-config.yaml` (pre-commit or pre-push stage as fits) so it runs locally and in CI.

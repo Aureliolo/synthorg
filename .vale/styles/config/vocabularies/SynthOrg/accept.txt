@@ -58,8 +58,6 @@ wantin
 yamllint
 zar
 zensical
-
-# Added by investigation.py harvest-spelling for #2069 cleanup.
 ACKs
 ADRs
 AIClient

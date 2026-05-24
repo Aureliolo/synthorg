@@ -22,8 +22,8 @@ ci:
   #     same shape: a Go binary not bundled with pre-commit-uv, operators
   #     install it via `bash scripts/install_cli_tools.sh vale` (which
   #     also runs `vale sync` to materialise the Google style package
-  #     under the gitignored `.vale/styles/Google/`). No CI workflow yet
-  #     (see issue #2069 follow-up note); pre-push is the only gate.
+  #     under the gitignored `.vale/styles/Google/`). vale has no CI
+  #     workflow yet; pre-push is the only gate.
   #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
   #     persistence-boundary / no-new-logger-exception-str-exc /
   #     orphan-fixtures / boundary-typed / setting-to-startup-trace /
@@ -433,12 +433,13 @@ repos:
       - id: vale
         name: vale (prose linter -- Google style + British vocab)
         entry: vale
-        # --minAlertLevel=suggestion gates on the strictest level; the
-        # corpus is drained to zero findings in #2069 so this is safe.
-        # `.vale.ini` declares Packages = Google; the package files live
-        # under `.vale/styles/Google/` (gitignored) and are populated by
+        # MinAlertLevel = suggestion is set in `.vale.ini` itself
+        # (single source of truth). The corpus is drained to zero
+        # findings against the strictest level, so any future regression
+        # blocks pre-push. The package files live under
+        # `.vale/styles/Google/` (gitignored) and are populated by
         # `vale sync` from scripts/install_cli_tools.sh.
-        args: ["--config", ".vale.ini", "--minAlertLevel=suggestion"]
+        args: ["--config", ".vale.ini"]
         language: system
         # Same glob as lychee + markdownlint: README, every CLAUDE.md
         # tier, and every Markdown under docs/. Pre-push only -- vale

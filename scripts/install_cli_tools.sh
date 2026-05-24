@@ -449,15 +449,23 @@ install_vale() {
 
   # Vale's checksums.txt is the standard GNU `<hex>  <filename>` layout, one
   # asset per line. Extract the line matching our archive then pull its
-  # leading 64-hex-char token.
+  # leading 64-hex-char token. If the archive name is missing from the
+  # checksums file (upstream renaming, asset removed, ...) we surface
+  # "asset not found" rather than the generic "mismatch" so the operator
+  # can tell those two failure modes apart.
   local expected_hash actual_hash
   expected_hash=$(grep -F " ${archive}" "${tmpdir}/${checksums}" \
     | grep -oiE '[a-f0-9]{64}' | head -n1 | tr 'A-Z' 'a-z')
+  if [ -z "${expected_hash}" ]; then
+    echo "error: vale archive ${archive} not found in ${checksums}" >&2
+    echo "hint: upstream may have renamed the asset; check https://github.com/errata-ai/vale/releases/${VALE_VERSION}" >&2
+    return 1
+  fi
   actual_hash=$(${sha_cmd} "${tmpdir}/${archive}" | awk '{print $1}' | tr 'A-Z' 'a-z')
-  if [ -z "${expected_hash}" ] || [ "${expected_hash}" != "${actual_hash}" ]; then
+  if [ "${expected_hash}" != "${actual_hash}" ]; then
     echo "error: vale archive sha256 mismatch" >&2
     echo "       archive:  ${archive}" >&2
-    echo "       expected: ${expected_hash:-<empty>}" >&2
+    echo "       expected: ${expected_hash}" >&2
     echo "       actual:   ${actual_hash}" >&2
     return 1
   fi
