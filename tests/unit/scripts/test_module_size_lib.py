@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/_module_size_lib.py``.
 
 The shared library is consumed by ``check_module_size_budget.py`` and by

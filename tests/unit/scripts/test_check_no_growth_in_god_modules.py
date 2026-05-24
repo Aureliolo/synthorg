@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_no_growth_in_god_modules.py``.
 
 The gate's job: a diff that touches an explicit god-module allowlist

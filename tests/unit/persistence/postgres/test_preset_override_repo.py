@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Hermetic unit tests for ``PostgresPresetOverrideRepo.get`` fail-closed.
 
 A corrupt persisted row must surface as the domain ``QueryError``

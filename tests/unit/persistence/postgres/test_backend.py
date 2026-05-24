@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Hermetic unit tests for PostgresPersistenceBackend lifecycle.
 
 These tests mock ``psycopg_pool.AsyncConnectionPool`` so no real

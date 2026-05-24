@@ -320,8 +320,8 @@ async def test_build_escalations_serializes_with_backend_write_context(
             events.append("escalation-acquired")
 
     async with asyncio.TaskGroup() as tg:
-        tg.create_task(hold_backend_lock())
-        tg.create_task(try_escalation_lock())
+        _ = tg.create_task(hold_backend_lock())
+        _ = tg.create_task(try_escalation_lock())
         await escalation_contender_started.wait()
         for _ in range(5):
             await asyncio.sleep(0)

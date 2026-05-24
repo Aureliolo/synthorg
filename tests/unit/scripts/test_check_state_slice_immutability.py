@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_state_slice_immutability.py``.
 
 The gate ships with an empty baseline; these tests exercise the

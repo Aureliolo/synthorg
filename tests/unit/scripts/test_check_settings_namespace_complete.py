@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_settings_namespace_complete.py``."""
 
 import importlib.util

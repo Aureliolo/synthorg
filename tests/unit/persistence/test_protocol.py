@@ -1,4 +1,15 @@
-"""Tests for persistence protocol compliance."""
+# mypy: disable-error-code="explicit-any"
+"""Tests for persistence protocol compliance.
+
+The ``filter_spec: Any`` annotations on the fake repositories below
+match the variance pattern used in the repository protocols themselves:
+each repo's ``query`` / ``count`` accepts a domain-specific
+``FilterSpec`` BaseModel, and the fakes here are duck-typed conformance
+stubs that need to satisfy every such protocol without importing every
+``FilterSpec`` class. Importing each concrete spec would bloat this
+file beyond the module-size budget; the module-level mypy directive
+absorbs the volume cleanly.
+"""
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager

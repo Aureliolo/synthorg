@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for the regression guard in ``scripts/run_affected_tests.py``.
 
 Covers ``_check_timing_regression`` and its helpers

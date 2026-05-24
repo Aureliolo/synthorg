@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_no_module_level_io.py``."""
 
 import importlib.util

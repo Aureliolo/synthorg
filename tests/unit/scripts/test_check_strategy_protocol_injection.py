@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_strategy_protocol_injection.py``."""
 
 import importlib.util

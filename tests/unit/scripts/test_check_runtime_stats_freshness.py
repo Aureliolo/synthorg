@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for scripts/check_runtime_stats_freshness.py.
 
 Pins the gate's contract:
