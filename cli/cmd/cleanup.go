@@ -75,7 +75,7 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 	}
 	displayOldImages(out, old)
 	if cleanupAll {
-		out.HintGuidance("--all includes current images. Running containers will prevent removal.")
+		out.HintNextStep("--all includes current images. Running containers will prevent removal.")
 	}
 	if cleanupDryRun {
 		out.HintNextStep(fmt.Sprintf("Dry run: %d image(s) would be removed", len(old)))

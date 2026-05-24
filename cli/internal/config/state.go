@@ -370,20 +370,40 @@ var validTimestampModes = map[string]bool{"relative": true, "iso8601": true}
 var validHintsModes = map[string]bool{"always": true, "auto": true, "never": true}
 var validChangelogViews = map[string]bool{"highlights": true, "commits": true}
 
+// Cached sortedKeys outputs for each enum map. sortedKeys allocates a
+// keys slice + the joined string, so callers that hit it per Validate
+// (e.g. the error-message lookups in validateBackends /
+// validateDisplayModes) pay those allocs eagerly even on the happy
+// path. The maps are package-level constants; their sorted-string form
+// is too, so memoise once at init and serve every accessor from the
+// cache. Restores LoadExisting to its pre-refactor alloc budget.
+var (
+	persistenceBackendNamesCache = sortedKeys(validPersistenceBackends)
+	memoryBackendNamesCache      = sortedKeys(validMemoryBackends)
+	busBackendNamesCache         = sortedKeys(validBusBackends)
+	channelNamesCache            = sortedKeys(validChannels)
+	logLevelNamesCache           = sortedKeys(validLogLevels)
+	colorModeNamesCache          = sortedKeys(validColorModes)
+	outputModeNamesCache         = sortedKeys(validOutputModes)
+	timestampModeNamesCache      = sortedKeys(validTimestampModes)
+	hintsModeNamesCache          = sortedKeys(validHintsModes)
+	changelogViewNamesCache      = sortedKeys(validChangelogViews)
+)
+
 // IsValidChannel reports whether name is a known update channel.
 func IsValidChannel(name string) bool {
 	return validChannels[name]
 }
 
 // ChannelNames returns the allowed channel names.
-func ChannelNames() string { return sortedKeys(validChannels) }
+func ChannelNames() string { return channelNamesCache }
 
 // IsValidChangelogView reports whether name is a known changelog view mode
 // for the `synthorg update` walk.
 func IsValidChangelogView(name string) bool { return validChangelogViews[name] }
 
 // ChangelogViewNames returns the allowed changelog view names.
-func ChangelogViewNames() string { return sortedKeys(validChangelogViews) }
+func ChangelogViewNames() string { return changelogViewNamesCache }
 
 // IsValidLogLevel reports whether name is a known log level.
 func IsValidLogLevel(name string) bool {
@@ -391,7 +411,7 @@ func IsValidLogLevel(name string) bool {
 }
 
 // LogLevelNames returns the allowed log level names.
-func LogLevelNames() string { return sortedKeys(validLogLevels) }
+func LogLevelNames() string { return logLevelNamesCache }
 
 // sortedKeys returns a comma-separated sorted list of map keys.
 func sortedKeys(m map[string]bool) string {
@@ -427,37 +447,37 @@ func IsValidBusBackend(name string) bool {
 }
 
 // PersistenceBackendNames returns the allowed persistence backend names.
-func PersistenceBackendNames() string { return sortedKeys(validPersistenceBackends) }
+func PersistenceBackendNames() string { return persistenceBackendNamesCache }
 
 // MemoryBackendNames returns the allowed memory backend names.
-func MemoryBackendNames() string { return sortedKeys(validMemoryBackends) }
+func MemoryBackendNames() string { return memoryBackendNamesCache }
 
 // BusBackendNames returns the allowed bus backend names.
-func BusBackendNames() string { return sortedKeys(validBusBackends) }
+func BusBackendNames() string { return busBackendNamesCache }
 
 // IsValidColorMode reports whether name is a known color mode.
 func IsValidColorMode(name string) bool { return validColorModes[name] }
 
 // ColorModeNames returns the allowed color mode names.
-func ColorModeNames() string { return sortedKeys(validColorModes) }
+func ColorModeNames() string { return colorModeNamesCache }
 
 // IsValidOutputMode reports whether name is a known output mode.
 func IsValidOutputMode(name string) bool { return validOutputModes[name] }
 
 // OutputModeNames returns the allowed output mode names.
-func OutputModeNames() string { return sortedKeys(validOutputModes) }
+func OutputModeNames() string { return outputModeNamesCache }
 
 // IsValidTimestampMode reports whether name is a known timestamp mode.
 func IsValidTimestampMode(name string) bool { return validTimestampModes[name] }
 
 // TimestampModeNames returns the allowed timestamp mode names.
-func TimestampModeNames() string { return sortedKeys(validTimestampModes) }
+func TimestampModeNames() string { return timestampModeNamesCache }
 
 // IsValidHintsMode reports whether name is a known hints mode.
 func IsValidHintsMode(name string) bool { return validHintsModes[name] }
 
 // HintsModeNames returns the allowed hints mode names.
-func HintsModeNames() string { return sortedKeys(validHintsModes) }
+func HintsModeNames() string { return hintsModeNamesCache }
 
 // stateValidations is the ordered list of per-section State validators
 // invoked by both Validate and ValidateAllowMissingMasterKey.
@@ -494,19 +514,24 @@ func (s State) Validate() error {
 	return s.validateTunables()
 }
 
-// ValidateAllowMissingMasterKey is Validate but skips the
-// "master_key required when encrypt_secrets is true" check. Used by
-// LoadAllowMissingMasterKey (and ultimately by the init reinit flow)
-// so a legacy persisted config can be read into memory even though it
-// fails the strict invariant; the caller MUST regenerate or
-// hand-provide a master_key before persisting the returned state back.
+// ValidateAllowMissingMasterKey is Validate but tolerates ONE specific
+// failure -- ErrMissingMasterKey. Every other validateMasterKey error
+// (e.g. a non-empty MasterKey that fails the Fernet format check) is
+// still surfaced so a malformed key cannot leak through the recovery
+// path. Used by LoadAllowMissingMasterKey (and ultimately by the init
+// reinit flow) so a legacy persisted config can be read into memory
+// even though it fails the strict invariant; the caller MUST
+// regenerate or hand-provide a master_key before persisting the
+// returned state back.
 func (s State) ValidateAllowMissingMasterKey() error {
 	for _, check := range stateValidations {
 		if err := check(s); err != nil {
 			return err
 		}
 	}
-	// validateMasterKey deliberately skipped here.
+	if err := validateMasterKey(s); err != nil && !errors.Is(err, ErrMissingMasterKey) {
+		return err
+	}
 	return s.validateTunables()
 }
 

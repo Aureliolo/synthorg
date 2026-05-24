@@ -162,37 +162,34 @@ func resolveDurationField(key, envName, stateValue string, dst *time.Duration) e
 	return nil
 }
 
-// durationBinding describes a single duration tunable: its display
-// name, env-var name, getter for the persisted string on State, and
-// getter for the destination field on Tunables. The getters are
-// non-capturing function literals so they are statically allocated at
-// package init -- the slice header itself is allocated once on
-// durationBindings, and per-call iteration does zero work on the heap.
-type durationBinding struct {
-	key     string
-	envName string
-	state   func(State) string
-	dst     func(*Tunables) *time.Duration
-}
-
-var durationBindings = []durationBinding{
-	{"backup_create_timeout", EnvBackupCreateTimeout, func(s State) string { return s.BackupCreateTimeout }, func(t *Tunables) *time.Duration { return &t.BackupCreateTimeout }},
-	{"backup_restore_timeout", EnvBackupRestoreTimeout, func(s State) string { return s.BackupRestoreTimeout }, func(t *Tunables) *time.Duration { return &t.BackupRestoreTimeout }},
-	{"health_check_timeout", EnvHealthCheckTimeout, func(s State) string { return s.HealthCheckTimeout }, func(t *Tunables) *time.Duration { return &t.HealthCheckTimeout }},
-	{"self_update_http_timeout", EnvSelfUpdateHTTPTimeout, func(s State) string { return s.SelfUpdateHTTPTimeout }, func(t *Tunables) *time.Duration { return &t.SelfUpdateHTTPTimeout }},
-	{"self_update_api_timeout", EnvSelfUpdateAPITimeout, func(s State) string { return s.SelfUpdateAPITimeout }, func(t *Tunables) *time.Duration { return &t.SelfUpdateAPITimeout }},
-	{"tuf_fetch_timeout", EnvTUFFetchTimeout, func(s State) string { return s.TUFFetchTimeout }, func(t *Tunables) *time.Duration { return &t.TUFFetchTimeout }},
-	{"attestation_http_timeout", EnvAttestationHTTPTimeout, func(s State) string { return s.AttestationHTTPTimeout }, func(t *Tunables) *time.Duration { return &t.AttestationHTTPTimeout }},
-	{"image_verify_timeout", EnvImageVerifyTimeout, func(s State) string { return s.ImageVerifyTimeout }, func(t *Tunables) *time.Duration { return &t.ImageVerifyTimeout }},
-	{"image_pull_retry_delay", EnvImagePullRetryDelay, func(s State) string { return s.ImagePullRetryDelay }, func(t *Tunables) *time.Duration { return &t.ImagePullRetryDelay }},
-}
-
 // resolveDurationTunables fills every duration field on t, plus the
 // image-verify floor and image_pull_attempts integer (kept together
 // because both gate image-pull behaviour).
+//
+// The bindings table is built as a stack-local fixed-size array of
+// plain data (no closures, no function pointers) so iteration is a
+// direct call into resolveDurationField with no indirect-call
+// escape forcing State to the heap. That eliminates the per-call
+// 208-byte State copy the previous closure-based table introduced.
 func resolveDurationTunables(t *Tunables, s State) error {
-	for _, b := range durationBindings {
-		if err := resolveDurationField(b.key, b.envName, b.state(s), b.dst(t)); err != nil {
+	bindings := [...]struct {
+		key        string
+		envName    string
+		stateValue string
+		dst        *time.Duration
+	}{
+		{"backup_create_timeout", EnvBackupCreateTimeout, s.BackupCreateTimeout, &t.BackupCreateTimeout},
+		{"backup_restore_timeout", EnvBackupRestoreTimeout, s.BackupRestoreTimeout, &t.BackupRestoreTimeout},
+		{"health_check_timeout", EnvHealthCheckTimeout, s.HealthCheckTimeout, &t.HealthCheckTimeout},
+		{"self_update_http_timeout", EnvSelfUpdateHTTPTimeout, s.SelfUpdateHTTPTimeout, &t.SelfUpdateHTTPTimeout},
+		{"self_update_api_timeout", EnvSelfUpdateAPITimeout, s.SelfUpdateAPITimeout, &t.SelfUpdateAPITimeout},
+		{"tuf_fetch_timeout", EnvTUFFetchTimeout, s.TUFFetchTimeout, &t.TUFFetchTimeout},
+		{"attestation_http_timeout", EnvAttestationHTTPTimeout, s.AttestationHTTPTimeout, &t.AttestationHTTPTimeout},
+		{"image_verify_timeout", EnvImageVerifyTimeout, s.ImageVerifyTimeout, &t.ImageVerifyTimeout},
+		{"image_pull_retry_delay", EnvImagePullRetryDelay, s.ImagePullRetryDelay, &t.ImagePullRetryDelay},
+	}
+	for _, b := range bindings {
+		if err := resolveDurationField(b.key, b.envName, b.stateValue, b.dst); err != nil {
 			return err
 		}
 	}

@@ -83,22 +83,22 @@ func resolveTargets(files []RenderedFile, absRoot string) ([]string, error) {
 }
 
 // resolveOneTarget validates a single rendered file and returns its
-// absolute path. Empty content is rejected up front so a malformed
-// template fails with a clear message naming the path. Path-escape is
-// checked lexically (rejecting "..", absolute paths), against absRoot
-// after joining, AND -- when the candidate's deepest existing parent
-// is a symlink -- against the symlink-resolved parent so a sub-path
-// linking outside the scaffold root cannot escape at write time.
+// absolute path. Path-escape is checked lexically (rejecting "..",
+// absolute paths), against absRoot after joining, AND -- when the
+// candidate's deepest existing parent is a symlink -- against the
+// symlink-resolved parent so a sub-path linking outside the scaffold
+// root cannot escape at write time.
 //
 // Both the deepest existing parent AND absRoot itself are resolved via
 // EvalSymlinks before the containment check. Some environments (macOS
 // /var -> /private/var, Windows junctions for temp dirs) wrap absRoot
 // in a symlink chain too; comparing a resolved parent against an
 // unresolved root would then reject every otherwise-legitimate write.
+//
+// Empty file contents are accepted; legitimate zero-byte scaffold
+// outputs (e.g. an empty __init__.py marker) flow through unchanged.
+// Malformed-template detection belongs in the renderer, not here.
 func resolveOneTarget(f RenderedFile, absRoot string) (string, error) {
-	if len(f.Contents) == 0 {
-		return "", fmt.Errorf("rendered file %q has empty content", f.Path)
-	}
 	clean := filepath.Clean(f.Path)
 	if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) {
 		return "", fmt.Errorf("scaffold path escapes root: %q", f.Path)

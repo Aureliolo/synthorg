@@ -122,14 +122,21 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	_, _ = fmt.Fprintln(out.Writer())
 
 	renderDoctorFiltered(out, report, state)
-	status := printDoctorFooter(out, state, report)
+	// Status, summary, and auto-fix all see the same --checks-filtered
+	// report so they only ever surface findings from the categories the
+	// operator actually requested. Without the filter, a
+	// `synthorg doctor --checks=compose` run could land OK/DEGRADED
+	// verdicts driven by health/containers/etc. findings the operator
+	// never asked about.
+	filteredReport := filterReportByDoctorChecks(report)
+	status := printDoctorFooter(out, state, filteredReport)
 
 	if doctorChecks != "" {
 		out.HintGuidance("Run without --checks to see all diagnostic categories.")
 	}
 
 	if doctorFix {
-		fixed := doctorAutoFix(ctx, cmd, out, errOut, state, report, safeDir)
+		fixed := doctorAutoFix(ctx, cmd, out, errOut, state, filteredReport, safeDir)
 		if fixed {
 			out.HintGuidance("Run 'synthorg doctor' again to verify fixes.")
 		}
@@ -166,6 +173,54 @@ func printDoctorFooter(out *ui.UI, state config.State, report diagnostics.Report
 	out.Link("API docs", fmt.Sprintf("http://localhost:%d/docs/api", state.BackendPort))
 	_, _ = fmt.Fprintln(out.Writer())
 	return renderDoctorSummary(out, report)
+}
+
+// filterReportByDoctorChecks returns a copy of report with every
+// category the operator did NOT request via --checks zeroed out.
+// Returns the input unchanged when --checks is empty (no filter).
+// Status, summary, and auto-fix consume the filtered report so the
+// verdict only reflects categories the operator actually asked about;
+// renderDoctorFiltered keeps using the unfiltered report because IT
+// already gates per-section rendering on doctorCheckEnabled directly.
+func filterReportByDoctorChecks(r diagnostics.Report) diagnostics.Report {
+	if doctorChecks == "" {
+		return r
+	}
+	filtered := r
+	if !doctorCheckEnabled("environment") {
+		filtered.DockerVersion = ""
+		filtered.ComposeVersion = ""
+	}
+	if !doctorCheckEnabled("health") {
+		filtered.HealthStatus = ""
+		filtered.HealthBody = ""
+	}
+	if !doctorCheckEnabled("containers") {
+		filtered.ContainerPS = ""
+		filtered.ContainerSummary = nil
+	}
+	if !doctorCheckEnabled("images") {
+		filtered.ImageStatus = nil
+	}
+	if !doctorCheckEnabled("compose") {
+		// "Compose exists" is the OK signal; pretend it does so the
+		// doctorComposeError heuristic does not flag a missing file
+		// the operator deliberately scoped out.
+		filtered.ComposeFileExists = true
+		filtered.ComposeFileValid = nil
+		filtered.PortConflicts = nil
+	}
+	if !doctorCheckEnabled("config") {
+		filtered.ConfigRedacted = ""
+	}
+	if !doctorCheckEnabled("disk") {
+		filtered.DiskInfo = ""
+	}
+	if !doctorCheckEnabled("errors") {
+		filtered.RecentLogs = ""
+		filtered.Errors = nil
+	}
+	return filtered
 }
 
 // renderDoctorFiltered renders diagnostic sections gated by --checks filter.

@@ -220,11 +220,11 @@ func startContainers(cmd *cobra.Command, ctx context.Context, state config.State
 	return startDetached(ctx, info, safeDir, state, out, errOut, healthTimeout)
 }
 
-func verifyAndPullStartImages(_ *cobra.Command, ctx context.Context, info docker.Info, state config.State, safeDir string, out, errOut *ui.UI) (config.State, error) {
+func verifyAndPullStartImages(cmd *cobra.Command, ctx context.Context, info docker.Info, state config.State, safeDir string, out, errOut *ui.UI) (config.State, error) {
 	if GetGlobalOpts(ctx).SkipVerify {
 		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
 		out.Blank()
-		return pullAllImages(ctx, info, safeDir, state, out)
+		return pullAllImages(ctx, cmd, info, safeDir, state, out)
 	}
 
 	verifyCtx, cancel := context.WithTimeout(ctx, GetGlobalOpts(ctx).Tunables.ImageVerifyTimeout)
@@ -249,7 +249,7 @@ func verifyAndPullStartImages(_ *cobra.Command, ctx context.Context, info docker
 	}
 
 	out.Blank()
-	return pullAllImages(ctx, info, safeDir, state, out)
+	return pullAllImages(ctx, cmd, info, safeDir, state, out)
 }
 
 // cacheVerifiedDigests stamps result.Pins onto state, persists, and
@@ -323,7 +323,10 @@ func startDetached(ctx context.Context, info docker.Info, safeDir string, state 
 // tag/digests until after the pull completes; reloading here would cause
 // standalone image pulls to use stale refs while compose-driven pulls use
 // the new refs written into compose.yml, leaving the install inconsistent.
-func pullAllImages(ctx context.Context, info docker.Info, safeDir string, state config.State, out *ui.UI) (config.State, error) {
+func pullAllImages(ctx context.Context, cmd *cobra.Command, info docker.Info, safeDir string, state config.State, out *ui.UI) (config.State, error) {
+	if stateHasRegistryOverrides(state) {
+		warnRegistryOverridesDisableVerification(cmd)
+	}
 	items := buildPullItems(state)
 	emitFineTuneSizeHint(state, out)
 	return state, runPullBatch(ctx, info, safeDir, items, out)
@@ -382,17 +385,57 @@ func buildPullItems(state config.State) []pullItem {
 	return items
 }
 
-// stateHasRegistryOverrides reports whether the persisted State carries
-// any registry / image-tag override that detaches the digest map from
-// the default registry. Mirrors the precedence inputs that feed
-// Tunables.CustomRegistry; checking the State directly avoids forcing
-// callers to call ResolveTunables just for this signal.
+// registryOverrideEnvVars lists every env var that, if set, overrides
+// a registry / image-tag tunable for the current invocation. Mirrors
+// the env precedence inputs ResolveTunables uses; checking these
+// directly here avoids forcing callers to call ResolveTunables just
+// for the override signal.
+var registryOverrideEnvVars = []string{
+	config.EnvRegistryHost,
+	config.EnvImageRepoPrefix,
+	config.EnvDHIRegistry,
+	config.EnvPostgresImageTag,
+	config.EnvNATSImageTag,
+}
+
+// stateHasRegistryOverrides reports whether ANY registry / image-tag
+// override is active for the current invocation, taking BOTH the
+// persisted State and the per-invocation env vars into account. State
+// alone would miss `SYNTHORG_REGISTRY_HOST=ghcr.io synthorg start` (a
+// one-shot override that never lands on disk).
+//
+// When this returns true the caller MUST drop state.VerifiedDigests
+// for standalone image pulls (they would pin to default-registry
+// digests that do not exist on the override registry) AND must emit
+// the verification-disabled stderr warning so the operator knows
+// image signature + SLSA verification is OFF for this run. The
+// warning is unconditional (not suppressed by --quiet / --json) per
+// the cli/CLAUDE.md override-precedence rules.
 func stateHasRegistryOverrides(state config.State) bool {
-	return state.RegistryHost != "" ||
+	if state.RegistryHost != "" ||
 		state.ImageRepoPrefix != "" ||
 		state.DHIRegistry != "" ||
 		state.PostgresImageTag != "" ||
-		state.NATSImageTag != ""
+		state.NATSImageTag != "" {
+		return true
+	}
+	for _, env := range registryOverrideEnvVars {
+		if os.Getenv(env) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// warnRegistryOverridesDisableVerification emits the mandatory
+// stderr warning (unconditional, not gated by --quiet / --json) that
+// image signature + SLSA verification is OFF for this invocation
+// because a registry / image-tag override is active. Called once from
+// the pull paths in start.go when stateHasRegistryOverrides is true.
+func warnRegistryOverridesDisableVerification(cmd *cobra.Command) {
+	_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
+		"warning: registry / image-tag override active; image signature + SLSA verification disabled for this invocation",
+	)
 }
 
 // emitFineTuneSizeHint warns the user about the fine-tune image size
@@ -552,8 +595,8 @@ func computePullBackoff(baseDelay time.Duration, attempt int) time.Duration {
 }
 
 // pullStartAndWait pulls images, starts containers, and waits for health.
-func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI) error {
-	if _, err := pullAllImages(ctx, info, safeDir, state, out); err != nil {
+func pullStartAndWait(ctx context.Context, cmd *cobra.Command, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI) error {
+	if _, err := pullAllImages(ctx, cmd, info, safeDir, state, out); err != nil {
 		return err
 	}
 

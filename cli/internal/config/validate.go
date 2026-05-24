@@ -58,19 +58,19 @@ func validateBackends(s State) error {
 	if s.ImageTag != "" && !IsValidImageTag(s.ImageTag) {
 		return fmt.Errorf("invalid image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", s.ImageTag)
 	}
-	if err := checkEnumRequired("persistence_backend", s.PersistenceBackend, IsValidPersistenceBackend, sortedKeys(validPersistenceBackends)); err != nil {
+	if err := checkEnumRequired("persistence_backend", s.PersistenceBackend, IsValidPersistenceBackend, PersistenceBackendNames()); err != nil {
 		return err
 	}
-	if err := checkEnumRequired("memory_backend", s.MemoryBackend, IsValidMemoryBackend, sortedKeys(validMemoryBackends)); err != nil {
+	if err := checkEnumRequired("memory_backend", s.MemoryBackend, IsValidMemoryBackend, MemoryBackendNames()); err != nil {
 		return err
 	}
-	if err := checkEnumOptional("bus_backend", s.BusBackend, IsValidBusBackend, sortedKeys(validBusBackends)); err != nil {
+	if err := checkEnumOptional("bus_backend", s.BusBackend, IsValidBusBackend, BusBackendNames()); err != nil {
 		return err
 	}
-	if err := checkEnumOptional("channel", s.Channel, IsValidChannel, sortedKeys(validChannels)); err != nil {
+	if err := checkEnumOptional("channel", s.Channel, IsValidChannel, ChannelNames()); err != nil {
 		return err
 	}
-	return checkEnumOptional("log_level", s.LogLevel, IsValidLogLevel, sortedKeys(validLogLevels))
+	return checkEnumOptional("log_level", s.LogLevel, IsValidLogLevel, LogLevelNames())
 }
 
 func validateDisplayModes(s State) error {

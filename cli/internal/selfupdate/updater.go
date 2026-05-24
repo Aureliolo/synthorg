@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -197,20 +198,32 @@ func selectBestRelease(releases []devRelease) (*devRelease, error) {
 	return rankReleasePair(latestStable, latestDev)
 }
 
+// strictSemverBase matches the MAJOR.MINOR.PATCH portion of a release
+// tag (after the leading `v` and any `-dev.N` suffix). compareSemver's
+// digit-extraction is lenient enough to accept "release-1.2.3" because
+// each dotted component still has a digit run; this regex rejects
+// anything that does not match the strict semver shape so tags like
+// "release-1.2.3", "rc1.2.3", or "1.2.x" are filtered out of the
+// auto-update candidate set.
+var strictSemverBase = regexp.MustCompile(`^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$`)
+
 // isUsableRelease returns true if r is not a draft and its tag parses
 // as a valid version. Malformed tags are silently skipped because tags
 // come from the GitHub API and are expected to be well-formed.
 //
-// Validation actually runs compareSemver on the dev-stripped base so
-// non-empty components without a digit run (e.g. "abc.def.ghi") are
-// rejected -- the prior `compareWithDev(tag, tag)` self-compare never
-// triggered the error path (any tag was "equal to itself") and
-// silently let malformed entries leak into pickNewerRelease.
+// Validation strips the leading `v` and any `-dev.N` suffix, then
+// asserts the remaining base matches the strict MAJOR.MINOR.PATCH
+// semver shape. compareSemver alone is too lenient (it accepts any
+// dotted form with a digit run per component), which lets tags such
+// as "release-1.2.3" leak into pickNewerRelease.
 func isUsableRelease(r *devRelease) bool {
 	if r.Draft {
 		return false
 	}
 	_, base := splitDev(strings.TrimPrefix(r.TagName, "v"))
+	if !strictSemverBase.MatchString(base) {
+		return false
+	}
 	if _, err := compareSemver(base, base); err != nil {
 		return false
 	}

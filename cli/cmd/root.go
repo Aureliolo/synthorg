@@ -408,6 +408,13 @@ var errorHintRules = []errorHintRule{
 	{substrings: []string{"loading config"}, hint: "Run 'synthorg init' to create a configuration."},
 	{substrings: []string{"permission denied"}, hint: "Check file permissions on the data directory."},
 	{substrings: []string{"image verification failed"}, hint: "Try --skip-verify for air-gapped environments.", guard: isTransportError},
+	// Init-specific must precede the generic "requires an interactive
+	// terminal" rule: init does NOT accept --yes for full automation
+	// (it needs explicit flags), so the generic "Use --yes" hint is
+	// misleading. The init error already lists the four required
+	// flags; this hint surfaces the optional ones operators commonly
+	// want when scripting an install.
+	{substrings: []string{"synthorg init requires"}, hint: "Optional init flags: --image-tag, --channel, --bus-backend, --persistence-backend, --postgres-port, --encrypt-secrets."},
 	{substrings: []string{"requires an interactive terminal"}, hint: "Use --yes for non-interactive mode."},
 	{substrings: []string{"Docker not available", "docker: not found", "Cannot connect to the Docker daemon"}, hint: "Ensure Docker is installed and running."},
 }

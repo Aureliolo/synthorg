@@ -366,7 +366,7 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	val := configGetValue(state, key)
+	val := configGetDisplayValue(state, key)
 	// Apply env var override (same resolution as config list).
 	if envVar := envVarForKey(key); envVar != "" {
 		if envVal := os.Getenv(envVar); envVal != "" {
@@ -375,6 +375,29 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 	}
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), val)
 	return nil
+}
+
+// configGetDisplays maps keys whose `config get` output should be the
+// EFFECTIVE value (after default-fallback) instead of the raw persisted
+// value runConfigList needs for its "config vs default" source
+// detection. Most keys share the runConfigList reader; only the few
+// with distinct effective/raw semantics live here.
+var configGetDisplays = map[string]configReader{
+	// fine_tuning_variant: raw value is "" when unset, effective is
+	// "gpu". config get should show "gpu" (matches what the runtime
+	// actually uses); config list still uses the raw reader so an
+	// explicit "gpu" can be distinguished from an unset field.
+	"fine_tuning_variant": func(s config.State) string { return s.FineTuneVariantOrDefault() },
+}
+
+// configGetDisplayValue returns the operator-facing display value for a
+// `config get` command. Falls back to configGetValue for keys without
+// a display-only override.
+func configGetDisplayValue(state config.State, key string) string {
+	if r, ok := configGetDisplays[key]; ok {
+		return r(state)
+	}
+	return configGetValue(state, key)
 }
 
 // isKnownGettableKey reports whether key is in the gettableConfigKeys list.

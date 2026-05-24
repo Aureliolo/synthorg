@@ -619,7 +619,7 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 	pullState := state
 	pullState.ImageTag = tag
 	pullState.VerifiedDigests = mergedPins
-	if _, err := pullAllImages(ctx, info, safeDir, pullState, out); err != nil {
+	if _, err := pullAllImages(ctx, cmd, info, safeDir, pullState, out); err != nil {
 		rollback()
 		return state, err
 	}

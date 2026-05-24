@@ -695,7 +695,7 @@ func renderContainersSection(out *ui.UI, snap statusSnapshot, jsonOut bool) {
 			out.HintGuidance("Use --wide to show port mappings.")
 		}
 	}
-	out.HintTip("Run 'synthorg logs' to view container logs")
+	out.HintNextStep("Run 'synthorg logs' to view container logs")
 	_, _ = fmt.Fprintln(w)
 }
 
