@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Catastrophic-error carve-out for :class:`SimulationRunner._review_one`.
 
 The review path absorbs broad ``Exception`` from the feedback sink so

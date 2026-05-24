@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for BackupService -- central orchestrator for backup/restore."""
 
 from pathlib import Path
