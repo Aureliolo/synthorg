@@ -285,6 +285,10 @@ def load_and_merge(
 
     Returns:
         Tuple of all principles (pack + custom), deduplicated by ID.
+
+    Raises:
+        StrategyPackValidationError: When a custom principle is
+            malformed or fails schema validation.
     """
     pack = load_pack(config.pack)
     principles = list(pack.principles)

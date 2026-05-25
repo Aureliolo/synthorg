@@ -74,7 +74,12 @@ class _SynthOrgMCPToolAdapter(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Invoke the MCP tool, threading app_state + actor."""
+        """Invoke the MCP tool, threading app_state + actor.
+
+        Returns:
+            The :class:`ToolExecutionResult` from the underlying MCP
+            tool invoker.
+        """
         return cast(
             "ToolExecutionResult",
             await self._invoker.invoke(

@@ -44,7 +44,12 @@ class InternalReviewStage:
         return self._NAME
 
     async def execute(self, task: Task) -> ReviewStageResult:
-        """Run the internal checks and return a result."""
+        """Run the internal checks and return a result.
+
+        Returns:
+            A :class:`ReviewStageResult` carrying PASS or FAIL based
+            on whether any internal check identified a failure.
+        """
         start_ns = time.perf_counter_ns()
         failure = self._first_failure(task)
         duration_ms = max(0, (time.perf_counter_ns() - start_ns) // 1_000_000)

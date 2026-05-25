@@ -126,7 +126,16 @@ class StakesAssessmentConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_complexities(self) -> Self:
-        """Reject duplicate complexity entries in the rule list."""
+        """Reject duplicate complexity entries in the rule list.
+
+        Returns:
+            ``self`` unchanged when every rule targets a distinct
+            complexity.
+
+        Raises:
+            ValueError: When two rules reference the same
+                :class:`Complexity` value.
+        """
         seen: set[Complexity] = set()
         for rule in self.complexity_rules:
             if rule.complexity in seen:

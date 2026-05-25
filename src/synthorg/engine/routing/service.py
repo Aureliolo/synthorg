@@ -69,6 +69,10 @@ class TaskRoutingService:
 
         Returns:
             Routing result with decisions and unroutable subtask IDs.
+
+        Raises:
+            ValueError: When the topology cannot be resolved from
+                the parent task's override and plan structure.
         """
         plan = decomposition_result.plan
 

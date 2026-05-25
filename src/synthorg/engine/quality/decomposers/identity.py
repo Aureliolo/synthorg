@@ -33,7 +33,12 @@ class IdentityCriteriaDecomposer:
         task_id: NotBlankStr,
         agent_id: NotBlankStr,  # noqa: ARG002
     ) -> tuple[AtomicProbe, ...]:
-        """Map each criterion to a single binary probe."""
+        """Map each criterion to a single binary probe.
+
+        Returns:
+            Tuple of :class:`AtomicProbe` records, one per
+            acceptance criterion in the original order.
+        """
         probes = tuple(
             AtomicProbe(
                 id=f"{task_id}-probe-{i}",

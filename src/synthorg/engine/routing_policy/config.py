@@ -62,6 +62,14 @@ class QualityFloors(BaseModel):
         A lower-stakes subtask must never carry a higher quality bar than
         a higher-stakes one; otherwise routing would send cheap work to
         strong models and consequential work to weak ones.
+
+        Returns:
+            ``self`` unchanged when the floors are non-decreasing
+            across the stakes ladder.
+
+        Raises:
+            ValueError: When the configured floors violate
+                ``low <= normal <= high <= critical``.
         """
         if not self.low <= self.normal <= self.high <= self.critical:
             msg = (
