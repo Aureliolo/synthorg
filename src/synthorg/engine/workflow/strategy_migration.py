@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.communication.enums import MessagePriority, MessageType
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.workflow.ceremony_policy import (
     CeremonyStrategyType,  # noqa: TC001
@@ -67,7 +68,14 @@ class StrategyMigrationInfo(BaseModel):
 
     @model_validator(mode="after")
     def _strategies_must_differ(self) -> Self:
-        """Validate that previous and new strategies are different."""
+        """Validate that previous and new strategies are different.
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If ``previous_strategy == new_strategy``.
+        """
         if self.previous_strategy == self.new_strategy:
             msg = (
                 f"previous_strategy and new_strategy must differ,"
@@ -175,9 +183,8 @@ async def _send_best_effort(
     """
     try:
         await coro
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             SPRINT_CEREMONY_NOTIFICATION_FAILED,
             sprint_id=info.sprint_id,

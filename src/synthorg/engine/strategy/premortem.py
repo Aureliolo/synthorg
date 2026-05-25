@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.communication.meeting.models import AgentResponse  # noqa: TC001
 from synthorg.communication.meeting.protocol import AgentCaller  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.strategy.models import (
     PremortemConfig,
@@ -185,7 +186,13 @@ class DefaultPremortemExecutor:
         participant_ids: tuple[NotBlankStr, ...],
         config: PremortemConfig,
     ) -> tuple[NotBlankStr, ...]:
-        """Select participants based on config."""
+        """Select participants based on config.
+
+        Returns:
+            Empty tuple when ``PremortemParticipation.NONE``; the first
+            half (rounded up to at least one) when ``STRATEGIC``; the
+            full ``participant_ids`` tuple when ``ALL``.
+        """
         if config.participants == PremortemParticipation.NONE:
             return ()
         if config.participants == PremortemParticipation.STRATEGIC:
@@ -195,7 +202,11 @@ class DefaultPremortemExecutor:
 
     @staticmethod
     def _build_prompt(synthesis_text: str) -> str:
-        """Build the premortem prompt."""
+        """Build the premortem prompt.
+
+        Returns:
+            The structured prompt the participating agents receive.
+        """
         return (
             f"The following decision has been made:\n\n{synthesis_text}\n\n"
             "Imagine this decision was implemented and failed spectacularly. "
@@ -217,7 +228,12 @@ class DefaultPremortemExecutor:
         *,
         context_id: str,
     ) -> list[AgentResponse]:
-        """Fan-out agent calls and collect responses."""
+        """Fan-out agent calls and collect responses.
+
+        Returns:
+            The list of :class:`AgentResponse` from agents that
+            returned (non-critical exceptions yield no entry).
+        """
         n = len(selected)
         base = token_budget // n
         remainder = token_budget % n
@@ -241,9 +257,8 @@ class DefaultPremortemExecutor:
                     tokens_list[idx],
                     context_id,
                 )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     STRATEGY_PREMORTEM_RESPONSE_SKIPPED,
                     participant_id=str(pid),
@@ -260,7 +275,12 @@ class DefaultPremortemExecutor:
     def _aggregate_responses(
         responses: list[AgentResponse],
     ) -> tuple[list[FailureMode], list[str]]:
-        """Parse failure modes and assumptions from responses."""
+        """Parse failure modes and assumptions from responses.
+
+        Returns:
+            ``(failure_modes, assumptions)`` extracted heuristically
+            from each agent response's content.
+        """
         all_failure_modes: list[FailureMode] = []
         all_assumptions: list[str] = []
 
