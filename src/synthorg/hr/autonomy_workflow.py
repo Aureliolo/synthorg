@@ -3,20 +3,25 @@
 
 Owns the multi-step workflow distinct from the registry's CRUD
 surface. A request flows through: audit log -> conditional
-approval-store enqueue -> (if strategy-granted) mutation under the
-registry lock -> best-effort dual-write of the APPROVED audit row.
+approval-store enqueue -> (if strategy-granted) atomic
+read-and-apply under the registry lock -> best-effort dual-write of
+the APPROVED audit row.
 
 The workflow holds the registry + approval_store as constructor
-dependencies; it uses two small public registry helpers
-(``snapshot_current_autonomy_level`` and ``apply_autonomy_level``)
-to read and write under the registry's own lock, so its mutations
-serialise with CRUD writes without reaching into registry internals.
+dependencies; it uses three small public registry helpers
+(``snapshot_current_autonomy_level`` for the read-only PENDING path,
+``apply_autonomy_update_atomic`` for the GRANTED path's combined
+read-and-apply under one lock, and the standalone
+``apply_autonomy_level`` for callers that already know the prior
+level) to read and write under the registry's own lock, so its
+mutations serialise with CRUD writes without reaching into registry
+internals.
 """
 
 import uuid
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.security import (
@@ -27,6 +32,8 @@ from synthorg.observability.events.security import (
 )
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.core.types import NotBlankStr
     from synthorg.hr.registry import AgentRegistryService
@@ -55,18 +62,23 @@ class AutonomyWorkflow:
             Required for any deployment that wants the human-approval
             queue to drive autonomy promotions; absent in pure-test
             harnesses that only need the audit log and result envelope.
+        clock: Optional clock seam. Approval-row timestamps come from
+            ``clock.now()`` so tests can advance virtual time via a
+            ``FakeClock``; defaults to ``SystemClock`` for production.
     """
 
-    __slots__ = ("_approval_store", "_registry")
+    __slots__ = ("_approval_store", "_clock", "_registry")
 
     def __init__(
         self,
         registry: AgentRegistryService,
         *,
         approval_store: ApprovalStoreProtocol | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self._registry = registry
         self._approval_store = approval_store
+        self._clock = clock if clock is not None else SystemClock()
 
     async def request(
         self,
@@ -91,7 +103,7 @@ class AutonomyWorkflow:
         )
 
         granted = update.granted_by_strategy is not None
-        now = datetime.now(UTC)
+        now = self._clock.now()
         # 16 hex chars (64 bits) keeps collision probability negligible
         # for approval-queue volumes while still fitting compactly into
         # log lines and audit trails.
@@ -128,7 +140,6 @@ class AutonomyWorkflow:
             title=title,
             requested_by=requested_by,
             base_metadata=base_metadata,
-            current_level=current_level,
         )
 
     async def _handle_pending(  # noqa: PLR0913
@@ -198,14 +209,17 @@ class AutonomyWorkflow:
         title: str,
         requested_by: str,
         base_metadata: dict[str, str],
-        current_level: object,
     ) -> AutonomyUpdateResult:
-        """Strategy-granted path: apply mutation, dual-write audit row.
+        """Strategy-granted path: atomic mutation + dual-write audit row.
 
-        The mutation is the source of truth and is persisted via the
-        registry's snapshot helper; the APPROVED audit row is a
-        best-effort artefact (failure logs but does not roll back the
-        mutation, since the run-time change has already taken effect).
+        Reads the prior autonomy level and applies the new one inside
+        a single registry-lock acquisition so the APPROVED audit row
+        and ``SECURITY_AUTONOMY_PROMOTION_GRANTED`` log stamp the
+        actual pre-mutation level, never a stale snapshot read before
+        the lock. The mutation is the source of truth; the APPROVED
+        audit row is a best-effort artefact (failure logs but does
+        not roll back the mutation, since the run-time change has
+        already taken effect).
         """
         from synthorg.core.approval import (  # noqa: PLC0415
             ApprovalItem as _ApprovalItem,
@@ -214,16 +228,21 @@ class AutonomyWorkflow:
             AutonomyUpdateResult,
         )
 
-        # Apply the level change FIRST so a terminal (APPROVED) audit
-        # row is only persisted once the mutation has actually
-        # succeeded; otherwise a failure in the await gap (agent
-        # unregistered / registry cleared) would leave an APPROVED row
-        # claiming a promotion that never happened.
-        await self._registry.apply_autonomy_level(
+        # Atomic read-and-apply under the registry lock. The returned
+        # previous_level reflects what was actually in the registry the
+        # instant the mutation landed, so the audit metadata + GRANTED
+        # log cannot describe a level that a concurrent writer
+        # already overwrote.
+        previous_level, _applied = await self._registry.apply_autonomy_update_atomic(
             agent_id,
             update.requested_level,
             saved_by=f"autonomy_strategy_grant:{key}",
         )
+        granted_metadata = {
+            **base_metadata,
+            "current_level": previous_level.value,
+            "granted_by_strategy": str(update.granted_by_strategy),
+        }
 
         approval_enqueued = False
         if self._approval_store is not None:
@@ -244,12 +263,7 @@ class AutonomyWorkflow:
                         created_at=now,
                         decided_at=now,
                         decided_by=f"strategy:{update.granted_by_strategy}",
-                        metadata={
-                            **base_metadata,
-                            "granted_by_strategy": str(
-                                update.granted_by_strategy,
-                            ),
-                        },
+                        metadata=granted_metadata,
                     ),
                 )
                 approval_enqueued = True
@@ -272,7 +286,7 @@ class AutonomyWorkflow:
         logger.info(
             SECURITY_AUTONOMY_PROMOTION_GRANTED,
             agent_id=key,
-            previous_level=current_level.value,  # type: ignore[attr-defined]
+            previous_level=previous_level.value,
             requested_level=update.requested_level.value,
             granted_by_strategy=str(update.granted_by_strategy),
             approval_id=result_id,

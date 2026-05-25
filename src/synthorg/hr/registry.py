@@ -7,15 +7,16 @@ their identities, and lifecycle status transitions (D8.3).
 One cohesive responsibility: maintain the authoritative agent
 identity registry. CRUD (register/unregister/get/list), identity
 updates (status / generic-field / evolved-replacement /
-apply-arbitrary-mutation), and the two autonomy-mutation primitives
-(``snapshot_current_autonomy_level`` + ``apply_autonomy_level``) all
-operate on the same ``self._agents`` dict under ``self._lock``.
-The autonomy-promotion workflow itself (request / approval / audit
+apply-arbitrary-mutation), and the autonomy-mutation primitives
+(``snapshot_current_autonomy_level``, ``apply_autonomy_level``, and
+the atomic ``apply_autonomy_update_atomic``) all operate on the
+same ``self._agents`` dict under ``self._lock``. The
+autonomy-promotion workflow itself (request / approval / audit
 row) is owned by :class:`synthorg.hr.autonomy_workflow.AutonomyWorkflow`;
-the two autonomy-mutation methods on this registry are the narrow
-read + apply hooks the workflow consumes so its mutations serialise
-with the registry's own writes without reaching into ``_agents``
-directly.
+the autonomy-mutation methods on this registry are the narrow
+read / apply / read-and-apply hooks the workflow consumes so its
+mutations serialise with the registry's own writes without
+reaching into ``_agents`` directly.
 """
 
 import asyncio
@@ -59,6 +60,7 @@ if TYPE_CHECKING:
 
     from synthorg.approval.protocol import ApprovalStoreProtocol
     from synthorg.core.agent import AgentIdentity
+    from synthorg.core.clock import Clock
     from synthorg.core.types import NotBlankStr
     from synthorg.security.autonomy.models import (
         AutonomyUpdate,
@@ -601,6 +603,7 @@ class AgentRegistryService:
         update: AutonomyUpdate,
         *,
         approval_store: ApprovalStoreProtocol | None = None,
+        clock: Clock | None = None,
     ) -> AutonomyUpdateResult:
         """Request an autonomy level change for an agent.
 
@@ -618,6 +621,10 @@ class AgentRegistryService:
             approval_store: Optional approval store; when provided, the
                 request is enqueued and the returned ``approval_id``
                 identifies it.
+            clock: Optional clock seam forwarded to the workflow so
+                approval-row timestamps come from the injected clock
+                rather than the real wall clock. Defaults to a
+                ``SystemClock`` inside the workflow when ``None``.
 
         Returns:
             ``AutonomyUpdateResult`` describing the outcome.
@@ -629,7 +636,11 @@ class AgentRegistryService:
             AutonomyWorkflow,
         )
 
-        workflow = AutonomyWorkflow(self, approval_store=approval_store)
+        workflow = AutonomyWorkflow(
+            self,
+            approval_store=approval_store,
+            clock=clock,
+        )
         return await workflow.request(agent_id, update)
 
     async def snapshot_current_autonomy_level(
@@ -639,10 +650,10 @@ class AgentRegistryService:
         """Return the agent's current autonomy level under the registry lock.
 
         Public helper consumed by :class:`AutonomyWorkflow` so the
-        workflow can read the pre-mutation level without reaching into
-        registry internals. Falls back to ``SUPERVISED`` when the
-        identity carries no explicit autonomy level (matches the
-        pre-decomp default).
+        workflow can read the prior level without reaching into
+        registry internals. Returns ``SUPERVISED`` when the identity
+        carries no explicit autonomy level so callers always observe
+        a concrete level rather than ``None``.
 
         Args:
             agent_id: The agent identifier.
@@ -703,11 +714,75 @@ class AgentRegistryService:
             live = self._agents.get(key)
             if live is None:
                 msg = f"Agent {agent_id!r} not found in registry"
+                logger.warning(
+                    SECURITY_AUTONOMY_PROMOTION_REQUESTED,
+                    agent_id=key,
+                    error=msg,
+                    requested_level=level.value,
+                    saved_by=saved_by,
+                )
                 raise AgentNotFoundError(msg)
             applied = live.model_copy(update={"autonomy_level": level})
             self._agents[key] = applied
         await self._snapshot(applied, saved_by=saved_by)
         return applied
+
+    async def apply_autonomy_update_atomic(
+        self,
+        agent_id: NotBlankStr,
+        level: AutonomyLevel,
+        *,
+        saved_by: str,
+    ) -> tuple[AutonomyLevel, AgentIdentity]:
+        """Read prior autonomy level and apply the new level under one lock.
+
+        Atomic counterpart to ``snapshot_current_autonomy_level`` plus
+        ``apply_autonomy_level``: the read and the write happen inside
+        a single ``self._lock`` acquisition so no concurrent writer
+        can land a different mutation between the two steps. The
+        returned previous level is the value that actually preceded
+        the mutation in this registry, suitable for stamping into
+        APPROVED audit rows and state-transition logs without a stale
+        snapshot race.
+
+        Falls back to ``SUPERVISED`` when the prior identity carries
+        no explicit autonomy level, matching
+        ``snapshot_current_autonomy_level`` so callers always observe
+        a concrete previous level.
+
+        Args:
+            agent_id: The agent identifier.
+            level: The new autonomy level to apply.
+            saved_by: Audit attribution stamped on the version snapshot.
+
+        Returns:
+            Tuple of ``(previous_level, updated_identity)``.
+
+        Raises:
+            AgentNotFoundError: If the agent is not registered.
+        """
+        key = str(agent_id)
+        async with self._lock:
+            live = self._agents.get(key)
+            if live is None:
+                msg = f"Agent {agent_id!r} not found in registry"
+                logger.warning(
+                    SECURITY_AUTONOMY_PROMOTION_REQUESTED,
+                    agent_id=key,
+                    error=msg,
+                    requested_level=level.value,
+                    saved_by=saved_by,
+                )
+                raise AgentNotFoundError(msg)
+            previous_level = (
+                live.autonomy_level
+                if live.autonomy_level is not None
+                else AutonomyLevel.SUPERVISED
+            )
+            applied = live.model_copy(update={"autonomy_level": level})
+            self._agents[key] = applied
+        await self._snapshot(applied, saved_by=saved_by)
+        return previous_level, applied
 
     async def agent_count(self) -> int:
         """Number of agents currently in the registry."""
