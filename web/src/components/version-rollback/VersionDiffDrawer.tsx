@@ -32,6 +32,31 @@ interface VersionDiffDrawerProps<T> {
   onClose: () => void
 }
 
+function _diffResultDirty(result: DiffResultState): boolean {
+  return result.key !== null || result.diff !== null || result.error !== null
+}
+
+/**
+ * Render-phase sub-hook that resets ``result`` to the empty snapshot
+ * whenever ``requestKey`` changes. Uses the React-blessed prevProp
+ * tracker idiom so the next render never shows a stale diff/error
+ * from the previous version pair, without tripping
+ * ``@eslint-react/set-state-in-effect``.
+ */
+function useResetResultOnRequestChange(
+  requestKey: string | null,
+  result: DiffResultState,
+  setResult: (next: DiffResultState) => void,
+): void {
+  const [prevRequestKey, setPrevRequestKey] = useState<string | null>(null)
+  if (requestKey !== prevRequestKey) {
+    setPrevRequestKey(requestKey)
+    if (_diffResultDirty(result)) {
+      setResult({ key: null, diff: null, error: null })
+    }
+  }
+}
+
 function useDiffRequest<T>(
   client: ReadOnlyVersionHistoryClient<T>,
   fromVersion: number | null,
@@ -47,20 +72,7 @@ function useDiffRequest<T>(
     diff: null,
     error: null,
   })
-  const [prevRequestKey, setPrevRequestKey] = useState<string | null>(null)
-
-  // Clear any prior diff/error during render when the request context
-  // changes (different version pair, or the drawer closed). Using the
-  // documented "prevProp tracker" render-phase setState idiom (React
-  // docs, "You Might Not Need an Effect" -> "Adjusting some state
-  // when a prop changes") keeps the stale snapshot from flashing on
-  // the next render and avoids ``@eslint-react/set-state-in-effect``.
-  if (requestKey !== prevRequestKey) {
-    setPrevRequestKey(requestKey)
-    if (result.key !== null || result.diff !== null || result.error !== null) {
-      setResult({ key: null, diff: null, error: null })
-    }
-  }
+  useResetResultOnRequestChange(requestKey, result, setResult)
 
   const isLoading = requestKey !== null && result.key !== requestKey
 
