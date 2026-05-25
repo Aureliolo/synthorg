@@ -1,7 +1,10 @@
 # Vale sync output: the Google style package is downloaded by
-# `vale sync` from scripts/install_cli_tools.sh, never committed.
-# Run `bash scripts/install_cli_tools.sh vale` on a fresh clone to
-# materialise it. The vocabulary under styles/config/ IS committed
-# (the .gitignore excludes only the synced upstream packages).
+# `vale sync`, never committed. The pre-push wrapper
+# (scripts/vale-prepush.sh) materialises this lazily on the first push
+# in each worktree, so new worktrees do not need an explicit sync
+# step. Operators can still pre-warm it by running
+# `bash scripts/install_cli_tools.sh vale` (idempotent: skips when the
+# package is already present). The vocabulary under styles/config/ IS
+# committed (the .gitignore excludes only the synced upstream packages).
 styles/Google/
 styles/.vale-config/
