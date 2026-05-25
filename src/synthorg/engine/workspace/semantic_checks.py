@@ -139,7 +139,12 @@ def _call_keyword_names(call: ast.Call) -> set[str]:
 
 
 def _find_calls_to(tree: ast.Module, name: str) -> list[ast.Call]:
-    """Find all direct calls to a named function in the AST."""
+    """Find all direct calls to a named function in the AST.
+
+    Returns:
+        List of :class:`ast.Call` nodes whose immediate function is
+        a bare ``Name`` matching ``name``.
+    """
     return [
         node
         for node in ast.walk(tree)
@@ -154,6 +159,10 @@ def _imported_names(tree: ast.Module) -> list[tuple[str, str, str]]:
 
     Only handles ``from X import Y`` style imports.
     Star imports are excluded.
+
+    Returns:
+        List of ``(module, imported_name, alias)`` triples for every
+        ``from X import Y [as Z]`` in the module.
     """
     result: list[tuple[str, str, str]] = []
     for node in ast.walk(tree):

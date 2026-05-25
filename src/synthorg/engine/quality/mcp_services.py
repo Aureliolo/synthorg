@@ -89,8 +89,11 @@ class QualityFacadeService:
         Raises:
             ValueError: If ``offset`` is negative, or ``limit`` is
                 provided and non-positive.
-            CapabilityNotSupportedError: If the underlying tracker does
-                not expose ``list_quality_scores``.
+            CapabilityNotSupportedError: If the underlying tracker
+                does not expose ``list_quality_scores`` (raised via
+                the ``_capability`` builder).
+            _capability: Local builder alias for the
+                ``CapabilityNotSupportedError`` documented above.
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"

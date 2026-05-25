@@ -340,6 +340,11 @@ async def _do_analysis(  # noqa: PLR0913
         Tuple of semantic ``MergeConflict`` instances from the
         analyzer; ``()`` when no files survived filtering or any
         non-critical exception was logged and swallowed.
+
+    Raises:
+        CancelledError: Propagated unchanged from the inner
+            analyzer call so cooperative cancellation still
+            unwinds the calling task group.
     """
     try:
         branch_point = await _resolve_branch_point(

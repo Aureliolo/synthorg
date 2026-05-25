@@ -223,6 +223,11 @@ class WorkspaceIsolationService:
         Double-checked under ``_push_queues_lock`` so two agents
         finishing concurrently on a fresh project create exactly one
         coordinator.
+
+        Raises:
+            WorkspaceCleanupError: When shutdown started before this
+                call acquired the lock, or when no git backend was
+                configured (push queue cannot exist without one).
         """
         async with self._push_queues_lock:
             existing = self._push_queues.get(project_id)

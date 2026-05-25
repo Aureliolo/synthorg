@@ -90,7 +90,12 @@ class GiteaForgeClient(BaseForgeClient):
         repo: NotBlankStr,
         private: bool = True,
     ) -> ForgeRepo:
-        """Create ``owner/repo`` under the user or org namespace."""
+        """Create ``owner/repo`` under the user or org namespace.
+
+        Returns:
+            The created :class:`ForgeRepo` parsed from the Gitea API
+            response.
+        """
         username = await self._authenticated_username()
         # Forge logins are case-insensitive, so match case-folded.
         url = (

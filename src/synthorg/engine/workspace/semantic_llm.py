@@ -224,6 +224,11 @@ class LlmSemanticAnalyzer:
         Returns:
             Parsed conflicts on success, empty tuple on terminal
             failure, or ``None`` to signal a retry.
+
+        Raises:
+            CancelledError: Propagated unchanged from the inner
+                provider call so cooperative cancellation still
+                unwinds the calling task.
         """
         try:
             async with cost_recording_scope(
