@@ -9,7 +9,7 @@ no ``api`` / ``meta`` module imports ``aiosqlite`` / ``psycopg``.
 
 from typing import TYPE_CHECKING
 
-from synthorg.core.critical_errors import _reraise_critical
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_CHARTER_HANDLE_UNAVAILABLE,
@@ -48,7 +48,7 @@ def build_charter_repository(
         handle = backend.get_db()
         write_context = backend.write_context
     except Exception as exc:
-        _reraise_critical(exc)
+        reraise_critical(exc)
         logger.warning(
             PERSISTENCE_CHARTER_HANDLE_UNAVAILABLE,
             backend_name=name,

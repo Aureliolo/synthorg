@@ -438,10 +438,10 @@ async def migrate_apply(
     )
 
     def _apply() -> tuple[int, tuple[str, ...], str]:
-        """Apply apply.
+        """Run yoyo's apply step inside the locked backend session.
 
         Returns:
-            The matching collection.
+            ``(applied_count, applied_steps, head_revision)`` after apply.
         """
         b = get_backend(db_url)
         try:
@@ -510,10 +510,10 @@ async def migrate_status(
     rev_path = _resolve_revisions_path(revisions_path, backend)
 
     def _status() -> MigrateStatus:
-        """Status status.
+        """Compute pending / applied migration sets and the current head.
 
         Returns:
-            Result of type ``MigrateStatus``.
+            Snapshot of the current head plus the unapplied tail.
         """
         b = get_backend(db_url)
         try:
@@ -584,10 +584,10 @@ async def migrate_baseline(
     )
 
     def _mark() -> tuple[int, tuple[str, ...], str]:
-        """Mark mark.
+        """Mark all discovered migrations as applied without running them.
 
         Returns:
-            The matching collection.
+            ``(marked_count, marked_steps, head_revision)`` after mark.
         """
         b = get_backend(db_url)
         try:
@@ -674,10 +674,10 @@ async def migrate_rollback(
     )
 
     def _rollback() -> tuple[int, tuple[str, ...]]:
-        """Rollback rollback.
+        """Roll back applied migrations down to ``target_version``.
 
         Returns:
-            The matching collection.
+            ``(rolled_back_count, rolled_back_steps)`` after rollback.
 
         Raises:
             MigrationError: If the underlying call raises.
@@ -773,7 +773,7 @@ async def break_lock(db_url: str) -> None:
     """
 
     def _break() -> None:
-        """Break break."""
+        """Release the backend's migration lock unconditionally."""
         b = get_backend(db_url)
         try:
             b.break_lock()

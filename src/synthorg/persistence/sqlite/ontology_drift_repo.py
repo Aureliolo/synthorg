@@ -156,7 +156,7 @@ class SQLiteOntologyDriftReportRepository:
         """Return most recent drift reports for an entity.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
         """
         cursor = await self._db.execute(
             "SELECT entity_name, divergence_score, canonical_version, "
@@ -177,7 +177,7 @@ class SQLiteOntologyDriftReportRepository:
         """Return the latest drift report for each entity.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
         """
         cursor = await self._db.execute(
             "SELECT entity_name, divergence_score, canonical_version, "

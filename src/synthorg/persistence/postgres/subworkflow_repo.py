@@ -617,7 +617,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         parent set would let a still-referenced version be deleted.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
 
         Raises:
             QueryError: If the database query fails.

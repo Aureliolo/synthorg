@@ -17,7 +17,7 @@ import aiosqlite  # noqa: TC002
 
 from synthorg.core.auth.config import AuthConfig  # noqa: TC001
 from synthorg.core.clock import Clock, SystemClock
-from synthorg.core.critical_errors import _reraise_critical
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_LOCKOUT_CLEANUP,
@@ -83,7 +83,7 @@ class SQLiteLockoutRepository:
         """Sync O(1) lockout check for the auth hot path.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when ``username`` is currently locked out, ``False`` otherwise.
         """
         username = username.lower()
         with self._locked_lock:
@@ -109,7 +109,7 @@ class SQLiteLockoutRepository:
         scan range does not inflate the threshold check.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Number of usernames restored to the in-memory lockout cache.
         """
         scan_now = self._clock.now()
         scan_start = format_iso_utc(scan_now - (self._window + self._duration))
@@ -169,7 +169,8 @@ class SQLiteLockoutRepository:
         """Record a failed login attempt.  Return ``True`` if now locked.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when this failure pushed the username past the lockout threshold,
+            ``False`` otherwise.
         """
         username = username.lower()
         now = self._clock.now()
@@ -193,7 +194,7 @@ class SQLiteLockoutRepository:
                 now_locked = count >= self._threshold
                 await self._db.commit()
             except Exception as exc:
-                _reraise_critical(exc)
+                reraise_critical(exc)
                 await self._db.rollback()
                 raise
             # Cache mutation MUST happen while still holding
@@ -224,7 +225,8 @@ class SQLiteLockoutRepository:
         when there was no prior lockout (no audit emission warranted).
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when an existing failure record was cleared, ``False`` when there
+            was nothing to clear.
         """
         username = username.lower()
         async with self._write_context():
@@ -236,7 +238,7 @@ class SQLiteLockoutRepository:
                 )
                 await self._db.commit()
             except Exception as exc:
-                _reraise_critical(exc)
+                reraise_critical(exc)
                 await self._db.rollback()
                 raise
             # Cache pop while still holding ``write_context`` so a
@@ -270,7 +272,7 @@ class SQLiteLockoutRepository:
                 count = cursor.rowcount
                 await self._db.commit()
             except Exception as exc:
-                _reraise_critical(exc)
+                reraise_critical(exc)
                 await self._db.rollback()
                 raise
         if count:

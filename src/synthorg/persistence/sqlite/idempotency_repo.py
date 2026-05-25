@@ -15,7 +15,7 @@ from datetime import datetime  # noqa: TC003
 import aiosqlite
 from pydantic import AwareDatetime  # noqa: TC002
 
-from synthorg.core.critical_errors import _reraise_critical
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -102,7 +102,7 @@ class SQLiteIdempotencyRepository:
                 )
                 await self._db.commit()
             except Exception as exc:
-                _reraise_critical(exc)
+                reraise_critical(exc)
                 # Catch broadly so a non-SQL failure (parse_iso_utc on
                 # a corrupt row, IdempotencyClaim model_validator,
                 # ...) still triggers rollback + structured logging
@@ -262,7 +262,8 @@ class SQLiteIdempotencyRepository:
         owns the row).
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when the claim was marked ``COMPLETED``, ``False`` when
+            ``claim_token`` did not match the stored token.
 
         Raises:
             QueryError: If the database query fails.
@@ -308,7 +309,8 @@ class SQLiteIdempotencyRepository:
         """Mark a claimed key as ``FAILED`` if *claim_token* matches.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when the claim was marked ``FAILED``, ``False`` when
+            ``claim_token`` did not match the stored token.
 
         Raises:
             QueryError: If the database query fails.

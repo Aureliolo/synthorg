@@ -328,7 +328,8 @@ def _build_query_sql(filter_spec: ResearchRunFilter) -> tuple[str, tuple[object,
     The Postgres repo has its own ``%s``-placeholder twin of this helper.
 
     Returns:
-        The matching collection.
+        ``(sql, params)`` where ``sql`` is the complete query string and ``params`` is
+        the matching positional parameter tuple.
     """
     conditions: list[str] = []
     params: list[object] = []

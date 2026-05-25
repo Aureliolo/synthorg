@@ -47,7 +47,8 @@ def is_unique_constraint_error(exc: BaseException) -> bool:
     constraint" in some upstream patches.
 
     Returns:
-        ``True`` when the operation succeeded, ``False`` otherwise.
+        ``True`` when ``exc`` is a SQLite UNIQUE or PRIMARY KEY violation, ``False``
+        otherwise.
     """
     if not isinstance(exc, sqlite3.IntegrityError):
         return False

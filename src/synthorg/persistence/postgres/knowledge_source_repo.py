@@ -364,7 +364,8 @@ def _build_query_sql(
     """Compose the ``SELECT * ... WHERE`` clause for ``query`` / ``count``.
 
     Returns:
-        The matching collection.
+        ``(sql, params)`` where ``sql`` is the complete query string and ``params`` is
+        the matching positional parameter tuple.
     """
     conditions: list[str] = []
     params: list[object] = []

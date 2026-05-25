@@ -292,21 +292,33 @@ classification detectors, notification sinks -- wrap each task body
 in a small `async def` helper that catches `Exception` and returns a
 safe default. Re-raise only `MemoryError` / `RecursionError` (those
 indicate the interpreter itself is in trouble and the group should
-unwind):
+unwind). The re-raise is delegated to
+`synthorg.core.critical_errors.reraise_critical` so the broad handler
+stays a single `except` clause and ruff `DOC501` does not demand that
+every helper docstring document `MemoryError` / `RecursionError`:
 
 ```python
+from synthorg.core.critical_errors import reraise_critical
+
 async def _safe_dispatch(sink: NotificationSink, payload: Payload) -> None:
     try:
         await sink.dispatch(payload)
-    except (MemoryError, RecursionError):
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(SINK_DISPATCH_FAILED, sink=sink.name, exc_info=False)
 
 async with asyncio.TaskGroup() as tg:
     for sink in self._sinks:
         tg.create_task(_safe_dispatch(sink, payload))
 ```
+
+The legacy two-clause form (`except (MemoryError, RecursionError): raise`
+followed by `except Exception:`) is equivalent and remains acceptable
+in sites where the critical-error branch needs additional cleanup
+before the re-raise; see `persistence/postgres/backend_connection.py`
+for an example. `asyncio.CancelledError` is **not** routed through
+`reraise_critical`: it is a `BaseException`, not an `Exception`, so a
+broad `except Exception:` never catches it.
 
 Migration is incremental. Existing `gather(..., return_exceptions=True)`
 sites are being converted as code in their vicinity changes; do not

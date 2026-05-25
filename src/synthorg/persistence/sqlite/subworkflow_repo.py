@@ -704,7 +704,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         a still-referenced version be deleted.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
         """
         limit = validate_pagination_args(
             limit,

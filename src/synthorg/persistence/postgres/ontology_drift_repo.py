@@ -161,7 +161,7 @@ class PostgresOntologyDriftReportRepository:
         scan on ``id``.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
         """
         dict_row = self._dict_row
         async with (
@@ -192,7 +192,7 @@ class PostgresOntologyDriftReportRepository:
         correlated ``MAX(id)`` subquery (O(n log n)).
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
         """
         dict_row = self._dict_row
         async with (

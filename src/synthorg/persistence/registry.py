@@ -130,7 +130,7 @@ class PersistenceBackendRegistry:
         """Return ``True`` iff *name* is a registered string discriminator.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when ``name`` is a registered discriminator, ``False`` otherwise.
         """
         if not isinstance(name, str):
             return False

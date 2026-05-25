@@ -40,7 +40,8 @@ def _postgres_is_duplicate(exc: BaseException) -> bool:
     """Detect Postgres duplicate-key violations by exception type.
 
     Returns:
-        ``True`` when the operation succeeded, ``False`` otherwise.
+        ``True`` when ``exc`` is a Postgres unique-constraint violation,
+        ``False`` otherwise.
     """
     return isinstance(exc, psycopg.errors.UniqueViolation)
 
@@ -298,7 +299,9 @@ class PostgresAuditRepository:
         """Build timestamp filter conditions.
 
         Returns:
-            The matching collection.
+            ``(conditions, params)`` where ``conditions`` is a list of
+            SQL fragments to AND into the WHERE clause and ``params``
+            is the matching positional parameter list.
         """
         conditions: list[str] = []
         params: list[object] = []
@@ -323,7 +326,9 @@ class PostgresAuditRepository:
         """Execute a JSONB query with time filters and pagination.
 
         Returns:
-            The matching collection.
+            ``(page, total)`` where ``page`` is the tuple of matching
+            audit entries for the requested page and ``total`` is the
+            unpaginated row count.
 
         Raises:
             QueryError: If the database query fails.

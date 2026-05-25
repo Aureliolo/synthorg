@@ -255,7 +255,7 @@ class PostgresOrgFactRepository:
         """Append an operation within the caller's transaction.
 
         Returns:
-            The matching collection.
+            ``(log_id, persisted_at)`` of the newly appended log entry.
         """
         operation_id = str(uuid.uuid4())
         now = datetime.now(UTC)
@@ -699,7 +699,7 @@ LIMIT %(limit)s OFFSET %(offset)s
         :func:`synthorg.persistence._shared.collect_all`.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
 
         Raises:
             OrgMemoryQueryError: If the underlying call raises.

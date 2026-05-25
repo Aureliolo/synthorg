@@ -394,7 +394,8 @@ def _build_query_sql(filter_spec: DocsFilterSpec) -> tuple[str, tuple[object, ..
     """Compose the WHERE clause for ``query`` / ``count``.
 
     Returns:
-        The matching collection.
+        ``(sql, params)`` where ``sql`` is the complete query string and ``params`` is
+        the matching positional parameter tuple.
     """
     sql = "SELECT * FROM project_docs WHERE project_id = %s"
     params: list[object] = [filter_spec.project_id]

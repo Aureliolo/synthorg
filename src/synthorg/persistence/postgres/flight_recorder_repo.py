@@ -181,7 +181,8 @@ class PostgresFlightRecorderFrameRepository:
         """Return aggregate stats over the matching frame set in one round-trip.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Aggregate stats over the matching frame set. Counters default to zero and
+            ``last_timestamp`` to ``None`` when the filter selects no frames.
 
         Raises:
             QueryError: If the database query fails.
@@ -265,7 +266,9 @@ class PostgresFlightRecorderFrameRepository:
         """Build the WHERE clause + positional params for ``filter_spec``.
 
         Returns:
-            The matching collection.
+            ``(where_clause, params)`` where ``where_clause`` is the SQL fragment
+            (without the leading ``WHERE``) and ``params`` is the matching positional
+            parameter list.
         """
         conditions: list[str] = []
         params: list[object] = []

@@ -236,7 +236,7 @@ async def _run_pg_tool_buffered(
     process before re-raising.
 
     Returns:
-        The matching collection.
+        ``(stdout, stderr)`` captured from the subprocess.
     """
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -277,7 +277,7 @@ async def _run_pg_tool(
             ``timeout_seconds``.
 
     Returns:
-        The matching collection.
+        ``(stdout, stderr)`` captured from the subprocess.
     """
     if output_path is not None:
         stderr = await _run_pg_tool_file(

@@ -283,7 +283,8 @@ class PostgresOAuthStateRepository:
         route it through the replay branch.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when this call stamped the row, ``False`` when the row had already
+            been consumed.
 
         Raises:
             QueryError: If the database query fails.

@@ -433,7 +433,8 @@ class PostgresOntologyEntityRepository:
         :func:`synthorg.persistence._shared.collect_all_mapping`.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Mapping of ``entity_id`` to its current ``schema_version``; empty when no
+            entities are registered.
         """
         limit = validate_pagination_args(
             limit, offset, event=ONTOLOGY_ENTITY_DESERIALIZATION_FAILED

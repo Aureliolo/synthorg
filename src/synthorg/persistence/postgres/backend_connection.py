@@ -7,6 +7,7 @@ concrete backend.
 """
 
 import asyncio
+import contextlib
 import math
 from typing import TYPE_CHECKING
 
@@ -14,7 +15,6 @@ import psycopg
 from psycopg import sql
 from psycopg_pool import AsyncConnectionPool
 
-from synthorg.core.critical_errors import _reraise_critical
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -140,7 +140,19 @@ class PostgresConnectionMixin:
             except (psycopg.Error, OSError, TimeoutError) as exc:
                 await self._cleanup_failed_connect(exc, pool)
             except Exception as exc:
-                _reraise_critical(exc)
+                if isinstance(exc, MemoryError | RecursionError):
+                    # Release the pool handle and clear backend state
+                    # before the interpreter-critical exception
+                    # propagates: a crash + restart must not leak the
+                    # partial pool or leave the backend half-connected.
+                    # Cleanup failures are suppressed so they cannot
+                    # shadow the critical exception.
+                    if pool is not None:
+                        with contextlib.suppress(Exception):
+                            await pool.close()
+                    with contextlib.suppress(Exception):
+                        self._clear_state()
+                    raise
                 await self._cleanup_failed_connect(exc, pool)
 
             logger.info(

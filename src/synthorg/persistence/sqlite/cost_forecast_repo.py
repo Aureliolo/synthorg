@@ -169,7 +169,7 @@ def _build_where(
     """Build the WHERE clause + bound params from a filter spec.
 
     Returns:
-        The matching collection.
+        ``(where_clause, params)``: SQL fragment + positional params.
     """
     clauses: list[str] = []
     params: list[object] = []

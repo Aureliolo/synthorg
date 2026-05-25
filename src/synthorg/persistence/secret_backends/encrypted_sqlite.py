@@ -11,7 +11,7 @@ from uuid import uuid4
 import aiosqlite
 from cryptography.fernet import Fernet, InvalidToken
 
-from synthorg.core.critical_errors import _reraise_critical
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.config import EncryptedSqliteConfig
 from synthorg.integrations.errors import (
@@ -127,7 +127,7 @@ class EncryptedSqliteSecretBackend:
         except MasterKeyError:
             raise
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             # ``warning`` + scrubbed description: driver exceptions may
             # embed connection URIs or raw Fernet ciphertext bytes.
             # Traceback attachment via ``logger.exception`` would also
@@ -161,7 +161,7 @@ class EncryptedSqliteSecretBackend:
                 )
                 row = await cursor.fetchone()
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             # ``warning`` + scrubbed description: same rationale as
             # ``store()`` above. A DB driver failure may embed the row's
             # encrypted ciphertext in the exception; ``logger.exception``
@@ -194,7 +194,7 @@ class EncryptedSqliteSecretBackend:
             msg = f"Failed to decrypt secret {secret_id}"
             raise SecretRetrievalError(msg) from exc
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             # Catch-all so any residual decrypt failure (malformed
             # row data, driver bug, etc.) still surfaces through
             # the secret-backend contract instead of leaking raw.
@@ -226,7 +226,7 @@ class EncryptedSqliteSecretBackend:
                 await db.commit()
                 deleted = cursor.rowcount > 0
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             # Driver exceptions may embed connection URIs with
             # credentials; scrub + drop traceback.  Use the
             # ``SECRET_DELETE_FAILED`` event (not ``STORAGE_FAILED``)
@@ -267,7 +267,7 @@ class EncryptedSqliteSecretBackend:
         try:
             await self.store(new_id, new_value)
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             # Carry the scrubbed description as context; the underlying
             # exception stays in the chain via ``raise ... from exc``.
             logger.warning(
@@ -282,7 +282,7 @@ class EncryptedSqliteSecretBackend:
         try:
             deleted = await self.delete(old_id)
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 old_id=old_id,
@@ -323,13 +323,13 @@ class EncryptedSqliteSecretBackend:
         try:
             await self.delete(new_id)
         except Exception as rb_exc:
-            _reraise_critical(rb_exc)
+            reraise_critical(rb_exc)
             # Wrap the scrub so a broken ``__str__`` on the rollback
             # error cannot crash the rotation path silently.
             try:
                 scrubbed = safe_error_description(rb_exc)
             except Exception as scrub_exc:  # pragma: no cover - defensive
-                _reraise_critical(scrub_exc)
+                reraise_critical(scrub_exc)
                 scrubbed = type(rb_exc).__name__
             logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,

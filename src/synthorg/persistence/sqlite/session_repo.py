@@ -458,7 +458,7 @@ class SQLiteSessionRepository:
         """Check whether a session is revoked (sync, O(1)).
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when the session has been revoked, ``False`` otherwise.
         """
         return session_id in self._revoked
 

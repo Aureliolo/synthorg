@@ -198,7 +198,8 @@ class InMemoryOAuthStateRepository:
         """In-memory CAS not enforced; treat as no-op success when present.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when this call stamped the row, ``False`` when the row had already
+            been consumed.
         """
         return state_token in self._store
 
@@ -315,7 +316,7 @@ class InMemoryWebhookReceiptRepository:
         """List by connection (deep-copied), newest-first.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
         """
         if limit <= 0:
             return ()

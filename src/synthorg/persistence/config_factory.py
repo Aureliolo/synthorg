@@ -80,7 +80,7 @@ def _validate_postgres_url(db_url: str) -> tuple[str, int, str, str, str]:
         host/credentials/database, port 0).
 
     Returns:
-        The matching collection.
+        ``(host, port, database, username, password)`` parsed from the URL.
     """
     try:
         parsed = urlparse(db_url)

@@ -2,13 +2,13 @@
 
 import pytest
 
-from synthorg.core.critical_errors import _reraise_critical
+from synthorg.core.critical_errors import reraise_critical
 
 pytestmark = pytest.mark.unit
 
 
 class TestReraiseCritical:
-    """Truth table for `_reraise_critical`.
+    """Truth table for `reraise_critical`.
 
     The helper distinguishes interpreter-critical exceptions (re-raise) from
     every other `Exception` subclass (return None) so the caller's broad
@@ -18,11 +18,11 @@ class TestReraiseCritical:
 
     def test_memory_error_re_raises(self) -> None:
         with pytest.raises(MemoryError, match="out of memory"):
-            _reraise_critical(MemoryError("out of memory"))
+            reraise_critical(MemoryError("out of memory"))
 
     def test_recursion_error_re_raises(self) -> None:
         with pytest.raises(RecursionError, match="stack overflow"):
-            _reraise_critical(RecursionError("stack overflow"))
+            reraise_critical(RecursionError("stack overflow"))
 
     @pytest.mark.parametrize(
         "exc",
@@ -38,7 +38,10 @@ class TestReraiseCritical:
         ids=["value", "key", "type", "runtime", "exception", "os", "arithmetic"],
     )
     def test_ordinary_exceptions_pass_through(self, exc: Exception) -> None:
-        _reraise_critical(exc)
+        # Contract: non-critical exceptions pass through (return None,
+        # which the type checker treats as the only possible value).
+        # Returning normally without raising IS the assertion here.
+        reraise_critical(exc)
 
     @pytest.mark.parametrize(
         "exc",
@@ -53,13 +56,16 @@ class TestReraiseCritical:
         self,
         exc: BaseException,
     ) -> None:
-        _reraise_critical(exc)
+        # Contract: non-Exception BaseException subclasses (KeyboardInterrupt,
+        # SystemExit, GeneratorExit) pass through unchanged because they are
+        # not in _CRITICAL_TYPES. Returning normally IS the assertion.
+        reraise_critical(exc)
 
     def test_recursion_error_is_runtime_error_subclass(self) -> None:
         """Guards against a future Python that changes the hierarchy."""
         assert issubclass(RecursionError, RuntimeError)
         with pytest.raises(RecursionError):
-            _reraise_critical(RecursionError())
+            reraise_critical(RecursionError())
 
     def test_memory_error_is_exception_subclass(self) -> None:
         """Guards against a future Python that changes the hierarchy.
@@ -82,13 +88,13 @@ def _broad_handler_with_critical_passthrough(
 
     Wraps the production pattern: a `try` that raises some exception,
     followed by a broad `except Exception:` that calls
-    `_reraise_critical` before its recovery / logging logic. The
+    `reraise_critical` before its recovery / logging logic. The
     sentinel tracks whether the recovery path ran.
     """
     try:
         raise to_raise  # noqa: TRY301 -- intentional re-raise for test setup
     except Exception as exc:
-        _reraise_critical(exc)
+        reraise_critical(exc)
         sentinel.append("logged")
 
 
@@ -103,7 +109,7 @@ class TestUsagePattern:
                 sentinel,
             )
         assert sentinel == [], (
-            "broad-handler recovery must not run when _reraise_critical re-raises"
+            "broad-handler recovery must not run when reraise_critical re-raises"
         )
 
     def test_ordinary_exception_lets_broad_handler_run(self) -> None:

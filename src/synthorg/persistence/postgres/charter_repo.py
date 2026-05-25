@@ -228,7 +228,7 @@ def _build_where(filter_spec: CharterFilterSpec) -> tuple[str, list[object]]:
     """Build the WHERE clause + bound params from a filter spec.
 
     Returns:
-        The matching collection.
+        ``(where_clause, params)``: SQL fragment + positional params.
     """
     clauses: list[str] = []
     params: list[object] = []

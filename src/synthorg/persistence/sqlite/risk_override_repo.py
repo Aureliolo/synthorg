@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 import aiosqlite
 from pydantic import AwareDatetime, ValidationError
 
-from synthorg.core.critical_errors import _reraise_critical
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.persistence_errors import DuplicateRecordError, PersistenceError
 from synthorg.observability import get_logger, safe_error_description
@@ -65,7 +65,7 @@ class SQLiteRiskOverrideRepository:
         try:
             await self._db.rollback()
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             logger.warning(
                 PERSISTENCE_RISK_OVERRIDE_SAVE_FAILED,
                 error="rollback failed",

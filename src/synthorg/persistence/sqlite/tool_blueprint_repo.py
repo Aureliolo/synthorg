@@ -311,7 +311,9 @@ class SQLiteDynamicToolRepository:
         """Build the WHERE clause and bound params from a filter spec.
 
         Returns:
-            The matching collection.
+            ``(where_clause, params)`` where ``where_clause`` is the SQL fragment
+            (without the leading ``WHERE``) and ``params`` is the matching positional
+            parameter list.
         """
         clauses: list[str] = []
         params: list[object] = []

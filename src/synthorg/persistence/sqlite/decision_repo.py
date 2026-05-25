@@ -141,7 +141,7 @@ def _is_structural_constraint_error(exc: sqlite3.IntegrityError) -> bool:
     narrowed ``except (QueryError, DuplicateRecordError)`` catch.
 
     Returns:
-        ``True`` when the operation succeeded, ``False`` otherwise.
+        ``True`` for CHECK / FOREIGN KEY / NOT NULL violations, ``False`` otherwise.
     """
     return exc.sqlite_errorname in {
         "SQLITE_CONSTRAINT_CHECK",

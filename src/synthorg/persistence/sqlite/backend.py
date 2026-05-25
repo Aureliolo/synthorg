@@ -444,7 +444,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
             PersistenceConnectionError: If not yet connected.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            The active database connection (raises if not connected).
         """
         if self._db is None:
             msg = "Database not connected"
@@ -846,7 +846,7 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         """Whether the backend has an active connection.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when the backend has an active connection, ``False`` otherwise.
         """
         return self._db is not None
 

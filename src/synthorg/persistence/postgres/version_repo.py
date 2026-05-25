@@ -31,7 +31,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ValidationError
 
-from synthorg.core.critical_errors import _reraise_critical
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -168,7 +168,7 @@ class PostgresVersionRepository[T: BaseModel]:
             )
             raise QueryError(msg) from exc
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             # Catch-all for unconstrained deserialize_snapshot callbacks
             context = f"{row.get('entity_id', '?')}@v{row.get('version', '?')}"
             msg = f"Failed to deserialize version snapshot {context!r}: {safe_error_description(exc)}"  # noqa: E501
@@ -196,7 +196,7 @@ class PostgresVersionRepository[T: BaseModel]:
         try:
             serialized = self._serialize(version.snapshot)
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             msg = (
                 f"Failed to serialize snapshot for version "
                 f"{version.version} of {version.entity_id!r} "

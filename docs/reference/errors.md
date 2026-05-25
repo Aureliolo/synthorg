@@ -278,6 +278,31 @@ Frontend code MUST import error codes through `@/api/types/errors`
 keeps the `web/` and `src/synthorg/` sides in lockstep when codes are
 renumbered.
 
+## Interpreter-critical exception propagation
+
+`MemoryError` and `RecursionError` are subclasses of `Exception`, so a
+broad `except Exception:` block silently swallows them unless the
+handler re-raises explicitly. The canonical re-raise is delegated to
+`synthorg.core.critical_errors.reraise_critical(exc)`, called as the
+first statement of the broad handler:
+
+```python
+from synthorg.core.critical_errors import reraise_critical
+
+try:
+    ...
+except Exception as exc:
+    reraise_critical(exc)
+    logger.warning(EVENT, error_type=type(exc).__name__, ...)
+    raise QueryError(msg) from exc
+```
+
+`asyncio.CancelledError` is **not** routed through this helper because
+it is a `BaseException`, not an `Exception`; a broad `except Exception:`
+block never catches it. See
+[Async concurrency conventions](conventions.md#11-async-concurrency-asynciotaskgroup-and-structured-concurrency)
+for the surrounding pattern.
+
 ## Further reading
 
 - [Design: security](../design/security.md): the SEC-1 rules behind the categories
@@ -285,3 +310,4 @@ renumbered.
 - `src/synthorg/core/error_taxonomy.py`: the authoritative `ErrorCategory` / `ErrorCode` enums + RFC 9457 helpers
 - `src/synthorg/core/domain_errors.py`: the `DomainError` base + concrete subclasses (`NotFoundError`, `ConflictError`, `ValidationError`, ...)
 - `src/synthorg/core/persistence_errors.py`: the `PersistenceError` hierarchy
+- `src/synthorg/core/critical_errors.py`: the `reraise_critical` helper for the broad-except idiom

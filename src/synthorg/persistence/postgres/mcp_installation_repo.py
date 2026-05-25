@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 import psycopg
 from psycopg.rows import dict_row
 
-from synthorg.core.critical_errors import _reraise_critical
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
@@ -159,7 +159,7 @@ class PostgresMcpInstallationRepository:
                 )
                 row = await cur.fetchone()
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
                 operation="get",
@@ -217,7 +217,7 @@ class PostgresMcpInstallationRepository:
             # exception that escapes the persistence boundary.
             return tuple(_row_to_installation(row) for row in rows)
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             msg = "Failed to list mcp installations"
             logger.warning(
                 PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
@@ -243,7 +243,7 @@ class PostgresMcpInstallationRepository:
                 )
                 deleted = cur.rowcount > 0
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
                 operation="delete",

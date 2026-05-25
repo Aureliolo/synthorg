@@ -192,7 +192,8 @@ class PostgresIdempotencyRepository:
         decide what to do with the existing row).
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when this caller won the FRESH-slot insert, ``False`` when a
+            concurrent claim won the conflict first.
         """
         await cur.execute(
             "INSERT INTO idempotency_keys "
@@ -292,7 +293,8 @@ class PostgresIdempotencyRepository:
         the lease has rotated.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when the claim was marked ``COMPLETED``, ``False`` when
+            ``claim_token`` did not match the stored token.
 
         Raises:
             QueryError: If the database query fails.
@@ -341,7 +343,8 @@ class PostgresIdempotencyRepository:
         with the matching lease token can transition to failed.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when the claim was marked ``FAILED``, ``False`` when
+            ``claim_token`` did not match the stored token.
 
         Raises:
             QueryError: If the database query fails.

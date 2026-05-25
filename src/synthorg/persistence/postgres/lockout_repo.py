@@ -94,7 +94,7 @@ class PostgresLockoutRepository:
         """Sync O(1) lockout check for the auth hot path.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when ``username`` is currently locked out, ``False`` otherwise.
         """
         username = username.lower()
         with self._locked_lock:
@@ -121,7 +121,7 @@ class PostgresLockoutRepository:
         duration`` is still in the future.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Number of usernames restored to the in-memory lockout cache.
         """
         dict_row = self._dict_row
 
@@ -195,7 +195,8 @@ class PostgresLockoutRepository:
         """Record a failed login attempt.  Return ``True`` if now locked.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when this failure pushed the username past the lockout threshold,
+            ``False`` otherwise.
         """
         username = username.lower()
         now = self._clock.now()
@@ -254,7 +255,8 @@ class PostgresLockoutRepository:
         when no lockout was in effect.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when an existing failure record was cleared, ``False`` when there
+            was nothing to clear.
         """
         username = username.lower()
         # Same write-lock serialisation as ``record_failure``: cache

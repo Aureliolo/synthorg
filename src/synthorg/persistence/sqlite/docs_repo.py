@@ -392,7 +392,8 @@ def _build_query_sql(filter_spec: DocsFilterSpec) -> tuple[str, tuple[object, ..
     false matches (e.g. tag ``a`` cannot match a stored tag ``ab``).
 
     Returns:
-        The matching collection.
+        ``(sql, params)`` where ``sql`` is the complete query string and ``params`` is
+        the matching positional parameter tuple.
     """
     sql = "FROM project_docs WHERE project_id = ?"
     params: list[object] = [filter_spec.project_id]

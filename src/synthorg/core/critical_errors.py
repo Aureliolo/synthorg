@@ -20,13 +20,13 @@ broad handler::
         logger.warning(EVENT, error_type=type(exc).__name__, ...)
 
 This module replaces the leading ``except (MemoryError, RecursionError):
-raise`` clause with a single call to :func:`_reraise_critical` inside the
+raise`` clause with a single call to :func:`reraise_critical` inside the
 broad handler::
 
     try:
         ...
     except Exception as exc:
-        _reraise_critical(exc)
+        reraise_critical(exc)
         logger.warning(EVENT, error_type=type(exc).__name__, ...)
 
 The behaviour is identical (``MemoryError`` / ``RecursionError`` still
@@ -49,7 +49,7 @@ _CRITICAL_TYPES: Final[tuple[type[BaseException], ...]] = (
 )
 
 
-def _reraise_critical(exc: BaseException) -> None:
+def reraise_critical(exc: BaseException) -> None:
     """Re-raise ``exc`` if it is an interpreter-critical exception.
 
     Intended for use as the first statement of a broad

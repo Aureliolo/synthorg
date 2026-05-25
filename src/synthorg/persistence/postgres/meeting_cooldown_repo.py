@@ -101,7 +101,7 @@ class PostgresMeetingCooldownRepository:
         """Load every cooldown row (bespoke per ADR-0001 D7).
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
 
         Raises:
             QueryError: If the database query fails.

@@ -58,7 +58,7 @@ def _clamp_pagination(limit: int, offset: int) -> tuple[int, int]:
     ``[0, +inf)``.  Used by both list_runs and list_checkpoints.
 
     Returns:
-        The matching collection.
+        ``(limit, offset)`` clamped to the configured bounds.
     """
     return min(max(limit, 1), _MAX_LIST_LIMIT), max(offset, 0)
 

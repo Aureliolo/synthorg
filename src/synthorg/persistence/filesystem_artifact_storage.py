@@ -329,7 +329,9 @@ class FileSystemArtifactStorage:
         """Delete a file and return (size, deleted) tuple.
 
         Returns:
-            The matching collection.
+            ``(size_bytes, deleted)`` where ``size_bytes`` is the file's size in bytes
+            before deletion (0 when the file was already absent) and ``deleted`` is
+            ``True`` when this call removed the file.
         """
         try:
             size = file_path.stat().st_size

@@ -388,8 +388,9 @@ max-complexity = 8
     "INP001",  # implicit namespace packages (some directories lack __init__)
 ]
 # DOC201/DOC202/DOC501 still ignored on every top-level package except
-# those already swept by issue #2065 Wave 1+. Each subsequent wave shrinks
-# this brace expansion; Wave 6 deletes the entry entirely. See
+# those already swept. Wave 1 swept `persistence/` (omitted from the
+# brace expansion below); subsequent waves shrink the expansion further
+# and Wave 6 deletes the entry entirely. See
 # https://github.com/Aureliolo/synthorg/issues/2065 for the wave plan.
 "src/synthorg/{a2a,api,approval,backup,budget,client,cli,communication,config,coordination,core,docs_engine,engine,experiments,hr,infrastructure,integrations,knowledge,llm,memory,meta,notifications,observability,ontology,organization,providers,research,security,settings,telemetry,templates,tools,versioning,workers}/**/*.py" = [
     "DOC201",

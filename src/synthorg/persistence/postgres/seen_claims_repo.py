@@ -45,7 +45,7 @@ class PostgresSeenClaimsRepository:
         """Return ``True`` when a row for ``idempotency_key`` exists.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when a row for ``idempotency_key`` exists, ``False`` otherwise.
 
         Raises:
             QueryError: If the database query fails.
@@ -79,7 +79,8 @@ class PostgresSeenClaimsRepository:
         """Insert the dedup row; return ``True`` only on first write.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when this call inserted the dedup row, ``False`` when a previous
+            call had already inserted it.
 
         Raises:
             QueryError: If the database query fails.

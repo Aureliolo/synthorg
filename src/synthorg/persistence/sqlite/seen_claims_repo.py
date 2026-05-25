@@ -51,7 +51,7 @@ class SQLiteSeenClaimsRepository:
         """Return ``True`` when a row for ``idempotency_key`` exists.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when a row for ``idempotency_key`` exists, ``False`` otherwise.
 
         Raises:
             QueryError: If the database query fails.
@@ -95,7 +95,8 @@ class SQLiteSeenClaimsRepository:
         treat a duplicate as a first-write.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when this call inserted the dedup row, ``False`` when a previous
+            call had already inserted it.
 
         Raises:
             QueryError: If the database query fails.

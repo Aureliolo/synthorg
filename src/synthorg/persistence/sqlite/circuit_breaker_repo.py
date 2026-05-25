@@ -5,7 +5,7 @@ import sqlite3
 import aiosqlite
 from pydantic import ValidationError
 
-from synthorg.core.critical_errors import _reraise_critical
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -52,7 +52,7 @@ class SQLiteCircuitBreakerStateRepository:
         try:
             await self._db.rollback()
         except Exception as exc:
-            _reraise_critical(exc)
+            reraise_critical(exc)
             logger.warning(
                 event,
                 error="rollback failed",
@@ -217,7 +217,7 @@ INSERT OR REPLACE INTO circuit_breaker_state (
         :func:`synthorg.persistence._shared.collect_all`.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
         """
         return await self.list_items(limit=limit, offset=offset)
 

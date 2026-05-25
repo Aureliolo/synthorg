@@ -560,7 +560,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
             PersistenceConnectionError: If not yet connected.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            The active connection pool (raises if not connected).
         """
         if self._pool is None:
             msg = "Postgres backend not connected"
@@ -586,7 +586,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
         """Whether the backend has an open pool.
 
         Returns:
-            ``True`` when the operation succeeded, ``False`` otherwise.
+            ``True`` when the backend has an active connection, ``False`` otherwise.
         """
         return self._pool is not None
 

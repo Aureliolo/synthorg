@@ -196,7 +196,7 @@ ON CONFLICT (agent_id) DO UPDATE SET
         :func:`synthorg.persistence._shared.collect_all`.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
 
         Raises:
             QueryError: If the database query fails.

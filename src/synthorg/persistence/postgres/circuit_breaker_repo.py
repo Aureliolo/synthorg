@@ -209,7 +209,7 @@ ON CONFLICT(pair_key_a, pair_key_b) DO UPDATE SET
         :func:`synthorg.persistence._shared.collect_all`.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
         """
         return await self.list_items(limit=limit, offset=offset)
 

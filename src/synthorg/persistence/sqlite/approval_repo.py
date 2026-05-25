@@ -450,7 +450,7 @@ class SQLiteApprovalRepository:
         Missing ids are simply absent from the result.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            Tuple of matching rows; empty when no rows match.
 
         Raises:
             QueryError: If the database query fails.
