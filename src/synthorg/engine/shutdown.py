@@ -23,6 +23,7 @@ from typing import Any, Final, Protocol, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
@@ -176,7 +177,12 @@ class CooperativeTimeoutStrategy:
         running_tasks: Mapping[str, asyncio.Task[Any]],
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
-        """Execute the cooperative timeout shutdown sequence."""
+        """Execute the cooperative timeout shutdown sequence.
+
+        Returns:
+            A :class:`ShutdownResult` carrying per-task counts, cleanup
+            outcome, and the wall-clock duration.
+        """
         start = self._clock.monotonic()
 
         self._shutdown_event.set()
@@ -328,9 +334,8 @@ async def _run_cleanup(
                 await callback()
             except asyncio.CancelledError:
                 raise
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 all_succeeded = False
                 logger.warning(
                     EXECUTION_SHUTDOWN_CLEANUP_FAILED,
@@ -409,9 +414,8 @@ class ShutdownManager:
         )
         try:
             self._strategy.request_shutdown()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EXECUTION_SHUTDOWN_SIGNAL,
                 signal=sig.name,
@@ -446,9 +450,8 @@ class ShutdownManager:
                     signal=sig_name,
                 )
                 self._strategy.request_shutdown()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     EXECUTION_SHUTDOWN_SIGNAL,
                     signal=sig_name,
@@ -526,11 +529,20 @@ class ShutdownManager:
         self._cleanup_callbacks.append(callback)
 
     def is_shutting_down(self) -> bool:
-        """Delegate to the strategy's shutdown check."""
+        """Delegate to the strategy's shutdown check.
+
+        Returns:
+            ``True`` when the configured strategy reports that
+            shutdown has been requested.
+        """
         return self._strategy.is_shutting_down()
 
     async def initiate_shutdown(self) -> ShutdownResult:
-        """Invoke the strategy's shutdown sequence."""
+        """Invoke the strategy's shutdown sequence.
+
+        Returns:
+            The :class:`ShutdownResult` from the strategy.
+        """
         return await self._strategy.execute_shutdown(
             running_tasks=dict(self._running_tasks),
             cleanup_callbacks=list(self._cleanup_callbacks),

@@ -10,6 +10,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -142,7 +143,13 @@ class ImmediateCancelStrategy:
         running_tasks: Mapping[str, asyncio.Task[Any]],
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
-        """Cancel all tasks immediately, then run cleanup."""
+        """Cancel all tasks immediately, then run cleanup.
+
+        Returns:
+            A :class:`ShutdownResult` reporting every task as
+            ``tasks_interrupted`` (immediate cancel never counts
+            cooperative completion).
+        """
         start = self._clock.monotonic()
         self._shutdown_event.set()
 
@@ -263,7 +270,13 @@ class FinishCurrentToolStrategy:
         running_tasks: Mapping[str, asyncio.Task[Any]],
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
-        """Wait for current tool, then cancel stragglers."""
+        """Wait for current tool, then cancel stragglers.
+
+        Returns:
+            A :class:`ShutdownResult` reporting cooperatively-finished
+            tasks under ``tasks_completed`` and the rest (force-
+            cancelled + errored) under ``tasks_interrupted``.
+        """
         start = self._clock.monotonic()
         self._shutdown_event.set()
 
@@ -427,7 +440,14 @@ class CheckpointAndStopStrategy:
         running_tasks: Mapping[str, asyncio.Task[Any]],
         cleanup_callbacks: Sequence[CleanupCallback],
     ) -> ShutdownResult:
-        """Checkpoint tasks, then stop."""
+        """Checkpoint tasks, then stop.
+
+        Returns:
+            A :class:`ShutdownResult` carrying ``tasks_suspended``
+            (cooperative + checkpointed stragglers) and
+            ``tasks_interrupted`` (errored + uncheckpointable
+            stragglers).
+        """
         start = self._clock.monotonic()
         self._shutdown_event.set()
 
@@ -593,9 +613,8 @@ class CheckpointAndStopStrategy:
                 reason="checkpoint timed out",
             )
             return False
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EXECUTION_SHUTDOWN_CHECKPOINT_FAILED,
                 task_id=task_id,
