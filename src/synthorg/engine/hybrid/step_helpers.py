@@ -8,6 +8,7 @@ re-planning. Stateless free functions only; no instance state.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.loop_helpers import (
     build_result,
     call_provider,
@@ -183,9 +184,8 @@ async def invoke_checkpoint_callback(
         return
     try:
         await callback(ctx)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             EXECUTION_CHECKPOINT_CALLBACK_FAILED,
             execution_id=ctx.execution_id,

@@ -23,6 +23,7 @@ simulation runtime).
 import os
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import ProjectStatus
 from synthorg.core.persistence_errors import DuplicateRecordError
@@ -54,11 +55,18 @@ _OBJECTIVES_DEFAULT_PROJECT_KEY = "default_project"
 def _forecast_gate_for(app_state: AppState) -> ForecastGate | None:
     """Build a :class:`ForecastGate` from AppState when its deps are wired.
 
-    Returns ``None`` when the cost-dial services are absent (empty
-    company / boot order race) so the adapter falls back to a direct
-    pipeline dispatch. Once the cost-dial wiring lands the gate is
-    constructed against the live work pipeline + persisted repo +
-    forecaster + budget config.
+    Once the cost-dial wiring lands the gate is constructed against the
+    live work pipeline + persisted repo + forecaster + budget config.
+
+    Returns:
+        The :class:`ForecastGate` when its dependencies are wired;
+        ``None`` for the empty-company / boot-order-race path where
+        the adapter falls back to direct pipeline dispatch.
+
+    Raises:
+        ServiceUnavailableError: When persistence is up and the
+            budget config requires a forecast but the cost-dial set
+            is not wired (partial-wire failure).
     """
     forecaster = app_state.cost_forecaster
     repo = app_state.cost_forecast_repo
@@ -234,9 +242,8 @@ async def _ensure_project(
         )
     except DuplicateRecordError:
         return
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_exception_redacted(
             logger,
             event,

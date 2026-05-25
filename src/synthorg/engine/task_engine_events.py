@@ -7,6 +7,7 @@ under the 800-line project limit.
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine_models import (
     DeleteTaskMutation,
     TaskMutationResult,
@@ -32,6 +33,11 @@ def build_state_changed_event(
     """Build a ``TaskStateChanged`` event from a mutation result.
 
     Shared by snapshot publishing and observer notification.
+
+    Returns:
+        The :class:`TaskStateChanged` event carrying request id, task
+        id, mutation type, the new status (``None`` for delete or
+        failed mutation), and optional reason.
     """
     if isinstance(mutation, DeleteTaskMutation):
         new_status = None
@@ -98,9 +104,8 @@ async def publish_snapshot(
             request_id=mutation.request_id,
             task_id=event.task_id,
         )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             TASK_ENGINE_SNAPSHOT_PUBLISH_FAILED,
             mutation_type=mutation.mutation_type,
