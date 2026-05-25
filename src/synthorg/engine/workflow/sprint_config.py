@@ -73,7 +73,16 @@ class SprintCeremonyConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_scheduling_source(self) -> Self:
-        """At least one of frequency or policy_override must be set."""
+        """At least one of frequency or policy_override must be set.
+
+        Returns:
+            ``self`` unchanged when at least one scheduling source is
+            configured.
+
+        Raises:
+            ValueError: When both ``frequency`` and
+                ``policy_override`` are ``None``.
+        """
         if self.frequency is None and self.policy_override is None:
             msg = (
                 f"Ceremony {self.name!r}: at least one of "
@@ -153,7 +162,14 @@ class SprintConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_ceremony_names(self) -> Self:
-        """Reject duplicate ceremony names."""
+        """Reject duplicate ceremony names.
+
+        Returns:
+            ``self`` unchanged when every ceremony name is unique.
+
+        Raises:
+            ValueError: When ceremony names duplicate.
+        """
         names = [c.name for c in self.ceremonies]
         if len(names) != len(set(names)):
             dupes = sorted(n for n, count in Counter(names).items() if count > 1)

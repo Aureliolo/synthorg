@@ -94,7 +94,15 @@ class KanbanConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_duplicate_columns(self) -> Self:
-        """Reject duplicate column entries in wip_limits."""
+        """Reject duplicate column entries in wip_limits.
+
+        Returns:
+            ``self`` unchanged when every WIP-limit column is unique.
+
+        Raises:
+            ValueError: When two WIP-limit entries target the same
+                column.
+        """
         columns = [wl.column for wl in self.wip_limits]
         if len(columns) != len(set(columns)):
             dupes = sorted(
@@ -111,7 +119,15 @@ class KanbanConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_done_limit(self) -> Self:
-        """Reject WIP limits on the DONE column."""
+        """Reject WIP limits on the DONE column.
+
+        Returns:
+            ``self`` unchanged when no DONE-column WIP limit exists.
+
+        Raises:
+            ValueError: When any WIP limit targets
+                :attr:`KanbanColumn.DONE`.
+        """
         for wl in self.wip_limits:
             if wl.column is KanbanColumn.DONE:
                 msg = (

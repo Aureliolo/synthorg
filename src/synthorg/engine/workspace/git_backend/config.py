@@ -58,7 +58,14 @@ class GitBackendResilienceConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_cap_ge_base(self) -> Self:
-        """The delay cap cannot be below the base delay."""
+        """The delay cap cannot be below the base delay.
+
+        Returns:
+            ``self`` unchanged when the cap is at least the base.
+
+        Raises:
+            ValueError: When ``cap_delay_seconds < base_delay_seconds``.
+        """
         if self.cap_delay_seconds < self.base_delay_seconds:
             msg = "cap_delay_seconds must be >= base_delay_seconds"
             raise ValueError(msg)
@@ -106,7 +113,16 @@ class GitBackendConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_kind_requirements(self) -> Self:
-        """Each non-default kind needs its addressing field set."""
+        """Each non-default kind needs its addressing field set.
+
+        Returns:
+            ``self`` unchanged when ``kind`` has its required
+            addressing field set.
+
+        Raises:
+            ValueError: When LOCAL_PATH lacks ``local_repo_path`` or
+                EXTERNAL_REMOTE lacks ``remote_connection_name``.
+        """
         if self.kind is GitBackendType.LOCAL_PATH and not self.local_repo_path:
             msg = "LOCAL_PATH git backend requires 'local_repo_path'"
             raise ValueError(msg)

@@ -97,7 +97,15 @@ class AgentContextSnapshot(BaseModel):
 
     @model_validator(mode="after")
     def _validate_task_pair(self) -> AgentContextSnapshot:
-        """Ensure task_id and task_status are both set or both None."""
+        """Ensure task_id and task_status are both set or both None.
+
+        Returns:
+            ``self`` unchanged when ``task_id`` and ``task_status``
+            agree.
+
+        Raises:
+            ValueError: When exactly one of the pair is set.
+        """
         if (self.task_id is None) != (self.task_status is None):
             msg = "task_id and task_status must both be set or both be None"
             raise ValueError(msg)
@@ -208,7 +216,17 @@ class AgentContext(BaseModel):
 
     @model_validator(mode="after")
     def _validate_disclosure_consistency(self) -> AgentContext:
-        """Ensure loaded_tools and tool_load_order are consistent."""
+        """Ensure loaded_tools and tool_load_order are consistent.
+
+        Returns:
+            ``self`` unchanged when the tool disclosure state is
+            internally consistent.
+
+        Raises:
+            ValueError: When ``loaded_tools`` does not match the set
+                of names in ``tool_load_order``, or when
+                ``tool_load_order`` carries duplicates.
+        """
         order_set = set(self.tool_load_order)
         if order_set != self.loaded_tools:
             msg = (

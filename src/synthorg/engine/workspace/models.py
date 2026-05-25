@@ -110,7 +110,14 @@ class MergeConflict(BaseModel):
 
     @model_validator(mode="after")
     def _validate_semantic_description(self) -> Self:
-        """Semantic conflicts must have a non-empty description."""
+        """Semantic conflicts must have a non-empty description.
+
+        Returns:
+            ``self`` unchanged when the description constraint holds.
+
+        Raises:
+            ValueError: When a semantic conflict has no description.
+        """
         if self.conflict_type == ConflictType.SEMANTIC and not self.description:
             msg = "Semantic conflicts must have a non-empty description"
             raise ValueError(msg)
@@ -159,7 +166,16 @@ class MergeResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_success_consistency(self) -> Self:
-        """Ensure success, conflicts, and merged_commit_sha are consistent."""
+        """Ensure success, conflicts, and merged_commit_sha are consistent.
+
+        Returns:
+            ``self`` unchanged when every cross-field invariant holds.
+
+        Raises:
+            ValueError: When success is paired with conflicts /
+                missing SHA, or failure is paired with a SHA /
+                semantic conflicts.
+        """
         if self.success and self.conflicts:
             msg = "Successful merge cannot have conflicts"
             raise ValueError(msg)
