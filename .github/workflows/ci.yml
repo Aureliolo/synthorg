@@ -554,6 +554,21 @@ jobs:
       - name: Postgres drift detection
         run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
 
+      # Mirror test-unit's forensic plumbing -- see the long comment on
+      # that step (line ~374) for the full rationale. Without this,
+      # SIGABRT from our pytest-timeout monkey-patch (tests/conftest.py)
+      # produces no core file and the "Upload core dumps" step below
+      # has nothing to upload. Confirmed gap on main CI run
+      # 26390141124 / job 77677668898 (2026-05-25 integration shard 4
+      # crash): event loop hang in test_distributed_path_nats, abort
+      # fired, no core artefact landed because this step was missing.
+      - name: Enable core dumps
+        run: |
+          ulimit -c unlimited
+          ulimit -a
+          sudo bash -c 'echo "/home/runner/work/synthorg/synthorg/core.%e.%p.%t" > /proc/sys/kernel/core_pattern'
+          cat /proc/sys/kernel/core_pattern
+
       # ``-k "not [sqlite-"`` drops the SQLite parametrisation of the
       # dual-backend ``backend`` fixture in tests/conformance/persistence/;
       # the dedicated ``test-conformance-sqlite`` job already covers that
@@ -562,10 +577,17 @@ jobs:
       # ``--splits/--group`` come from pytest-split with .test_durations.integration
       # (empty {} on first run, falls back to count-based partition until
       # CI populates real timings).
+      #
+      # ``-v -s`` mirrors test-unit: ``-v`` prints every nodeid so the
+      # last printed test before ``[gwN] node down`` names the suspect,
+      # ``-s`` disables ``capture=fd`` so our pytest-timeout monkey-patch
+      # banner + explicit faulthandler.dump_traceback output survive on
+      # CI (see [[project-pytest-timeout-xdist-log-loss]]).
       - name: Run integration tests (shard ${{ matrix.shard }}/4)
         env:
           RUN_INTEGRATION_TESTS: "1"
         run: |
+          ulimit -c unlimited
           uv run python -m pytest tests/ \
             -m integration \
             -k "not [sqlite-" \
@@ -579,7 +601,9 @@ jobs:
             --cov-fail-under=0 \
             --junitxml=junit-integration-${{ matrix.shard }}.xml \
             --durations=20 \
-            --durations-min=1.0
+            --durations-min=1.0 \
+            -v \
+            -s
 
       # See identical step in test-unit for the reason this gate exists.
       - name: Sanity check (junit shows tests > 0)
@@ -623,6 +647,20 @@ jobs:
         with:
           name: test-results-integration-${{ matrix.shard }}
           path: junit-integration-${{ matrix.shard }}.xml
+
+      # Mirror test-unit. Uploads on non-cancelled exit (success OR
+      # failure) so a SIGABRT under our pytest-timeout monkey-patch
+      # always surfaces a core artefact regardless of how pytest
+      # reports the session outcome. ``if-no-files-found: ignore``
+      # keeps a clean run quiet.
+      - name: Upload core dumps
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: core-dumps-integration-${{ matrix.shard }}
+          path: core.*
+          if-no-files-found: ignore
+          retention-days: 3
 
   # ── Python: Test (E2E) ──
   # Same service-container Postgres path as test-integration so the
@@ -673,10 +711,22 @@ jobs:
       - name: Postgres drift detection
         run: uv run python scripts/check_schema_drift_revisions.py --backend postgres
 
+      # See test-unit (line ~374) for the rationale on core dumps.
+      - name: Enable core dumps
+        run: |
+          ulimit -c unlimited
+          ulimit -a
+          sudo bash -c 'echo "/home/runner/work/synthorg/synthorg/core.%e.%p.%t" > /proc/sys/kernel/core_pattern'
+          cat /proc/sys/kernel/core_pattern
+
+      # ``-v -s`` mirrors test-unit: nodeid echo + capture-off so the
+      # pytest-timeout monkey-patch banner survives. See
+      # [[project-pytest-timeout-xdist-log-loss]].
       - name: Run e2e tests
         env:
           RUN_INTEGRATION_TESTS: "1"
         run: |
+          ulimit -c unlimited
           uv run python -m pytest tests/ \
             -m e2e \
             -n auto \
@@ -686,7 +736,9 @@ jobs:
             --cov-fail-under=0 \
             --junitxml=junit-e2e.xml \
             --durations=20 \
-            --durations-min=1.0
+            --durations-min=1.0 \
+            -v \
+            -s
 
       # See identical step in test-unit for the reason this gate exists.
       - name: Sanity check (junit shows tests > 0)
@@ -729,6 +781,15 @@ jobs:
           name: test-results-e2e
           path: junit-e2e.xml
 
+      - name: Upload core dumps
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: core-dumps-e2e
+          path: core.*
+          if-no-files-found: ignore
+          retention-days: 3
+
   # ── Python: Test (Conformance, SQLite arm) ──
   # No-Docker SQLite-only slice of the dual-backend persistence
   # conformance suite, so the lowest-cost backend is always exercised
@@ -755,10 +816,22 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-python-uv
 
+      # See test-unit (line ~374) for the rationale on core dumps.
+      - name: Enable core dumps
+        run: |
+          ulimit -c unlimited
+          ulimit -a
+          sudo bash -c 'echo "/home/runner/work/synthorg/synthorg/core.%e.%p.%t" > /proc/sys/kernel/core_pattern'
+          cat /proc/sys/kernel/core_pattern
+
+      # ``-v -s`` mirrors test-unit: nodeid echo + capture-off so the
+      # pytest-timeout monkey-patch banner survives. See
+      # [[project-pytest-timeout-xdist-log-loss]].
       - name: Run SQLite conformance tests
         env:
           RUN_INTEGRATION_TESTS: "1"
         run: |
+          ulimit -c unlimited
           uv run python -m pytest tests/conformance/persistence \
             -m integration \
             -k "not postgres" \
@@ -769,7 +842,9 @@ jobs:
             --cov-fail-under=0 \
             --junitxml=junit-conformance-sqlite.xml \
             --durations=20 \
-            --durations-min=1.0
+            --durations-min=1.0 \
+            -v \
+            -s
 
       # See identical step in test-unit for the reason this gate exists.
       - name: Sanity check (junit shows tests > 0)
@@ -814,6 +889,15 @@ jobs:
         with:
           name: test-results-conformance-sqlite
           path: junit-conformance-sqlite.xml
+
+      - name: Upload core dumps
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: core-dumps-conformance-sqlite
+          path: core.*
+          if-no-files-found: ignore
+          retention-days: 3
 
   # ── Python: Test Coverage Aggregate ──
   # The single, airtight 80% gate. Runs only when all four test arms
