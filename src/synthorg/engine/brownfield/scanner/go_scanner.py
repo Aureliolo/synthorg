@@ -51,11 +51,21 @@ class GoScanner:
         return Ecosystem.GO
 
     def detect(self, workspace_path: Path) -> bool:
-        """True if a ``go.mod`` sits at the tree root."""
+        """True if a ``go.mod`` sits at the tree root.
+
+        Returns:
+            ``True`` when ``workspace_path / "go.mod"`` is a file.
+        """
         return (workspace_path / "go.mod").is_file()
 
     def scan(self, workspace_path: Path) -> EcosystemScan:
-        """Read ``go.mod`` + ``*.go`` files and contribute Go structure facts."""
+        """Read ``go.mod`` + ``*.go`` files and contribute Go structure facts.
+
+        Returns:
+            An :class:`EcosystemScan` carrying the Go module, ``main``
+            entry points, ``*_test.go`` directories, the build file,
+            and required-module dependencies.
+        """
         gomod = read_text_if_present(workspace_path / "go.mod") or ""
         go_files = [p for p in walk_relative_paths(workspace_path) if p.endswith(".go")]
         return EcosystemScan(

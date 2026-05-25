@@ -39,11 +39,21 @@ class NodeScanner:
         return Ecosystem.JAVASCRIPT
 
     def detect(self, workspace_path: Path) -> bool:
-        """True if a ``package.json`` sits at the tree root."""
+        """True if a ``package.json`` sits at the tree root.
+
+        Returns:
+            ``True`` when ``workspace_path / "package.json"`` exists.
+        """
         return (workspace_path / "package.json").is_file()
 
     def scan(self, workspace_path: Path) -> EcosystemScan:
-        """Read ``package.json`` + tree and contribute Node structure facts."""
+        """Read ``package.json`` + tree and contribute Node structure facts.
+
+        Returns:
+            An :class:`EcosystemScan` carrying modules, declared
+            entry points, test suites, the ``package.json`` build
+            file, and the declared runtime / dev dependencies.
+        """
         manifest = self._load_manifest(workspace_path)
         language = (
             Ecosystem.TYPESCRIPT

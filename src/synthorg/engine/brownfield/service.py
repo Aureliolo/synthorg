@@ -62,6 +62,10 @@ def _redact_source_ref(source_ref: str) -> str:
 
     The resolver rejects credential-bearing remote refs, but the import-started
     log fires before resolution, so redact defensively here too.
+
+    Returns:
+        The source ref with any ``user:token@`` userinfo replaced by
+        ``[REDACTED]@`` ; unchanged when no userinfo is present.
     """
     return _URL_USERINFO.sub(r"\1[REDACTED]@", source_ref)
 
@@ -96,6 +100,12 @@ class BrownfieldImportService:
         self, submission: CodebaseImportSubmission
     ) -> CodebaseImportResult:
         """Import the codebase at ``submission.source_ref`` into its project.
+
+        Returns:
+            A :class:`CodebaseImportResult` describing the imported
+            structure map; a re-import outcome when a structure map
+            already exists for this project, a fresh-import outcome
+            otherwise.
 
         Raises:
             BrownfieldWorkspaceNotEmptyError: A different codebase is

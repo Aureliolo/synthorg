@@ -38,11 +38,21 @@ class RustScanner:
         return Ecosystem.RUST
 
     def detect(self, workspace_path: Path) -> bool:
-        """True if a ``Cargo.toml`` sits at the tree root."""
+        """True if a ``Cargo.toml`` sits at the tree root.
+
+        Returns:
+            ``True`` when ``workspace_path / "Cargo.toml"`` exists.
+        """
         return (workspace_path / "Cargo.toml").is_file()
 
     def scan(self, workspace_path: Path) -> EcosystemScan:
-        """Read ``Cargo.toml`` + tree and contribute Rust structure facts."""
+        """Read ``Cargo.toml`` + tree and contribute Rust structure facts.
+
+        Returns:
+            An :class:`EcosystemScan` carrying the crate modules,
+            binary entry points, test directories, the
+            ``Cargo.toml`` build file, and declared dependencies.
+        """
         cargo = self._load_cargo(workspace_path)
         return EcosystemScan(
             modules=self._modules(workspace_path, cargo),

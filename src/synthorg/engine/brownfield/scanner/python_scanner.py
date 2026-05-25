@@ -33,7 +33,12 @@ _REQUIREMENT_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9._-]+")
 
 
 def _requirement_name(spec: str) -> str | None:
-    """Extract the package name from a PEP 508 requirement string."""
+    """Extract the package name from a PEP 508 requirement string.
+
+    Returns:
+        The matched distribution name, or ``None`` when the spec
+        starts with a non-name token.
+    """
     match = _REQUIREMENT_NAME_RE.match(spec.strip())
     return match.group(0) if match else None
 
@@ -46,11 +51,22 @@ class PythonScanner:
         return Ecosystem.PYTHON
 
     def detect(self, workspace_path: Path) -> bool:
-        """True if any Python packaging manifest sits at the tree root."""
+        """True if any Python packaging manifest sits at the tree root.
+
+        Returns:
+            ``True`` when any of :data:`_MANIFESTS` exists at the
+            workspace root; ``False`` otherwise.
+        """
         return any((workspace_path / name).is_file() for name in _MANIFESTS)
 
     def scan(self, workspace_path: Path) -> EcosystemScan:
-        """Read manifests + tree and contribute Python structure facts."""
+        """Read manifests + tree and contribute Python structure facts.
+
+        Returns:
+            An :class:`EcosystemScan` carrying packages discovered
+            under the tree, declared script / module entry points,
+            test directories, build files, and declared dependencies.
+        """
         rel_paths = walk_relative_paths(workspace_path)
         pyproject = self._load_pyproject(workspace_path)
         return EcosystemScan(

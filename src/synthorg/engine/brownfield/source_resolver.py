@@ -55,6 +55,11 @@ class BrownfieldSourceResolver:
     async def resolve(self, source_ref: NotBlankStr) -> ResolvedSource:
         """Resolve *source_ref* (local path or remote URL) for fetching.
 
+        Returns:
+            A :class:`ResolvedSource` carrying the fetch URL and
+            source-kind discriminator (and any token / pinning args
+            for remote HTTPS sources).
+
         Raises:
             BrownfieldSourceUnavailableError: The source is an unreadable
                 local path or a disallowed / SSRF-blocked remote URL.
@@ -119,7 +124,12 @@ class BrownfieldSourceResolver:
 
     @staticmethod
     def _pin_args(validation: DnsValidationOk) -> tuple[str, ...]:
-        """Build ``git -c http.curloptResolve`` pinning args for HTTPS."""
+        """Build ``git -c http.curloptResolve`` pinning args for HTTPS.
+
+        Returns:
+            ``("-c", "http.curloptResolve=...")`` when the validation
+            is HTTPS with resolved IPs to pin; ``()`` otherwise.
+        """
         if not validation.is_https or not validation.resolved_ips:
             return ()
         resolve_value = build_curl_resolve_value(
@@ -132,7 +142,13 @@ class BrownfieldSourceResolver:
     async def _maybe_inject_token(
         self, source_ref: str, validation: DnsValidationOk
     ) -> str:
-        """Inject a forge token into HTTPS userinfo when the host matches."""
+        """Inject a forge token into HTTPS userinfo when the host matches.
+
+        Returns:
+            The original ``source_ref`` when no catalog / matching
+            token is wired (or the URL is not HTTPS); otherwise a
+            URL string with the token injected into userinfo.
+        """
         if not validation.is_https or self._catalog is None:
             return source_ref
         token = await self._token_for_host(validation.hostname)
