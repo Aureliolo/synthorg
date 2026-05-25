@@ -58,18 +58,32 @@ class NixEnvironmentStrategy:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
     def kind(self) -> EnvironmentType:
-        """Return the ``NIX`` discriminator."""
+        """Return the ``NIX`` discriminator.
+
+        Returns:
+            :attr:`EnvironmentType.NIX`.
+        """
         return EnvironmentType.NIX
 
     def _flake_path(self, workspace_path: Path) -> Path:
         return workspace_path / _FLAKE_FILENAME
 
     def detect(self, workspace_path: Path) -> bool:
-        """Return ``True`` if a ``flake.nix`` is present."""
+        """Return ``True`` if a ``flake.nix`` is present.
+
+        Returns:
+            ``True`` when ``flake.nix`` exists at the workspace root.
+        """
         return self._flake_path(workspace_path).is_file()
 
     async def scaffold(self, workspace_path: Path) -> ScaffoldResult:
-        """Write the default flake if absent (idempotent no-op otherwise)."""
+        """Write the default flake if absent (idempotent no-op otherwise).
+
+        Returns:
+            A :class:`ScaffoldResult` with ``seeded=True`` and
+            ``flake.nix`` listed when a fresh flake was created;
+            ``seeded=False`` when one already existed.
+        """
         if self.detect(workspace_path):
             return ScaffoldResult(seeded=False)
         await asyncio.to_thread(
@@ -85,7 +99,15 @@ class NixEnvironmentStrategy:
         return ScaffoldResult(files_written=(_FLAKE_FILENAME,), seeded=True)
 
     def declaration_hash(self, workspace_path: Path) -> NotBlankStr:
-        """SHA-256 over ``flake.nix`` plus ``flake.lock`` (if present)."""
+        """SHA-256 over ``flake.nix`` plus ``flake.lock`` (if present).
+
+        Returns:
+            The lowercase hex SHA-256 digest covering the flake and
+            (when present) the flake lock file.
+
+        Raises:
+            EnvironmentConfigError: When ``flake.nix`` is absent.
+        """
         flake = self._flake_path(workspace_path)
         if not flake.is_file():
             msg = f"nix flake {_FLAKE_FILENAME!r} not found"
@@ -110,12 +132,22 @@ class NixEnvironmentStrategy:
         return NotBlankStr(digest.hexdigest())
 
     def managed_paths(self, workspace_path: Path) -> tuple[str, ...]:
-        """``flake.nix`` plus ``flake.lock`` (whichever exist)."""
+        """``flake.nix`` plus ``flake.lock`` (whichever exist).
+
+        Returns:
+            Workspace-relative path strings for the flake and lock
+            file; paths that do not exist are omitted.
+        """
         candidates = (_FLAKE_FILENAME, _FLAKE_LOCK_FILENAME)
         return tuple(c for c in candidates if (workspace_path / c).is_file())
 
     def runtime_env_vars(self, workspace_path: Path) -> dict[str, str]:
-        """No forwarded env vars (see the tool-wrapping boundary above)."""
+        """No forwarded env vars (see the tool-wrapping boundary above).
+
+        Returns:
+            An empty mapping (nix store paths are host-absolute and
+            cannot be forwarded into a sandbox by value).
+        """
         del workspace_path
         return {}
 
@@ -127,7 +159,18 @@ class NixEnvironmentStrategy:
         runner: EnvironmentCommandRunner,
         sandbox_kind: NotBlankStr,
     ) -> ProvisionedEnvironment:
-        """Build the declared dev shell (``nix develop --command true``)."""
+        """Build the declared dev shell (``nix develop --command true``).
+
+        Returns:
+            A :class:`ProvisionedEnvironment` carrying the flake
+            declaration hash, no ``image_ref`` (nix shells are
+            host-rooted), and the captured nix output.
+
+        Raises:
+            EnvironmentConfigError: When the flake is missing.
+            EnvironmentProvisionError: When ``nix develop`` exits
+                non-zero (the exit code is logged before raising).
+        """
         del sandbox_kind  # nix runs through the runner in either backend
         if not self.detect(workspace_path):
             msg = f"nix flake {_FLAKE_FILENAME!r} not found"

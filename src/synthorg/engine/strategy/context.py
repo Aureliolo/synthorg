@@ -5,13 +5,13 @@ Protocols and implementations for building the runtime
 how lenses and principles are applied to agent recommendations.
 """
 
-import builtins
 import json
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from synthorg.api.boundary import parse_typed
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.strategy.models import StrategicContext, StrategyConfig
@@ -84,7 +84,12 @@ class ConfigContextProvider:
     """
 
     async def provide(self, *, config: StrategyConfig) -> StrategicContext:
-        """Build context from config fields."""
+        """Build context from config fields.
+
+        Returns:
+            A :class:`StrategicContext` populated from
+            ``config.context``.
+        """
         ctx = StrategicContext(
             maturity_stage=config.context.maturity_stage,
             industry=config.context.industry,
@@ -128,7 +133,15 @@ class MemoryContextProvider:
         self._memory_backend = memory_backend
 
     async def provide(self, *, config: StrategyConfig) -> StrategicContext:
-        """Layer memory-stored overrides on top of the fallback context."""
+        """Layer memory-stored overrides on top of the fallback context.
+
+        Returns:
+            A :class:`StrategicContext` whose fields are the
+            fallback provider's values overridden by any well-formed
+            memory entry; the unaltered fallback context when no
+            backend is wired, no entries exist, or the entry fails
+            JSON / schema validation.
+        """
         if self._memory_backend is None:
             return await self._fallback.provide(config=config)
 
@@ -141,9 +154,8 @@ class MemoryContextProvider:
                     limit=1,
                 ),
             )
-        except builtins.MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 STRATEGY_CONTEXT_PROVIDER_FAILED,
                 provider_name="MemoryContextProvider",
@@ -211,22 +223,37 @@ class CompositeContextProvider:
         self,
         providers: tuple[StrategicContextProvider, ...],
     ) -> None:
-        """Initialize with an ordered tuple of context providers."""
+        """Initialize with an ordered tuple of context providers.
+
+        Raises:
+            ValueError: When ``providers`` is empty (a composite chain
+                needs at least one provider, typically the
+                config-based fallback).
+        """
         if not providers:
             msg = "CompositeContextProvider requires at least one provider"
             raise ValueError(msg)
         self._providers = providers
 
     async def provide(self, *, config: StrategyConfig) -> StrategicContext:
-        """Try each provider in order, return first success."""
+        """Try each provider in order, return first success.
+
+        Returns:
+            The first :class:`StrategicContext` produced by any
+            provider in the chain.
+
+        Raises:
+            RuntimeError: When every provider raises a non-critical
+                exception (the final fallback should make this
+                unreachable in practice).
+        """
         last_exc: Exception | None = None
         for i, provider in enumerate(self._providers):
             provider_name = type(provider).__name__
             try:
                 return await provider.provide(config=config)
-            except builtins.MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     STRATEGY_CONTEXT_PROVIDER_FAILED,
                     provider_index=i,

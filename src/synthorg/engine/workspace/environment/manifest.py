@@ -81,14 +81,23 @@ class ManifestEnvironmentStrategy:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
     def kind(self) -> EnvironmentType:
-        """Return the ``MANIFEST`` discriminator."""
+        """Return the ``MANIFEST`` discriminator.
+
+        Returns:
+            :attr:`EnvironmentType.MANIFEST`.
+        """
         return EnvironmentType.MANIFEST
 
     def _manifest_path(self, workspace_path: Path) -> Path:
         return workspace_path / self._manifest_filename
 
     def detect(self, workspace_path: Path) -> bool:
-        """Return ``True`` if the manifest file is present."""
+        """Return ``True`` if the manifest file is present.
+
+        Returns:
+            ``True`` when the configured manifest file exists in the
+            workspace; ``False`` otherwise.
+        """
         return self._manifest_path(workspace_path).is_file()
 
     def _read_manifest(self, workspace_path: Path) -> EnvironmentManifest:
@@ -108,7 +117,13 @@ class ManifestEnvironmentStrategy:
             raise EnvironmentConfigError(msg) from exc
 
     async def scaffold(self, workspace_path: Path) -> ScaffoldResult:
-        """Write the default manifest if absent (idempotent no-op otherwise)."""
+        """Write the default manifest if absent (idempotent no-op otherwise).
+
+        Returns:
+            A :class:`ScaffoldResult` with ``seeded=True`` and the
+            written filename when a fresh manifest was created;
+            ``seeded=False`` when one already existed.
+        """
         if self.detect(workspace_path):
             return ScaffoldResult(seeded=False)
         path = self._manifest_path(workspace_path)
@@ -123,7 +138,15 @@ class ManifestEnvironmentStrategy:
         return ScaffoldResult(files_written=(self._manifest_filename,), seeded=True)
 
     def declaration_hash(self, workspace_path: Path) -> NotBlankStr:
-        """SHA-256 over the manifest plus its listed lockfiles."""
+        """SHA-256 over the manifest plus its listed lockfiles.
+
+        Returns:
+            The lowercase hex SHA-256 digest covering the manifest
+            bytes and (when listed) the resolved lockfile bytes.
+
+        Raises:
+            EnvironmentConfigError: When the manifest file is absent.
+        """
         path = self._manifest_path(workspace_path)
         if not path.is_file():
             msg = f"environment manifest {self._manifest_filename!r} not found"
@@ -145,6 +168,11 @@ class ManifestEnvironmentStrategy:
         ``..`` traversal would let the declaration hash arbitrary files
         outside the working tree. Rejected paths are logged and skipped
         (the path string still feeds the hash, so editing it re-provisions).
+
+        Returns:
+            The resolved absolute path to ``lockfile`` when it lives
+            under the workspace root; ``None`` when the path is
+            absolute or escapes the workspace.
         """
         candidate = Path(lockfile)
         root = workspace_path.resolve()
@@ -159,12 +187,23 @@ class ManifestEnvironmentStrategy:
         return resolved
 
     def managed_paths(self, workspace_path: Path) -> tuple[str, ...]:
-        """The manifest plus the generated ``bootstrap.sh`` (if present)."""
+        """The manifest plus the generated ``bootstrap.sh`` (if present).
+
+        Returns:
+            Workspace-relative path strings for the manifest and the
+            generated bootstrap script, in declaration order; paths
+            that are not present are omitted.
+        """
         candidates = (self._manifest_filename, BOOTSTRAP_SCRIPT_NAME)
         return tuple(c for c in candidates if (workspace_path / c).is_file())
 
     def runtime_env_vars(self, workspace_path: Path) -> dict[str, str]:
-        """The manifest's declared ``env`` additions (empty if absent)."""
+        """The manifest's declared ``env`` additions (empty if absent).
+
+        Returns:
+            Mapping of env-var name to value from the manifest's
+            ``env`` field; ``{}`` when no manifest is present.
+        """
         if not self.detect(workspace_path):
             return {}
         return dict(self._read_manifest(workspace_path).env)
@@ -200,7 +239,19 @@ class ManifestEnvironmentStrategy:
         runner: EnvironmentCommandRunner,
         sandbox_kind: NotBlankStr,
     ) -> ProvisionedEnvironment:
-        """Run the manifest's setup commands and emit ``bootstrap.sh``."""
+        """Run the manifest's setup commands and emit ``bootstrap.sh``.
+
+        Returns:
+            A :class:`ProvisionedEnvironment` carrying the manifest
+            declaration hash, ``image_ref=None`` (manifest backends
+            do not pin an image), the manifest's env vars, and the
+            captured setup log.
+
+        Raises:
+            EnvironmentProvisionError: When any setup command exits
+                non-zero (the command and exit code are logged before
+                raising).
+        """
         del sandbox_kind  # manifest bootstrap runs in any backend
         manifest = self._read_manifest(workspace_path)
         logger.info(
