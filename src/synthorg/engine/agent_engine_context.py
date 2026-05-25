@@ -4,6 +4,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
     ProjectAgentNotMemberError,
@@ -71,7 +72,14 @@ class AgentEngineContextMixin:
         tool_invoker: ToolInvokerProtocol | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
     ) -> tuple[AgentContext, SystemPrompt]:
-        """Build system prompt and prepare execution context."""
+        """Build system prompt and prepare execution context.
+
+        Returns:
+            ``(ctx, system_prompt)``: the prepared :class:`AgentContext`
+            with memory and instruction messages threaded in and the
+            corresponding :class:`SystemPrompt` (post-personality-trim
+            where applicable).
+        """
         l1_summaries = tool_invoker.get_l1_summaries() if tool_invoker else ()
         cur_code = (
             self._budget_enforcer.currency
@@ -90,9 +98,8 @@ class AgentEngineContextMixin:
                     "engine",
                     "personality_max_tokens_override",
                 )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     EXECUTION_ENGINE_ERROR,
                     agent_id=agent_id,
@@ -186,9 +193,8 @@ class AgentEngineContextMixin:
                 trim_tier=trim_tier,
                 reason="notifier callback timed out (>2s)",
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROMPT_PERSONALITY_NOTIFY_FAILED,
                 agent_id=agent_id,
@@ -202,7 +208,12 @@ class AgentEngineContextMixin:
         self,
         payload: PersonalityTrimPayload,
     ) -> bool:
-        """Read the ``personality_trimming_notify`` setting, fail-open."""
+        """Read the ``personality_trimming_notify`` setting, fail-open.
+
+        Returns:
+            The resolved bool, or ``True`` (fail-open) when no resolver
+            is wired or the resolver raises.
+        """
         if self._config_resolver is None:
             return True
         try:
@@ -211,9 +222,8 @@ class AgentEngineContextMixin:
                 "personality_trimming_notify",
             )
             return result  # noqa: TRY300
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROMPT_PERSONALITY_NOTIFY_FAILED,
                 agent_id=payload["agent_id"],
@@ -234,7 +244,18 @@ class AgentEngineContextMixin:
         agent_id: str,
         task_id: str,
     ) -> float:
-        """Validate project existence and agent membership."""
+        """Validate project existence and agent membership.
+
+        Returns:
+            The project's budget cap (``0.0`` when the task has no
+            project context, otherwise ``float(project.budget)``).
+
+        Raises:
+            ProjectNotFoundError: If the project referenced by
+                ``task.project`` is not in the project repository.
+            ProjectAgentNotMemberError: If the project has a non-empty
+                team that does not include ``agent_id``.
+        """
         if not task.project:
             return 0.0
         project = await self._project_repo.get(task.project)

@@ -1,3 +1,4 @@
+# module-kind: adapter
 """Agent engine -- top-level orchestrator.
 
 Ties together prompt construction, execution context, execution loop,
