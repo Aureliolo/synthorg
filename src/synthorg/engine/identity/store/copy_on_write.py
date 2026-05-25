@@ -59,7 +59,17 @@ class CopyOnWriteIdentityStore:
         *,
         saved_by: NotBlankStr,
     ) -> VersionSnapshot[AgentIdentity]:
-        """Store a new identity version and update the pointer."""
+        """Store a new identity version and update the pointer.
+
+        Returns:
+            The newly-created :class:`VersionSnapshot`, or the latest
+            existing snapshot when ``snapshot_if_changed`` found the
+            identity unchanged.
+
+        Raises:
+            RuntimeError: When no snapshot exists after the put
+                (defensive guard; should not happen in practice).
+        """
         key = str(agent_id)
         async with self._version_lock:
             await self._registry.evolve_identity(
@@ -90,6 +100,11 @@ class CopyOnWriteIdentityStore:
 
         If a version pointer exists, resolves via the pointer.
         Otherwise falls back to the registry.
+
+        Returns:
+            The current :class:`AgentIdentity` resolved from the
+            pinned version when one exists; the registry's current
+            identity otherwise; ``None`` when neither has a value.
         """
         key = str(agent_id)
         async with self._version_lock:
@@ -105,7 +120,12 @@ class CopyOnWriteIdentityStore:
         agent_id: NotBlankStr,
         version: int,
     ) -> AgentIdentity | None:
-        """Get a specific identity version."""
+        """Get a specific identity version.
+
+        Returns:
+            The :class:`AgentIdentity` stored at ``version``, or
+            ``None`` when no matching snapshot exists.
+        """
         snapshot = await self._repo.get_version(str(agent_id), version)
         if snapshot is None:
             return None
@@ -115,7 +135,12 @@ class CopyOnWriteIdentityStore:
         self,
         agent_id: NotBlankStr,
     ) -> tuple[VersionSnapshot[AgentIdentity], ...]:
-        """List all identity versions (newest first)."""
+        """List all identity versions (newest first).
+
+        Returns:
+            Tuple of :class:`VersionSnapshot` records in newest-first
+            order; ``()`` when no versions exist.
+        """
         return await self._repo.list_versions(str(agent_id))
 
     async def set_current(

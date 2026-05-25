@@ -115,7 +115,12 @@ class DecisionRecord(BaseModel):
     @field_validator("reason", mode="before")
     @classmethod
     def _coerce_empty_reason_to_none(cls, value: object) -> object:
-        """Normalize empty / whitespace-only reasons to ``None``."""
+        """Normalize empty / whitespace-only reasons to ``None``.
+
+        Returns:
+            ``None`` when ``value`` is an empty / whitespace-only
+            string; the original value otherwise.
+        """
         if isinstance(value, str) and not value.strip():
             return None
         return value
@@ -135,6 +140,9 @@ class DecisionRecord(BaseModel):
         structures.  If the input is already a ``MappingProxyType``
         (e.g. passed to ``model_copy``), we rebuild from the
         underlying dict so the deep-copy + freeze steps still run.
+
+        Returns:
+            A deeply-copied, recursively-frozen view of ``value``.
         """
         if isinstance(value, MappingProxyType):
             # Unwrap so deep_copy_mapping sees a dict and actually
@@ -149,13 +157,25 @@ class DecisionRecord(BaseModel):
         cls,
         value: tuple[NotBlankStr, ...],
     ) -> tuple[NotBlankStr, ...]:
-        """Reject duplicate criteria -- they represent unique rules."""
+        """Reject duplicate criteria -- they represent unique rules.
+
+        Returns:
+            ``value`` unchanged when every criterion is unique.
+        """
         validate_unique_strings(value, "criteria_snapshot")
         return value
 
     @model_validator(mode="after")
     def _forbid_self_review(self) -> Self:
-        """Enforce no-self-review as a type-level invariant."""
+        """Enforce no-self-review as a type-level invariant.
+
+        Returns:
+            ``self`` unchanged when executor and reviewer differ.
+
+        Raises:
+            ValueError: When ``executing_agent_id`` equals
+                ``reviewer_agent_id`` (a self-review).
+        """
         if self.executing_agent_id == self.reviewer_agent_id:
             msg = (
                 f"executing_agent_id and reviewer_agent_id must differ "
