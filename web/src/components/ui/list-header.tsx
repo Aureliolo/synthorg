@@ -39,17 +39,19 @@ function _resolveCountText(count: number | undefined, countLabel: string | undef
   return undefined
 }
 
+export interface ListHeaderTitleProps {
+  title: string
+  countText: string | undefined
+  refreshing: boolean
+  description: string | undefined
+}
+
 function ListHeaderTitle({
   title,
   countText,
   refreshing,
   description,
-}: {
-  title: string
-  countText: string | undefined
-  refreshing: boolean
-  description: string | undefined
-}) {
+}: ListHeaderTitleProps) {
   return (
     <div className="min-w-0 flex-1">
       <div className="flex items-baseline gap-2">

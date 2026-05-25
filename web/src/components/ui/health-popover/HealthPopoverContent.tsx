@@ -41,7 +41,11 @@ const HERO_SUBS: Record<SubsystemState, string> = {
   loading: 'Fetching the latest snapshot from the backend.',
 }
 
-function HealthPopoverHero({ state }: { state: SubsystemState }) {
+export interface HealthPopoverHeroProps {
+  state: SubsystemState
+}
+
+function HealthPopoverHero({ state }: HealthPopoverHeroProps) {
   const meta = STATE_META[state]
   return (
     <div
@@ -60,15 +64,17 @@ function HealthPopoverHero({ state }: { state: SubsystemState }) {
   )
 }
 
+export interface HealthMetadataRowProps {
+  icon: LucideIcon
+  label: string
+  value: string
+}
+
 function HealthMetadataRow({
   icon: Icon,
   label,
   value,
-}: {
-  icon: LucideIcon
-  label: string
-  value: string
-}) {
+}: HealthMetadataRowProps) {
   return (
     <div className="flex items-center gap-3">
       <Icon className="size-4 text-muted-foreground" aria-hidden={true} />
@@ -82,11 +88,13 @@ function HealthMetadataRow({
   )
 }
 
+export interface HealthSubsystemGridProps {
+  states: DerivedSubsystemStates
+}
+
 function HealthSubsystemGrid({
   states,
-}: {
-  states: DerivedSubsystemStates
-}) {
+}: HealthSubsystemGridProps) {
   const wsAction = states.wsState === 'down'
     ? {
         label: 'Retry now',

@@ -1,9 +1,9 @@
 import { apiClient, unwrap } from '../../client'
-import type { ApiResponse } from '../../types/http'
 import type {
+  ApiResponse,
   RateLimitsConfig,
   RateLimitsUpdateRequest,
-} from '../../types/providers'
+} from '@/api/types'
 
 export async function getProviderRateLimits(name: string): Promise<RateLimitsConfig> {
   const response = await apiClient.get<ApiResponse<RateLimitsConfig>>(

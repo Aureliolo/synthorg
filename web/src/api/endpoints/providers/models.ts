@@ -3,9 +3,9 @@ import { getCsrfToken } from '@/utils/csrf'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { fetchWithRetryAfter } from '@/utils/fetch-with-retry'
 import { apiClient, unwrap, unwrapVoid } from '../../client'
-import type { ApiResponse } from '../../types/http'
 import type {
   AddModelRequest,
+  ApiResponse,
   LocalModelParams,
   ProviderConfig,
   ProviderModelResponse,
@@ -14,7 +14,7 @@ import type {
   SyncModelsRequest,
   SyncModelsResponse,
   UpdateModelConfigRequest,
-} from '../../types/providers'
+} from '@/api/types'
 
 const log = createLogger('providers-api-models')
 
@@ -79,15 +79,23 @@ function processSseLines(
 
 async function _handlePullUnauthorized(): Promise<void> {
   if (IS_DEV_AUTH_BYPASS) return
+  // Split the dynamic-import failure from the store call so the store
+  // keeps ownership of its own error UX (per the Zustand mutation
+  // contract in web/CLAUDE.md: "Callers MUST NOT wrap store mutation
+  // calls in try/catch"). The import failure path falls back to a
+  // hard redirect; the store call is invoked outside this try so any
+  // failure surfaces normally instead of being swallowed.
+  let mod: typeof import('@/stores/auth')
   try {
-    const { useAuthStore } = await import('@/stores/auth')
-    useAuthStore.getState().handleUnauthorized()
+    mod = await import('@/stores/auth')
   } catch (importErr: unknown) {
     log.error('Auth store cleanup failed during SSE 401 handling:', importErr)
     if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
       window.location.href = '/login'
     }
+    return
   }
+  mod.useAuthStore.getState().handleUnauthorized()
 }
 
 async function _openPullStream(
@@ -132,28 +140,45 @@ async function _consumePullStream(
   const decoder = new TextDecoder()
   let buffer = ''
   let receivedDone = false
+  let completed = false
   const sseState: SseState = { currentEvent: '' }
   const dispatch = (event: PullProgressEvent): void => {
     if (event.done) receivedDone = true
     onProgress(event)
   }
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-    processSseLines(lines, sseState, dispatch)
-  }
+  // The reader holds a lock on the underlying ReadableStream that the
+  // active-handle gate (web/test-infra/active-handle-tracker.ts) tracks
+  // as an HTTPCLIENTREQUEST / HTTP2STREAM resource attributable to
+  // ``web/src/``. ``onProgress`` or a malformed payload's
+  // ``_dispatchSseEvent`` ``throw`` can exit the loop before the
+  // server signals done; without an explicit cancel/release the
+  // stream would leak across tests. Cancel-on-incomplete + always
+  // release covers both clean and error paths.
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
+      processSseLines(lines, sseState, dispatch)
+    }
 
-  buffer += decoder.decode()
-  if (buffer.trim()) {
-    processSseLines(buffer.split('\n'), sseState, dispatch)
-  }
+    buffer += decoder.decode()
+    if (buffer.trim()) {
+      processSseLines(buffer.split('\n'), sseState, dispatch)
+    }
 
-  if (!receivedDone) {
-    throw new Error('Pull stream ended without completion event')
+    if (!receivedDone) {
+      throw new Error('Pull stream ended without completion event')
+    }
+    completed = true
+  } finally {
+    if (!completed) {
+      await reader.cancel().catch(() => undefined)
+    }
+    reader.releaseLock()
   }
 }
 

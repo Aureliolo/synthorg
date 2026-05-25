@@ -52,11 +52,11 @@ export const healthHandlers = [
       }),
     ),
   ),
-  http.post('/api/v1/providers/:name/discover-models', () =>
+  http.post('/api/v1/providers/:name/discover-models', ({ params }) =>
     HttpResponse.json(
       successFor<typeof discoverModels>({
         discovered_models: [],
-        provider_name: 'provider-default',
+        provider_name: String(params.name ?? 'provider-default'),
       }),
     ),
   ),

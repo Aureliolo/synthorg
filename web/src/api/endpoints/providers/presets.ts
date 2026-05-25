@@ -1,10 +1,10 @@
 import { apiClient, ApiRequestError, unwrap, unwrapVoid } from '../../client'
-import type { ErrorDetail } from '../../types/errors'
-import type { ApiResponse } from '../../types/http'
 import type {
+  ApiResponse,
+  ErrorDetail,
   PresetOverride,
   PresetOverrideUpdateRequest,
-} from '../../types/providers'
+} from '@/api/types'
 
 export async function getPresetOverride(presetName: string): Promise<PresetOverride | null> {
   const response = await apiClient.get<ApiResponse<PresetOverride | null>>(

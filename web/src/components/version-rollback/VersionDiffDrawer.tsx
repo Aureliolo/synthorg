@@ -50,7 +50,23 @@ function useDiffRequest<T>(
   const isLoading = requestKey !== null && result.key !== requestKey
 
   useEffect(() => {
-    if (requestKey === null || fromVersion === null || toVersion === null) return
+    // Clear any prior result so the drawer never renders a stale diff
+    // (or stale error) belonging to a previous version pair while the
+    // current request is unresolved or invalid. ``requestKey === null``
+    // covers the closed/null-version branch; the in-flight branch
+    // resets only when the cached key no longer matches the pending
+    // request, so re-renders with the same key don't flash empty.
+    if (requestKey === null || fromVersion === null || toVersion === null) {
+      setResult((prev) =>
+        prev.key === null && prev.diff === null && prev.error === null
+          ? prev
+          : { key: null, diff: null, error: null },
+      )
+      return
+    }
+    setResult((prev) =>
+      prev.key === requestKey ? prev : { key: null, diff: null, error: null },
+    )
     let cancelled = false
     const run = async (): Promise<void> => {
       try {

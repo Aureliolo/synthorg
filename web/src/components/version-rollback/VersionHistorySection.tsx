@@ -66,15 +66,17 @@ function toItem<T>(s: VersionSnapshot<T>): TimelineItem {
   return { id: s.id, version: s.version, created_at: s.created_at }
 }
 
+export interface RollbackToolbarProps {
+  selectedVersion: number
+  onClear: () => void
+  onConfirm: () => void
+}
+
 function RollbackToolbar({
   selectedVersion,
   onClear,
   onConfirm,
-}: {
-  selectedVersion: number
-  onClear: () => void
-  onConfirm: () => void
-}) {
+}: RollbackToolbarProps) {
   return (
     <div className="flex justify-end gap-grid-gap pt-grid-gap">
       <Button variant="secondary" size="sm" onClick={onClear}>
@@ -96,6 +98,15 @@ function _resolveRollbackClient<T>(
   return props.rollbackSupported === true ? props.client : null
 }
 
+export interface VersionHistoryBodyProps<T> {
+  history: VersionHistoryHandle<T>
+  client: ReadOnlyVersionHistoryClient<T>
+  rollbackClient: VersionHistoryClient<T> | null
+  onAfterRollback: (() => void) | undefined
+  emptyTitle: string | undefined
+  emptyDescription: string | undefined
+}
+
 function VersionHistoryBody<T>({
   history,
   client,
@@ -103,14 +114,7 @@ function VersionHistoryBody<T>({
   onAfterRollback,
   emptyTitle,
   emptyDescription,
-}: {
-  history: VersionHistoryHandle<T>
-  client: ReadOnlyVersionHistoryClient<T>
-  rollbackClient: VersionHistoryClient<T> | null
-  onAfterRollback: (() => void) | undefined
-  emptyTitle: string | undefined
-  emptyDescription: string | undefined
-}) {
+}: VersionHistoryBodyProps<T>) {
   const refresh = (): void => { void history.refresh() }
   const selectFromTimeline = (item: TimelineItem): void => {
     const original = history.findById(item.id)

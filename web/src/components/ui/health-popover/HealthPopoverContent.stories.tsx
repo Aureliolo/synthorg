@@ -42,7 +42,7 @@ const meta = {
     (Story) => (
       <Dialog.Root open>
         <Dialog.Portal>
-          <Dialog.Popup className="w-[640px] rounded-xl border border-border-bright bg-surface p-card">
+          <Dialog.Popup className="w-full max-w-3xl rounded-xl border border-border-bright bg-surface p-card">
             <Story />
           </Dialog.Popup>
         </Dialog.Portal>

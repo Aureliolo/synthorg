@@ -31,13 +31,18 @@ function _isForcedInactive(
   return inactivePaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
 }
 
+export type SidebarNavItemContentProps = Pick<
+  SidebarNavItemProps,
+  'icon' | 'label' | 'collapsed' | 'badge' | 'dotColor'
+>
+
 function SidebarNavItemContent({
   icon: Icon,
   label,
   collapsed,
   badge,
   dotColor,
-}: Pick<SidebarNavItemProps, 'icon' | 'label' | 'collapsed' | 'badge' | 'dotColor'>) {
+}: SidebarNavItemContentProps) {
   return (
     <>
       <Icon className="size-5 shrink-0" aria-hidden="true" />

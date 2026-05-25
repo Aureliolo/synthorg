@@ -63,12 +63,14 @@ export function RollbackConfirmDialog<T>({
   const [submitting, setSubmitting] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const submitRollback = async (): Promise<boolean> => {
+  // ``version`` arrives from the caller guarded against null, so the
+  // function body can rely on it without a non-null assertion.
+  const submitRollback = async (version: number): Promise<boolean> => {
     try {
-      await client.rollback({ to_version: toVersion!, reason: reason.trim() })
+      await client.rollback({ to_version: version, reason: reason.trim() })
       useToastStore.getState().add({
         variant: 'success',
-        title: `Rolled back to v${toVersion}`,
+        title: `Rolled back to v${version}`,
       })
       return true
     } catch (err) {
@@ -92,7 +94,7 @@ export function RollbackConfirmDialog<T>({
     }
     setValidationError(null)
     setSubmitting(true)
-    const succeeded = await submitRollback()
+    const succeeded = await submitRollback(toVersion)
     // Run the success callback OUTSIDE the rollback try/catch so a
     // throw from the host page (e.g. a failed re-fetch) does not
     // surface as "Rollback failed": the rollback already committed

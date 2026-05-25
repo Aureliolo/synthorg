@@ -3,7 +3,7 @@ import type {
   getProviderRateLimits,
   updateProviderRateLimits,
 } from '@/api/endpoints/providers'
-import type { RateLimitsConfig } from '@/api/types/providers'
+import type { RateLimitsConfig } from '@/api/types'
 import { successFor } from '../helpers'
 
 export function buildRateLimitsConfig(
@@ -19,18 +19,12 @@ export function buildRateLimitsConfig(
 export const rateLimitsHandlers = [
   http.get('/api/v1/providers/:name/rate-limits', () =>
     HttpResponse.json(
-      successFor<typeof getProviderRateLimits>({
-        requests_per_minute: 0,
-        concurrent_requests: 0,
-      }),
+      successFor<typeof getProviderRateLimits>(buildRateLimitsConfig()),
     ),
   ),
   http.patch('/api/v1/providers/:name/rate-limits', () =>
     HttpResponse.json(
-      successFor<typeof updateProviderRateLimits>({
-        requests_per_minute: 0,
-        concurrent_requests: 0,
-      }),
+      successFor<typeof updateProviderRateLimits>(buildRateLimitsConfig()),
     ),
   ),
 ]

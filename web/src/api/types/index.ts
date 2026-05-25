@@ -42,3 +42,16 @@ export type { ApiResponse, PaginatedResponse, PaginationMeta, PaginationParams }
 export { ErrorCategory, ErrorCode } from './errors'
 export type { ErrorDetail } from './errors'
 export * from './websocket'
+
+// Hand-defined provider types that overlay or complement the generated
+// DTOs in dtos.gen. Re-exported here so endpoint / mock / page modules
+// import every provider type through the single ``@/api/types`` barrel
+// instead of reaching into ``./providers`` directly.
+export type {
+  CredentialsRotateRequest,
+  ProviderAuditEventType,
+  ProviderConfig,
+  ProviderPreset,
+  PullProgressEvent,
+  RateLimitsConfig,
+} from './providers'

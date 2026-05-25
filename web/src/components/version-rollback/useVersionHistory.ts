@@ -193,6 +193,11 @@ export function useVersionHistory<T>(
       slots.setItems((prev) => [...prev, ...page.data])
       slots.setCursor(page.nextCursor)
       slots.setHasMore(page.hasMore)
+      // A previous loadMore() may have populated ``error``; a later
+      // successful append must clear it or the stale banner stays
+      // visible above newly-loaded rows. Only the request that owns
+      // the current epoch may touch the error slot.
+      slots.setError(null)
     } catch (err) {
       log.warn('load more versions failed:', getErrorMessage(err))
       if (epoch === requestEpochRef.current) slots.setError(getErrorMessage(err))

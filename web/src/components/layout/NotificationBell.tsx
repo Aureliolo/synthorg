@@ -11,7 +11,7 @@ export interface NotificationBellProps {
 function _renderBadge(count: number) {
   return (
     <span
-      className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white"
+      className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-micro font-semibold text-white"
       aria-hidden="true"
     >
       {count > 99 ? '99+' : String(count)}

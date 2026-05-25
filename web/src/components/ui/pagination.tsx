@@ -257,7 +257,17 @@ export function Pagination({
   ariaLabel = 'Pagination',
   className,
 }: PaginationProps) {
-  const geo = _computeGeometry(page, pageSize, total, pageSizeOptions)
+  // Filter out non-positive entries up-front and fall back to the
+  // default list when every supplied option is invalid, so
+  // ``_computeGeometry`` and ``PageSizeSelect`` see the same validated
+  // list. Without this normalisation a hostile caller can leave the
+  // controlled <select> with no matching <option>, surfacing as a
+  // page-size control the operator cannot interact with.
+  const normalizedPageSizeOptions =
+    pageSizeOptions.some((size) => size > 0)
+      ? pageSizeOptions.filter((size) => size > 0)
+      : DEFAULT_PAGE_SIZE_OPTIONS
+  const geo = _computeGeometry(page, pageSize, total, normalizedPageSizeOptions)
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>) => {
@@ -286,7 +296,7 @@ export function Pagination({
           <PageSizeSelect
             pageSize={pageSize}
             safePageSize={geo.safePageSize}
-            pageSizeOptions={pageSizeOptions}
+            pageSizeOptions={normalizedPageSizeOptions}
             onPageSizeChange={onPageSizeChange}
           />
         )}

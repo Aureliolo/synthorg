@@ -64,6 +64,7 @@ export function formatUptime(seconds: number): string {
 
 /** Render an ISO-delta as a compact relative phrase ("just now", "5s ago", "2m ago"...). */
 export function formatRelative(fromMs: number, nowMs: number): string {
+  if (!Number.isFinite(fromMs) || !Number.isFinite(nowMs)) return 'unknown'
   const diffSec = Math.max(0, Math.round((nowMs - fromMs) / 1000))
   if (diffSec < 2) return 'just now'
   if (diffSec < 60) return `${diffSec}s ago`

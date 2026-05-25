@@ -58,17 +58,20 @@ export function DetailNavBar({
       const tag = target.tagName
       return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
     }
-    const PREV_KEYS = new Set(['j', 'ArrowLeft'])
-    const NEXT_KEYS = new Set(['k', 'ArrowRight'])
+    const PREV_KEYS = new Set(['j', 'arrowleft'])
+    const NEXT_KEYS = new Set(['k', 'arrowright'])
     function hasModifier(event: KeyboardEvent): boolean {
       return event.metaKey || event.ctrlKey || event.altKey || event.shiftKey
     }
     function onKey(event: KeyboardEvent) {
       if (hasModifier(event) || isEditable(event.target)) return
-      if (PREV_KEYS.has(event.key) && canPrev) {
+      // Caps Lock (or any input source that yields uppercase letters)
+      // would otherwise bypass the lowercase membership check.
+      const key = event.key.toLowerCase()
+      if (PREV_KEYS.has(key) && canPrev) {
         event.preventDefault()
         onPrev()
-      } else if (NEXT_KEYS.has(event.key) && canNext) {
+      } else if (NEXT_KEYS.has(key) && canNext) {
         event.preventDefault()
         onNext()
       }
