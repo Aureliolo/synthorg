@@ -20,7 +20,8 @@ status-code / error-code / category / retryability normalisers, and
 the per-domain handlers all share the same envelope shape + the same
 ``_log_error`` call site; splitting handlers into sibling modules
 would force the envelope-construction code to live in two places and
-break the single SEC-1 redaction chokepoint.
+break the single redaction chokepoint that keeps tracebacks and
+frame-locals out of the sink.
 """
 
 import math

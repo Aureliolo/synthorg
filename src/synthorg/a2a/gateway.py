@@ -10,10 +10,10 @@ One cohesive responsibility: be the inbound A2A wire boundary. The
 controller, the JSON-RPC envelope parser, the peer-credential
 verifier, the typed-discriminated-union dispatch, the three method
 handlers, and the per-handler error mapping all enforce the same
-SEC-1 + credential-redaction invariants on the same request shape;
-splitting handlers into a sibling module would force the auth /
-content-negotiation / error-envelope code to span modules and break
-the single-file enforcement of the credential-leak guard.
+prompt-safety + credential-redaction invariants on the same request
+shape; splitting handlers into a sibling module would force the
+auth / content-negotiation / error-envelope code to span modules
+and break the single-file enforcement of the credential-leak guard.
 """
 
 import asyncio
