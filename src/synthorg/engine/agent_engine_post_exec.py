@@ -5,6 +5,7 @@ import contextlib
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.budget.coordination_collector import CollectionInputs
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     make_loop_with_callback,
@@ -85,7 +86,14 @@ class AgentEnginePostExecMixin:
         provider: CompletionProvider | None = None,
         project_id: str | None = None,
     ) -> ExecutionResult:
-        """Post-execution: costs, transitions, recovery, classify."""
+        """Post-execution: costs, transitions, recovery, classify.
+
+        Returns:
+            The :class:`ExecutionResult` after cost recording, status
+            transitions, optional recovery, checkpoint cleanup, and
+            best-effort classification / distillation / coordination
+            metrics hooks have all run.
+        """
         await record_execution_costs(
             execution_result,
             identity,
@@ -135,9 +143,8 @@ class AgentEnginePostExecMixin:
                     task_id,
                     config=self._error_taxonomy_config,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     EXECUTION_ENGINE_ERROR,
                     agent_id=agent_id,
@@ -178,9 +185,11 @@ class AgentEnginePostExecMixin:
     ) -> tuple[ExecutionResult, RecoveryResult | None, ExecutionResult]:
         """Run recovery for an ERROR termination.
 
-        Returns the post-recovery ``execution_result``, the optional
-        ``recovery_result`` diagnosis, and the original failed result
-        (for downstream hooks like procedural-memory capture).
+        Returns:
+            ``(execution_result, recovery_result, failed_result)``:
+            the post-recovery execution, the optional
+            :class:`RecoveryResult` diagnosis, and the original failed
+            execution (preserved for procedural-memory capture).
         """
         failed_result = execution_result
         pre_recovery_ctx = execution_result.context
@@ -298,9 +307,8 @@ class AgentEnginePostExecMixin:
                     is_multi_agent=False,
                 ),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
@@ -340,7 +348,12 @@ class AgentEnginePostExecMixin:
         agent_id: str,
         task_id: str,
     ) -> AgentRunResult:
-        """Build ``AgentRunResult`` and log completion metrics."""
+        """Build ``AgentRunResult`` and log completion metrics.
+
+        Returns:
+            The :class:`AgentRunResult` carrying the execution result,
+            system prompt, duration, and resolved cost-tracker currency.
+        """
         duration = self._clock.monotonic() - start
         result = AgentRunResult(
             execution_result=execution_result,
@@ -352,9 +365,8 @@ class AgentEnginePostExecMixin:
         )
         try:
             self._log_completion(result, agent_id, task_id, duration)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
@@ -371,7 +383,13 @@ class AgentEnginePostExecMixin:
         agent_id: str,
         task_id: str,
     ) -> ExecutionLoop:
-        """Return the execution loop with a checkpoint callback if configured."""
+        """Return the execution loop with a checkpoint callback if configured.
+
+        Returns:
+            The original loop wrapped with a checkpoint-write callback
+            when ``_checkpoint_config`` and the repositories are
+            wired; otherwise the loop is returned unchanged.
+        """
         return make_loop_with_callback(
             loop,
             self._checkpoint_repo,
@@ -395,7 +413,14 @@ class AgentEnginePostExecMixin:
         timeout_seconds: float | None,
         provider: CompletionProvider | None = None,
     ) -> ExecutionResult:
-        """Execute the loop, using ``asyncio.wait`` for timeout control."""
+        """Execute the loop, using ``asyncio.wait`` for timeout control.
+
+        Returns:
+            The loop's :class:`ExecutionResult` on successful completion
+            within ``timeout_seconds``; an ERROR-terminated
+            ``ExecutionResult`` carrying a wall-clock timeout message
+            when the timeout fires (the inner task is cancelled).
+        """
         wrapped_loop = self._make_loop_with_callback(loop, agent_id, task_id)
         coro = wrapped_loop.execute(
             context=ctx,
