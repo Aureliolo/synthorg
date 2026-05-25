@@ -164,7 +164,10 @@ def _split_conversation(
 ):
     """Split conversation into head, archivable, and recent segments.
 
-    Returns ``None`` when there is nothing to archive.
+    Returns:
+        ``(head, archivable, recent)`` segments for compaction;
+        ``None`` when nothing can be archived (preserved-window
+        already covers every non-system message).
     """
     conversation = ctx.conversation
     preserve_count = config.preserve_recent_turns * 2
@@ -205,7 +208,11 @@ def _compress(  # noqa: PLR0913
 ) -> tuple[tuple[ChatMessage, ...], CompressionMetadata, int]:
     """Build compressed conversation and metadata.
 
-    Returns ``(compressed_conversation, metadata, summary_tokens)``.
+    Returns:
+        ``(compressed_conversation, metadata, summary_tokens)`` --
+        the rewritten conversation with the summary system message,
+        the cumulative :class:`CompressionMetadata`, and the
+        estimated token count of the summary.
     """
     summary_text = _build_summary(
         archivable,
@@ -235,7 +242,12 @@ def _compress(  # noqa: PLR0913
 
 
 def _extract_task_complexity(ctx: AgentContext) -> Complexity:
-    """Extract task complexity from context, defaulting to COMPLEX."""
+    """Extract task complexity from context, defaulting to COMPLEX.
+
+    Returns:
+        The :class:`Complexity` declared on the bound task; falls
+        back to :attr:`Complexity.COMPLEX` when no task is wired.
+    """
     task_exec = getattr(ctx, "task_execution", None)
     if task_exec is not None:
         task = getattr(task_exec, "task", None)

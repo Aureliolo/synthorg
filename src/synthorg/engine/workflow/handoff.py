@@ -69,14 +69,28 @@ class HandoffArtifact(StructuredArtifact):
     @field_validator("payload", mode="before")
     @classmethod
     def _deepcopy_payload(cls, v: object) -> object:
-        """Deep-copy mutable mapping payloads to prevent aliasing."""
+        """Deep-copy mutable mapping payloads to prevent aliasing.
+
+        Returns:
+            A deep copy of ``v`` when it is a mapping; otherwise
+            ``v`` unchanged.
+        """
         if isinstance(v, Mapping):
             return copy.deepcopy(v)
         return v
 
     @model_validator(mode="after")
     def _reject_self_handoff(self) -> Self:
-        """Reject handoffs where sender and receiver are the same."""
+        """Reject handoffs where sender and receiver are the same.
+
+        Returns:
+            ``self`` unchanged when sender and receiver differ and
+            the payload is JSON-serialisable.
+
+        Raises:
+            ValueError: When sender and receiver match, or when the
+                payload cannot be JSON-serialised.
+        """
         if self.from_agent_id == self.to_agent_id:
             msg = "Self-handoff rejected: from_agent_id must differ from to_agent_id"
             raise ValueError(msg)

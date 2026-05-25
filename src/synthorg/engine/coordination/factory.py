@@ -70,7 +70,14 @@ class _NoProviderDecompositionStrategy(DecompositionStrategy):
         task: Task,  # noqa: ARG002
         context: DecompositionContext,  # noqa: ARG002
     ) -> DecompositionPlan:
-        """Raise DecompositionError -- no provider configured."""
+        """Raise DecompositionError -- no provider configured.
+
+        Raises:
+            DecompositionError: Always; this placeholder exists so
+                the coordinator can be constructed without a
+                provider, but attempting to decompose must fail with
+                a clear error.
+        """
         msg = (
             "No LLM provider configured for decomposition. "
             "Provide a CompletionProvider and decomposition_model "
@@ -88,6 +95,10 @@ def _build_decomposition_strategy(
     decomposition_model: str | None,
 ) -> DecompositionStrategy:
     """Select the decomposition strategy based on available deps.
+
+    Returns:
+        An :class:`LlmDecompositionStrategy` when both deps are
+        wired; the no-provider placeholder when neither is.
 
     Raises:
         ValueError: If exactly one of *provider* / *decomposition_model*
@@ -125,6 +136,12 @@ def _build_workspace_service(
     git_backend: GitBackend | None = None,
 ) -> WorkspaceIsolationService | None:
     """Build workspace isolation service if both deps are provided.
+
+    Returns:
+        A :class:`WorkspaceIsolationService` when both
+        ``workspace_strategy`` and ``workspace_config`` are wired;
+        ``None`` when both are absent (and ``git_backend`` is also
+        unset).
 
     Raises:
         ValueError: If exactly one of *workspace_strategy* /

@@ -115,7 +115,13 @@ class HealthMonitoringPipeline:
         task_id: str,
         execution_duration: float,
     ) -> EscalationTicket | None:
-        """Inner pipeline logic (no error swallowing)."""
+        """Inner pipeline logic (no error swallowing).
+
+        Returns:
+            The escalated :class:`EscalationTicket` when the judge
+            emits one and triage approves; ``None`` when the judge
+            emits nothing or triage dismisses the ticket.
+        """
         # Layer 1: judge emits ticket.
         ticket = self._judge.emit_ticket(
             termination_reason=termination_reason,
@@ -151,7 +157,12 @@ class HealthMonitoringPipeline:
 
 
 def _ticket_to_notification(ticket: EscalationTicket) -> Notification:
-    """Map an escalation ticket to a notification model."""
+    """Map an escalation ticket to a notification model.
+
+    Returns:
+        A :class:`Notification` mirroring the ticket's category,
+        severity, evidence, and identifiers.
+    """
     category = _CAUSE_TO_CATEGORY.get(
         ticket.cause,
         NotificationCategory.SYSTEM,
@@ -185,5 +196,10 @@ _SEVERITY_MAP: dict[EscalationSeverity, NotificationSeverity] = {
 def _map_severity(
     severity: EscalationSeverity,
 ) -> NotificationSeverity:
-    """Map escalation severity to notification severity."""
+    """Map escalation severity to notification severity.
+
+    Returns:
+        The matching :class:`NotificationSeverity`; ``WARNING`` when
+        no mapping exists for ``severity``.
+    """
     return _SEVERITY_MAP.get(severity, NotificationSeverity.WARNING)

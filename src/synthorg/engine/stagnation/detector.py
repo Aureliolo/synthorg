@@ -109,7 +109,9 @@ class ToolRepetitionDetector:
     ) -> tuple[TurnRecord, ...] | None:
         """Filter and slice turns to the analysis window.
 
-        Returns ``None`` if there are not enough tool-bearing turns.
+        Returns:
+            The trailing window of tool-bearing turns; ``None`` when
+            fewer than ``min_tool_turns`` tool turns exist.
         """
         tool_turns = tuple(t for t in turns if t.tool_call_fingerprints)
         if len(tool_turns) < self._config.min_tool_turns:
@@ -146,7 +148,12 @@ def _detect_cycle_if_enabled(
     *,
     enabled: bool,
 ) -> int | None:
-    """Run cycle detection if enabled."""
+    """Run cycle detection if enabled.
+
+    Returns:
+        The shortest detected cycle length when enabled and a cycle
+        exists; ``None`` when disabled or no cycle is found.
+    """
     if not enabled:
         return None
     turn_fps = [t.tool_call_fingerprints for t in window]
@@ -183,7 +190,13 @@ def _build_stagnation_result(
     corrections_injected: int,
     max_corrections: int,
 ) -> StagnationResult:
-    """Build INJECT_PROMPT or TERMINATE result after stagnation detected."""
+    """Build INJECT_PROMPT or TERMINATE result after stagnation detected.
+
+    Returns:
+        A :class:`StagnationResult` with action INJECT_PROMPT when
+        more corrections are available; TERMINATE when the
+        ``max_corrections`` budget is exhausted.
+    """
     repeated_tools = sorted({fp for fp, c in counts.items() if c > 1})
     reason = (
         StagnationReason.CYCLE_DETECTION

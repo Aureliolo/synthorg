@@ -173,7 +173,15 @@ class TurnRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_retry_consistency(self) -> Self:
-        """Ensure retry_reason implies retry_count >= 1."""
+        """Ensure retry_reason implies retry_count >= 1.
+
+        Returns:
+            ``self`` unchanged when retry fields are consistent.
+
+        Raises:
+            ValueError: When ``retry_reason`` is set without a
+                non-zero ``retry_count``.
+        """
         if self.retry_reason is not None and (
             self.retry_count is None or self.retry_count == 0
         ):
@@ -308,7 +316,11 @@ class ExecutionLoop(Protocol):
         ...
 
     def get_loop_type(self) -> str:
-        """Return the loop type identifier (e.g. ``"react"``)."""
+        """Return the loop type identifier (e.g. ``"react"``).
+
+        Returns:
+            The loop's type discriminator string.
+        """
         ...
 
 
@@ -318,6 +330,10 @@ def make_budget_checker(task: Task) -> BudgetChecker | None:
     The returned callable returns ``True`` when accumulated cost meets
     or exceeds the limit (budget exhausted), ``False`` otherwise.
     Returns ``None`` when there is no positive budget limit.
+
+    Returns:
+        A :class:`BudgetChecker` closure over ``task.budget_limit``;
+        ``None`` when the task has no positive budget.
     """
     if task.budget_limit <= 0:
         return None

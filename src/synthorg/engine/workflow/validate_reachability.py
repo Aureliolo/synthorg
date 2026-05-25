@@ -17,7 +17,12 @@ def reachable_from(
     start_id: str,
     adjacency: dict[str, list[str]],
 ) -> frozenset[str]:
-    """BFS to find all nodes reachable from *start_id*."""
+    """BFS to find all nodes reachable from *start_id*.
+
+    Returns:
+        Frozenset of node ids reachable from ``start_id`` via the
+        forward adjacency map (inclusive of ``start_id``).
+    """
     visited: set[str] = set()
     queue: deque[str] = deque([start_id])
     while queue:
@@ -33,7 +38,13 @@ def has_cycle(
     node_ids: frozenset[str],
     adjacency: dict[str, list[str]],
 ) -> bool:
-    """Detect cycles using iterative DFS coloring (white/gray/black)."""
+    """Detect cycles using iterative DFS coloring (white/gray/black).
+
+    Returns:
+        ``True`` when the directed graph defined by ``adjacency``
+        contains a cycle reachable within ``node_ids``; ``False``
+        otherwise.
+    """
     white, gray, black = 0, 1, 2
     color: dict[str, int] = dict.fromkeys(node_ids, white)
 
@@ -66,7 +77,13 @@ def check_reachability(
     definition: WorkflowDefinition,
     adjacency: dict[str, list[str]],
 ) -> list[WorkflowValidationError]:
-    """Check all nodes reachable from START and END reachable."""
+    """Check all nodes reachable from START and END reachable.
+
+    Returns:
+        List of :class:`WorkflowValidationError` records: one per
+        non-END node unreachable from START, plus one when END
+        itself is unreachable.
+    """
     errors: list[WorkflowValidationError] = []
     start = next(n for n in definition.nodes if n.type == WorkflowNodeType.START)
     end = next(n for n in definition.nodes if n.type == WorkflowNodeType.END)
