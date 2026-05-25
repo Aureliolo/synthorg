@@ -764,29 +764,10 @@ def test_print_isolation_banner_regression_no_evidence_uses_failclosed_text(
 # ── _run_isolation_gate orchestrator ─────────────────────────────
 
 
-def test_run_isolation_gate_skips_when_env_var_set(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """``SYNTHORG_SKIP_ISOLATION_GATE=1`` short-circuits to exit 0."""
-    monkeypatch.setenv("SYNTHORG_SKIP_ISOLATION_GATE", "1")
-    # _stream_pytest must NOT be invoked; replace with one that fails the test
-    # if called.
-    monkeypatch.setattr(
-        _MODULE,
-        "_stream_pytest",
-        lambda _cmd: pytest.fail("_stream_pytest must not run when gate is skipped"),
-    )
-    rc = _MODULE._run_isolation_gate(["tests/unit/foo/"])
-    assert rc == 0
-    assert "skipped via SYNTHORG_SKIP_ISOLATION_GATE" in capsys.readouterr().err
-
-
 def test_run_isolation_gate_skips_when_paths_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Empty path list short-circuits to exit 0 before running pytest."""
-    monkeypatch.delenv("SYNTHORG_SKIP_ISOLATION_GATE", raising=False)
     monkeypatch.setattr(
         _MODULE,
         "_stream_pytest",
@@ -799,7 +780,6 @@ def test_run_isolation_gate_passes_through_classifier_pass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Green pytest output -> classifier returns pass -> exit 0."""
-    monkeypatch.delenv("SYNTHORG_SKIP_ISOLATION_GATE", raising=False)
     monkeypatch.setattr(
         _MODULE,
         "_stream_pytest",
@@ -813,7 +793,6 @@ def test_run_isolation_gate_returns_advisory_zero_on_native_crash(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Native worker crashes alone -> classifier returns crash_advisory -> exit 0."""
-    monkeypatch.delenv("SYNTHORG_SKIP_ISOLATION_GATE", raising=False)
     stdout = _CRASH_LINE + _CRASH_LINE_OTHER_TEST
     monkeypatch.setattr(
         _MODULE,
@@ -830,7 +809,6 @@ def test_run_isolation_gate_returns_nonzero_on_real_regression(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Real test failure -> classifier returns regression -> exit non-zero."""
-    monkeypatch.delenv("SYNTHORG_SKIP_ISOLATION_GATE", raising=False)
     monkeypatch.setattr(
         _MODULE,
         "_stream_pytest",
@@ -845,7 +823,6 @@ def test_run_isolation_gate_invokes_pytest_with_correct_flags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The gate command embeds ``--count 2`` and ``--max-worker-restart=4``."""
-    monkeypatch.delenv("SYNTHORG_SKIP_ISOLATION_GATE", raising=False)
     captured: dict[str, list[str]] = {}
 
     def _capture(cmd: list[str], **_kwargs: object) -> tuple[int, str]:
@@ -901,7 +878,6 @@ def test_run_isolation_gate_short_circuits_on_hung_exit_code(
     crash-advisory; that would silently green-light a real isolation
     leak whose run timed out before the replay finished.
     """
-    monkeypatch.delenv("SYNTHORG_SKIP_ISOLATION_GATE", raising=False)
     monkeypatch.setattr(
         _MODULE,
         "_stream_pytest",

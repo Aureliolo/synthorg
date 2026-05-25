@@ -137,16 +137,17 @@ class TestMaybePromoteFirstOwner:
         assert OrgRole.OWNER not in last.org_roles
 
     async def test_persistence_error_graceful_skip(self) -> None:
-        """Persistence that raises on list_users should be skipped."""
+        """Persistence that raises on list_items should be skipped."""
         backend = FakePersistenceBackend()
         await backend.connect()
 
-        # Monkey-patch list_users to raise
-        async def _broken_list_users() -> tuple[User, ...]:
+        async def _broken_list_items(
+            *, limit: int = 100, offset: int = 0
+        ) -> tuple[User, ...]:
             msg = "DB connection lost"
             raise RuntimeError(msg)
 
-        backend._users.list_users = _broken_list_users
+        backend._users.list_items = _broken_list_items  # type: ignore[method-assign]
 
         app_state = await _make_app_state(persistence=backend)
         # Should not raise

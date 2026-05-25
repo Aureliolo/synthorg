@@ -8,7 +8,7 @@ department being deleted.  The follow-up switches the delete to
 agents, so any concurrent agents mutation rolls back the delete.
 """
 
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -113,12 +113,9 @@ class TestDeleteDepartmentTOCTOU:
             ):
                 attempts.append(len(attempts) + 1)
                 return False
-            return cast(
-                "bool",
-                await original_set_many(
-                    items,
-                    expected_updated_at_map=expected_updated_at_map,
-                ),
+            return await original_set_many(
+                items,
+                expected_updated_at_map=expected_updated_at_map,
             )
 
         monkeypatch.setattr(persistence.settings, "set_many", always_agents_conflict)
@@ -150,12 +147,9 @@ class TestDeleteDepartmentTOCTOU:
         ) -> bool:
             if expected_updated_at_map is not None:
                 captured.append(dict(expected_updated_at_map))
-            return cast(
-                "bool",
-                await original_set_many(
-                    items,
-                    expected_updated_at_map=expected_updated_at_map,
-                ),
+            return await original_set_many(
+                items,
+                expected_updated_at_map=expected_updated_at_map,
             )
 
         monkeypatch.setattr(persistence.settings, "set_many", capturing_set_many)

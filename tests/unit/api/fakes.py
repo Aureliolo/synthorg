@@ -15,7 +15,6 @@ from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.core.artifact import Artifact
 from synthorg.core.auth.models import ApiKey
 from synthorg.core.enums import (
-    ApprovalRiskLevel,
     ExecutionStatus,
     TaskStatus,
 )
@@ -36,6 +35,7 @@ from synthorg.hr.performance.models import (
     TaskMetricRecord,
 )
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
+from synthorg.persistence.audit_protocol import AuditFilterSpec
 from synthorg.persistence.checkpoint_protocol import CheckpointFilterSpec
 from synthorg.persistence.docs_protocol import DocsFilterSpec
 from synthorg.persistence.flight_recorder_protocol import (
@@ -47,7 +47,7 @@ from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.preset_protocol import Preset
 from synthorg.persistence.project_protocol import ProjectFilterSpec
 from synthorg.persistence.user_protocol import ApiKeyFilterSpec
-from synthorg.security.models import AuditEntry, AuditVerdictStr
+from synthorg.security.models import AuditEntry
 from synthorg.security.timeout.parked_context import ParkedContext
 
 if TYPE_CHECKING:
@@ -190,11 +190,11 @@ class FakeMessageRepository:
 
     async def get_history(
         self,
-        channel: str,
+        channel: NotBlankStr,
         *,
-        limit: int | None = None,
+        limit: int = 100,
     ) -> tuple[Message, ...]:
-        if limit is not None and limit < 1:
+        if limit < 1:
             msg = f"limit must be a positive integer, got {limit}"
             raise QueryError(msg)
         result = sorted(
@@ -202,9 +202,17 @@ class FakeMessageRepository:
             key=lambda m: m.timestamp,
             reverse=True,
         )
-        if limit is not None:
-            result = result[:limit]
-        return tuple(result)
+        return tuple(result[:limit])
+
+    async def get_by_id(
+        self,
+        channel: NotBlankStr,
+        message_id: NotBlankStr,
+    ) -> Message | None:
+        for m in self._messages:
+            if m.channel == channel and str(m.id) == str(message_id):
+                return m
+        return None
 
     async def query(
         self,
@@ -227,7 +235,7 @@ class FakeMessageRepository:
         self._messages = [m for m in self._messages if m.timestamp >= threshold]
         return before - len(self._messages)
 
-    async def delete(self, message_id: str) -> bool:
+    async def delete(self, message_id: NotBlankStr) -> bool:
         for i, m in enumerate(self._messages):
             if str(m.id) == message_id:
                 self._messages.pop(i)
@@ -277,9 +285,10 @@ class FakeTaskMetricRepository:
     async def query(
         self,
         *,
-        agent_id: str | None = None,
-        since: datetime | None = None,
-        until: datetime | None = None,
+        agent_id: NotBlankStr | None = None,
+        since: AwareDatetime | None = None,
+        until: AwareDatetime | None = None,
+        limit: int = 100,
     ) -> tuple[TaskMetricRecord, ...]:
         result = self._records
         if agent_id is not None:
@@ -288,7 +297,7 @@ class FakeTaskMetricRepository:
             result = [r for r in result if r.completed_at >= since]
         if until is not None:
             result = [r for r in result if r.completed_at <= until]
-        return tuple(result)
+        return tuple(result[:limit])
 
 
 class FakeCollaborationMetricRepository:
@@ -303,15 +312,16 @@ class FakeCollaborationMetricRepository:
     async def query(
         self,
         *,
-        agent_id: str | None = None,
-        since: datetime | None = None,
+        agent_id: NotBlankStr | None = None,
+        since: AwareDatetime | None = None,
+        limit: int = 100,
     ) -> tuple[CollaborationMetricRecord, ...]:
         result = self._records
         if agent_id is not None:
             result = [r for r in result if r.agent_id == agent_id]
         if since is not None:
             result = [r for r in result if r.recorded_at >= since]
-        return tuple(result)
+        return tuple(result[:limit])
 
 
 class FakeParkedContextRepository:
@@ -320,11 +330,11 @@ class FakeParkedContextRepository:
     def __init__(self) -> None:
         self._contexts: dict[str, ParkedContext] = {}
 
-    async def save(self, context: ParkedContext) -> None:
-        self._contexts[context.id] = context
+    async def save(self, entity: ParkedContext) -> None:
+        self._contexts[entity.id] = entity
 
-    async def get(self, parked_id: str) -> ParkedContext | None:
-        return self._contexts.get(parked_id)
+    async def get(self, entity_id: NotBlankStr) -> ParkedContext | None:
+        return self._contexts.get(entity_id)
 
     async def list_items(
         self,
@@ -335,17 +345,27 @@ class FakeParkedContextRepository:
         ordered = sorted(self._contexts.values(), key=lambda c: c.id)
         return tuple(ordered[offset : offset + limit])
 
-    async def get_by_approval(self, approval_id: str) -> ParkedContext | None:
+    async def get_by_approval(self, approval_id: NotBlankStr) -> ParkedContext | None:
         for ctx in self._contexts.values():
             if ctx.approval_id == approval_id:
                 return ctx
         return None
 
-    async def get_by_agent(self, agent_id: str) -> tuple[ParkedContext, ...]:
-        return tuple(ctx for ctx in self._contexts.values() if ctx.agent_id == agent_id)
+    async def get_by_agent(
+        self,
+        agent_id: NotBlankStr,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[ParkedContext, ...]:
+        matching = sorted(
+            (ctx for ctx in self._contexts.values() if ctx.agent_id == agent_id),
+            key=lambda c: c.id,
+        )
+        return tuple(matching[offset : offset + limit])
 
-    async def delete(self, parked_id: str) -> bool:
-        return self._contexts.pop(parked_id, None) is not None
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._contexts.pop(entity_id, None) is not None
 
 
 class FakeAuditRepository:
@@ -365,49 +385,42 @@ class FakeAuditRepository:
         self.purge_calls: int = 0
         self.raise_on_purge: BaseException | None = None
 
-    async def save(self, entry: AuditEntry) -> None:
+    async def append(self, entry: AuditEntry) -> None:
         if entry.id in self._entries:
             msg = f"Duplicate audit entry {entry.id!r}"
             raise DuplicateRecordError(msg)
         self._entries[entry.id] = entry
 
-    async def query(  # noqa: PLR0913
+    async def query(
         self,
+        filter_spec: AuditFilterSpec,
         *,
-        agent_id: str | None = None,
-        action_type: str | None = None,
-        verdict: AuditVerdictStr | None = None,
-        risk_level: ApprovalRiskLevel | None = None,
-        since: datetime | None = None,
-        until: datetime | None = None,
         limit: int = 100,
+        offset: int = 0,
     ) -> tuple[AuditEntry, ...]:
         if limit < 1:
             msg = "limit must be >= 1"
-            raise QueryError(msg)
-        if since is not None and until is not None and until < since:
-            msg = "until must not be earlier than since"
             raise QueryError(msg)
         results = sorted(
             self._entries.values(),
             key=lambda e: e.timestamp,
             reverse=True,
         )
-        if agent_id is not None:
-            results = [e for e in results if e.agent_id == agent_id]
-        if action_type is not None:
-            results = [e for e in results if e.action_type == action_type]
-        if verdict is not None:
-            results = [e for e in results if e.verdict == verdict]
-        if risk_level is not None:
-            results = [e for e in results if e.risk_level == risk_level]
-        if since is not None:
-            results = [e for e in results if e.timestamp >= since]
-        if until is not None:
-            results = [e for e in results if e.timestamp <= until]
-        return tuple(results[:limit])
+        if filter_spec.agent_id is not None:
+            results = [e for e in results if e.agent_id == filter_spec.agent_id]
+        if filter_spec.action_type is not None:
+            results = [e for e in results if e.action_type == filter_spec.action_type]
+        if filter_spec.verdict is not None:
+            results = [e for e in results if e.verdict == filter_spec.verdict]
+        if filter_spec.risk_level is not None:
+            results = [e for e in results if e.risk_level == filter_spec.risk_level]
+        if filter_spec.since is not None:
+            results = [e for e in results if e.timestamp >= filter_spec.since]
+        if filter_spec.until is not None:
+            results = [e for e in results if e.timestamp <= filter_spec.until]
+        return tuple(results[offset : offset + limit])
 
-    async def purge_before(self, cutoff: datetime) -> int:
+    async def purge_before(self, cutoff: AwareDatetime) -> int:
         self.purge_calls += 1
         if self.raise_on_purge is not None:
             raise self.raise_on_purge
@@ -665,17 +678,23 @@ class FakeHeartbeatRepository:
     async def save(self, heartbeat: Heartbeat) -> None:
         self._heartbeats[heartbeat.execution_id] = heartbeat
 
-    async def get(self, execution_id: str) -> Heartbeat | None:
+    async def get(self, execution_id: NotBlankStr) -> Heartbeat | None:
         return self._heartbeats.get(execution_id)
 
-    async def get_stale(self, threshold: datetime) -> tuple[Heartbeat, ...]:
+    async def get_stale(
+        self,
+        threshold: AwareDatetime,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[Heartbeat, ...]:
         stale = [
             h for h in self._heartbeats.values() if h.last_heartbeat_at < threshold
         ]
-        stale.sort(key=lambda h: h.last_heartbeat_at)
-        return tuple(stale)
+        stale.sort(key=lambda h: (h.last_heartbeat_at, h.execution_id))
+        return tuple(stale[offset : offset + limit])
 
-    async def delete(self, execution_id: str) -> bool:
+    async def delete(self, execution_id: NotBlankStr) -> bool:
         return self._heartbeats.pop(execution_id, None) is not None
 
 
@@ -1007,11 +1026,11 @@ class FakeAgentStateRepository:
     def __init__(self) -> None:
         self._states: dict[str, AgentRuntimeState] = {}
 
-    async def save(self, state: AgentRuntimeState) -> None:
-        self._states[state.agent_id] = state
+    async def save(self, entity: AgentRuntimeState) -> None:
+        self._states[entity.agent_id] = entity
 
-    async def get(self, agent_id: str) -> AgentRuntimeState | None:
-        return self._states.get(agent_id)
+    async def get(self, entity_id: NotBlankStr) -> AgentRuntimeState | None:
+        return self._states.get(entity_id)
 
     async def list_items(
         self,
@@ -1022,12 +1041,18 @@ class FakeAgentStateRepository:
         ordered = sorted(self._states.values(), key=lambda s: s.agent_id)
         return tuple(ordered[offset : offset + limit])
 
-    async def get_active(self) -> tuple[AgentRuntimeState, ...]:
-        active = (s for s in self._states.values() if s.status != ExecutionStatus.IDLE)
-        return tuple(sorted(active, key=lambda s: s.last_activity_at, reverse=True))
+    async def get_active(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[AgentRuntimeState, ...]:
+        active = [s for s in self._states.values() if s.status != ExecutionStatus.IDLE]
+        active.sort(key=lambda s: (-s.last_activity_at.timestamp(), s.agent_id))
+        return tuple(active[offset : offset + limit])
 
-    async def delete(self, agent_id: str) -> bool:
-        return self._states.pop(agent_id, None) is not None
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._states.pop(entity_id, None) is not None
 
 
 class FakePersonalityPresetRepository:

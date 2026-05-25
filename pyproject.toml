@@ -695,11 +695,6 @@ disallow_any_explicit = false  # #2121
 disable_error_code = [
     "explicit-override",     # #2118
     "unused-awaitable",      # #2116
-    "arg-type",              # #2119
-    "redundant-cast",        # #2119
-    "assignment",            # #2119
-    "comparison-overlap",    # #2119
-    "attr-defined",          # #2119
     "deprecated",            # #2120
     "unused-ignore",         # holding pen; closes alongside the above
 ]

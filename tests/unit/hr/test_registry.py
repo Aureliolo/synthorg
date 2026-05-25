@@ -362,8 +362,8 @@ class TestBindVersioning:
         from tests.unit.api.fakes_backend import FakeVersionRepository
 
         registry = AgentRegistryService()
-        repo = FakeVersionRepository()
-        versioning: VersioningService[AgentIdentity] = VersioningService(repo)  # type: ignore[arg-type]  # FakeVersionRepository is typed VersionSnapshot[BaseModel] for general use; AgentIdentity is a BaseModel subclass so runtime works
+        repo: FakeVersionRepository[AgentIdentity] = FakeVersionRepository()
+        versioning: VersioningService[AgentIdentity] = VersioningService(repo)
         registry.bind_versioning(versioning)
         identity = make_agent_identity(name="alice")
         await registry.register(identity)

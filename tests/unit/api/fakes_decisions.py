@@ -7,7 +7,7 @@ continue to work.
 """
 
 from copy import deepcopy
-from datetime import UTC
+from datetime import UTC, datetime
 from types import MappingProxyType
 
 from pydantic import AwareDatetime
@@ -16,7 +16,7 @@ from synthorg.core.enums import DecisionOutcome
 from synthorg.core.persistence_errors import DuplicateRecordError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decisions import DecisionRecord
-from synthorg.persistence.decision_protocol import DecisionRole
+from synthorg.persistence.decision_protocol import DecisionFilterSpec, DecisionRole
 
 __all__ = ["FakeDecisionRepository"]
 
@@ -105,18 +105,63 @@ class FakeDecisionRepository:
         self._records[record_id] = record
         return record
 
+    async def append(self, event: DecisionRecord) -> None:
+        if event.id in self._records:
+            msg = f"Duplicate decision record {event.id!r}"
+            raise DuplicateRecordError(msg)
+        self._records[event.id] = event
+
+    async def query(
+        self,
+        filter_spec: DecisionFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[DecisionRecord, ...]:
+        results = list(self._records.values())
+        if filter_spec.task_id is not None:
+            results = [r for r in results if r.task_id == filter_spec.task_id]
+        if filter_spec.agent_id is not None and filter_spec.role is None:
+            results = [
+                r
+                for r in results
+                if filter_spec.agent_id in {r.executing_agent_id, r.reviewer_agent_id}
+            ]
+        elif filter_spec.agent_id is not None and filter_spec.role == "executor":
+            results = [
+                r for r in results if r.executing_agent_id == filter_spec.agent_id
+            ]
+        elif filter_spec.agent_id is not None and filter_spec.role == "reviewer":
+            results = [
+                r for r in results if r.reviewer_agent_id == filter_spec.agent_id
+            ]
+        if filter_spec.task_id is not None:
+            results.sort(key=lambda r: (r.recorded_at, r.id))
+        else:
+            results.sort(key=lambda r: (r.recorded_at, r.id), reverse=True)
+        return tuple(results[offset : offset + limit])
+
     async def get(self, record_id: NotBlankStr) -> DecisionRecord | None:
         return self._records.get(record_id)
 
-    async def list_by_task(self, task_id: NotBlankStr) -> tuple[DecisionRecord, ...]:
+    async def list_by_task(
+        self,
+        task_id: NotBlankStr,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[DecisionRecord, ...]:
         matching = [r for r in self._records.values() if r.task_id == task_id]
-        return tuple(sorted(matching, key=lambda r: r.version))
+        matching.sort(key=lambda r: r.version)
+        return tuple(matching[offset : offset + limit])
 
     async def list_by_agent(
         self,
         agent_id: NotBlankStr,
         *,
         role: DecisionRole,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[DecisionRecord, ...]:
         if role not in {"executor", "reviewer"}:
             msg = f"role must be 'executor' or 'reviewer', got {role!r}"
@@ -129,4 +174,12 @@ class FakeDecisionRepository:
             matching = [
                 r for r in self._records.values() if r.reviewer_agent_id == agent_id
             ]
-        return tuple(sorted(matching, key=lambda r: r.recorded_at, reverse=True))
+        matching.sort(key=lambda r: (r.recorded_at, r.id), reverse=True)
+        return tuple(matching[offset : offset + limit])
+
+    async def purge_before(self, threshold: datetime) -> int:
+        before = len(self._records)
+        self._records = {
+            k: r for k, r in self._records.items() if r.recorded_at >= threshold
+        }
+        return before - len(self._records)
