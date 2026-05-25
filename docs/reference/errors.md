@@ -282,9 +282,9 @@ renumbered.
 
 `MemoryError` and `RecursionError` are subclasses of `Exception`, so a
 broad `except Exception:` block silently swallows them unless the
-handler re-raises explicitly. The canonical re-raise is delegated to
-`synthorg.core.critical_errors.reraise_critical(exc)`, called as the
-first statement of the broad handler:
+handler propagates them explicitly. Call
+`synthorg.core.critical_errors.reraise_critical(exc)` as the first
+statement of the broad handler:
 
 ```python
 from synthorg.core.critical_errors import reraise_critical

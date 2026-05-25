@@ -315,11 +315,11 @@ ON CONFLICT(id) DO UPDATE SET
         as ``str`` (pre-serialized JSON). Re-serialize before
         validation so the round-trip is lossless.
 
-        Raises:
-            QueryError: If the row cannot be deserialized.
-
         Returns:
             Result of type ``ParkedContext``.
+
+        Raises:
+            QueryError: If the row cannot be deserialized.
         """
         try:
             raw = row.get("context_json")

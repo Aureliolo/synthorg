@@ -915,8 +915,7 @@ class SQLiteDecisionRepository:
             Result of type ``DecisionRecord``.
 
         Raises:
-            QueryError: If the database query fails.
-            TypeError: If an argument has the wrong type.
+            QueryError: If row deserialization or validation fails.
             KeyError: If a required dictionary key is missing.
         """
         try:

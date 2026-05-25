@@ -76,7 +76,8 @@ def _deserialize_row(
         Result of type ``WorkflowDefinition``.
 
     Raises:
-        QueryError: If the database query fails.
+        QueryError: If persisted data is malformed during parsing or
+            reference extraction.
     """
     try:
         nodes = tuple(WorkflowNode.model_validate(n) for n in (row.get("nodes") or []))
@@ -549,7 +550,9 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         TOCTOU races under READ COMMITTED isolation.
 
         Returns:
-            ``True`` when a row was deleted, ``False`` if no matching row existed.
+            ``(deleted, parents)`` -- ``deleted`` is True when the row was
+            removed (False if blocked by referencing parents) and ``parents``
+            is the tuple of referencing parents at the moment of the check.
 
         Raises:
             QueryError: If the database query fails.

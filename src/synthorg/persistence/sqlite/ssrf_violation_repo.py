@@ -61,14 +61,21 @@ class SQLiteSsrfViolationRepository:
         self._write_context = write_context
 
     async def _rollback_quietly(self) -> None:
-        """Roll back the current transaction, swallowing errors."""
+        """Roll back the current transaction, suppressing non-critical errors.
+
+        Calls :func:`reraise_critical` first so ``MemoryError`` and
+        ``RecursionError`` still propagate; any other rollback failure
+        is logged at WARNING and swallowed so the caller's outer
+        exception remains the operative one.
+        """
         try:
             await self._db.rollback()
         except Exception as exc:
             reraise_critical(exc)
             logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
-                error="rollback failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def save(self, violation: SsrfViolation) -> None:

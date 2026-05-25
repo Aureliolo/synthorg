@@ -186,7 +186,7 @@ class SQLiteMeetingCooldownRepository:
             Result of type ``MeetingCooldownRecord``.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If row parsing or validation fails.
         """
         try:
             row["last_triggered_at"] = parse_iso_utc(str(row["last_triggered_at"]))

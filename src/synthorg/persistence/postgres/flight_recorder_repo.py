@@ -237,7 +237,7 @@ class PostgresFlightRecorderFrameRepository:
         slip through silently.
 
         Returns:
-            Numeric result of the operation.
+            Number of rows deleted.
 
         Raises:
             QueryError: If the database query fails.

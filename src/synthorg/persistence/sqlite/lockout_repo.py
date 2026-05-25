@@ -169,8 +169,9 @@ class SQLiteLockoutRepository:
         """Record a failed login attempt.  Return ``True`` if now locked.
 
         Returns:
-            ``True`` when this failure pushed the username past the lockout threshold,
-            ``False`` otherwise.
+            ``True`` when this failure pushed the username to or past the
+            configured lockout threshold (account is now locked), ``False``
+            otherwise.
         """
         username = username.lower()
         now = self._clock.now()

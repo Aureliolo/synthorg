@@ -85,7 +85,7 @@ def _row_to_conversation(row: dict[str, Any]) -> Conversation:
         Result of type ``Conversation``.
 
     Raises:
-        QueryError: If the database query fails.
+        QueryError: If row deserialization or validation fails.
     """
     try:
         return Conversation(

@@ -411,7 +411,7 @@ class PostgresChunkProvenanceRepository:
             The matching collection.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If row deserialization or validation fails.
         """
         try:
             provenance = tuple(_row_to_provenance(row) for row in rows)

@@ -705,6 +705,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
 
         Returns:
             Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit,
@@ -728,6 +731,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
 
         Returns:
             The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         references: list[ParentReference] = []
 

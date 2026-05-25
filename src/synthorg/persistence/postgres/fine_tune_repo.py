@@ -820,7 +820,7 @@ ON CONFLICT (id) DO UPDATE SET
             The matching value, or ``None`` when absent.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``payload`` is not valid JSON.
         """
         if payload is None:
             return None

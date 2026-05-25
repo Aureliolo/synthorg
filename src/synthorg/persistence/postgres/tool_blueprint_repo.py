@@ -489,7 +489,7 @@ def _coerce_update_ts(value: object) -> datetime:
         Result of type ``datetime``.
 
     Raises:
-        QueryError: If the database query fails.
+        QueryError: If ``value`` is not a ``datetime``.
     """
     if not isinstance(value, datetime):
         msg = f"transition timestamp must be a datetime, got {type(value).__name__}"
@@ -507,7 +507,7 @@ def _coerce_validation(value: object) -> Jsonb | None:
         The matching value, or ``None`` when absent.
 
     Raises:
-        QueryError: If the database query fails.
+        QueryError: If ``value`` is neither ``None`` nor a ``ToolValidationResult``.
     """
     if value is None:
         return None

@@ -409,11 +409,11 @@ class PostgresSettingsRepository:
         """Atomically upsert multiple settings.
 
         Returns:
-            True when the operation succeeded, False otherwise.
+            True when all rows were upserted, False when a CAS conflict caused
+            the transaction to roll back.
 
         Raises:
             QueryError: If the database query fails.
-            _CASConflictError: If the compare-and-swap detects a conflicting writer.
         """
         if not items:
             return True

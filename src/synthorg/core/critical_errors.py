@@ -1,3 +1,4 @@
+# module-kind: code
 """Propagation helper for interpreter-critical exceptions.
 
 `MemoryError` and `RecursionError` are subclasses of `Exception`, so a
@@ -9,19 +10,8 @@ top of the stack so the worker / API process surfaces the failure
 (crash + restart) rather than logging a warning and continuing in a
 corrupted state.
 
-The canonical pattern is to install an explicit re-raise before the
-broad handler::
-
-    try:
-        ...
-    except (MemoryError, RecursionError):
-        raise
-    except Exception as exc:
-        logger.warning(EVENT, error_type=type(exc).__name__, ...)
-
-This module replaces the leading ``except (MemoryError, RecursionError):
-raise`` clause with a single call to :func:`reraise_critical` inside the
-broad handler::
+Call :func:`reraise_critical` as the first statement of every broad
+``except Exception as exc:`` block::
 
     try:
         ...
@@ -29,14 +19,12 @@ broad handler::
         reraise_critical(exc)
         logger.warning(EVENT, error_type=type(exc).__name__, ...)
 
-The behaviour is identical (``MemoryError`` / ``RecursionError`` still
-propagate before any logging or business logic runs) but the explicit
-narrow ``except`` clause is gone, so ruff `DOC501` no longer demands
-that every async helper docstring document `MemoryError` and
-`RecursionError` in its `Raises:` section.
+``MemoryError`` and ``RecursionError`` re-raise unchanged before any
+logging or business logic runs; all other exceptions return silently
+so the caller's recovery logic continues.
 
-`asyncio.CancelledError` is **not** routed through this helper because
-it is a subclass of `BaseException`, not `Exception` -- broad
+``asyncio.CancelledError`` is **not** routed through this helper because
+it is a subclass of ``BaseException``, not ``Exception`` -- broad
 ``except Exception:`` blocks never catch it in the first place, so no
 re-raise is necessary.
 """

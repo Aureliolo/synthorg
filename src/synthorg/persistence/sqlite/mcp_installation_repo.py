@@ -175,11 +175,22 @@ class SQLiteMcpInstallationRepository:
             raise QueryError(msg) from exc
         if row is None:
             return None
-        return McpInstallation(
-            catalog_entry_id=NotBlankStr(row[0]),
-            connection_name=(NotBlankStr(row[1]) if row[1] else None),
-            installed_at=coerce_row_timestamp(row[2]),
-        )
+        try:
+            return McpInstallation(
+                catalog_entry_id=NotBlankStr(row[0]),
+                connection_name=(NotBlankStr(row[1]) if row[1] else None),
+                installed_at=coerce_row_timestamp(row[2]),
+            )
+        except (ValueError, TypeError, KeyError) as exc:
+            reraise_critical(exc)
+            msg = f"Failed to deserialize MCP installation {catalog_entry_id!r}"
+            logger.warning(
+                PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+                catalog_entry_id=catalog_entry_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def list_items(
         self,

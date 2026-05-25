@@ -315,7 +315,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         decisions (``"human:<operator_id>"``).
 
         Returns:
-            The matching collection.
+            Tuple of escalation IDs that were marked as expired.
 
         Raises:
             QueryError: If the database query fails.

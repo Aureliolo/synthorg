@@ -290,9 +290,9 @@ When running multiple tasks inside a `TaskGroup` where one task's
 failure should NOT cancel the others -- independent workers,
 classification detectors, notification sinks -- wrap each task body
 in a small `async def` helper that catches `Exception` and returns a
-safe default. Re-raise only `MemoryError` / `RecursionError` (those
+safe default. Only `MemoryError` / `RecursionError` propagate (those
 indicate the interpreter itself is in trouble and the group should
-unwind). The re-raise is delegated to
+unwind). Propagation is delegated to
 `synthorg.core.critical_errors.reraise_critical` so the broad handler
 stays a single `except` clause and ruff `DOC501` does not demand that
 every helper docstring document `MemoryError` / `RecursionError`:
@@ -315,7 +315,7 @@ async with asyncio.TaskGroup() as tg:
 The legacy two-clause form (`except (MemoryError, RecursionError): raise`
 followed by `except Exception:`) is equivalent and remains acceptable
 in sites where the critical-error branch needs additional cleanup
-before the re-raise; see `persistence/postgres/backend_connection.py`
+before propagation; see `persistence/postgres/backend_connection.py`
 for an example. `asyncio.CancelledError` is **not** routed through
 `reraise_critical`: it is a `BaseException`, not an `Exception`, so a
 broad `except Exception:` never catches it.

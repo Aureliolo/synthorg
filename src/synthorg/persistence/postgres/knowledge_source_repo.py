@@ -342,7 +342,7 @@ class PostgresKnowledgeSourceRepository:
             The matching collection.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If row deserialization or validation fails.
         """
         try:
             sources = tuple(_row_to_source(row) for row in rows)

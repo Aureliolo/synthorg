@@ -125,7 +125,7 @@ def _raise_pg_tool_failed(
     """Log ``BACKUP_COMPONENT_FAILED`` and raise ``PgToolFailedError``.
 
     Raises:
-        PgToolFailedError: If the underlying call raises.
+        PgToolFailedError: Always raised by this helper.
     """
     msg = (
         f"{binary} exited with code {returncode}: "
@@ -152,7 +152,7 @@ def _raise_pg_tool_spawn_failed(binary: str, exc: OSError) -> NoReturn:
     public docstrings -- wrap the raw OS error so the contract holds.
 
     Raises:
-        PgToolFailedError: If the underlying call raises.
+        PgToolFailedError: Always raised by this helper.
     """
     msg = f"failed to spawn {binary}: {safe_error_description(exc)}"
     logger.warning(

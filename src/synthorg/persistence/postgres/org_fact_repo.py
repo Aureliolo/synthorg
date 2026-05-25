@@ -256,7 +256,7 @@ class PostgresOrgFactRepository:
         """Append an operation within the caller's transaction.
 
         Returns:
-            ``(log_id, persisted_at)`` of the newly appended log entry.
+            ``(version, persisted_at)`` of the newly appended log entry.
         """
         operation_id = str(uuid.uuid4())
         now = datetime.now(UTC)

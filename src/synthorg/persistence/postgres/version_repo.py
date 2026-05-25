@@ -125,7 +125,8 @@ class PostgresVersionRepository[T: BaseModel]:
             Result of type ``VersionSnapshot[T]``.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If row deserialization or the row-to-entity callback
+                fails.
         """
         try:
             entity_id_str: str = str(row["entity_id"])

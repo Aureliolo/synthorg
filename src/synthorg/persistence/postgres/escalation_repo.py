@@ -75,7 +75,7 @@ def _row_to_escalation(row: dict[str, Any]) -> Escalation:
         Result of type ``Escalation``.
 
     Raises:
-        QueryError: If the database query fails.
+        QueryError: If row parsing or validation fails.
     """
     try:
         conflict = Conflict.model_validate(row["conflict_json"])

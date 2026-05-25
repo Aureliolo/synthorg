@@ -240,7 +240,7 @@ INSERT INTO checkpoints (
         the cut-off ambiguous against UTC-formatted stored timestamps.
 
         Returns:
-            Numeric result of the operation.
+            Number of rows deleted.
 
         Raises:
             QueryError: If the database query fails.

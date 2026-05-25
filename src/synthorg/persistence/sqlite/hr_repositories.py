@@ -104,7 +104,7 @@ INSERT INTO lifecycle_events (
             Result of type ``AgentLifecycleEvent``.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If row deserialization or validation fails.
         """
         try:
             data = dict(row)
@@ -249,7 +249,7 @@ INSERT INTO task_metrics (
             Result of type ``TaskMetricRecord``.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If row deserialization or validation fails.
         """
         try:
             data = dict(row)
@@ -386,7 +386,7 @@ INSERT INTO collaboration_metrics (
             Result of type ``CollaborationMetricRecord``.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If row deserialization or validation fails.
         """
         try:
             data = dict(row)
