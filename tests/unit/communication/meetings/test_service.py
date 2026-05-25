@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for :class:`MeetingService`.
 
 Focus on the rewritten ``delete_meeting`` path: routes through the

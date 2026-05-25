@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Shared fixtures for Mem0 adapter tests."""
 
 from typing import Any

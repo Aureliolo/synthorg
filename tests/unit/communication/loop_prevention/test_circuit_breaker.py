@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for delegation circuit breaker."""
 
 import threading

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for EvalLoopCoordinator."""
 
 from datetime import UTC, datetime, timedelta

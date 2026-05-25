@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
 """Unit tests for meta-loop proposal appliers (apply + dry_run)."""
 
 from typing import Any

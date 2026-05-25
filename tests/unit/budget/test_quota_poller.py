@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for QuotaPoller lifecycle, polling, alerting, and cooldown."""
 
 from datetime import UTC, datetime

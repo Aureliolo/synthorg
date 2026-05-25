@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override,empty-body"
 """Tests for CompletionProvider protocol and BaseCompletionProvider ABC."""
 
 from collections.abc import AsyncIterator
@@ -244,7 +245,7 @@ class TestBaseCompletionProvider:
 
     def test_partial_implementation_rejected(self) -> None:
         class _PartialProvider(BaseCompletionProvider):
-            async def _do_complete(  # type: ignore[empty-body]
+            async def _do_complete(
                 self,
                 messages: list[ChatMessage],
                 model: str,

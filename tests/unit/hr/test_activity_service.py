@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override"
 """Unit tests for :class:`ActivityFeedService`."""
 
 from datetime import UTC, datetime, timedelta

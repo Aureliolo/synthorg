@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
 """Unit tests for envelope/helper utilities in ``handlers.common``.
 
 These cover ``ok``, ``err``, ``require_arg``, ``require_admin_guardrails``,

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for DualModeConsolidationStrategy."""
 
 from datetime import UTC, datetime, timedelta

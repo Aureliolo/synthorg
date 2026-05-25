@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for scripts/generate_runtime_stats.py.
 
 Covers the generator's offline-tolerance contract:

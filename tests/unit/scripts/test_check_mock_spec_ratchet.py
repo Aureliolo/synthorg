@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for the mock-spec ratchet PreToolUse hook.
 
 The hook reads a PreToolUse JSON envelope from stdin and either

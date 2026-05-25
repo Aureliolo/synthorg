@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Concurrency test for InMemoryTelemetryEventCounter.
 
 The eviction-flag flip happens inside ``self._lock`` so only one

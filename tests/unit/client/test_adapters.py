@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for entry-point adapters."""
 
 from typing import Any

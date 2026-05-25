@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
 """Tests for BaseTool ABC and ToolExecutionResult."""
 
 from typing import Any

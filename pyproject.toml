@@ -658,18 +658,46 @@ module = [
 disallow_any_explicit = false
 disable_error_code = ["explicit-override", "unused-awaitable"]
 
-# Test code carries explicit Any (fixture types, parametrize values) and
-# missing @override (test subclasses) that does not block strict++ in
-# the source tree. Lifted only when the source code's typing stabilises
-# enough that test fixtures can re-tighten.
+# Test code carries the residual strict++ exemptions that the original
+# tests.* override block lifted. This PR (#2061) narrowed the original
+# block by NEWLY ENFORCING ``disallow_any_generics`` across tests/,
+# while explicitly typing ~140 test files (foundation helpers, fakes
+# hubs, settings, observability, core, config, persistence, scripts,
+# monitoring, telemetry, providers, security, budget, plus the bulk of
+# the memory/knowledge/communication/hr/integrations/notifications/
+# templates/workers/meta/tools tiers) under the full strict++ bar.
+#
+# Each remaining lifted flag maps to a filed follow-up issue. Drop the
+# entry from ``disable_error_code`` (or remove ``disallow_any_explicit
+# = false``) when the linked issue closes. Full breakdown lives in
+# docs/decisions/0006-tiered-module-size-policy.md Section F.1.
+#
+# * ``unused-awaitable`` (~23 sites): #2116
+# * ``method-assign`` (~17 sites): #2117
+# * ``explicit-override`` (~87 sites across ~48 files): #2118
+# * ``arg-type`` + ``redundant-cast`` + ``assignment`` +
+#   ``comparison-overlap`` + ``attr-defined`` (~75 sites): #2119
+#   (FakePersistenceBackend protocol parity)
+# * ``deprecated`` (1 site, blocked on pytest-asyncio upstream): #2120
+# * ``disallow_any_explicit`` (~1,800 sites, blocked on EPIC #2056):
+#   #2121
+# * ``unused-ignore`` is a holding pen for pre-existing per-line
+#   ``# type: ignore[code]`` comments that target a code lifted above;
+#   each ratchet-off PR cleans up its own stale ignores.
 [[tool.mypy.overrides]]
 module = "tests.*"
-disallow_any_explicit = false
-disallow_any_generics = false
+disallow_any_explicit = false  # #2121
 disable_error_code = [
-    "explicit-override",
-    "unused-awaitable",
-    "deprecated",
+    "explicit-override",     # #2118
+    "unused-awaitable",      # #2116
+    "method-assign",         # #2117
+    "arg-type",              # #2119
+    "redundant-cast",        # #2119
+    "assignment",            # #2119
+    "comparison-overlap",    # #2119
+    "attr-defined",          # #2119
+    "deprecated",            # #2120
+    "unused-ignore",         # holding pen; closes alongside the above
 ]
 
 [tool.pydantic-mypy]

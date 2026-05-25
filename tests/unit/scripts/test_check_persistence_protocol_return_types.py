@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_persistence_protocol_return_types.py``.
 
 Cover the three behaviours that matter:

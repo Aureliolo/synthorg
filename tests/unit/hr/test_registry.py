@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for AgentRegistryService."""
 
 import pytest
@@ -362,7 +363,7 @@ class TestBindVersioning:
 
         registry = AgentRegistryService()
         repo = FakeVersionRepository()
-        versioning: VersioningService[AgentIdentity] = VersioningService(repo)
+        versioning: VersioningService[AgentIdentity] = VersioningService(repo)  # type: ignore[arg-type]  # FakeVersionRepository is typed VersionSnapshot[BaseModel] for general use; AgentIdentity is a BaseModel subclass so runtime works
         registry.bind_versioning(versioning)
         identity = make_agent_identity(name="alice")
         await registry.register(identity)

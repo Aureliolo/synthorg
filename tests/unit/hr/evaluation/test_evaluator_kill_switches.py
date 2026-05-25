@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Coverage for the four hr.evaluation_*_enabled flag → pillar gates.
 
 Each flag maps to either a pillar or an efficiency sub-metric and

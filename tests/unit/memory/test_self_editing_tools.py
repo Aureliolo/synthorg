@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override"
 """Tests for self-editing memory BaseTool wrappers and registry integration."""
 
 from datetime import UTC, datetime

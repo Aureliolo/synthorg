@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-override"
 """Tests for BaseTool action_type integration with DEFAULT_CATEGORY_ACTION_MAP."""
 
 from typing import Any

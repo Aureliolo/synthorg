@@ -5,7 +5,7 @@ credential material embedded inside exception ``str(exc)`` output.
 """
 
 import json
-from typing import Any
+from typing import Any, override
 
 import httpx
 import pytest
@@ -292,6 +292,7 @@ class TestSafeErrorDescriptionBasics:
         # propagate that failure -- a broken description is better than
         # a dropped log event.
         class BrokenStrError(Exception):
+            @override
             def __str__(self) -> str:
                 msg = "no str for you"
                 raise RuntimeError(msg)

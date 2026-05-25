@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
 """Smoke tests for agent domain MCP handlers.
 
 The handler universe is big and half of it shims onto services that

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_no_circular_imports.py``."""
 
 import importlib.util

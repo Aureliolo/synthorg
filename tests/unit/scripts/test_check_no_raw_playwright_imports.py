@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for the no-raw-playwright-imports convention gate."""
 
 import importlib.util

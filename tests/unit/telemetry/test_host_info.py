@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for the Docker daemon enrichment helper."""
 
 from typing import Any

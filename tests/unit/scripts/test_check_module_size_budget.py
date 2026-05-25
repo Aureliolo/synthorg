@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_module_size_budget.py``.
 
 Synthetic ``src/synthorg/`` trees under ``tmp_path`` exercise the gate's

@@ -3,7 +3,7 @@
 import json
 import logging
 import threading
-from typing import Any
+from typing import Any, override
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -29,6 +29,7 @@ def _make_record(msg: str = "test message") -> logging.LogRecord:
 class _JsonFormatter(logging.Formatter):
     """Minimal JSON formatter for test handlers."""
 
+    @override
     def format(self, record: logging.LogRecord) -> str:
         return json.dumps({"event": record.getMessage()})
 

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for the procedural memory pipeline (end-to-end)."""
 
 from datetime import UTC, datetime

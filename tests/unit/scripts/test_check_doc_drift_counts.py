@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for scripts/check_doc_drift_counts.py."""
 
 import importlib.util

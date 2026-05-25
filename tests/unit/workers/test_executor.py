@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit coverage for :class:`TaskExecutionExecutor`.
 
 The executor turns each :class:`TaskClaim` into a typed HTTP POST

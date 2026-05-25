@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override"
 """Unit tests for ProviderRegistry."""
 
 from typing import TYPE_CHECKING

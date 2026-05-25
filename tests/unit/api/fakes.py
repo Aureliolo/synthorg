@@ -4,13 +4,14 @@ import asyncio
 import contextlib
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import AwareDatetime
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message
+from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.core.artifact import Artifact
 from synthorg.core.auth.models import ApiKey
 from synthorg.core.enums import (
@@ -34,14 +35,37 @@ from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
     TaskMetricRecord,
 )
+from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
+from synthorg.persistence.checkpoint_protocol import CheckpointFilterSpec
+from synthorg.persistence.docs_protocol import DocsFilterSpec
 from synthorg.persistence.flight_recorder_protocol import (
     FlightRecorderFrame,
     FlightRecorderFrameAggregate,
     FlightRecorderFrameFilterSpec,
 )
+from synthorg.persistence.message_protocol import MessageFilterSpec
 from synthorg.persistence.preset_protocol import Preset
+from synthorg.persistence.project_protocol import ProjectFilterSpec
+from synthorg.persistence.user_protocol import ApiKeyFilterSpec
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 from synthorg.security.timeout.parked_context import ParkedContext
+
+if TYPE_CHECKING:
+    # Type-only re-export of ``FakePersistenceBackend`` so callers can
+    # write ``from tests.unit.api.fakes import FakePersistenceBackend``
+    # and have mypy resolve the symbol to its real type. At runtime the
+    # name resolves via ``__getattr__`` below (PEP 562 lazy attribute
+    # access), preserving the historical circular-import workaround
+    # without forcing 36 call sites onto a direct ``fakes_backend``
+    # import path.
+    from synthorg.core.codebase_structure_map import CodebaseStructureMap
+    from synthorg.core.project_environment import ProjectEnvironment
+    from synthorg.core.project_workspace import ProjectWorkspace
+    from synthorg.docs_engine.models import DocMetadata
+    from synthorg.persistence.settings_protocol import SettingRow
+    from tests.unit.api.fakes_backend import FakePersistenceBackend
+
+    __all__ = ["FakePersistenceBackend"]
 
 
 class FakeTaskRepository:
@@ -184,7 +208,7 @@ class FakeMessageRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: MessageFilterSpec,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
@@ -432,7 +456,7 @@ class FakeApiKeyRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: ApiKeyFilterSpec,
         *,
         limit: int = 100,
         offset: int = 0,
@@ -445,7 +469,7 @@ class FakeApiKeyRepository:
         results.sort(key=lambda k: k.id)
         return tuple(results[offset : offset + limit])
 
-    async def count(self, filter_spec: Any) -> int:
+    async def count(self, filter_spec: ApiKeyFilterSpec) -> int:
         results = list(self._keys.values())
         if filter_spec.user_id is not None:
             results = [k for k in results if k.user_id == filter_spec.user_id]
@@ -486,7 +510,7 @@ class FakeCheckpointRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: CheckpointFilterSpec,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
@@ -688,36 +712,30 @@ class FakeArtifactRepository:
 
     async def query(
         self,
-        filter_spec: object,
+        filter_spec: ArtifactFilterSpec,
         *,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[Artifact, ...]:
         result = list(self._artifacts.values())
-        if hasattr(filter_spec, "task_id") and filter_spec.task_id is not None:
+        if filter_spec.task_id is not None:
             result = [a for a in result if a.task_id == filter_spec.task_id]
-        if hasattr(filter_spec, "created_by") and filter_spec.created_by is not None:
+        if filter_spec.created_by is not None:
             result = [a for a in result if a.created_by == filter_spec.created_by]
-        if (
-            hasattr(filter_spec, "artifact_type")
-            and filter_spec.artifact_type is not None
-        ):
+        if filter_spec.artifact_type is not None:
             result = [a for a in result if a.type == filter_spec.artifact_type]
         # Match the SQLite repo contract (``ORDER BY id``) so tests
         # asserting list order do not depend on dict insertion order.
         result.sort(key=lambda a: a.id)
         return tuple(result[offset : offset + limit])
 
-    async def count(self, filter_spec: object) -> int:
+    async def count(self, filter_spec: ArtifactFilterSpec) -> int:
         result = list(self._artifacts.values())
-        if hasattr(filter_spec, "task_id") and filter_spec.task_id is not None:
+        if filter_spec.task_id is not None:
             result = [a for a in result if a.task_id == filter_spec.task_id]
-        if hasattr(filter_spec, "created_by") and filter_spec.created_by is not None:
+        if filter_spec.created_by is not None:
             result = [a for a in result if a.created_by == filter_spec.created_by]
-        if (
-            hasattr(filter_spec, "artifact_type")
-            and filter_spec.artifact_type is not None
-        ):
+        if filter_spec.artifact_type is not None:
             result = [a for a in result if a.type == filter_spec.artifact_type]
         return len(result)
 
@@ -729,14 +747,12 @@ class FakeProjectWorkspaceRepository:
     """In-memory project_workspaces repository for tests."""
 
     def __init__(self) -> None:
-        from synthorg.core.project_workspace import ProjectWorkspace
-
         self._rows: dict[str, ProjectWorkspace] = {}
 
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: ProjectWorkspace) -> None:
         self._rows[entity.project_id] = entity
 
-    async def get(self, entity_id: NotBlankStr) -> Any | None:
+    async def get(self, entity_id: NotBlankStr) -> ProjectWorkspace | None:
         return self._rows.get(entity_id)
 
     async def list_items(
@@ -744,7 +760,7 @@ class FakeProjectWorkspaceRepository:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[ProjectWorkspace, ...]:
         result = sorted(self._rows.values(), key=lambda r: r.project_id)
         return tuple(result[offset : offset + limit])
 
@@ -756,14 +772,12 @@ class FakeCodebaseStructureMapRepository:
     """In-memory codebase_structure_maps repository for tests."""
 
     def __init__(self) -> None:
-        from synthorg.core.codebase_structure_map import CodebaseStructureMap
-
         self._rows: dict[str, CodebaseStructureMap] = {}
 
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: CodebaseStructureMap) -> None:
         self._rows[entity.project_id] = entity
 
-    async def get(self, entity_id: NotBlankStr) -> Any | None:
+    async def get(self, entity_id: NotBlankStr) -> CodebaseStructureMap | None:
         return self._rows.get(entity_id)
 
     async def list_items(
@@ -771,7 +785,7 @@ class FakeCodebaseStructureMapRepository:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[CodebaseStructureMap, ...]:
         result = sorted(self._rows.values(), key=lambda r: r.project_id)
         return tuple(result[offset : offset + limit])
 
@@ -787,14 +801,12 @@ class FakeProjectEnvironmentRepository:
     """In-memory project_environments repository for tests."""
 
     def __init__(self) -> None:
-        from synthorg.core.project_environment import ProjectEnvironment
-
         self._rows: dict[str, ProjectEnvironment] = {}
 
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: ProjectEnvironment) -> None:
         self._rows[entity.project_id] = entity
 
-    async def get(self, entity_id: NotBlankStr) -> Any | None:
+    async def get(self, entity_id: NotBlankStr) -> ProjectEnvironment | None:
         return self._rows.get(entity_id)
 
     async def list_items(
@@ -802,7 +814,7 @@ class FakeProjectEnvironmentRepository:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[ProjectEnvironment, ...]:
         result = sorted(self._rows.values(), key=lambda r: r.project_id)
         return tuple(result[offset : offset + limit])
 
@@ -818,14 +830,14 @@ class FakeDocsRepository:
     """In-memory living-doc metadata repository for tests."""
 
     def __init__(self) -> None:
-        from synthorg.docs_engine.models import DocMetadata
-
         self._rows: dict[tuple[str, str], DocMetadata] = {}
 
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: DocMetadata) -> None:
         self._rows[(entity.project_id, entity.slug)] = entity
 
-    async def get(self, entity_id: tuple[NotBlankStr, NotBlankStr]) -> Any | None:
+    async def get(
+        self, entity_id: tuple[NotBlankStr, NotBlankStr]
+    ) -> DocMetadata | None:
         return self._rows.get(entity_id)
 
     async def list_items(
@@ -833,7 +845,7 @@ class FakeDocsRepository:
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[DocMetadata, ...]:
         result = sorted(
             self._rows.values(),
             key=lambda r: (r.updated_at, r.project_id, r.slug),
@@ -846,11 +858,11 @@ class FakeDocsRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: DocsFilterSpec,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[DocMetadata, ...]:
         rows = [
             r for r in self._rows.values() if r.project_id == filter_spec.project_id
         ]
@@ -863,7 +875,7 @@ class FakeDocsRepository:
         rows.sort(key=lambda r: (r.updated_at, r.slug), reverse=True)
         return tuple(rows[offset : offset + limit])
 
-    async def count(self, filter_spec: Any) -> int:
+    async def count(self, filter_spec: DocsFilterSpec) -> int:
         rows = [
             r for r in self._rows.values() if r.project_id == filter_spec.project_id
         ]
@@ -911,28 +923,24 @@ class FakeProjectRepository:
 
     async def query(
         self,
-        filter_spec: Any,
+        filter_spec: ProjectFilterSpec,
         *,
         limit: int = 100,  # lint-allow: magic-numbers -- ADR-0001
         offset: int = 0,
     ) -> tuple[Project, ...]:
         result = sorted(self._projects.values(), key=lambda p: p.id)
-        status = getattr(filter_spec, "status", None)
-        lead = getattr(filter_spec, "lead", None)
-        if status is not None:
-            result = [p for p in result if p.status == status]
-        if lead is not None:
-            result = [p for p in result if p.lead == lead]
+        if filter_spec.status is not None:
+            result = [p for p in result if p.status == filter_spec.status]
+        if filter_spec.lead is not None:
+            result = [p for p in result if p.lead == filter_spec.lead]
         return tuple(result[offset : offset + limit])
 
-    async def count(self, filter_spec: Any) -> int:
-        status = getattr(filter_spec, "status", None)
-        lead = getattr(filter_spec, "lead", None)
+    async def count(self, filter_spec: ProjectFilterSpec) -> int:
         result = list(self._projects.values())
-        if status is not None:
-            result = [p for p in result if p.status == status]
-        if lead is not None:
-            result = [p for p in result if p.lead == lead]
+        if filter_spec.status is not None:
+            result = [p for p in result if p.status == filter_spec.status]
+        if filter_spec.lead is not None:
+            result = [p for p in result if p.lead == filter_spec.lead]
         return len(result)
 
     async def delete(self, project_id: NotBlankStr) -> bool:
@@ -1072,7 +1080,7 @@ class FakeSettingsRepository:
         self._SettingRow = SettingRow
         self._store: dict[tuple[str, str], tuple[str, str]] = {}
 
-    def _row(self, namespace: str, key: str, value: str, ts: str) -> Any:
+    def _row(self, namespace: str, key: str, value: str, ts: str) -> SettingRow:
         return self._SettingRow(
             namespace=NotBlankStr(namespace),
             key=NotBlankStr(key),
@@ -1080,7 +1088,7 @@ class FakeSettingsRepository:
             updated_at=ts,
         )
 
-    async def get(self, entity_id: tuple[str, str]) -> Any:
+    async def get(self, entity_id: tuple[str, str]) -> SettingRow | None:
         namespace, key = entity_id
         existing = self._store.get((namespace, key))
         if existing is None:
@@ -1088,7 +1096,7 @@ class FakeSettingsRepository:
         value, ts = existing
         return self._row(namespace, key, value, ts)
 
-    async def get_namespace(self, namespace: str) -> tuple[Any, ...]:
+    async def get_namespace(self, namespace: str) -> tuple[SettingRow, ...]:
         return tuple(
             self._row(ns, k, v, ts)
             for (ns, k), (v, ts) in sorted(self._store.items())
@@ -1100,13 +1108,13 @@ class FakeSettingsRepository:
         *,
         limit: int = 100,
         offset: int = 0,
-    ) -> tuple[Any, ...]:
+    ) -> tuple[SettingRow, ...]:
         rows = [
             self._row(ns, k, v, ts) for (ns, k), (v, ts) in sorted(self._store.items())
         ]
         return tuple(rows[offset : offset + limit])
 
-    async def save(self, entity: Any) -> None:
+    async def save(self, entity: SettingRow) -> None:
         self._store = {
             **self._store,
             (entity.namespace, entity.key): (entity.value, entity.updated_at),
@@ -1114,8 +1122,7 @@ class FakeSettingsRepository:
 
     async def set_if_unchanged(
         self,
-        entity: Any,
-        *,
+        entity: SettingRow,
         expected_updated_at: str | None = None,
     ) -> bool:
         if expected_updated_at is not None:
@@ -1133,7 +1140,7 @@ class FakeSettingsRepository:
 
     async def set_many(
         self,
-        items: Sequence[Any],
+        items: Sequence[SettingRow],
         *,
         expected_updated_at_map: Mapping[tuple[str, str], str] | None = None,
     ) -> bool:
@@ -1224,8 +1231,14 @@ class FakeMessageBus:
     ) -> None:
         pass
 
-    async def subscribe(self, channel_name: str, subscriber_id: str) -> Any:
-        return None
+    async def subscribe(self, channel_name: str, subscriber_id: str) -> Subscription:
+        from datetime import UTC
+
+        return Subscription(
+            channel_name=NotBlankStr(channel_name),
+            subscriber_id=NotBlankStr(subscriber_id),
+            subscribed_at=datetime.now(UTC),
+        )
 
     async def unsubscribe(self, channel_name: str, subscriber_id: str) -> None:
         pass
@@ -1236,7 +1249,7 @@ class FakeMessageBus:
         subscriber_id: str,
         *,
         timeout: float | None = None,  # noqa: ASYNC109
-    ) -> Any:
+    ) -> DeliveryEnvelope | None:
         """Block up to *timeout* seconds before returning ``None``.
 
         The real ``MessageBus.receive`` blocks on an internal queue

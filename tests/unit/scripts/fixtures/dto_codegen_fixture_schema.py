@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """A hermetic OpenAPI schema dict for generator unit tests.
 
 A real Litestar fixture app would bring the whole app boot path

@@ -15,7 +15,7 @@ Covers:
 
 import threading
 from collections.abc import Generator
-from typing import Any, cast
+from typing import cast
 
 import pytest
 from opentelemetry import trace as _ot_trace
@@ -60,7 +60,7 @@ def _clear_otel_tracer_provider() -> None:
     _ot_trace._TRACER_PROVIDER = None
 
 
-def _restore_otel_tracer_provider(provider: Any) -> None:
+def _restore_otel_tracer_provider(provider: TracerProvider | None) -> None:
     """Restore a previously-captured provider as the OTel global.
 
     Pairs with :func:`_clear_otel_tracer_provider`. The ``provider``
@@ -76,7 +76,7 @@ def _restore_otel_tracer_provider(provider: Any) -> None:
     _ot_trace._TRACER_PROVIDER_SET_ONCE._done = provider is not None
 
 
-def _snapshot_otel_tracer_provider() -> Any:
+def _snapshot_otel_tracer_provider() -> TracerProvider | None:
     """Capture the raw ``_TRACER_PROVIDER`` for later restoration.
 
     Uses the module-level attribute directly -- not
@@ -86,7 +86,7 @@ def _snapshot_otel_tracer_provider() -> Any:
     ``get_tracer`` calls recurse forever (proxy delegates to
     ``_TRACER_PROVIDER`` which is the proxy itself).
     """
-    return cast(Any, _ot_trace._TRACER_PROVIDER)
+    return cast(TracerProvider | None, _ot_trace._TRACER_PROVIDER)
 
 
 @pytest.fixture

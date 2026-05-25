@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for the InterruptType resolution-validator registry."""
 
 from datetime import UTC, datetime

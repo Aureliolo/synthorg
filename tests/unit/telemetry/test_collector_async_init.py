@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Async-init contract for ``TelemetryCollector``.
 
 Pins the resource-hygiene rule that the collector's ``__init__``

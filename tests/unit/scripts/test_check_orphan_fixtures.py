@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for scripts/check_orphan_fixtures.py.
 
 Exercises the orphan-fixture detector across every declaration pattern

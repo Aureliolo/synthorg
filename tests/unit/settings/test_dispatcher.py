@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 from collections.abc import AsyncGenerator, Sequence
 from datetime import UTC, datetime
-from typing import cast
+from typing import cast, override
 
 import pytest
 
@@ -127,6 +127,7 @@ class _FakeSubscriber:
 class _ErrorSubscriber(_FakeSubscriber):
     """Subscriber that raises on every call."""
 
+    @override
     async def on_settings_changed(self, namespace: str, key: str) -> None:
         msg = f"boom from {self._name}"
         raise RuntimeError(msg)
@@ -556,12 +557,13 @@ class TestDoneCallback:
         sub = _FakeSubscriber("sub", frozenset())
 
         class _ErrorBus(_FakeBus):
+            @override
             async def receive(
                 self,
                 channel_name: str,
                 subscriber_id: str,
                 *,
-                timeout: float | None = None,  # noqa: ASYNC109
+                timeout: float | None = None,
             ) -> DeliveryEnvelope | None:
                 msg = "unexpected bus error"
                 raise ValueError(msg)
@@ -594,6 +596,7 @@ class TestEnsureChannel:
         sub = _FakeSubscriber("sub", frozenset())
 
         class _ExistingChannelBus(_FakeBus):
+            @override
             async def create_channel(self, channel: Channel) -> Channel:
                 raise ChannelAlreadyExistsError(channel.name)
 
@@ -624,12 +627,13 @@ class TestConsecutiveErrors:
         call_count = 0
 
         class _TransientBus(_FakeBus):
+            @override
             async def receive(
                 self,
                 channel_name: str,
                 subscriber_id: str,
                 *,
-                timeout: float | None = None,  # noqa: ASYNC109
+                timeout: float | None = None,
             ) -> DeliveryEnvelope | None:
                 nonlocal call_count
                 call_count += 1
@@ -669,12 +673,13 @@ class TestConsecutiveErrors:
         monkeypatch.setattr(_mod, "_ERROR_BACKOFF", 0.01)
 
         class _PermanentErrorBus(_FakeBus):
+            @override
             async def receive(
                 self,
                 channel_name: str,
                 subscriber_id: str,
                 *,
-                timeout: float | None = None,  # noqa: ASYNC109
+                timeout: float | None = None,
             ) -> DeliveryEnvelope | None:
                 msg = "permanent"
                 raise OSError(msg)
@@ -818,12 +823,13 @@ class TestKillSwitch:
         receive_calls = 0
 
         class _CountingBus(_FakeBus):
+            @override
             async def receive(
                 self,
                 channel_name: str,
                 subscriber_id: str,
                 *,
-                timeout: float | None = None,  # noqa: ASYNC109
+                timeout: float | None = None,
             ) -> DeliveryEnvelope | None:
                 nonlocal receive_calls
                 receive_calls += 1

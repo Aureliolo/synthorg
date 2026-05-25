@@ -1,8 +1,11 @@
 """Tests for the ``mock_of[T]`` typed-boundary substitution helper."""
 
-from typing import Any, Protocol, cast
+from typing import Protocol, cast
 from unittest.mock import AsyncMock, Mock
 
+# ``cast(Mock, ...)`` below: ``mock_of[T]()`` returns ``Any`` so callers
+# can configure mock APIs without per-call casts, but tests that need
+# ``Mock.assert_*`` semantics narrow to ``Mock`` explicitly.
 import pytest
 
 from tests._shared import mock_of
@@ -27,7 +30,7 @@ class _Renderer(Protocol):
 
 
 def test_mock_of_returns_typed_autospec() -> None:
-    m = cast(Any, mock_of[_ConcreteService]())
+    m = mock_of[_ConcreteService]()
 
     m.method(1)
     m.method.assert_called_once_with(1)
@@ -48,13 +51,13 @@ def test_mock_of_unknown_override_key_raises() -> None:
 
 
 def test_mock_of_with_protocol() -> None:
-    m = cast(Any, mock_of[_Renderer]())
+    m = mock_of[_Renderer]()
     m.render.return_value = "rendered"
     assert m.render(7) == "rendered"
 
 
 async def test_mock_of_async_method_is_async() -> None:
-    m = cast(Any, mock_of[_ConcreteService]())
+    m = mock_of[_ConcreteService]()
     await m.async_method(3)
     m.async_method.assert_awaited_once_with(3)
 

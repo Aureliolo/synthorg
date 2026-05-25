@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for scripts/generate_comparison.py."""
 
 import datetime as dt

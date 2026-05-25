@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for the cassette document model and session.
 
 Covers outcome validation, atomic persistence, malformed-file
@@ -320,7 +321,7 @@ class TestConcurrentFanoutDeterminism:
 
         async with asyncio.TaskGroup() as tg:
             for idx in range(n):
-                tg.create_task(worker(idx))
+                _ = tg.create_task(worker(idx))
         return [item for _, outs in sorted(results.items()) for item in outs]
 
     async def test_record_then_replay_byte_identical(self, tmp_path: Path) -> None:

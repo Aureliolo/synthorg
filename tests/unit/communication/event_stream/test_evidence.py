@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for EvidencePackage and RecommendedAction models."""
 
 from datetime import UTC, datetime

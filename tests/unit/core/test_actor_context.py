@@ -89,8 +89,8 @@ class TestAsyncPropagation:
 
         with actor_scope(_human("ctx-owner")):
             async with asyncio.TaskGroup() as tg:
-                tg.create_task(observe())
-                tg.create_task(observe())
+                _ = tg.create_task(observe())
+                _ = tg.create_task(observe())
 
         assert seen == ["ctx-owner", "ctx-owner"]
 

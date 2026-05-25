@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Regression coverage: NATS receive defers JetStream ack until delivery.
 
 The previous implementation called ``msg.ack()`` from inside

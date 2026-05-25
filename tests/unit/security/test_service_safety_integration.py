@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for safety classifier and uncertainty checker integration in SecOpsService."""
 
 from datetime import UTC, datetime

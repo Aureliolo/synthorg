@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Regression tests for the telemetry-backend reporter.
 
 The collector's ``_send`` helper only flips the "delivered" return

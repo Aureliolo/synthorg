@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for uses_packs template composition."""
 
 from collections.abc import Callable

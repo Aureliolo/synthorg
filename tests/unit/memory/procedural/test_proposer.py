@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for the procedural memory proposer (LLM-based analysis)."""
 
 import json

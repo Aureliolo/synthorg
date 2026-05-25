@@ -318,7 +318,7 @@ and closed for the project to reach 100% strict enforcement.
 | Mypy `disallow_any_explicit` (4136 sites; 22 packages overridden) | EPIC #2056: "Mypy strict++ ratchet" with per-package sub-issues | Very large (months) |
 | Mypy `possibly-undefined` (4 sites) | Issue #2059: "Mypy possibly-undefined cleanup" | Trivial |
 | Mypy `deprecated` (3 sites) | Issue #2060: "Mypy deprecated-API cleanup" | Trivial |
-| Mypy strict++ overrides on `tests.*` | Issue #2061: "Lift mypy strict++ overrides for tests/" | Medium |
+| Mypy strict++ overrides on `tests.*` | Issue #2061 partially landed; remaining work tracked under sub-issues #2116, #2117, #2118, #2119, #2120, #2121 (see Section F.1 below for the full breakdown by lifted error code) | Small to Very Large per sub-issue (see F.1) |
 | Ruff `ERA001` (49 sites) | Issue #2063: "Remove commented-out code (ERA001)" | Small |
 | Ruff `DOC201/202/501` on `src/synthorg/**` | Issue #2065: "Docstring Returns/Raises backfill + interrogate threshold flip" | Large |
 | Interrogate `fail_under` 90 -> 95 | Same as DOC backfill | Medium |
@@ -330,6 +330,32 @@ and closed for the project to reach 100% strict enforcement.
 | `knip --no-exit-code` (report-only, never blocks) | Issue #2071: "Knip blocking: eliminate unused exports surfaced by knip" | Medium |
 | `dpdm --skip-imports` for `stores/auth.ts -> api/client.ts` cycle | Issue #2072: "Fix auth -> client circular dependency" | Small |
 | `_module_size_baseline.json` residue: 109 files not covered by PR 3 / PR 4 / #2051 / #2052 (oversized files in `persistence/`, `engine/`, `api/`, `meta/`, etc. that no existing PR addresses) | Issue #2077: "EPIC: Drain residual module-size baseline" | Very large (per-package decomposition program) |
+
+### F.1. Issue #2061 partial landing
+
+The first #2061 PR narrowed the original `tests.*` mypy override block
+and tightened ~150 test files to the full strict++ bar individually
+(foundation helpers, fakes hubs, settings, observability, core,
+config, persistence, scripts, monitoring, telemetry, providers,
+security, budget, memory, knowledge, communication, hr, integrations,
+notifications, templates, workers, a2a, backup, client, plus most of
+the meta and tools tiers). The residual `tests.*` override now lifts
+only the error codes that map to specific remaining cleanup work;
+each needs its own follow-up issue to fully ratchet the override off.
+
+The table below is ordered by unblock readiness: file the top entries
+first (no upstream dependency, smallest diff), defer the bottom
+entries until their upstream blocker clears.
+
+| # | Lifted code in `tests.*` | Remaining work | Follow-up issue | Size | Blocked on |
+|---|--------------------------|----------------|-----------------|------|------------|
+| 1 | `unused-awaitable` | ~23 sites: bare `tg.create_task(...)` inside `asyncio.TaskGroup` blocks, plus a few `registry.spawn(...)` / `dispatcher.spawn(...)` returns that need an explicit `_ = ...`. | [#2116](https://github.com/Aureliolo/synthorg/issues/2116) | Small (pure mechanical) | nothing |
+| 2 | `method-assign` | ~17 sites in `tests/unit/api/services/test_org_mutations_atomic.py` and `test_org_mutations_toctou.py`: direct in-place rebinding of repository methods during a test. | [#2117](https://github.com/Aureliolo/synthorg/issues/2117) | Small (test-pattern redesign in two files) | nothing |
+| 3 | `explicit-override` | ~87 sites across ~48 test files: subclass methods on `BaseCompletionProvider`, `BaseTool`, `RequestDrainMiddleware`, `logging.Formatter`, `logging.Handler`, `asyncio.Lock`, plus internal `_Fake*` hierarchies. | [#2118](https://github.com/Aureliolo/synthorg/issues/2118) | Medium (pure mechanical: 87 decorator additions) | nothing |
+| 4 | `arg-type` + `redundant-cast` + `assignment` + `comparison-overlap` + `attr-defined` (bundled, same root cause) | ~75 sites total. ~65 cascade from `FakePersistenceBackend` being accepted where `PersistenceBackend` is expected (the fake omits `idempotency_keys` (exists as `idempotency` on the fake), and is missing `seen_claims`, `principle_overrides`, and a few repositories); the other 10 are cleanup of `cast(X, ...)` calls that the fake-hubs tightening rendered redundant. | [#2119](https://github.com/Aureliolo/synthorg/issues/2119) | Medium (adds 5+ repo properties + rename to align, then 65 call sites become clean; the 10 cast cleanups land in the same PR) | nothing |
+| 5 | `deprecated` | 1 site: `tests/unit/conftest.py` calls `asyncio.set_event_loop_policy` (Python 3.14 deprecated, removed in 3.16). | [#2120](https://github.com/Aureliolo/synthorg/issues/2120) | Small (single-call migration) | pytest-asyncio upstream: needs a `loop_factory` hook on the `event_loop_policy` fixture |
+| 6 | `disallow_any_explicit` | ~1,800 `Any` sites in tests/unit/{api,engine,api/controllers,...}, tests/integration/, tests/conformance/, tests/e2e/, tests/benchmarks/, tests/evals/. | [#2121](https://github.com/Aureliolo/synthorg/issues/2121) | Very large (months; per-subdir batches) | EPIC #2056: test fixtures cannot re-tighten until the underlying `synthorg.*` types they consume tighten |
+| 7 | `unused-ignore` | Holding pen (no standalone issue). Pre-existing per-line `# type: ignore[code]` comments targeting any code lifted above become redundant the moment that code is enforced. Removing them is bundled into each ratchet-off PR so the comment cleanup ships with the underlying check enforcement, not as standalone churn. | (bundle into entries 1-6 above) | Trivial per ratchet | Entries 1-6 above |
 
 ### G. Permanent design decisions (NOT exemptions to lift)
 

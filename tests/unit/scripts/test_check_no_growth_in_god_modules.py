@@ -30,7 +30,7 @@ def _load_gate() -> ModuleType:
     return module
 
 
-_GATE: Any = cast("Any", _load_gate())
+_GATE: Any = cast("Any", _load_gate())  # type: ignore[explicit-any]
 
 
 # ── Allowlist is the canonical set ──────────────────────────────

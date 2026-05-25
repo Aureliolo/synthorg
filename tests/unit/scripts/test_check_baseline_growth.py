@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_baseline_growth.py``.
 
 Loads the script as a module so its private helpers are callable

@@ -30,7 +30,6 @@ import importlib
 from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -118,7 +117,7 @@ def _email_factory(timeout: float) -> object:
     ],
 )
 def test_notification_adapter_rejects_invalid_timeout(
-    factory: Callable[[float], Any],
+    factory: Callable[[float], object],
     match: str,
     bad_value: float,
 ) -> None:

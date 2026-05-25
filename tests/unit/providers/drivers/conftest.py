@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Shared fixtures and mock factories for driver tests."""
 
 from typing import TYPE_CHECKING, Any

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Invariant: Grafana panel descriptions stay in lockstep with VALID_*.
 
 The Grafana dashboard at ``monitoring/grafana/synthorg-overview.json``

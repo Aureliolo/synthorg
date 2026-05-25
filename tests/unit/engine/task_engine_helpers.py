@@ -2,7 +2,7 @@
 
 import copy
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from synthorg.core.task import Task
 from synthorg.engine.task_engine_models import CreateTaskData
@@ -145,6 +145,7 @@ class FakeMessageBus:
 class FailingMessageBus(FakeMessageBus):
     """Message bus that always fails on publish."""
 
+    @override
     async def publish(
         self,
         message: object,

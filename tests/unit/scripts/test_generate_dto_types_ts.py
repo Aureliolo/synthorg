@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for ``scripts/generate_dto_types_ts.py``.
 
 The generator's two render functions (``render_dtos`` and

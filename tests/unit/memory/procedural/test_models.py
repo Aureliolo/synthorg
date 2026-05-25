@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for procedural memory domain models."""
 
 from typing import Any

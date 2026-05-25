@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Property-based tests for CallAnalyticsService aggregation."""
 
 from datetime import UTC, datetime

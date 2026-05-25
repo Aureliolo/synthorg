@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Lifecycle tests for ``ContinuousMode``.
 
 ContinuousMode is an in-place runner (``start()`` executes the loop

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override"
 """Tests for OffboardingService."""
 
 from collections.abc import Sequence

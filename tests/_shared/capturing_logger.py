@@ -34,7 +34,7 @@ helpers emit; extending the captured set is a one-line change if a
 future test needs to assert on ``info``-level records too.
 """
 
-from typing import Any
+from pydantic import JsonValue
 
 
 class CapturingErrorLogger:
@@ -50,14 +50,14 @@ class CapturingErrorLogger:
     """
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.calls: list[tuple[str, dict[str, JsonValue]]] = []
         """Recorded ``(event, kwargs)`` pairs in submission order."""
 
-    def error(self, event: str, **kwargs: Any) -> None:
+    def error(self, event: str, **kwargs: JsonValue) -> None:
         """Record an ERROR-severity record under *event*."""
         self.calls.append((event, dict(kwargs)))
 
-    def warning(self, event: str, **kwargs: Any) -> None:
+    def warning(self, event: str, **kwargs: JsonValue) -> None:
         """Record a WARNING-severity record under *event*.
 
         Some redaction-helper call sites use ``logger.warning`` (e.g.
@@ -67,7 +67,7 @@ class CapturingErrorLogger:
         """
         self.calls.append((event, dict(kwargs)))
 
-    def info(self, event: str, **kwargs: Any) -> None:
+    def info(self, event: str, **kwargs: JsonValue) -> None:
         # The enforcer's success-path INFO logs flow through the same
         # logger object; discard so they do not interleave with the
         # ERROR / WARNING records the test cares about. AttributeError
@@ -75,7 +75,7 @@ class CapturingErrorLogger:
         # accepting and discarding is the supported shape.
         del event, kwargs
 
-    def debug(self, event: str, **kwargs: Any) -> None:
+    def debug(self, event: str, **kwargs: JsonValue) -> None:
         # Same rationale as ``info``: production debug logs must not
         # crash the test when the capturing fake stands in for the
         # real BoundLogger.

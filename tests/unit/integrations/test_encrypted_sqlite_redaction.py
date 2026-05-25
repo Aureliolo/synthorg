@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Leak-sentinel tests for ``EncryptedSqliteSecretBackend``.
 
 All error paths on the secret backend must log only scrubbed, safe

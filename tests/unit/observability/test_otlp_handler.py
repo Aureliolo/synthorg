@@ -3,10 +3,11 @@
 import json
 import logging
 import queue
-from typing import Any
+from typing import override
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import JsonValue
 
 from synthorg.observability.config import SinkConfig
 from synthorg.observability.enums import OtlpProtocol, SinkType
@@ -41,8 +42,9 @@ def _make_record(
 class _JsonFormatter(logging.Formatter):
     """Minimal JSON formatter for test handlers."""
 
+    @override
     def format(self, record: logging.LogRecord) -> str:
-        data: dict[str, Any] = {"event": record.getMessage()}
+        data: dict[str, JsonValue] = {"event": record.getMessage()}
         for key in ("request_id", "task_id", "agent_id"):
             if hasattr(record, key):
                 data[key] = getattr(record, key)

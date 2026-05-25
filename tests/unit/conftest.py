@@ -1,3 +1,4 @@
+# mypy: disable-error-code="deprecated"
 """Unit test configuration and fixtures."""
 
 import asyncio

@@ -60,7 +60,10 @@ import sys
 import time
 from collections.abc import AsyncGenerator, Iterable, Iterator
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final, override
+
+if TYPE_CHECKING:
+    from unittest.mock import AsyncMock
 
 # Boot-time guard parity (see synthorg.api.app create_app): every backend
 # boot -- dev, pre-release, prod -- refuses to start with an ephemeral
@@ -319,15 +322,19 @@ class _WriteOnlyDatabase(ExampleDatabase):
         super().__init__()
         self._db = db
 
+    @override
     def save(self, key: bytes, value: bytes) -> None:
         self._db.save(key, value)
 
+    @override
     def fetch(self, key: bytes) -> Iterable[bytes]:
         return iter(())
 
+    @override
     def delete(self, key: bytes, value: bytes) -> None:
         pass  # No-op: shared DB is a failure log, never delete entries
 
+    @override
     def move(
         self,
         src: bytes,
@@ -1056,7 +1063,7 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 @pytest.fixture
-def mock_dispatcher() -> Any:
+def mock_dispatcher() -> AsyncMock:
     """``AsyncMock`` conforming to the full ``NotificationDispatcher`` contract.
 
     Spec covers ``register`` / ``start`` / ``aclose`` / ``dispatch`` so a

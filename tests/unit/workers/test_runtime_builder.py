@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for the provider-present runtime-services switch."""
 
 from collections.abc import Mapping, Sequence

@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for the Simple composite (HighestRelevanceSelector + ConcatenationOp).
 
 Post ADR-0005 axis split: ``SimpleConsolidationStrategy`` is gone;

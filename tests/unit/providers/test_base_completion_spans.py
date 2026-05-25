@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override"
 """Regression: ``BaseCompletionProvider.complete`` opens a child span.
 
 The span carries ``provider.{name,model,message_count,tool_count}``

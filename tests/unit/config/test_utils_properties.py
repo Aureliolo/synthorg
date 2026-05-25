@@ -1,11 +1,11 @@
 """Property-based tests for config utility functions (deep_merge, to_float)."""
 
 import copy
-from typing import Any
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from pydantic import JsonValue
 
 from synthorg.config.utils import deep_merge, to_float
 
@@ -52,19 +52,23 @@ _str_key_dicts = st.dictionaries(
 
 class TestDeepMergeProperties:
     @given(a=_str_key_dicts)
-    def test_identity_merge_with_empty(self, a: dict[str, Any]) -> None:
+    def test_identity_merge_with_empty(self, a: dict[str, JsonValue]) -> None:
         result = deep_merge(a, {})
         assert result == a
         # Result must be a distinct object (deep copy)
         assert result is not a
 
     @given(a=_str_key_dicts, b=_str_key_dicts)
-    def test_result_keys_are_union(self, a: dict[str, Any], b: dict[str, Any]) -> None:
+    def test_result_keys_are_union(
+        self, a: dict[str, JsonValue], b: dict[str, JsonValue]
+    ) -> None:
         result = deep_merge(a, b)
         assert set(result.keys()) == set(a.keys()) | set(b.keys())
 
     @given(a=_str_key_dicts, b=_str_key_dicts)
-    def test_inputs_are_not_mutated(self, a: dict[str, Any], b: dict[str, Any]) -> None:
+    def test_inputs_are_not_mutated(
+        self, a: dict[str, JsonValue], b: dict[str, JsonValue]
+    ) -> None:
         a_before = copy.deepcopy(a)
         b_before = copy.deepcopy(b)
         deep_merge(a, b)
@@ -82,19 +86,26 @@ class TestDeepMergeProperties:
         override_z=st.integers(),
     )
     def test_recursive_nested_merge(
-        self, base: dict[str, Any], override_z: int
+        self, base: dict[str, JsonValue], override_z: int
     ) -> None:
         override = {"nested": {"z": override_z}}
         result = deep_merge(base, override)
+        # ``result["nested"]`` is JsonValue but the strategy guarantees it
+        # is a dict-typed branch; narrow once and re-use for the three
+        # subscript assertions below.
+        result_nested = result["nested"]
+        base_nested = base["nested"]
+        assert isinstance(result_nested, dict)
+        assert isinstance(base_nested, dict)
         # Original nested keys preserved
-        assert result["nested"]["x"] == base["nested"]["x"]
-        assert result["nested"]["y"] == base["nested"]["y"]
+        assert result_nested["x"] == base_nested["x"]
+        assert result_nested["y"] == base_nested["y"]
         # New key added
-        assert result["nested"]["z"] == override_z
+        assert result_nested["z"] == override_z
 
     @given(a=_str_key_dicts, b=_str_key_dicts)
     def test_override_values_win_for_non_dict(
-        self, a: dict[str, Any], b: dict[str, Any]
+        self, a: dict[str, JsonValue], b: dict[str, JsonValue]
     ) -> None:
         result = deep_merge(a, b)
         for key, value in b.items():

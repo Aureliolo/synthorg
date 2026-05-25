@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """Concurrency regression tests for PerformanceTracker.
 
 The tracker's ``_metrics_lock`` historically only protected

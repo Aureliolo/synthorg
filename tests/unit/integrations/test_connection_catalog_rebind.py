@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for ConnectionCatalog.rebind_repository.
 
 The catalog is built with an in-memory stub before persistence is

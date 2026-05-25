@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Regression coverage for `_MIRROR_FIELDS` and bridge-default alignment.
 
 Two parametrised gates live in this module:

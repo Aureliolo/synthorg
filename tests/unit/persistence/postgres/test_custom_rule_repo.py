@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Hermetic unit tests for PostgresCustomRuleRepository.
 
 Mocks psycopg_pool.AsyncConnectionPool so no real Postgres (or

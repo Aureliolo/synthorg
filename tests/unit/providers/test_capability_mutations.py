@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Unit tests for the new ``ProviderManagementService`` mutations.
 
 Covers rate-limits update, credentials rotation, manual model add,

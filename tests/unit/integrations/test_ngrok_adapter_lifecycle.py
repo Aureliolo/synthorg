@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Lifecycle tests for ``NgrokAdapter``.
 
 Verifies the adapter holds its lifecycle lock across both ``start``

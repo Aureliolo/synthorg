@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for scripts/inject_runtime_stats.py.
 
 The injector reads ``data/runtime_stats.yaml`` and rewrites the inner

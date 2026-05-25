@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Tests for A2A protocol models."""
 
 from typing import Any, cast

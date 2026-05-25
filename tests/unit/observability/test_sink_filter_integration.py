@@ -12,16 +12,19 @@ caught here even though the unit tests would still pass.
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from structlog.typing import Processor
 
 from synthorg.observability.config import RotationConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.sinks import build_handler
 
 
-def _foreign_pre_chain() -> list[Any]:
+def _foreign_pre_chain() -> list[Processor]:
     """Minimal processor chain so the JSON renderer has level + event."""
     import structlog
 

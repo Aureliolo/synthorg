@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any"
 """Shared fixtures for provider management tests."""
 
 from collections.abc import AsyncIterator

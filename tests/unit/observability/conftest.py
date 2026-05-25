@@ -1,7 +1,7 @@
 """Test fixtures and factories for observability tests."""
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, MutableMapping
 import structlog
 from polyfactory.factories.pydantic_factory import ModelFactory
+from pydantic import JsonValue
 
 from synthorg.observability.config import LogConfig, RotationConfig, SinkConfig
 from synthorg.observability.enums import (
@@ -100,7 +101,7 @@ def handler_cleanup() -> Iterator[list[logging.Handler]]:
 
 
 @pytest.fixture
-def captured_logs() -> Iterator[list[MutableMapping[str, Any]]]:
+def captured_logs() -> Iterator[list[MutableMapping[str, JsonValue]]]:
     """Capture structlog output as list of dicts for field-level assertions.
 
     Usage::

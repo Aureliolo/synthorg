@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,explicit-override"
 """Tests for AgentRegistryService.update_autonomy().
 
 Mirrors the REST endpoint semantics: every change routes through human

@@ -2,7 +2,6 @@
 
 import json
 from datetime import UTC, datetime, timedelta, timezone
-from typing import Any
 
 import pytest
 import structlog
@@ -63,7 +62,7 @@ class TestAuditEntryToPayload:
 
     def test_uses_passed_serializers(self) -> None:
         entry = _make_entry()
-        captured: dict[str, Any] = {}
+        captured: dict[str, object] = {}
 
         def spy_json(value: list[str]) -> str:
             captured["json"] = value

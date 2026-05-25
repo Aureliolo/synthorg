@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """Concurrency regression tests for PruningService.
 
 ``_process_decided_approvals`` previously had a check-then-act race on
