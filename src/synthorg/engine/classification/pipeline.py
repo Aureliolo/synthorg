@@ -1,3 +1,4 @@
+# module-kind: service
 """Error classification pipeline.
 
 Orchestrates the detection of coordination errors from an execution

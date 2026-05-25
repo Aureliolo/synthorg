@@ -1,3 +1,4 @@
+# module-kind: service
 """Approval gate -- coordinates approval-required parking and resumption.
 
 Bridges the gap between SecOps ESCALATE verdicts (or

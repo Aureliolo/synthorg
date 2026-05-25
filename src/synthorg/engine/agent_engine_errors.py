@@ -1,3 +1,4 @@
+# module-kind: service
 """Error handling mixin for :class:`AgentEngine`.
 
 Extracts completion logging, provider degradation, and fatal-error

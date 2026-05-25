@@ -1,3 +1,4 @@
+# module-kind: adapter
 """Core models for the strategy module.
 
 Config models (frozen Pydantic) for strategy configuration and domain

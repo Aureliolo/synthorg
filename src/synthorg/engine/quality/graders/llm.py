@@ -1,3 +1,4 @@
+# module-kind: adapter
 """LLM-based rubric grader.
 
 Grades a ``HandoffArtifact`` against a ``VerificationRubric`` by
