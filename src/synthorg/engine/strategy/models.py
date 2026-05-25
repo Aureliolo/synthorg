@@ -290,7 +290,15 @@ class ProgressiveWeights(BaseModel):
 
     @model_validator(mode="after")
     def _validate_weights_sum(self) -> Self:
-        """Ensure all weights sum to 1.0 within tolerance."""
+        """Ensure all weights sum to 1.0 within tolerance.
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If the seven weight fields do not sum to
+                1.0 within ``_WEIGHT_SUM_TOLERANCE``.
+        """
         total = (
             self.budget_impact
             + self.authority_level
@@ -312,7 +320,11 @@ class ProgressiveWeights(BaseModel):
         return self
 
     def as_dict(self) -> dict[ImpactDimension, float]:
-        """Return weights as a dimension-keyed dict."""
+        """Return weights as a dimension-keyed dict.
+
+        Returns:
+            A dict mapping each :class:`ImpactDimension` to its weight.
+        """
         return {
             ImpactDimension.BUDGET_IMPACT: self.budget_impact,
             ImpactDimension.AUTHORITY_LEVEL: self.authority_level,
@@ -354,7 +366,14 @@ class ProgressiveThresholds(BaseModel):
 
     @model_validator(mode="after")
     def _validate_ordering(self) -> Self:
-        """Ensure moderate < generous."""
+        """Ensure moderate < generous.
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If ``moderate >= generous``.
+        """
         if self.moderate >= self.generous:
             msg = (
                 f"moderate threshold ({self.moderate}) must be "
@@ -410,7 +429,12 @@ class ConstitutionalPrincipleConfig(BaseModel):
 
     @model_validator(mode="after")
     def _deepcopy_custom(self) -> Self:
-        """Defensive copy so callers cannot mutate frozen model."""
+        """Defensive copy so callers cannot mutate frozen model.
+
+        Returns:
+            ``self`` with its ``custom`` tuple replaced by a
+            ``deepcopy`` so external aliases do not survive.
+        """
         if self.custom:
             object.__setattr__(
                 self,
@@ -488,7 +512,15 @@ class StrategyConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_lenses(self) -> Self:
-        """Ensure at least one lens is configured and all names are valid."""
+        """Ensure at least one lens is configured and all names are valid.
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If ``default_lenses`` is empty or any lens name
+                does not match a registered :class:`StrategicLens`.
+        """
         if not self.default_lenses:
             msg = "default_lenses must contain at least one lens"
             logger.warning(
@@ -583,7 +615,14 @@ class PrinciplePack(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_ids(self) -> Self:
-        """Ensure principle IDs are unique within the pack."""
+        """Ensure principle IDs are unique within the pack.
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If any principle id appears more than once.
+        """
         ids = [p.id for p in self.principles]
         if len(ids) != len(set(ids)):
             seen: set[str] = set()
@@ -647,7 +686,14 @@ class ImpactScore(BaseModel):
 
     @model_validator(mode="after")
     def _validate_dimension_values(self) -> Self:
-        """Ensure all dimension scores are in [0.0, 1.0]."""
+        """Ensure all dimension scores are in [0.0, 1.0].
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If any dimension score is outside ``[0.0, 1.0]``.
+        """
         for dim, score in self.dimensions.items():
             if not (0.0 <= score <= 1.0):
                 msg = f"Dimension {dim!r} score {score} must be in [0.0, 1.0]"
@@ -656,7 +702,13 @@ class ImpactScore(BaseModel):
 
     @model_validator(mode="after")
     def _make_dimensions_readonly(self) -> Self:
-        """Wrap dimensions in MappingProxyType for read-only enforcement."""
+        """Wrap dimensions in MappingProxyType for read-only enforcement.
+
+        Returns:
+            ``self`` with its ``dimensions`` field replaced by a
+            ``MappingProxyType`` over a deepcopy so callers cannot
+            mutate the shared dict.
+        """
         object.__setattr__(
             self,
             "dimensions",
@@ -704,7 +756,15 @@ class ConfidenceMetadata(BaseModel):
 
     @model_validator(mode="after")
     def _validate_range_ordering(self) -> Self:
-        """Ensure range_lower <= level <= range_upper."""
+        """Ensure range_lower <= level <= range_upper.
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If ``range_lower > level`` or
+                ``level > range_upper``.
+        """
         if self.range_lower > self.level:
             msg = (
                 f"range_lower ({self.range_lower}) must not exceed level ({self.level})"
