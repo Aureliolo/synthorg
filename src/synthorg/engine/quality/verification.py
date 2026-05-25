@@ -88,14 +88,28 @@ class CalibrationExample(BaseModel):
     @field_validator("expected_grades", mode="before")
     @classmethod
     def _deepcopy_expected_grades(cls, v: object) -> object:
-        """Deep-copy to prevent external mutation."""
+        """Deep-copy to prevent external mutation.
+
+        Returns:
+            A deep copy of ``v`` when it is a mapping; otherwise ``v``
+            unchanged for downstream validation to reject.
+        """
         if isinstance(v, Mapping):
             return copy.deepcopy(v)
         return v
 
     @model_validator(mode="after")
     def _validate_expected_grades(self) -> Self:
-        """Validate expected grade values are finite and in [0, 1]."""
+        """Validate expected grade values are finite and in [0, 1].
+
+        Returns:
+            ``self`` unchanged when every expected grade is finite
+            and within [0, 1].
+
+        Raises:
+            ValueError: When any expected grade is non-finite or
+                outside the [0, 1] range.
+        """
         if self.expected_grades is None:
             return self
         for name, grade in self.expected_grades.items():
@@ -144,7 +158,15 @@ class VerificationRubric(BaseModel):
 
     @model_validator(mode="after")
     def _validate_grading_style(self) -> Self:
-        """Reject non-absolute grading styles until implemented."""
+        """Reject non-absolute grading styles until implemented.
+
+        Returns:
+            ``self`` unchanged when ``grading_style`` is ``"absolute"``.
+
+        Raises:
+            ValueError: When ``grading_style`` is any value other than
+                ``"absolute"``.
+        """
         if self.grading_style != "absolute":
             msg = (
                 f"Grading style {self.grading_style!r} is not yet "
@@ -155,7 +177,16 @@ class VerificationRubric(BaseModel):
 
     @model_validator(mode="after")
     def _validate_criteria(self) -> Self:
-        """Require non-empty criteria whose weights sum to 1.0."""
+        """Require non-empty criteria whose weights sum to 1.0.
+
+        Returns:
+            ``self`` unchanged when the criteria collection is valid.
+
+        Raises:
+            ValueError: When the criteria tuple is empty, weights do
+                not sum to 1.0, criterion names duplicate, or a
+                calibration example references an unknown criterion.
+        """
         if not self.criteria:
             msg = "Rubric must have at least one criterion"
             raise ValueError(msg)
@@ -234,7 +265,12 @@ class VerificationResult(BaseModel):
     @field_validator("per_criterion_grades", mode="before")
     @classmethod
     def _deepcopy_grades(cls, v: object) -> object:
-        """Deep-copy to prevent external mutation."""
+        """Deep-copy to prevent external mutation.
+
+        Returns:
+            A deep copy of ``v`` when it is a mapping; otherwise ``v``
+            unchanged for downstream validation.
+        """
         if isinstance(v, Mapping):
             return copy.deepcopy(v)
         return v
@@ -260,7 +296,16 @@ class VerificationResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_grades_and_agents(self) -> Self:
-        """Validate grade values and reject self-evaluation."""
+        """Validate grade values and reject self-evaluation.
+
+        Returns:
+            ``self`` unchanged when grades are finite, in [0, 1],
+            and evaluator and generator differ.
+
+        Raises:
+            ValueError: When any grade is non-finite or out of range,
+                or when ``evaluator_agent_id == generator_agent_id``.
+        """
         for name, grade in self.per_criterion_grades.items():
             if math.isnan(grade) or math.isinf(grade):
                 msg = f"Grade for {name!r} must be finite"
