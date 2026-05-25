@@ -78,7 +78,7 @@ function MeetingCardImpl({ meeting, className }: MeetingCardProps) {
         <div className="h-1 w-full overflow-hidden rounded-full bg-border">
           <div
             className={cn(
-              'h-full rounded-full transition-all duration-[900ms]',
+              'h-full rounded-full transition-all duration-[var(--so-transition-progress)]',
               tokenPercent > 90 ? 'bg-danger' : tokenPercent > 70 ? 'bg-warning' : 'bg-accent',
             )}
             style={{

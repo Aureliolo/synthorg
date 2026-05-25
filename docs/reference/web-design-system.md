@@ -136,14 +136,25 @@ Every shared building block in `web/src/components/ui/`. Reuse before creating n
 
 ## Creating New Components
 
-When a new shared component is needed (not covered by the inventory above):
+When a new shared component is needed (not covered by the inventory above), choose one of two layouts:
 
-1. Place it in `web/src/components/ui/` with a descriptive kebab-case filename.
-2. Create a `.stories.tsx` file alongside it with all states (default, hover, loading, error, empty).
-3. Export props as a TypeScript interface.
-4. Use design tokens exclusively; no hardcoded colours, fonts, or spacing.
-5. Import `cn` from `@/lib/utils` for conditional class merging.
-6. **For primitives backed by Base UI** (Dialog, AlertDialog, Popover, Menu, Tabs, Drawer; see `web-base-ui-decisions.md` for the canonical list; `Select`, `Toast`, `Meter`, `Combobox`, `Tooltip` are intentionally **not** adopted):
+**Flat layout** (single-component primitives):
+
+1. Place a `web/src/components/ui/<kebab-name>.tsx` source file with a descriptive kebab-case filename.
+2. Create a sibling `<kebab-name>.stories.tsx` with all states (default, hover, loading, error, empty).
+
+**Sub-package layout** (a primitive plus its internal sub-components, sub-hooks, or utility files):
+
+1. Create `web/src/components/ui/<kebab-name>/` with a barrel `index.ts` re-exporting the public surface.
+2. Each `<SubName>.tsx` sits in the sub-package with a sibling `<SubName>.stories.tsx` covering all states.
+3. Shared utility / hook `.ts` files (no JSX, exempt from the story rule) sit alongside (e.g. `<name>.utils.ts`, `derive-<thing>.ts`). The canonical sub-package layout is `web/src/components/ui/health-popover/` (HealthPopover, HealthPopoverContent, HealthStatusRow, HealthStatusIcon each with sibling stories, plus `health-popover.utils.ts` and `derive-subsystem-states.ts`).
+
+For both layouts:
+
+1. Export props as a TypeScript interface named `<ComponentName>Props` from the same file.
+2. Use design tokens exclusively; no hardcoded colours, fonts, or spacing.
+3. Import `cn` from `@/lib/utils` for conditional class merging.
+4. **For primitives backed by Base UI** (Dialog, AlertDialog, Popover, Menu, Tabs, Drawer; see `web-base-ui-decisions.md` for the canonical list; `Select`, `Toast`, `Meter`, `Combobox`, `Tooltip` are intentionally **not** adopted):
    - Import from the specific subpath: `import { Dialog } from '@base-ui/react/dialog'`
    - Use the component's `render` prop for polymorphism: `<Dialog.Trigger render={<Button>Open</Button>} />`. Never spread props manually.
    - For Dialog / AlertDialog / Popover / Drawer: compose with `Portal` + `Backdrop` + `Popup`. Popover and Menu additionally require a `Positioner` wrapper that owns `side` / `align` / `sideOffset`. Drawer additionally supports `swipeDirection` on `Root` and `SwipeArea` for swipe-to-dismiss.

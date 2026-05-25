@@ -113,6 +113,11 @@ export const LoadError: Story = {
   },
 }
 
+// 3 seconds: long enough for Chromatic to capture the loading skeleton,
+// short enough that the story does not block a manual Storybook visit
+// for a full 10 seconds before the dialog populates.
+const LOADING_STORY_DELAY_MS = 3_000
+
 export const Loading: Story = {
   args: {
     children: <Button size="sm">Fetching health...</Button>,
@@ -121,7 +126,7 @@ export const Loading: Story = {
     msw: {
       handlers: [
         http.get('/api/v1/readyz', async () => {
-          await new Promise((resolve) => { setTimeout(resolve, 10_000) })
+          await new Promise((resolve) => { setTimeout(resolve, LOADING_STORY_DELAY_MS) })
           return HttpResponse.json(successFor<typeof getHealth>(BASE_PAYLOAD))
         }),
       ],

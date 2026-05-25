@@ -2,10 +2,8 @@
  * Shared Playwright interaction helpers for E2E flow tests.
  *
  * These wrap Playwright primitives with the project's preferred
- * wait-for patterns. Notably we never use ``page.waitForTimeout`` --
+ * wait-for patterns. Notably we never use ``page.waitForTimeout``;
  * every wait sits on a selector or a network response.
- *
- * Issue #1604 / W5a.
  */
 
 import type { Locator, Page } from '@playwright/test'

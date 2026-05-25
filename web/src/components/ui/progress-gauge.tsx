@@ -87,7 +87,7 @@ function LinearGauge({
         <div
           data-testid="progress-fill"
           className={cn(
-            'h-full rounded-full transition-all duration-[900ms] ease-in-out',
+            'h-full rounded-full transition-all duration-[var(--so-transition-progress)] ease-in-out',
             FILL_COLOR_CLASSES[color],
           )}
           style={{ width: `${percentage}%` }}
@@ -173,7 +173,7 @@ function CircularGauge({
           d={geo.arcPath}
           fill="none"
           strokeWidth={config.stroke}
-          className={cn(STROKE_COLOR_CLASSES[color], 'transition-all duration-[900ms] ease-in-out')}
+          className={cn(STROKE_COLOR_CLASSES[color], 'transition-all duration-[var(--so-transition-progress)] ease-in-out')}
           style={{
             strokeDasharray: geo.circumference,
             strokeDashoffset: geo.dashOffset,

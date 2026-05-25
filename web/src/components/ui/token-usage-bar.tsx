@@ -44,7 +44,7 @@ export function TokenUsageBar({ segments, total, className }: TokenUsageBarProps
             <div
               key={segment.label}
               className={cn(
-                'h-full transition-all duration-[900ms]',
+                'h-full transition-all duration-[var(--so-transition-progress)]',
                 segment.color ?? SEGMENT_COLORS[i % SEGMENT_COLORS.length],
                 i === 0 && 'rounded-l-full',
                 i === visible.length - 1 && 'rounded-r-full',

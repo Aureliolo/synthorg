@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { Bell } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -23,13 +24,19 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
   const ariaLabel = unreadCount > 0
     ? `Notifications (${String(unreadCount)} unread)`
     : 'Notifications'
+  // Memoised so child <button> doesn't take a fresh prop identity on
+  // every parent render. Mirrors the pattern used in
+  // `AppLayout.openNotificationDrawer`.
+  const openNotificationDrawer = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('open-notification-drawer'))
+  }, [])
   return (
     <button
       type="button"
       title="Notifications (Shift+N)"
       aria-label={ariaLabel}
       className={SIDEBAR_BUTTON_CLASS}
-      onClick={() => window.dispatchEvent(new CustomEvent('open-notification-drawer'))}
+      onClick={openNotificationDrawer}
     >
       <span className="relative">
         <Bell

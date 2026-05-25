@@ -54,6 +54,13 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+// Frozen reference date used across stories so visual-regression snapshots
+// (Chromatic / Playwright) are deterministic from run to run. Using
+// ``new Date()`` would re-snapshot every day; using a stable far-future
+// date keeps the "fetchedAt" timestamp visible in stories without
+// requiring snapshot refresh after every clock tick.
+const STORY_FETCHED_AT = STORY_FETCHED_AT
+
 const OK_PAYLOAD = {
   status: 'ok' as const,
   persistence: true,
@@ -66,7 +73,7 @@ const OK_PAYLOAD = {
 
 export const Default: Story = {
   args: {
-    loadState: { state: 'ok', data: OK_PAYLOAD, fetchedAt: new Date('2026-04-28T10:00:00Z') },
+    loadState: { state: 'ok', data: OK_PAYLOAD, fetchedAt: STORY_FETCHED_AT },
     states: okStates,
     fetchedAtLabel: '10:00 (just now)',
     onRefresh: () => undefined,
@@ -79,7 +86,7 @@ export const Degraded: Story = {
     loadState: {
       state: 'ok',
       data: { ...OK_PAYLOAD, status: 'unavailable', message_bus: false },
-      fetchedAt: new Date('2026-04-28T10:00:00Z'),
+      fetchedAt: STORY_FETCHED_AT,
     },
     states: degradedStates,
   },
@@ -99,7 +106,7 @@ export const LoadError: Story = {
     loadState: {
       state: 'error',
       message: 'Service unavailable',
-      fetchedAt: new Date('2026-04-28T10:00:00Z'),
+      fetchedAt: STORY_FETCHED_AT,
     },
     states: { ...okStates, apiState: 'down', overallState: 'down' },
     fetchedAtLabel: '10:00 (just now)',

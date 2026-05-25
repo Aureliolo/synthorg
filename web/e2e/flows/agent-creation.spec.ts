@@ -17,9 +17,9 @@ import { makeAgentList } from '../factories'
  *      actually exercise on every visit).
  *   3. WS ``agent.hired`` frame processed end-to-end through the
  *      notifications dispatch chain.
- * The "creation" suffix is preserved in the file name for grep
- * continuity with #1604, but the test description and describe
- * block reflect the actual scope.
+ *
+ * The file name reflects the future full scope; current coverage is
+ * agents list + WS hire intake, hence the describe-block name.
  */
 
 test.describe('Agents list + WS hire intake', () => {

@@ -32,7 +32,7 @@ function MetricProgressBar({ label, pct }: { label: string; pct: number }) {
       className="mt-2 h-0.5 w-full overflow-hidden rounded-full bg-border"
     >
       <div
-        className="h-full rounded-full bg-accent transition-all duration-[900ms]"
+        className="h-full rounded-full bg-accent transition-all duration-[var(--so-transition-progress)]"
         style={{
           width: `${pct}%`,
           transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',

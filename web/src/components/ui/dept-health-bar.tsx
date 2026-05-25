@@ -34,7 +34,7 @@ function HealthBarMeter({ name, clamped }: { name: string; clamped: number | nul
       {clamped != null && color != null && (
         <div
           className={cn(
-            'h-full rounded-full transition-all duration-[900ms]',
+            'h-full rounded-full transition-all duration-[var(--so-transition-progress)]',
             BAR_COLOR_CLASSES[color],
           )}
           style={{

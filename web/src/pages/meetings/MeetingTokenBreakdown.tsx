@@ -42,7 +42,7 @@ function ParticipantTokenRow({ agentId, tokens, share, rankLabel }: ParticipantT
         </div>
         <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-border">
           <div
-            className="h-full rounded-full bg-accent transition-all duration-[900ms]"
+            className="h-full rounded-full bg-accent transition-all duration-[var(--so-transition-progress)]"
             style={{
               width: `${share}%`,
               transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
