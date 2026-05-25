@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Repository property accessors for the SQLite backend.
 
 This mixin holds the read-only ``@property`` accessors that
@@ -6,6 +7,13 @@ accessors all share a single pattern (``_require_connected`` against a
 private ``_<name>`` attribute populated by ``_create_repositories``),
 so collecting them here keeps ``backend.py`` focused on lifecycle and
 wiring rather than ~330 lines of mechanical property forwarding.
+
+One cohesive responsibility: provide the connection-checked accessor
+for every persistence repository on the SQLite backend. The size
+scales linearly with the repository count, and the ``_require_connected``
+contract is uniform across them all; per-domain sibling mixins would
+fragment the connection-state invariant across files without
+reducing total LOC.
 """
 
 from typing import TYPE_CHECKING

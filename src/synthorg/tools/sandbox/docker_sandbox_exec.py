@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Execution + lifecycle-dispatch mixin for ``DockerSandbox``.
 
 Owns the keep-alive container + ``docker exec`` execution model:
@@ -5,6 +6,15 @@ owner-key resolution, lifecycle-strategy dispatch, keep-alive container
 creation, exec stream draining, owner release, container teardown, and
 best-effort log shipping.  Relies on attributes/methods provided by the
 concrete :class:`DockerSandbox` and its sibling mixins.
+
+One cohesive responsibility: execute one command in a reusable
+keep-alive container under the configured lifecycle strategy. The
+phases (resolve reuse owner -> create+start container (with sidecar
+when network enforcement is active) -> exec drain with timeout +
+container-kill -> teardown -> best-effort log ship) all operate on
+the same ``ContainerHandle`` and share the project-prefixed owner-key
+shape; splitting fragments the keep-alive contract that the lifecycle
+strategies depend on.
 """
 
 import asyncio

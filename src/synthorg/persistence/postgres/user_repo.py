@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Postgres repository implementations for User and ApiKey.
 
 Postgres-native port of ``synthorg.persistence.sqlite.user_repo``.
@@ -6,6 +7,13 @@ native TIMESTAMPTZ for ``created_at`` / ``updated_at`` / ``expires_at``,
 and native JSONB for ``org_roles`` and ``scoped_departments``.  The
 protocol surface returns the same Pydantic models as the SQLite
 backend.
+
+One cohesive responsibility: the user-and-api-key persistence family
+on Postgres. Mirrors the SQLite sibling structure so the
+dual-backend conformance tests in ``tests/conformance/persistence/``
+exercise identical surfaces; the two classes share the
+constraint-classification table and the dict_row deserialisation
+helpers.
 """
 
 from typing import TYPE_CHECKING, Any

@@ -1,7 +1,20 @@
+# module-kind: complex_service
 """Provider management service -- runtime CRUD for LLM providers.
 
 Orchestrates config validation, persistence via SettingsService,
 and hot-reload of ProviderRegistry + ModelRouter in AppState.
+
+One cohesive responsibility: manage the provider catalog. CRUD,
+preset bootstrap, connection probing, model discovery, local-model
+lifecycle, and discovery-allowlist management all mutate or read the
+SAME catalog blob through the SAME asyncio lock + the SAME
+``_validate_and_persist`` (validate + persist + hot-reload) pipeline.
+Splitting introduces a coordination cost without an architectural
+win because every write path must round-trip through that pipeline.
+The capabilities mixin already extracts the six additional mutation
+entry points (rate-limits, presets, credentials, manual model add,
+bulk model sync) so the residual surface is the cohesive catalog
+core.
 """
 
 import asyncio

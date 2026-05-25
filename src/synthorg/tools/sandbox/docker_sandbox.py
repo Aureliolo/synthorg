@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Docker-based sandbox backend.
 
 Executes commands inside Docker containers with workspace mount,
@@ -5,6 +6,14 @@ resource limits, network isolation, and timeout management.  Uses
 ``aiodocker`` for asynchronous Docker daemon communication.  The
 keep-alive container + ``docker exec`` execution and lifecycle-strategy
 dispatch live in :class:`DockerSandboxExecMixin`.
+
+One cohesive responsibility: be the Docker-backed sandbox entry
+point. The execute() pipeline (project subdir resolution -> env
+policy validation -> container config -> lifecycle acquire ->
+exec -> log ship -> teardown) is one path; the exec / sidecar /
+lifecycle mixins already partition the implementation, so the
+residual class is the composing entry that holds workspace-mount
+security and the per-execution policy chokepoint.
 """
 
 import asyncio

@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """SQLite repository implementation for subworkflows.
 
 Subworkflows are first-class versioned workflow definitions living

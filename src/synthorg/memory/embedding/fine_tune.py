@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Embedding fine-tuning pipeline stage functions.
 
 Five-stage offline pipeline for domain-specific embedding fine-tuning:
@@ -11,6 +12,14 @@ Five-stage offline pipeline for domain-specific embedding fine-tuning:
 ML dependencies (torch, sentence-transformers) are optional;
 they are imported lazily inside stage functions.  Missing deps raise
 ``FineTuneDependencyError`` with install instructions.
+
+One cohesive responsibility: run the offline fine-tune pipeline. The
+five stages are intentionally co-located because they share the lazy
+ML-dependency import guards, the encoder / pairs / triples helpers,
+the progress-callback contract, and the cancellation-token check
+points; splitting per stage would duplicate every helper across five
+modules and break the cancellation continuity the orchestrator
+relies on.
 """
 
 import asyncio

@@ -1,8 +1,18 @@
+# module-kind: complex_service
 """Pruning service -- performance-driven agent removal with human approval.
 
 Periodically evaluates active agents against pruning policies, creates
-approval items for eligible candidates, and delegates to OffboardingService
-once human approval is granted.
+approval items for eligible candidates, and delegates to
+OffboardingService once human approval is granted.
+
+One cohesive responsibility: the human-gated pruning pipeline. The
+scheduler -> evaluate -> submit-approval -> poll-decision ->
+offboard sequence is one workflow whose intermediate state
+(``_pending_requests``, ``_processed_approval_ids``,
+``_logged_transition_approval_ids``, ``_in_flight_approvals``) is
+shared across phases; splitting requires extracting that state
+machine to its own owner with its own lock, which would just move
+the complexity without reducing it.
 
 Note:
     ``_pending_requests`` and ``_processed_approval_ids`` are in-memory

@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Runtime coordination metrics collection pipeline.
 
 Collects raw data from live execution results, communication bus,

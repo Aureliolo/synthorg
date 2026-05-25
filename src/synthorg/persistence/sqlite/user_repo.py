@@ -1,8 +1,16 @@
+# module-kind: complex_service
 """SQLite repository implementations for User and ApiKey.
 
 Provides ``SQLiteUserRepository`` and ``SQLiteApiKeyRepository``, which
 persist ``User`` and ``ApiKey`` domain models to SQLite via aiosqlite.
 Both use upsert semantics for ``save`` operations.
+
+One cohesive responsibility: the user-and-api-key persistence family
+on SQLite. The two classes share the constraint-classification table
+and the row-deserialisation helpers; keeping them in one file matches
+the per-family-repo convention used across ``persistence/sqlite/`` and
+preserves the SQLite-side parity with the Postgres twin
+(``persistence/postgres/user_repo.py``).
 """
 
 import contextlib

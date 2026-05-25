@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Planner-worktrees workspace isolation strategy.
 
 Uses git worktrees to provide each agent with an isolated working

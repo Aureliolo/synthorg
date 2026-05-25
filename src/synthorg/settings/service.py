@@ -1,9 +1,18 @@
+# module-kind: complex_service
 """Settings service: resolution, validation, caching, and notifications.
 
 Provides the central service layer that merges setting values from
 three sources in priority order: DB > env > code default. For settings
 flagged ``read_only_post_init=True`` the DB tier is bypassed and the
 chain collapses to env > default.
+
+One cohesive responsibility: the setting-value lifecycle. Caching
+(for non-sensitive entries), encryption (for sensitive entries),
+read-only-post-init bypass, audit-namespace tagging, and bus-based
+change notifications are all facets of "resolve / persist / notify a
+setting value" with shared invariants (the registry, the repository,
+the encryptor, the version semantics); splitting them fragments the
+single audit chain operators rely on.
 """
 
 import asyncio

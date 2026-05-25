@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Real-time cost tracking service.
 
 Provides an in-memory store with TTL-based eviction for

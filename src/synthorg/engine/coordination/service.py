@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Multi-agent coordination service.
 
 Orchestrates: decompose, route, resolve topology, dispatch, rollup,

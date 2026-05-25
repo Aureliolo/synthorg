@@ -382,7 +382,7 @@ class TestRunPreflight:
         monkeypatch.setattr(Path, "exists", lambda self: True)
         monkeypatch.setattr(Path, "is_dir", lambda self: True)
         monkeypatch.setattr(
-            "synthorg.memory.service.os.access",
+            "synthorg.memory.fine_tune_admin_service.os.access",
             lambda _p, _m: True,
         )
         service = _service(orchestrator=_FakeOrchestrator())
@@ -400,7 +400,7 @@ class TestRunPreflight:
         monkeypatch.setattr(Path, "exists", lambda self: True)
         monkeypatch.setattr(Path, "is_dir", lambda self: True)
         monkeypatch.setattr(
-            "synthorg.memory.service.os.access",
+            "synthorg.memory.fine_tune_admin_service.os.access",
             lambda _p, _m: True,
         )
         service = _service(orchestrator=_FakeOrchestrator())
@@ -430,7 +430,7 @@ class TestRunPreflight:
         monkeypatch.setattr(Path, "exists", lambda self: True)
         monkeypatch.setattr(Path, "is_dir", lambda self: True)
         monkeypatch.setattr(
-            "synthorg.memory.service.os.access",
+            "synthorg.memory.fine_tune_admin_service.os.access",
             lambda _p, _m: False,
         )
         service = _service(orchestrator=_FakeOrchestrator())

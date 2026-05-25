@@ -1,9 +1,19 @@
+# module-kind: complex_service
 """A2A JSON-RPC 2.0 gateway controller.
 
 Handles inbound A2A requests dispatched by method name:
 ``message/send``, ``tasks/get``, ``tasks/cancel``.  All inbound
 requests are validated against the peer allowlist and connection
 catalog credentials.
+
+One cohesive responsibility: be the inbound A2A wire boundary. The
+controller, the JSON-RPC envelope parser, the peer-credential
+verifier, the typed-discriminated-union dispatch, the three method
+handlers, and the per-handler error mapping all enforce the same
+prompt-safety + credential-redaction invariants on the same request
+shape; splitting handlers into a sibling module would force the
+auth / content-negotiation / error-envelope code to span modules
+and break the single-file enforcement of the credential-leak guard.
 """
 
 import asyncio

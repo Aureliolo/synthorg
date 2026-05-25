@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Postgres repositories for fine-tuning pipeline runs and checkpoints.
 
 Postgres siblings of ``persistence/sqlite/fine_tune_repo.py``.  The
@@ -5,6 +6,14 @@ schema stores JSON-shaped fields as ``JSONB``, timestamps as
 ``TIMESTAMPTZ``, and ``is_active`` as ``BOOLEAN``; psycopg adapters
 handle the wire conversion.  At the Python protocol level both
 backends return identical Pydantic models.
+
+One cohesive responsibility: the fine-tune persistence family on
+Postgres. The two repositories (runs and checkpoints) share the
+JSONB-aware row deserialisation helpers and the ``_clamp_pagination``
+guard; splitting per entity duplicates them. Matches the per-family
+repo convention used across ``persistence/postgres/`` and preserves
+parity with the SQLite sibling so the dual-backend conformance suite
+exercises identical surfaces.
 """
 
 import json

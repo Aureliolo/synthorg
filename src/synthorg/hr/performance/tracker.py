@@ -1,7 +1,21 @@
+# module-kind: complex_service
 """Performance tracker service.
 
 Central service for recording and querying agent performance metrics.
-Delegates scoring, windowing, and trend detection to pluggable strategies.
+Delegates scoring, windowing, and trend detection to pluggable
+strategies.
+
+One cohesive responsibility: track per-agent performance. Metric
+recording, snapshot computation (windows + trends), LLM-sampler
+scheduling, and inflection emission all read and mutate the same
+state under ``_metrics_lock`` (the ``_background_tasks`` set, the
+``_closing`` flag, the ``_trend_direction_cache``); they form one
+single-threaded pipeline that owns those invariants. A per-concern
+split would either duplicate the lock + flags across modules or
+introduce a separate coordinator that re-establishes the same
+boundary at a higher cost. The strategy seams (quality /
+collaboration / window / trend / inflection sink) already isolate
+the pluggable algorithms.
 """
 
 import asyncio

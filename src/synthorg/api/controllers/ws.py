@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """WebSocket handler for real-time event feeds.
 
 Clients connect to ``/api/v1/ws`` and authenticate using a one-time

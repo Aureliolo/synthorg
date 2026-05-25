@@ -1,8 +1,17 @@
+# module-kind: complex_service
 """Meeting scheduler -- background service for periodic and event-triggered meetings.
 
 Bridges meeting configuration and meeting execution by scheduling
 frequency-based meetings as periodic asyncio tasks and providing
 an API for event-triggered meetings.
+
+One cohesive responsibility: schedule and trigger meetings. The
+periodic-task fan-out, event-trigger cooldown enforcement (in-memory
++ durable), per-loop lock rebinding for test isolation, and the
+start/stop lifecycle (with shielded drain + unrestartable-after-
+timeout policy) share ``_lifecycle_lock`` / ``_cooldown_lock`` /
+``_last_triggered`` state; splitting requires extracting that
+shared state owner and lock graph, which just relocates complexity.
 """
 
 import asyncio

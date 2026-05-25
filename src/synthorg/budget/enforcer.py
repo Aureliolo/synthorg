@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Budget enforcement service.
 
 Composes :class:`~synthorg.budget.tracker.CostTracker` and

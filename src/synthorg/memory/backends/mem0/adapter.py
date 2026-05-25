@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Mem0 memory backend adapter.
 
 Implements ``MemoryBackend`` and ``MemoryCapabilities`` protocols.
