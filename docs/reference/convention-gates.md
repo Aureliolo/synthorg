@@ -96,7 +96,7 @@ Three third-party linters run as pre-push hooks on Markdown to enforce style + l
 
 - `markdownlint` (`igorshubovych/markdownlint-cli`): Markdown formatting rules (list indent, heading levels, fenced-code language tags, blanks-around-lists). Config in `.markdownlint.json`; version pinned in `.pre-commit-config.yaml`. Runs on README + every CLAUDE.md tier + `docs/**/*.md` at pre-commit stage.
 - `lychee` (`lycheeverse/lychee`): Markdown link-checker. Config in `lychee.toml`. Runs on the same glob as markdownlint, but at pre-push stage (network probes take 8-15s). Binary installed via `bash scripts/install_cli_tools.sh lychee`; CI runs it via `.github/workflows/lychee.yml`.
-- `vale` (`errata-ai/vale`): prose linter for Google style + a British-English vocabulary. Config in `.vale.ini`; vocabularies under `.vale/styles/config/vocabularies/{British,SynthOrg}/`. Runs on the same glob as markdownlint + lychee, at pre-push stage. Binary installed via `bash scripts/install_cli_tools.sh vale` (which also runs `vale sync` to materialise the gitignored `.vale/styles/Google/` style package).
+- `vale` (`errata-ai/vale`): prose linter for Google style + a British-English vocabulary. Config in `.vale.ini`; vocabularies under `.vale/styles/config/vocabularies/{British,SynthOrg}/`. Runs on the same glob as markdownlint + lychee, at pre-push stage. Binary installed once per machine via `bash scripts/install_cli_tools.sh vale`; the gitignored `.vale/styles/Google/` style package is then materialised lazily by `scripts/vale-prepush.sh` (the pre-push wrapper) on the first push in each worktree, so additional worktrees need no extra setup step.
 
 ## Registration procedure
 
