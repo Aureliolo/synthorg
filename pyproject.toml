@@ -680,9 +680,6 @@ disable_error_code = ["explicit-override", "unused-awaitable"]
 #
 # * ``unused-awaitable`` (~23 sites): #2116
 # * ``explicit-override`` (~87 sites across ~48 files): #2118
-# * ``arg-type`` + ``redundant-cast`` + ``assignment`` +
-#   ``comparison-overlap`` + ``attr-defined`` (~75 sites): #2119
-#   (FakePersistenceBackend protocol parity)
 # * ``deprecated`` (1 site, blocked on pytest-asyncio upstream): #2120
 # * ``disallow_any_explicit`` (~1,800 sites, blocked on EPIC #2056):
 #   #2121

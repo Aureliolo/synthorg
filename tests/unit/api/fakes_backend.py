@@ -7,6 +7,7 @@ the 800-line budget.  Imports point directly at the extracted modules
 
 import contextlib
 from typing import TYPE_CHECKING, Literal
+from unittest.mock import Mock
 
 from pydantic import AwareDatetime, BaseModel
 
@@ -774,10 +775,19 @@ class FakePersistenceBackend(PersistenceBackend):
 
         Clears repository contents in-place so any services holding
         references to repository objects observe the reset.  Preserves
-        object identity and the connection flag.
+        object identity and the connection flag.  Lazy ``_*_stub`` fields
+        are reset to ``None`` so the next property access reconstructs a
+        fresh ``AsyncMock`` with no leaked ``call_count`` / ``side_effect``
+        from a prior test.
         """
         for attr_name in list(vars(self)):
             if attr_name == "_connected":
+                continue
+            if attr_name.endswith("_stub") and isinstance(
+                getattr(self, attr_name, None),
+                Mock,
+            ):
+                setattr(self, attr_name, None)
                 continue
             _clear_attr(getattr(self, attr_name))
 
@@ -1029,17 +1039,17 @@ class FakePersistenceBackend(PersistenceBackend):
     def sessions(self) -> AsyncMock:
         """Cached fake session repository.
 
-        ``is_revoked`` is sync on the real protocol (auth hot-path),
-        so the cached ``AsyncMock`` has that one attribute overridden
-        with a sync ``MagicMock`` that returns ``False``.  An empty
-        ``_revoked`` set keeps membership checks honest.
+        Spec'd to ``SessionRepository`` so the mock surface mirrors the
+        protocol; ``is_revoked`` is sync on the real protocol (auth
+        hot-path) and the spec'd child mock returns ``False`` by default.
         """
         from unittest.mock import AsyncMock, MagicMock
 
+        from synthorg.persistence.auth_protocol import SessionRepository
+
         if self._sessions_stub is None:
-            stub = AsyncMock()
+            stub = AsyncMock(spec=SessionRepository)
             stub.is_revoked = MagicMock(return_value=False)
-            stub._revoked = set()
             self._sessions_stub = stub
         return self._sessions_stub
 
@@ -1048,8 +1058,10 @@ class FakePersistenceBackend(PersistenceBackend):
         """Cached fake refresh-token repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.auth_protocol import RefreshTokenRepository
+
         if self._refresh_tokens_stub is None:
-            self._refresh_tokens_stub = AsyncMock()
+            self._refresh_tokens_stub = AsyncMock(spec=RefreshTokenRepository)
         return self._refresh_tokens_stub
 
     @property
@@ -1057,8 +1069,10 @@ class FakePersistenceBackend(PersistenceBackend):
         """Cached fake MCP installations repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.mcp_protocol import McpInstallationRepository
+
         if self._mcp_installations_stub is None:
-            self._mcp_installations_stub = AsyncMock()
+            self._mcp_installations_stub = AsyncMock(spec=McpInstallationRepository)
         return self._mcp_installations_stub
 
     @property
@@ -1066,8 +1080,10 @@ class FakePersistenceBackend(PersistenceBackend):
         """Cached fake org fact repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.memory_protocol import OrgFactRepository
+
         if self._org_facts_stub is None:
-            self._org_facts_stub = AsyncMock()
+            self._org_facts_stub = AsyncMock(spec=OrgFactRepository)
         return self._org_facts_stub
 
     @property
@@ -1075,8 +1091,10 @@ class FakePersistenceBackend(PersistenceBackend):
         """Cached fake ontology entity repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.ontology_protocol import OntologyEntityRepository
+
         if self._ontology_entities_stub is None:
-            self._ontology_entities_stub = AsyncMock()
+            self._ontology_entities_stub = AsyncMock(spec=OntologyEntityRepository)
         return self._ontology_entities_stub
 
     @property
@@ -1084,8 +1102,12 @@ class FakePersistenceBackend(PersistenceBackend):
         """Cached fake ontology drift-report repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.ontology_protocol import (
+            OntologyDriftReportRepository,
+        )
+
         if self._ontology_drift_stub is None:
-            self._ontology_drift_stub = AsyncMock()
+            self._ontology_drift_stub = AsyncMock(spec=OntologyDriftReportRepository)
         return self._ontology_drift_stub
 
     @property
@@ -1093,8 +1115,14 @@ class FakePersistenceBackend(PersistenceBackend):
         """Cached fake project cost aggregate repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.project_cost_aggregate_protocol import (
+            ProjectCostAggregateRepository,
+        )
+
         if self._project_cost_aggregates_stub is None:
-            self._project_cost_aggregates_stub = AsyncMock()
+            self._project_cost_aggregates_stub = AsyncMock(
+                spec=ProjectCostAggregateRepository,
+            )
         return self._project_cost_aggregates_stub
 
     @property
@@ -1102,8 +1130,14 @@ class FakePersistenceBackend(PersistenceBackend):
         """Cached fake fine-tune checkpoint repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.fine_tune_protocol import (
+            FineTuneCheckpointRepository,
+        )
+
         if self._fine_tune_checkpoints_stub is None:
-            self._fine_tune_checkpoints_stub = AsyncMock()
+            self._fine_tune_checkpoints_stub = AsyncMock(
+                spec=FineTuneCheckpointRepository,
+            )
         return self._fine_tune_checkpoints_stub
 
     @property
@@ -1111,8 +1145,10 @@ class FakePersistenceBackend(PersistenceBackend):
         """Cached fake fine-tune run repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.fine_tune_protocol import FineTuneRunRepository
+
         if self._fine_tune_runs_stub is None:
-            self._fine_tune_runs_stub = AsyncMock()
+            self._fine_tune_runs_stub = AsyncMock(spec=FineTuneRunRepository)
         return self._fine_tune_runs_stub
 
     @property
@@ -1120,9 +1156,13 @@ class FakePersistenceBackend(PersistenceBackend):
         """Cached fake meeting cooldown repository (WP-1)."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.meeting_cooldown_protocol import (
+            MeetingCooldownRepository,
+        )
+
         if self._meeting_cooldown_stub is None:
-            stub = AsyncMock()
-            stub.load_all = AsyncMock(return_value=())
+            stub = AsyncMock(spec=MeetingCooldownRepository)
+            stub.load_all.return_value = ()
             self._meeting_cooldown_stub = stub
         return self._meeting_cooldown_stub
 
@@ -1131,10 +1171,14 @@ class FakePersistenceBackend(PersistenceBackend):
         """Cached fake ceremony scheduler state repository (WP-1)."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.ceremony_scheduler_state_protocol import (
+            CeremonySchedulerStateRepository,
+        )
+
         if self._ceremony_scheduler_state_stub is None:
-            stub = AsyncMock()
-            stub.get = AsyncMock(return_value=None)
-            stub.list_items = AsyncMock(return_value=())
+            stub = AsyncMock(spec=CeremonySchedulerStateRepository)
+            stub.get.return_value = None
+            stub.list_items.return_value = ()
             self._ceremony_scheduler_state_stub = stub
         return self._ceremony_scheduler_state_stub
 
@@ -1143,10 +1187,14 @@ class FakePersistenceBackend(PersistenceBackend):
         """Cached fake tracked-container repository (WP-1)."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.tracked_container_protocol import (
+            TrackedContainerRepository,
+        )
+
         if self._tracked_container_stub is None:
-            stub = AsyncMock()
-            stub.load_all = AsyncMock(return_value=())
-            stub.list_items = AsyncMock(return_value=())
+            stub = AsyncMock(spec=TrackedContainerRepository)
+            stub.load_all.return_value = ()
+            stub.list_items.return_value = ()
             self._tracked_container_stub = stub
         return self._tracked_container_stub
 
@@ -1194,22 +1242,22 @@ class FakePersistenceBackend(PersistenceBackend):
     def build_lockouts(self, auth_config: object) -> AsyncMock:
         """Fake lockout repository builder.
 
-        ``is_locked`` is sync on the real protocol (auth hot-path), so
-        the wrapped ``AsyncMock`` has that attribute replaced with a
-        sync ``MagicMock`` that returns ``False``.  ``record_failure``
-        is coerced to an async wrapper around a fixed-``False`` return
-        so invalid logins don't spuriously trip ``AccountLockedError``.
-        ``lockout_duration_seconds`` is an ``int`` so Retry-After
-        rendering never sees a ``MagicMock``.  An empty ``_locked``
-        dict keeps the conftest cache-clear helpers happy.
+        Spec'd to ``LockoutRepository`` so the mock surface mirrors the
+        protocol; ``is_locked`` is sync on the real protocol (auth
+        hot-path) and is overridden with a sync ``MagicMock`` returning
+        ``False``. ``record_failure`` returns ``False`` so invalid logins
+        don't spuriously trip ``AccountLockedError``.
+        ``lockout_duration_seconds`` is set to ``0`` so Retry-After
+        rendering never sees a ``MagicMock``.
         """
         from unittest.mock import AsyncMock, MagicMock
 
-        stub = AsyncMock()
+        from synthorg.persistence.auth_protocol import LockoutRepository
+
+        stub = AsyncMock(spec=LockoutRepository)
         stub.is_locked = MagicMock(return_value=False)
-        stub.record_failure = AsyncMock(return_value=False)
+        stub.record_failure.return_value = False
         stub.lockout_duration_seconds = 0
-        stub._locked = {}
         return stub
 
     def build_escalations(
@@ -1220,13 +1268,17 @@ class FakePersistenceBackend(PersistenceBackend):
         """Fake escalation repository builder."""
         from unittest.mock import AsyncMock
 
-        return AsyncMock()
+        from synthorg.persistence.escalation_protocol import EscalationQueueRepository
+
+        return AsyncMock(spec=EscalationQueueRepository)
 
     def build_ontology_versioning(self) -> AsyncMock:
         """Fake ontology versioning factory -- returns a mock service."""
         from unittest.mock import AsyncMock
 
-        return AsyncMock()
+        from synthorg.versioning.service import VersioningService
+
+        return AsyncMock(spec=VersioningService)
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)
