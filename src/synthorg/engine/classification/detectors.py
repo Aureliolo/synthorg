@@ -84,7 +84,12 @@ _COMMON_CAPITALISED_WORDS = frozenset(
 def _extract_assistant_texts(
     conversation: tuple[ChatMessage, ...],
 ) -> list[tuple[int, str]]:
-    """Extract (index, text) pairs from assistant messages."""
+    """Extract (index, text) pairs from assistant messages.
+
+    Returns:
+        List of ``(message_index, content)`` pairs for assistant
+        messages with non-empty content; preserves conversation order.
+    """
     return [
         (i, msg.content)
         for i, msg in enumerate(conversation)
@@ -144,7 +149,12 @@ _NUMBER_PATTERN = re.compile(
 def _extract_numbers_with_context(
     text: str,
 ) -> list[tuple[str, float, str]]:
-    """Extract (context_label, number, unit) triples from text."""
+    """Extract (context_label, number, unit) triples from text.
+
+    Returns:
+        List of ``(context, number, unit)`` triples; entries without a
+        usable context label are skipped.
+    """
     results: list[tuple[str, float, str]] = []
     for match in _NUMBER_PATTERN.finditer(text):
         context = normalize_ascii_lowercase(match.group("context"))
@@ -166,6 +176,10 @@ def _compute_drift(first_val: float, later_val: float) -> float | None:
     a fixed 100.0% since percentage drift from a zero baseline is
     mathematically undefined.  When both are zero, returns ``None``
     (no drift).
+
+    Returns:
+        The percentage drift from ``first_val`` to ``later_val``;
+        ``None`` when both values are zero.
     """
     if first_val == 0.0:
         return 100.0 if later_val != 0.0 else None
@@ -178,7 +192,12 @@ def _check_drift_in_group(
     mentions: list[tuple[int, float]],
     threshold_percent: float,
 ) -> tuple[ErrorFinding, ...]:
-    """Check a single number group for drift and return findings."""
+    """Check a single number group for drift and return findings.
+
+    Returns:
+        Tuple of :class:`ErrorFinding` records for each mention that
+        drifted past the threshold from the first value in the group.
+    """
     first_idx, first_val = mentions[0]
     findings: list[ErrorFinding] = []
     for later_idx, later_val in mentions[1:]:
@@ -217,6 +236,9 @@ def _extract_entities(text: str) -> set[str]:
 
     Matches CamelCase identifiers and capitalised words (3+ chars)
     that likely represent domain entities, class names, or services.
+
+    Returns:
+        Set of unique entity-name candidates found in ``text``.
     """
     return set(_ENTITY_PATTERN.findall(text))
 
@@ -292,6 +314,9 @@ def detect_numerical_drift(
 
     Returns:
         Tuple of findings for each drifted quantity.
+
+    Raises:
+        ValueError: When ``threshold_percent`` is not positive.
     """
     if threshold_percent <= 0:
         msg = "threshold_percent must be positive"
