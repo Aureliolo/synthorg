@@ -87,6 +87,7 @@ class TestDeleteDepartmentTOCTOU:
         self,
         service: OrgMutationService,
         persistence: FakePersistenceBackend,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A persistent CAS miss on the agents key aborts the delete.
 
@@ -120,12 +121,9 @@ class TestDeleteDepartmentTOCTOU:
                 ),
             )
 
-        persistence.settings.set_many = always_agents_conflict
-        try:
-            with pytest.raises(VersionConflictError):
-                await service.delete_department("Engineering")
-        finally:
-            persistence.settings.set_many = original_set_many
+        monkeypatch.setattr(persistence.settings, "set_many", always_agents_conflict)
+        with pytest.raises(VersionConflictError):
+            await service.delete_department("Engineering")
 
         # Department still present: every attempt rolled back.
         deps = await service._read_departments()
@@ -137,6 +135,7 @@ class TestDeleteDepartmentTOCTOU:
         self,
         service: OrgMutationService,
         persistence: FakePersistenceBackend,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """delete passes BOTH departments and agents in the CAS map."""
         await _seed_dept(service, "Engineering")
@@ -159,11 +158,8 @@ class TestDeleteDepartmentTOCTOU:
                 ),
             )
 
-        persistence.settings.set_many = capturing_set_many
-        try:
-            await service.delete_department("Engineering")
-        finally:
-            persistence.settings.set_many = original_set_many
+        monkeypatch.setattr(persistence.settings, "set_many", capturing_set_many)
+        await service.delete_department("Engineering")
 
         assert captured, "delete_department must go through set_many"
         cas_keys = captured[-1]
