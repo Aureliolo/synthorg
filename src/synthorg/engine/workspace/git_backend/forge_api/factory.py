@@ -30,7 +30,12 @@ _GITEA_API_SUFFIX: Final[str] = "/api/v1"
 
 
 def _host_origin(base_url: str) -> tuple[str, str]:
-    """Return ``(scheme://host[:port], host)`` from a git base URL."""
+    """Return ``(scheme://host[:port], host)`` from a git base URL.
+
+    Raises:
+        GitBackendConfigError: When ``base_url`` is not HTTPS or
+            carries no parseable host.
+    """
     split = urlsplit(base_url)
     if split.scheme != "https" or not split.hostname:
         msg = "forge connection base_url must be an https URL with a host"

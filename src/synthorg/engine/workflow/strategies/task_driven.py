@@ -264,7 +264,13 @@ class TaskDrivenStrategy:
         config: Mapping[str, Any],
         context: CeremonyEvalContext,
     ) -> bool:
-        """Evaluate a single trigger condition."""
+        """Evaluate a single trigger condition.
+
+        Returns:
+            ``True`` when the named trigger fires for the current
+            context; ``False`` otherwise (sprint_start is excluded
+            from per-task evaluation).
+        """
         has_tasks = context.total_tasks_in_sprint > 0
         pct = context.sprint_percentage_complete
 

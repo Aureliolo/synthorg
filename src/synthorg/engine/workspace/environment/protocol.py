@@ -117,6 +117,14 @@ class ProvisionedEnvironment(BaseModel):
 
         The bootstrap (manifest / nix) paths run setup into the mounted
         workspace and never build a sealed image.
+
+        Returns:
+            ``self`` unchanged when ``image_ref`` agrees with the
+            environment type.
+
+        Raises:
+            ValueError: When DEVCONTAINER lacks an image ref or a
+                bootstrap backend carries one.
         """
         if self.environment_type == EnvironmentType.DEVCONTAINER:
             if self.image_ref is None:

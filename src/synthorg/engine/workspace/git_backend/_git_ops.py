@@ -264,6 +264,10 @@ async def _assert_workspace_empty(
     clobber case). Check both: tracked files OR non-ignored untracked
     files mean the workspace already holds a codebase and seeding would
     clobber it.
+
+    Raises:
+        GitBackendSeedError: When ``repo_root`` already holds tracked
+            files or non-ignored untracked content.
     """
     tracked = await git(
         repo_root,
@@ -313,6 +317,9 @@ async def import_source_into_worktree(
     configured), so a credential embedded in ``fetch_url`` never
     persists in the workspace's git config. Returns the imported head
     SHA.
+
+    Returns:
+        The imported head SHA as a :class:`NotBlankStr`.
 
     Raises:
         GitBackendSeedError: The workspace is non-empty, or the

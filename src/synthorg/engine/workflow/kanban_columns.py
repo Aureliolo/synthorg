@@ -94,7 +94,13 @@ if _missing_statuses:
 
 
 def _validate_status_column_consistency() -> None:
-    """Verify on-board STATUS_TO_COLUMN entries match COLUMN_TO_STATUSES."""
+    """Verify on-board STATUS_TO_COLUMN entries match COLUMN_TO_STATUSES.
+
+    Raises:
+        ValueError: When ``STATUS_TO_COLUMN`` maps a status to a
+            column whose ``COLUMN_TO_STATUSES`` entry does not list
+            that status (catches table drift at import time).
+    """
     for status, column in STATUS_TO_COLUMN.items():
         if column is not None and status not in COLUMN_TO_STATUSES[column]:
             msg = (
@@ -198,7 +204,13 @@ _COLUMN_MOVE_STATUS_PATH: MappingProxyType[
 
 
 def _validate_status_path_coverage() -> None:
-    """Verify every valid column transition has a status-path entry."""
+    """Verify every valid column transition has a status-path entry.
+
+    Raises:
+        ValueError: When a transition in ``VALID_COLUMN_TRANSITIONS``
+            has no entry in ``_COLUMN_MOVE_STATUS_PATH`` (catches
+            missing path tables at import time).
+    """
     for from_col, targets in VALID_COLUMN_TRANSITIONS.items():
         for to_col in targets:
             if (from_col, to_col) not in _COLUMN_MOVE_STATUS_PATH:

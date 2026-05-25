@@ -159,7 +159,10 @@ def _check_consistency(
 ) -> dict[int, bool]:
     """Check self-consistency via majority-vote on final fingerprints.
 
-    Returns a dict mapping candidate_index to consistency flag.
+    Returns:
+        Dict mapping candidate index to a consistency flag: ``True``
+        for candidates aligned with the majority final fingerprint
+        (or every candidate when no strict majority exists).
     """
     if len(candidates) <= 1:
         return {c.candidate_index: True for c in candidates}
@@ -205,6 +208,10 @@ def _compute_vc_score(candidate: CandidateResult) -> float:
 
     When verbalized_confidence is None, returns 0.0 (graceful
     degradation to Len-only scoring).
+
+    Returns:
+        ``log(nu / 100)`` for the candidate's verbalised confidence;
+        ``0.0`` when the candidate carries no confidence value.
     """
     if candidate.verbalized_confidence is None:
         logger.debug(

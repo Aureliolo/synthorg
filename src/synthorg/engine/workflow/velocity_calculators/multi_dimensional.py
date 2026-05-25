@@ -135,7 +135,13 @@ class MultiDimensionalVelocityCalculator:
 def _weighted_pts_per_task(
     records: Sequence[VelocityRecord],
 ) -> float:
-    """Compute weighted pts/task, skipping records without counts."""
+    """Compute weighted pts/task, skipping records without counts.
+
+    Returns:
+        The aggregate story points divided by aggregate task count
+        across records that report a positive count; ``0.0`` when
+        no records carry a usable count.
+    """
     task_pts = 0.0
     task_total = 0
     for r in records:

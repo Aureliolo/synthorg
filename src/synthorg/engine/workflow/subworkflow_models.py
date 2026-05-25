@@ -83,6 +83,15 @@ class ParentReference(BaseModel):
         be set for ``parent_type == "subworkflow"``. Constructing the
         DTO with one but not the other handed callers an ambiguous
         shape the registry never produces.
+
+        Returns:
+            ``self`` unchanged when parent_type / parent_version
+            agree.
+
+        Raises:
+            ValueError: When parent is a subworkflow but
+                ``parent_version`` is missing, or parent is a top-
+                level workflow but ``parent_version`` is set.
         """
         is_subworkflow = self.parent_type == "subworkflow"
         has_version = self.parent_version is not None

@@ -15,7 +15,12 @@ if TYPE_CHECKING:
 def check_task_configs(
     definition: WorkflowDefinition,
 ) -> list[WorkflowValidationError]:
-    """Validate task nodes have required config fields."""
+    """Validate task nodes have required config fields.
+
+    Returns:
+        List of validation errors for TASK nodes missing a non-blank
+        ``title`` field.
+    """
     errors: list[WorkflowValidationError] = []
     for node in definition.nodes:
         if node.type != WorkflowNodeType.TASK:
@@ -35,7 +40,12 @@ def check_task_configs(
 def check_verification_configs(
     definition: WorkflowDefinition,
 ) -> list[WorkflowValidationError]:
-    """Validate verification nodes have required config fields."""
+    """Validate verification nodes have required config fields.
+
+    Returns:
+        List of validation errors for VERIFICATION nodes missing
+        ``rubric_name`` or ``evaluator_agent_id`` config fields.
+    """
     errors: list[WorkflowValidationError] = []
     for node in definition.nodes:
         if node.type != WorkflowNodeType.VERIFICATION:

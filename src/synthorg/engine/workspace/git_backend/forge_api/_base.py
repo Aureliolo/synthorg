@@ -60,6 +60,15 @@ class BaseForgeClient:
         ``raise_for_forge_status``); this only guards transport-level
         failures so a connection reset surfaces as a retryable
         ``GitBackendForgeApiError`` rather than a bare ``httpx`` error.
+
+        Returns:
+            The raw :class:`httpx.Response`; status mapping is the
+            caller's responsibility.
+
+        Raises:
+            GitBackendForgeApiError: When the transport raises (the
+                wrapped error is logged and reclassified as
+                retryable).
         """
         try:
             # Strip any leading slash so the endpoint resolves *against*

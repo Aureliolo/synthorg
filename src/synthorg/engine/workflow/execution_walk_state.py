@@ -24,6 +24,10 @@ def qualify_id(prefix: str, node_id: str) -> str:
 
     When *prefix* is empty the node ID is returned unchanged so that
     top-level graphs keep their existing unqualified IDs.
+
+    Returns:
+        ``"{prefix}::{node_id}"`` when ``prefix`` is non-empty;
+        ``node_id`` unchanged otherwise.
     """
     if not prefix:
         return node_id

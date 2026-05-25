@@ -180,7 +180,12 @@ def _slice_tool_turns(
     turns: tuple[TurnRecord, ...],
     window_size: int,
 ) -> tuple[TurnRecord, ...]:
-    """Extract the most recent tool-bearing turns within window."""
+    """Extract the most recent tool-bearing turns within window.
+
+    Returns:
+        Trailing window of at most ``window_size`` turns that made
+        tool calls (in original order).
+    """
     tool_turns = tuple(t for t in turns if t.tool_calls_made)
     return tuple(tool_turns[-window_size:])
 
@@ -188,7 +193,12 @@ def _slice_tool_turns(
 def _count_unique_fingerprints(
     turns: tuple[TurnRecord, ...],
 ) -> int:
-    """Count distinct fingerprints across turns."""
+    """Count distinct fingerprints across turns.
+
+    Returns:
+        The number of unique tool-call fingerprint strings observed
+        across the input turns.
+    """
     seen: set[str] = set()
     for turn in turns:
         for fp in turn.tool_call_fingerprints:

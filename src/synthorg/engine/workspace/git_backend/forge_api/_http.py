@@ -51,12 +51,23 @@ _TOKEN_PATTERNS: Final[re.Pattern[str]] = re.compile(
 
 
 def sanitize_body(text: str) -> str:
-    """Strip token-like material from a response body before logging."""
+    """Strip token-like material from a response body before logging.
+
+    Returns:
+        The first ``_MAX_BODY_SNIPPET`` characters of ``text`` with
+        token / Authorization patterns replaced by ``[REDACTED]``.
+    """
     return _TOKEN_PATTERNS.sub("[REDACTED]", text[:_MAX_BODY_SNIPPET])
 
 
 def parse_retry_after(headers: httpx.Headers) -> float | None:
-    """Parse a ``Retry-After`` header (delta-seconds form) if present."""
+    """Parse a ``Retry-After`` header (delta-seconds form) if present.
+
+    Returns:
+        The ``Retry-After`` delay in seconds when present and
+        parseable; ``None`` for absent / non-numeric headers (HTTP-
+        date form is intentionally not parsed).
+    """
     raw = headers.get(_RETRY_AFTER_HEADER)
     if raw is None:
         return None
@@ -75,6 +86,10 @@ def _is_rate_limited(resp: httpx.Response) -> bool:
 
     GitHub returns 403 with ``X-RateLimit-Remaining: 0`` for primary
     limits and 429 for secondary limits; GitLab/Gitea use 429.
+
+    Returns:
+        ``True`` when the response shape indicates a rate-limit hit
+        for any supported forge; ``False`` otherwise.
     """
     if resp.status_code == _RATE_LIMIT_STATUS:
         return True
