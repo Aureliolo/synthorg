@@ -192,7 +192,16 @@ def parse_tool_call_response(
 def _parse_conflicts_from_args(
     arguments: dict[str, Any],
 ) -> tuple[MergeConflict, ...]:
-    """Parse conflicts from tool call arguments dict."""
+    """Parse conflicts from tool call arguments dict.
+
+    Returns:
+        Tuple of :class:`MergeConflict` (``SEMANTIC`` type) parsed
+        from the ``conflicts`` list; well-formed entries only.
+
+    Raises:
+        ValueError: When ``conflicts`` is not a list (triggers the
+            retry loop in the caller).
+    """
     raw_conflicts = arguments.get("conflicts", [])
     if not isinstance(raw_conflicts, list):
         msg = f"Expected list of conflicts, got {type(raw_conflicts).__name__}"
@@ -233,7 +242,16 @@ def _parse_conflicts_from_args(
 
 
 def _parse_conflicts_from_content(content: str) -> tuple[MergeConflict, ...]:
-    """Try to parse conflicts from content text (JSON fallback)."""
+    """Try to parse conflicts from content text (JSON fallback).
+
+    Returns:
+        Tuple of :class:`MergeConflict` parsed from the JSON object
+        / list embedded in ``content``.
+
+    Raises:
+        ValueError: When the content is not parseable JSON or has an
+            unexpected top-level shape.
+    """
     match = _MARKDOWN_FENCE_RE.search(content)
     text = match.group(1) if match else content
 
