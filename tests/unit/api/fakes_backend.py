@@ -7,6 +7,7 @@ the 800-line budget.  Imports point directly at the extracted modules
 
 import contextlib
 from typing import TYPE_CHECKING, Literal
+from unittest.mock import Mock
 
 from pydantic import AwareDatetime, BaseModel
 
@@ -22,6 +23,7 @@ from synthorg.persistence.integration_stubs import (
     InMemoryOAuthStateRepository,
     InMemoryWebhookReceiptRepository,
 )
+from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.provider_audit_protocol import ProviderAuditFilterSpec
 from synthorg.providers.management.capability_dtos import (
     PresetOverride,
@@ -35,9 +37,15 @@ if TYPE_CHECKING:
     from contextlib import AbstractAsyncContextManager
     from unittest.mock import AsyncMock
 
+    from synthorg.budget.config import BudgetConfig
+    from synthorg.core.agent import AgentIdentity
+    from synthorg.core.company import Company
+    from synthorg.core.role import Role
+    from synthorg.hr.evaluation.config import EvaluationConfig
     from synthorg.persistence.circuit_breaker_protocol import (
         CircuitBreakerStateRecord,
     )
+    from synthorg.persistence.training_protocol import TrainingPlanFilterSpec
 from tests.unit.api.fake_user_repository import FakeUserRepository
 from tests.unit.api.fakes import (
     FakeAgentStateRepository,
@@ -214,8 +222,8 @@ class FakeCircuitBreakerStateRepository:
 
         self._store: dict[tuple[str, str], CircuitBreakerStateRecord] = {}
 
-    async def save(self, record: CircuitBreakerStateRecord) -> None:
-        self._store[(record.pair_key_a, record.pair_key_b)] = record
+    async def save(self, entity: CircuitBreakerStateRecord) -> None:
+        self._store[(entity.pair_key_a, entity.pair_key_b)] = entity
 
     async def get(self, entity_id: tuple[str, str]) -> CircuitBreakerStateRecord | None:
         return self._store.get(entity_id)
@@ -229,8 +237,14 @@ class FakeCircuitBreakerStateRepository:
         ordered = sorted(self._store.items(), key=lambda kv: kv[0])
         return tuple(v for _, v in ordered[offset : offset + limit])
 
-    async def load_all(self) -> tuple[CircuitBreakerStateRecord, ...]:
-        return tuple(self._store.values())
+    async def load_all(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[CircuitBreakerStateRecord, ...]:
+        ordered = sorted(self._store.items(), key=lambda kv: kv[0])
+        return tuple(v for _, v in ordered[offset : offset + limit])
 
     async def delete(self, entity_id: tuple[str, str]) -> bool:
         if entity_id in self._store:
@@ -239,13 +253,13 @@ class FakeCircuitBreakerStateRepository:
         return False
 
 
-class FakeVersionRepository:
-    """In-memory VersionRepository for tests (any snapshot type)."""
+class FakeVersionRepository[T: BaseModel]:
+    """In-memory VersionRepository[T] for tests, parametrised on the snapshot type."""
 
     def __init__(self) -> None:
-        self._store: dict[tuple[str, int], VersionSnapshot[BaseModel]] = {}
+        self._store: dict[tuple[str, int], VersionSnapshot[T]] = {}
 
-    async def save_version(self, version: VersionSnapshot[BaseModel]) -> bool:
+    async def save_version(self, version: VersionSnapshot[T]) -> bool:
         key = (version.entity_id, version.version)
         was_new = key not in self._store
         self._store.setdefault(key, version)
@@ -253,18 +267,18 @@ class FakeVersionRepository:
 
     async def get_version(
         self, entity_id: NotBlankStr, version: int
-    ) -> VersionSnapshot[BaseModel] | None:
+    ) -> VersionSnapshot[T] | None:
         return self._store.get((entity_id, version))
 
     async def get_latest_version(
         self, entity_id: NotBlankStr
-    ) -> VersionSnapshot[BaseModel] | None:
+    ) -> VersionSnapshot[T] | None:
         candidates = [v for (eid, _), v in self._store.items() if eid == entity_id]
         return max(candidates, key=lambda v: v.version) if candidates else None
 
     async def get_by_content_hash(
         self, entity_id: NotBlankStr, content_hash: NotBlankStr
-    ) -> VersionSnapshot[BaseModel] | None:
+    ) -> VersionSnapshot[T] | None:
         for (eid, _), v in self._store.items():
             if eid == entity_id and v.content_hash == content_hash:
                 return v
@@ -276,7 +290,7 @@ class FakeVersionRepository:
         *,
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[VersionSnapshot[BaseModel], ...]:
+    ) -> tuple[VersionSnapshot[T], ...]:
         candidates = sorted(
             (v for (eid, _), v in self._store.items() if eid == entity_id),
             key=lambda v: v.version,
@@ -304,11 +318,50 @@ class FakeTrainingPlanRepository:
     def __init__(self) -> None:
         self._plans: dict[str, TrainingPlan] = {}
 
-    async def save(self, plan: TrainingPlan) -> None:
-        self._plans[str(plan.id)] = plan
+    async def save(self, entity: TrainingPlan) -> None:
+        self._plans[str(entity.id)] = entity
 
-    async def get(self, plan_id: NotBlankStr) -> TrainingPlan | None:
-        return self._plans.get(str(plan_id))
+    async def get(self, entity_id: NotBlankStr) -> TrainingPlan | None:
+        return self._plans.get(str(entity_id))
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._plans.pop(str(entity_id), None) is not None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[TrainingPlan, ...]:
+        ordered = sorted(self._plans.values(), key=lambda p: str(p.id))
+        return tuple(ordered[offset : offset + limit])
+
+    async def query(
+        self,
+        filter_spec: TrainingPlanFilterSpec,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[TrainingPlan, ...]:
+        plans = list(self._plans.values())
+        if filter_spec.agent_id is not None:
+            plans = [
+                p for p in plans if str(p.new_agent_id) == str(filter_spec.agent_id)
+            ]
+        if filter_spec.status is not None:
+            plans = [p for p in plans if p.status == filter_spec.status]
+        ordered = sorted(plans, key=lambda p: str(p.id))
+        return tuple(ordered[offset : offset + limit])
+
+    async def count(self, filter_spec: TrainingPlanFilterSpec) -> int:
+        plans = list(self._plans.values())
+        if filter_spec.agent_id is not None:
+            plans = [
+                p for p in plans if str(p.new_agent_id) == str(filter_spec.agent_id)
+            ]
+        if filter_spec.status is not None:
+            plans = [p for p in plans if p.status == filter_spec.status]
+        return len(plans)
 
     async def latest_pending(
         self,
@@ -338,11 +391,14 @@ class FakeTrainingPlanRepository:
     async def list_by_agent(
         self,
         agent_id: NotBlankStr,
+        *,
+        limit: int = 100,
     ) -> tuple[TrainingPlan, ...]:
         plans = [
             p for p in self._plans.values() if str(p.new_agent_id) == str(agent_id)
         ]
-        return tuple(sorted(plans, key=lambda p: p.created_at, reverse=True))
+        plans.sort(key=lambda p: p.created_at, reverse=True)
+        return tuple(plans[:limit])
 
 
 class FakeTrainingResultRepository:
@@ -351,13 +407,28 @@ class FakeTrainingResultRepository:
     def __init__(self) -> None:
         self._results: dict[str, TrainingResult] = {}
 
-    async def save(self, result: TrainingResult) -> None:
-        plan_key = str(result.plan_id)
+    async def save(self, entity: TrainingResult) -> None:
+        plan_key = str(entity.plan_id)
         for rid, r in self._results.items():
-            if str(r.plan_id) == plan_key and rid != str(result.id):
+            if str(r.plan_id) == plan_key and rid != str(entity.id):
                 msg = f"UNIQUE constraint: plan_id {plan_key!r} already exists"
                 raise ValueError(msg)
-        self._results[str(result.id)] = result
+        self._results[str(entity.id)] = entity
+
+    async def get(self, entity_id: NotBlankStr) -> TrainingResult | None:
+        return self._results.get(str(entity_id))
+
+    async def delete(self, entity_id: NotBlankStr) -> bool:
+        return self._results.pop(str(entity_id), None) is not None
+
+    async def list_items(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[TrainingResult, ...]:
+        ordered = sorted(self._results.values(), key=lambda r: str(r.id))
+        return tuple(ordered[offset : offset + limit])
 
     async def get_by_plan(
         self,
@@ -617,7 +688,7 @@ def _clear_attr(value: object) -> None:
             inner_value.clear()
 
 
-class FakePersistenceBackend:
+class FakePersistenceBackend(PersistenceBackend):
     """In-memory persistence backend for tests."""
 
     def __init__(self) -> None:
@@ -637,11 +708,17 @@ class FakePersistenceBackend:
         self._subworkflows = FakeSubworkflowRepository(
             definition_repo=self._workflow_definitions,
         )
-        self._identity_versions = FakeVersionRepository()
-        self._evaluation_config_versions = FakeVersionRepository()
-        self._budget_config_versions = FakeVersionRepository()
-        self._company_versions = FakeVersionRepository()
-        self._role_versions = FakeVersionRepository()
+        self._identity_versions: FakeVersionRepository[AgentIdentity] = (
+            FakeVersionRepository()
+        )
+        self._evaluation_config_versions: FakeVersionRepository[EvaluationConfig] = (
+            FakeVersionRepository()
+        )
+        self._budget_config_versions: FakeVersionRepository[BudgetConfig] = (
+            FakeVersionRepository()
+        )
+        self._company_versions: FakeVersionRepository[Company] = FakeVersionRepository()
+        self._role_versions: FakeVersionRepository[Role] = FakeVersionRepository()
         self._risk_overrides = FakeRiskOverrideRepository()
         self._ssrf_violations = FakeSsrfViolationRepository()
         self._circuit_breaker_state = FakeCircuitBreakerStateRepository()
@@ -689,17 +766,28 @@ class FakePersistenceBackend:
         self._meeting_cooldown_stub: AsyncMock | None = None
         self._ceremony_scheduler_state_stub: AsyncMock | None = None
         self._tracked_container_stub: AsyncMock | None = None
-        self._idempotency_stub: AsyncMock | None = None
+        self._idempotency_keys_stub: AsyncMock | None = None
+        self._seen_claims_stub: AsyncMock | None = None
+        self._principle_overrides_stub: AsyncMock | None = None
 
     def clear(self) -> None:
         """Reset all in-memory state for test isolation.
 
         Clears repository contents in-place so any services holding
         references to repository objects observe the reset.  Preserves
-        object identity and the connection flag.
+        object identity and the connection flag.  Lazy ``_*_stub`` fields
+        are reset to ``None`` so the next property access reconstructs a
+        fresh ``AsyncMock`` with no leaked ``call_count`` / ``side_effect``
+        from a prior test.
         """
         for attr_name in list(vars(self)):
             if attr_name == "_connected":
+                continue
+            if attr_name.endswith("_stub") and isinstance(
+                getattr(self, attr_name, None),
+                Mock,
+            ):
+                setattr(self, attr_name, None)
                 continue
             _clear_attr(getattr(self, attr_name))
 
@@ -881,23 +969,23 @@ class FakePersistenceBackend:
         return self._workflow_versions
 
     @property
-    def identity_versions(self) -> FakeVersionRepository:
+    def identity_versions(self) -> FakeVersionRepository[AgentIdentity]:
         return self._identity_versions
 
     @property
-    def evaluation_config_versions(self) -> FakeVersionRepository:
+    def evaluation_config_versions(self) -> FakeVersionRepository[EvaluationConfig]:
         return self._evaluation_config_versions
 
     @property
-    def budget_config_versions(self) -> FakeVersionRepository:
+    def budget_config_versions(self) -> FakeVersionRepository[BudgetConfig]:
         return self._budget_config_versions
 
     @property
-    def company_versions(self) -> FakeVersionRepository:
+    def company_versions(self) -> FakeVersionRepository[Company]:
         return self._company_versions
 
     @property
-    def role_versions(self) -> FakeVersionRepository:
+    def role_versions(self) -> FakeVersionRepository[Role]:
         return self._role_versions
 
     @property
@@ -951,17 +1039,17 @@ class FakePersistenceBackend:
     def sessions(self) -> AsyncMock:
         """Cached fake session repository.
 
-        ``is_revoked`` is sync on the real protocol (auth hot-path),
-        so the cached ``AsyncMock`` has that one attribute overridden
-        with a sync ``MagicMock`` that returns ``False``.  An empty
-        ``_revoked`` set keeps membership checks honest.
+        Spec'd to ``SessionRepository`` so the mock surface mirrors the
+        protocol; ``is_revoked`` is sync on the real protocol (auth
+        hot-path) and the spec'd child mock returns ``False`` by default.
         """
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import AsyncMock
+
+        from synthorg.persistence.auth_protocol import SessionRepository
 
         if self._sessions_stub is None:
-            stub = AsyncMock()
-            stub.is_revoked = MagicMock(return_value=False)
-            stub._revoked = set()
+            stub = AsyncMock(spec=SessionRepository)
+            stub.is_revoked.return_value = False
             self._sessions_stub = stub
         return self._sessions_stub
 
@@ -970,8 +1058,10 @@ class FakePersistenceBackend:
         """Cached fake refresh-token repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.auth_protocol import RefreshTokenRepository
+
         if self._refresh_tokens_stub is None:
-            self._refresh_tokens_stub = AsyncMock()
+            self._refresh_tokens_stub = AsyncMock(spec=RefreshTokenRepository)
         return self._refresh_tokens_stub
 
     @property
@@ -979,8 +1069,10 @@ class FakePersistenceBackend:
         """Cached fake MCP installations repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.mcp_protocol import McpInstallationRepository
+
         if self._mcp_installations_stub is None:
-            self._mcp_installations_stub = AsyncMock()
+            self._mcp_installations_stub = AsyncMock(spec=McpInstallationRepository)
         return self._mcp_installations_stub
 
     @property
@@ -988,8 +1080,10 @@ class FakePersistenceBackend:
         """Cached fake org fact repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.memory_protocol import OrgFactRepository
+
         if self._org_facts_stub is None:
-            self._org_facts_stub = AsyncMock()
+            self._org_facts_stub = AsyncMock(spec=OrgFactRepository)
         return self._org_facts_stub
 
     @property
@@ -997,8 +1091,10 @@ class FakePersistenceBackend:
         """Cached fake ontology entity repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.ontology_protocol import OntologyEntityRepository
+
         if self._ontology_entities_stub is None:
-            self._ontology_entities_stub = AsyncMock()
+            self._ontology_entities_stub = AsyncMock(spec=OntologyEntityRepository)
         return self._ontology_entities_stub
 
     @property
@@ -1006,8 +1102,12 @@ class FakePersistenceBackend:
         """Cached fake ontology drift-report repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.ontology_protocol import (
+            OntologyDriftReportRepository,
+        )
+
         if self._ontology_drift_stub is None:
-            self._ontology_drift_stub = AsyncMock()
+            self._ontology_drift_stub = AsyncMock(spec=OntologyDriftReportRepository)
         return self._ontology_drift_stub
 
     @property
@@ -1015,8 +1115,14 @@ class FakePersistenceBackend:
         """Cached fake project cost aggregate repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.project_cost_aggregate_protocol import (
+            ProjectCostAggregateRepository,
+        )
+
         if self._project_cost_aggregates_stub is None:
-            self._project_cost_aggregates_stub = AsyncMock()
+            self._project_cost_aggregates_stub = AsyncMock(
+                spec=ProjectCostAggregateRepository,
+            )
         return self._project_cost_aggregates_stub
 
     @property
@@ -1024,8 +1130,14 @@ class FakePersistenceBackend:
         """Cached fake fine-tune checkpoint repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.fine_tune_protocol import (
+            FineTuneCheckpointRepository,
+        )
+
         if self._fine_tune_checkpoints_stub is None:
-            self._fine_tune_checkpoints_stub = AsyncMock()
+            self._fine_tune_checkpoints_stub = AsyncMock(
+                spec=FineTuneCheckpointRepository,
+            )
         return self._fine_tune_checkpoints_stub
 
     @property
@@ -1033,8 +1145,10 @@ class FakePersistenceBackend:
         """Cached fake fine-tune run repository."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.fine_tune_protocol import FineTuneRunRepository
+
         if self._fine_tune_runs_stub is None:
-            self._fine_tune_runs_stub = AsyncMock()
+            self._fine_tune_runs_stub = AsyncMock(spec=FineTuneRunRepository)
         return self._fine_tune_runs_stub
 
     @property
@@ -1042,9 +1156,13 @@ class FakePersistenceBackend:
         """Cached fake meeting cooldown repository (WP-1)."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.meeting_cooldown_protocol import (
+            MeetingCooldownRepository,
+        )
+
         if self._meeting_cooldown_stub is None:
-            stub = AsyncMock()
-            stub.load_all = AsyncMock(return_value=())
+            stub = AsyncMock(spec=MeetingCooldownRepository)
+            stub.load_all.return_value = ()
             self._meeting_cooldown_stub = stub
         return self._meeting_cooldown_stub
 
@@ -1053,10 +1171,14 @@ class FakePersistenceBackend:
         """Cached fake ceremony scheduler state repository (WP-1)."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.ceremony_scheduler_state_protocol import (
+            CeremonySchedulerStateRepository,
+        )
+
         if self._ceremony_scheduler_state_stub is None:
-            stub = AsyncMock()
-            stub.get = AsyncMock(return_value=None)
-            stub.list_items = AsyncMock(return_value=())
+            stub = AsyncMock(spec=CeremonySchedulerStateRepository)
+            stub.get.return_value = None
+            stub.list_items.return_value = ()
             self._ceremony_scheduler_state_stub = stub
         return self._ceremony_scheduler_state_stub
 
@@ -1065,41 +1187,77 @@ class FakePersistenceBackend:
         """Cached fake tracked-container repository (WP-1)."""
         from unittest.mock import AsyncMock
 
+        from synthorg.persistence.tracked_container_protocol import (
+            TrackedContainerRepository,
+        )
+
         if self._tracked_container_stub is None:
-            stub = AsyncMock()
-            stub.load_all = AsyncMock(return_value=())
-            stub.list_items = AsyncMock(return_value=())
+            stub = AsyncMock(spec=TrackedContainerRepository)
+            stub.load_all.return_value = ()
+            stub.list_items.return_value = ()
             self._tracked_container_stub = stub
         return self._tracked_container_stub
 
     @property
-    def idempotency(self) -> AsyncMock:
-        """Cached fake idempotency repository."""
+    def idempotency_keys(self) -> AsyncMock:
+        """Cached fake idempotency-keys repository."""
         from unittest.mock import AsyncMock
 
-        if self._idempotency_stub is None:
-            self._idempotency_stub = AsyncMock()
-        return self._idempotency_stub
+        from synthorg.persistence.idempotency_protocol import IdempotencyRepository
+
+        if self._idempotency_keys_stub is None:
+            self._idempotency_keys_stub = AsyncMock(spec=IdempotencyRepository)
+        return self._idempotency_keys_stub
+
+    @property
+    def seen_claims(self) -> AsyncMock:
+        """Cached fake seen-claims repository (worker claim dedup)."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.persistence.seen_claims_protocol import SeenClaimsRepository
+
+        if self._seen_claims_stub is None:
+            stub = AsyncMock(spec=SeenClaimsRepository)
+            stub.is_completed.return_value = False
+            stub.prune_expired.return_value = 0
+            self._seen_claims_stub = stub
+        return self._seen_claims_stub
+
+    @property
+    def principle_overrides(self) -> AsyncMock:
+        """Cached fake principle-overrides repository (rollback overlays)."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.persistence.principle_override_protocol import (
+            PrincipleOverrideRepository,
+        )
+
+        if self._principle_overrides_stub is None:
+            stub = AsyncMock(spec=PrincipleOverrideRepository)
+            stub.get.return_value = None
+            stub.list_items.return_value = ()
+            self._principle_overrides_stub = stub
+        return self._principle_overrides_stub
 
     def build_lockouts(self, auth_config: object) -> AsyncMock:
         """Fake lockout repository builder.
 
-        ``is_locked`` is sync on the real protocol (auth hot-path), so
-        the wrapped ``AsyncMock`` has that attribute replaced with a
-        sync ``MagicMock`` that returns ``False``.  ``record_failure``
-        is coerced to an async wrapper around a fixed-``False`` return
-        so invalid logins don't spuriously trip ``AccountLockedError``.
-        ``lockout_duration_seconds`` is an ``int`` so Retry-After
-        rendering never sees a ``MagicMock``.  An empty ``_locked``
-        dict keeps the conftest cache-clear helpers happy.
+        Spec'd to ``LockoutRepository`` so the mock surface mirrors the
+        protocol; ``is_locked`` is sync on the real protocol (auth
+        hot-path) and its spec-bound child mock returns ``False`` by
+        default. ``record_failure`` returns ``False`` so invalid logins
+        don't spuriously trip ``AccountLockedError``.
+        ``lockout_duration_seconds`` is set to ``0`` so Retry-After
+        rendering sees a plain ``int`` rather than a child mock.
         """
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import AsyncMock
 
-        stub = AsyncMock()
-        stub.is_locked = MagicMock(return_value=False)
-        stub.record_failure = AsyncMock(return_value=False)
+        from synthorg.persistence.auth_protocol import LockoutRepository
+
+        stub = AsyncMock(spec=LockoutRepository)
+        stub.is_locked.return_value = False
+        stub.record_failure.return_value = False
         stub.lockout_duration_seconds = 0
-        stub._locked = {}
         return stub
 
     def build_escalations(
@@ -1110,13 +1268,17 @@ class FakePersistenceBackend:
         """Fake escalation repository builder."""
         from unittest.mock import AsyncMock
 
-        return AsyncMock()
+        from synthorg.persistence.escalation_protocol import EscalationQueueRepository
+
+        return AsyncMock(spec=EscalationQueueRepository)
 
     def build_ontology_versioning(self) -> AsyncMock:
         """Fake ontology versioning factory -- returns a mock service."""
         from unittest.mock import AsyncMock
 
-        return AsyncMock()
+        from synthorg.versioning.service import VersioningService
+
+        return AsyncMock(spec=VersioningService)
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)

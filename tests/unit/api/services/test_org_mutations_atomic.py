@@ -7,7 +7,7 @@ repository's CAS mechanism serialises concurrent writers.
 """
 
 import asyncio
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -25,6 +25,7 @@ from synthorg.api.services.org_mutations import OrgMutationService
 from synthorg.config.schema import RootConfig
 from synthorg.core.domain_errors import ConflictError, VersionConflictError
 from synthorg.core.enums import SeniorityLevel
+from synthorg.persistence.settings_protocol import SettingRow
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
 from tests.unit.api.fakes import FakePersistenceBackend
@@ -237,7 +238,6 @@ class TestCASRetry:
         # the same key.  We do this by manually updating the settings
         # timestamp right after the service reads.
         from synthorg.core.types import NotBlankStr
-        from synthorg.persistence.settings_protocol import SettingRow
 
         original_get = persistence.settings.get
 
@@ -258,7 +258,7 @@ class TestCASRetry:
                             update={"updated_at": "2099-01-01T00:00:00+00:00"}
                         )
                     )
-            return cast("SettingRow | None", result)
+            return result
 
         monkeypatch.setattr(persistence.settings, "get", intercepting_get)
         dept = await service.update_department(
@@ -287,18 +287,14 @@ class TestCASRetry:
         original_set_if_unchanged = persistence.settings.set_if_unchanged
 
         async def always_conflict_set_if_unchanged(
-            entity: Any,
-            *,
+            entity: SettingRow,
             expected_updated_at: str | None = None,
         ) -> bool:
             if entity.namespace == "company" and entity.key == "departments":
                 return False  # Always CAS failure
-            return cast(
-                "bool",
-                await original_set_if_unchanged(
-                    entity,
-                    expected_updated_at=expected_updated_at,
-                ),
+            return await original_set_if_unchanged(
+                entity,
+                expected_updated_at=expected_updated_at,
             )
 
         monkeypatch.setattr(
@@ -334,18 +330,14 @@ def _always_conflict_for_key(
     original_set_many = persistence.settings.set_many
 
     async def always_conflict_set_if_unchanged(
-        entity: Any,
-        *,
+        entity: SettingRow,
         expected_updated_at: str | None = None,
     ) -> bool:
         if entity.namespace == "company" and entity.key == target_key:
             return False
-        return cast(
-            "bool",
-            await original_set_if_unchanged(
-                entity,
-                expected_updated_at=expected_updated_at,
-            ),
+        return await original_set_if_unchanged(
+            entity,
+            expected_updated_at=expected_updated_at,
         )
 
     async def always_conflict_set_many(
@@ -357,12 +349,9 @@ def _always_conflict_for_key(
             ns == "company" and k == target_key for ns, k in expected_updated_at_map
         ):
             return False
-        return cast(
-            "bool",
-            await original_set_many(
-                items,
-                expected_updated_at_map=expected_updated_at_map,
-            ),
+        return await original_set_many(
+            items,
+            expected_updated_at_map=expected_updated_at_map,
         )
 
     monkeypatch.setattr(

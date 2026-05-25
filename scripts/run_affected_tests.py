@@ -18,9 +18,7 @@ failure mode that splits a green local run from a red xdist push.  Worker
 crashes scattered across unrelated tests (commonly the Python 3.14 +
 Windows ProactorEventLoop IOCP teardown race) are surfaced as advisory
 and do not block the gate; a test that crashes the worker on EVERY replay
-iteration is still treated as a real bug.  Set
-``SYNTHORG_SKIP_ISOLATION_GATE=1`` to bypass for emergency pushes (the
-primary run still gates on first-run failures regardless).
+iteration is still treated as a real bug.
 
 Exit codes match pytest: 0 (passed/nothing to run / advisory), 1 (failures),
 etc.  Git command failures fall back to running the full unit suite.
@@ -71,12 +69,6 @@ _BLAST_RADIUS_MODULES = frozenset({"core", "config", "observability"})
 
 # Top-level source files that aren't in a module directory.
 _TOP_LEVEL_SRC = frozenset({"__init__.py", "constants.py"})
-
-# Operator opt-out for the isolation regression gate. Set to "1" to skip
-# the second --count 2 pass on a single push; the primary run still
-# enforces first-run correctness regardless. Documented in the module
-# docstring so emergency-push semantics are discoverable.
-_SKIP_ISOLATION_GATE_ENV = "SYNTHORG_SKIP_ISOLATION_GATE"
 
 # Minimum path depth for src/synthorg/<module> or tests/unit/<module>.
 _MIN_MODULE_DEPTH = 3
@@ -545,11 +537,9 @@ def _stream_pytest(
                 f"\n{'!' * 60}\n"
                 f"run_affected_tests: pytest exceeded "
                 f"{timeout_seconds:.0f}s wall-clock cap -- killing.\n"
-                f"This is almost always the Windows + Python 3.14 + xdist\n"
-                f"IOCP teardown hang. Locally: re-run pre-push (it usually\n"
-                f"clears on retry); if it sticks, narrow the change so the\n"
-                f"affected selector picks fewer tests, or set\n"
-                f"SYNTHORG_SKIP_PREPUSH_TESTS=1 for an emergency push.\n"
+                f"The pre-push hook gates ALL pushes; investigate which test\n"
+                f"is hung (the worker traceback dumps above name it) and fix\n"
+                f"the root cause -- there is no bypass.\n"
                 f"{'!' * 60}",
                 file=sys.stderr,
             )
@@ -849,7 +839,7 @@ def _print_isolation_banner(outcome: IsolationOutcome) -> None:
                 "in only one directory; ``monkeypatch.setattr`` on structlog\n"
                 "lazy-proxy log methods; cached caches that survive teardown.\n"
                 f"Failed: {', '.join(outcome.failed_tests)}\n"
-                f"Override (single push, not durable): {_SKIP_ISOLATION_GATE_ENV}=1"
+                "Fix the leak. The gate has no bypass."
             )
         elif outcome.repeated_crashes:
             body = (
@@ -858,7 +848,7 @@ def _print_isolation_banner(outcome: IsolationOutcome) -> None:
                 "fixtures (memory corruption, segfault, native-level\n"
                 "deadlock), not transient infra noise.\n"
                 f"Repeated crashes: {', '.join(outcome.repeated_crashes)}\n"
-                f"Override (single push, not durable): {_SKIP_ISOLATION_GATE_ENV}=1"
+                "Fix the bug. The gate has no bypass."
             )
         else:
             # Fail-closed: pytest exited non-zero but emitted no parsable
@@ -868,8 +858,7 @@ def _print_isolation_banner(outcome: IsolationOutcome) -> None:
                 "ISOLATION REGRESSION: pytest exited non-zero "
                 f"({outcome.exit_code}) with output the gate could not\n"
                 "parse.  Inspect the captured pytest output above for\n"
-                "the underlying failure.\n"
-                f"Override (single push, not durable): {_SKIP_ISOLATION_GATE_ENV}=1"
+                "the underlying failure.  The gate has no bypass."
             )
         print(f"\n{border}\n{body}\n{border}", file=sys.stderr)
         return
@@ -902,18 +891,11 @@ def _run_isolation_gate(paths: list[str]) -> int:
     parses the captured stdout and tells real isolation regressions
     apart from native flakiness; only the former blocks the gate.
 
-    Skipped when ``SYNTHORG_SKIP_ISOLATION_GATE=1`` (operator escape
-    hatch for emergency pushes; the primary run still enforces
-    first-run correctness regardless). Skipped when ``paths`` is empty.
+    Skipped only when ``paths`` is empty (nothing affected).  The gate
+    always runs otherwise; root causes are fixed, not bypassed.
 
     Returns 0 on green / skip / advisory; non-zero on regression.
     """
-    if os.environ.get(_SKIP_ISOLATION_GATE_ENV) == "1":
-        print(
-            f"Isolation gate skipped via {_SKIP_ISOLATION_GATE_ENV}=1.",
-            file=sys.stderr,
-        )
-        return 0
     if not paths:
         return 0
     print("Isolation gate: re-running affected tests under --count 2...")

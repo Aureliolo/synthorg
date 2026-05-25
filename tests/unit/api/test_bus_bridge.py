@@ -292,7 +292,7 @@ class TestBridgeLifecycle:
             msg = "sub fail"
             raise OSError(msg)
 
-        bus.subscribe = failing_subscribe  # type: ignore[method-assign]
+        bus.subscribe = failing_subscribe  # type: ignore[method-assign,assignment]
 
         plugin = ChannelsPlugin(
             backend=MemoryChannelsBackend(history=5),

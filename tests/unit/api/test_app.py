@@ -275,7 +275,9 @@ class TestAppLifecycle:
         # Persistence should have been disconnected during cleanup
         assert not persistence.is_connected
 
-    async def test_shutdown_error_handling(self) -> None:
+    async def test_shutdown_error_handling(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Shutdown errors are logged but don't propagate."""
         from synthorg.api.lifecycle import _safe_shutdown
         from tests.unit.api.conftest import FakePersistenceBackend
@@ -286,7 +288,7 @@ class TestAppLifecycle:
             msg = "disconnect boom"
             raise RuntimeError(msg)
 
-        persistence.disconnect = failing_disconnect
+        monkeypatch.setattr(persistence, "disconnect", failing_disconnect)
 
         # Should not raise even when disconnect fails
         await _safe_shutdown(None, None, None, None, None, None, None, persistence)
