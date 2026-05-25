@@ -36,6 +36,7 @@ boolean.  Parse errors are logged at WARNING level.
 import re
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.condition_eval import (
     CONDITION_EVAL_PARSE_ERROR,
@@ -56,8 +57,9 @@ def _eval_comparison(
 ) -> bool | None:
     """Evaluate equality/inequality comparisons.
 
-    Returns the boolean result, or ``None`` if *expr* contains
-    neither ``==`` nor ``!=``.
+    Returns:
+        The boolean result of the comparison, or ``None`` if
+        ``expr`` contains neither ``==`` nor ``!=``.
     """
     for op in ("!=", "=="):
         if op not in expr:
@@ -82,6 +84,10 @@ def _eval_atom(
     """Evaluate a single atomic expression (no compound operators).
 
     Handles boolean literals, comparisons, and key lookups.
+
+    Returns:
+        ``True`` / ``False`` per the evaluation; an empty or
+        unrecognised expression resolves to ``False``.
     """
     expr = expr.strip()
     if not expr:
@@ -117,6 +123,10 @@ def _tokenize(expression: str) -> list[str]:
 
     Keywords (AND/OR/NOT) are only recognized at word boundaries,
     so ``ORLANDO`` or ``NOTICE`` are not split.
+
+    Returns:
+        The ordered list of tokens (keywords upper-cased, atoms
+        stripped of surrounding whitespace).
     """
     tokens: list[str] = []
     pos = 0
@@ -150,7 +160,13 @@ def _parse_or(
     pos: int,
     context: Mapping[str, object],
 ) -> tuple[bool, int]:
-    """Parse OR-level (lowest precedence)."""
+    """Parse OR-level (lowest precedence).
+
+    Returns:
+        ``(value, new_pos)``: the boolean result of the OR-level
+        expression and the cursor position after the last consumed
+        token.
+    """
     left, pos = _parse_and(tokens, pos, context)
     while pos < len(tokens) and tokens[pos] == "OR":
         pos += 1  # consume OR
@@ -164,7 +180,13 @@ def _parse_and(
     pos: int,
     context: Mapping[str, object],
 ) -> tuple[bool, int]:
-    """Parse AND-level (higher precedence than OR)."""
+    """Parse AND-level (higher precedence than OR).
+
+    Returns:
+        ``(value, new_pos)``: the boolean result of the AND-level
+        expression and the cursor position after the last consumed
+        token.
+    """
     left, pos = _parse_not(tokens, pos, context)
     while pos < len(tokens) and tokens[pos] == "AND":
         pos += 1  # consume AND
@@ -178,7 +200,13 @@ def _parse_not(
     pos: int,
     context: Mapping[str, object],
 ) -> tuple[bool, int]:
-    """Parse NOT-level (highest precedence)."""
+    """Parse NOT-level (highest precedence).
+
+    Returns:
+        ``(value, new_pos)``: the boolean result of the NOT-level
+        expression (or the inner atom when ``NOT`` is absent) and the
+        cursor position after the last consumed token.
+    """
     if pos < len(tokens) and tokens[pos] == "NOT":
         pos += 1  # consume NOT
         value, pos = _parse_not(tokens, pos, context)
@@ -192,6 +220,11 @@ def _parse_atom_token(
     context: Mapping[str, object],
 ) -> tuple[bool, int]:
     """Parse an atom: parenthesized group or single comparison.
+
+    Returns:
+        ``(value, new_pos)``: the atom's boolean result and the cursor
+        position after the closing paren (for groups) or the atom
+        token (for comparisons / key lookups).
 
     Raises:
         ValueError: On missing operand, unclosed parenthesis, or
@@ -227,7 +260,12 @@ _KEYWORDS = frozenset({"AND", "OR", "NOT"})
 
 
 def _has_compound_operators(expression: str) -> bool:
-    """Check if expression contains compound operators or parens."""
+    """Check if expression contains compound operators or parens.
+
+    Returns:
+        ``True`` when the expression contains ``AND`` / ``OR`` /
+        ``NOT`` (word-bounded) or parentheses; ``False`` otherwise.
+    """
     return _COMPOUND_RE.search(expression) is not None
 
 
@@ -262,9 +300,8 @@ def evaluate_condition(
 
     try:
         return _evaluate_inner(expr, context)
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             CONDITION_EVAL_PARSE_ERROR,
             expression=expr[:200],
@@ -276,7 +313,13 @@ def _evaluate_inner(
     expr: str,
     context: Mapping[str, object],
 ) -> bool:
-    """Core evaluation logic -- may raise on malformed input."""
+    """Core evaluation logic; may raise on malformed input.
+
+    Returns:
+        The boolean result of evaluating ``expr`` against ``context``;
+        an over-complex or trailing-token expression resolves to
+        ``False`` after logging a warning.
+    """
     # Quick path: if no compound operators, use simple evaluation
     # for zero-overhead backward compatibility.  If the entire
     # expression is exactly a keyword (AND/OR/NOT), treat it as

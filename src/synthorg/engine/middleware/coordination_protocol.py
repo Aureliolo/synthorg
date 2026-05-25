@@ -98,7 +98,12 @@ class CoordinationMiddlewareContext(BaseModel):
 
     @model_validator(mode="after")
     def _deepcopy_metadata(self) -> CoordinationMiddlewareContext:
-        """Defensive copy so callers cannot mutate the frozen model."""
+        """Defensive copy so callers cannot mutate the frozen model.
+
+        Returns:
+            ``self`` with its ``metadata`` mapping replaced by a deep
+            copy so external aliases do not survive.
+        """
         object.__setattr__(
             self,
             "metadata",
@@ -211,35 +216,55 @@ class BaseCoordinationMiddleware:
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """No-op: return context unchanged."""
+        """No-op: return context unchanged.
+
+        Returns:
+            The same ``ctx`` instance passed in.
+        """
         return ctx
 
     async def after_decompose(
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """No-op: return context unchanged."""
+        """No-op: return context unchanged.
+
+        Returns:
+            The same ``ctx`` instance passed in.
+        """
         return ctx
 
     async def before_dispatch(
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """No-op: return context unchanged."""
+        """No-op: return context unchanged.
+
+        Returns:
+            The same ``ctx`` instance passed in.
+        """
         return ctx
 
     async def after_rollup(
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """No-op: return context unchanged."""
+        """No-op: return context unchanged.
+
+        Returns:
+            The same ``ctx`` instance passed in.
+        """
         return ctx
 
     async def before_update_parent(
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """No-op: return context unchanged."""
+        """No-op: return context unchanged.
+
+        Returns:
+            The same ``ctx`` instance passed in.
+        """
         return ctx
 
 
@@ -305,7 +330,12 @@ class CoordinationMiddlewareChain:
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Run ``before_decompose`` hooks left-to-right."""
+        """Run ``before_decompose`` hooks left-to-right.
+
+        Returns:
+            The context threaded through every middleware's
+            ``before_decompose`` hook in declared order.
+        """
         for mw in self._middleware:
             try:
                 ctx = await mw.before_decompose(ctx)
@@ -322,7 +352,12 @@ class CoordinationMiddlewareChain:
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Run ``after_decompose`` hooks left-to-right."""
+        """Run ``after_decompose`` hooks left-to-right.
+
+        Returns:
+            The context threaded through every middleware's
+            ``after_decompose`` hook in declared order.
+        """
         for mw in self._middleware:
             try:
                 ctx = await mw.after_decompose(ctx)
@@ -339,7 +374,12 @@ class CoordinationMiddlewareChain:
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Run ``before_dispatch`` hooks left-to-right."""
+        """Run ``before_dispatch`` hooks left-to-right.
+
+        Returns:
+            The context threaded through every middleware's
+            ``before_dispatch`` hook in declared order.
+        """
         for mw in self._middleware:
             try:
                 ctx = await mw.before_dispatch(ctx)
@@ -356,7 +396,12 @@ class CoordinationMiddlewareChain:
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Run ``after_rollup`` hooks left-to-right."""
+        """Run ``after_rollup`` hooks left-to-right.
+
+        Returns:
+            The context threaded through every middleware's
+            ``after_rollup`` hook in declared order.
+        """
         for mw in self._middleware:
             try:
                 ctx = await mw.after_rollup(ctx)
@@ -373,7 +418,12 @@ class CoordinationMiddlewareChain:
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Run ``before_update_parent`` hooks left-to-right."""
+        """Run ``before_update_parent`` hooks left-to-right.
+
+        Returns:
+            The context threaded through every middleware's
+            ``before_update_parent`` hook in declared order.
+        """
         for mw in self._middleware:
             try:
                 ctx = await mw.before_update_parent(ctx)
