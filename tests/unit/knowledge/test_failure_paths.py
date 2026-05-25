@@ -2,13 +2,13 @@
 """Failure-path coverage for the knowledge substrate.
 
 The happy paths are covered by ``test_indexer.py`` / ``test_service.py``
-/ ``test_loaders.py``. This file targets the error paths flagged by the
-pre-PR review: PDF parse failure, web sanitize failure, indexer
-provenance.save failure (V8 ordering: provenance writes BEFORE memory
-store, so a failing save must leave memory untouched), repo
-read-error skip + log, oversized-file boundary, zero-chunk source,
-ticket-id mismatch contract, and the per-source ingest lock (V9) that
-serialises concurrent ingest/delete on the same source_id.
+/ ``test_loaders.py``. This file covers the error paths: PDF parse
+failure, web sanitize failure, indexer ``provenance.save`` failure
+(provenance writes BEFORE memory store, so a failing save must leave
+memory untouched), repo read-error skip + log, oversized-file
+boundary, zero-chunk source, ticket-id mismatch contract, and the
+per-source ingest lock that serialises concurrent ingest/delete on
+the same ``source_id``.
 """
 
 import asyncio
