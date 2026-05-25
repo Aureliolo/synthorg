@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.prompt import build_system_prompt
 from synthorg.observability import get_logger
@@ -165,6 +166,10 @@ class AgentEngineResumeMixin:
         present verbatim in the restored conversation; rebuilding here
         avoids re-firing the personality-trim notification a fresh
         ``_prepare_context`` would.
+
+        Returns:
+            ``(tool_invoker, system_prompt)``: the per-resume invoker
+            and the freshly-built system prompt for the resumed loop.
         """
         tool_invoker = self._make_tool_invoker(
             identity,
@@ -207,6 +212,11 @@ class AgentEngineResumeMixin:
         ``run()`` uses so a failed resume still syncs an authoritative
         terminal task state to the ``TaskEngine`` instead of leaving
         the task stuck mid-flight.
+
+        Returns:
+            The terminal :class:`AgentRunResult` of the resumed run
+            (a budget / fatal handler may rewrite the termination
+            reason to ``BUDGET_EXHAUSTED`` / ``ERROR``).
         """
         try:
             result = await self._execute(
@@ -223,8 +233,6 @@ class AgentEngineResumeMixin:
                 effective_autonomy=effective_autonomy,
                 provider=self._provider,
             )
-        except MemoryError, RecursionError:
-            raise
         except BudgetExhaustedError as exc:
             return cast(
                 "AgentRunResult",
@@ -240,6 +248,7 @@ class AgentEngineResumeMixin:
                 ),
             )
         except Exception as exc:
+            reraise_critical(exc)
             return cast(
                 "AgentRunResult",
                 await self._handle_fatal_error(
