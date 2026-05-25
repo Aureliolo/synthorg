@@ -16,7 +16,7 @@ _NOW = datetime(2026, 4, 7, 12, 0, tzinfo=UTC)
 
 
 class _Simple(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     name: str
     value: int
 

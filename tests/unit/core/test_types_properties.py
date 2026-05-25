@@ -3,7 +3,7 @@
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from synthorg.budget.currency import CURRENCY_SYMBOLS, MINOR_UNITS, CurrencyCode
 from synthorg.core.types import NotBlankStr
@@ -14,10 +14,12 @@ _KNOWN_CODES = sorted(frozenset(CURRENCY_SYMBOLS) | frozenset(MINOR_UNITS))
 
 
 class _NotBlankModel(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
     value: NotBlankStr
 
 
 class _CurrencyModel(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
     currency: CurrencyCode
 
 

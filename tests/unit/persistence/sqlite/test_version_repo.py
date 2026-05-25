@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS test_versions (
 class _Stub(BaseModel):
     """Minimal model used as the generic T in these tests."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
     value: int

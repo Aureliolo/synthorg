@@ -116,6 +116,15 @@ def test_last_write_wins(tmp_path: Path) -> None:
     assert violations[0][2] == "Sneaky"
 
 
+def test_main_scope_includes_both_src_and_tests() -> None:
+    """The project-wide gate walks src/synthorg/ AND tests/."""
+    gate = _load_gate()
+    assert gate.SRC_DIR.name == "synthorg"  # type: ignore[attr-defined]
+    assert gate.TEST_DIR.name == "tests"  # type: ignore[attr-defined]
+    assert gate.SRC_DIR.is_dir()  # type: ignore[attr-defined]
+    assert gate.TEST_DIR.is_dir()  # type: ignore[attr-defined]
+
+
 def test_real_codebase_is_compliant() -> None:
     """The gate must be green against the actual tree (no regressions)."""
     gate = _load_gate()

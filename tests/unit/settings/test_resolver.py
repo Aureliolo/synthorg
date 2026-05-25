@@ -36,14 +36,14 @@ class _Color(StrEnum):
 
 
 class _BudgetAlerts(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     warn_at: int = 75
     critical_at: int = 90
     hard_stop_at: int = 100
 
 
 class _AutoDowngrade(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     enabled: bool = False
     threshold: int = 85
     downgrade_map: tuple[tuple[str, str], ...] = ()
@@ -51,7 +51,7 @@ class _AutoDowngrade(BaseModel):
 
 
 class _BudgetConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
     total_monthly: float = 100.0
     per_task_limit: float = 5.0
     per_agent_daily_limit: float = 10.0
@@ -61,7 +61,7 @@ class _BudgetConfig(BaseModel):
 
 
 class _CoordinationSection(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     topology: str = "auto"
     max_concurrency_per_wave: int | None = None
     fail_fast: bool = False
@@ -70,7 +70,7 @@ class _CoordinationSection(BaseModel):
 
 
 class _FakeAuthConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     jwt_secret: str = ""
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     jwt_expiry_minutes: int = 1440
@@ -79,7 +79,7 @@ class _FakeAuthConfig(BaseModel):
 
 
 class _FakeRateLimitConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     unauth_max_requests: int = 20
     auth_max_requests: int = 6000
     time_unit: RateLimitTimeUnit = RateLimitTimeUnit.MINUTE
@@ -87,18 +87,18 @@ class _FakeRateLimitConfig(BaseModel):
 
 
 class _FakeCorsConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     allowed_origins: tuple[str, ...] = ("http://localhost:5173",)
 
 
 class _FakeServerConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     host: str = "127.0.0.1"
     port: int = 3001
 
 
 class _FakeApiConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     cors: _FakeCorsConfig = _FakeCorsConfig()
     rate_limit: _FakeRateLimitConfig = _FakeRateLimitConfig()
     server: _FakeServerConfig = _FakeServerConfig()
@@ -107,7 +107,7 @@ class _FakeApiConfig(BaseModel):
 
 
 class _FakeRootConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     api: _FakeApiConfig = _FakeApiConfig()
     budget: _BudgetConfig = _BudgetConfig()
     coordination: _CoordinationSection = _CoordinationSection()

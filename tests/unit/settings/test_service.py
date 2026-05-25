@@ -33,12 +33,12 @@ from tests._shared import mock_of
 
 
 class _BudgetConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
     total_monthly: float = 100.0
 
 
 class _FakeConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     budget: _BudgetConfig = _BudgetConfig()
 
 
