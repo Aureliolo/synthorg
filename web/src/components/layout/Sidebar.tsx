@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { useLocation } from 'react-router'
 import { X } from 'lucide-react'
 import { createLogger } from '@/lib/logger'
@@ -42,17 +42,23 @@ function _detectMacPlatform(): boolean {
   return typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform)
 }
 
+function _noopSubscribe(): () => void {
+  // navigator.platform is immutable post-mount; no event to subscribe to.
+  return () => undefined
+}
+
+function _macServerSnapshot(): boolean {
+  return false
+}
+
 function useIsMacPlatform(): boolean {
-  // ``navigator.platform`` is a DOM global, so reading it inside the
-  // render body trips ``@eslint-react/globals``. Defer the lookup to a
-  // post-mount effect; the shortcut hint flips from the default
-  // (``Ctrl``) to ``⌘`` once on hydration without ever touching
-  // ``navigator`` during render.
-  const [isMac, setIsMac] = useState(false)
-  useEffect(() => {
-    setIsMac(_detectMacPlatform())
-  }, [])
-  return isMac
+  // Route navigator.platform through ``useSyncExternalStore`` so the
+  // DOM-global read never happens during render (``@eslint-react/globals``)
+  // and we never call ``setState`` synchronously from an effect
+  // (``@eslint-react/set-state-in-effect``). The snapshot is captured
+  // post-hydration on the client and falls back to ``false`` on the
+  // server, matching the same SSR-safe default the old useState seed had.
+  return useSyncExternalStore(_noopSubscribe, _detectMacPlatform, _macServerSnapshot)
 }
 
 function useNavigationOverlayClose(

@@ -41,21 +41,24 @@ function useInlineEdit(
 ): InlineEditMachine {
   const [state, setState] = useState<EditState>('display')
   const [editValue, setEditValue] = useState(value)
+  const [prevValue, setPrevValue] = useState(value)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const { flashClassName, triggerFlash } = useFlash()
   // Track whether save was triggered by Enter (to skip blur-triggered save).
   const saveInProgressRef = useRef(false)
 
-  // Sync editValue when prop value changes externally while in display
-  // mode. Calling ``setEditValue`` during render schedules an extra
-  // render and trips React's "do not set state during render" warning
-  // in strict mode; route through an effect keyed on ``state`` / ``value``
-  // so the sync still fires when either dependency moves but is sequenced
-  // after commit.
-  useEffect(() => {
-    if (state === 'display') setEditValue(value)
-  }, [state, value])
+  // Sync editValue when the prop changes externally while in display
+  // mode. The "set state during render with a prevProp tracker" idiom
+  // is React's documented pattern for prop->derived-state sync (see
+  // "You Might Not Need an Effect" -> "Adjusting some state when a prop
+  // changes"). Doing this via ``useEffect`` instead would trip
+  // ``@eslint-react/set-state-in-effect`` and cause an extra commit
+  // before the synced value is rendered.
+  if (state === 'display' && value !== prevValue) {
+    setPrevValue(value)
+    setEditValue(value)
+  }
 
   // Focus input when entering edit mode.
   useEffect(() => {
