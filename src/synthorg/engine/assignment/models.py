@@ -126,7 +126,15 @@ class AssignmentRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_collections(self) -> Self:
-        """Validate that collections are non-empty and unique."""
+        """Validate that collections are non-empty and unique.
+
+        Returns:
+            ``self`` unchanged when collections are well-formed.
+
+        Raises:
+            ValueError: When ``available_agents`` is empty or when
+                either collection contains duplicate agent ids.
+        """
         if not self.available_agents:
             msg = "available_agents must not be empty"
             raise ValueError(msg)
@@ -176,7 +184,16 @@ class AssignmentResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_selected_not_in_alternatives(self) -> Self:
-        """Ensure selected candidate is not duplicated in alternatives."""
+        """Ensure selected candidate is not duplicated in alternatives.
+
+        Returns:
+            ``self`` unchanged when ``selected`` does not appear in
+            ``alternatives`` (or no candidate was selected).
+
+        Raises:
+            ValueError: When the selected candidate's agent id
+                appears among ``alternatives``.
+        """
         if self.selected is None:
             return self
         selected_id = self.selected.agent_identity.id

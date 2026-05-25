@@ -24,7 +24,12 @@ from synthorg.versioning.hashing import compute_content_hash
 
 
 def _merge(scans: list[EcosystemScan]) -> EcosystemScan:
-    """Merge contributions, de-duplicating while preserving sorted order."""
+    """Merge contributions, de-duplicating while preserving sorted order.
+
+    Returns:
+        A single :class:`EcosystemScan` with each collection
+        de-duplicated and sorted (by item ``repr``).
+    """
 
     def _dedupe[T](items: list[T]) -> tuple[T, ...]:
         seen: dict[str, T] = {}
@@ -45,7 +50,13 @@ def _run_scanners(
     workspace_path: Path,
     scanners: tuple[StructureMapScanner, ...],
 ) -> EcosystemScan:
-    """Run matching specific scanners, else the generic fallback (sync)."""
+    """Run matching specific scanners, else the generic fallback (sync).
+
+    Returns:
+        Merged :class:`EcosystemScan` from matching specific
+        scanners; the merged generic-scanner output when no specific
+        scanner matched; an empty scan when no scanner matched.
+    """
     specific = [s for s in scanners if s.ecosystem() is not Ecosystem.GENERIC]
     generic = [s for s in scanners if s.ecosystem() is Ecosystem.GENERIC]
     matched = [s.scan(workspace_path) for s in specific if s.detect(workspace_path)]
@@ -68,6 +79,11 @@ async def scan_codebase(
     The scan itself is synchronous and CPU/IO-bound, so it runs in a worker
     thread. The returned map's ``content_hash`` covers only the structural
     facts, so re-scanning an unchanged source yields an identical hash.
+
+    Returns:
+        A persistence-ready :class:`CodebaseStructureMap` carrying the
+        merged scan plus ``project_id``, ``source_ref``, ``scanned_at``
+        and a content hash computed over the structural facts only.
     """
     resolved_clock = clock if clock is not None else SystemClock()
     merged = await asyncio.to_thread(_run_scanners, workspace_path, scanners)
