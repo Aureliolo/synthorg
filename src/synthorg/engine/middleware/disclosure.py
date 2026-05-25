@@ -52,7 +52,12 @@ class DisclosureMiddleware(BaseAgentMiddleware):
         ctx: AgentMiddlewareContext,
         call: ToolCallable,
     ) -> ToolCallResult:
-        """Observe discovery tool calls and manage loaded state."""
+        """Observe discovery tool calls and manage loaded state.
+
+        Returns:
+            The inner :class:`ToolCallResult`, possibly with an
+            ``updated_agent_context`` carrying load/unload state.
+        """
         result = await call(ctx)
 
         if not result.success:
@@ -141,7 +146,12 @@ class DisclosureMiddleware(BaseAgentMiddleware):
 
     @staticmethod
     def _extract_tool_name(output: str) -> str | None:
-        """Extract loaded tool name from load_tool JSON output."""
+        """Extract loaded tool name from load_tool JSON output.
+
+        Returns:
+            The loaded tool name parsed from JSON output; ``None``
+            when the output is not parseable JSON.
+        """
         try:
             data = json.loads(output)
         except json.JSONDecodeError, TypeError, AttributeError:

@@ -33,7 +33,12 @@ class MCPSelfConsumerProvider(Protocol):
         identity: AgentIdentity,
         access_level: ToolAccessLevel,
     ) -> tuple[BaseTool, ...]:
-        """Return the MCP tools visible to *identity* at *access_level*."""
+        """Return the MCP tools visible to *identity* at *access_level*.
+
+        Returns:
+            Tuple of :class:`BaseTool` adapters scoped to the agent's
+            earned trust level.
+        """
         ...
 
 

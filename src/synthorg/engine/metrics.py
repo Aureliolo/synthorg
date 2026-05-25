@@ -86,6 +86,10 @@ class TaskCompletionMetrics(BaseModel):
         The heuristic estimator (char/4) can legitimately overshoot
         actual provider-reported tokens, so we clamp rather than reject.
         Skipped when ``tokens_per_task`` is 0 (zero-turn runs).
+
+        Returns:
+            ``self`` with ``prompt_tokens`` clamped at
+            ``tokens_per_task`` when needed.
         """
         if self.tokens_per_task > 0 and self.prompt_tokens > self.tokens_per_task:
             object.__setattr__(self, "prompt_tokens", self.tokens_per_task)

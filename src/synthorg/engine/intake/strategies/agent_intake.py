@@ -111,7 +111,13 @@ class AgentIntake:
         )
 
     async def process(self, request: ClientRequest) -> IntakeResult:
-        """Invoke the triage agent and create a task on acceptance."""
+        """Invoke the triage agent and create a task on acceptance.
+
+        Returns:
+            An :class:`IntakeResult` carrying the triage verdict and
+            (on acceptance) the created task's id; rejection reasons
+            surface here when the agent declines.
+        """
         messages = self._build_prompt(request.requirement)
         try:
             async with cost_recording_scope(

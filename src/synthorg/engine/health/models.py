@@ -115,5 +115,9 @@ class EscalationTicket(BaseModel):
         deep copy guards against the caller retaining a reference to
         the original dict and mutating it post-construction; the
         proxy guards against direct item assignment on the field.
+
+        Returns:
+            A read-only :class:`MappingProxyType` view over a deep
+            copy of ``value``.
         """
         return MappingProxyType(copy.deepcopy(dict(value)))

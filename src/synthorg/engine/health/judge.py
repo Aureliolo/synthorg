@@ -136,7 +136,11 @@ class HealthJudge:
 def _count_trailing_incorrect(
     signals: tuple[StepQualitySignal, ...],
 ) -> int:
-    """Count consecutive INCORRECT signals from the end."""
+    """Count consecutive INCORRECT signals from the end.
+
+    Returns:
+        The length of the trailing run of INCORRECT signals.
+    """
     count = 0
     for signal in reversed(signals):
         if signal.quality == StepQuality.INCORRECT:

@@ -45,7 +45,17 @@ class IntakeResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_accepted_consistency(self) -> Self:
-        """Ensure task_id and rejection_reason match accepted status."""
+        """Ensure task_id and rejection_reason match accepted status.
+
+        Returns:
+            ``self`` unchanged when ``accepted`` agrees with
+            ``task_id`` / ``rejection_reason``.
+
+        Raises:
+            ValueError: When an accepted result lacks a ``task_id``
+                or carries a rejection reason, or a rejected result
+                carries a ``task_id`` or lacks a reason.
+        """
         if self.accepted:
             if self.task_id is None:
                 msg = "task_id is required when accepted is True"
