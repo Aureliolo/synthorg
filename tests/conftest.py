@@ -453,6 +453,18 @@ DISALLOWED_VENDOR_NAMES: frozenset[str] = frozenset(
 # that belongs in ``tests/integration/`` instead.
 _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
+# pytest-repeat's ``--count`` flag is used exclusively by
+# ``scripts/run_affected_tests.py``'s isolation regression gate (a
+# ``--count 2`` replay of every affected test to detect fixture
+# state leaks). That replay doubles xdist contention; legitimate
+# unit tests routinely cross the 6s wall-clock guard on Windows
+# under that load even though they run well under it in the primary
+# pass. The primary run (no ``--count``) still enforces the guard;
+# disabling it on the replay keeps the gate focused on its actual
+# purpose (fixture leak detection) rather than re-litigating timing.
+_COUNT_ISOLATION_RUN = "--count" in sys.argv or any(
+    arg.startswith("--count=") for arg in sys.argv
+)
 _start_key = pytest.StashKey[float]()
 # Accumulator for unit-only wall-clock time, summed across tests in
 # ``pytest_runtest_teardown``.  Used by the suite regression guard
@@ -520,6 +532,7 @@ def pytest_runtest_teardown(item: pytest.Item) -> None:
         _template_build_secs = 0.0
     if (
         not _FUZZ_PROFILE_ACTIVE
+        and not _COUNT_ISOLATION_RUN
         and item.get_closest_marker("unit")
         and guard_elapsed > _UNIT_TEST_WALL_CLOCK_LIMIT
     ):
