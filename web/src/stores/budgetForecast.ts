@@ -1,3 +1,4 @@
+import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 
 import {
@@ -42,112 +43,87 @@ export interface BudgetForecastState {
   reset: () => void
 }
 
+type BfSet = StoreApi<BudgetForecastState>['setState']
+
+async function mutateForecast(
+  set: BfSet,
+  call: () => Promise<Forecast>,
+  successTitle: string,
+  fallbackTitle: string,
+  logPrefix: string,
+): Promise<Forecast | null> {
+  set({ mutating: true })
+  try {
+    const forecast = await call()
+    set({ current: forecast, mutating: false })
+    useToastStore.getState().add({ variant: 'success', title: successTitle })
+    return forecast
+  } catch (err) {
+    log.error(`${logPrefix}:`, getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, fallbackTitle),
+      description: getErrorMessage(err),
+    })
+    set({ mutating: false })
+    return null
+  }
+}
+
+async function fetchForecastImpl(
+  set: BfSet,
+  forecastId: string,
+): Promise<void> {
+  set({ loading: true, error: null })
+  try {
+    const forecast = await apiGetForecast(forecastId)
+    set({ current: forecast, loading: false })
+  } catch (err) {
+    const message = getErrorMessage(err)
+    log.warn('Fetch forecast failed', message)
+    set({ loading: false, error: message })
+  }
+}
+
 export const useBudgetForecastStore = create<BudgetForecastState>((set) => ({
   current: null,
   loading: false,
   mutating: false,
   error: null,
 
-  fetchForecast: async (forecastId: string) => {
-    set({ loading: true, error: null })
-    try {
-      const forecast = await apiGetForecast(forecastId)
-      set({ current: forecast, loading: false })
-    } catch (err) {
-      const message = getErrorMessage(err)
-      log.warn('Fetch forecast failed', message)
-      set({ loading: false, error: message })
-    }
-  },
-
-  createForecast: async (data: ForecastRequest) => {
-    set({ mutating: true })
-    try {
-      const forecast = await apiCreateForecast(data)
-      set({ current: forecast, mutating: false })
-      useToastStore.getState().add({
-        variant: 'success',
-        title: 'Cost forecast generated',
-      })
-      return forecast
-    } catch (err) {
-      log.error('Create forecast failed:', getErrorMessage(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        ...getCrudErrorTitle(err, 'Failed to generate cost forecast'),
-        description: getErrorMessage(err),
-      })
-      set({ mutating: false })
-      return null
-    }
-  },
-
-  approveForecast: async (forecastId: string, data: ForecastApproveRequest) => {
-    set({ mutating: true })
-    try {
-      const forecast = await apiApproveForecast(forecastId, data)
-      set({ current: forecast, mutating: false })
-      useToastStore.getState().add({
-        variant: 'success',
-        title: 'Forecast approved',
-      })
-      return forecast
-    } catch (err) {
-      log.error('Approve forecast failed:', getErrorMessage(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        ...getCrudErrorTitle(err, 'Failed to approve forecast'),
-        description: getErrorMessage(err),
-      })
-      set({ mutating: false })
-      return null
-    }
-  },
-
-  rejectForecast: async (forecastId: string, data: ForecastRejectRequest) => {
-    set({ mutating: true })
-    try {
-      const forecast = await apiRejectForecast(forecastId, data)
-      set({ current: forecast, mutating: false })
-      useToastStore.getState().add({
-        variant: 'success',
-        title: 'Forecast rejected',
-      })
-      return forecast
-    } catch (err) {
-      log.error('Reject forecast failed:', getErrorMessage(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        ...getCrudErrorTitle(err, 'Failed to reject forecast'),
-        description: getErrorMessage(err),
-      })
-      set({ mutating: false })
-      return null
-    }
-  },
-
-  raiseCeiling: async (forecastId: string, data: RaiseCeilingRequest) => {
-    set({ mutating: true })
-    try {
-      const forecast = await apiRaiseCeiling(forecastId, data)
-      set({ current: forecast, mutating: false })
-      useToastStore.getState().add({
-        variant: 'success',
-        title: 'Hard ceiling raised; run can resume',
-      })
-      return forecast
-    } catch (err) {
-      log.error('Raise ceiling failed:', getErrorMessage(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        ...getCrudErrorTitle(err, 'Failed to raise hard ceiling'),
-        description: getErrorMessage(err),
-      })
-      set({ mutating: false })
-      return null
-    }
-  },
-
+  fetchForecast: (forecastId) => fetchForecastImpl(set, forecastId),
+  createForecast: (data) =>
+    mutateForecast(
+      set,
+      () => apiCreateForecast(data),
+      'Cost forecast generated',
+      'Failed to generate cost forecast',
+      'Create forecast failed',
+    ),
+  approveForecast: (forecastId, data) =>
+    mutateForecast(
+      set,
+      () => apiApproveForecast(forecastId, data),
+      'Forecast approved',
+      'Failed to approve forecast',
+      'Approve forecast failed',
+    ),
+  rejectForecast: (forecastId, data) =>
+    mutateForecast(
+      set,
+      () => apiRejectForecast(forecastId, data),
+      'Forecast rejected',
+      'Failed to reject forecast',
+      'Reject forecast failed',
+    ),
+  raiseCeiling: (forecastId, data) =>
+    mutateForecast(
+      set,
+      () => apiRaiseCeiling(forecastId, data),
+      'Hard ceiling raised; run can resume',
+      'Failed to raise hard ceiling',
+      'Raise ceiling failed',
+    ),
   reset: () => {
     set({ current: null, loading: false, mutating: false, error: null })
   },

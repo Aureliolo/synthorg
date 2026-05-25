@@ -8,6 +8,6 @@ export interface ArtifactFilters {
   created_by?: string
   type?: import('./enums').ArtifactType
   project_id?: string
-  offset?: number
+  cursor?: string | null
   limit?: number
 }

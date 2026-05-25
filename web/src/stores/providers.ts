@@ -3,6 +3,7 @@ import type { ProvidersState } from './providers/types'
 import { createListActions } from './providers/list-actions'
 import { createDetailActions } from './providers/detail-actions'
 import { createCrudActions } from './providers/crud-actions'
+import { createModelMutationActions } from './providers/model-mutations'
 import { createLocalModelActions } from './providers/local-model-actions'
 import { createAuditActions } from './providers/audit-actions'
 
@@ -58,6 +59,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   ...createListActions(set),
   ...createDetailActions(set),
   ...createCrudActions(set, get),
+  ...createModelMutationActions(set, get),
   ...createLocalModelActions(set, get),
   ...createAuditActions(set, get),
 }))

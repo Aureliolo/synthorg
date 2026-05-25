@@ -1,3 +1,4 @@
+import type { Edge, Node } from '@xyflow/react'
 import { validateWorkflowDraft } from '@/api/endpoints/workflows'
 import {
   isWorkflowEdgeType,
@@ -5,6 +6,7 @@ import {
   type WorkflowEdgeType,
   type WorkflowNodeType,
 } from '@/api/types/workflows'
+import type { WorkflowDefinition } from '@/api/types/workflows'
 import { createLogger } from '@/lib/logger'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
@@ -19,13 +21,100 @@ function readString(data: unknown, key: string): string | undefined {
   return isString(value) ? value : undefined
 }
 
-function readRecord(data: unknown, key: string): Record<string, unknown> | undefined {
+function readRecord(
+  data: unknown,
+  key: string,
+): Record<string, unknown> | undefined {
   if (!isObject(data)) return undefined
   const value = data[key]
   return isObject(value) ? value : undefined
 }
 
-export const createValidationSlice: SliceCreator<ValidationSlice> = (set, get) => ({
+function validateLocalGraph(
+  nodes: readonly Node[],
+  edges: readonly Edge[],
+): string | null {
+  const badNodes = nodes.filter((n) => !isWorkflowNodeType(n.type))
+  const badEdges = edges.filter(
+    (e) => !isWorkflowEdgeType(readString(e.data, 'edgeType')),
+  )
+  if (badNodes.length === 0 && badEdges.length === 0) return null
+  const parts: string[] = []
+  if (badNodes.length > 0) {
+    parts.push(
+      `nodes missing/invalid type: ${badNodes.map((n) => n.id).join(', ')}`,
+    )
+  }
+  if (badEdges.length > 0) {
+    parts.push(
+      `edges missing/invalid type: ${badEdges.map((e) => e.id).join(', ')}`,
+    )
+  }
+  return `Cannot validate -- ${parts.join('; ')}. Remove and re-add the affected items.`
+}
+
+function mapValidationNodes(nodes: readonly Node[]) {
+  return nodes.map((n) => {
+    const nodeType: WorkflowNodeType = isWorkflowNodeType(n.type)
+      ? n.type
+      : 'task'
+    return {
+      id: n.id,
+      type: nodeType,
+      label: readString(n.data, 'label') ?? n.id,
+      position_x: n.position.x,
+      position_y: n.position.y,
+      config: readRecord(n.data, 'config') ?? {},
+    }
+  }) as readonly Record<string, unknown>[]
+}
+
+function mapValidationEdges(edges: readonly Edge[]) {
+  return edges.map((e) => {
+    const dataType = readString(e.data, 'edgeType')
+    const edgeType: WorkflowEdgeType = isWorkflowEdgeType(dataType)
+      ? dataType
+      : 'sequential'
+    return {
+      id: e.id,
+      source_node_id: e.source,
+      target_node_id: e.target,
+      type: edgeType,
+      label: isString(e.label) ? e.label : null,
+    }
+  }) as readonly Record<string, unknown>[]
+}
+
+function buildValidationPayload(
+  definition: WorkflowDefinition,
+  nodes: readonly Node[],
+  edges: readonly Edge[],
+) {
+  return {
+    name: definition.name,
+    // Preserve draft metadata; only fall back to defaults when the
+    // draft genuinely lacks a value. Hardcoded overwrites here would
+    // mean the validator sees a different shape than the editor
+    // shows (e.g. a true is_subworkflow gets reported invalid).
+    description: definition.description ?? '',
+    version: definition.version ?? '1.0.0',
+    workflow_type: definition.workflow_type ?? 'sequential_pipeline',
+    inputs: (definition.inputs ?? []).map(
+      (d) => ({ ...d, default: d.default ?? null }),
+    ),
+    outputs: (definition.outputs ?? []).map(
+      (d) => ({ ...d, default: d.default ?? null }),
+    ),
+    is_subworkflow: definition.is_subworkflow ?? false,
+    nodes: mapValidationNodes(nodes),
+    edges: mapValidationEdges(edges),
+  }
+}
+
+export const createValidationSlice: SliceCreator<ValidationSlice> = (
+  set,
+  get,
+) => ({
   validationResult: null,
   validating: false,
 
@@ -39,65 +128,28 @@ export const createValidationSlice: SliceCreator<ValidationSlice> = (set, get) =
       })
       return
     }
-    const badNodes = nodes.filter((n) => !isWorkflowNodeType(n.type))
-    const badEdges = edges.filter((e) => !isWorkflowEdgeType(readString(e.data, 'edgeType')))
-    if (badNodes.length > 0 || badEdges.length > 0) {
-      const parts: string[] = []
-      if (badNodes.length > 0) parts.push(`nodes missing/invalid type: ${badNodes.map((n) => n.id).join(', ')}`)
-      if (badEdges.length > 0) parts.push(`edges missing/invalid type: ${badEdges.map((e) => e.id).join(', ')}`)
+    const localError = validateLocalGraph(nodes, edges)
+    if (localError !== null) {
       set({
-        error: `Cannot validate -- ${parts.join('; ')}. Remove and re-add the affected items.`,
+        error: localError,
         validating: false,
         validationResult: null,
       })
       return
     }
-
     set({ validating: true })
     try {
-      const result = await validateWorkflowDraft({
-        name: definition.name,
-        // Preserve draft metadata; only fall back to defaults when the
-        // draft genuinely lacks a value. Hardcoded overwrites here would
-        // mean the validator sees a different shape than the editor
-        // shows (e.g. a true is_subworkflow gets reported invalid).
-        description: definition.description ?? '',
-        version: definition.version ?? '1.0.0',
-        workflow_type: definition.workflow_type ?? 'sequential_pipeline',
-        inputs: (definition.inputs ?? []).map((d) => ({ ...d, default: d.default ?? null })),
-        outputs: (definition.outputs ?? []).map((d) => ({ ...d, default: d.default ?? null })),
-        is_subworkflow: definition.is_subworkflow ?? false,
-        nodes: nodes.map((n) => {
-          const nodeType: WorkflowNodeType = isWorkflowNodeType(n.type)
-            ? n.type
-            : 'task'
-          return {
-            id: n.id,
-            type: nodeType,
-            label: readString(n.data, 'label') ?? n.id,
-            position_x: n.position.x,
-            position_y: n.position.y,
-            config: readRecord(n.data, 'config') ?? {},
-          }
-        }) as readonly Record<string, unknown>[],
-        edges: edges.map((e) => {
-          const dataType = readString(e.data, 'edgeType')
-          const edgeType: WorkflowEdgeType = isWorkflowEdgeType(dataType)
-            ? dataType
-            : 'sequential'
-          return {
-            id: e.id,
-            source_node_id: e.source,
-            target_node_id: e.target,
-            type: edgeType,
-            label: isString(e.label) ? e.label : null,
-          }
-        }) as readonly Record<string, unknown>[],
-      })
+      const result = await validateWorkflowDraft(
+        buildValidationPayload(definition, nodes, edges),
+      )
       set({ validationResult: result, validating: false, error: null })
     } catch (err) {
       log.warn('Workflow validation failed', sanitizeForLog(err))
-      set({ validating: false, validationResult: null, error: getErrorMessage(err) })
+      set({
+        validating: false,
+        validationResult: null,
+        error: getErrorMessage(err),
+      })
     }
   },
 })

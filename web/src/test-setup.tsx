@@ -4,6 +4,7 @@ import type { ComponentProps, ReactNode, Ref } from 'react'
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 import { MotionGlobalConfig } from 'motion/react'
 import { setupServer } from 'msw/node'
+import { cancelPendingMcpCatalogSearch } from '@/stores/mcp-catalog/_state'
 import { cancelPendingPersist } from '@/stores/notifications'
 import { cancelSetupWizardPersist } from '@/stores/setup-wizard/teardown'
 import { useThemeStore } from '@/stores/theme'
@@ -294,6 +295,10 @@ afterEach(() => {
   // toolbar toggles a test sets do not bleed into the next test in
   // the same Vitest worker.
   cancelOrgChartPrefsPersist()
+  // MCP-catalog ``setSearchQuery`` schedules a 200ms debounce
+  // ``setTimeout``; clear any pending handle so it cannot outlive
+  // the test and trip the active-handle gate.
+  cancelPendingMcpCatalogSearch()
   // Theme store subscribes to a `prefers-reduced-motion` MediaQueryList
   // at factory time; detach the listener here so the active-handle
   // gate does not flag a forgotten subscription per test. Paired with

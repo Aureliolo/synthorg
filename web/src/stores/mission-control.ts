@@ -1,3 +1,4 @@
+import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 
 import {
@@ -58,6 +59,107 @@ interface MissionControlState {
   ) => Promise<SteeringOutcome | null>
 }
 
+type McSet = StoreApi<MissionControlState>['setState']
+type McGet = StoreApi<MissionControlState>['getState']
+
+async function fetchSnapshotImpl(set: McSet): Promise<void> {
+  set({ snapshotLoading: true, snapshotError: null })
+  try {
+    const snapshot = await getCockpitSnapshot()
+    set({ snapshot, snapshotLoading: false })
+  } catch (err) {
+    set({ snapshotLoading: false, snapshotError: getErrorMessage(err) })
+  }
+}
+
+async function fetchFramesImpl(
+  set: McSet,
+  get: McGet,
+  executionId: string,
+): Promise<void> {
+  set({
+    frames: [],
+    seekView: null,
+    framesLoading: true,
+    framesError: null,
+    framesExecutionId: executionId,
+    framesNextCursor: null,
+    framesHasMore: false,
+  })
+  const requestExecutionId = executionId
+  try {
+    const page = await getFlightRecorderFrames(executionId)
+    if (get().framesExecutionId !== requestExecutionId) return
+    set({
+      frames: page.data,
+      framesLoading: false,
+      framesNextCursor: page.nextCursor,
+      framesHasMore: page.hasMore,
+    })
+  } catch (err) {
+    if (get().framesExecutionId !== requestExecutionId) return
+    set({
+      frames: [],
+      seekView: null,
+      framesLoading: false,
+      framesError: getErrorMessage(err),
+      framesNextCursor: null,
+      framesHasMore: false,
+    })
+  }
+}
+
+async function fetchMoreFramesImpl(
+  set: McSet,
+  get: McGet,
+): Promise<void> {
+  const state = get()
+  if (!state.framesHasMore || state.framesNextCursor === null) return
+  if (state.framesExecutionId === null) return
+  // Gate on the in-flight flag so concurrent fetchMoreFrames() calls
+  // cannot read the same framesNextCursor before framesLoading is
+  // set and append duplicate frame pages.
+  if (state.framesLoading) return
+  const cursor = state.framesNextCursor
+  const executionId = state.framesExecutionId
+  const requestExecutionId = executionId
+  set({ framesLoading: true, framesError: null })
+  try {
+    const page = await getFlightRecorderFrames(executionId, { cursor })
+    if (get().framesExecutionId !== requestExecutionId) return
+    set({
+      frames: [...get().frames, ...page.data],
+      framesLoading: false,
+      framesNextCursor: page.nextCursor,
+      framesHasMore: page.hasMore,
+    })
+  } catch (err) {
+    if (get().framesExecutionId !== requestExecutionId) return
+    set({ framesLoading: false, framesError: getErrorMessage(err) })
+  }
+}
+
+async function steeringAction<T>(
+  call: () => Promise<T>,
+  successTitle: string,
+  errorTitle: string,
+  logKey: string,
+): Promise<T | null> {
+  try {
+    const outcome = await call()
+    useToastStore.getState().add({ variant: 'success', title: successTitle })
+    return outcome
+  } catch (err) {
+    log.error(logKey, { error: sanitizeForLog(err) })
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, errorTitle),
+      description: getErrorMessage(err),
+    })
+    return null
+  }
+}
+
 export const useMissionControlStore = create<MissionControlState>()((set, get) => ({
   snapshot: null,
   snapshotLoading: false,
@@ -70,83 +172,11 @@ export const useMissionControlStore = create<MissionControlState>()((set, get) =
   framesHasMore: false,
   seekView: null,
 
-  fetchSnapshot: async () => {
-    set({ snapshotLoading: true, snapshotError: null })
-    try {
-      const snapshot = await getCockpitSnapshot()
-      set({ snapshot, snapshotLoading: false })
-    } catch (err) {
-      set({ snapshotLoading: false, snapshotError: getErrorMessage(err) })
-    }
-  },
+  fetchSnapshot: () => fetchSnapshotImpl(set),
+  fetchFrames: (executionId) => fetchFramesImpl(set, get, executionId),
+  fetchMoreFrames: () => fetchMoreFramesImpl(set, get),
 
-  fetchFrames: async (executionId: string) => {
-    // Clear the previous run's frames + seekView synchronously so a
-    // failed fetch cannot leave the UI showing a different execution's
-    // timeline alongside the new ``framesExecutionId``.
-    set({
-      frames: [],
-      seekView: null,
-      framesLoading: true,
-      framesError: null,
-      framesExecutionId: executionId,
-      framesNextCursor: null,
-      framesHasMore: false,
-    })
-    // Capture the executionId we started with; the async page-fetch can
-    // race against a subsequent ``fetchFrames(other-execution)`` call
-    // and we must not apply this page's data once the store has moved
-    // on to a different execution.
-    const requestExecutionId = executionId
-    try {
-      const page = await getFlightRecorderFrames(executionId)
-      if (get().framesExecutionId !== requestExecutionId) return
-      set({
-        frames: page.data,
-        framesLoading: false,
-        framesNextCursor: page.nextCursor,
-        framesHasMore: page.hasMore,
-      })
-    } catch (err) {
-      if (get().framesExecutionId !== requestExecutionId) return
-      set({
-        frames: [],
-        seekView: null,
-        framesLoading: false,
-        framesError: getErrorMessage(err),
-        framesNextCursor: null,
-        framesHasMore: false,
-      })
-    }
-  },
-
-  fetchMoreFrames: async () => {
-    const state = get()
-    if (!state.framesHasMore || state.framesNextCursor === null) return
-    if (state.framesExecutionId === null) return
-    const cursor = state.framesNextCursor
-    const executionId = state.framesExecutionId
-    // Same race guard as ``fetchFrames``: by the time the page arrives,
-    // the user may have loaded a different execution and we must not
-    // append this page's frames onto an unrelated timeline.
-    const requestExecutionId = executionId
-    set({ framesLoading: true, framesError: null })
-    try {
-      const page = await getFlightRecorderFrames(executionId, { cursor })
-      if (get().framesExecutionId !== requestExecutionId) return
-      set({
-        frames: [...get().frames, ...page.data],
-        framesLoading: false,
-        framesNextCursor: page.nextCursor,
-        framesHasMore: page.hasMore,
-      })
-    } catch (err) {
-      if (get().framesExecutionId !== requestExecutionId) return
-      set({ framesLoading: false, framesError: getErrorMessage(err) })
-    }
-  },
-
-  seek: async (executionId: string, turnIndex: number) => {
+  seek: async (executionId, turnIndex) => {
     try {
       const seekView = await seekFlightRecorder(executionId, turnIndex)
       set({ seekView })
@@ -155,73 +185,38 @@ export const useMissionControlStore = create<MissionControlState>()((set, get) =
     }
   },
 
-  pauseTaskAction: async (taskId: string, reason: string) => {
-    try {
-      const task = await pauseTask(taskId, reason)
-      useToastStore.getState().add({ variant: 'success', title: `Paused task ${task.id}` })
-      return task
-    } catch (err) {
-      log.error('pause_failed', { error: sanitizeForLog(err) })
-      useToastStore.getState().add({
-        variant: 'error',
-        ...getCrudErrorTitle(err, 'Failed to pause task'),
-        description: getErrorMessage(err),
-      })
-      return null
-    }
-  },
-
-  killTaskAction: async (taskId: string, reason: string) => {
-    try {
-      const task = await killTask(taskId, reason)
-      useToastStore.getState().add({ variant: 'success', title: `Killed task ${task.id}` })
-      return task
-    } catch (err) {
-      log.error('kill_failed', { error: sanitizeForLog(err) })
-      useToastStore.getState().add({
-        variant: 'error',
-        ...getCrudErrorTitle(err, 'Failed to kill task'),
-        description: getErrorMessage(err),
-      })
-      return null
-    }
-  },
-
-  sendHintAction: async (executionId: string, agentId: string, text: string) => {
-    try {
-      const outcome = await sendHint(executionId, agentId, text)
-      useToastStore.getState().add({
-        variant: 'success',
-        title: 'Hint queued for the next safe turn boundary',
-      })
-      return outcome
-    } catch (err) {
-      log.error('hint_failed', { error: sanitizeForLog(err) })
-      useToastStore.getState().add({
-        variant: 'error',
-        ...getCrudErrorTitle(err, 'Failed to send hint'),
-        description: getErrorMessage(err),
-      })
-      return null
-    }
-  },
-
-  redirectAction: async (executionId: string, agentId: string, text: string) => {
-    try {
-      const outcome = await redirectAgent(executionId, agentId, text)
-      useToastStore.getState().add({
-        variant: 'success',
-        title: 'Redirect queued for the next safe turn boundary',
-      })
-      return outcome
-    } catch (err) {
-      log.error('redirect_failed', { error: sanitizeForLog(err) })
-      useToastStore.getState().add({
-        variant: 'error',
-        ...getCrudErrorTitle(err, 'Failed to redirect agent'),
-        description: getErrorMessage(err),
-      })
-      return null
-    }
-  },
+  pauseTaskAction: (taskId, reason) =>
+    steeringAction(
+      async () => {
+        const task = await pauseTask(taskId, reason)
+        return task
+      },
+      `Paused task ${taskId}`,
+      'Failed to pause task',
+      'pause_failed',
+    ),
+  killTaskAction: (taskId, reason) =>
+    steeringAction(
+      async () => {
+        const task = await killTask(taskId, reason)
+        return task
+      },
+      `Killed task ${taskId}`,
+      'Failed to kill task',
+      'kill_failed',
+    ),
+  sendHintAction: (executionId, agentId, text) =>
+    steeringAction(
+      () => sendHint(executionId, agentId, text),
+      'Hint queued for the next safe turn boundary',
+      'Failed to send hint',
+      'hint_failed',
+    ),
+  redirectAction: (executionId, agentId, text) =>
+    steeringAction(
+      () => redirectAgent(executionId, agentId, text),
+      'Redirect queued for the next safe turn boundary',
+      'Failed to redirect agent',
+      'redirect_failed',
+    ),
 }))

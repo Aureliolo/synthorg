@@ -9,6 +9,7 @@ import {
   WS_HEARTBEAT_JITTER_MAX,
   WS_MAX_RECONNECT_ATTEMPTS,
   WS_PONG_TIMEOUT_MS,
+  WS_PROTOCOL_VERSION,
   WS_RECONNECT_BASE_DELAY,
 } from '@/utils/constants'
 
@@ -279,7 +280,7 @@ describe('websocket store', () => {
     })
 
     it('deduplicates concurrent connect calls', async () => {
-const p1 = useWebSocketStore.getState().connect()
+      const p1 = useWebSocketStore.getState().connect()
       const p2 = useWebSocketStore.getState().connect()
 
       await vi.runAllTimersAsync()
@@ -372,7 +373,7 @@ const p1 = useWebSocketStore.getState().connect()
 
   describe('event dispatch', () => {
     it('dispatches events to channel handlers', async () => {
-const handler = vi.fn()
+      const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
 
       const connectPromise = useWebSocketStore.getState().connect()
@@ -394,7 +395,7 @@ const handler = vi.fn()
     })
 
     it('dispatches to wildcard handlers', async () => {
-const wildcardHandler = vi.fn()
+      const wildcardHandler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('*', wildcardHandler)
 
       const connectPromise = useWebSocketStore.getState().connect()
@@ -416,7 +417,7 @@ const wildcardHandler = vi.fn()
     })
 
     it('removes handler with offChannelEvent', async () => {
-const handler = vi.fn()
+      const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
       useWebSocketStore.getState().offChannelEvent('tasks', handler)
 
@@ -438,7 +439,7 @@ const handler = vi.fn()
     })
 
     it('rejects malformed messages that fail isWsEvent validation', async () => {
-const handler = vi.fn()
+      const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
 
       const connectPromise = useWebSocketStore.getState().connect()
@@ -563,7 +564,7 @@ const handler = vi.fn()
 
   describe('message size gating', () => {
     it('discards oversized messages', async () => {
-const handler = vi.fn()
+      const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
 
       const connectPromise = useWebSocketStore.getState().connect()
@@ -845,28 +846,28 @@ const handler = vi.fn()
   })
 
   describe('protocol version handling', () => {
-    it('discards events whose version does not match', async () => {
-      const handler = vi.fn()
-      useWebSocketStore.getState().onChannelEvent('tasks', handler)
+    // Refactor-safety invariant for the ``WS_PROTOCOL_VERSION`` and
+    // ``WS_PROTOCOL_VERSION + 1`` cases: the version-check uses the
+    // imported constant rather than a hardcoded literal. If a future
+    // refactor inlines the literal (e.g. ``if (version !== 1)``) and the
+    // constant is later bumped to 2, the rejector would let v2 events
+    // through while still rejecting the bumped value at acceptance.
+    // Pinning both boundary cases to the imported constant keeps the
+    // dispatch boundary tied to ``WS_PROTOCOL_VERSION`` rather than to
+    // any specific numeric value.
+    const versionCases: ReadonlyArray<{
+      label: string
+      version: number | 'absent'
+      shouldDispatch: boolean
+    }> = [
+      { label: 'mismatched version (999) is discarded', version: 999, shouldDispatch: false },
+      { label: 'absent version is treated as v1', version: 'absent', shouldDispatch: true },
+      { label: 'explicit version=1 is accepted', version: 1, shouldDispatch: true },
+      { label: 'WS_PROTOCOL_VERSION + 1 is rejected', version: WS_PROTOCOL_VERSION + 1, shouldDispatch: false },
+      { label: 'exactly WS_PROTOCOL_VERSION is accepted', version: WS_PROTOCOL_VERSION, shouldDispatch: true },
+    ]
 
-      const connectPromise = useWebSocketStore.getState().connect()
-      await vi.runAllTimersAsync()
-      await connectPromise
-      const ws = MockWebSocket.latest()!
-      ws.simulateOpen()
-      ws.simulateMessage({ action: 'auth_ok' })
-
-      ws.simulateMessage({
-        version: 999,
-        event_type: 'task.created',
-        channel: 'tasks',
-        timestamp: new Date().toISOString(),
-        payload: { task_id: 'x' },
-      })
-      expect(handler).not.toHaveBeenCalled()
-    })
-
-    it('treats absent version as v1 (backwards compatible)', async () => {
+    it.each(versionCases)('$label', async ({ version, shouldDispatch }) => {
       const handler = vi.fn()
       useWebSocketStore.getState().onChannelEvent('tasks', handler)
 
@@ -883,29 +884,101 @@ const handler = vi.fn()
         timestamp: new Date().toISOString(),
         payload: { task_id: 'x' },
       }
-      ws.simulateMessage(event)
-      expect(handler).toHaveBeenCalledWith(event)
+      const dispatched =
+        version === 'absent' ? event : { ...event, version }
+      ws.simulateMessage(dispatched)
+
+      if (shouldDispatch) {
+        expect(handler).toHaveBeenCalledTimes(1)
+        expect(handler).toHaveBeenCalledWith(dispatched)
+      } else {
+        expect(handler).not.toHaveBeenCalled()
+      }
+    })
+  })
+
+  describe('subscription replay across reconnect (slice-boundary integrity)', () => {
+    it('replays an active subscription on the new socket after an unintentional close', async () => {
+      // Slice-boundary regression for the upcoming websocket package
+      // split (transport / subscriptions slices): a subscription that
+      // was active on the first socket MUST be re-sent on the second
+      // socket's auth_ok when the close was server-initiated (1006).
+      // If the split accidentally re-binds the subscriptions module's
+      // state, this test catches it. Explicit `disconnect()` is a
+      // separate, documented contract (it clears subscriptions); see
+      // the disconnect-clears-subscriptions test for that pinning.
+      const firstConnect = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await firstConnect
+      const firstWs = MockWebSocket.latest()!
+      firstWs.simulateOpen()
+      firstWs.simulateMessage({ action: 'auth_ok' })
+      useWebSocketStore.getState().subscribe(['tasks'])
+      const firstSubFrames = firstWs.sentMessages.filter((m) => {
+        const parsed = JSON.parse(m) as { action: string }
+        return parsed.action === 'subscribe'
+      })
+      expect(firstSubFrames.length).toBeGreaterThanOrEqual(1)
+
+      // Simulate a server-initiated close (1006) so the reconnect path
+      // fires and a new MockWebSocket instance is created.
+      const instancesBefore = MockWebSocket.instances.length
+      firstWs.simulateClose(1006, '')
+      // Drive the reconnect: advance through the backoff window and
+      // flush every armed timer + the ticket-fetch microtask chain.
+      await vi.advanceTimersByTimeAsync(WS_RECONNECT_BASE_DELAY * 2)
+      await vi.runAllTimersAsync()
+      await new Promise<void>((resolve) => setImmediate(resolve))
+      await vi.runAllTimersAsync()
+
+      const secondWs = MockWebSocket.latest()!
+      expect(MockWebSocket.instances.length).toBeGreaterThan(instancesBefore)
+      expect(secondWs).not.toBe(firstWs)
+
+      secondWs.simulateOpen()
+      secondWs.simulateMessage({ action: 'auth_ok' })
+
+      const secondSubFrames = secondWs.sentMessages.filter((m) => {
+        const parsed = JSON.parse(m) as { action: string }
+        return parsed.action === 'subscribe'
+      })
+      expect(secondSubFrames.length).toBeGreaterThanOrEqual(1)
+      const replayed = JSON.parse(secondSubFrames[0]!) as { channels: string[] }
+      expect(replayed.channels).toContain('tasks')
     })
 
-    it('accepts events with explicit version=1', async () => {
-      const handler = vi.fn()
-      useWebSocketStore.getState().onChannelEvent('tasks', handler)
-
-      const connectPromise = useWebSocketStore.getState().connect()
+    it('disconnect() clears all subscriptions (separate contract from server-initiated close)', async () => {
+      // Paired with the replay test above: deliberate disconnect()
+      // erases subscriptions, so a subsequent connect() starts clean.
+      // The split MUST preserve this contract -- if it accidentally
+      // routes disconnect() through the reconnect-replay path, the
+      // user would see "ghost" subscriptions resurrect on every
+      // post-disconnect connect cycle.
+      const firstConnect = useWebSocketStore.getState().connect()
       await vi.runAllTimersAsync()
-      await connectPromise
-      const ws = MockWebSocket.latest()!
-      ws.simulateOpen()
-      ws.simulateMessage({ action: 'auth_ok' })
+      await firstConnect
+      const firstWs = MockWebSocket.latest()!
+      firstWs.simulateOpen()
+      firstWs.simulateMessage({ action: 'auth_ok' })
+      useWebSocketStore.getState().subscribe(['tasks'])
 
-      ws.simulateMessage({
-        version: 1,
-        event_type: 'task.created',
-        channel: 'tasks',
-        timestamp: new Date().toISOString(),
-        payload: { task_id: 'x' },
+      useWebSocketStore.getState().disconnect()
+      expect(useWebSocketStore.getState().subscribedChannels).toEqual([])
+
+      // Fresh connect: no re-subscribe should be sent, because the
+      // disconnect cleared the active-subscription bookkeeping.
+      const secondConnect = useWebSocketStore.getState().connect()
+      await vi.runAllTimersAsync()
+      await secondConnect
+      const secondWs = MockWebSocket.latest()!
+      secondWs.simulateOpen()
+      secondWs.simulateMessage({ action: 'auth_ok' })
+
+      const subFrames = secondWs.sentMessages.filter((m) => {
+        const parsed = JSON.parse(m) as { action: string }
+        return parsed.action === 'subscribe'
       })
-      expect(handler).toHaveBeenCalledTimes(1)
+      expect(subFrames).toHaveLength(0)
     })
   })
 

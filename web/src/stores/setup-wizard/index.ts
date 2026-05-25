@@ -63,68 +63,91 @@ const persistOptions: PersistOptions<SetupWizardState, PersistedSetupState> = {
   // wizard that reloaded would show guided steps. Recompute it from the
   // rehydrated wizardMode after merge, then snap currentStep back into the
   // recomputed order (first-incomplete step) if it lands outside.
-  merge: (persistedState, currentState) => {
-    const merged = { ...currentState, ...(persistedState as Partial<SetupWizardState>) }
-    const stepOrder = getStepOrder(merged.needsAdmin, merged.wizardMode)
-    // localStorage is user-writable, so a hand-edited payload could omit step
-    // keys or set non-boolean values. Start from the all-false default and
-    // overlay only strictly-boolean-true entries so `firstIncomplete` cannot
-    // pick up `undefined`/`null` and treat it as "incomplete" inconsistently.
-    const stepsCompleted = initialStepsCompleted()
-    // localStorage can contain `stepsCompleted: null` (hand-edited payload, or
-    // a former persisted shape that wrote null for the not-yet-initialised
-    // value). Blindly casting and indexing a null reference would throw at
-    // startup, leaving the wizard unbootable until the user clears storage.
-    const persistedCompletedRaw: unknown = merged.stepsCompleted
-    const persistedCompleted: Partial<Record<WizardStep, unknown>> =
-      persistedCompletedRaw !== null && typeof persistedCompletedRaw === 'object'
-        ? (persistedCompletedRaw as Partial<Record<WizardStep, unknown>>)
-        : {}
-    for (const step of stepOrder) {
-      if (persistedCompleted[step] === true) {
-        stepsCompleted[step] = true
-      }
+  merge: (persistedState, currentState) =>
+    mergePersistedSetupState(persistedState, currentState),
+}
+
+function buildStepsCompleted(
+  rawCompleted: unknown,
+  stepOrder: readonly WizardStep[],
+): Record<WizardStep, boolean> {
+  // localStorage is user-writable, so a hand-edited payload could omit step
+  // keys or set non-boolean values. Start from the all-false default and
+  // overlay only strictly-boolean-true entries so `firstIncomplete` cannot
+  // pick up `undefined`/`null` and treat it as "incomplete" inconsistently.
+  const stepsCompleted = initialStepsCompleted()
+  const persistedCompleted: Partial<Record<WizardStep, unknown>> =
+    rawCompleted !== null && typeof rawCompleted === 'object'
+      ? (rawCompleted as Partial<Record<WizardStep, unknown>>)
+      : {}
+  for (const step of stepOrder) {
+    if (persistedCompleted[step] === true) {
+      stepsCompleted[step] = true
     }
-    // Clamp the persisted ``currentStep`` to the earliest incomplete step
-    // under the recomputed ``stepOrder``. Checking membership alone is not
-    // enough: if the persisted draft was on ``company`` and the new step
-    // order now places ``providers`` before it, ``includes`` would still
-    // pass and the wizard would resume on ``company`` while the
-    // reordered-required ``providers`` step sits incomplete, letting the
-    // user slip past it. Snapping back to the first incomplete index keeps
-    // the wizard monotonic forward only.
-    // E3 rehydration race fix: the ``agents`` slice fetches asynchronously
-    // on mount, so a payload that persisted ``stepsCompleted.agents = true``
-    // is racing the (re)fetch. If the rehydrated agents list is empty,
-    // re-mark the step as incomplete so the user is not silently allowed
-    // past the agents page with a stale "configured" badge and an empty
-    // list under it. The fetch fires from AgentsStep's mount effect; this
-    // guard keeps the gate honest while the network round-trip runs.
-    const rehydratedAgents = (merged as { agents?: readonly unknown[] }).agents
-    if (
-      stepOrder.includes('agents')
-      && stepsCompleted.agents
-      && (!Array.isArray(rehydratedAgents) || rehydratedAgents.length === 0)
-    ) {
-      stepsCompleted.agents = false
-    }
-    const firstIncomplete = stepOrder.find((s: WizardStep) => !stepsCompleted[s])
-    const currentStepIndex = stepOrder.indexOf(merged.currentStep)
-    const firstIncompleteIndex =
-      firstIncomplete === undefined ? -1 : stepOrder.indexOf(firstIncomplete)
-    const currentStepIsSafe =
-      currentStepIndex !== -1
-      && (firstIncompleteIndex === -1 || currentStepIndex <= firstIncompleteIndex)
-    if (currentStepIsSafe) {
-      return { ...merged, stepOrder, stepsCompleted }
-    }
-    return {
-      ...merged,
-      stepOrder,
-      stepsCompleted,
-      currentStep: firstIncomplete ?? stepOrder[0]!,
-    }
-  },
+  }
+  return stepsCompleted
+}
+
+function unmarkAgentsIfEmptyRehydration(
+  stepsCompleted: Record<WizardStep, boolean>,
+  stepOrder: readonly WizardStep[],
+  merged: SetupWizardState,
+): void {
+  // E3 rehydration race fix: the ``agents`` slice fetches asynchronously
+  // on mount, so a payload that persisted ``stepsCompleted.agents = true``
+  // is racing the (re)fetch. If the rehydrated agents list is empty,
+  // re-mark the step as incomplete so the user is not silently allowed
+  // past the agents page with a stale "configured" badge and an empty
+  // list under it.
+  const rehydratedAgents = (merged as { agents?: readonly unknown[] }).agents
+  if (
+    stepOrder.includes('agents')
+    && stepsCompleted.agents
+    && (!Array.isArray(rehydratedAgents) || rehydratedAgents.length === 0)
+  ) {
+    stepsCompleted.agents = false
+  }
+}
+
+function snapCurrentStepToSafe(
+  merged: SetupWizardState,
+  stepOrder: readonly WizardStep[],
+  stepsCompleted: Record<WizardStep, boolean>,
+): SetupWizardState {
+  // Clamp the persisted ``currentStep`` to the earliest incomplete step
+  // under the recomputed ``stepOrder``. Snapping back to the first
+  // incomplete index keeps the wizard monotonic forward only.
+  const firstIncomplete = stepOrder.find(
+    (s: WizardStep) => !stepsCompleted[s],
+  )
+  const currentStepIndex = stepOrder.indexOf(merged.currentStep)
+  const firstIncompleteIndex = firstIncomplete === undefined
+    ? -1
+    : stepOrder.indexOf(firstIncomplete)
+  const currentStepIsSafe = currentStepIndex !== -1
+    && (firstIncompleteIndex === -1
+      || currentStepIndex <= firstIncompleteIndex)
+  if (currentStepIsSafe) return { ...merged, stepOrder, stepsCompleted }
+  return {
+    ...merged,
+    stepOrder,
+    stepsCompleted,
+    currentStep: firstIncomplete ?? stepOrder[0]!,
+  }
+}
+
+function mergePersistedSetupState(
+  persistedState: unknown,
+  currentState: SetupWizardState,
+): SetupWizardState {
+  const merged = {
+    ...currentState,
+    ...(persistedState as Partial<SetupWizardState>),
+  }
+  const stepOrder = getStepOrder(merged.needsAdmin, merged.wizardMode)
+  const stepsCompleted = buildStepsCompleted(merged.stepsCompleted, stepOrder)
+  unmarkAgentsIfEmptyRehydration(stepsCompleted, stepOrder, merged)
+  return snapCurrentStepToSafe(merged, stepOrder, stepsCompleted)
 }
 
 export const useSetupWizardStore = create<SetupWizardState>()(

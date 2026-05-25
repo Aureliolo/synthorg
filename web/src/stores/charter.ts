@@ -1,3 +1,4 @@
+import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 import * as charterApi from '@/api/endpoints/charter'
 import type { CharterFilters } from '@/api/endpoints/charter'
@@ -13,11 +14,6 @@ import type {
 
 const log = createLogger('charter')
 
-// Charter content lives in in-memory Zustand state for the lifetime of
-// the tab; nothing is persisted to localStorage / sessionStorage. The
-// authoritative copy is the server-side charter; closing the tab loses
-// only unsent draft edits.
-
 /** One rendered turn in the local interview transcript. */
 export interface InterviewMessage {
   id: string
@@ -26,32 +22,120 @@ export interface InterviewMessage {
 }
 
 interface CharterState {
-  // List view
   charters: ProjectCharter[]
   loading: boolean
   error: string | null
-  // Opaque cursor for the NEXT page; ``null`` when the catalogue end
-  // has been reached. Stores keep ``nextCursor`` + ``hasMore`` rather
-  // than offset arithmetic per the cursor-pagination MANDATORY rule
-  // in ``web/CLAUDE.md``.
   nextCursor: string | null
   hasMore: boolean
 
-  // Active interview
   conversationId: string | null
   messages: InterviewMessage[]
   draftCharter: ProjectCharter | null
   sending: boolean
   conversationClosed: boolean
 
-  // Actions
   fetchCharters: (filters?: CharterFilters) => Promise<void>
   fetchMoreCharters: (filters?: CharterFilters) => Promise<void>
   runTurn: (message: string) => Promise<void>
-  editDraft: (id: string, data: CharterEditRequest) => Promise<ProjectCharter | null>
+  editDraft: (
+    id: string,
+    data: CharterEditRequest,
+  ) => Promise<ProjectCharter | null>
   approve: (id: string) => Promise<CharterApprovalResult | null>
   cancel: (id: string) => Promise<boolean>
   resetInterview: () => void
+}
+
+type CharterSet = StoreApi<CharterState>['setState']
+type CharterGet = StoreApi<CharterState>['getState']
+
+async function fetchChartersImpl(
+  set: CharterSet,
+  filters?: CharterFilters,
+): Promise<void> {
+  set({ loading: true, error: null })
+  try {
+    const page = await charterApi.listCharters(filters)
+    set({
+      charters: page.data,
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+      loading: false,
+    })
+  } catch (err) {
+    log.warn('Failed to fetch charters', sanitizeForLog(err))
+    set({ loading: false, error: getErrorMessage(err) })
+  }
+}
+
+async function fetchMoreChartersImpl(
+  set: CharterSet,
+  get: CharterGet,
+  filters?: CharterFilters,
+): Promise<void> {
+  const { hasMore, nextCursor, loading } = get()
+  if (!hasMore || !nextCursor || loading) return
+  set({ loading: true })
+  try {
+    const page = await charterApi.listCharters({
+      ...filters,
+      cursor: nextCursor,
+    })
+    set((state) => ({
+      charters: [...state.charters, ...page.data],
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+      loading: false,
+    }))
+  } catch (err) {
+    log.warn('Failed to fetch more charters', sanitizeForLog(err))
+    set({ loading: false, error: getErrorMessage(err) })
+  }
+}
+
+async function runTurnImpl(
+  set: CharterSet,
+  get: CharterGet,
+  message: string,
+): Promise<void> {
+  if (get().sending) return
+  const { conversationId, messages: previousMessages } = get()
+  set({
+    sending: true,
+    messages: [
+      ...previousMessages,
+      { id: crypto.randomUUID(), role: 'user', content: message },
+    ],
+  })
+  try {
+    const result = await charterApi.runInterviewTurn({
+      message,
+      conversation_id: conversationId,
+      project: null,
+    })
+    const reply: InterviewMessage = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: result.status === 'needs_more'
+        ? result.next_question ?? ''
+        : 'Charter drafted. Review and edit it, then approve to start the run.',
+    }
+    set((s) => ({
+      sending: false,
+      conversationId: result.conversation_id,
+      messages: [...s.messages, reply],
+      draftCharter: result.charter ?? s.draftCharter,
+      conversationClosed: result.conversation_closed,
+    }))
+  } catch (err) {
+    log.error('Interview turn failed', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Could not continue the interview',
+      description: getErrorMessage(err),
+    })
+    set({ sending: false, messages: previousMessages })
+  }
 }
 
 export const useCharterStore = create<CharterState>()((set, get) => ({
@@ -66,98 +150,9 @@ export const useCharterStore = create<CharterState>()((set, get) => ({
   sending: false,
   conversationClosed: false,
 
-  fetchCharters: async (filters) => {
-    set({ loading: true, error: null })
-    try {
-      const page = await charterApi.listCharters(filters)
-      set({
-        charters: page.data,
-        nextCursor: page.nextCursor,
-        hasMore: page.hasMore,
-        loading: false,
-      })
-    } catch (err) {
-      log.warn('Failed to fetch charters', sanitizeForLog(err))
-      set({ loading: false, error: getErrorMessage(err) })
-    }
-  },
-
-  fetchMoreCharters: async (filters) => {
-    const { hasMore, nextCursor, loading } = get()
-    // Early-return on no-more-pages and on duplicate-in-flight calls per
-    // the cursor-pagination MANDATORY rule in ``web/CLAUDE.md``.
-    if (!hasMore || !nextCursor || loading) return
-    set({ loading: true })
-    try {
-      const page = await charterApi.listCharters({
-        ...filters,
-        cursor: nextCursor,
-      })
-      // Functional updater so the append uses the LATEST charters
-      // (mutations that landed during the in-flight fetch are
-      // preserved instead of being clobbered by a pre-await snapshot).
-      set((state) => ({
-        charters: [...state.charters, ...page.data],
-        nextCursor: page.nextCursor,
-        hasMore: page.hasMore,
-        loading: false,
-      }))
-    } catch (err) {
-      log.warn('Failed to fetch more charters', sanitizeForLog(err))
-      set({ loading: false, error: getErrorMessage(err) })
-    }
-  },
-
-  runTurn: async (message) => {
-    // Refuse re-entry while a turn is in flight. Overlapping turns would
-    // share the same ``previousMessages`` snapshot, so a single error
-    // could roll the transcript back over a newer turn's optimistic
-    // user bubble and assistant reply.
-    if (get().sending) return
-    const { conversationId, messages: previousMessages } = get()
-    // Snapshot the pre-turn transcript so we can roll the optimistic
-    // user bubble back if the API call fails (otherwise the user sees
-    // their message with no assistant reply).
-    set({
-      sending: true,
-      messages: [
-        ...previousMessages,
-        { id: crypto.randomUUID(), role: 'user', content: message },
-      ],
-    })
-    try {
-      const result = await charterApi.runInterviewTurn({
-        message,
-        conversation_id: conversationId,
-        project: null,
-      })
-      const reply: InterviewMessage = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content:
-          result.status === 'needs_more'
-            ? result.next_question ?? ''
-            : 'Charter drafted. Review and edit it, then approve to start the run.',
-      }
-      set((s) => ({
-        sending: false,
-        conversationId: result.conversation_id,
-        messages: [...s.messages, reply],
-        draftCharter: result.charter ?? s.draftCharter,
-        conversationClosed: result.conversation_closed,
-      }))
-    } catch (err) {
-      log.error('Interview turn failed', sanitizeForLog(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Could not continue the interview',
-        description: getErrorMessage(err),
-      })
-      // Restore the pre-turn transcript so a failed send does not leave
-      // an orphan user bubble in the chat.
-      set({ sending: false, messages: previousMessages })
-    }
-  },
+  fetchCharters: (filters) => fetchChartersImpl(set, filters),
+  fetchMoreCharters: (filters) => fetchMoreChartersImpl(set, get, filters),
+  runTurn: (message) => runTurnImpl(set, get, message),
 
   editDraft: async (id, data) => {
     try {

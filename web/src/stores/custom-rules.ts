@@ -1,3 +1,4 @@
+import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 
 import {
@@ -64,6 +65,131 @@ interface CustomRulesState {
   previewRule: (data: PreviewRequest) => Promise<PreviewResult>
 }
 
+type CrSet = StoreApi<CustomRulesState>['setState']
+
+async function fetchRulesImpl(set: CrSet): Promise<void> {
+  const token = ++_listRequestToken
+  set({ loading: true, error: null })
+  try {
+    const rules = await listCustomRules()
+    if (isStaleListRequest(token)) return
+    set({ rules, loading: false })
+  } catch (err) {
+    if (isStaleListRequest(token)) return
+    log.error('Failed to fetch custom rules', err)
+    set({ loading: false, error: getErrorMessage(err) })
+  }
+}
+
+async function fetchMetricsImpl(set: CrSet): Promise<void> {
+  set({ metricsLoading: true, metricsError: null })
+  try {
+    const metrics = await listMetrics()
+    set({ metrics, metricsLoading: false })
+  } catch (err) {
+    log.error('Failed to fetch metrics', err)
+    set({ metricsLoading: false, metricsError: getErrorMessage(err) })
+  }
+}
+
+async function createRuleImpl(
+  set: CrSet,
+  data: CreateCustomRuleRequest,
+): Promise<CustomRule | null> {
+  set({ submitting: true })
+  try {
+    const rule = await createCustomRule(data)
+    set((state) => ({ rules: [...state.rules, rule], submitting: false }))
+    useToastStore.getState().add({
+      variant: 'success',
+      title: `Rule ${rule.name} created`,
+    })
+    return rule
+  } catch (err) {
+    log.error('Create custom rule failed:', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Failed to create rule',
+      description: getErrorMessage(err),
+    })
+    set({ submitting: false })
+    return null
+  }
+}
+
+async function updateRuleImpl(
+  set: CrSet,
+  id: string,
+  data: Partial<CreateCustomRuleRequest>,
+): Promise<CustomRule | null> {
+  set({ submitting: true })
+  try {
+    const updated = await updateCustomRule(id, data)
+    set((state) => ({
+      rules: state.rules.map((r) => (r.id === id ? updated : r)),
+      submitting: false,
+    }))
+    useToastStore.getState().add({
+      variant: 'success',
+      title: `Rule ${updated.name} updated`,
+    })
+    return updated
+  } catch (err) {
+    log.error('Update custom rule failed:', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Failed to update rule',
+      description: getErrorMessage(err),
+    })
+    set({ submitting: false })
+    return null
+  }
+}
+
+async function deleteRuleImpl(set: CrSet, id: string): Promise<boolean> {
+  try {
+    await deleteCustomRule(id)
+    set((state) => ({
+      rules: state.rules.filter((r) => r.id !== id),
+    }))
+    useToastStore.getState().add({ variant: 'success', title: 'Rule deleted' })
+    return true
+  } catch (err) {
+    log.error('Delete custom rule failed:', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Failed to delete rule',
+      description: getErrorMessage(err),
+    })
+    return false
+  }
+}
+
+async function toggleRuleImpl(
+  set: CrSet,
+  id: string,
+): Promise<CustomRule | null> {
+  try {
+    const toggled = await toggleCustomRule(id)
+    set((state) => ({
+      rules: state.rules.map((r) => (r.id === id ? toggled : r)),
+    }))
+    useToastStore.getState().add({
+      variant: 'success',
+      title: `Rule ${toggled.enabled ? 'enabled' : 'disabled'}`,
+    })
+    return toggled
+  } catch (err) {
+    log.error('Toggle custom rule failed:', sanitizeForLog(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Failed to toggle rule',
+      description: getErrorMessage(err),
+    })
+    return null
+  }
+}
+
 export const useCustomRulesStore = create<CustomRulesState>()((set) => ({
   rules: [],
   metrics: [],
@@ -73,133 +199,11 @@ export const useCustomRulesStore = create<CustomRulesState>()((set) => ({
   metricsError: null,
   submitting: false,
 
-  fetchRules: async () => {
-    const token = ++_listRequestToken
-    set({ loading: true, error: null })
-    try {
-      const rules = await listCustomRules()
-      if (isStaleListRequest(token)) return
-      set({ rules, loading: false })
-    } catch (err) {
-      if (isStaleListRequest(token)) return
-      log.error('Failed to fetch custom rules', err)
-      set({ loading: false, error: getErrorMessage(err) })
-    }
-  },
-
-  fetchMetrics: async () => {
-    set({ metricsLoading: true, metricsError: null })
-    try {
-      const metrics = await listMetrics()
-      set({ metrics, metricsLoading: false })
-    } catch (err) {
-      log.error('Failed to fetch metrics', err)
-      set({
-        metricsLoading: false,
-        metricsError: getErrorMessage(err),
-      })
-    }
-  },
-
-  createRule: async (data) => {
-    set({ submitting: true })
-    try {
-      const rule = await createCustomRule(data)
-      set((state) => ({
-        rules: [...state.rules, rule],
-        submitting: false,
-      }))
-      useToastStore.getState().add({
-        variant: 'success',
-        title: `Rule ${rule.name} created`,
-      })
-      return rule
-    } catch (err) {
-      log.error('Create custom rule failed:', sanitizeForLog(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Failed to create rule',
-        description: getErrorMessage(err),
-      })
-      set({ submitting: false })
-      return null
-    }
-  },
-
-  updateRule: async (id, data) => {
-    set({ submitting: true })
-    try {
-      const updated = await updateCustomRule(id, data)
-      set((state) => ({
-        rules: state.rules.map((r) =>
-          r.id === id ? updated : r,
-        ),
-        submitting: false,
-      }))
-      useToastStore.getState().add({
-        variant: 'success',
-        title: `Rule ${updated.name} updated`,
-      })
-      return updated
-    } catch (err) {
-      log.error('Update custom rule failed:', sanitizeForLog(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Failed to update rule',
-        description: getErrorMessage(err),
-      })
-      set({ submitting: false })
-      return null
-    }
-  },
-
-  deleteRule: async (id) => {
-    try {
-      await deleteCustomRule(id)
-      set((state) => ({
-        rules: state.rules.filter((r) => r.id !== id),
-      }))
-      useToastStore.getState().add({
-        variant: 'success',
-        title: 'Rule deleted',
-      })
-      return true
-    } catch (err) {
-      log.error('Delete custom rule failed:', sanitizeForLog(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Failed to delete rule',
-        description: getErrorMessage(err),
-      })
-      return false
-    }
-  },
-
-  toggleRule: async (id) => {
-    try {
-      const toggled = await toggleCustomRule(id)
-      set((state) => ({
-        rules: state.rules.map((r) =>
-          r.id === id ? toggled : r,
-        ),
-      }))
-      useToastStore.getState().add({
-        variant: 'success',
-        title: `Rule ${toggled.enabled ? 'enabled' : 'disabled'}`,
-      })
-      return toggled
-    } catch (err) {
-      log.error('Toggle custom rule failed:', sanitizeForLog(err))
-      useToastStore.getState().add({
-        variant: 'error',
-        title: 'Failed to toggle rule',
-        description: getErrorMessage(err),
-      })
-      return null
-    }
-  },
-
-  previewRule: async (data) => {
-    return previewRule(data)
-  },
+  fetchRules: () => fetchRulesImpl(set),
+  fetchMetrics: () => fetchMetricsImpl(set),
+  createRule: (data) => createRuleImpl(set, data),
+  updateRule: (id, data) => updateRuleImpl(set, id, data),
+  deleteRule: (id) => deleteRuleImpl(set, id),
+  toggleRule: (id) => toggleRuleImpl(set, id),
+  previewRule: (data) => previewRule(data),
 }))

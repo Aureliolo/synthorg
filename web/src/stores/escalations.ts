@@ -9,6 +9,7 @@
    Comparisons against in-flight request tokens (plain monotonic
    ints) are not timing-sensitive secrets; they are how this store
    discards stale fetch responses. */
+import type { StoreApi } from 'zustand'
 import { create } from 'zustand'
 
 import {
@@ -31,7 +32,6 @@ import type {
 const log = createLogger('escalations')
 
 interface EscalationsState {
-  // List state
   escalations: readonly EscalationResponse[]
   total: number | null
   nextCursor: string | null
@@ -40,20 +40,15 @@ interface EscalationsState {
   loadingMore: boolean
   error: string | null
 
-  // Filters
   statusFilter: EscalationStatus | null
 
-  // Detail state
   selected: EscalationResponse | null
   detailLoading: boolean
   detailError: string | null
-  /** The id whose detail fetch is currently active (or null). */
   detailRequestedId: string | null
 
-  // Mutation state
   submitting: boolean
 
-  // Actions
   fetchEscalations: () => Promise<void>
   fetchMoreEscalations: () => Promise<void>
   setStatusFilter: (status: EscalationStatus | null) => void
@@ -69,207 +64,218 @@ interface EscalationsState {
   ) => Promise<EscalationResponse | null>
 }
 
-export const useEscalationsStore = create<EscalationsState>()((set, get) => {
-  // Monotonic request tokens used to discard stale fetch results.
-  // ``listRequestToken`` covers both ``fetchEscalations`` and
-  // ``fetchMoreEscalations``; ``detailRequestToken`` covers
-  // ``fetchEscalationDetail`` and is invalidated by
-  // ``clearDetail``.
-  let listRequestToken = 0
-  let detailRequestToken = 0
+type EscSet = StoreApi<EscalationsState>['setState']
+type EscGet = StoreApi<EscalationsState>['getState']
 
-  const buildFilters = (): ListEscalationsFilters => {
-    const filters: ListEscalationsFilters = {}
-    const status = get().statusFilter
-    if (status !== null) {
-      // ``ListEscalationsFilters.status`` is readonly; the type allows
-      // assignment via the literal-object spread above, so we widen here
-      // when we have a concrete value.
-      Object.assign(filters, { status })
-    }
-    return filters
+let listRequestToken = 0
+let detailRequestToken = 0
+
+function buildFilters(get: EscGet): ListEscalationsFilters {
+  const filters: ListEscalationsFilters = {}
+  const status = get().statusFilter
+  if (status !== null) {
+    Object.assign(filters, { status })
   }
+  return filters
+}
 
-  return {
+async function fetchEscalationsImpl(
+  set: EscSet,
+  get: EscGet,
+): Promise<void> {
+  const token = ++listRequestToken
+  set({
     escalations: [],
-    total: null,
     nextCursor: null,
     hasMore: false,
-    loading: false,
+    loading: true,
     loadingMore: false,
     error: null,
+  })
+  try {
+    const page = await apiListEscalations(buildFilters(get))
+    if (token !== listRequestToken) return
+    set({
+      escalations: page.data,
+      total: page.data.length,
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+      loading: false,
+    })
+  } catch (err) {
+    log.warn('Failed to fetch escalations:', getErrorMessage(err))
+    if (token !== listRequestToken) return
+    set({ loading: false, error: getErrorMessage(err) })
+  }
+}
 
-    statusFilter: 'pending',
+async function fetchMoreEscalationsImpl(
+  set: EscSet,
+  get: EscGet,
+): Promise<void> {
+  const state = get()
+  if (
+    !state.hasMore
+    || !state.nextCursor
+    || state.loading
+    || state.loadingMore
+  ) {
+    return
+  }
+  const token = listRequestToken
+  set({ loadingMore: true })
+  try {
+    const page = await apiListEscalations({
+      ...buildFilters(get),
+      cursor: state.nextCursor,
+    })
+    if (token !== listRequestToken) return
+    set((s) => {
+      const merged = [...s.escalations, ...page.data]
+      return {
+        escalations: merged,
+        total: merged.length,
+        nextCursor: page.nextCursor,
+        hasMore: page.hasMore,
+        loadingMore: false,
+      }
+    })
+  } catch (err) {
+    log.warn('Failed to fetch more escalations:', getErrorMessage(err))
+    if (token !== listRequestToken) return
+    set({ loadingMore: false, error: getErrorMessage(err) })
+  }
+}
 
+async function fetchEscalationDetailImpl(
+  set: EscSet,
+  id: string,
+): Promise<void> {
+  const token = ++detailRequestToken
+  set({
+    detailLoading: true,
+    detailError: null,
     selected: null,
-    detailLoading: false,
+    detailRequestedId: id,
+  })
+  try {
+    const response = await apiGetEscalation(id)
+    if (token !== detailRequestToken) return
+    set({ selected: response, detailLoading: false })
+  } catch (err) {
+    log.warn('Failed to fetch escalation detail:', getErrorMessage(err))
+    if (token !== detailRequestToken) return
+    set({ detailLoading: false, detailError: getErrorMessage(err) })
+  }
+}
+
+function clearDetailImpl(set: EscSet): void {
+  detailRequestToken++
+  set({
+    selected: null,
     detailError: null,
     detailRequestedId: null,
+    detailLoading: false,
+  })
+}
 
-    submitting: false,
-
-    fetchEscalations: async () => {
-      // Bump request token so any concurrent in-flight list / detail
-      // fetch knows its result is stale and should be discarded.
-      const token = ++listRequestToken
-      set({
-        escalations: [],
-        nextCursor: null,
-        hasMore: false,
-        loading: true,
-        loadingMore: false,
-        error: null,
-      })
-      try {
-        const page = await apiListEscalations(buildFilters())
-        if (token !== listRequestToken) return
-        set({
-          escalations: page.data,
-          total: page.data.length,
-          nextCursor: page.nextCursor,
-          hasMore: page.hasMore,
-          loading: false,
-        })
-      } catch (err) {
-        log.warn('Failed to fetch escalations:', getErrorMessage(err))
-        if (token !== listRequestToken) return
-        set({ loading: false, error: getErrorMessage(err) })
-      }
-    },
-
-    fetchMoreEscalations: async () => {
-      const state = get()
-      if (
-        !state.hasMore ||
-        !state.nextCursor ||
-        state.loading ||
-        state.loadingMore
-      ) {
-        return
-      }
-      const token = listRequestToken
-      set({ loadingMore: true })
-      try {
-        const page = await apiListEscalations({
-          ...buildFilters(),
-          cursor: state.nextCursor,
-        })
-        if (token !== listRequestToken) return
-        set((s) => {
-          const merged = [...s.escalations, ...page.data]
-          return {
-            escalations: merged,
-            // Keep ``total`` consistent with the store's cursor-only
-            // pagination: it is the in-memory display count, recomputed
-            // after every append rather than carried over from the
-            // initial fetch (which would go stale once more pages
-            // landed).
-            total: merged.length,
-            nextCursor: page.nextCursor,
-            hasMore: page.hasMore,
-            loadingMore: false,
-          }
-        })
-      } catch (err) {
-        log.warn('Failed to fetch more escalations:', getErrorMessage(err))
-        if (token !== listRequestToken) return
-        set({ loadingMore: false, error: getErrorMessage(err) })
-      }
-    },
-
-    setStatusFilter: (status) => {
-      set({ statusFilter: status })
-      get().fetchEscalations().catch((err: unknown) => {
-        log.warn('escalations filter-change refetch failed', getErrorMessage(err))
-      })
-    },
-
-    fetchEscalationDetail: async (id: string) => {
-      // Bump the detail token so a slower previous fetch (or a
-      // ``clearDetail()``) cannot overwrite this one's result.
-      const token = ++detailRequestToken
-      set({
-        detailLoading: true,
-        detailError: null,
-        selected: null,
-        detailRequestedId: id,
-      })
-      try {
-        const response = await apiGetEscalation(id)
-        if (token !== detailRequestToken) return
-        set({ selected: response, detailLoading: false })
-      } catch (err) {
-        log.warn('Failed to fetch escalation detail:', getErrorMessage(err))
-        if (token !== detailRequestToken) return
-        set({ detailLoading: false, detailError: getErrorMessage(err) })
-      }
-    },
-
-    clearDetail: () => {
-      // Invalidate any in-flight detail fetch so its result cannot
-      // re-populate ``selected`` after the drawer closes.  Also
-      // clear ``detailLoading`` so the store does not get stuck in
-      // a phantom loading state when ``clearDetail`` runs while a
-      // fetch is still pending (the in-flight callback bails on
-      // the token mismatch and never flips the flag itself).
-      detailRequestToken++
-      set({
-        selected: null,
-        detailError: null,
-        detailRequestedId: null,
-        detailLoading: false,
-      })
-    },
-
-    submitDecision: async (id, data) => {
-      set({ submitting: true })
-      try {
-        const response = await apiSubmitDecision(id, data)
-        useToastStore.getState().add({
-          variant: 'success',
-          title: 'Escalation decided',
-        })
-        // Refresh the list so the decided row falls out of pending.
-        get().fetchEscalations().catch((refetchErr: unknown) => {
-          log.warn('escalations post-decision refetch failed', getErrorMessage(refetchErr))
-        })
-        set({ submitting: false })
-        return response
-      } catch (err) {
-        log.warn('Failed to submit escalation decision:', getErrorMessage(err))
-        useToastStore.getState().add({
-          variant: 'error',
-          title: 'Failed to submit decision',
-          description: getErrorMessage(err),
-        })
-        set({ submitting: false })
-        return null
-      }
-    },
-
-    cancelEscalation: async (id, data) => {
-      set({ submitting: true })
-      try {
-        const response = await apiCancelEscalation(id, data)
-        useToastStore.getState().add({
-          variant: 'success',
-          title: 'Escalation cancelled',
-        })
-        get().fetchEscalations().catch((refetchErr: unknown) => {
-          log.warn('escalations post-cancel refetch failed', getErrorMessage(refetchErr))
-        })
-        set({ submitting: false })
-        return response
-      } catch (err) {
-        log.warn('Failed to cancel escalation:', getErrorMessage(err))
-        useToastStore.getState().add({
-          variant: 'error',
-          title: 'Failed to cancel escalation',
-          description: getErrorMessage(err),
-        })
-        set({ submitting: false })
-        return null
-      }
-    },
+async function submitDecisionImpl(
+  set: EscSet,
+  get: EscGet,
+  id: string,
+  data: SubmitDecisionRequest,
+): Promise<EscalationResponse | null> {
+  set({ submitting: true })
+  try {
+    const response = await apiSubmitDecision(id, data)
+    useToastStore.getState().add({
+      variant: 'success',
+      title: 'Escalation decided',
+    })
+    get().fetchEscalations().catch((refetchErr: unknown) => {
+      log.warn(
+        'escalations post-decision refetch failed',
+        getErrorMessage(refetchErr),
+      )
+    })
+    set({ submitting: false })
+    return response
+  } catch (err) {
+    log.warn('Failed to submit escalation decision:', getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Failed to submit decision',
+      description: getErrorMessage(err),
+    })
+    set({ submitting: false })
+    return null
   }
-})
+}
+
+async function cancelEscalationImpl(
+  set: EscSet,
+  get: EscGet,
+  id: string,
+  data: CancelEscalationRequest,
+): Promise<EscalationResponse | null> {
+  set({ submitting: true })
+  try {
+    const response = await apiCancelEscalation(id, data)
+    useToastStore.getState().add({
+      variant: 'success',
+      title: 'Escalation cancelled',
+    })
+    get().fetchEscalations().catch((refetchErr: unknown) => {
+      log.warn(
+        'escalations post-cancel refetch failed',
+        getErrorMessage(refetchErr),
+      )
+    })
+    set({ submitting: false })
+    return response
+  } catch (err) {
+    log.warn('Failed to cancel escalation:', getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      title: 'Failed to cancel escalation',
+      description: getErrorMessage(err),
+    })
+    set({ submitting: false })
+    return null
+  }
+}
+
+export const useEscalationsStore = create<EscalationsState>()((set, get) => ({
+  escalations: [],
+  total: null,
+  nextCursor: null,
+  hasMore: false,
+  loading: false,
+  loadingMore: false,
+  error: null,
+
+  statusFilter: 'pending',
+
+  selected: null,
+  detailLoading: false,
+  detailError: null,
+  detailRequestedId: null,
+
+  submitting: false,
+
+  fetchEscalations: () => fetchEscalationsImpl(set, get),
+  fetchMoreEscalations: () => fetchMoreEscalationsImpl(set, get),
+  setStatusFilter: (status) => {
+    set({ statusFilter: status })
+    get().fetchEscalations().catch((err: unknown) => {
+      log.warn(
+        'escalations filter-change refetch failed',
+        getErrorMessage(err),
+      )
+    })
+  },
+  fetchEscalationDetail: (id) => fetchEscalationDetailImpl(set, id),
+  clearDetail: () => clearDetailImpl(set),
+  submitDecision: (id, data) => submitDecisionImpl(set, get, id, data),
+  cancelEscalation: (id, data) => cancelEscalationImpl(set, get, id, data),
+}))

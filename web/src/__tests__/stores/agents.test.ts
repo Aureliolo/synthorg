@@ -620,24 +620,27 @@ describe('runtime statuses (org chart)', () => {
     expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
   })
 
-  it('updateFromWsEvent ignores events with missing status', () => {
+  it('updateFromWsEvent falls back to offline when status is missing', () => {
+    // ``sanitizeWsEnum`` (canonical WS sanitizer per web/CLAUDE.md) on a
+    // missing / non-string status returns the supplied fallback so the
+    // UI keeps rendering rather than silently dropping the frame.
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'agent.status_changed',
       channel: 'agents',
       timestamp: '2026-03-27T10:00:00Z',
       payload: { agent_id: 'agent-1' },
     })
-    expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
+    expect(useAgentsStore.getState().runtimeStatuses['agent-1']).toBe('offline')
   })
 
-  it('updateFromWsEvent ignores invalid status values', () => {
+  it('updateFromWsEvent falls back to offline when status is invalid', () => {
     useAgentsStore.getState().updateFromWsEvent({
       event_type: 'agent.status_changed',
       channel: 'agents',
       timestamp: '2026-03-27T10:00:00Z',
       payload: { agent_id: 'agent-1', status: 'invalid_status' },
     })
-    expect(Object.keys(useAgentsStore.getState().runtimeStatuses)).toHaveLength(0)
+    expect(useAgentsStore.getState().runtimeStatuses['agent-1']).toBe('offline')
   })
 
   it('updateFromWsEvent ignores non-status events', () => {

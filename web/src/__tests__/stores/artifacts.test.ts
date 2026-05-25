@@ -30,7 +30,8 @@ describe('useArtifactsStore', () => {
   beforeEach(() => {
     useArtifactsStore.setState({
       artifacts: [],
-      totalArtifacts: 0,
+      nextCursor: null,
+      hasMore: false,
       listLoading: false,
       listError: null,
       searchQuery: '',
@@ -59,7 +60,7 @@ describe('useArtifactsStore', () => {
 
       const state = useArtifactsStore.getState()
       expect(state.artifacts).toEqual([artifact])
-      expect(state.totalArtifacts).toBe(1)
+      expect(state.artifacts.length).toBe(1)
       expect(state.listLoading).toBe(false)
     })
 
@@ -143,7 +144,7 @@ describe('useArtifactsStore', () => {
       const { useToastStore } = await import('@/stores/toast')
       useToastStore.getState().dismissAll()
       const existing = makeArtifact('artifact-existing')
-      useArtifactsStore.setState({ artifacts: [existing], totalArtifacts: 1 })
+      useArtifactsStore.setState({ artifacts: [existing] })
       const created = makeArtifact('artifact-new', { path: 'src/new.py' })
       server.use(
         http.post('/api/v1/artifacts', () =>
@@ -163,7 +164,7 @@ describe('useArtifactsStore', () => {
       expect(result).toEqual(created)
       const state = useArtifactsStore.getState()
       expect(state.artifacts).toEqual([created, existing])
-      expect(state.totalArtifacts).toBe(2)
+      expect(state.artifacts.length).toBe(2)
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('success')
@@ -174,7 +175,7 @@ describe('useArtifactsStore', () => {
       const { useToastStore } = await import('@/stores/toast')
       useToastStore.getState().dismissAll()
       const existing = makeArtifact('artifact-existing')
-      useArtifactsStore.setState({ artifacts: [existing], totalArtifacts: 1 })
+      useArtifactsStore.setState({ artifacts: [existing] })
       server.use(
         http.post('/api/v1/artifacts', () =>
           HttpResponse.json(apiError('Quota exceeded'), { status: 422 }),
@@ -194,11 +195,15 @@ describe('useArtifactsStore', () => {
       const state = useArtifactsStore.getState()
       // List unchanged on failure -- no optimistic insert to roll back.
       expect(state.artifacts).toEqual([existing])
-      expect(state.totalArtifacts).toBe(1)
+      expect(state.artifacts.length).toBe(1)
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
-      expect(toasts[0]!.title).toBe('Failed to create artifact')
+      // ``getCrudErrorTitle`` maps the 422 to the status-specific title
+      // ('Validation failed' per STATUS_TITLES in utils/errors.ts)
+      // instead of the literal fallback so the toast reflects the
+      // structured error category.
+      expect(toasts[0]!.title).toBe('Validation failed')
       expect(toasts[0]!.description).toContain('Quota exceeded')
     })
 
@@ -255,7 +260,7 @@ describe('useArtifactsStore', () => {
     it('removes artifact from list', async () => {
       const a1 = makeArtifact('artifact-001')
       const a2 = makeArtifact('artifact-002')
-      useArtifactsStore.setState({ artifacts: [a1, a2], totalArtifacts: 2 })
+      useArtifactsStore.setState({ artifacts: [a1, a2] })
       server.use(
         http.delete('/api/v1/artifacts/:id', () =>
           HttpResponse.json(voidSuccess()),
@@ -265,14 +270,14 @@ describe('useArtifactsStore', () => {
       await useArtifactsStore.getState().deleteArtifact('artifact-001')
 
       expect(useArtifactsStore.getState().artifacts).toEqual([a2])
-      expect(useArtifactsStore.getState().totalArtifacts).toBe(1)
+      expect(useArtifactsStore.getState().artifacts.length).toBe(1)
     })
 
     it('returns false sentinel + emits error toast on failure', async () => {
       const { useToastStore } = await import('@/stores/toast')
       useToastStore.getState().dismissAll()
       const a1 = makeArtifact('artifact-001')
-      useArtifactsStore.setState({ artifacts: [a1], totalArtifacts: 1 })
+      useArtifactsStore.setState({ artifacts: [a1] })
       server.use(
         http.delete('/api/v1/artifacts/:id', () =>
           HttpResponse.json(apiError('Delete failed'), { status: 500 }),
@@ -285,7 +290,7 @@ describe('useArtifactsStore', () => {
 
       expect(result).toBe(false)
       expect(useArtifactsStore.getState().artifacts).toEqual([a1])
-      expect(useArtifactsStore.getState().totalArtifacts).toBe(1)
+      expect(useArtifactsStore.getState().artifacts.length).toBe(1)
       const toasts = useToastStore.getState().toasts
       expect(toasts).toHaveLength(1)
       expect(toasts[0]!.variant).toBe('error')
