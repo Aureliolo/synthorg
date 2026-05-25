@@ -342,6 +342,11 @@ class ReviewGateService:
         must not be silently bypassed by a caller that omits the
         adversarial-review payload. The task is held out of COMPLETED and
         routed back to ``IN_PROGRESS`` until the input is wired.
+
+        Returns:
+            ``(target, reason, event, approved)`` rerouted to
+            ``IN_PROGRESS`` rework when the gate blocks or the input
+            is missing; the original tuple otherwise.
         """
         gate = self._red_team_gate
         if gate is None:
@@ -404,6 +409,12 @@ class ReviewGateService:
         closed, since most deliverables are not GUI apps and would
         otherwise be blocked wholesale. A BLOCK verdict reroutes the task
         to ``IN_PROGRESS`` (rework) with the vision summary as the reason.
+
+        Returns:
+            ``(target, reason, event, approved)`` rerouted to
+            ``IN_PROGRESS`` rework on a BLOCK verdict; the original
+            tuple otherwise (gate disabled, no vision input, or
+            non-BLOCK verdict).
         """
         gate = self._vision_gate
         if gate is None:
@@ -447,7 +458,12 @@ class ReviewGateService:
         result: PipelineResult,
         decided_by: str,
     ) -> tuple[TaskStatus, str, str, bool]:
-        """Translate a pipeline result into the transition inputs."""
+        """Translate a pipeline result into the transition inputs.
+
+        Returns:
+            ``(target_status, reason, event, approved)`` -- rework
+            tuple on FAIL, completed tuple on PASS / SKIP.
+        """
         if result.final_verdict is ReviewVerdict.FAIL:
             failing = next(
                 (
@@ -558,6 +574,10 @@ class ReviewGateService:
         If ``task.assigned_to`` is ``None`` the check is skipped and a
         WARNING is logged: a task reaching review without an assignee
         is an anomalous state worth operator attention.
+
+        Raises:
+            SelfReviewError: When ``decided_by`` matches the task's
+                assigned executor (review-by-self prevented).
         """
         if task.assigned_to is None:
             logger.warning(
@@ -645,6 +665,10 @@ class ReviewGateService:
         ``DecisionRecord.criteria_snapshot`` rejects duplicates via
         its unique-strings validator; without deduping a task with
         repeated criteria would raise ``ValidationError``.
+
+        Returns:
+            Tuple of acceptance-criteria descriptions in their first
+            occurrence order, with empty entries dropped.
         """
         seen: set[str] = set()
         result: list[str] = []
@@ -663,6 +687,11 @@ class ReviewGateService:
 
         Returns a metadata dict on success, a failure-flag dict on
         ``QueryError``, or ``None`` if no version exists.
+
+        Returns:
+            Mapping of charter metadata fields when a version exists;
+            a failure-flag mapping when persistence raised; ``None``
+            when no charter version is recorded for the agent.
         """
         persistence = self._persistence
         assert persistence is not None  # noqa: S101  # caller checks
