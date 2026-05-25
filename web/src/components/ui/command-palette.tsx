@@ -1,5 +1,5 @@
 import { Command } from 'cmdk-base'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
@@ -29,16 +29,66 @@ function getRecentIds(): string[] {
   }
 }
 
+// In-process subscribers for the recent-IDs store. ``addRecentId``
+// notifies these so ``useSyncExternalStore`` consumers re-render
+// inside the same tab; cross-tab changes flow through the
+// ``storage`` event registered in ``_subscribeRecentIds``.
+const _recentIdsListeners = new Set<() => void>()
+
+function _notifyRecentIdsListeners(): void {
+  for (const listener of _recentIdsListeners) listener()
+}
+
 function addRecentId(id: string) {
   try {
     const recent = getRecentIds().filter((r) => r !== id)
     recent.unshift(id)
     localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)))
+    _notifyRecentIdsListeners()
   } catch (err) {
     // Best-effort convenience feature -- never block command execution, but
     // surface the diagnostic so quota/security errors can be correlated with
     // "my recent commands stopped persisting" bug reports.
     log.debug('Failed to persist recent commands to localStorage', err)
+  }
+}
+
+// Cached snapshot kept referentially stable across reads when the
+// underlying localStorage value hasn't changed. ``useSyncExternalStore``
+// requires a stable reference between unchanged reads, otherwise it
+// treats every read as a state change and triggers an infinite render
+// loop.
+let _recentIdsSnapshot: readonly string[] = []
+let _recentIdsRawSnapshot: string | null = null
+
+function _getRecentIdsSnapshot(): readonly string[] {
+  let raw: string | null = null
+  try {
+    raw = localStorage.getItem(RECENT_STORAGE_KEY)
+  } catch {
+    raw = null
+  }
+  if (raw === _recentIdsRawSnapshot) return _recentIdsSnapshot
+  _recentIdsRawSnapshot = raw
+  _recentIdsSnapshot = getRecentIds()
+  return _recentIdsSnapshot
+}
+
+const _RECENT_IDS_SERVER_SNAPSHOT: readonly string[] = []
+
+function _getRecentIdsServerSnapshot(): readonly string[] {
+  return _RECENT_IDS_SERVER_SNAPSHOT
+}
+
+function _subscribeRecentIds(callback: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === RECENT_STORAGE_KEY) callback()
+  }
+  window.addEventListener('storage', onStorage)
+  _recentIdsListeners.add(callback)
+  return () => {
+    window.removeEventListener('storage', onStorage)
+    _recentIdsListeners.delete(callback)
   }
 }
 
@@ -91,7 +141,6 @@ function _groupCommands(commands: readonly CommandItem[]): Map<string, CommandIt
 function useFilteredCommands(
   commands: readonly CommandItem[],
   scope: 'global' | 'local',
-  isOpen: boolean,
   search: string,
 ): FilteredCommands {
   const filtered = useMemo(
@@ -99,16 +148,21 @@ function useFilteredCommands(
     [commands, scope],
   )
   const grouped = useMemo(() => _groupCommands(filtered), [filtered])
-  // Re-read recent items each time the palette opens. The
-  // ``getRecentIds`` call touches ``localStorage``, which the
-  // ``@eslint-react/globals`` rule (configured in web/eslint.config.js)
-  // forbids during render. An effect-backed state move keeps the
-  // localStorage read in a post-commit callback while preserving the
-  // "refresh on open" behaviour.
-  const [recentIds, setRecentIds] = useState<readonly string[]>([])
-  useEffect(() => {
-    if (isOpen) setRecentIds(getRecentIds())
-  }, [isOpen])
+  // Route the recent-IDs read through ``useSyncExternalStore`` so the
+  // ``localStorage`` access happens inside the React-blessed snapshot
+  // callback (not in a render body, where ``@eslint-react/globals``
+  // would flag it, nor inside a ``useEffect`` setState, where
+  // ``@eslint-react/set-state-in-effect`` would flag it). The
+  // subscription covers both cross-tab (``storage`` event) and
+  // intra-tab (``addRecentId`` notifies via
+  // ``_notifyRecentIdsListeners``) flows so a freshly-recorded
+  // command appears the next time the palette renders without an
+  // explicit "refresh on open" trigger.
+  const recentIds = useSyncExternalStore(
+    _subscribeRecentIds,
+    _getRecentIdsSnapshot,
+    _getRecentIdsServerSnapshot,
+  )
   const recentItems = useMemo(() => {
     if (search) return []
     return recentIds
@@ -135,7 +189,7 @@ export function CommandPalette({ className }: CommandPaletteProps) {
   }, [isOpen])
 
   const { grouped, recentItems, recentIdSet, hasLocalCommands } = useFilteredCommands(
-    commands, scope, isOpen, search,
+    commands, scope, search,
   )
 
   const handleSelect = useCallback(
