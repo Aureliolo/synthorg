@@ -143,7 +143,7 @@ class _StubTool(BaseTool):
         )
 
     @override
-    async def execute(  # type: ignore[explicit-any]  # arguments mirrors ToolCall.arguments dict[str, Any] in synthorg.providers (under #2056 override)
+    async def execute(
         self,
         *,
         arguments: dict[str, Any],

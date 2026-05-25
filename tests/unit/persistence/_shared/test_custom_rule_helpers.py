@@ -41,7 +41,7 @@ def _rule(
     )
 
 
-def _row_for(rule: CustomRuleDefinition, **overrides: Any) -> dict[str, Any]:  # type: ignore[explicit-any]  # row mirrors CustomRuleDefinition fields (heterogeneous: enums, str, float, bool, datetime)
+def _row_for(rule: CustomRuleDefinition, **overrides: Any) -> dict[str, Any]:
     return {
         "id": str(rule.id),
         "name": rule.name,

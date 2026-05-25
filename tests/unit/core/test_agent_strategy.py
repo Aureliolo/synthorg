@@ -10,8 +10,8 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.enums import StrategicOutputMode
 
 
-def _make_agent(**kwargs: Any) -> AgentIdentity:  # type: ignore[explicit-any]  # builder forwards heterogeneous AgentIdentity field overrides
-    defaults: dict[str, Any] = {  # type: ignore[explicit-any]  # same rationale as the param above
+def _make_agent(**kwargs: Any) -> AgentIdentity:
+    defaults: dict[str, Any] = {
         "name": "Test Agent",
         "role": "CEO",
         "department": "executive",

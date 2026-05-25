@@ -1310,7 +1310,7 @@ class FakeMessageBus:
 # PEP 562 module-level ``__getattr__`` solves it: the attribute is
 # resolved on first access rather than at module load. By then
 # ``fakes_backend`` has already completed its own initialisation.
-def __getattr__(name: str) -> Any:  # type: ignore[explicit-any]  # PEP 562 re-export; callers consume FakePersistenceBackend as both a value and a type, which mypy can't model via `-> type`
+def __getattr__(name: str) -> Any:
     """Lazy re-export of ``FakePersistenceBackend`` (see note above)."""
     if name == "FakePersistenceBackend":
         from tests.unit.api.fakes_backend import (

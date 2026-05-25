@@ -117,7 +117,7 @@ def _build_dept_client(
     auth_service: AuthService = _make_test_auth_service()
     _seed_test_users(fake_persistence, auth_service)
     settings_service = SettingsService(
-        repository=fake_persistence.settings,  # type: ignore[arg-type]
+        repository=fake_persistence.settings,
         registry=get_registry(),
     )
     app = create_app(

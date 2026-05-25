@@ -78,7 +78,7 @@ def test_preset_resolves_to_canonical_url(
         (TsaPreset.CUSTOM, {"tsa_url": "https://tsa.example.com/tsr"}),
     ],
 )
-def test_tsa_missing_roots_rejected_when_verifying(  # type: ignore[explicit-any]  # extra_kwargs forwarded to AuditChainConfig which has heterogeneous typed fields (Literal, Path, float, bool)
+def test_tsa_missing_roots_rejected_when_verifying(
     tsa_preset: TsaPreset,
     extra_kwargs: dict[str, Any],
 ) -> None:

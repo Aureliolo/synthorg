@@ -131,7 +131,7 @@ def test_update_label_snapshot_replaces_atomically() -> None:
         ),
     ],
 )
-def test_per_source_validator_rejects_unknown_accepts_known(  # type: ignore[explicit-any]  # validator-under-test + snapshot_kwargs are heterogeneous across N validator/snapshot classes
+def test_per_source_validator_rejects_unknown_accepts_known(
     validator: Any,
     snapshot_kwargs: dict[str, Any],
     label_substring: str,

@@ -567,7 +567,7 @@ class TestTameThirdPartyLoggers:
     ) -> None:
         """A handler whose close() raises warns to stderr but is still removed."""
 
-        class _BadHandler(logging.StreamHandler[Any]):  # type: ignore[explicit-any]  # logging.StreamHandler is generic over the underlying stream type
+        class _BadHandler(logging.StreamHandler[Any]):
             @override
             def close(self) -> None:
                 msg = "close failed"

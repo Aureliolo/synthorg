@@ -369,9 +369,9 @@ class _CapturingLogger:
     """
 
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []  # type: ignore[explicit-any]  # mirrors structlog BoundLogger.error kwargs (Any-typed boundary)
+        self.calls: list[tuple[str, dict[str, Any]]] = []
 
-    def error(self, event: str | None = None, *args: Any, **kwargs: Any) -> None:  # type: ignore[explicit-any]  # mirrors structlog BoundLogger.error structural surface
+    def error(self, event: str | None = None, *args: Any, **kwargs: Any) -> None:
         # ``*args`` is part of the structural surface but unused by
         # ``log_exception_redacted``; record kwargs only. The Any-typed
         # ``**kwargs`` mirrors the production ``_ErrorLogger`` Protocol

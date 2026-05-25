@@ -87,7 +87,7 @@ def test_unparseable_trusted_root_raises() -> None:
         ),
     ],
 )
-async def test_transport_failures_map_to_typed_errors(  # type: ignore[explicit-any]  # respx.MockRouter.post kwargs include status_code, content, side_effect with heterogeneous types
+async def test_transport_failures_map_to_typed_errors(
     mock_kwargs: dict[str, Any],
     expected_error: type[Exception],
 ) -> None:

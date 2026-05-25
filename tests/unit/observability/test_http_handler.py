@@ -77,7 +77,7 @@ class TestHttpBatchHandler:
         handler_cleanup.append(handler)
         flushed = threading.Event()
 
-        def _mock_urlopen(*args: Any, **kwargs: Any) -> MagicMock:  # type: ignore[explicit-any]  # mirrors urllib.request.urlopen variadic signature
+        def _mock_urlopen(*args: Any, **kwargs: Any) -> MagicMock:
             flushed.set()
             return MagicMock()
 
