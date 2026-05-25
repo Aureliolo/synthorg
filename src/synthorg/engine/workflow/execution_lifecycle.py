@@ -68,6 +68,10 @@ def _execution_duration_seconds(
     time jumps) are clamped to 0 AND a WARN is emitted so an
     operator can spot the underlying clock issue instead of
     silently absorbing it into the 0-bucket.
+
+    Returns:
+        Non-negative duration in seconds; ``0.0`` when ``now`` is
+        before ``execution.created_at`` (clock skew was logged).
     """
     duration = (now - execution.created_at).total_seconds()
     if duration < 0:
@@ -88,7 +92,12 @@ async def get_execution(
     repo: WorkflowExecutionRepository,
     execution_id: str,
 ) -> WorkflowExecution | None:
-    """Retrieve a workflow execution by ID."""
+    """Retrieve a workflow execution by ID.
+
+    Returns:
+        The :class:`WorkflowExecution`, or ``None`` if no record
+        matches ``execution_id``.
+    """
     return await repo.get(execution_id)
 
 
@@ -98,7 +107,12 @@ async def list_executions(
     *,
     limit: int = DEFAULT_LIST_LIMIT,
 ) -> tuple[WorkflowExecution, ...]:
-    """List executions for a workflow definition (bounded by *limit*)."""
+    """List executions for a workflow definition (bounded by *limit*).
+
+    Returns:
+        The tuple of :class:`WorkflowExecution` rows matching the
+        definition filter (up to ``limit`` rows, repository order).
+    """
     return await repo.query(
         WorkflowExecutionFilterSpec(definition_id=definition_id),
         limit=limit,
@@ -112,6 +126,11 @@ async def cancel_execution(
     cancelled_by: str,
 ) -> WorkflowExecution:
     """Cancel a workflow execution.
+
+    Returns:
+        The cancelled :class:`WorkflowExecution` with status
+        ``CANCELLED``, the completion timestamp set, and the version
+        bumped.
 
     Raises:
         WorkflowExecutionNotFoundError: If not found.
@@ -224,6 +243,10 @@ async def complete_execution(
 ) -> WorkflowExecution:
     """Transition a running execution to COMPLETED.
 
+    Returns:
+        The updated :class:`WorkflowExecution` with status
+        ``COMPLETED`` and the completion timestamp set.
+
     Raises:
         WorkflowExecutionNotFoundError: If not found.
         WorkflowExecutionError: If execution is not RUNNING.
@@ -272,6 +295,10 @@ async def fail_execution(
     error: str,
 ) -> WorkflowExecution:
     """Transition a running execution to FAILED.
+
+    Returns:
+        The updated :class:`WorkflowExecution` with status ``FAILED``,
+        the error message recorded, and the completion timestamp set.
 
     Raises:
         WorkflowExecutionNotFoundError: If not found.
@@ -392,8 +419,6 @@ async def _retry_after_version_conflict(
         return
     try:
         await _dispatch_task_handler(repo, refreshed, event)
-    except MemoryError, RecursionError:
-        raise
     except RecordNotFoundError:
         logger.warning(
             retry_event,
@@ -671,7 +696,17 @@ async def _load_running(
     repo: WorkflowExecutionRepository,
     execution_id: str,
 ) -> WorkflowExecution:
-    """Load an execution and validate it is RUNNING."""
+    """Load an execution and validate it is RUNNING.
+
+    Returns:
+        The :class:`WorkflowExecution` confirmed to be in the
+        ``RUNNING`` status.
+
+    Raises:
+        WorkflowExecutionNotFoundError: If no record matches.
+        WorkflowExecutionError: If the execution exists but is not
+            in ``RUNNING`` status.
+    """
     execution = await repo.get(execution_id)
     if execution is None:
         logger.warning(
@@ -714,7 +749,16 @@ def _update_node_status(
     task_id: str,
     new_status: WorkflowNodeExecutionStatus,
 ) -> WorkflowExecution:
-    """Return a copy with one node's status updated."""
+    """Return a copy with one node's status updated.
+
+    Returns:
+        A new :class:`WorkflowExecution` whose ``node_executions``
+        tuple replaces the matching node's status, with
+        ``updated_at`` refreshed and the version bumped.
+
+    Raises:
+        ValueError: If no node matches ``task_id``.
+    """
     found = False
     updated_nodes: list[WorkflowNodeExecution] = []
     for ne in execution.node_executions:
@@ -746,7 +790,13 @@ def _update_node_status(
 
 
 def _all_tasks_completed(execution: WorkflowExecution) -> bool:
-    """Check if all non-skipped executable nodes have completed."""
+    """Check if all non-skipped executable nodes have completed.
+
+    Returns:
+        ``True`` when every non-skipped TASK / SUBWORKFLOW node has
+        reached its respective ``COMPLETED`` status; ``False`` when
+        any such node is still pending.
+    """
     for ne in execution.node_executions:
         if ne.status is WorkflowNodeExecutionStatus.SKIPPED:
             continue
