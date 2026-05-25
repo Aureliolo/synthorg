@@ -138,6 +138,11 @@ class ContextDependentDispatcher:
             group has workspace paths threaded into each assignment.
             ``(workspaces, None)`` when the wave needs isolation but
             setup failed (the caller decides whether to ``fail_fast``).
+
+        Raises:
+            CoordinationError: When isolation is enabled but no
+                ``workspace_service`` was provided (programmer error;
+                signals a misconfigured pipeline).
         """
         needs_isolation = (
             len(group.assignments) > 1 and config.enable_workspace_isolation

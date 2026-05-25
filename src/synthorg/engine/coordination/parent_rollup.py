@@ -73,6 +73,10 @@ def _hop_overrides(hop: TaskStatus) -> dict[str, object]:
     then persists across later hops). The coordinated parent has no
     single owning agent, so stamp the coordinator sentinel on the forced
     ASSIGNED hop only.
+
+    Returns:
+        ``{"assigned_to": COORDINATOR_ACTOR}`` for the ASSIGNED hop;
+        an empty dict for every other status (no overrides needed).
     """
     if hop is TaskStatus.ASSIGNED:
         return {"assigned_to": COORDINATOR_ACTOR}

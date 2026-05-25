@@ -23,7 +23,12 @@ logger = get_logger(__name__)
 
 
 def _safe_parse(source: str, filename: str) -> ast.Module | None:
-    """Parse source code, returning None on syntax errors."""
+    """Parse source code, returning None on syntax errors.
+
+    Returns:
+        The parsed :class:`ast.Module` on success; ``None`` when
+        parsing raises ``SyntaxError`` (logged at DEBUG level).
+    """
     try:
         return ast.parse(source, filename=filename)
     except SyntaxError as exc:
@@ -63,7 +68,12 @@ def _top_level_names(tree: ast.Module) -> dict[str, ast.stmt]:
 
 
 def _all_name_references(tree: ast.Module) -> set[str]:
-    """Collect names referenced in Load context in the module."""
+    """Collect names referenced in Load context in the module.
+
+    Returns:
+        Set of identifier strings appearing in load context across
+        the entire module tree.
+    """
     refs: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
@@ -98,7 +108,12 @@ def _function_max_args(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
 def _function_param_names(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
 ) -> set[str]:
-    """Return all parameter names accepted by a function."""
+    """Return all parameter names accepted by a function.
+
+    Returns:
+        Set of every parameter name (positional, positional-only,
+        keyword-only, ``*args``, and ``**kwargs``).
+    """
     names: set[str] = set()
     for arg in node.args.args:
         names.add(arg.arg)
@@ -114,7 +129,12 @@ def _function_param_names(
 
 
 def _call_keyword_names(call: ast.Call) -> set[str]:
-    """Return keyword argument names used in a call."""
+    """Return keyword argument names used in a call.
+
+    Returns:
+        Set of keyword names supplied at the call site (``**kwargs``
+        unpacks are skipped).
+    """
     return {kw.arg for kw in call.keywords if kw.arg is not None}
 
 
@@ -337,7 +357,14 @@ def _check_call_compat(
     call: ast.Call,
     sig: _SigInfo,
 ) -> MergeConflict | None:
-    """Check a single call against the new signature."""
+    """Check a single call against the new signature.
+
+    Returns:
+        A :class:`MergeConflict` when the call shape (positional
+        count, removed keyword, or missing required keyword-only) is
+        incompatible with the merged signature; ``None`` when the
+        call is still compatible.
+    """
     new_min, new_max, new_params = sig.new_min, sig.new_max, sig.new_params
     pos_count = len(call.args)
     if pos_count < new_min or pos_count > new_max:
@@ -480,6 +507,10 @@ def _file_path_to_module_stem(file_path: str) -> str:
     Strips ``.py`` suffix, converts ``__init__.py`` to the parent
     package name, removes common source root prefixes (``src/``,
     ``lib/``), and replaces path separators with dots.
+
+    Returns:
+        The dotted module path string (e.g. ``"pkg.sub.module"``)
+        for the given file path.
     """
     stem = file_path.removesuffix(".py")
     if stem.endswith(("/__init__", "\\__init__")):

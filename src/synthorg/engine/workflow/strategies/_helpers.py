@@ -79,7 +79,12 @@ STICKY_TRIGGERS: frozenset[str] = frozenset(
 def get_ceremony_config(
     ceremony: SprintCeremonyConfig,
 ) -> Mapping[str, Any]:
-    """Extract strategy config from a ceremony's policy override."""
+    """Extract strategy config from a ceremony's policy override.
+
+    Returns:
+        The ``strategy_config`` mapping from ``ceremony.policy_override``
+        when set, or an empty mapping when no override is present.
+    """
     if ceremony.policy_override is None:
         return {}
     return ceremony.policy_override.strategy_config or {}
@@ -93,6 +98,11 @@ def resolve_interval(
 
     Priority: ``ceremony.frequency`` > ``strategy_config["frequency"]``.
     Logs a warning when a configured frequency string is invalid.
+
+    Returns:
+        The interval in seconds when a valid frequency is configured;
+        ``None`` when no frequency is set or the configured value is
+        invalid (with a warning log).
     """
     if ceremony.frequency is not None:
         return frequency_to_seconds(ceremony.frequency)
@@ -125,6 +135,10 @@ def resolve_duration_days(
     Falls back to ``config.duration_days`` when the strategy_config
     value is missing, has the wrong type, or is out of range.
     Logs a warning when falling back due to an invalid value.
+
+    Returns:
+        The configured duration in days when valid; otherwise the
+        SprintConfig's ``duration_days`` default.
     """
     sc = config.ceremony_policy.strategy_config or {}
     duration = sc.get(KEY_DURATION_DAYS)
@@ -225,7 +239,12 @@ def evaluate_task_trigger(
 
 
 def validate_duration_days(value: object) -> None:
-    """Validate optional duration_days config value."""
+    """Validate optional duration_days config value.
+
+    Raises:
+        ValueError: When ``value`` is not a positive integer in
+            ``[MIN_DURATION_DAYS, MAX_DURATION_DAYS]``.
+    """
     if value is None:
         return
     if not isinstance(value, int) or isinstance(value, bool):
@@ -241,14 +260,23 @@ def validate_duration_days(value: object) -> None:
 
 
 def validate_trigger(value: object) -> None:
-    """Validate optional trigger config value."""
+    """Validate optional trigger config value.
+
+    Raises:
+        ValueError: When ``value`` is set but not in
+            :data:`VALID_TRIGGERS`.
+    """
     if value is not None and value not in VALID_TRIGGERS:
         msg = f"Invalid trigger {value!r}. Valid triggers: {sorted(VALID_TRIGGERS)}"
         raise ValueError(msg)
 
 
 def validate_every_n(value: object) -> None:
-    """Validate optional every_n_completions config value."""
+    """Validate optional every_n_completions config value.
+
+    Raises:
+        ValueError: When ``value`` is set but not a positive integer.
+    """
     if value is not None and (
         not isinstance(value, int) or isinstance(value, bool) or value < 1
     ):
@@ -257,7 +285,12 @@ def validate_every_n(value: object) -> None:
 
 
 def validate_sprint_percentage(value: object) -> None:
-    """Validate optional sprint_percentage config value."""
+    """Validate optional sprint_percentage config value.
+
+    Raises:
+        ValueError: When ``value`` is set but not a number in
+            ``(0, MAX_SPRINT_PCT]``.
+    """
     if value is not None and (
         not isinstance(value, int | float)
         or isinstance(value, bool)
@@ -273,7 +306,12 @@ def validate_sprint_percentage(value: object) -> None:
 
 
 def validate_frequency(value: object) -> None:
-    """Validate optional frequency config value."""
+    """Validate optional frequency config value.
+
+    Raises:
+        ValueError: When ``value`` is set but not in
+            :data:`VALID_FREQUENCIES`.
+    """
     if value is not None and value not in VALID_FREQUENCIES:
         msg = (
             f"Invalid frequency {value!r}. "
