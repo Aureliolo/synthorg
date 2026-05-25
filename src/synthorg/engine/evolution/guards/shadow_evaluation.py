@@ -491,7 +491,12 @@ class ShadowEvaluationGuard:
         event: str,
         reason: str,
     ) -> AdaptationDecision:
-        """Build a rejection decision, logging the triggering event."""
+        """Build a rejection decision, logging the triggering event.
+
+        Returns:
+            An :class:`AdaptationDecision` with ``approved=False``
+            carrying the rejection reason and guard name.
+        """
         logger.warning(
             event,
             proposal_id=str(proposal.id),

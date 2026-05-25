@@ -53,7 +53,18 @@ class DecentralizedDispatcher:
         project_id: NotBlankStr | None = None,
         repo_root: Path | None = None,
     ) -> DispatchResult:
-        """Execute subtasks with mandatory workspace isolation."""
+        """Execute subtasks with mandatory workspace isolation.
+
+        Returns:
+            A :class:`DispatchResult` aggregating per-wave outcomes,
+            isolated workspaces, the per-agent merge results, and
+            phase metadata.
+
+        Raises:
+            CoordinationError: When the workspace service is missing
+                or workspace isolation is disabled (decentralized
+                topology cannot operate without per-agent isolation).
+        """
         validate_routing_against_decomposition(decomposition_result, routing_result)
 
         if workspace_service is None or not config.enable_workspace_isolation:

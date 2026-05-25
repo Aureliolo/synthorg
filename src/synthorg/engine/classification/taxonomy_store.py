@@ -162,6 +162,11 @@ class InMemoryErrorTaxonomyStore:
         newer half of the window against the per-finding classification
         timestamp, and picks the most-severe category by average
         severity.
+
+        Returns:
+            An :class:`OrgErrorSummary` carrying total findings,
+            per-category summaries (with trend), and the most-severe
+            category; an empty summary when the window is empty.
         """
         _validate_window(since, until)
         async with self._lock:
@@ -195,7 +200,12 @@ class InMemoryErrorTaxonomyStore:
 
 
 def _validate_window(since: datetime, until: datetime) -> None:
-    """Reject inverted or naive windows before any scan happens."""
+    """Reject inverted or naive windows before any scan happens.
+
+    Raises:
+        ValueError: When ``since`` / ``until`` are naive datetimes
+            or when ``since >= until`` (inverted window).
+    """
     if since.tzinfo is None or until.tzinfo is None:
         msg = "since/until must be timezone-aware"
         raise ValueError(msg)
@@ -222,6 +232,10 @@ def _build_category_summaries(
     timestamp; findings are split between the older (classified before
     midpoint) and newer (at-or-after midpoint) halves of the window,
     so trend detection is timestamp-driven rather than position-based.
+
+    Returns:
+        Tuple of :class:`ErrorCategorySummary` rows in descending
+        count order (ties broken by category name).
     """
     older_counts: dict[ErrorCategory, int] = {}
     newer_counts: dict[ErrorCategory, int] = {}

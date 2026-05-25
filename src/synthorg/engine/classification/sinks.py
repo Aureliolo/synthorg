@@ -193,6 +193,10 @@ class _SlidingWindowRateLimiter:
         Prunes stale entries for idle keys on each call to prevent
         unbounded growth of ``_events`` from one-off agent IDs.
 
+        Returns:
+            An opaque admission handle on success; ``None`` when the
+            sliding window is saturated for ``key``.
+
         The dict reads / writes execute under ``self._lock`` so two
         concurrent ``take()`` calls cannot both observe ``len(events)
         < max_events`` and admit beyond the configured budget.

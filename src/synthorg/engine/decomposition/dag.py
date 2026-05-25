@@ -86,7 +86,12 @@ class DependencyGraph:
         )
 
     def _check_missing_references(self) -> None:
-        """Check for dependencies referencing unknown subtask IDs."""
+        """Check for dependencies referencing unknown subtask IDs.
+
+        Raises:
+            DecompositionError: When any subtask declares a
+                dependency that is not in the subtask id set.
+        """
         id_set = set(self._subtask_ids)
         for subtask in self.subtasks:
             for dep in subtask.dependencies:
@@ -103,7 +108,13 @@ class DependencyGraph:
                     raise DecompositionError(msg)
 
     def _check_cycles(self) -> None:
-        """Iterative DFS cycle detection to avoid stack overflow on deep chains."""
+        """Iterative DFS cycle detection to avoid stack overflow on deep chains.
+
+        Raises:
+            DecompositionCycleError: When the dependency graph
+                contains a cycle (the offending subtask id list is
+                reported in the error).
+        """
         visited: set[str] = set()
         in_stack: set[str] = set()
 

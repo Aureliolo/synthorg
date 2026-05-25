@@ -90,7 +90,13 @@ class RecentTaskHistoryProvider:
         agent_id: NotBlankStr,
         sample_size: int,
     ) -> tuple[Task, ...]:
-        """Delegate to the sampler; clamp and deep-copy the result."""
+        """Delegate to the sampler; clamp and deep-copy the result.
+
+        Returns:
+            Tuple of up to ``sample_size`` deep-copied :class:`Task`
+            objects from the sampler; ``()`` when ``sample_size``
+            is non-positive.
+        """
         if sample_size <= 0:
             return ()
         tasks = await self._sampler(agent_id, sample_size)

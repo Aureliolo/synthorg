@@ -40,7 +40,13 @@ class SasDispatcher:
         project_id: NotBlankStr | None = None,  # noqa: ARG002 -- no isolation in SAS
         repo_root: Path | None = None,  # noqa: ARG002 -- no isolation in SAS
     ) -> DispatchResult:
-        """Execute subtasks sequentially, one per wave."""
+        """Execute subtasks sequentially, one per wave.
+
+        Returns:
+            A :class:`DispatchResult` carrying per-wave outcomes and
+            phase metadata; SAS topology does not use workspaces or
+            per-merge result.
+        """
         groups = build_execution_waves(
             decomposition_result=decomposition_result,
             routing_result=routing_result,

@@ -82,7 +82,16 @@ class CompactionConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_safety_above_fill(self) -> Self:
-        """Safety threshold must exceed fill threshold when agent-controlled."""
+        """Safety threshold must exceed fill threshold when agent-controlled.
+
+        Returns:
+            ``self`` unchanged when the threshold invariant holds.
+
+        Raises:
+            ValueError: When ``agent_controlled`` is set and the
+                safety threshold is not strictly above the fill
+                threshold.
+        """
         if (
             self.agent_controlled
             and self.safety_threshold_percent <= self.fill_threshold_percent

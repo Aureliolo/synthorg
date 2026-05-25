@@ -113,6 +113,10 @@ class RollbackGuard:
         Centralises the warning + ValueError pattern so __init__ stays
         readable as a sequence of preconditions rather than a stack of
         repeated five-line blocks.
+
+        Raises:
+            ValueError: Always; the function exists to centralise the
+                log + raise pair.
         """
         logger.warning(
             EVOLUTION_GUARD_INVALID_CONFIG,

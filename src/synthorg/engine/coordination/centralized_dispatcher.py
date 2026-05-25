@@ -51,7 +51,13 @@ class CentralizedDispatcher:
         project_id: NotBlankStr | None = None,
         repo_root: Path | None = None,
     ) -> DispatchResult:
-        """Execute waves with workspace isolation and post-merge."""
+        """Execute waves with workspace isolation and post-merge.
+
+        Returns:
+            A :class:`DispatchResult` aggregating per-wave outcomes,
+            allocated workspaces, the workspace merge result, and
+            phase metadata.
+        """
         validate_routing_against_decomposition(decomposition_result, routing_result)
 
         all_phases: list[CoordinationPhaseResult] = []

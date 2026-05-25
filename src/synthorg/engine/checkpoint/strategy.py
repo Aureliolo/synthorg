@@ -265,7 +265,13 @@ class CheckpointRecoveryStrategy:
         checkpoint: Checkpoint,
         resume_attempt: int,
     ) -> RecoveryResult:
-        """Build a resumable ``RecoveryResult``."""
+        """Build a resumable ``RecoveryResult``.
+
+        Returns:
+            A :class:`RecoveryResult` carrying the checkpoint
+            context JSON, the resume-attempt count, and the inferred
+            failure category.
+        """
         execution_id = context.execution_id
         snapshot = context.to_snapshot()
         logger.info(
@@ -311,6 +317,10 @@ class CheckpointRecoveryStrategy:
 
         Also cleans up any orphaned checkpoint/heartbeat rows for
         this execution, since the resume path will not be entered.
+
+        Returns:
+            The :class:`RecoveryResult` produced by the fallback
+            strategy.
         """
         await cleanup_checkpoint_artifacts(
             self._checkpoint_repo,

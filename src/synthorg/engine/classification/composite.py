@@ -53,6 +53,10 @@ def _dedup_key(finding: ErrorFinding) -> str:
     key actually matches the documented
     ``(turn_range, sha256(description), category)`` identity and
     cannot produce false merges via short-digest collisions.
+
+    Returns:
+        A pipe-delimited string carrying turn range, full SHA-256 of
+        the description, and the category value.
     """
     desc_hash = hashlib.sha256(
         finding.description.encode(),

@@ -74,6 +74,13 @@ class DetectionContext(BaseModel):
         populating those fields would be a loader bug and could
         confuse detectors that expect empty tuples in SAME_TASK
         mode.
+
+        Returns:
+            ``self`` unchanged when scope-field consistency holds.
+
+        Raises:
+            ValueError: When a SAME_TASK context carries any
+                task-tree-only field.
         """
         if self.scope == DetectionScope.SAME_TASK and (
             self.delegate_executions or self.review_results or self.delegation_requests

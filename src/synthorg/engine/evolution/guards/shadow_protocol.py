@@ -56,7 +56,15 @@ class ShadowTaskOutcome(BaseModel):
 
     @model_validator(mode="after")
     def _validate_error_matches_success(self) -> Self:
-        """Ensure error is set iff success is False."""
+        """Ensure error is set iff success is False.
+
+        Returns:
+            ``self`` unchanged when success / error agree.
+
+        Raises:
+            ValueError: When ``success=True`` has an ``error`` or
+                ``success=False`` lacks one.
+        """
         if self.success and self.error is not None:
             msg = "error must be None when success is True"
             raise ValueError(msg)

@@ -176,6 +176,10 @@ def _build_delegation_requests(
     O(depth * parents * N) full-table rescan per node.  Bounded to
     ``_MAX_TREE_DEPTH`` levels, sanitizes descriptions before
     including them in the returned requests.
+
+    Returns:
+        Tuple of :class:`DelegationRequest` records for the
+        descendant tasks reachable within the depth bound.
     """
     tasks_by_parent: dict[str, list[Task]] = {}
     for task in all_tasks:

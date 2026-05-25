@@ -77,7 +77,12 @@ _SYSTEM_PROMPT = (
 
 
 def _extract_json(text: str) -> dict[str, Any] | None:
-    """Extract a JSON object from LLM response text via the shared helper."""
+    """Extract a JSON object from LLM response text via the shared helper.
+
+    Returns:
+        The parsed JSON object when extraction succeeds; ``None``
+        when the response carries no parseable object.
+    """
 
     def _log_parse_failure(detail: str) -> None:
         logger.debug(
@@ -131,6 +136,10 @@ def _summarise_tasks(
 
     The tuple is capped from the tail so the most recent entries win
     when the fleet exceeds *cap*.
+
+    Returns:
+        A newline-joined block of one summary line per recent task;
+        ``"  (none)"`` when no tasks are available.
     """
     if not tasks or cap <= 0:
         return "  (none)"
@@ -161,6 +170,10 @@ def _summarise_memories(
     Content strings are clamped at code-point boundaries to
     ``content_max_chars`` characters so a single oversized memory
     cannot balloon the prompt.
+
+    Returns:
+        A newline-joined block of one summary line per recent
+        memory; ``"  (none)"`` when no memories are available.
     """
     if not memories or cap <= 0:
         return "  (none)"
@@ -312,6 +325,11 @@ class SeparateAnalyzerProposer:
 
         Returns:
             Tuple of proposals (empty if no adaptations suggested).
+
+        Raises:
+            ProviderError: Re-raised on a non-retryable provider
+                failure so operators see the underlying cause; the
+                retryable branch logs and returns ``()``.
         """
         try:
             messages = [

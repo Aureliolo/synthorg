@@ -120,7 +120,15 @@ class EvolutionEvent(BaseModel):
 
     @model_validator(mode="after")
     def _validate_version_consistency(self) -> Self:
-        """Ensure version fields are consistent with applied status."""
+        """Ensure version fields are consistent with applied status.
+
+        Returns:
+            ``self`` unchanged when version fields are consistent.
+
+        Raises:
+            ValueError: When an applied IDENTITY adaptation has no
+                before / after version recorded.
+        """
         if self.applied and self.proposal.axis == AdaptationAxis.IDENTITY:
             if self.identity_version_before is None:
                 msg = (
