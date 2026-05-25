@@ -64,7 +64,12 @@ class SecurityInterceptorMiddleware(BaseAgentMiddleware):
         ctx: AgentMiddlewareContext,
         call: ToolCallable,
     ) -> ToolCallResult:
-        """Delegate to inner call (interception wired in ToolInvoker)."""
+        """Delegate to inner call (interception wired in ToolInvoker).
+
+        Returns:
+            The inner :class:`ToolCallResult` unchanged; the real
+            security check runs inside ``ToolInvoker.invoke()``.
+        """
         # The security interceptor is wired into the ToolInvoker at
         # construction, not at the middleware level. This middleware
         # exists as a named slot in the chain for configuration and
@@ -96,6 +101,10 @@ class SanitizeMessageMiddleware(BaseAgentMiddleware):
         The actual sanitization is applied inline in the execution
         pipeline (failure criteria, error messages). This middleware
         provides the named slot for chain ordering.
+
+        Returns:
+            ``ctx`` unchanged; sanitisation is performed inline at
+            the call sites that originate untrusted text.
         """
         return ctx
 
@@ -131,6 +140,10 @@ class ApprovalGateMiddleware(BaseAgentMiddleware):
 
         The approval gate is wired into the execution loop at
         construction. This middleware provides the named slot.
+
+        Returns:
+            ``ctx`` unchanged; the approval gate runs in the
+            execution loop, not in this middleware slot.
         """
         return ctx
 
@@ -164,7 +177,11 @@ class ClassificationMiddleware(BaseAgentMiddleware):
         ctx: AgentMiddlewareContext,
         call: ModelCallable,
     ) -> ModelCallResult:
-        """Delegate to inner call; classification runs post-execution."""
+        """Delegate to inner call; classification runs post-execution.
+
+        Returns:
+            The inner :class:`ModelCallResult` unchanged.
+        """
         # Classification is invoked in _post_execution_pipeline,
         # not per-call. This middleware provides the named slot.
         return await call(ctx)
@@ -174,7 +191,11 @@ class ClassificationMiddleware(BaseAgentMiddleware):
         ctx: AgentMiddlewareContext,
         call: ToolCallable,
     ) -> ToolCallResult:
-        """Delegate to inner call; classification runs post-execution."""
+        """Delegate to inner call; classification runs post-execution.
+
+        Returns:
+            The inner :class:`ToolCallResult` unchanged.
+        """
         return await call(ctx)
 
 
@@ -209,6 +230,10 @@ class CostRecordingMiddleware(BaseAgentMiddleware):
 
         Cost recording is invoked in _post_execution_pipeline.
         This middleware provides the named slot.
+
+        Returns:
+            ``ctx`` unchanged; cost recording runs in the
+            post-execution pipeline, not in this slot.
         """
         return ctx
 
@@ -247,5 +272,9 @@ class CheckpointResumeMiddleware(BaseAgentMiddleware):
         """Checkpoint resume runs in AgentEngine._resume_from_checkpoint.
 
         This middleware provides the named slot for chain ordering.
+
+        Returns:
+            ``ctx`` unchanged; checkpoint resume runs in the engine's
+            dedicated path, not in this slot.
         """
         return ctx
