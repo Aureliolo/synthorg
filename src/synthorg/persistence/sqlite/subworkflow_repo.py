@@ -622,9 +622,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         """Atomically check-and-delete inside a single transaction.
 
         Returns:
-            ``(deleted, parents)`` where ``deleted`` is True when the row was
-            removed (False if blocked by referencing parents) and ``parents``
-            is the tuple of referencing parents at the moment of the check.
+            ``(deleted, parents)``: True if removed, plus the referencing parents tuple.
 
         Raises:
             QueryError: If the database query fails.
