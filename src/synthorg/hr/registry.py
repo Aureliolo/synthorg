@@ -7,13 +7,15 @@ their identities, and lifecycle status transitions (D8.3).
 One cohesive responsibility: maintain the authoritative agent
 identity registry. CRUD (register/unregister/get/list), identity
 updates (status / generic-field / evolved-replacement /
-apply-arbitrary-mutation), and the two autonomy-mutation helpers
-(snapshot_current_autonomy_level + apply_autonomy_level) all operate
-on the same ``self._agents`` dict under ``self._lock``. The
-autonomy-promotion workflow itself lives in
-:mod:`synthorg.hr.autonomy_workflow` so the request / approval /
-audit-row dance is owned by its own class; this module exposes only
-the read + apply primitives the workflow consumes.
+apply-arbitrary-mutation), and the two autonomy-mutation primitives
+(``snapshot_current_autonomy_level`` + ``apply_autonomy_level``) all
+operate on the same ``self._agents`` dict under ``self._lock``.
+The autonomy-promotion workflow itself (request / approval / audit
+row) is owned by :class:`synthorg.hr.autonomy_workflow.AutonomyWorkflow`;
+the two autonomy-mutation methods on this registry are the narrow
+read + apply hooks the workflow consumes so its mutations serialise
+with the registry's own writes without reaching into ``_agents``
+directly.
 """
 
 import asyncio

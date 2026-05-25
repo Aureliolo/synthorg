@@ -51,9 +51,10 @@ class AutonomyWorkflow:
         registry: Agent registry holding the identity to update.
         approval_store: Optional approval store. When ``None`` the
             workflow still runs (the request is logged + the response
-            describes the outcome) but no approval row is persisted,
-            matching the pre-decomp behaviour of
-            ``AgentRegistryService.update_autonomy(approval_store=None)``.
+            describes the outcome) but no approval row is persisted.
+            Required for any deployment that wants the human-approval
+            queue to drive autonomy promotions; absent in pure-test
+            harnesses that only need the audit log and result envelope.
     """
 
     __slots__ = ("_approval_store", "_registry")

@@ -1,20 +1,22 @@
 # module-kind: complex_service
-"""Fine-tune admin service extracted from MemoryService.
+"""Fine-tune pipeline admin: run lifecycle, preflight, history.
 
 Owns the fine-tune pipeline admin surface: run lifecycle (start /
 resume / cancel / status), preflight validation, and the run-history
-pagination path. Lives in its own module so checkpoint deploy /
-rollback / delete (the other half of the old MemoryService) can stay
-focused on the embedder-state-machine without inheriting the fine-tune
-orchestrator dependency.
+pagination path. Sibling to the checkpoint deploy / rollback / delete
+surface on ``MemoryService``: the two surfaces use disjoint state
+(this one needs ``run_repo`` + ``orchestrator``; the checkpoint surface
+needs ``checkpoint_repo`` + ``_embedder_state_lock`` + settings) so
+keeping them apart prevents the fine-tune orchestrator dependency
+from leaking into the checkpoint flow and vice versa.
 
 Constructor-injected with ``run_repo`` and ``orchestrator``;
 :meth:`get_fine_tune_status` reads ``run_repo`` when a specific
-``run_id`` is asked for. Errors (``FineTuneRunNotFoundError`` /
-``FineTuneRunNotResumableError``) remain at ``synthorg.memory.service``
-so existing callers keep a stable public import path; this module
-imports them lazily inside the methods that raise them to break the
-sibling-module cycle.
+``run_id`` is asked for. The fine-tune errors
+(``FineTuneRunNotFoundError`` / ``FineTuneRunNotResumableError``) are
+defined on ``synthorg.memory.service`` as part of its public error
+surface; this module imports them lazily inside the methods that
+raise them so the sibling-module pair is not a runtime import cycle.
 """
 
 import os

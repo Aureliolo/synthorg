@@ -21,9 +21,13 @@ The fine-tune run lifecycle (start / resume / cancel / status /
 preflight / list_runs) lives in
 :class:`synthorg.memory.fine_tune_admin_service.FineTuneAdminService`;
 ``MemoryService``'s fine-tune methods are thin delegates so the
-controller call surface is unchanged. Checkpoint deploy / rollback /
-delete and the embedder-state-machine helpers remain here under the
-same ``_embedder_state_lock`` they have always used.
+controller call surface is a single class. Checkpoint deploy /
+rollback / delete share the ``_embedder_state_lock`` with the
+``get_active_embedder`` snapshot read and the settings-rollback
+state machine, so they stay together as one mutation boundary; the
+fine-tune lifecycle has no overlap with that lock and lives in its
+own sibling module to avoid coupling the orchestrator dependency
+to the checkpoint flow.
 """
 
 import asyncio
