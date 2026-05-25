@@ -7,6 +7,7 @@ in ``log_only`` mode, denials are logged but the action proceeds.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.middleware.protocol import BaseAgentMiddleware, ToolCallable
 from synthorg.observability import get_logger
 from synthorg.observability.events.security import (
@@ -93,9 +94,8 @@ class PolicyGateMiddleware(BaseAgentMiddleware):
                 },
             )
             decision = await self._engine.evaluate(request)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             from synthorg.observability.events.security import (  # noqa: PLC0415
                 SECURITY_POLICY_ENGINE_ERROR,
             )

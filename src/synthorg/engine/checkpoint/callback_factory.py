@@ -7,6 +7,7 @@ each completed turn.  Errors are logged but never propagated
 
 from datetime import UTC, datetime
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.checkpoint.callback import CheckpointCallback  # noqa: TC001
 from synthorg.engine.checkpoint.models import (
@@ -76,7 +77,13 @@ def make_checkpoint_callback(
             await _save_heartbeat(ctx)
 
     async def _save_checkpoint(ctx: AgentContext, turn: int) -> bool:
-        """Persist checkpoint (best-effort). Return True on success."""
+        """Persist checkpoint (best-effort).
+
+        Returns:
+            ``True`` when the checkpoint was successfully persisted,
+            ``False`` when the repository raised (logged via
+            ``log_exception_redacted``).
+        """
         try:
             checkpoint = Checkpoint(
                 execution_id=ctx.execution_id,
@@ -92,9 +99,8 @@ def make_checkpoint_callback(
                 turn_number=turn,
                 checkpoint_id=checkpoint.id,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 CHECKPOINT_SAVE_FAILED,
@@ -124,9 +130,8 @@ def make_checkpoint_callback(
                 HEARTBEAT_UPDATED,
                 execution_id=ctx.execution_id,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, HEARTBEAT_UPDATE_FAILED, exc, execution_id=ctx.execution_id
             )

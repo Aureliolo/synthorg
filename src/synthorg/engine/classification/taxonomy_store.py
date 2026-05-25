@@ -18,6 +18,7 @@ import copy
 from collections import deque
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.classification.models import ErrorSeverity
 from synthorg.meta.signal_models import (
@@ -112,9 +113,8 @@ class InMemoryErrorTaxonomyStore:
                     TAXONOMY_STORE_EVICTED,
                     max_results=self._max_results,
                 )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TAXONOMY_STORE_APPEND_FAILED,
                 agent_id=result.agent_id,

@@ -15,6 +15,7 @@ from pathlib import Path  # noqa: TC003 -- runtime annotation (PEP 649)
 from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.errors import (
     WorkspaceError,
@@ -172,9 +173,8 @@ class PushQueueCoordinator:
                     return
                 try:
                     await self._process(item)
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     # A bug in _process must not kill the worker and strand
                     # every later caller; surface it to this caller and
                     # keep draining.
@@ -210,6 +210,11 @@ class PushQueueCoordinator:
         existing ``WorkspacePushError`` subtype). ``MemoryError`` and
         ``RecursionError`` propagate so the worker loop's outer
         ``finally`` can fail every remaining pending item.
+
+        Returns:
+            ``True`` when the backend push completed successfully,
+            ``False`` when it failed (the caller future is resolved
+            with an exception in that case).
         """
         try:
             await self._git_backend.push(
@@ -218,9 +223,8 @@ class PushQueueCoordinator:
                 branch=self._default_branch,
                 base_branch=self._default_branch,
             )
-        except MemoryError, RecursionError:
-            raise
         except WorkspacePushError as exc:
+            reraise_critical(exc)
             # Preserve forge-specific push error subtypes (rejection,
             # auth failure ...) so callers can discriminate; wrapping
             # in a fresh ``WorkspacePushError`` would erase the subclass.
@@ -235,6 +239,7 @@ class PushQueueCoordinator:
                 item.future.set_exception(exc)
             return False
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 WORKSPACE_PUSH_QUEUE_FAILED,
                 project_id=self._project_id,
@@ -257,9 +262,8 @@ class PushQueueCoordinator:
             merge_result = await self._strategy.merge_workspace(
                 workspace=item.workspace,
             )
-        except MemoryError, RecursionError:
-            raise
         except WorkspaceMergeError as exc:
+            reraise_critical(exc)
             if not item.future.done():
                 item.future.set_exception(exc)
             return

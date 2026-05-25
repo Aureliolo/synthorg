@@ -10,6 +10,7 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, cast
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.workspace.semantic_analyzer import filter_files
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import (
@@ -36,6 +37,11 @@ def _validate_file_path(file_path: str) -> bool:
 
     Rejects empty strings, flag-like arguments, directory traversal,
     absolute paths, and characters outside a conservative allowlist.
+
+    Returns:
+        ``True`` when ``file_path`` matches the safe allowlist and
+        is free of traversal segments and leading dashes; ``False``
+        otherwise.
     """
     if not file_path or file_path.startswith("-"):
         return False
@@ -297,6 +303,10 @@ async def _resolve_branch_point(
     """Resolve the branch point for semantic analysis.
 
     Falls back to ``pre_merge_sha`` when merge-base lookup fails.
+
+    Returns:
+        The merge-base SHA when found, or ``pre_merge_sha`` as a
+        last-known-good fallback.
     """
     branch_point = await get_merge_base(
         run_git,
@@ -324,7 +334,13 @@ async def _do_analysis(  # noqa: PLR0913
     pre_merge_sha: str,
     merge_sha: str,
 ) -> tuple[MergeConflict, ...]:
-    """Execute semantic analysis, returning ``()`` on failure."""
+    """Execute semantic analysis, returning ``()`` on failure.
+
+    Returns:
+        Tuple of semantic ``MergeConflict`` instances from the
+        analyzer; ``()`` when no files survived filtering or any
+        non-critical exception was logged and swallowed.
+    """
     try:
         branch_point = await _resolve_branch_point(
             run_git,
@@ -356,9 +372,8 @@ async def _do_analysis(  # noqa: PLR0913
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
             workspace_id=workspace.workspace_id,
@@ -375,7 +390,13 @@ async def _gather_filtered_files(
     branch_point: str,
     merge_sha: str,
 ) -> tuple[str, ...]:
-    """Get changed files and filter by configured extensions."""
+    """Get changed files and filter by configured extensions.
+
+    Returns:
+        Paths changed between ``branch_point`` and ``merge_sha``
+        that match the configured ``file_extensions``; ``()`` when
+        no files survive filtering.
+    """
     changed_files = await get_changed_files(
         run_git,
         branch_point,
@@ -393,7 +414,13 @@ async def _fetch_sources(
     merge_sha: str,
     filtered: tuple[str, ...],
 ) -> tuple[dict[str, str], dict[str, str]]:
-    """Fetch base and merged sources concurrently."""
+    """Fetch base and merged sources concurrently.
+
+    Returns:
+        ``(base_sources, merged_sources)`` -- each is a mapping
+        from file path to the file's content at the corresponding
+        commit.
+    """
     sem = asyncio.Semaphore(config.git_concurrency)
     base: dict[str, str] = {}
     merged: dict[str, str] = {}

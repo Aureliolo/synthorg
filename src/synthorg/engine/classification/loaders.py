@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.coordination_config import DetectionScope
 from synthorg.communication.delegation.models import DelegationRequest
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.classification.protocol import DetectionContext
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import get_logger, log_exception_redacted
@@ -143,9 +144,8 @@ class TaskTreeLoader:
             ):
                 collected.extend(page)
             all_tasks: tuple[Task, ...] = tuple(collected)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 CONTEXT_LOADER_ERROR,

@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.coordination._dispatch_helpers import (
     merge_workspaces,
     rebuild_group_with_workspaces,
@@ -68,7 +69,12 @@ class ContextDependentDispatcher:
         project_id: NotBlankStr | None = None,
         repo_root: Path | None = None,
     ) -> DispatchResult:
-        """Execute waves with conditional workspace isolation."""
+        """Execute waves with conditional workspace isolation.
+
+        Returns:
+            The :class:`DispatchResult` aggregating per-wave outcomes,
+            allocated workspaces, merge outcomes, and phase metadata.
+        """
         validate_routing_against_decomposition(decomposition_result, routing_result)
         groups = build_execution_waves(
             decomposition_result=decomposition_result,
@@ -127,8 +133,11 @@ class ContextDependentDispatcher:
     ) -> tuple[tuple[Workspace, ...], ParallelExecutionGroup | None]:
         """Set up workspaces for a wave if needed.
 
-        Returns the wave's workspaces and the (possibly rebuilt) group,
-        or ``None`` if setup failed.
+        Returns:
+            ``(workspaces, rebuilt_group)`` on success; the rebuilt
+            group has workspace paths threaded into each assignment.
+            ``(workspaces, None)`` when the wave needs isolation but
+            setup failed (the caller decides whether to ``fail_fast``).
         """
         needs_isolation = (
             len(group.assignments) > 1 and config.enable_workspace_isolation
@@ -165,9 +174,8 @@ class ContextDependentDispatcher:
             wave_workspaces = await workspace_service.setup_group(
                 requests=wave_requests,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             ws_elapsed = self._clock.monotonic() - ws_start
             logger.warning(
                 COORDINATION_PHASE_FAILED,
@@ -221,7 +229,8 @@ class ContextDependentDispatcher:
         """Execute a single wave and handle per-wave merge/teardown.
 
         Returns:
-            True if the wave failed, False if it succeeded.
+            ``True`` when the wave failed (caller may ``fail_fast``);
+            ``False`` when every agent in the wave succeeded.
         """
         start = self._clock.monotonic()
         subtask_ids = tuple(a.task.id for a in group.assignments)
@@ -278,9 +287,8 @@ class ContextDependentDispatcher:
                     duration_seconds=elapsed,
                 )
 
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             elapsed = self._clock.monotonic() - start
             wave_failed = True
             logger.warning(
@@ -336,7 +344,13 @@ class ContextDependentDispatcher:
         merge_results: list[WorkspaceGroupResult],
         all_phases: list[CoordinationPhaseResult],
     ) -> DispatchResult:
-        """Combine wave and merge results into a DispatchResult."""
+        """Combine wave and merge results into a DispatchResult.
+
+        Returns:
+            The aggregated :class:`DispatchResult` with combined
+            per-wave merges flattened into a single
+            ``workspace_merge`` summary entry.
+        """
         combined_merge: WorkspaceGroupResult | None = None
         if merge_results:
             all_merge_results = tuple(

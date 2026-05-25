@@ -16,6 +16,7 @@ hop by hop.
 from typing import TYPE_CHECKING, Final, NamedTuple
 from uuid import uuid4
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task_transitions import transition_path
 from synthorg.engine.coordination.models import CoordinationPhaseResult
@@ -98,6 +99,10 @@ async def _hop_failure_note(
     ``MemoryError`` and ``RecursionError`` propagate per project
     convention; all other exceptions are swallowed so the base failure
     note is returned unchanged).
+
+    Returns:
+        A short operator-readable note describing the failed hop and,
+        when a re-read succeeds, the parent's live status.
     """
     base = (
         f"Parent hop to {target_hop.value!r} rejected: "
@@ -105,9 +110,8 @@ async def _hop_failure_note(
     )
     try:
         live = await task_engine.get_task(task_id)
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         return base
     if live is None:
         return f"{base} (parent no longer found)"
@@ -255,9 +259,8 @@ def compute_status_rollup(  # noqa: PLR0913
     try:
         statuses = _collect_subtask_statuses(dispatch_result, decomp_result)
         rollup = decomposition_service.rollup_status(context.task.id, statuses)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         elapsed = clock.monotonic() - start
         logger.warning(
             COORDINATION_PHASE_FAILED,
@@ -415,9 +418,8 @@ async def run_update_parent_phase(
             rollup=rollup,
         )
         _record_update_parent_outcome(phases, clock=clock, outcome=outcome, start=start)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         _fail_update_parent_phase(
             phases,
             clock=clock,

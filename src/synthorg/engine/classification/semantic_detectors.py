@@ -15,6 +15,7 @@ from synthorg.budget.coordination_config import (
     DetectionScope,
     ErrorCategory,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.classification.models import (
     ErrorFinding,
     ErrorSeverity,
@@ -350,9 +351,8 @@ class _BaseSemanticDetector:
                 )
                 settled = True
             return _parse_findings(response.content, self.category)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DETECTOR_ERROR,
                 detector=detector_name,

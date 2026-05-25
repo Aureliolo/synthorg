@@ -15,6 +15,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # public annotation, so it must resolve at runtime when downstream
 # tooling evaluates type hints (DI containers, doc generators).
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
@@ -335,9 +336,8 @@ class SeparateAnalyzerProposer:
                     self._model,
                     config=self._completion_config,
                 )
-        except MemoryError, RecursionError:
-            raise
         except ProviderError as exc:
+            reraise_critical(exc)
             if not exc.is_retryable:
                 # Non-retryable provider failures must surface to
                 # operators with context before propagating; otherwise
@@ -364,6 +364,7 @@ class SeparateAnalyzerProposer:
             )
             return ()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EVOLUTION_PROPOSER_PARSE_ERROR,
                 agent_id=str(agent_id),

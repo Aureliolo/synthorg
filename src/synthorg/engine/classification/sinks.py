@@ -12,6 +12,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.coordination_config import ErrorCategory
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.classification.models import ErrorSeverity
 from synthorg.hr.performance.models import CollaborationMetricRecord
 from synthorg.notifications.models import (
@@ -110,9 +111,8 @@ class PerformanceTrackerSink:
                     ),
                 )
                 await self._tracker.record_collaboration_event(record)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Never use logger.exception here -- the traceback
                 # can leak sensitive locals. Use the safe-warning
                 # shape that the dispatcher sink already follows.
@@ -334,9 +334,8 @@ class NotificationDispatcherSink:
                     },
                 )
                 await self._dispatcher.dispatch(notification)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Best-effort path: refund the *exact* admission this
                 # iteration consumed (not the newest slot for the
                 # agent), and log a sanitized warning instead of

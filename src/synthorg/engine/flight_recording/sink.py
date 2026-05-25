@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from synthorg.providers.models import ChatMessage
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
@@ -79,13 +80,12 @@ class PersistenceFlightRecorderSink:
             return
         try:
             await self._repository.append_many(frames)
-        except MemoryError, RecursionError:
-            # System errors escape the broad ``Exception`` catch below so
-            # the engine still gets the operator-fatal signal it expects
-            # at the per-turn boundary. The recording path is best-effort
-            # for storage faults only.
-            raise
         except Exception as exc:
+            # ``reraise_critical`` ensures system errors escape so the
+            # engine still gets the operator-fatal signal it expects
+            # at the per-turn boundary. The recording path is best-
+            # effort for storage faults only.
+            reraise_critical(exc)
             logger.warning(
                 FLIGHT_RECORDER_RECORD_FAILED,
                 execution_id=frames[0].execution_id,
@@ -118,9 +118,10 @@ def build_flight_recorder_sink(
 ) -> FlightRecorderSink:
     """Select the configured recorder sink.
 
-    Returns a :class:`NoOpFlightRecorderSink` when recording is disabled,
-    the strategy is ``"noop"``, or no repository is available; otherwise
-    the persistence-backed sink.
+    Returns:
+        A :class:`NoOpFlightRecorderSink` when recording is disabled,
+        the strategy is ``"noop"``, or no repository is available;
+        otherwise the persistence-backed sink.
     """
     if not enabled or strategy == "noop" or repository is None:
         return NoOpFlightRecorderSink()
@@ -128,7 +129,12 @@ def build_flight_recorder_sink(
 
 
 def _truncate(text: str | None, max_chars: int) -> str | None:
-    """Trim *text* to *max_chars*, returning ``None`` when empty."""
+    """Trim *text* to *max_chars*, returning ``None`` when empty.
+
+    Returns:
+        The first ``max_chars`` characters of ``text``, or ``None``
+        when ``text`` is falsy.
+    """
     if not text:
         return None
     return text[:max_chars]

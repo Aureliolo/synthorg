@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.artifact import Artifact
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ArtifactPersistenceNoStorageError
 from synthorg.core.enums import ArtifactType  # noqa: TC001
 from synthorg.core.types import NotBlankStr
@@ -191,9 +192,8 @@ class ArtifactService:
             raise ArtifactPersistenceNoStorageError(msg)
         try:
             blob_deleted = await self._storage.delete(artifact_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
                 artifact_id=artifact_id,
@@ -206,9 +206,8 @@ class ArtifactService:
         # context before re-raising so operators can reconcile.
         try:
             metadata_deleted = await self.delete(artifact_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PERSISTENCE_ARTIFACT_DELETE_FAILED,
                 artifact_id=artifact_id,

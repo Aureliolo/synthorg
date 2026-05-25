@@ -8,6 +8,7 @@ dispatched to the ``NotificationDispatcher``.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.health.models import (
     EscalationCause,
     EscalationSeverity,
@@ -97,9 +98,8 @@ class HealthMonitoringPipeline:
                 task_id=task_id,
                 execution_duration=execution_duration,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, HEALTH_PIPELINE_ERROR, exc, agent_id=agent_id, task_id=task_id
             )
@@ -136,9 +136,8 @@ class HealthMonitoringPipeline:
         notification = _ticket_to_notification(ticket)
         try:
             await self._sink.send(notification)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 HEALTH_PIPELINE_ERROR,
