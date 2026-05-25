@@ -1,3 +1,4 @@
+# mypy: disable-error-code="explicit-override"
 """Tests for BaseTool progressive disclosure integration."""
 
 from typing import Any

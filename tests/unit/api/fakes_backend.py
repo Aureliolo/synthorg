@@ -5,7 +5,8 @@ the 800-line budget.  Imports point directly at the extracted modules
 (``fake_user_repository``, ``fakes``).
 """
 
-from typing import TYPE_CHECKING
+import contextlib
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import AwareDatetime, BaseModel
 
@@ -31,6 +32,7 @@ from synthorg.security.ssrf_violation import SsrfViolation, SsrfViolationStatus
 from synthorg.versioning.models import VersionSnapshot
 
 if TYPE_CHECKING:
+    from contextlib import AbstractAsyncContextManager
     from unittest.mock import AsyncMock
 
     from synthorg.persistence.circuit_breaker_protocol import (
@@ -720,6 +722,21 @@ class FakePersistenceBackend:
     def get_db(self) -> object:
         msg = "FakePersistenceBackend does not expose a real DB"
         raise NotImplementedError(msg)
+
+    @property
+    def kind(self) -> Literal["sqlite", "postgres"]:
+        # FakePersistenceBackend has no real backend kind; callers that
+        # branch on ``kind`` should not be using the fake. Return
+        # ``"sqlite"`` as the closest single-process analogue for the
+        # in-memory store the fake actually provides.
+        return "sqlite"
+
+    def write_context(self) -> AbstractAsyncContextManager[None]:
+        # The fake is in-memory and not used in any path that needs the
+        # cross-statement write-context guard; yield a no-op context so
+        # repository code paths that wrap mutations in ``async with
+        # backend.write_context():`` still compose cleanly under tests.
+        return contextlib.nullcontext()
 
     async def health_check(self) -> bool:
         return self._connected
