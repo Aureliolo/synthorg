@@ -109,7 +109,7 @@
     "src/synthorg/persistence/postgres/decision_repo.py": 819,
     "src/synthorg/persistence/postgres/escalation_repo.py": 559,
     "src/synthorg/persistence/postgres/fine_tune_repo.py": 743,
-    "src/synthorg/persistence/postgres/org_fact_repo.py": 672,
+    "src/synthorg/persistence/postgres/org_fact_repo.py": 680,
     "src/synthorg/persistence/postgres/repositories.py": 876,
     "src/synthorg/persistence/postgres/settings_repo.py": 545,
     "src/synthorg/persistence/postgres/subworkflow_repo.py": 661,
