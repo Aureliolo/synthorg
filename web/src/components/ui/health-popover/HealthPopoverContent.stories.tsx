@@ -59,7 +59,7 @@ type Story = StoryObj<typeof meta>
 // ``new Date()`` would re-snapshot every day; using a stable far-future
 // date keeps the "fetchedAt" timestamp visible in stories without
 // requiring snapshot refresh after every clock tick.
-const STORY_FETCHED_AT = STORY_FETCHED_AT
+const STORY_FETCHED_AT: Date = new Date('2099-01-01T10:00:00.000Z')
 
 const OK_PAYLOAD = {
   status: 'ok' as const,

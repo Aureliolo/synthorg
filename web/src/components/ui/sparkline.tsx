@@ -89,18 +89,24 @@ function SparklinePaths({
   color: string
   animated: boolean
 }) {
+  // Source duration + delay from the design-token layer so every shared
+  // primitive shares the same animation timing. ``--so-transition-default``
+  // is the 200ms tween (matches `@/lib/motion` ``tweenDefault``) and
+  // ``--so-transition-slow`` is the 400ms slow tween (matches
+  // ``tweenSlow``); the dot fade lands one slow tween after the line draw
+  // and fill fade.
   const fillStyle = animated
-    ? { animation: 'sparkline-fade 200ms ease-out 200ms both' }
+    ? { animation: 'sparkline-fade var(--so-transition-default) ease-out var(--so-transition-default) both' }
     : undefined
   const lineStyle = animated
     ? {
         strokeDasharray: geo.approxPathLength,
         strokeDashoffset: 0,
-        animation: 'sparkline-draw 200ms ease-out 200ms both',
+        animation: 'sparkline-draw var(--so-transition-default) ease-out var(--so-transition-default) both',
       }
     : undefined
   const dotStyle = animated
-    ? { animation: 'sparkline-fade 200ms ease-out 400ms both' }
+    ? { animation: 'sparkline-fade var(--so-transition-default) ease-out var(--so-transition-slow) both' }
     : undefined
   return (
     <>

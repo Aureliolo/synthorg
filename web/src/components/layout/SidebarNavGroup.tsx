@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { cn } from '@/lib/utils'
 
 export interface SidebarNavGroupProps {
   /** Items wrapped in the vertical-stack list. */
@@ -13,7 +14,7 @@ export interface SidebarNavGroupProps {
  */
 export function SidebarNavGroup({ children, className }: SidebarNavGroupProps) {
   return (
-    <div className={className ?? 'flex flex-col gap-1'}>
+    <div className={cn('flex flex-col gap-1', className)}>
       {children}
     </div>
   )

@@ -25,7 +25,7 @@ export function SidebarSection({
   withTopBorder = false,
   children,
 }: SidebarSectionProps) {
-  const containerClass = withTopBorder ? 'mt-4 border-t border-border pt-3' : ''
+  const containerClass = withTopBorder && !collapsed ? 'mt-4 border-t border-border pt-3' : ''
   return (
     <div className={containerClass}>
       {label && !collapsed && (

@@ -108,6 +108,7 @@ function _isElapsedWarning(
     elapsed !== null &&
     typeof warningAfterSeconds === 'number' &&
     Number.isFinite(warningAfterSeconds) &&
+    warningAfterSeconds > 0 &&
     elapsed >= warningAfterSeconds
   )
 }

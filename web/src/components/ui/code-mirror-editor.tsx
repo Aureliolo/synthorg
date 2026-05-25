@@ -163,11 +163,19 @@ function _buildInitialState(args: {
 }
 
 function useCompartments(): EditorCompartments {
-  const ref = useRef<EditorCompartments>({
-    language: { current: new Compartment() },
-    readOnly: { current: new Compartment() },
-    extra: { current: new Compartment() },
-  } as unknown as EditorCompartments)
+  // Lazy init: ``useRef(initial)`` evaluates ``initial`` on every render
+  // and discards it, so three `new Compartment()` instances would be
+  // allocated per render only to be GC'd. Initialise to null and assign
+  // once on the first render to keep the allocation budget at three
+  // Compartment objects per editor instead of three-per-render.
+  const ref = useRef<EditorCompartments | null>(null)
+  if (!ref.current) {
+    ref.current = {
+      language: { current: new Compartment() },
+      readOnly: { current: new Compartment() },
+      extra: { current: new Compartment() },
+    } as unknown as EditorCompartments
+  }
   return ref.current
 }
 

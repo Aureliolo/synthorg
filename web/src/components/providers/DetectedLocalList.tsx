@@ -178,10 +178,14 @@ export function DetectedLocalList({
       finishAdd(cloudPresetName)
       return
     }
-    // Cloud add opens the modal synchronously; clear the in-flight
-    // marker on the next tick so the button briefly reflects intent
-    // without keeping the row disabled forever.
-    setTimeout(() => { finishAdd(cloudPresetName) }, 0)
+    // Cloud add opens the modal synchronously; defer the in-flight
+    // marker clear to a microtask so the button briefly reflects
+    // intent without holding the row disabled. ``setTimeout(..., 0)``
+    // would register a Timeout handle with Node's async_hooks tracker
+    // that the active-handle gate (allowlist is empty, per web/CLAUDE.md)
+    // would flag as a leak; ``queueMicrotask`` schedules on the same
+    // tick without an event-loop handle.
+    queueMicrotask(() => { finishAdd(cloudPresetName) })
   }
 
   const showSkeleton = probing && detected.length === 0 && failed.length === 0

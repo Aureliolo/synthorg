@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import axios from 'axios'
 import { Menu } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAnalyticsStore } from '@/stores/analytics'
@@ -143,14 +144,22 @@ function HealthStatusButton() {
   // ``unavailable``); map ``unavailable`` to ``down`` so the StatusBar's
   // richer tri-state (unknown/ok/degraded/down) surfaces a failed
   // readiness probe as a hard-down signal rather than leaking through
-  // as unknown.
+  // as unknown. A 503 on the wire is the backend's explicit "I am not
+  // ready" answer (not a transport blip) and MUST flip the badge to
+  // ``down`` per the readiness contract in ``web/CLAUDE.md`` ("Any new
+  // caller must handle the 503 path explicitly"); other failures
+  // (network timeout, DNS, CORS) preserve the last-known state because
+  // they don't carry a readiness verdict.
   const pollHealth = useCallback(async () => {
     try {
       const health: HealthStatus = await getHealth()
       setHealthStatus(health.status === 'ok' ? 'ok' : 'down')
-    } catch {
-      // Preserve last known state on transient failures; only real
-      // health payloads should set 'degraded' or 'down'.
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 503) {
+        setHealthStatus('down')
+      }
+      // Preserve last known state on transient transport failures;
+      // only authoritative payloads or a 503 verdict flip the badge.
     }
   }, [])
 
@@ -188,7 +197,7 @@ function HamburgerToggle({
     <button
       type="button"
       onClick={onClick}
-      aria-label="Open navigation menu"
+      aria-label={expanded ? 'Close navigation menu' : 'Open navigation menu'}
       aria-expanded={expanded}
       className="flex items-center justify-center rounded-md p-0.5 text-muted-foreground hover:bg-card-hover hover:text-foreground"
     >

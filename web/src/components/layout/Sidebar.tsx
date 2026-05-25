@@ -12,7 +12,7 @@ import { useWebSocketStore } from '@/stores/websocket'
 import { Drawer } from '@/components/ui/drawer'
 import { SidebarNav } from './SidebarNav'
 import { SidebarFooter } from './SidebarFooter'
-import { readCollapsed, writeCollapsed, STORAGE_KEY } from './sidebar-storage'
+import { STORAGE_KEY, useCollapsedState } from './sidebar-storage'
 
 export { STORAGE_KEY }
 
@@ -38,8 +38,21 @@ function _computeEffectiveCollapsed(
   return localCollapsed
 }
 
-function _isMacPlatform(): boolean {
+function _detectMacPlatform(): boolean {
   return typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform)
+}
+
+function useIsMacPlatform(): boolean {
+  // ``navigator.platform`` is a DOM global, so reading it inside the
+  // render body trips ``@eslint-react/globals``. Defer the lookup to a
+  // post-mount effect; the shortcut hint flips from the default
+  // (``Ctrl``) to ``⌘`` once on hydration without ever touching
+  // ``navigator`` during render.
+  const [isMac, setIsMac] = useState(false)
+  useEffect(() => {
+    setIsMac(_detectMacPlatform())
+  }, [])
+  return isMac
 }
 
 function useNavigationOverlayClose(
@@ -193,7 +206,7 @@ function SidebarDesktop({
 }
 
 export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
-  const [localCollapsed, setLocalCollapsed] = useState(readCollapsed)
+  const [localCollapsed, setLocalCollapsed] = useCollapsedState()
   const sidebarMode = useThemeStore((s) => s.sidebarMode)
   const { user } = useAuth()
   const logout = useAuthStore((s) => s.logout)
@@ -201,7 +214,8 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
   const wsConnected = useWebSocketStore((s) => s.connected)
   const wsReconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
   const { breakpoint } = useBreakpoint()
-  const shortcutKey = _isMacPlatform() ? '⌘' : 'Ctrl'
+  const isMacPlatform = useIsMacPlatform()
+  const shortcutKey = isMacPlatform ? '⌘' : 'Ctrl'
 
   useEffect(() => {
     if (process.env.NODE_ENV !== 'production' && overlayOpen && !onOverlayClose) {
@@ -219,11 +233,7 @@ export function Sidebar({ overlayOpen = false, onOverlayClose }: SidebarProps) {
   const showCollapseToggle = breakpoint === 'desktop' && sidebarMode === 'collapsible'
 
   function toggleCollapse() {
-    setLocalCollapsed((prev) => {
-      const next = !prev
-      writeCollapsed(next)
-      return next
-    })
+    setLocalCollapsed(!localCollapsed)
   }
 
   if (shape === 'hidden') return null

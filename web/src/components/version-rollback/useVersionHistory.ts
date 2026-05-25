@@ -137,6 +137,17 @@ export function useVersionHistory<T>(
   client: ReadOnlyVersionHistoryClient<T>,
 ): VersionHistoryHandle<T> {
   const s = useHistoryStateSlots<T>()
+  // Stable mirror of the slot bag so ``refresh`` / ``loadMore`` can be
+  // memoised with deps that don't change every render. ``s`` itself is
+  // a fresh object literal on each render (the values inside it move
+  // when state updates), but every setter inside is stable by React's
+  // contract. Mirroring ``s`` through a ref means callbacks reach for
+  // the latest setters/values at invocation time without bringing the
+  // bag identity into their dep list -- otherwise ``refresh`` would be
+  // recreated every render and the initial-load effect would re-fire
+  // after every successful state update.
+  const slotsRef = useRef(s)
+  slotsRef.current = s
   // Monotonic epoch bumped on every initial-load / refresh /
   // client-change. Both ``refresh`` and ``loadMore`` capture the
   // epoch before awaiting and discard their results if the epoch
@@ -156,43 +167,46 @@ export function useVersionHistory<T>(
   const refresh = useCallback(async (): Promise<void> => {
     requestEpochRef.current += 1
     const epoch = requestEpochRef.current
-    _resetState(s)
+    const slots = slotsRef.current
+    _resetState(slots)
     try {
       const page = await client.list({ limit: PAGE_SIZE })
       if (epoch !== requestEpochRef.current) return
-      _applyPage(s, page)
+      _applyPage(slots, page)
     } catch (err) {
       log.warn('list versions failed:', getErrorMessage(err))
-      if (epoch === requestEpochRef.current) s.setError(getErrorMessage(err))
+      if (epoch === requestEpochRef.current) slots.setError(getErrorMessage(err))
     } finally {
-      if (epoch === requestEpochRef.current) s.setLoading(false)
+      if (epoch === requestEpochRef.current) slots.setLoading(false)
     }
-  }, [client, s])
+  }, [client])
 
   useEffect(() => {
     void refresh()
   }, [refresh])
 
-  const fetchAndAppendPage = async (cursor: string, epoch: number): Promise<void> => {
+  const fetchAndAppendPage = useCallback(async (cursor: string, epoch: number): Promise<void> => {
+    const slots = slotsRef.current
     try {
       const page = await client.list({ cursor, limit: PAGE_SIZE })
       if (epoch !== requestEpochRef.current) return
-      s.setItems((prev) => [...prev, ...page.data])
-      s.setCursor(page.nextCursor)
-      s.setHasMore(page.hasMore)
+      slots.setItems((prev) => [...prev, ...page.data])
+      slots.setCursor(page.nextCursor)
+      slots.setHasMore(page.hasMore)
     } catch (err) {
       log.warn('load more versions failed:', getErrorMessage(err))
-      if (epoch === requestEpochRef.current) s.setError(getErrorMessage(err))
+      if (epoch === requestEpochRef.current) slots.setError(getErrorMessage(err))
     } finally {
-      if (epoch === requestEpochRef.current) s.setLoadingMore(false)
+      if (epoch === requestEpochRef.current) slots.setLoadingMore(false)
     }
-  }
+  }, [client])
 
-  const loadMore = async (): Promise<void> => {
-    if (s.loadingMore || s.loading || !s.hasMore || s.cursor === null) return
-    s.setLoadingMore(true)
-    await fetchAndAppendPage(s.cursor, requestEpochRef.current)
-  }
+  const loadMore = useCallback(async (): Promise<void> => {
+    const slots = slotsRef.current
+    if (slots.loadingMore || slots.loading || !slots.hasMore || slots.cursor === null) return
+    slots.setLoadingMore(true)
+    await fetchAndAppendPage(slots.cursor, requestEpochRef.current)
+  }, [fetchAndAppendPage])
 
   return {
     items: s.items, cursor: s.cursor, hasMore: s.hasMore,

@@ -47,10 +47,15 @@ function useInlineEdit(
   // Track whether save was triggered by Enter (to skip blur-triggered save).
   const saveInProgressRef = useRef(false)
 
-  // Sync editValue when prop value changes externally while in display mode.
-  if (state === 'display' && value !== editValue) {
-    setEditValue(value)
-  }
+  // Sync editValue when prop value changes externally while in display
+  // mode. Calling ``setEditValue`` during render schedules an extra
+  // render and trips React's "do not set state during render" warning
+  // in strict mode; route through an effect keyed on ``state`` / ``value``
+  // so the sync still fires when either dependency moves but is sequenced
+  // after commit.
+  useEffect(() => {
+    if (state === 'display') setEditValue(value)
+  }, [state, value])
 
   // Focus input when entering edit mode.
   useEffect(() => {

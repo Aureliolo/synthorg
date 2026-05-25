@@ -3,8 +3,7 @@ import {
   unwrapPaginated,
   type PaginatedResult,
 } from '../../client'
-import type { PaginatedResponse } from '../../types/http'
-import type { ProviderAuditEvent } from '../../types/providers'
+import type { PaginatedResponse, ProviderAuditEvent } from '@/api/types'
 
 export async function listProviderAudit(
   name: string,

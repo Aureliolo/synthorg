@@ -49,7 +49,7 @@ export function HealthStatusRow({
           <span className="text-compact text-muted-foreground">{detail}</span>
         )}
       </div>
-      {action && (
+      {action && state === 'down' && (
         <Button
           type="button"
           variant="outline"
