@@ -25,7 +25,16 @@ export async function getPresetOverride(presetName: string): Promise<PresetOverr
     const detail = 'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
     throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
-  return body.data ?? null
+  // Distinguish "absent override" (``data: null``, intentional) from a
+  // malformed envelope that omits ``data`` entirely. Coalescing
+  // ``undefined`` to ``null`` would mask a backend bug as the
+  // happy-not-found path; insist on explicit ``data`` presence and
+  // surface anything else as an ``ApiRequestError`` so the operator
+  // sees the wire-contract violation instead of a silent miss.
+  if (!('data' in body)) {
+    throw new ApiRequestError('Invalid API response: ``data`` field missing')
+  }
+  return body.data
 }
 
 export async function updatePresetOverride(

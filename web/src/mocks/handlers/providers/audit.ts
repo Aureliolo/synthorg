@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import type { listProviderAudit } from '@/api/endpoints/providers'
-import type { ProviderAuditEvent } from '@/api/types/providers'
+import type { ProviderAuditEvent } from '@/api/types'
 import { paginatedFor } from '../helpers'
 
 export function buildProviderAuditEvent(

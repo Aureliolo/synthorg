@@ -3,7 +3,7 @@ import type {
   getPresetOverride,
   updatePresetOverride,
 } from '@/api/endpoints/providers'
-import type { PresetOverride } from '@/api/types/providers'
+import type { PresetOverride } from '@/api/types'
 import { successFor, voidSuccess } from '../helpers'
 
 export function buildPresetOverride(

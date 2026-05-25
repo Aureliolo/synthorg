@@ -99,8 +99,16 @@ function useFilteredCommands(
     [commands, scope],
   )
   const grouped = useMemo(() => _groupCommands(filtered), [filtered])
-  // Re-read recent items each time the palette opens.
-  const recentIds = useMemo(() => getRecentIds(), [isOpen]) // eslint-disable-line @eslint-react/exhaustive-deps
+  // Re-read recent items each time the palette opens. The
+  // ``getRecentIds`` call touches ``localStorage``, which the
+  // ``@eslint-react/globals`` rule (configured in web/eslint.config.js)
+  // forbids during render. An effect-backed state move keeps the
+  // localStorage read in a post-commit callback while preserving the
+  // "refresh on open" behaviour.
+  const [recentIds, setRecentIds] = useState<readonly string[]>([])
+  useEffect(() => {
+    if (isOpen) setRecentIds(getRecentIds())
+  }, [isOpen])
   const recentItems = useMemo(() => {
     if (search) return []
     return recentIds

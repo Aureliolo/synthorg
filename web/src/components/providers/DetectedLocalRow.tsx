@@ -4,7 +4,7 @@ import { Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ProviderLogo } from './ProviderLogo'
 import { LOCAL_TO_CLOUD_COUNTERPART, type AddingKind } from './detected-local-utils'
-import type { LocalPreset, ProbePresetResponse } from '@/api/types/providers'
+import type { LocalPreset, ProbePresetResponse } from '@/api/types'
 
 export interface DetectedLocalRowProps {
   preset: LocalPreset

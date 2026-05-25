@@ -20,17 +20,19 @@ export interface SelectFieldProps {
   placeholder?: string
 }
 
+export interface SelectFieldHelpProps {
+  hintId: string
+  errorId: string
+  hint: string | undefined
+  error: string | null | undefined
+}
+
 function SelectFieldHelp({
   hintId,
   errorId,
   hint,
   error,
-}: {
-  hintId: string
-  errorId: string
-  hint: string | undefined
-  error: string | null | undefined
-}) {
+}: SelectFieldHelpProps) {
   if (error) {
     return <p id={errorId} role="alert" className="text-xs text-danger">{error}</p>
   }

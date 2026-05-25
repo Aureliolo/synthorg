@@ -25,7 +25,7 @@ const SIZE_CONFIG = {
   },
 } as const
 
-interface ProgressGaugeProps {
+export interface ProgressGaugeProps {
   value: number
   max?: number
   label?: string
