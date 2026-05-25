@@ -1,3 +1,4 @@
+# module-kind: adapter
 """Workflow execution service -- activate definitions into tasks.
 
 Bridges design-time ``WorkflowDefinition`` blueprints and
@@ -214,6 +215,10 @@ class WorkflowExecutionService:
     ) -> WorkflowDefinition:
         """Load a workflow definition and validate it.
 
+        Returns:
+            The validated :class:`WorkflowDefinition` ready for
+            execution walking.
+
         Raises:
             WorkflowExecutionNotFoundError: If not found.
             WorkflowDefinitionInvalidError: If invalid.
@@ -371,6 +376,14 @@ class WorkflowExecutionService:
         :class:`StrategyFactoryNotFoundError` at lookup, which is
         translated to the historical :class:`WorkflowExecutionError`
         contract (same message + error log) so callers are unaffected.
+
+        Returns:
+            The :class:`WorkflowNodeExecution` produced by the
+            registered handler for this node type.
+
+        Raises:
+            WorkflowExecutionError: When the node's type has no handler
+                registered in ``_NODE_HANDLER_REGISTRY``.
         """
         ctx = _NodeDispatchContext(
             nid=nid,
@@ -428,6 +441,10 @@ class WorkflowExecutionService:
         graph's reverse adjacency, which guarantees that a task inside
         a subworkflow does not silently depend on a parent task outside
         its declared inputs.
+
+        Returns:
+            The :class:`WorkflowNodeExecution` for this TASK node,
+            with ``node_id`` rewritten to the frame-qualified key.
         """
         node_execution = await process_task_node(
             nid,
@@ -459,7 +476,20 @@ class WorkflowExecutionService:
         project: str,
         activated_by: str,
     ) -> WorkflowNodeExecution:
-        """Resolve a subworkflow node and walk the child graph in a new frame."""
+        """Resolve a subworkflow node and walk the child graph in a new frame.
+
+        Returns:
+            The :class:`WorkflowNodeExecution` for the resolved
+            subworkflow root, with the child frame walked and its
+            outputs projected back into the parent scope.
+
+        Raises:
+            WorkflowExecutionError: If no ``SubworkflowRegistry`` is
+                wired, or the node config is missing / has the wrong
+                shape for ``subworkflow_id`` / ``version``.
+            SubworkflowDepthExceededError: When the nested-frame depth
+                exceeds the engine's configured maximum.
+        """
         if self._subworkflow_registry is None:
             msg = (
                 f"Workflow definition contains a SUBWORKFLOW node {nid!r} "
@@ -600,7 +630,12 @@ class WorkflowExecutionService:
         self,
         execution_id: str,
     ) -> WorkflowExecution | None:
-        """Retrieve a workflow execution by ID."""
+        """Retrieve a workflow execution by ID.
+
+        Returns:
+            The :class:`WorkflowExecution`, or ``None`` if no record
+            matches.
+        """
         return await lifecycle.get_execution(
             self._execution_repo,
             execution_id,
@@ -612,7 +647,12 @@ class WorkflowExecutionService:
         *,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[WorkflowExecution, ...]:
-        """List executions for a workflow definition (bounded by *limit*)."""
+        """List executions for a workflow definition (bounded by *limit*).
+
+        Returns:
+            The tuple of :class:`WorkflowExecution` rows matching the
+            definition filter (up to ``limit`` rows).
+        """
         return await lifecycle.list_executions(
             self._execution_repo,
             definition_id,
@@ -625,7 +665,11 @@ class WorkflowExecutionService:
         *,
         cancelled_by: str,
     ) -> WorkflowExecution:
-        """Cancel a workflow execution."""
+        """Cancel a workflow execution.
+
+        Returns:
+            The cancelled :class:`WorkflowExecution`.
+        """
         return await lifecycle.cancel_execution(
             self._execution_repo,
             execution_id,
@@ -636,7 +680,11 @@ class WorkflowExecutionService:
         self,
         execution_id: str,
     ) -> WorkflowExecution:
-        """Transition a running execution to COMPLETED."""
+        """Transition a running execution to COMPLETED.
+
+        Returns:
+            The completed :class:`WorkflowExecution`.
+        """
         return await lifecycle.complete_execution(
             self._execution_repo,
             execution_id,
@@ -648,7 +696,11 @@ class WorkflowExecutionService:
         *,
         error: str,
     ) -> WorkflowExecution:
-        """Transition a running execution to FAILED."""
+        """Transition a running execution to FAILED.
+
+        Returns:
+            The failed :class:`WorkflowExecution`.
+        """
         return await lifecycle.fail_execution(
             self._execution_repo,
             execution_id,

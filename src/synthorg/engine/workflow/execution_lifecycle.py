@@ -1,3 +1,4 @@
+# module-kind: adapter
 """Workflow execution lifecycle transitions and task-event handling.
 
 Extracted from ``execution_service.py`` to keep file sizes manageable.
@@ -95,8 +96,7 @@ async def get_execution(
     """Retrieve a workflow execution by ID.
 
     Returns:
-        The :class:`WorkflowExecution`, or ``None`` if no record
-        matches ``execution_id``.
+        The matching :class:`WorkflowExecution`, or ``None`` if absent.
     """
     return await repo.get(execution_id)
 
@@ -110,8 +110,7 @@ async def list_executions(
     """List executions for a workflow definition (bounded by *limit*).
 
     Returns:
-        The tuple of :class:`WorkflowExecution` rows matching the
-        definition filter (up to ``limit`` rows, repository order).
+        Executions matching the definition filter (up to ``limit``).
     """
     return await repo.query(
         WorkflowExecutionFilterSpec(definition_id=definition_id),
@@ -244,8 +243,7 @@ async def complete_execution(
     """Transition a running execution to COMPLETED.
 
     Returns:
-        The updated :class:`WorkflowExecution` with status
-        ``COMPLETED`` and the completion timestamp set.
+        The updated execution with ``status=COMPLETED``.
 
     Raises:
         WorkflowExecutionNotFoundError: If not found.
@@ -297,8 +295,7 @@ async def fail_execution(
     """Transition a running execution to FAILED.
 
     Returns:
-        The updated :class:`WorkflowExecution` with status ``FAILED``,
-        the error message recorded, and the completion timestamp set.
+        The updated execution with ``status=FAILED`` and error stored.
 
     Raises:
         WorkflowExecutionNotFoundError: If not found.
