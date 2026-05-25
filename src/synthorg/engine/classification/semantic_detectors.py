@@ -84,6 +84,10 @@ def _parse_findings(
 
     Malformed JSON or invalid items are logged at DEBUG level and
     skipped -- they do not cause the detector to fail.
+
+    Returns:
+        Tuple of well-formed :class:`ErrorFinding` records; ``()`` on
+        empty input, invalid JSON, or non-list output.
     """
     if not raw:
         return ()
@@ -124,6 +128,10 @@ def _parse_single_finding(
 
     Returns ``None`` when the item is malformed -- parse errors
     are logged at DEBUG level for operator visibility.
+
+    Returns:
+        A well-formed :class:`ErrorFinding`; ``None`` when the JSON
+        object is missing required fields or has the wrong shape.
     """
     if not isinstance(item, dict):
         logger.debug(
@@ -181,6 +189,10 @@ def _build_conversation_text(
     messages and tool results are excluded -- system prompts are
     trusted infrastructure, and tool results may contain large
     payloads that bloat the prompt without adding detection value.
+
+    Returns:
+        Sanitised, newline-joined conversation text suitable for
+        inlining into the LLM prompt.
     """
     parts: list[str] = []
     for i, msg in enumerate(context.execution_result.context.conversation):
@@ -302,6 +314,10 @@ class _BaseSemanticDetector:
         concurrent semantic detectors running in a
         ``CompositeDetector`` cannot race through the admission
         gate and collectively exceed the per-run budget.
+
+        Returns:
+            Parsed :class:`ErrorFinding` tuple from the LLM response;
+            ``()`` when budget is exhausted or the call fails.
         """
         estimated_cost = _ESTIMATED_LLM_COST
         if self._budget_tracker is not None:

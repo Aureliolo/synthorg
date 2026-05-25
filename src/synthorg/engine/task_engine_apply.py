@@ -93,6 +93,10 @@ def _compute_task_duration_sec(
     via ``rate(task_runs_total) - rate(task_duration_count)``. A WARN
     with ``reason="creation_timestamp_missing"`` makes the missing-
     timestamp event searchable.
+
+    Returns:
+        Elapsed seconds since the task's tracked creation timestamp,
+        clamped at ``0.0``; ``None`` when no timestamp is recorded.
     """
     created_at = timings.get_creation(task_id)
     if created_at is not None:
@@ -131,6 +135,10 @@ def _format_validation_error(
 
     Extracts field paths and messages without exposing raw input
     values or internal Pydantic URL hints.
+
+    Returns:
+        A ``"{prefix}: field.path: msg; field.path: msg"`` string
+        suitable for surfacing in API error responses.
     """
     parts = [
         f"{'.'.join(str(loc) for loc in e['loc'])}: {e['msg']}" for e in exc.errors()
@@ -146,6 +154,10 @@ def _not_found_result(
     """Build a failure result for a missing task and log it.
 
     Sets ``error_code='not_found'`` on the result.
+
+    Returns:
+        A :class:`TaskMutationResult` with ``success=False`` and
+        ``error_code="not_found"``.
     """
     error = f"Task {task_id!r} not found"
     logger.warning(
@@ -173,6 +185,10 @@ async def dispatch(
     timings: TaskTimingTracker,
 ) -> TaskMutationResult:
     """Dispatch and apply a mutation by type.
+
+    Returns:
+        The :class:`TaskMutationResult` produced by the per-type
+        apply function.
 
     Raises:
         TypeError: If the mutation type is unrecognised.
