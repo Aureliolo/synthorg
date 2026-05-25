@@ -77,7 +77,13 @@ class _ShadowAggregate:
     errors: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        """Assert the stored ``pass_rate`` matches the derived ratio."""
+        """Assert the stored ``pass_rate`` matches the derived ratio.
+
+        Raises:
+            ValueError: When counts are negative, ``success_count``
+                exceeds ``total``, or ``pass_rate`` does not match the
+                derived ratio (within tolerance).
+        """
         if self.total < 0 or self.success_count < 0:
             msg = "total and success_count must be non-negative"
             raise ValueError(msg)
@@ -97,7 +103,12 @@ class _ShadowAggregate:
         cls,
         outcomes: tuple[ShadowTaskOutcome, ...],
     ) -> _ShadowAggregate:
-        """Build an aggregate from a tuple of outcomes."""
+        """Build an aggregate from a tuple of outcomes.
+
+        Returns:
+            A :class:`_ShadowAggregate` summarising count, pass rate,
+            mean quality score, and collected error messages.
+        """
         total = len(outcomes)
         success_count = sum(1 for o in outcomes if o.success)
         pass_rate = success_count / total if total else 0.0
@@ -246,7 +257,12 @@ class ShadowEvaluationGuard:
         proposal: AdaptationProposal,
         tasks: tuple[Task, ...],
     ) -> tuple[tuple[ShadowTaskOutcome, ...], tuple[ShadowTaskOutcome, ...]]:
-        """Run baseline + adapted passes concurrently via ``TaskGroup``."""
+        """Run baseline + adapted passes concurrently via ``TaskGroup``.
+
+        Returns:
+            ``(baseline_outcomes, adapted_outcomes)`` -- per-task
+            results for the no-proposal and proposal passes.
+        """
         baseline_outcomes: tuple[ShadowTaskOutcome, ...] = ()
         adapted_outcomes: tuple[ShadowTaskOutcome, ...] = ()
 
@@ -302,6 +318,11 @@ class ShadowEvaluationGuard:
         regression.  The guard enforces ``timeout_per_task_seconds``
         with ``asyncio.timeout`` independently of the runner so a
         misbehaving runner cannot hang the evaluation indefinitely.
+
+        Returns:
+            Tuple of per-task :class:`ShadowTaskOutcome` records in
+            ``tasks`` order; runner exceptions are converted to
+            failed outcomes.
         """
         timeout_seconds = self._config.timeout_per_task_seconds
 
@@ -389,7 +410,13 @@ class ShadowEvaluationGuard:
         baseline: _ShadowAggregate,
         adapted: _ShadowAggregate,
     ) -> str | None:
-        """Return a rejection reason string when adapted regresses, else None."""
+        """Return a rejection reason string when adapted regresses, else None.
+
+        Returns:
+            A human-readable rejection reason when pass rate or mean
+            quality regressed beyond the configured tolerances;
+            ``None`` when the adapted run is at least as good.
+        """
         reasons: list[str] = []
 
         pass_rate_delta = baseline.pass_rate - adapted.pass_rate
@@ -428,7 +455,12 @@ class ShadowEvaluationGuard:
         baseline: _ShadowAggregate,
         adapted: _ShadowAggregate,
     ) -> AdaptationDecision:
-        """Build an approval decision with a summary reason."""
+        """Build an approval decision with a summary reason.
+
+        Returns:
+            An :class:`AdaptationDecision` with ``approved=True`` and
+            a reason string summarising the pass-rate and score deltas.
+        """
 
         def _format_score(score: float | None) -> str:
             return f"{score:.2f}" if score is not None else "n/a"

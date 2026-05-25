@@ -56,6 +56,10 @@ class WorkflowVersionService:
         service round-trip matches the slower of the two repository
         calls rather than their sum (mirrors
         :class:`synthorg.budget.version_service.BudgetConfigVersionsService`).
+
+        Raises:
+            ValueError: When ``offset`` is negative or ``limit`` is
+                less than 1.
         """
         if offset < 0:
             logger.warning(
@@ -93,7 +97,11 @@ class WorkflowVersionService:
         definition_id: NotBlankStr,
         revision: int,
     ) -> VersionSnapshot[WorkflowDefinition] | None:
-        """Return a specific version snapshot, or ``None`` if absent."""
+        """Return a specific version snapshot, or ``None`` if absent.
+
+        Raises:
+            ValueError: When ``revision`` is less than 1.
+        """
         if revision < 1:
             logger.warning(
                 WORKFLOW_VERSION_INVALID_REQUEST,
@@ -127,6 +135,14 @@ class WorkflowVersionService:
         ``BaseExceptionGroup``; the controller's exception handler
         would otherwise see a group and route the request through the
         500 fallback instead of the 400 validation path.
+
+        Returns:
+            ``(old, new)`` snapshots for the requested ``from`` /
+            ``to`` revisions.
+
+        Raises:
+            ValueError: When either revision is less than 1.
+            NotFoundError: When either snapshot is absent.
         """
         for revision in (from_revision, to_revision):
             if revision < 1:

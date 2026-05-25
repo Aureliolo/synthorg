@@ -37,7 +37,13 @@ def _build_step(
     incoming_node_ids: list[str],
     outgoing_edges: list[tuple[str, WorkflowEdgeType]],
 ) -> dict[str, Any]:
-    """Build a single step dict for the YAML output."""
+    """Build a single step dict for the YAML output.
+
+    Returns:
+        A YAML-ready dict carrying the step ``id`` / ``type``, the
+        per-type fields produced by the registered builder, and a
+        ``depends_on`` list when the step has predecessors.
+    """
     step: dict[str, Any] = {"id": node_id, "type": node_type.value}
 
     STEP_BUILDERS[node_type](
@@ -55,7 +61,12 @@ def _assemble_document(
     definition: WorkflowDefinition,
     steps: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Assemble the top-level YAML document structure."""
+    """Assemble the top-level YAML document structure.
+
+    Returns:
+        A dict shaped ``{"workflow_definition": {...}}`` carrying the
+        definition metadata and the supplied step list.
+    """
     body: dict[str, Any] = {
         "name": definition.name,
         "workflow_type": definition.workflow_type.value,
@@ -78,7 +89,12 @@ def _generate_steps(
     reverse_adj: dict[str, list[str]],
     outgoing_edges: dict[str, list[tuple[str, WorkflowEdgeType]]],
 ) -> list[dict[str, Any]]:
-    """Build step dicts from topologically sorted node IDs."""
+    """Build step dicts from topologically sorted node IDs.
+
+    Returns:
+        List of step dicts in topological order (START and END nodes
+        are skipped since YAML output expresses dependencies directly).
+    """
     skip = {WorkflowNodeType.START, WorkflowNodeType.END}
     steps: list[dict[str, Any]] = []
     for node_id in sorted_ids:
@@ -106,7 +122,15 @@ def _serialize_yaml(
     document: dict[str, Any],
     workflow_id: str,
 ) -> str:
-    """Serialize document to YAML, wrapping errors as ValueError."""
+    """Serialize document to YAML, wrapping errors as ValueError.
+
+    Returns:
+        The YAML representation of ``document``.
+
+    Raises:
+        ValueError: When the YAML library cannot serialise the
+            document (the original error is logged and re-wrapped).
+    """
     try:
         return yaml.dump(
             document,
