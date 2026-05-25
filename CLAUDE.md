@@ -60,7 +60,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 - No `from __future__ import annotations` (3.14 has PEP 649). PEP 758 except: `except A, B:` no parens unless binding.
 - Type hints on public functions; mypy strict. Google-style docstrings. Line length 88; functions <50 lines. File-size: see the MANDATORY Module-Size Budget paragraph above (tiered per `# module-kind:` header).
 - Errors: `<Domain><Condition>Error` from `DomainError`; never inherit `Exception`/`RuntimeError`/etc directly. Enforced by `check_domain_error_hierarchy.py`.
-- Pydantic v2 frozen + `extra="forbid"` on every frozen model project-wide (gate `check_frozen_model_extra_forbid.py`; `@computed_field` auto-exempt, per-line `# lint-allow: frozen-extra-forbid -- <reason>` for `extra="allow"`/`"ignore"` boundaries); `@computed_field` for derived; `NotBlankStr` for identifiers.
+- Pydantic v2 frozen + `extra="forbid"` on every frozen model project-wide (`src/synthorg/` AND `tests/`; gate `check_frozen_model_extra_forbid.py`; `@computed_field` auto-exempt, per-line `# lint-allow: frozen-extra-forbid -- <reason>` for `extra="allow"`/`"ignore"` boundaries); `@computed_field` for derived; `NotBlankStr` for identifiers.
 - Args models at every system boundary; `parse_typed()` for every external dict ingestion. Enforced by `check_boundary_typed.py`.
 - Immutability: `model_copy(update=...)` or `copy.deepcopy()`; deepcopy at system boundaries.
 - Async: `asyncio.TaskGroup` for fan-out/fan-in; helpers catch `Exception` (re-raise `MemoryError`/`RecursionError`).
