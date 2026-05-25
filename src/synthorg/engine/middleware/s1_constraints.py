@@ -68,7 +68,13 @@ class AuthorityDeferenceGuard(BaseAgentMiddleware):
         self,
         ctx: AgentMiddlewareContext,
     ) -> AgentMiddlewareContext:
-        """Detect authority cues and store justification header."""
+        """Detect authority cues and store justification header.
+
+        Returns:
+            ``ctx`` with ``"authority_deference"`` metadata holding
+            the detection count and justification-header config;
+            ``ctx`` unchanged when the middleware is disabled.
+        """
         if not self._config.enabled:
             return ctx
 
@@ -125,7 +131,13 @@ class AuthorityDeferenceCoordinationMiddleware(
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Scan rollup for authority contamination."""
+        """Scan rollup for authority contamination.
+
+        Returns:
+            ``ctx`` with ``"authority_deference_coordination"``
+            metadata holding the detection count; ``ctx`` unchanged
+            when the middleware is disabled.
+        """
         if not self._config.enabled:
             return ctx
 
@@ -187,7 +199,12 @@ class AssumptionViolationMiddleware(BaseAgentMiddleware):
         self,
         ctx: AgentMiddlewareContext,
     ) -> AgentMiddlewareContext:
-        """Check last model response for assumption violations."""
+        """Check last model response for assumption violations.
+
+        Returns:
+            ``ctx`` with ``"assumption_violations"`` metadata appended
+            when any pattern matched; ``ctx`` unchanged otherwise.
+        """
         messages = ctx.agent_context.conversation
         if not messages:
             return ctx
@@ -258,7 +275,16 @@ class ClarificationGateMiddleware(BaseCoordinationMiddleware):
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Validate acceptance criteria specificity."""
+        """Validate acceptance criteria specificity.
+
+        Returns:
+            ``ctx`` unchanged when the criteria pass the gate (or the
+            gate is disabled).
+
+        Raises:
+            ClarificationRequiredError: When acceptance criteria are
+                missing, too short, or match a generic pattern.
+        """
         if not self._config.enabled:
             return ctx
 
@@ -329,7 +355,12 @@ class DelegationChainHashMiddleware(BaseAgentMiddleware):
         self,
         ctx: AgentMiddlewareContext,
     ) -> AgentMiddlewareContext:
-        """Compute and record task content hash."""
+        """Compute and record task content hash.
+
+        Returns:
+            ``ctx`` with ``"delegation_chain_hash"`` (and, for root
+            tasks, ``"root_task_content_hash"``) stamped into metadata.
+        """
         task = ctx.task
         criteria = tuple(c.description for c in task.acceptance_criteria)
         content_hash = compute_task_content_hash(
