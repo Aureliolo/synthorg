@@ -159,7 +159,7 @@ async def collect_all_mapping[KeyT, ValT](
         The fully reassembled mapping.
 
     Raises:
-        QueryError: If the database query fails.
+        QueryError: If ``page_size`` is not a positive int.
     """
     # ``bool`` is a subclass of ``int``; without the explicit
     # ``isinstance(page_size, bool)`` guard ``True`` / ``False`` would

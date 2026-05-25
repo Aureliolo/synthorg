@@ -139,7 +139,7 @@ class SQLiteSeenClaimsRepository:
         """Delete rows past their ``expires_at`` boundary.
 
         Returns:
-            Numeric result of the operation.
+            Number of rows deleted.
 
         Raises:
             QueryError: If the database query fails.

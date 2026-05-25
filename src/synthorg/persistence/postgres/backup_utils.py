@@ -63,7 +63,7 @@ def _resolve_binary(name: str) -> str:
         Result of type ``str``.
 
     Raises:
-        PgToolUnavailableError: If the underlying call raises.
+        PgToolUnavailableError: If ``name`` is not found on PATH.
     """
     resolved = shutil.which(name)
     if resolved is None:

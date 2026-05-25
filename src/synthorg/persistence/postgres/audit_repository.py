@@ -394,7 +394,8 @@ class PostgresAuditRepository:
         Uses the ``@>`` containment operator (GIN-indexed).
 
         Returns:
-            The matching entities.
+            Tuple of ``(page, total)`` -- the page of matching entities and the
+            total match count.
         """
         self._check_jsonb_column(column)
         condition = f"{column} @> %s::jsonb"
@@ -422,7 +423,8 @@ class PostgresAuditRepository:
         Uses the ``?`` existence operator (GIN-indexed).
 
         Returns:
-            The matching entities.
+            Tuple of ``(page, total)`` -- the page of matching entities and the
+            total match count.
         """
         self._check_jsonb_column(column)
         condition = f"{column} ? %s"

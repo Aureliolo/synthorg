@@ -43,7 +43,13 @@ class SQLiteMeetingCooldownRepository:
         self._write_context = write_context
 
     async def _rollback_quietly(self, event: str) -> None:
-        """Rollback quietly."""
+        """Roll back the current transaction, suppressing non-critical errors.
+
+        Calls :func:`reraise_critical` first so ``MemoryError`` and
+        ``RecursionError`` still propagate; any other rollback failure
+        is logged at WARNING and swallowed so the caller's outer
+        exception remains the operative one.
+        """
         try:
             await self._db.rollback()
         except Exception as exc:

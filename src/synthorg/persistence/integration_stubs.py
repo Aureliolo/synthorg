@@ -198,8 +198,8 @@ class InMemoryOAuthStateRepository:
         """In-memory CAS not enforced; treat as no-op success when present.
 
         Returns:
-            ``True`` when this call stamped the row, ``False`` when the row had already
-            been consumed.
+            ``True`` when ``state_token`` exists in the stub store, ``False`` otherwise.
+            No prior-consumption tracking is performed.
         """
         return state_token in self._store
 

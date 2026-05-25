@@ -105,7 +105,7 @@ class PostgresLifecycleEventRepository:
             Result of type ``AgentLifecycleEvent``.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If deserialization or validation fails.
         """
         try:
             data = dict(row)
@@ -251,7 +251,7 @@ class PostgresTaskMetricRepository:
             Result of type ``TaskMetricRecord``.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If deserialization or validation fails.
         """
         try:
             data = dict(row)
@@ -389,7 +389,7 @@ class PostgresCollaborationMetricRepository:
             Result of type ``CollaborationMetricRecord``.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If deserialization or validation fails.
         """
         try:
             data = dict(row)

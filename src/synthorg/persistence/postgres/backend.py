@@ -1326,7 +1326,7 @@ class PostgresPersistenceBackend(PostgresConnectionMixin, PostgresMigrationMixin
                 repository is not yet ported.
 
         Returns:
-            The matching entity, or ``None`` when no row matches.
+            The setting value as ``str``, or ``None`` when no row matches.
         """
         entity = await self.settings.get((NotBlankStr("_system"), key))
         return entity.value if entity is not None else None

@@ -160,7 +160,7 @@ class SQLiteWorkflowDefinitionRepository:
         CHECK-constraint error to the caller.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``definition.revision`` is less than 1.
         """
         if definition.revision < 1:
             msg = (

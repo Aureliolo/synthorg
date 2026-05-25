@@ -252,7 +252,7 @@ def _validate_update_keys(updates: dict[str, object]) -> None:
     """Reject unknown ``transition_if`` update keys.
 
     Raises:
-        QueryError: If the database query fails.
+        QueryError: If the caller passed unsupported update keys.
     """
     unknown = sorted(set(updates) - _ALLOWED_TRANSITION_KEYS)
     if unknown:

@@ -81,7 +81,7 @@ def _deserialize_node_executions(
     """Deserialize JSON array into WorkflowNodeExecution tuple.
 
     Returns:
-        The matching collection.
+        Tuple of deserialized ``WorkflowNodeExecution`` instances.
     """
     items = json.loads(raw_json)
     return tuple(
@@ -193,7 +193,7 @@ class SQLiteWorkflowExecutionRepository:
         """Build the parameter tuple for insert/update SQL.
 
         Returns:
-            The matching collection.
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
         """
         node_json = json.dumps(
             [ne.model_dump(mode="json") for ne in execution.node_executions],

@@ -384,7 +384,7 @@ class PostgresSettingsRepository:
             Result of type ``datetime``.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``value`` cannot be parsed as an ISO-8601 UTC timestamp.
         """
         try:
             return parse_iso_utc(value)

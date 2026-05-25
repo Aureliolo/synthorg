@@ -124,7 +124,8 @@ class PostgresProviderAuditRepo:
         """List events for one provider, newest first, with ``has_more``.
 
         Returns:
-            The matching entities.
+            Tuple of ``(events, has_more)`` where ``events`` is the matching
+            entities and ``has_more`` indicates whether additional pages exist.
 
         Raises:
             QueryError: If the database query fails.
