@@ -366,7 +366,11 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
 
     @property
     def kind(self) -> Literal["sqlite", "postgres"]:
-        """Return the backend discriminator (``"sqlite"``)."""
+        """Return the backend discriminator (``"sqlite"``).
+
+        Returns:
+            Result of type ``Literal['sqlite', 'postgres']``.
+        """
         return "sqlite"
 
     @property
@@ -377,6 +381,9 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         backup-handler factory walks the path; tests assert against
         the resolved sqlite path) do not have to reach for the
         private ``_config`` attribute.
+
+        Returns:
+            Result of type ``SQLiteConfig``.
         """
         return self._config
 
@@ -435,6 +442,9 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
 
         Raises:
             PersistenceConnectionError: If not yet connected.
+
+        Returns:
+            The active database connection (raises if not connected).
         """
         if self._db is None:
             msg = "Database not connected"
@@ -774,7 +784,11 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
                 self._clear_state()
 
     async def health_check(self) -> bool:
-        """Check database connectivity."""
+        """Check database connectivity.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+        """
         if self._db is None:
             return False
         try:
@@ -829,7 +843,11 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
 
     @property
     def is_connected(self) -> bool:
-        """Whether the backend has an active connection."""
+        """Whether the backend has an active connection.
+
+        Returns:
+            ``True`` when the backend has an active connection, ``False`` otherwise.
+        """
         return self._db is not None
 
     def build_lockouts(self, auth_config: AuthConfig) -> LockoutRepository:
@@ -842,6 +860,9 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         ``_clear_state``.  The backend's ``write_context`` is passed
         through so lockout transactions serialize with other
         repositories writing to the same aiosqlite connection.
+
+        Returns:
+            Result of type ``LockoutRepository``.
         """
         if self._lockouts is None:
             self._lockouts = SQLiteLockoutRepository(
@@ -862,6 +883,9 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
         NOTIFY/LISTEN). The backend's ``write_context`` is passed
         through so escalation transactions serialize with other
         repositories writing to the same aiosqlite connection.
+
+        Returns:
+            Result of type ``EscalationQueueRepository``.
         """
         from synthorg.persistence.sqlite.escalation_repo import (  # noqa: PLC0415
             SQLiteEscalationRepository,
@@ -873,7 +897,11 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
     def build_ontology_versioning(
         self,
     ) -> VersioningService[EntityDefinition]:
-        """Construct the ontology versioning service bound to this backend."""
+        """Construct the ontology versioning service bound to this backend.
+
+        Returns:
+            Result of type ``VersioningService[EntityDefinition]``.
+        """
         from synthorg.persistence.sqlite.ontology_versioning import (  # noqa: PLC0415
             create_ontology_versioning,
         )
@@ -890,6 +918,9 @@ class SQLitePersistenceBackend(_BackendRepositoryAccessors):
 
         Raises:
             PersistenceConnectionError: If not connected.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         result = await self.settings.get((NotBlankStr("_system"), key))
         return result.value if result is not None else None

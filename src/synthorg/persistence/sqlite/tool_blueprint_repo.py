@@ -93,6 +93,9 @@ def _row_to_blueprint(row: Row) -> ToolBlueprint:
 
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
+
+    Returns:
+        Result of type ``ToolBlueprint``.
     """
     try:
         validation_raw = row["validation"]
@@ -152,7 +155,11 @@ def _row_to_blueprint(row: Row) -> ToolBlueprint:
 
 
 def _upsert_params(bp: ToolBlueprint) -> tuple[object, ...]:
-    """Build the positional upsert parameter tuple for a blueprint."""
+    """Build the positional upsert parameter tuple for a blueprint.
+
+    Returns:
+        The matching collection.
+    """
     return (
         bp.id,
         bp.name,
@@ -230,7 +237,14 @@ class SQLiteDynamicToolRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: NotBlankStr) -> ToolBlueprint | None:
-        """Get a blueprint by id, or ``None`` if not found."""
+        """Get a blueprint by id, or ``None`` if not found.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = f"SELECT {_SELECT_COLS} FROM dynamic_tools WHERE id = ?"  # noqa: S608
         try:
             cursor = await self._db.execute(sql, (entity_id,))
@@ -256,7 +270,14 @@ class SQLiteDynamicToolRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ToolBlueprint, ...]:
-        """List blueprints ordered by ``(created_at DESC, id DESC)``."""
+        """List blueprints ordered by ``(created_at DESC, id DESC)``.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         effective_limit = min(
             validate_pagination_args(
                 limit, offset, event=PERSISTENCE_DYNAMIC_TOOL_LIST_FAILED
@@ -287,7 +308,13 @@ class SQLiteDynamicToolRepository:
     def _build_where(
         self, filter_spec: ToolBlueprintFilterSpec
     ) -> tuple[str, list[object]]:
-        """Build the WHERE clause and bound params from a filter spec."""
+        """Build the WHERE clause and bound params from a filter spec.
+
+        Returns:
+            ``(where_clause, params)`` where ``where_clause`` is the SQL fragment
+            (without the leading ``WHERE``) and ``params`` is the matching positional
+            parameter list.
+        """
         clauses: list[str] = []
         params: list[object] = []
         if filter_spec.state is not None:
@@ -309,7 +336,14 @@ class SQLiteDynamicToolRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ToolBlueprint, ...]:
-        """List blueprints matching the filter spec (paginated)."""
+        """List blueprints matching the filter spec (paginated).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         effective_limit = min(
             validate_pagination_args(
                 limit, offset, event=PERSISTENCE_DYNAMIC_TOOL_QUERY_FAILED
@@ -339,7 +373,14 @@ class SQLiteDynamicToolRepository:
         return items
 
     async def count(self, filter_spec: ToolBlueprintFilterSpec) -> int:
-        """Count blueprints matching the filter spec."""
+        """Count blueprints matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         where, params = self._build_where(filter_spec)
         sql = f"SELECT COUNT(*) FROM dynamic_tools WHERE {where}"  # noqa: S608
         try:
@@ -372,6 +413,12 @@ class SQLiteDynamicToolRepository:
         via ``model_dump_json()`` when a :class:`ToolValidationResult` is
         passed; passing ``None`` explicitly clears the column to ``NULL``
         (callers who want to preserve existing evidence must omit the key).
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         unknown = set(updates) - _TRANSITION_UPDATE_KEYS
         if unknown:
@@ -416,7 +463,14 @@ class SQLiteDynamicToolRepository:
         return cursor.rowcount > 0
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
-        """Delete a blueprint by id; ``True`` iff a row was removed."""
+        """Delete a blueprint by id; ``True`` iff a row was removed.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = "DELETE FROM dynamic_tools WHERE id = ?"
         async with self._write_context():
             try:
@@ -453,8 +507,6 @@ class SQLiteDynamicToolRepository:
         """
         try:
             await self._db.rollback()
-        except MemoryError, RecursionError:
-            raise
         except (sqlite3.Error, aiosqlite.Error) as exc:
             log_exception_redacted(
                 logger, event, exc, phase="rollback", operation=operation
@@ -462,7 +514,14 @@ class SQLiteDynamicToolRepository:
 
 
 def _coerce_update_ts(value: object) -> str:
-    """Render a transition timestamp kwarg to an ISO-8601 UTC string."""
+    """Render a transition timestamp kwarg to an ISO-8601 UTC string.
+
+    Returns:
+        Result of type ``str``.
+
+    Raises:
+        QueryError: If ``value`` is not a ``datetime``.
+    """
     if not isinstance(value, datetime):
         msg = f"transition timestamp must be a datetime, got {type(value).__name__}"
         raise QueryError(msg)
@@ -474,6 +533,12 @@ def _coerce_validation(value: object) -> str | None:
 
     ``None`` is passed through so callers can explicitly clear the column;
     everything else must be a :class:`ToolValidationResult`.
+
+    Returns:
+        The matching value, or ``None`` when absent.
+
+    Raises:
+        QueryError: If ``value`` is neither ``None`` nor a ``ToolValidationResult``.
     """
     if value is None:
         return None

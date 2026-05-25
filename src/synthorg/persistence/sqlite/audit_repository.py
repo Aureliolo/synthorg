@@ -91,11 +91,12 @@ class SQLiteAuditRepository:
                 await self._db.commit()
             except (sqlite3.Error, aiosqlite.Error) as exc:
                 await self._safe_rollback()
-                raise classify_audit_save_error(
+                error = classify_audit_save_error(
                     exc,
                     entry_id=entry.id,
                     is_duplicate=is_unique_constraint_error,
-                ) from exc
+                )
+                raise error from exc
 
     async def _safe_rollback(self) -> None:
         """Best-effort rollback on the shared connection.
@@ -324,5 +325,8 @@ class SQLiteAuditRepository:
 
         Raises:
             QueryError: If the row cannot be deserialized.
+
+        Returns:
+            Result of type ``AuditEntry``.
         """
         return row_to_audit_entry(row)

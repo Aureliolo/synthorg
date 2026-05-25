@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 import psycopg
 from psycopg.rows import dict_row
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
@@ -41,7 +42,11 @@ logger = get_logger(__name__)
 
 
 def _row_to_installation(row: dict[str, Any]) -> McpInstallation:
-    """Deserialize a dict row into an :class:`McpInstallation`."""
+    """Deserialize a dict row into an :class:`McpInstallation`.
+
+    Returns:
+        Result of type ``McpInstallation``.
+    """
     connection_name_raw = row["connection_name"]
     return McpInstallation(
         catalog_entry_id=NotBlankStr(row["catalog_entry_id"]),
@@ -91,8 +96,6 @@ class PostgresMcpInstallationRepository:
                         installed_at,
                     ),
                 )
-        except MemoryError, RecursionError:
-            raise
         except psycopg.errors.IntegrityError as exc:
             constraint = (
                 getattr(getattr(exc, "diag", None), "constraint_name", None)
@@ -114,6 +117,7 @@ class PostgresMcpInstallationRepository:
             )
             raise ConstraintViolationError(msg, constraint=constraint) from exc
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
                 operation="upsert",
@@ -136,7 +140,11 @@ class PostgresMcpInstallationRepository:
         self,
         catalog_entry_id: NotBlankStr,
     ) -> McpInstallation | None:
-        """Fetch a single installation by catalog entry id."""
+        """Fetch a single installation by catalog entry id.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -151,9 +159,8 @@ class PostgresMcpInstallationRepository:
                     (catalog_entry_id,),
                 )
                 row = await cur.fetchone()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
                 operation="get",
@@ -179,6 +186,12 @@ class PostgresMcpInstallationRepository:
         as a stable tiebreaker so rows with identical timestamps
         (restores, backfills, clock skew) are always returned in the
         same order across calls.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         validate_pagination_args(
             limit,
@@ -204,9 +217,8 @@ class PostgresMcpInstallationRepository:
             # ``QueryError`` envelope as a DB failure, not as a raw
             # exception that escapes the persistence boundary.
             return tuple(_row_to_installation(row) for row in rows)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = "Failed to list mcp installations"
             logger.warning(
                 PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
@@ -219,7 +231,11 @@ class PostgresMcpInstallationRepository:
             raise QueryError(msg) from exc
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
-        """Delete an installation.  Returns ``True`` if a row was removed."""
+        """Delete an installation.  Returns ``True`` if a row was removed.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -227,9 +243,8 @@ class PostgresMcpInstallationRepository:
                     (catalog_entry_id,),
                 )
                 deleted = cur.rowcount > 0
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
                 operation="delete",

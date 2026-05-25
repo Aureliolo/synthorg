@@ -94,6 +94,9 @@ def coerce_row_timestamp(value: object) -> datetime:
         ValueError: If ``value`` is a string that does not parse as a
             timezone-aware ISO 8601 datetime.
         TypeError: If ``value`` is neither ``str`` nor ``datetime``.
+
+    Returns:
+        Result of type ``datetime``.
     """
     if isinstance(value, datetime):
         # Local import keeps the marshaller module dependency-free at

@@ -34,7 +34,11 @@ class PostgresMeetingCooldownRepository:
         self._pool = pool
 
     async def save(self, record: MeetingCooldownRecord) -> None:
-        """Insert or replace the cooldown row for one meeting type."""
+        """Insert or replace the cooldown row for one meeting type.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         params: tuple[Any, ...] = (
             record.meeting_type_name,
             normalize_utc(record.last_triggered_at),
@@ -61,7 +65,14 @@ class PostgresMeetingCooldownRepository:
             raise QueryError(msg) from exc
 
     async def get(self, meeting_type_name: NotBlankStr) -> MeetingCooldownRecord | None:
-        """Read the cooldown row for one meeting type, or ``None`` if absent."""
+        """Read the cooldown row for one meeting type, or ``None`` if absent.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -87,7 +98,14 @@ class PostgresMeetingCooldownRepository:
         return self._row_to_record(row)
 
     async def load_all(self) -> tuple[MeetingCooldownRecord, ...]:
-        """Load every cooldown row (bespoke per ADR-0001 D7)."""
+        """Load every cooldown row (bespoke per ADR-0001 D7).
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -115,7 +133,14 @@ class PostgresMeetingCooldownRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[MeetingCooldownRecord, ...]:
-        """List cooldown rows ordered by meeting_type_name ascending."""
+        """List cooldown rows ordered by meeting_type_name ascending.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED
         )
@@ -142,6 +167,14 @@ class PostgresMeetingCooldownRepository:
         return tuple(self._row_to_record(r) for r in rows)
 
     def _row_to_record(self, row: dict[str, Any]) -> MeetingCooldownRecord:
+        """Row to record.
+
+        Returns:
+            Result of type ``MeetingCooldownRecord``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             row["last_triggered_at"] = normalize_utc(row["last_triggered_at"])
             return MeetingCooldownRecord.model_validate(row)
@@ -156,7 +189,14 @@ class PostgresMeetingCooldownRepository:
             raise QueryError(msg) from exc
 
     async def delete(self, meeting_type_name: NotBlankStr) -> bool:
-        """Delete the cooldown row for one meeting type."""
+        """Delete the cooldown row for one meeting type.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

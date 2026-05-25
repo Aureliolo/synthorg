@@ -86,6 +86,9 @@ def _row_to_item(row: dict[str, Any]) -> ApprovalItem:
 
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
+
+    Returns:
+        Result of type ``ApprovalItem``.
     """
     try:
         # Normalise only NULL explicitly; preserve other falsy payloads
@@ -249,6 +252,10 @@ class PostgresApprovalRepository:
         Empty input is a no-op.  Single-item input falls back to
         :meth:`save` so the per-item error context still names the
         offending id on constraint violation.
+
+        Raises:
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
         """
         if not items:
             return
@@ -318,6 +325,12 @@ class PostgresApprovalRepository:
         Uses ``UPDATE ... WHERE id = ANY(%s) AND status='pending'
         RETURNING id`` so the compare-and-set is atomic at the row
         level and the returned ids reflect what actually transitioned.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         if not ids:
             return ()
@@ -353,6 +366,9 @@ class PostgresApprovalRepository:
 
         Raises:
             QueryError: If the database query fails.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         sql = f"SELECT {_SELECT_COLS} FROM approvals WHERE id = %s"  # noqa: S608
         try:
@@ -382,6 +398,12 @@ class PostgresApprovalRepository:
 
         Empty input short-circuits to ``()`` without issuing SQL.
         Missing ids are simply absent from the result.
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         if not ids:
             return ()
@@ -693,6 +715,9 @@ class PostgresApprovalRepository:
 
         Raises:
             QueryError: If the database operation fails.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
         """
         sql = "DELETE FROM approvals WHERE id = %s"
         try:

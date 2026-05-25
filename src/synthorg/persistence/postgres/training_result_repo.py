@@ -60,14 +60,22 @@ ON CONFLICT(id) DO UPDATE SET
 def _deserialize_count_tuples(
     raw: list[list[Any]],
 ) -> tuple[tuple[ContentType, int], ...]:
-    """Convert JSONB list of ``[type, count]`` pairs."""
+    """Convert JSONB list of ``[type, count]`` pairs.
+
+    Returns:
+        The matching collection.
+    """
     return tuple((ContentType(ct), n) for ct, n in raw)
 
 
 def _deserialize_approvals(
     raw: list[dict[str, Any]],
 ) -> tuple[TrainingApprovalHandle, ...]:
-    """Convert JSONB list of approval handle dicts."""
+    """Convert JSONB list of approval handle dicts.
+
+    Returns:
+        The matching collection.
+    """
     return tuple(
         TrainingApprovalHandle(
             approval_item_id=NotBlankStr(h["approval_item_id"]),
@@ -86,6 +94,9 @@ def _row_to_result(row: dict[str, Any]) -> TrainingResult:
 
     Raises:
         QueryError: If deserialization fails.
+
+    Returns:
+        Result of type ``TrainingResult``.
     """
     data = dict(row)
     try:
@@ -122,7 +133,11 @@ def _row_to_result(row: dict[str, Any]) -> TrainingResult:
 
 
 def _result_to_params(result: TrainingResult) -> tuple[object, ...]:
-    """Build the parameter tuple for the upsert SQL statement."""
+    """Build the parameter tuple for the upsert SQL statement.
+
+    Returns:
+        The matching collection.
+    """
     return (
         str(result.id),
         str(result.plan_id),
@@ -316,6 +331,9 @@ class PostgresTrainingResultRepository:
 
         Returns:
             The most recent matching result, or ``None`` if not found.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with (
@@ -355,6 +373,9 @@ LIMIT 1""",
 
         Returns:
             The most recent result, or ``None`` if not found.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with (

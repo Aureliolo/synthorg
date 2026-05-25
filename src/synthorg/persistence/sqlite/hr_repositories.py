@@ -67,7 +67,11 @@ class SQLiteLifecycleEventRepository:
         self._write_context = write_context
 
     async def save(self, event: AgentLifecycleEvent) -> None:
-        """Persist a lifecycle event."""
+        """Persist a lifecycle event.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 data = event.model_dump(mode="json")
@@ -94,7 +98,14 @@ INSERT INTO lifecycle_events (
                 raise QueryError(msg) from exc
 
     def _row_to_event(self, row: aiosqlite.Row) -> AgentLifecycleEvent:
-        """Reconstruct a lifecycle event from a database row."""
+        """Reconstruct a lifecycle event from a database row.
+
+        Returns:
+            Result of type ``AgentLifecycleEvent``.
+
+        Raises:
+            QueryError: If row deserialization or validation fails.
+        """
         try:
             data = dict(row)
             data["metadata"] = json.loads(data["metadata"])
@@ -121,6 +132,12 @@ INSERT INTO lifecycle_events (
         """List lifecycle events with optional filters.
 
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         clauses: list[str] = []
         params: list[str | int] = []
@@ -193,7 +210,11 @@ class SQLiteTaskMetricRepository:
         self._write_context = write_context
 
     async def save(self, record: TaskMetricRecord) -> None:
-        """Persist a task metric record."""
+        """Persist a task metric record.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 data = record.model_dump(mode="json")
@@ -222,7 +243,14 @@ INSERT INTO task_metrics (
                 raise QueryError(msg) from exc
 
     def _row_to_record(self, row: aiosqlite.Row) -> TaskMetricRecord:
-        """Reconstruct a task metric record from a database row."""
+        """Reconstruct a task metric record from a database row.
+
+        Returns:
+            Result of type ``TaskMetricRecord``.
+
+        Raises:
+            QueryError: If row deserialization or validation fails.
+        """
         try:
             data = dict(row)
             return TaskMetricRecord.model_validate(data)
@@ -248,6 +276,12 @@ INSERT INTO task_metrics (
         """Query task metric records with optional filters.
 
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_TASK_METRIC_QUERY_FAILED
@@ -313,7 +347,11 @@ class SQLiteCollaborationMetricRepository:
         self._write_context = write_context
 
     async def save(self, record: CollaborationMetricRecord) -> None:
-        """Persist a collaboration metric record."""
+        """Persist a collaboration metric record.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 data = record.model_dump(mode="json")
@@ -342,7 +380,14 @@ INSERT INTO collaboration_metrics (
                 raise QueryError(msg) from exc
 
     def _row_to_record(self, row: aiosqlite.Row) -> CollaborationMetricRecord:
-        """Reconstruct a collaboration metric record from a database row."""
+        """Reconstruct a collaboration metric record from a database row.
+
+        Returns:
+            Result of type ``CollaborationMetricRecord``.
+
+        Raises:
+            QueryError: If row deserialization or validation fails.
+        """
         try:
             data = dict(row)
             # Convert SQLite integer booleans.
@@ -371,6 +416,12 @@ INSERT INTO collaboration_metrics (
         """Query collaboration metric records with optional filters.
 
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, 0, event=PERSISTENCE_COLLAB_METRIC_QUERY_FAILED

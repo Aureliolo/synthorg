@@ -48,7 +48,14 @@ class SQLiteSeenClaimsRepository:
         *,
         idempotency_key: NotBlankStr,
     ) -> bool:
-        """Return ``True`` when a row for ``idempotency_key`` exists."""
+        """Return ``True`` when a row for ``idempotency_key`` exists.
+
+        Returns:
+            ``True`` when a row for ``idempotency_key`` exists, ``False`` otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT 1 FROM seen_claims WHERE idempotency_key = ? LIMIT 1",
@@ -86,6 +93,13 @@ class SQLiteSeenClaimsRepository:
         when the second one queries. Releasing the lock pre-commit
         would let a sibling caller observe a stale ``rowcount`` and
         treat a duplicate as a first-write.
+
+        Returns:
+            ``True`` when this call inserted the dedup row, ``False`` when a previous
+            call had already inserted it.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         seen_at = normalize_utc(now)
         expires_at: datetime = seen_at + timedelta(seconds=ttl_seconds)
@@ -122,7 +136,14 @@ class SQLiteSeenClaimsRepository:
         return inserted
 
     async def prune_expired(self, now: AwareDatetime) -> int:
-        """Delete rows past their ``expires_at`` boundary."""
+        """Delete rows past their ``expires_at`` boundary.
+
+        Returns:
+            Number of rows deleted.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         cutoff_iso = format_iso_utc(normalize_utc(now))
         async with self._write_context():
             try:

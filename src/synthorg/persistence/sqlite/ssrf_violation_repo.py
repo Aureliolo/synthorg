@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 import aiosqlite
 from pydantic import AwareDatetime, ValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import DuplicateRecordError, PersistenceError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -60,15 +61,21 @@ class SQLiteSsrfViolationRepository:
         self._write_context = write_context
 
     async def _rollback_quietly(self) -> None:
-        """Roll back the current transaction, swallowing errors."""
+        """Roll back the current transaction, suppressing non-critical errors.
+
+        Calls :func:`reraise_critical` first so ``MemoryError`` and
+        ``RecursionError`` still propagate; any other rollback failure
+        is logged at WARNING and swallowed so the caller's outer
+        exception remains the operative one.
+        """
         try:
             await self._db.rollback()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PERSISTENCE_SSRF_VIOLATION_SAVE_FAILED,
-                error="rollback failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def save(self, violation: SsrfViolation) -> None:
@@ -132,7 +139,14 @@ class SQLiteSsrfViolationRepository:
         self,
         violation_id: NotBlankStr,
     ) -> SsrfViolation | None:
-        """Retrieve a violation by ID."""
+        """Retrieve a violation by ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            PersistenceError: If the persistence layer rejects the operation.
+        """
         try:
             cursor = await self._db.execute(
                 f"SELECT {_COLS} FROM ssrf_violations "  # noqa: S608
@@ -169,7 +183,14 @@ class SQLiteSsrfViolationRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[SsrfViolation, ...]:
-        """List violations ordered by id ascending (generic IdKeyed surface)."""
+        """List violations ordered by id ascending (generic IdKeyed surface).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            PersistenceError: If the persistence layer rejects the operation.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_SSRF_VIOLATION_QUERY_FAILED
         )
@@ -204,7 +225,14 @@ class SQLiteSsrfViolationRepository:
         return tuple(results)
 
     async def delete(self, violation_id: NotBlankStr) -> bool:
-        """Delete a violation by ID."""
+        """Delete a violation by ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            PersistenceError: If the persistence layer rejects the operation.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -232,7 +260,15 @@ class SQLiteSsrfViolationRepository:
         status: SsrfViolationStatus | None = None,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[SsrfViolation, ...]:
-        """List violations, optionally filtered by status."""
+        """List violations, optionally filtered by status.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            ValueError: If an argument fails validation.
+            PersistenceError: If the persistence layer rejects the operation.
+        """
         if limit <= 0:
             msg = "limit must be positive"
             raise ValueError(msg)
@@ -297,6 +333,10 @@ class SQLiteSsrfViolationRepository:
 
         Raises:
             ValueError: If status is PENDING.
+            PersistenceError: If the persistence layer rejects the operation.
+
+        Returns:
+            True when the operation succeeded, False otherwise.
         """
         if status == SsrfViolationStatus.PENDING:
             msg = (
@@ -344,7 +384,11 @@ class SQLiteSsrfViolationRepository:
 
 
 def _row_to_violation(row: Any) -> SsrfViolation:
-    """Convert a SQLite row to an SsrfViolation."""
+    """Convert a SQLite row to an SsrfViolation.
+
+    Returns:
+        Result of type ``SsrfViolation``.
+    """
     (
         id_,
         timestamp,

@@ -45,6 +45,9 @@ def _run_from_row(row: aiosqlite.Row) -> FineTuneRun:
 
     Raises:
         QueryError: If the row contains invalid data.
+
+    Returns:
+        Result of type ``FineTuneRun``.
     """
     try:
         config = FineTuneRunConfig.model_validate_json(row["config_json"])
@@ -74,6 +77,9 @@ def _checkpoint_from_row(row: aiosqlite.Row) -> CheckpointRecord:
 
     Raises:
         QueryError: If the row contains invalid data.
+
+    Returns:
+        Result of type ``CheckpointRecord``.
     """
     try:
         eval_metrics = None
@@ -121,7 +127,11 @@ class SQLiteFineTuneRunRepository:
         self._write_context = write_context
 
     async def save(self, entity: FineTuneRun) -> None:
-        """Upsert a run by id (idempotent semantics)."""
+        """Upsert a run by id (idempotent semantics).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         run = entity
         async with self._write_context():
             try:
@@ -167,7 +177,14 @@ class SQLiteFineTuneRunRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: str) -> FineTuneRun | None:
-        """Retrieve a run by id."""
+        """Retrieve a run by id.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         run_id = entity_id
         try:
             cursor = await self._db.execute(
@@ -189,7 +206,14 @@ class SQLiteFineTuneRunRepository:
         return _run_from_row(row)
 
     async def get_active_run(self) -> FineTuneRun | None:
-        """Get the currently active run (if any)."""
+        """Get the currently active run (if any).
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         placeholders = ", ".join("?" for _ in _ACTIVE_STAGES)
         query = (
             f"SELECT * FROM fine_tune_runs "  # noqa: S608
@@ -217,7 +241,14 @@ class SQLiteFineTuneRunRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[FineTuneRun, ...]:
-        """List runs in ascending id order (paginated)."""
+        """List runs in ascending id order (paginated).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = min(max(limit, 1), _MAX_LIST_LIMIT)
         offset = max(offset, 0)
         try:
@@ -246,6 +277,9 @@ class SQLiteFineTuneRunRepository:
 
         Returns:
             Tuple of (runs, total_count).
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = min(max(limit, 1), _MAX_LIST_LIMIT)
         offset = max(offset, 0)
@@ -277,6 +311,9 @@ class SQLiteFineTuneRunRepository:
 
         Returns:
             ``True`` if deleted, ``False`` if not found.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         run_id = entity_id
         async with self._write_context():
@@ -299,7 +336,11 @@ class SQLiteFineTuneRunRepository:
                 return cursor.rowcount > 0
 
     async def update_run(self, run: FineTuneRun) -> None:
-        """Update all mutable fields for a run."""
+        """Update all mutable fields for a run.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 await self._db.execute(
@@ -340,6 +381,9 @@ class SQLiteFineTuneRunRepository:
 
         Returns:
             Number of runs marked as interrupted.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         placeholders = ", ".join("?" for _ in _ACTIVE_STAGES)
         now = format_iso_utc(datetime.now(UTC))
@@ -401,7 +445,11 @@ class SQLiteFineTuneCheckpointRepository:
         self._write_context = write_context
 
     async def save(self, entity: CheckpointRecord) -> None:
-        """Upsert a checkpoint by id (idempotent semantics)."""
+        """Upsert a checkpoint by id (idempotent semantics).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         checkpoint = entity
         async with self._write_context():
             try:
@@ -446,7 +494,14 @@ class SQLiteFineTuneCheckpointRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: str) -> CheckpointRecord | None:
-        """Retrieve a checkpoint by id."""
+        """Retrieve a checkpoint by id.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         checkpoint_id = entity_id
         try:
             cursor = await self._db.execute(
@@ -473,7 +528,14 @@ class SQLiteFineTuneCheckpointRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CheckpointRecord, ...]:
-        """List checkpoints in ascending id order (paginated)."""
+        """List checkpoints in ascending id order (paginated).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = min(max(limit, 1), _MAX_LIST_LIMIT)
         offset = max(offset, 0)
         try:
@@ -502,6 +564,9 @@ class SQLiteFineTuneCheckpointRepository:
 
         Returns:
             Tuple of (checkpoints, total_count).
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = min(max(limit, 1), _MAX_LIST_LIMIT)
         offset = max(offset, 0)
@@ -569,7 +634,11 @@ class SQLiteFineTuneCheckpointRepository:
                 raise QueryError(msg) from exc
 
     async def deactivate_all(self) -> None:
-        """Deactivate all checkpoints (for rollback)."""
+        """Deactivate all checkpoints (for rollback).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 await self._db.execute(
@@ -593,6 +662,9 @@ class SQLiteFineTuneCheckpointRepository:
 
         Returns:
             ``True`` if deleted, ``False`` if not found.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         checkpoint_id = entity_id
         async with self._write_context():
@@ -642,7 +714,14 @@ class SQLiteFineTuneCheckpointRepository:
     async def get_active_checkpoint(
         self,
     ) -> CheckpointRecord | None:
-        """Get the currently active checkpoint (if any)."""
+        """Get the currently active checkpoint (if any).
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM fine_tune_checkpoints WHERE is_active = 1 LIMIT 1",

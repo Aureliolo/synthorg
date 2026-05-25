@@ -16,6 +16,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -59,6 +60,9 @@ def _row_to_definition(row: dict[str, Any]) -> CustomRuleDefinition:
         MalformedRowError: If the row contains corrupt or unparseable
             data. Non-retryable -- malformed rows are deterministic
             data-integrity issues, not transient query failures.
+
+    Returns:
+        Result of type ``CustomRuleDefinition``.
     """
     return row_to_custom_rule(row)
 
@@ -154,8 +158,6 @@ class PostgresCustomRuleRepository:
                 msg,
                 constraint=constraint_name or "custom_rules_unknown",
             ) from exc
-        except MemoryError, RecursionError:
-            raise
         except psycopg.Error as exc:
             msg = f"Failed to save custom rule {rule.name!r}"
             logger.warning(
@@ -166,6 +168,7 @@ class PostgresCustomRuleRepository:
             )
             raise QueryError(msg) from exc
         except Exception as exc:
+            reraise_critical(exc)
             # Catch-all for non-psycopg helper failures (serialize_altitudes,
             # JSON encoding, datetime coercion). Without this, those raw
             # exceptions would skip the structured save-failed log + the
@@ -211,8 +214,6 @@ class PostgresCustomRuleRepository:
                     (rule_id,),
                 )
                 row = await cur.fetchone()
-        except MemoryError, RecursionError:
-            raise
         except psycopg.Error as exc:
             msg = f"Failed to fetch custom rule {rule_id!r}"
             logger.warning(
@@ -267,8 +268,6 @@ class PostgresCustomRuleRepository:
                     (name,),
                 )
                 row = await cur.fetchone()
-        except MemoryError, RecursionError:
-            raise
         except psycopg.Error as exc:
             msg = f"Failed to fetch custom rule by name {name!r}"
             logger.warning(
@@ -288,7 +287,11 @@ class PostgresCustomRuleRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CustomRuleDefinition, ...]:
-        """List custom rules ordered by name."""
+        """List custom rules ordered by name.
+
+        Returns:
+            The matching entities.
+        """
         return await self.query(
             CustomRuleFilterSpec(),
             limit=limit,
@@ -306,6 +309,9 @@ class PostgresCustomRuleRepository:
 
         Raises:
             QueryError: If the query or pagination validation fails.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=META_CUSTOM_RULE_LIST_FAILED
@@ -324,8 +330,6 @@ class PostgresCustomRuleRepository:
             ):
                 await cur.execute(sql, (limit, offset))
                 rows = await cur.fetchall()
-        except MemoryError, RecursionError:
-            raise
         except psycopg.Error as exc:
             msg = "Failed to list custom rules"
             logger.warning(
@@ -339,7 +343,14 @@ class PostgresCustomRuleRepository:
         return result
 
     async def count(self, filter_spec: CustomRuleFilterSpec) -> int:
-        """Count custom rules matching the filter spec."""
+        """Count custom rules matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         where = " WHERE enabled = true" if filter_spec.enabled_only else ""
         sql = f"SELECT COUNT(*) FROM custom_rules{where}"  # noqa: S608
         try:
@@ -378,8 +389,6 @@ class PostgresCustomRuleRepository:
                     (rule_id,),
                 )
                 deleted = cur.rowcount > 0
-        except MemoryError, RecursionError:
-            raise
         except psycopg.Error as exc:
             msg = f"Failed to delete custom rule {rule_id!r}"
             logger.warning(

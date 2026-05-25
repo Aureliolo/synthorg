@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import aiosqlite
 from pydantic import ValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -42,11 +43,11 @@ class SQLiteTrackedContainerRepository:
         self._write_context = write_context
 
     async def _rollback_quietly(self, event: str) -> None:
+        """Rollback quietly."""
         try:
             await self._db.rollback()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 event,
                 error_type=type(exc).__name__,
@@ -54,7 +55,11 @@ class SQLiteTrackedContainerRepository:
             )
 
     async def save(self, record: TrackedContainerRecord) -> None:
-        """Insert or replace the tracking row for one container."""
+        """Insert or replace the tracking row for one container.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         params = (
             record.container_id,
             record.sidecar_id,
@@ -80,7 +85,14 @@ class SQLiteTrackedContainerRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, container_id: NotBlankStr) -> TrackedContainerRecord | None:
-        """Read the tracking row for one container, or ``None`` if absent."""
+        """Read the tracking row for one container, or ``None`` if absent.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT container_id, sidecar_id, created_at "
@@ -102,7 +114,14 @@ class SQLiteTrackedContainerRepository:
         return self._row_to_record(dict(row))
 
     async def delete(self, container_id: NotBlankStr) -> bool:
-        """Delete the tracking row for one container."""
+        """Delete the tracking row for one container.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -126,7 +145,14 @@ class SQLiteTrackedContainerRepository:
         return deleted
 
     async def load_all(self) -> tuple[TrackedContainerRecord, ...]:
-        """Load every tracking row (bespoke per ADR-0001 D7)."""
+        """Load every tracking row (bespoke per ADR-0001 D7).
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT container_id, sidecar_id, created_at FROM tracked_containers"
@@ -150,7 +176,14 @@ class SQLiteTrackedContainerRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[TrackedContainerRecord, ...]:
-        """List tracked containers ordered by container_id ascending."""
+        """List tracked containers ordered by container_id ascending.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_TRACKED_CONTAINER_LOAD_FAILED
         )
@@ -173,6 +206,14 @@ class SQLiteTrackedContainerRepository:
         return tuple(self._row_to_record(dict(r)) for r in rows)
 
     def _row_to_record(self, row: dict[str, object]) -> TrackedContainerRecord:
+        """Row to record.
+
+        Returns:
+            Result of type ``TrackedContainerRecord``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             row["created_at"] = parse_iso_utc(str(row["created_at"]))
             return TrackedContainerRecord.model_validate(row)

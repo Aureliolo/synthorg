@@ -57,7 +57,11 @@ _UPSERT_SQL = """
 
 
 def _row_to_run(row: dict[str, Any]) -> ResearchRun:
-    """Reconstruct a :class:`ResearchRun` from its persisted JSON blob."""
+    """Reconstruct a :class:`ResearchRun` from its persisted JSON blob.
+
+    Returns:
+        Result of type ``ResearchRun``.
+    """
     return ResearchRun.model_validate_json(str(row["run_json"]))
 
 
@@ -69,6 +73,11 @@ class PostgresResearchRunRepository:
 
     @staticmethod
     def _row_params(entity: ResearchRun) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
+        """
         return (
             entity.run_id,
             entity.brief_id,
@@ -81,6 +90,7 @@ class PostgresResearchRunRepository:
     async def _safe_rollback(
         self, conn: psycopg.AsyncConnection[Any], *, event: str
     ) -> None:
+        """Safe rollback."""
         try:
             await conn.rollback()
         except psycopg.Error as rollback_exc:
@@ -92,7 +102,11 @@ class PostgresResearchRunRepository:
             )
 
     async def save(self, entity: ResearchRun) -> None:
-        """Persist a run row via upsert (PK ``run_id``)."""
+        """Persist a run row via upsert (PK ``run_id``).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._pool.connection() as conn, conn.cursor() as cur:
             try:
                 await cur.execute(_UPSERT_SQL, self._row_params(entity))
@@ -111,7 +125,14 @@ class PostgresResearchRunRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: ResearchRunKey) -> ResearchRun | None:
-        """Retrieve a run by ``run_id``."""
+        """Retrieve a run by ``run_id``.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -146,7 +167,14 @@ class PostgresResearchRunRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ResearchRun, ...]:
-        """List all runs, most-recent first."""
+        """List all runs, most-recent first.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_RESEARCH_RUN_LIST_FAILED
         )
@@ -174,7 +202,14 @@ class PostgresResearchRunRepository:
         return self._rows_to_tuple(tuple(rows))
 
     async def delete(self, entity_id: ResearchRunKey) -> bool:
-        """Delete a run by ``run_id``."""
+        """Delete a run by ``run_id``.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._pool.connection() as conn, conn.cursor() as cur:
             try:
                 await cur.execute(
@@ -204,7 +239,14 @@ class PostgresResearchRunRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ResearchRun, ...]:
-        """Return runs matching the filter, most-recent first."""
+        """Return runs matching the filter, most-recent first.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_RESEARCH_RUN_QUERY_FAILED
         )
@@ -237,7 +279,14 @@ class PostgresResearchRunRepository:
         return runs
 
     async def count(self, filter_spec: ResearchRunFilter) -> int:
-        """Count runs matching the filter spec."""
+        """Count runs matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql, params = _build_query_sql(filter_spec)
         count_sql = sql.replace("SELECT run_json", "SELECT COUNT(*) AS n", 1)
         try:
@@ -267,7 +316,14 @@ class PostgresResearchRunRepository:
     def _rows_to_tuple(
         self, rows: tuple[dict[str, Any], ...]
     ) -> tuple[ResearchRun, ...]:
-        """Deserialise a row batch with one shared error path."""
+        """Deserialise a row batch with one shared error path.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             runs = tuple(_row_to_run(row) for row in rows)
         except (ValueError, ValidationError, KeyError) as exc:
@@ -283,7 +339,12 @@ class PostgresResearchRunRepository:
 
 
 def _build_query_sql(filter_spec: ResearchRunFilter) -> tuple[str, tuple[object, ...]]:
-    """Compose the base ``SELECT ... WHERE`` for ``query`` / ``count``."""
+    """Compose the base ``SELECT ... WHERE`` for ``query`` / ``count``.
+
+    Returns:
+        ``(sql, params)`` where ``sql`` is the complete query string and ``params`` is
+        the matching positional parameter tuple.
+    """
     conditions: list[str] = []
     params: list[object] = []
     if filter_spec.brief_id is not None:

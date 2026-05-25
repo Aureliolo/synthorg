@@ -52,7 +52,11 @@ class SQLiteSettingsRepository:
         self._write_context = write_context
 
     async def save(self, entity: SettingRow) -> None:
-        """Persist a setting (upsert by composite key)."""
+        """Persist a setting (upsert by composite key).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 await self._db.execute(
@@ -85,7 +89,14 @@ INSERT OR REPLACE INTO settings (
         self,
         entity_id: SettingRowKey,
     ) -> SettingRow | None:
-        """Retrieve a setting by composite key."""
+        """Retrieve a setting by composite key.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         namespace, key = entity_id
         try:
             cursor = await self._db.execute(
@@ -125,7 +136,14 @@ INSERT OR REPLACE INTO settings (
         self,
         namespace: NotBlankStr,
     ) -> tuple[SettingRow, ...]:
-        """Retrieve all settings in a namespace."""
+        """Retrieve all settings in a namespace.
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT namespace, key, value, updated_at FROM settings "
@@ -166,7 +184,14 @@ INSERT OR REPLACE INTO settings (
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[SettingRow, ...]:
-        """List settings across all namespaces (paginated)."""
+        """List settings across all namespaces (paginated).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         # Validate + clamp via the shared helper (rejects limit < 1 /
         # offset < 0, caps at the repo-wide MAX_LIST_LIMIT ceiling) so
         # no inline magic ceiling and no sentinel (-1) slips through.
@@ -224,6 +249,9 @@ INSERT OR REPLACE INTO settings (
         Returns:
             ``True`` if the write succeeded, ``False`` if the CAS condition
             was not met.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         async with self._write_context():
             try:
@@ -291,7 +319,14 @@ INSERT OR REPLACE INTO settings (
         *,
         expected_updated_at_map: (Mapping[SettingRowKey, str] | None) = None,
     ) -> bool:
-        """Atomically upsert multiple settings."""
+        """Atomically upsert multiple settings.
+
+        Returns:
+            True when the operation succeeded, False otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if not items:
             return True
         cas_map: Mapping[SettingRowKey, str] = expected_updated_at_map or {}
@@ -336,6 +371,9 @@ INSERT OR REPLACE INTO settings (
         """Write a single setting inside an open transaction.
 
         Returns ``False`` on CAS miss so the caller can rollback.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
         """
         if expected is None:
             await self._db.execute(
@@ -365,7 +403,14 @@ INSERT OR REPLACE INTO settings (
         return cursor.rowcount != 0
 
     async def delete(self, entity_id: SettingRowKey) -> bool:
-        """Delete a setting by composite key."""
+        """Delete a setting by composite key.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         namespace, key = entity_id
         async with self._write_context():
             try:
@@ -388,7 +433,14 @@ INSERT OR REPLACE INTO settings (
         return deleted
 
     async def delete_namespace(self, namespace: NotBlankStr) -> int:
-        """Delete all settings in a namespace. Return count."""
+        """Delete all settings in a namespace. Return count.
+
+        Returns:
+            Number of rows deleted.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -418,6 +470,12 @@ INSERT OR REPLACE INTO settings (
         ``get_namespace`` snapshot and the delete cannot drift under a
         concurrent ``set`` -- the returned tuple is exactly the set of
         keys whose override row was removed by *this* call.
+
+        Returns:
+            The keys whose row was removed by this call.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         async with self._write_context():
             try:

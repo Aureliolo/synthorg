@@ -44,7 +44,11 @@ class InMemoryConnectionRepository:
         self._store[connection.name] = copy.deepcopy(connection)
 
     async def get(self, name: str) -> Connection | None:
-        """Retrieve by name (deep-copied on read)."""
+        """Retrieve by name (deep-copied on read).
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+        """
         existing = self._store.get(name)
         return copy.deepcopy(existing) if existing is not None else None
 
@@ -54,7 +58,11 @@ class InMemoryConnectionRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
-        """List all (deep-copied)."""
+        """List all (deep-copied).
+
+        Returns:
+            The matching entities.
+        """
         rows = tuple(
             copy.deepcopy(c) for c in sorted(self._store.values(), key=lambda c: c.name)
         )
@@ -68,7 +76,11 @@ class InMemoryConnectionRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Connection, ...]:
-        """List matching the filter spec (deep-copied)."""
+        """List matching the filter spec (deep-copied).
+
+        Returns:
+            The matching entities.
+        """
         ordered = sorted(self._store.values(), key=lambda c: c.name)
         if filter_spec.connection_type is not None:
             ordered = [
@@ -79,7 +91,11 @@ class InMemoryConnectionRepository:
         return tuple(copy.deepcopy(c) for c in sliced)
 
     async def count(self, filter_spec: ConnectionFilterSpec) -> int:
-        """Count connections matching filter (in-memory)."""
+        """Count connections matching filter (in-memory).
+
+        Returns:
+            Number of matching rows.
+        """
         if filter_spec.connection_type is None:
             return len(self._store)
         return sum(
@@ -89,7 +105,11 @@ class InMemoryConnectionRepository:
         )
 
     async def delete(self, name: str) -> bool:
-        """Delete by name."""
+        """Delete by name.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+        """
         return self._store.pop(name, None) is not None
 
 
@@ -109,11 +129,19 @@ class InMemoryConnectionSecretRepository:
         self._store[secret_id] = encrypted_value
 
     async def retrieve(self, secret_id: str) -> bytes | None:
-        """Retrieve a secret."""
+        """Retrieve a secret.
+
+        Returns:
+            The matching value, or ``None`` when absent.
+        """
         return self._store.get(secret_id)
 
     async def delete(self, secret_id: str) -> bool:
-        """Delete a secret."""
+        """Delete a secret.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+        """
         return self._store.pop(secret_id, None) is not None
 
 
@@ -128,12 +156,20 @@ class InMemoryOAuthStateRepository:
         self._store[state.state_token] = copy.deepcopy(state)
 
     async def get(self, state_token: str) -> OAuthState | None:
-        """Retrieve by token (deep-copied)."""
+        """Retrieve by token (deep-copied).
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+        """
         existing = self._store.get(state_token)
         return copy.deepcopy(existing) if existing is not None else None
 
     async def delete(self, state_token: str) -> bool:
-        """Delete by token."""
+        """Delete by token.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+        """
         return self._store.pop(state_token, None) is not None
 
     async def list_items(
@@ -142,7 +178,11 @@ class InMemoryOAuthStateRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[OAuthState, ...]:
-        """List OAuth states in token order (deep-copied)."""
+        """List OAuth states in token order (deep-copied).
+
+        Returns:
+            The matching entities.
+        """
         ordered = sorted(self._store.values(), key=lambda s: s.state_token)
         effective_offset = max(0, int(offset))
         sliced = ordered[effective_offset : effective_offset + max(0, int(limit))]
@@ -155,14 +195,23 @@ class InMemoryOAuthStateRepository:
         connection_name: NotBlankStr,  # noqa: ARG002
         consumed_at: object,  # noqa: ARG002
     ) -> bool:
-        """In-memory CAS not enforced; treat as no-op success when present."""
+        """In-memory CAS not enforced; treat as no-op success when present.
+
+        Returns:
+            ``True`` when ``state_token`` exists in the stub store, ``False`` otherwise.
+            No prior-consumption tracking is performed.
+        """
         return state_token in self._store
 
     async def cleanup_expired(
         self,
         retention_seconds: float,  # noqa: ARG002
     ) -> int:
-        """In-memory: no durable TTL enforcement; callers may run GC."""
+        """In-memory: no durable TTL enforcement; callers may run GC.
+
+        Returns:
+            Numeric result of the operation.
+        """
         return 0
 
 
@@ -188,7 +237,11 @@ class InMemoryWebhookReceiptRepository:
         self._store.append(snapshot)
 
     async def get(self, receipt_id: NotBlankStr) -> WebhookReceipt | None:
-        """Look up a receipt by id (deep-copied)."""
+        """Look up a receipt by id (deep-copied).
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+        """
         for r in self._store:
             if str(r.id) == str(receipt_id):
                 return copy.deepcopy(r)
@@ -200,14 +253,22 @@ class InMemoryWebhookReceiptRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
-        """List webhook receipts in id order (deep-copied)."""
+        """List webhook receipts in id order (deep-copied).
+
+        Returns:
+            The matching entities.
+        """
         ordered = sorted(self._store, key=lambda r: str(r.id))
         effective_offset = max(0, int(offset))
         sliced = ordered[effective_offset : effective_offset + max(0, int(limit))]
         return tuple(copy.deepcopy(r) for r in sliced)
 
     async def delete(self, receipt_id: NotBlankStr) -> bool:
-        """Delete a receipt by id."""
+        """Delete a receipt by id.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+        """
         for i, r in enumerate(self._store):
             if str(r.id) == str(receipt_id):
                 self._store.pop(i)
@@ -222,7 +283,11 @@ class InMemoryWebhookReceiptRepository:
         processed_at: object,  # noqa: ARG002
         error: str | None,  # noqa: ARG002
     ) -> bool:
-        """In-memory stub: no status update."""
+        """In-memory stub: no status update.
+
+        Returns:
+            Always ``False``; the in-memory stub does not persist updates.
+        """
         return False
 
     async def update_status_if_current(
@@ -234,7 +299,11 @@ class InMemoryWebhookReceiptRepository:
         processed_at: object,  # noqa: ARG002
         error: str | None,  # noqa: ARG002
     ) -> bool:
-        """In-memory stub: no CAS update."""
+        """In-memory stub: no CAS update.
+
+        Returns:
+            Always ``False``; the in-memory stub does not persist CAS updates.
+        """
         return False
 
     async def get_by_connection(
@@ -244,7 +313,11 @@ class InMemoryWebhookReceiptRepository:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[WebhookReceipt, ...]:
-        """List by connection (deep-copied), newest-first."""
+        """List by connection (deep-copied), newest-first.
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+        """
         if limit <= 0:
             return ()
         effective_offset = max(0, int(offset))
@@ -263,5 +336,9 @@ class InMemoryWebhookReceiptRepository:
         connection_name: NotBlankStr,  # noqa: ARG002
         retention_days: int,  # noqa: ARG002
     ) -> int:
-        """In-memory: no retention policy; callers may truncate."""
+        """In-memory: no retention policy; callers may truncate.
+
+        Returns:
+            Numeric result of the operation.
+        """
         return 0

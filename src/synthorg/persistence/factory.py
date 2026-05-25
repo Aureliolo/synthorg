@@ -23,6 +23,11 @@ logger = get_logger(__name__)
 
 
 def _build_sqlite(config: PersistenceConfig) -> PersistenceBackend:
+    """Construct sqlite.
+
+    Returns:
+        Result of type ``PersistenceBackend``.
+    """
     backend = SQLitePersistenceBackend(config.sqlite)
     logger.debug(
         PERSISTENCE_BACKEND_CREATED,
@@ -33,6 +38,14 @@ def _build_sqlite(config: PersistenceConfig) -> PersistenceBackend:
 
 
 def _build_postgres(config: PersistenceConfig) -> PersistenceBackend:
+    """Construct postgres.
+
+    Returns:
+        Result of type ``PersistenceBackend``.
+
+    Raises:
+        PersistenceConnectionError: If the connection pool is unavailable.
+    """
     if config.postgres is None:
         msg = "backend='postgres' requires a PostgresConfig"
         logger.error(PERSISTENCE_BACKEND_UNKNOWN, backend=config.backend)
@@ -72,7 +85,11 @@ _REGISTRY: PersistenceBackendRegistry = PersistenceBackendRegistry(
 
 
 def default_registry() -> PersistenceBackendRegistry:
-    """Return the module-level registry containing the built-in backends."""
+    """Return the module-level registry containing the built-in backends.
+
+    Returns:
+        Result of type ``PersistenceBackendRegistry``.
+    """
     return _REGISTRY
 
 

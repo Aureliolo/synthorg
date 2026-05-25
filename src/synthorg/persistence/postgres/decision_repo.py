@@ -105,6 +105,9 @@ def _build_insert_params(  # noqa: PLR0913
 
     In Postgres, JSONB columns accept Python dicts/lists directly
     (psycopg converts them). We wrap with ``Jsonb()`` for clarity.
+
+    Returns:
+        Result of type ``dict[str, object]``.
     """
     return {
         "id": record_id,
@@ -124,7 +127,11 @@ def _build_insert_params(  # noqa: PLR0913
 
 
 def _unfreeze_for_json(value: object) -> object:
-    """Recursively convert MappingProxyType/tuple/frozenset to JSON primitives."""
+    """Recursively convert MappingProxyType/tuple/frozenset to JSON primitives.
+
+    Returns:
+        Result of type ``object``.
+    """
     if isinstance(value, MappingProxyType):
         return {k: _unfreeze_for_json(v) for k, v in value.items()}
     if isinstance(value, dict):
@@ -202,6 +209,10 @@ class PostgresDecisionRepository:
                 malformed inputs are programming errors that must
                 surface loudly.
             QueryError: If the SQL operation fails.
+            TypeError: If an argument has the wrong type.
+
+        Returns:
+            Result of type ``DecisionRecord``.
         """
         # Deep-copy metadata so nested dicts/lists the caller retains
         # are never aliased by the stored record.
@@ -309,6 +320,16 @@ class PostgresDecisionRepository:
 
         Keeps ``append_with_next_version`` under the 50-line budget and
         centralizes the error-mapping logic for the write path.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            DuplicateRecordError: If a row with the same key already exists.
+            QueryError: If the database query fails.
+            CheckViolation: If a CHECK constraint is violated.
+            ForeignKeyViolation: If a foreign-key constraint is violated.
+            NotNullViolation: If a NOT NULL column receives ``NULL``.
         """
         last_exc: psycopg.errors.UniqueViolation | None = None
         # See docs/reference/retry-patterns.md: Pattern C/CAS -- version-
@@ -417,6 +438,11 @@ class PostgresDecisionRepository:
         :class:`AppendOnlyRepository`; most callers use
         ``append_with_next_version`` instead. Version must be set
         by the caller.
+
+        Raises:
+            DuplicateRecordError: If a row with the same key already exists.
+            QueryError: If the database query fails.
+            TypeError: If an argument has the wrong type.
         """
         # Deep-copy metadata so nested dicts/lists the caller retains
         # are never aliased by the stored record.
@@ -496,6 +522,12 @@ class PostgresDecisionRepository:
         (ascending recorded_at). When agent_id and role are specified
         without task_id, results are newest-first. Mixed filters default
         to task-oriented (oldest-first) ordering.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         validate_pagination_args(
             limit,
@@ -567,7 +599,14 @@ class PostgresDecisionRepository:
         return results
 
     async def get(self, record_id: NotBlankStr) -> DecisionRecord | None:
-        """Retrieve a decision record by ID."""
+        """Retrieve a decision record by ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -789,6 +828,12 @@ class PostgresDecisionRepository:
         Postgres JSONB comes back as ``list``/``dict``; the "string"
         branch is defensive against callers that migrate data from
         the SQLite backend (which stored criteria as a JSON string).
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            TypeError: If an argument has the wrong type.
         """
         if isinstance(raw_criteria, str):
             decoded = json.loads(raw_criteria)
@@ -817,6 +862,12 @@ class PostgresDecisionRepository:
         mismatches, Pydantic validation errors) are normalized into
         ``QueryError`` with a consistent event payload so callers get
         the same exception type regardless of the root cause.
+
+        Returns:
+            Result of type ``DecisionRecord``.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         record_id = row.get("id")
         try:

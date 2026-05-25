@@ -50,7 +50,14 @@ class AuditFilterSpec(BaseModel):
 
     @model_validator(mode="after")
     def _validate_window(self) -> AuditFilterSpec:
-        """Reject an inverted ``since``/``until`` window at the boundary."""
+        """Reject an inverted ``since``/``until`` window at the boundary.
+
+        Returns:
+            Result of type ``AuditFilterSpec``.
+
+        Raises:
+            ValueError: If an argument fails validation.
+        """
         if (
             self.since is not None
             and self.until is not None

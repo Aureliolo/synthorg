@@ -48,6 +48,9 @@ def _normalize_config_json(value: Any) -> str:
 
     Raises:
         QueryError: If *value* is not ``str``/``dict``/``list``.
+
+    Returns:
+        Result of type ``str``.
     """
     if isinstance(value, str):
         return value
@@ -72,6 +75,9 @@ def _config_json_to_jsonb(raw: str) -> Jsonb:
 
     Raises:
         QueryError: If *raw* is not valid JSON.
+
+    Returns:
+        Result of type ``Jsonb``.
     """
     try:
         return Jsonb(json.loads(raw))
@@ -85,6 +91,9 @@ def _normalize_timestamp(value: Any) -> str:
 
     Raises:
         QueryError: If *value* is neither ``datetime`` nor ``str``.
+
+    Returns:
+        Result of type ``str``.
     """
     if isinstance(value, str):
         return value
@@ -221,6 +230,9 @@ ON CONFLICT(name) DO UPDATE SET
         Raises:
             QueryError: If the database query fails or pagination is
                 out of range.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(limit, offset, event=PRESET_CUSTOM_LIST_FAILED)
         try:
@@ -278,6 +290,9 @@ ON CONFLICT(name) DO UPDATE SET
 
         Raises:
             QueryError: If the database query fails.
+
+        Returns:
+            The matching entities.
         """
         return await self.list_items(limit=limit, offset=offset)
 

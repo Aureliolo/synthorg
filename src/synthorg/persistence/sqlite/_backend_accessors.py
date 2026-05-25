@@ -204,7 +204,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier."""
+        """Human-readable backend identifier.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+        """
         return NotBlankStr("sqlite")
 
     def _require_connected[T](self, repo: T | None, name: str) -> T:
@@ -216,6 +220,9 @@ class _BackendRepositoryAccessors:
 
         Raises:
             PersistenceConnectionError: If *repo* is ``None``.
+
+        Returns:
+            Result of type ``T``.
         """
         if repo is None:
             msg = f"Not connected -- call connect() before accessing {name}"
@@ -225,49 +232,85 @@ class _BackendRepositoryAccessors:
 
     @property
     def tasks(self) -> TaskRepository:
-        """Repository for Task persistence."""
+        """Repository for Task persistence.
+
+        Returns:
+            Result of type ``TaskRepository``.
+        """
         return self._require_connected(self._tasks, "tasks")
 
     @property
     def cost_records(self) -> CostRecordRepository:
-        """Repository for CostRecord persistence."""
+        """Repository for CostRecord persistence.
+
+        Returns:
+            Result of type ``CostRecordRepository``.
+        """
         return self._require_connected(self._cost_records, "cost_records")
 
     @property
     def messages(self) -> MessageRepository:
-        """Repository for Message persistence."""
+        """Repository for Message persistence.
+
+        Returns:
+            Result of type ``MessageRepository``.
+        """
         return self._require_connected(self._messages, "messages")
 
     @property
     def lifecycle_events(self) -> LifecycleEventRepository:
-        """Repository for AgentLifecycleEvent persistence."""
+        """Repository for AgentLifecycleEvent persistence.
+
+        Returns:
+            Result of type ``LifecycleEventRepository``.
+        """
         return self._require_connected(self._lifecycle_events, "lifecycle_events")
 
     @property
     def task_metrics(self) -> TaskMetricRepository:
-        """Repository for TaskMetricRecord persistence."""
+        """Repository for TaskMetricRecord persistence.
+
+        Returns:
+            Result of type ``TaskMetricRepository``.
+        """
         return self._require_connected(self._task_metrics, "task_metrics")
 
     @property
     def collaboration_metrics(self) -> CollaborationMetricRepository:
-        """Repository for CollaborationMetricRecord persistence."""
+        """Repository for CollaborationMetricRecord persistence.
+
+        Returns:
+            Result of type ``CollaborationMetricRepository``.
+        """
         return self._require_connected(
             self._collaboration_metrics, "collaboration_metrics"
         )
 
     @property
     def parked_contexts(self) -> ParkedContextRepository:
-        """Repository for ParkedContext persistence."""
+        """Repository for ParkedContext persistence.
+
+        Returns:
+            Result of type ``ParkedContextRepository``.
+        """
         return self._require_connected(self._parked_contexts, "parked_contexts")
 
     @property
     def audit_entries(self) -> AuditRepository:
-        """Repository for AuditEntry persistence."""
+        """Repository for AuditEntry persistence.
+
+        Returns:
+            Result of type ``AuditRepository``.
+        """
         return self._require_connected(self._audit_entries, "audit_entries")
 
     @property
     def provider_audit_events(self) -> ProviderAuditRepo:
-        """Repository for the provider mutation audit log."""
+        """Repository for the provider mutation audit log.
+
+        Returns:
+            Result of type ``ProviderAuditRepo``.
+        """
         return self._require_connected(
             self._provider_audit_events,
             "provider_audit_events",
@@ -275,7 +318,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def preset_overrides(self) -> PresetOverrideRepo:
-        """Repository for operator-authored provider preset overrides."""
+        """Repository for operator-authored provider preset overrides.
+
+        Returns:
+            Result of type ``PresetOverrideRepo``.
+        """
         return self._require_connected(
             self._preset_overrides,
             "preset_overrides",
@@ -283,27 +330,47 @@ class _BackendRepositoryAccessors:
 
     @property
     def decision_records(self) -> DecisionRepository:
-        """Repository for DecisionRecord persistence (decisions drop-box)."""
+        """Repository for DecisionRecord persistence (decisions drop-box).
+
+        Returns:
+            Result of type ``DecisionRepository``.
+        """
         return self._require_connected(self._decision_records, "decision_records")
 
     @property
     def users(self) -> UserRepository:
-        """Repository for User persistence."""
+        """Repository for User persistence.
+
+        Returns:
+            Result of type ``UserRepository``.
+        """
         return self._require_connected(self._users, "users")
 
     @property
     def api_keys(self) -> ApiKeyRepository:
-        """Repository for ApiKey persistence."""
+        """Repository for ApiKey persistence.
+
+        Returns:
+            Result of type ``ApiKeyRepository``.
+        """
         return self._require_connected(self._api_keys, "api_keys")
 
     @property
     def checkpoints(self) -> CheckpointRepository:
-        """Repository for Checkpoint persistence."""
+        """Repository for Checkpoint persistence.
+
+        Returns:
+            Result of type ``CheckpointRepository``.
+        """
         return self._require_connected(self._checkpoints, "checkpoints")
 
     @property
     def flight_recorder_frames(self) -> FlightRecorderFrameRepository:
-        """Repository for flight-recorder frame persistence."""
+        """Repository for flight-recorder frame persistence.
+
+        Returns:
+            Result of type ``FlightRecorderFrameRepository``.
+        """
         return self._require_connected(
             self._flight_recorder_frames,
             "flight_recorder_frames",
@@ -311,73 +378,125 @@ class _BackendRepositoryAccessors:
 
     @property
     def heartbeats(self) -> HeartbeatRepository:
-        """Repository for Heartbeat persistence."""
+        """Repository for Heartbeat persistence.
+
+        Returns:
+            Result of type ``HeartbeatRepository``.
+        """
         return self._require_connected(self._heartbeats, "heartbeats")
 
     @property
     def agent_states(self) -> AgentStateRepository:
-        """Repository for AgentRuntimeState persistence."""
+        """Repository for AgentRuntimeState persistence.
+
+        Returns:
+            Result of type ``AgentStateRepository``.
+        """
         return self._require_connected(self._agent_states, "agent_states")
 
     @property
     def settings(self) -> SettingsRepository:
-        """Repository for namespaced settings persistence."""
+        """Repository for namespaced settings persistence.
+
+        Returns:
+            Result of type ``SettingsRepository``.
+        """
         return self._require_connected(self._settings, "settings")
 
     @property
     def artifacts(self) -> ArtifactRepository:
-        """Repository for Artifact persistence."""
+        """Repository for Artifact persistence.
+
+        Returns:
+            Result of type ``ArtifactRepository``.
+        """
         return self._require_connected(self._artifacts, "artifacts")
 
     @property
     def projects(self) -> ProjectRepository:
-        """Repository for Project persistence."""
+        """Repository for Project persistence.
+
+        Returns:
+            Result of type ``ProjectRepository``.
+        """
         return self._require_connected(self._projects, "projects")
 
     @property
     def project_workspaces(self) -> ProjectWorkspaceRepository:
-        """Repository for persistent per-project workspace mappings."""
+        """Repository for persistent per-project workspace mappings.
+
+        Returns:
+            Result of type ``ProjectWorkspaceRepository``.
+        """
         return self._require_connected(self._project_workspaces, "project_workspaces")
 
     @property
     def codebase_structure_maps(self) -> CodebaseStructureMapRepository:
-        """Repository for per-project brownfield codebase structure maps."""
+        """Repository for per-project brownfield codebase structure maps.
+
+        Returns:
+            Result of type ``CodebaseStructureMapRepository``.
+        """
         return self._require_connected(
             self._codebase_structure_maps, "codebase_structure_maps"
         )
 
     @property
     def project_environments(self) -> ProjectEnvironmentRepository:
-        """Repository for persistent per-project environment mappings."""
+        """Repository for persistent per-project environment mappings.
+
+        Returns:
+            Result of type ``ProjectEnvironmentRepository``.
+        """
         return self._require_connected(
             self._project_environments, "project_environments"
         )
 
     @property
     def project_docs(self) -> DocsRepository:
-        """Repository for living-documentation metadata persistence."""
+        """Repository for living-documentation metadata persistence.
+
+        Returns:
+            Result of type ``DocsRepository``.
+        """
         return self._require_connected(self._project_docs, "project_docs")
 
     @property
     def knowledge_sources(self) -> KnowledgeSourceRepository:
-        """Repository for the knowledge-source registry."""
+        """Repository for the knowledge-source registry.
+
+        Returns:
+            Result of type ``KnowledgeSourceRepository``.
+        """
         return self._require_connected(self._knowledge_sources, "knowledge_sources")
 
     @property
     def knowledge_provenance(self) -> ChunkProvenanceRepository:
-        """Repository for per-chunk knowledge provenance."""
+        """Repository for per-chunk knowledge provenance.
+
+        Returns:
+            Result of type ``ChunkProvenanceRepository``.
+        """
         return self._require_connected(
             self._knowledge_provenance, "knowledge_provenance"
         )
 
     @property
     def research_runs(self) -> ResearchRunRepository:
-        """Repository for the research-run record."""
+        """Repository for the research-run record.
+
+        Returns:
+            Result of type ``ResearchRunRepository``.
+        """
         return self._require_connected(self._research_runs, "research_runs")
 
     @property
     def project_cost_aggregates(self) -> ProjectCostAggregateRepository:
-        """Repository for durable project cost aggregates."""
+        """Repository for durable project cost aggregates.
+
+        Returns:
+            Result of type ``ProjectCostAggregateRepository``.
+        """
         return self._require_connected(
             self._project_cost_aggregates,
             "project_cost_aggregates",
@@ -385,7 +504,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def fine_tune_checkpoints(self) -> FineTuneCheckpointRepository:
-        """Repository for fine-tune checkpoint persistence."""
+        """Repository for fine-tune checkpoint persistence.
+
+        Returns:
+            Result of type ``FineTuneCheckpointRepository``.
+        """
         return self._require_connected(
             self._fine_tune_checkpoints,
             "fine_tune_checkpoints",
@@ -393,7 +516,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def fine_tune_runs(self) -> FineTuneRunRepository:
-        """Repository for fine-tune pipeline run persistence."""
+        """Repository for fine-tune pipeline run persistence.
+
+        Returns:
+            Result of type ``FineTuneRunRepository``.
+        """
         return self._require_connected(
             self._fine_tune_runs,
             "fine_tune_runs",
@@ -401,12 +528,20 @@ class _BackendRepositoryAccessors:
 
     @property
     def custom_presets(self) -> PersonalityPresetRepository:
-        """Repository for custom personality preset persistence."""
+        """Repository for custom personality preset persistence.
+
+        Returns:
+            Result of type ``PersonalityPresetRepository``.
+        """
         return self._require_connected(self._custom_presets, "custom_presets")
 
     @property
     def workflow_definitions(self) -> WorkflowDefinitionRepository:
-        """Repository for workflow definition persistence."""
+        """Repository for workflow definition persistence.
+
+        Returns:
+            Result of type ``WorkflowDefinitionRepository``.
+        """
         return self._require_connected(
             self._workflow_definitions,
             "workflow_definitions",
@@ -414,7 +549,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def workflow_executions(self) -> WorkflowExecutionRepository:
-        """Repository for workflow execution persistence."""
+        """Repository for workflow execution persistence.
+
+        Returns:
+            Result of type ``WorkflowExecutionRepository``.
+        """
         return self._require_connected(
             self._workflow_executions,
             "workflow_executions",
@@ -422,7 +561,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def subworkflows(self) -> SubworkflowRepository:
-        """Repository for versioned subworkflow persistence."""
+        """Repository for versioned subworkflow persistence.
+
+        Returns:
+            Result of type ``SubworkflowRepository``.
+        """
         return self._require_connected(
             self._subworkflows,
             "subworkflows",
@@ -430,7 +573,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def workflow_versions(self) -> VersionRepository[WorkflowDefinition]:
-        """Repository for workflow definition version persistence."""
+        """Repository for workflow definition version persistence.
+
+        Returns:
+            Result of type ``VersionRepository[WorkflowDefinition]``.
+        """
         return self._require_connected(
             self._workflow_versions,
             "workflow_versions",
@@ -438,7 +585,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def identity_versions(self) -> VersionRepository[AgentIdentity]:
-        """Repository for AgentIdentity version snapshot persistence."""
+        """Repository for AgentIdentity version snapshot persistence.
+
+        Returns:
+            Result of type ``VersionRepository[AgentIdentity]``.
+        """
         return self._require_connected(
             self._identity_versions,
             "identity_versions",
@@ -448,7 +599,11 @@ class _BackendRepositoryAccessors:
     def evaluation_config_versions(
         self,
     ) -> VersionRepository[EvaluationConfig]:
-        """Repository for EvaluationConfig version snapshot persistence."""
+        """Repository for EvaluationConfig version snapshot persistence.
+
+        Returns:
+            Result of type ``VersionRepository[EvaluationConfig]``.
+        """
         return self._require_connected(
             self._evaluation_config_versions,
             "evaluation_config_versions",
@@ -458,7 +613,11 @@ class _BackendRepositoryAccessors:
     def budget_config_versions(
         self,
     ) -> VersionRepository[BudgetConfig]:
-        """Repository for BudgetConfig version snapshot persistence."""
+        """Repository for BudgetConfig version snapshot persistence.
+
+        Returns:
+            Result of type ``VersionRepository[BudgetConfig]``.
+        """
         return self._require_connected(
             self._budget_config_versions,
             "budget_config_versions",
@@ -468,7 +627,11 @@ class _BackendRepositoryAccessors:
     def company_versions(
         self,
     ) -> VersionRepository[Company]:
-        """Repository for Company version snapshot persistence."""
+        """Repository for Company version snapshot persistence.
+
+        Returns:
+            Result of type ``VersionRepository[Company]``.
+        """
         return self._require_connected(
             self._company_versions,
             "company_versions",
@@ -478,7 +641,11 @@ class _BackendRepositoryAccessors:
     def role_versions(
         self,
     ) -> VersionRepository[Role]:
-        """Repository for Role version snapshot persistence."""
+        """Repository for Role version snapshot persistence.
+
+        Returns:
+            Result of type ``VersionRepository[Role]``.
+        """
         return self._require_connected(
             self._role_versions,
             "role_versions",
@@ -486,7 +653,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def risk_overrides(self) -> RiskOverrideRepository:
-        """Repository for risk tier override persistence."""
+        """Repository for risk tier override persistence.
+
+        Returns:
+            Result of type ``RiskOverrideRepository``.
+        """
         return self._require_connected(
             self._risk_overrides,
             "risk_overrides",
@@ -494,7 +665,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def ssrf_violations(self) -> SsrfViolationRepository:
-        """Repository for SSRF violation record persistence."""
+        """Repository for SSRF violation record persistence.
+
+        Returns:
+            Result of type ``SsrfViolationRepository``.
+        """
         return self._require_connected(
             self._ssrf_violations,
             "ssrf_violations",
@@ -502,7 +677,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def circuit_breaker_state(self) -> CircuitBreakerStateRepository:
-        """Repository for circuit breaker state persistence."""
+        """Repository for circuit breaker state persistence.
+
+        Returns:
+            Result of type ``CircuitBreakerStateRepository``.
+        """
         return self._require_connected(
             self._circuit_breaker_state,
             "circuit_breaker_state",
@@ -510,7 +689,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def ceremony_scheduler_state(self) -> CeremonySchedulerStateRepository:
-        """Repository for ceremony scheduler per-sprint state snapshots."""
+        """Repository for ceremony scheduler per-sprint state snapshots.
+
+        Returns:
+            Result of type ``CeremonySchedulerStateRepository``.
+        """
         return self._require_connected(
             self._ceremony_scheduler_state,
             "ceremony_scheduler_state",
@@ -518,7 +701,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def meeting_cooldown(self) -> MeetingCooldownRepository:
-        """Repository for meeting cooldown last-triggered timestamps."""
+        """Repository for meeting cooldown last-triggered timestamps.
+
+        Returns:
+            Result of type ``MeetingCooldownRepository``.
+        """
         return self._require_connected(
             self._meeting_cooldown,
             "meeting_cooldown",
@@ -526,7 +713,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def tracked_containers(self) -> TrackedContainerRepository:
-        """Repository for Docker sandbox tracked-container records."""
+        """Repository for Docker sandbox tracked-container records.
+
+        Returns:
+            Result of type ``TrackedContainerRepository``.
+        """
         return self._require_connected(
             self._tracked_containers,
             "tracked_containers",
@@ -534,12 +725,20 @@ class _BackendRepositoryAccessors:
 
     @property
     def connections(self) -> ConnectionRepository:
-        """Repository for external service connection persistence."""
+        """Repository for external service connection persistence.
+
+        Returns:
+            Result of type ``ConnectionRepository``.
+        """
         return self._require_connected(self._connections, "connections")
 
     @property
     def connection_secrets(self) -> ConnectionSecretRepository:
-        """Repository for encrypted connection secret persistence."""
+        """Repository for encrypted connection secret persistence.
+
+        Returns:
+            Result of type ``ConnectionSecretRepository``.
+        """
         return self._require_connected(
             self._connection_secrets,
             "connection_secrets",
@@ -547,12 +746,20 @@ class _BackendRepositoryAccessors:
 
     @property
     def oauth_states(self) -> OAuthStateRepository:
-        """Repository for transient OAuth state persistence."""
+        """Repository for transient OAuth state persistence.
+
+        Returns:
+            Result of type ``OAuthStateRepository``.
+        """
         return self._require_connected(self._oauth_states, "oauth_states")
 
     @property
     def webhook_receipts(self) -> WebhookReceiptRepository:
-        """Repository for webhook receipt log persistence."""
+        """Repository for webhook receipt log persistence.
+
+        Returns:
+            Result of type ``WebhookReceiptRepository``.
+        """
         return self._require_connected(
             self._webhook_receipts,
             "webhook_receipts",
@@ -560,7 +767,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def training_plans(self) -> TrainingPlanRepository:
-        """Repository for training plan persistence."""
+        """Repository for training plan persistence.
+
+        Returns:
+            Result of type ``TrainingPlanRepository``.
+        """
         return self._require_connected(
             self._training_plans,
             "training_plans",
@@ -568,7 +779,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def training_results(self) -> TrainingResultRepository:
-        """Repository for training result persistence."""
+        """Repository for training result persistence.
+
+        Returns:
+            Result of type ``TrainingResultRepository``.
+        """
         return self._require_connected(
             self._training_results,
             "training_results",
@@ -576,7 +791,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def custom_rules(self) -> CustomRuleRepository:
-        """Repository for custom signal rule persistence."""
+        """Repository for custom signal rule persistence.
+
+        Returns:
+            Result of type ``CustomRuleRepository``.
+        """
         return self._require_connected(
             self._custom_rules,
             "custom_rules",
@@ -584,12 +803,20 @@ class _BackendRepositoryAccessors:
 
     @property
     def sessions(self) -> SessionRepository:
-        """Repository for hybrid session state (durable + in-memory cache)."""
+        """Repository for hybrid session state (durable + in-memory cache).
+
+        Returns:
+            Result of type ``SessionRepository``.
+        """
         return self._require_connected(self._sessions, "sessions")
 
     @property
     def refresh_tokens(self) -> RefreshTokenRepository:
-        """Repository for single-use refresh-token rotation."""
+        """Repository for single-use refresh-token rotation.
+
+        Returns:
+            Result of type ``RefreshTokenRepository``.
+        """
         return self._require_connected(
             self._refresh_tokens,
             "refresh_tokens",
@@ -597,7 +824,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def idempotency_keys(self) -> IdempotencyRepository:
-        """Repository for persistent idempotency keys."""
+        """Repository for persistent idempotency keys.
+
+        Returns:
+            Result of type ``IdempotencyRepository``.
+        """
         return self._require_connected(
             self._idempotency_keys,
             "idempotency_keys",
@@ -605,7 +836,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def seen_claims(self) -> SeenClaimsRepository:
-        """Repository for worker TaskClaim dedup persistence."""
+        """Repository for worker TaskClaim dedup persistence.
+
+        Returns:
+            Result of type ``SeenClaimsRepository``.
+        """
         return self._require_connected(
             self._seen_claims,
             "seen_claims",
@@ -613,7 +848,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def principle_overrides(self) -> PrincipleOverrideRepository:
-        """Repository for rollback-restored principle overrides."""
+        """Repository for rollback-restored principle overrides.
+
+        Returns:
+            Result of type ``PrincipleOverrideRepository``.
+        """
         return self._require_connected(
             self._principle_overrides,
             "principle_overrides",
@@ -621,7 +860,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def mcp_installations(self) -> McpInstallationRepository:
-        """Repository for MCP catalog installations."""
+        """Repository for MCP catalog installations.
+
+        Returns:
+            Result of type ``McpInstallationRepository``.
+        """
         return self._require_connected(
             self._mcp_installations,
             "mcp_installations",
@@ -629,12 +872,20 @@ class _BackendRepositoryAccessors:
 
     @property
     def org_facts(self) -> OrgFactRepository:
-        """Repository for organizational fact persistence (MVCC)."""
+        """Repository for organizational fact persistence (MVCC).
+
+        Returns:
+            Result of type ``OrgFactRepository``.
+        """
         return self._require_connected(self._org_facts, "org_facts")
 
     @property
     def ontology_entities(self) -> OntologyEntityRepository:
-        """Repository for ontology entity definitions."""
+        """Repository for ontology entity definitions.
+
+        Returns:
+            Result of type ``OntologyEntityRepository``.
+        """
         return self._require_connected(
             self._ontology_entities,
             "ontology_entities",
@@ -642,7 +893,11 @@ class _BackendRepositoryAccessors:
 
     @property
     def ontology_drift(self) -> OntologyDriftReportRepository:
-        """Repository for ontology drift reports."""
+        """Repository for ontology drift reports.
+
+        Returns:
+            Result of type ``OntologyDriftReportRepository``.
+        """
         return self._require_connected(
             self._ontology_drift,
             "ontology_drift",

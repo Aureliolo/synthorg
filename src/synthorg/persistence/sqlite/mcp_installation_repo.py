@@ -10,6 +10,7 @@ import sqlite3
 
 import aiosqlite
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.mcp_catalog.installations import McpInstallation
@@ -38,6 +39,9 @@ def _classify_sqlite_constraint(exc: sqlite3.IntegrityError) -> str:
     message text. Match the message prefix and emit a stable token
     that mirrors the Postgres ``exc.diag.constraint_name`` shape so
     callers can route both backends through the same handler.
+
+    Returns:
+        Result of type ``str``.
     """
     text = str(exc).lower()
     if "foreign key" in text:
@@ -141,23 +145,52 @@ class SQLiteMcpInstallationRepository:
         self,
         catalog_entry_id: NotBlankStr,
     ) -> McpInstallation | None:
-        """Fetch a single installation by catalog entry id."""
-        async with self._db.execute(
-            """
-            SELECT catalog_entry_id, connection_name, installed_at
-            FROM mcp_installations
-            WHERE catalog_entry_id = ?
-            """,
-            (catalog_entry_id,),
-        ) as cursor:
-            row = await cursor.fetchone()
+        """Fetch a single installation by catalog entry id.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        try:
+            async with self._db.execute(
+                """
+                SELECT catalog_entry_id, connection_name, installed_at
+                FROM mcp_installations
+                WHERE catalog_entry_id = ?
+                """,
+                (catalog_entry_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+        except Exception as exc:
+            reraise_critical(exc)
+            msg = f"Failed to fetch MCP installation {catalog_entry_id!r}"
+            logger.warning(
+                PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+                catalog_entry_id=catalog_entry_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
         if row is None:
             return None
-        return McpInstallation(
-            catalog_entry_id=NotBlankStr(row[0]),
-            connection_name=(NotBlankStr(row[1]) if row[1] else None),
-            installed_at=coerce_row_timestamp(row[2]),
-        )
+        try:
+            return McpInstallation(
+                catalog_entry_id=NotBlankStr(row[0]),
+                connection_name=(NotBlankStr(row[1]) if row[1] else None),
+                installed_at=coerce_row_timestamp(row[2]),
+            )
+        except (ValueError, TypeError, KeyError) as exc:
+            reraise_critical(exc)
+            msg = f"Failed to deserialize MCP installation {catalog_entry_id!r}"
+            logger.warning(
+                PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+                catalog_entry_id=catalog_entry_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
 
     async def list_items(
         self,
@@ -171,6 +204,12 @@ class SQLiteMcpInstallationRepository:
         floor) and accepts any positive integer; no upper bound is
         enforced. Callers may either pass a larger ``limit`` or loop
         with ``offset`` for cursor-style pagination.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         validate_pagination_args(
             limit,
@@ -203,9 +242,8 @@ class SQLiteMcpInstallationRepository:
                 )
                 for row in rows
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = "Failed to list mcp installations"
             logger.warning(
                 PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
@@ -217,7 +255,14 @@ class SQLiteMcpInstallationRepository:
             raise QueryError(msg) from exc
 
     async def delete(self, catalog_entry_id: NotBlankStr) -> bool:
-        """Delete an installation.  Returns ``True`` if a row was removed."""
+        """Delete an installation.  Returns ``True`` if a row was removed.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(

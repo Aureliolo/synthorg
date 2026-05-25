@@ -33,7 +33,11 @@ _MAX_LIST_ROWS: int = 10_000
 
 
 def _row_to_environment(row: dict[str, Any]) -> ProjectEnvironment:
-    """Reconstruct a ``ProjectEnvironment`` from a Postgres dict_row."""
+    """Reconstruct a ``ProjectEnvironment`` from a Postgres dict_row.
+
+    Returns:
+        Result of type ``ProjectEnvironment``.
+    """
     data = dict(row)
     data["environment_type"] = EnvironmentType(data["environment_type"])
     data["provisioned_at"] = coerce_row_timestamp(data["provisioned_at"])
@@ -53,6 +57,11 @@ class PostgresProjectEnvironmentRepository:
 
     @staticmethod
     def _row_params(environment: ProjectEnvironment) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
+        """
         return (
             environment.project_id,
             environment.environment_type.value,
@@ -63,7 +72,11 @@ class PostgresProjectEnvironmentRepository:
         )
 
     async def save(self, entity: ProjectEnvironment) -> None:
-        """Persist a project environment via upsert (insert or update)."""
+        """Persist a project environment via upsert (insert or update).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -94,7 +107,14 @@ class PostgresProjectEnvironmentRepository:
             raise QueryError(msg) from exc
 
     async def get(self, entity_id: NotBlankStr) -> ProjectEnvironment | None:
-        """Retrieve a project environment by owning project id."""
+        """Retrieve a project environment by owning project id.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -147,7 +167,14 @@ class PostgresProjectEnvironmentRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ProjectEnvironment, ...]:
-        """List environments in project-id order."""
+        """List environments in project-id order.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_PROJECT_ENVIRONMENT_LIST_FAILED
         )
@@ -187,7 +214,14 @@ class PostgresProjectEnvironmentRepository:
         return environments
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
-        """Delete a project environment by owning project id."""
+        """Delete a project environment by owning project id.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

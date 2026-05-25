@@ -93,8 +93,6 @@ async def _safe_rollback(
     """
     try:
         await db.rollback()
-    except MemoryError, RecursionError:
-        raise
     except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
         log_exception_redacted(
             logger,
@@ -114,6 +112,9 @@ def _row_to_item(row: Row) -> ApprovalItem:
 
     Raises:
         QueryError: If the row contains corrupt or unparseable data.
+
+    Returns:
+        Result of type ``ApprovalItem``.
     """
     try:
         metadata_raw: dict[str, str] = json.loads(str(row["metadata"]))
@@ -273,6 +274,10 @@ class SQLiteApprovalRepository:
         Empty input is a no-op.  Single-item input falls back to the
         scalar ``save()`` path so the per-item error context still
         names the offending id on constraint violation.
+
+        Raises:
+            ConstraintViolationError: If a database constraint is violated.
+            QueryError: If the database query fails.
         """
         if not items:
             return
@@ -345,6 +350,12 @@ class SQLiteApprovalRepository:
         RETURNING id`` (SQLite >= 3.35) so the compare-and-set is
         atomic at the row level and the returned ids reflect what
         actually transitioned.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         if not ids:
             return ()
@@ -437,6 +448,12 @@ class SQLiteApprovalRepository:
 
         Empty input short-circuits to ``()`` without issuing SQL.
         Missing ids are simply absent from the result.
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         if not ids:
             return ()

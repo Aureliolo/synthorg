@@ -47,7 +47,11 @@ _MAX_LIST_ROWS: int = 10_000
 
 
 def _row_to_source(row: aiosqlite.Row) -> KnowledgeSource:
-    """Reconstruct a :class:`KnowledgeSource` from a database row."""
+    """Reconstruct a :class:`KnowledgeSource` from a database row.
+
+    Returns:
+        Result of type ``KnowledgeSource``.
+    """
     data = dict(row)
     data["source_type"] = SourceType(data["source_type"])
     data["status"] = SourceStatus(data["status"])
@@ -72,6 +76,11 @@ class SQLiteKnowledgeSourceRepository:
 
     @staticmethod
     def _row_params(entity: KnowledgeSource) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
+        """
         return (
             entity.source_id,
             entity.source_type.value,
@@ -90,6 +99,7 @@ class SQLiteKnowledgeSourceRepository:
         )
 
     async def _safe_rollback(self, *, event: str) -> None:
+        """Safe rollback."""
         try:
             await self._db.rollback()
         except (sqlite3.Error, aiosqlite.Error) as rollback_exc:
@@ -101,7 +111,11 @@ class SQLiteKnowledgeSourceRepository:
             )
 
     async def save(self, entity: KnowledgeSource) -> None:
-        """Persist a source row via upsert (PK ``source_id``)."""
+        """Persist a source row via upsert (PK ``source_id``).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 await self._db.execute(
@@ -139,7 +153,14 @@ ON CONFLICT(source_id) DO UPDATE SET
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: KnowledgeSourceKey) -> KnowledgeSource | None:
-        """Retrieve a source by ``source_id``."""
+        """Retrieve a source by ``source_id``.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT * FROM knowledge_sources WHERE source_id = ?",
@@ -172,7 +193,14 @@ ON CONFLICT(source_id) DO UPDATE SET
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[KnowledgeSource, ...]:
-        """List all sources, most-recent first."""
+        """List all sources, most-recent first.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_KNOWLEDGE_SOURCE_LIST_FAILED
         )
@@ -196,7 +224,14 @@ ON CONFLICT(source_id) DO UPDATE SET
         return self._rows_to_tuple(tuple(rows))
 
     async def delete(self, entity_id: KnowledgeSourceKey) -> bool:
-        """Delete a source by ``source_id``."""
+        """Delete a source by ``source_id``.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -225,7 +260,14 @@ ON CONFLICT(source_id) DO UPDATE SET
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[KnowledgeSource, ...]:
-        """Return sources matching the filter, most-recent first."""
+        """Return sources matching the filter, most-recent first.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_KNOWLEDGE_SOURCE_QUERY_FAILED
         )
@@ -257,7 +299,14 @@ ON CONFLICT(source_id) DO UPDATE SET
         return sources
 
     async def count(self, filter_spec: KnowledgeSourceFilter) -> int:
-        """Count sources matching the filter spec."""
+        """Count sources matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         where_sql, params = _build_query_sql(filter_spec)
         sql = f"SELECT COUNT(*) AS n {where_sql}"
         try:
@@ -283,7 +332,14 @@ ON CONFLICT(source_id) DO UPDATE SET
     def _rows_to_tuple(
         self, rows: Iterable[aiosqlite.Row]
     ) -> tuple[KnowledgeSource, ...]:
-        """Deserialise a row batch with one shared error path."""
+        """Deserialise a row batch with one shared error path.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             sources = tuple(_row_to_source(row) for row in rows)
         except (ValueError, ValidationError, KeyError) as exc:
@@ -306,6 +362,11 @@ def _build_query_sql(
     Scope semantics combine ``project_id`` and ``include_global`` exactly
     as documented on :class:`KnowledgeSourceFilter`. The Postgres repo
     has its own ``%s``-placeholder twin of this helper.
+
+    Returns:
+        ``(sql, params)`` where ``sql`` is the ``FROM ... WHERE`` fragment (callers
+        prepend their own ``SELECT`` clause) and ``params`` is the matching
+        positional parameter tuple.
     """
     conditions: list[str] = []
     params: list[object] = []

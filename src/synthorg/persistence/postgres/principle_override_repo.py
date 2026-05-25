@@ -30,7 +30,11 @@ class PostgresPrincipleOverrideRepository:
         self._pool = pool
 
     async def save(self, entity: PrincipleOverride) -> None:
-        """Insert or update the override at ``scope``."""
+        """Insert or update the override at ``scope``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -62,7 +66,14 @@ class PostgresPrincipleOverrideRepository:
             raise QueryError(msg) from exc
 
     async def get(self, scope: NotBlankStr) -> PrincipleOverride | None:
-        """Return the override at ``scope`` if present."""
+        """Return the override at ``scope`` if present.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -93,7 +104,14 @@ class PostgresPrincipleOverrideRepository:
         )
 
     async def delete(self, scope: NotBlankStr) -> bool:
-        """Remove the override; return ``True`` when a row was deleted."""
+        """Remove the override; return ``True`` when a row was deleted.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -122,6 +140,9 @@ class PostgresPrincipleOverrideRepository:
 
         Raises:
             QueryError: If the query fails or pagination is out of range.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED

@@ -376,9 +376,8 @@ max-complexity = 8
 # tightened thresholds catch but cannot resolve without a real
 # decomposition. The function-complexity items (C901, PLR0915, PLR0911,
 # PLR0912) measure structure that only a controller / service
-# decomposition can satisfy; the docstring items (DOC201/202/501) and
-# INP001 are documentation / packaging chores. Tracked separately in
-# the exemption ledger in docs/decisions/0006-tiered-module-size-policy.md.
+# decomposition can satisfy; INP001 is a packaging chore. Tracked
+# separately in the exemption ledger in docs/decisions/0006-tiered-module-size-policy.md.
 "src/synthorg/**/*.py" = [
     "BLE001",  # broad-except boundary code (logger.exception sites)
     "C901",    # complex-structure (function-level cyclomatic)
@@ -387,9 +386,16 @@ max-complexity = 8
     "PLR0915", # too-many-statements
     "ERA001",  # commented-out code (cleanup in a dedicated docs sweep)
     "INP001",  # implicit namespace packages (some directories lack __init__)
-    "DOC201",  # missing return docstring (covered in a dedicated docs sweep)
-    "DOC202",  # extraneous return docstring
-    "DOC501",  # missing raises docstring
+]
+# DOC201/DOC202/DOC501 still ignored on every top-level package except
+# those already swept. Wave 1 swept `persistence/` (omitted from the
+# brace expansion below); subsequent waves shrink the expansion further
+# and Wave 6 deletes the entry entirely. See
+# https://github.com/Aureliolo/synthorg/issues/2065 for the wave plan.
+"src/synthorg/{a2a,api,approval,backup,budget,client,cli,communication,config,coordination,core,docs_engine,engine,experiments,hr,infrastructure,integrations,knowledge,llm,memory,meta,notifications,observability,ontology,organization,providers,research,security,settings,telemetry,templates,tools,versioning,workers}/**/*.py" = [
+    "DOC201",
+    "DOC202",
+    "DOC501",
 ]
 "src/synthorg/tools/browser/**/*.py" = [
     # The BrowserTool catches its own BrowserDomainError chain at the

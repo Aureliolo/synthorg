@@ -11,6 +11,7 @@ from uuid import uuid4
 import aiosqlite
 from cryptography.fernet import Fernet, InvalidToken
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.config import EncryptedSqliteConfig
 from synthorg.integrations.errors import (
@@ -59,11 +60,23 @@ class EncryptedSqliteSecretBackend:
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier."""
+        """Human-readable backend identifier.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+        """
         return "encrypted_sqlite"
 
     @staticmethod
     def _init_fernet(env_var: str) -> Fernet:
+        """Init fernet.
+
+        Returns:
+            Result of type ``Fernet``.
+
+        Raises:
+            MasterKeyError: If the configured master key is missing or invalid.
+        """
         raw = os.environ.get(env_var, "").strip()
         if not raw:
             # Never include a generated key in the error text: the
@@ -94,6 +107,10 @@ class EncryptedSqliteSecretBackend:
         with the same ``secret_id`` already exists, its ciphertext is
         overwritten. Callers that need to detect overwrites must read
         first.
+
+        Raises:
+            SecretStorageError: If the secret store rejects the write.
+            MasterKeyError: If the configured master key is missing or invalid.
         """
         try:
             encrypted = self._fernet.encrypt(value)
@@ -109,9 +126,8 @@ class EncryptedSqliteSecretBackend:
             logger.debug(SECRET_STORED, secret_id=secret_id)
         except MasterKeyError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # ``warning`` + scrubbed description: driver exceptions may
             # embed connection URIs or raw Fernet ciphertext bytes.
             # Traceback attachment via ``logger.exception`` would also
@@ -128,7 +144,14 @@ class EncryptedSqliteSecretBackend:
             raise SecretStorageError(msg) from exc
 
     async def retrieve(self, secret_id: NotBlankStr) -> bytes | None:
-        """Retrieve and decrypt a secret."""
+        """Retrieve and decrypt a secret.
+
+        Returns:
+            The matching value, or ``None`` when absent.
+
+        Raises:
+            SecretRetrievalError: If decryption fails or the row is unreadable.
+        """
         try:
             async with aiosqlite.connect(self._db_path) as db:
                 cursor = await db.execute(
@@ -137,9 +160,8 @@ class EncryptedSqliteSecretBackend:
                     (secret_id,),
                 )
                 row = await cursor.fetchone()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # ``warning`` + scrubbed description: same rationale as
             # ``store()`` above. A DB driver failure may embed the row's
             # encrypted ciphertext in the exception; ``logger.exception``
@@ -171,9 +193,8 @@ class EncryptedSqliteSecretBackend:
             )
             msg = f"Failed to decrypt secret {secret_id}"
             raise SecretRetrievalError(msg) from exc
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Catch-all so any residual decrypt failure (malformed
             # row data, driver bug, etc.) still surfaces through
             # the secret-backend contract instead of leaking raw.
@@ -188,7 +209,14 @@ class EncryptedSqliteSecretBackend:
             raise SecretRetrievalError(msg) from exc
 
     async def delete(self, secret_id: NotBlankStr) -> bool:
-        """Delete a secret."""
+        """Delete a secret.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            SecretStorageError: If the secret store rejects the write.
+        """
         try:
             async with aiosqlite.connect(self._db_path) as db:
                 cursor = await db.execute(
@@ -197,9 +225,8 @@ class EncryptedSqliteSecretBackend:
                 )
                 await db.commit()
                 deleted = cursor.rowcount > 0
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Driver exceptions may embed connection URIs with
             # credentials; scrub + drop traceback.  Use the
             # ``SECRET_DELETE_FAILED`` event (not ``STORAGE_FAILED``)
@@ -229,13 +256,18 @@ class EncryptedSqliteSecretBackend:
         committed rotation. Rollback failures are embedded in the
         raised ``SecretRotationError`` so the caller can take
         manual cleanup action if needed.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+
+        Raises:
+            SecretRotationError: If rotation cannot complete cleanly.
         """
         new_id = str(uuid4())
         try:
             await self.store(new_id, new_value)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Carry the scrubbed description as context; the underlying
             # exception stays in the chain via ``raise ... from exc``.
             logger.warning(
@@ -249,9 +281,8 @@ class EncryptedSqliteSecretBackend:
 
         try:
             deleted = await self.delete(old_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,
                 old_id=old_id,
@@ -284,23 +315,21 @@ class EncryptedSqliteSecretBackend:
         return new_id
 
     async def _rollback_new(self, new_id: NotBlankStr) -> str:
-        """Attempt to delete *new_id* after a failed rotation."""
+        """Attempt to delete *new_id* after a failed rotation.
+
+        Returns:
+            Result of type ``str``.
+        """
         try:
             await self.delete(new_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as rb_exc:
+            reraise_critical(rb_exc)
             # Wrap the scrub so a broken ``__str__`` on the rollback
             # error cannot crash the rotation path silently.
-            # Re-raise catastrophic interpreter state
-            # (``MemoryError`` / ``RecursionError``) so the process
-            # surfaces the failure rather than swallowing it under a
-            # scrubbed fallback.
             try:
                 scrubbed = safe_error_description(rb_exc)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:  # pragma: no cover - defensive
+            except Exception as scrub_exc:  # pragma: no cover - defensive
+                reraise_critical(scrub_exc)
                 scrubbed = type(rb_exc).__name__
             logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,

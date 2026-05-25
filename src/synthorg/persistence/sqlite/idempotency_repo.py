@@ -15,6 +15,7 @@ from datetime import datetime  # noqa: TC003
 import aiosqlite
 from pydantic import AwareDatetime  # noqa: TC002
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
@@ -38,6 +39,9 @@ def _parse_dt(value: str) -> datetime:
     Delegates to :func:`parse_iso_utc` so naive values fail-fast and
     every read returns a timezone-aware UTC datetime, matching the
     repository-wide marshalling contract from ``_shared``.
+
+    Returns:
+        Result of type ``datetime``.
     """
     return parse_iso_utc(value)
 
@@ -75,6 +79,12 @@ class SQLiteIdempotencyRepository:
         ``try`` so any exception -- not just one raised after BEGIN
         succeeded -- routes through the rollback + structured-log +
         ``QueryError`` path.
+
+        Returns:
+            Result of type ``IdempotencyClaim``.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         from datetime import timedelta  # noqa: PLC0415
 
@@ -91,11 +101,8 @@ class SQLiteIdempotencyRepository:
                     expires_at=expires_at,
                 )
                 await self._db.commit()
-            except MemoryError, RecursionError:
-                # System errors must propagate without touching the
-                # row -- attempting rollback under OOM may itself fail.
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Catch broadly so a non-SQL failure (parse_iso_utc on
                 # a corrupt row, IdempotencyClaim model_validator,
                 # ...) still triggers rollback + structured logging
@@ -123,7 +130,11 @@ class SQLiteIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
     ) -> aiosqlite.Row | None:
-        """Return the existing row for *(scope, key)* or ``None``."""
+        """Return the existing row for *(scope, key)* or ``None``.
+
+        Returns:
+            The matching value, or ``None`` when absent.
+        """
         cursor = await self._db.execute(
             "SELECT status, response_body, expires_at "
             "FROM idempotency_keys WHERE scope = ? AND key = ?",
@@ -140,7 +151,11 @@ class SQLiteIdempotencyRepository:
         now: AwareDatetime,
         expires_at: AwareDatetime,
     ) -> IdempotencyClaim:
-        """Pick the right claim outcome given the existing *row*."""
+        """Pick the right claim outcome given the existing *row*.
+
+        Returns:
+            Result of type ``IdempotencyClaim``.
+        """
         if row is not None:
             status = str(row["status"])
             row_expires = _parse_dt(row["expires_at"])
@@ -245,6 +260,13 @@ class SQLiteIdempotencyRepository:
         UPDATE landed; ``False`` when the lease has rotated (a stale
         worker MUST NOT recover by ignoring this -- the new lease
         owns the row).
+
+        Returns:
+            ``True`` when the claim was marked ``COMPLETED``, ``False`` when
+            ``claim_token`` did not match the stored token.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         async with self._write_context():
             try:
@@ -284,7 +306,15 @@ class SQLiteIdempotencyRepository:
         key: NotBlankStr,
         claim_token: NotBlankStr,
     ) -> bool:
-        """Mark a claimed key as ``FAILED`` if *claim_token* matches."""
+        """Mark a claimed key as ``FAILED`` if *claim_token* matches.
+
+        Returns:
+            ``True`` when the claim was marked ``FAILED``, ``False`` when
+            ``claim_token`` did not match the stored token.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 # Same status gate as ``complete``: only an in-flight
@@ -318,7 +348,14 @@ class SQLiteIdempotencyRepository:
         scope: NotBlankStr,
         key: NotBlankStr,
     ) -> IdempotencyRecord | None:
-        """Fetch the persisted record verbatim, or None when absent."""
+        """Fetch the persisted record verbatim, or None when absent.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT scope, key, status, response_hash, response_body, "
@@ -368,7 +405,14 @@ class SQLiteIdempotencyRepository:
             raise QueryError(msg) from exc
 
     async def cleanup_expired(self, now: AwareDatetime) -> int:
-        """Delete expired rows and return the count removed."""
+        """Delete expired rows and return the count removed.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(

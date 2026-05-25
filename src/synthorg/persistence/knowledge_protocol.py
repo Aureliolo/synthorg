@@ -81,6 +81,12 @@ class KnowledgeSourceFilter(BaseModel):
         path; pairing it with an explicit ``status`` other than ``STALE``
         produces a query no row can satisfy, which is almost always a
         caller bug rather than the intended empty result.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails validation.
         """
         if (
             self.stale_only

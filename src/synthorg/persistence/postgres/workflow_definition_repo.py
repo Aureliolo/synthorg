@@ -123,6 +123,9 @@ class PostgresWorkflowDefinitionRepository:
         :meth:`create_if_absent` so all three write paths fail fast with
         the same ``QueryError`` instead of hitting the ``revision >= 1``
         CHECK constraint and surfacing a generic driver error.
+
+        Raises:
+            QueryError: If ``definition.revision`` is less than 1.
         """
         if definition.revision < 1:
             msg = (
@@ -143,6 +146,13 @@ class PostgresWorkflowDefinitionRepository:
         Same optimistic-concurrency rule as :meth:`save`: UPDATE only
         applies when the stored row's ``revision`` equals
         ``definition.revision - 1``.
+
+        Returns:
+            True when the operation succeeded, False otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
+            PersistenceVersionConflictError: If the row version no longer matches.
         """
         self._require_valid_revision(definition)
         nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
@@ -217,6 +227,12 @@ class PostgresWorkflowDefinitionRepository:
         """Atomic create-or-skip via ``INSERT ... ON CONFLICT DO NOTHING``.
 
         See :meth:`WorkflowDefinitionRepository.create_if_absent`.
+
+        Returns:
+            True when the row was inserted, False when an existing row blocked it.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         self._require_valid_revision(definition)
         nodes_jsonb = Jsonb([n.model_dump(mode="json") for n in definition.nodes])
@@ -508,6 +524,9 @@ class PostgresWorkflowDefinitionRepository:
         Raises:
             QueryError: If the database query, deserialization, or
                 pagination validation fails.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_WORKFLOW_DEF_LIST_FAILED
@@ -535,7 +554,14 @@ class PostgresWorkflowDefinitionRepository:
         return tuple(_deserialize_row(row, str(row.get("id", "?"))) for row in rows)
 
     async def count(self, filter_spec: WorkflowDefinitionFilterSpec) -> int:
-        """Count workflow definitions matching the filter spec."""
+        """Count workflow definitions matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         conditions: list[str] = []
         params: list[object] = []
         if filter_spec.workflow_type is not None:

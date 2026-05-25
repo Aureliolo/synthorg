@@ -79,7 +79,14 @@ _TURN_SEQUENCE_UNIQUE_CONSTRAINT: str = "uq_ct_conversation_sequence"
 
 
 def _row_to_conversation(row: dict[str, Any]) -> Conversation:
-    """Convert a Postgres dict row into a :class:`Conversation`."""
+    """Convert a Postgres dict row into a :class:`Conversation`.
+
+    Returns:
+        Result of type ``Conversation``.
+
+    Raises:
+        QueryError: If row deserialization or validation fails.
+    """
     try:
         return Conversation(
             id=str(row["id"]),
@@ -100,7 +107,14 @@ def _row_to_conversation(row: dict[str, Any]) -> Conversation:
 
 
 def _row_to_turn(row: dict[str, Any]) -> ConversationTurn:
-    """Convert a Postgres dict row into a :class:`ConversationTurn`."""
+    """Convert a Postgres dict row into a :class:`ConversationTurn`.
+
+    Returns:
+        Result of type ``ConversationTurn``.
+
+    Raises:
+        QueryError: If the database query fails.
+    """
     try:
         return ConversationTurn(
             id=str(row["id"]),
@@ -179,6 +193,9 @@ class PostgresConversationRepository:
 
         Raises:
             QueryError: If the database query fails.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         sql = (
             "SELECT id, created_by, created_at, updated_at, status "
@@ -218,6 +235,9 @@ class PostgresConversationRepository:
         Raises:
             QueryError: If the database query fails or pagination args
                 are invalid.
+
+        Returns:
+            The matching entities.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_FAILED
@@ -316,6 +336,9 @@ class PostgresConversationRepository:
 
         Raises:
             QueryError: If the database operation fails.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -462,6 +485,9 @@ class PostgresConversationTurnRepository:
         Raises:
             QueryError: If the database query fails or pagination args
                 are invalid.
+
+        Returns:
+            The matching entities.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_TURN_FAILED
@@ -504,6 +530,9 @@ class PostgresConversationTurnRepository:
 
         Raises:
             QueryError: On database errors.
+
+        Returns:
+            Numeric result of the operation.
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

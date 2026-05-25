@@ -68,6 +68,12 @@ class IdempotencyClaim(BaseModel):
         cached body for a completed entry. Also enforces that
         ``claim_token`` is set iff outcome is ``FRESH`` -- only the
         FRESH winner has a lease to defend.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails validation.
         """
         if self.outcome is IdempotencyOutcome.COMPLETED:
             if self.cached_response is None:
@@ -129,6 +135,12 @@ class IdempotencyRecord(BaseModel):
         persisted row -- the table only stores ``in_flight`` /
         ``completed`` / ``failed``. Reject it explicitly so a corrupt
         row (or a buggy writer) cannot smuggle FRESH past the model.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails validation.
         """
         if self.status is IdempotencyOutcome.FRESH:
             msg = (

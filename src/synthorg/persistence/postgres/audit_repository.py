@@ -37,7 +37,12 @@ _COL_LIST = ", ".join(AUDIT_COLUMNS)
 
 
 def _postgres_is_duplicate(exc: BaseException) -> bool:
-    """Detect Postgres duplicate-key violations by exception type."""
+    """Detect Postgres duplicate-key violations by exception type.
+
+    Returns:
+        ``True`` when ``exc`` is a Postgres unique-constraint violation,
+        ``False`` otherwise.
+    """
     return isinstance(exc, psycopg.errors.UniqueViolation)
 
 
@@ -83,11 +88,12 @@ class PostgresAuditRepository:
                 await cur.execute(sql, values)
                 await conn.commit()
         except psycopg.Error as exc:
-            raise classify_audit_save_error(
+            error = classify_audit_save_error(
                 exc,
                 entry_id=entry.id,
                 is_duplicate=_postgres_is_duplicate,
-            ) from exc
+            )
+            raise error from exc
         # No mutation log emitted from the persistence layer: per
         # CLAUDE.md "Repositories should not log mutations themselves
         # -- the service layer is the canonical logging point so audit
@@ -256,6 +262,9 @@ class PostgresAuditRepository:
 
         Raises:
             QueryError: If the row cannot be deserialized.
+
+        Returns:
+            Result of type ``AuditEntry``.
         """
         return row_to_audit_entry(row)
 
@@ -264,7 +273,11 @@ class PostgresAuditRepository:
     _ALLOWED_JSONB_COLS: frozenset[str] = frozenset({"matched_rules"})
 
     def _check_jsonb_column(self, column: str) -> None:
-        """Reject unknown column names to prevent SQL injection."""
+        """Reject unknown column names to prevent SQL injection.
+
+        Raises:
+            ValueError: If an argument fails validation.
+        """
         if column not in self._ALLOWED_JSONB_COLS:
             logger.warning(
                 PERSISTENCE_AUDIT_ENTRY_QUERY_FAILED,
@@ -283,7 +296,13 @@ class PostgresAuditRepository:
         since: AwareDatetime | None,
         until: AwareDatetime | None,
     ) -> tuple[list[str], list[object]]:
-        """Build timestamp filter conditions."""
+        """Build timestamp filter conditions.
+
+        Returns:
+            ``(conditions, params)`` where ``conditions`` is a list of
+            SQL fragments to AND into the WHERE clause and ``params``
+            is the matching positional parameter list.
+        """
         conditions: list[str] = []
         params: list[object] = []
         if since is not None:
@@ -304,7 +323,16 @@ class PostgresAuditRepository:
         limit: int,
         offset: int,
     ) -> tuple[tuple[AuditEntry, ...], int]:
-        """Execute a JSONB query with time filters and pagination."""
+        """Execute a JSONB query with time filters and pagination.
+
+        Returns:
+            ``(page, total)`` where ``page`` is the tuple of matching
+            audit entries for the requested page and ``total`` is the
+            unpaginated row count.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         self._validate_query_args(since=since, until=until, limit=limit)
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
@@ -364,6 +392,10 @@ class PostgresAuditRepository:
         """Query audit entries where *column* contains *value*.
 
         Uses the ``@>`` containment operator (GIN-indexed).
+
+        Returns:
+            Tuple of ``(page, total)`` -- the page of matching entities and the
+            total match count.
         """
         self._check_jsonb_column(column)
         condition = f"{column} @> %s::jsonb"
@@ -389,6 +421,10 @@ class PostgresAuditRepository:
         """Query audit entries where *column* has a top-level *key*.
 
         Uses the ``?`` existence operator (GIN-indexed).
+
+        Returns:
+            Tuple of ``(page, total)`` -- the page of matching entities and the
+            total match count.
         """
         self._check_jsonb_column(column)
         condition = f"{column} ? %s"

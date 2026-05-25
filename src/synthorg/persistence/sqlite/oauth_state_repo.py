@@ -38,7 +38,11 @@ _SELECT_COLS = (
 
 
 def _row_to_state(row: aiosqlite.Row | tuple[Any, ...]) -> OAuthState:
-    """Deserialize a row tuple into an :class:`OAuthState`."""
+    """Deserialize a row tuple into an :class:`OAuthState`.
+
+    Returns:
+        Result of type ``OAuthState``.
+    """
     (
         state_token,
         connection_name,
@@ -89,6 +93,9 @@ class SQLiteOAuthStateRepository:
         idempotency markers (``consumed_at`` /
         ``connection_name_returned``). Flow-start callers set both
         to ``None``; post-callback snapshots carry them populated.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         async with self._write_context():
             try:
@@ -148,7 +155,14 @@ class SQLiteOAuthStateRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, state_token: NotBlankStr) -> OAuthState | None:
-        """Fetch an OAuth state by token."""
+        """Fetch an OAuth state by token.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._db.execute(
                 f"SELECT {_SELECT_COLS} FROM oauth_states WHERE state_token = ?",  # noqa: S608
@@ -179,7 +193,14 @@ class SQLiteOAuthStateRepository:
             raise QueryError(msg) from exc
 
     async def delete(self, state_token: NotBlankStr) -> bool:
-        """Delete an OAuth state; return ``True`` if a row was removed."""
+        """Delete an OAuth state; return ``True`` if a row was removed.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -207,7 +228,14 @@ class SQLiteOAuthStateRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[OAuthState, ...]:
-        """List all OAuth states with pagination."""
+        """List all OAuth states with pagination.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if limit is not None and limit <= 0:
             return ()
         sql = f"SELECT {_SELECT_COLS} FROM oauth_states ORDER BY created_at DESC"  # noqa: S608
@@ -250,6 +278,13 @@ class SQLiteOAuthStateRepository:
         NULL``. A redelivered callback observes the existing
         ``consumed_at`` and returns ``False`` so the handler can route
         it through the replay branch.
+
+        Returns:
+            ``True`` when this call stamped the row, ``False`` when the row had already
+            been consumed.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         async with self._write_context():
             try:
@@ -290,6 +325,12 @@ class SQLiteOAuthStateRepository:
         The retention budget is resolved from the
         ``integrations.oauth_idempotency_retention_seconds`` setting
         by the lifecycle cleanup loop and passed in here.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         now = datetime.now(UTC)
         cutoff_iso = format_iso_utc(now)

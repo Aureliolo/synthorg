@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import AwareDatetime, ValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (
     AutonomyLevel,
     OrgFactCategory,
@@ -43,7 +44,11 @@ if TYPE_CHECKING:
 
 
 def _import_dict_row() -> Any:
-    """Lazily resolve ``psycopg.rows.dict_row``."""
+    """Lazily resolve ``psycopg.rows.dict_row``.
+
+    Returns:
+        Result of type ``Any``.
+    """
     from psycopg.rows import dict_row  # noqa: PLC0415
 
     return dict_row
@@ -53,12 +58,23 @@ logger = get_logger(__name__)
 
 
 def _tags_to_json(tags: tuple[NotBlankStr, ...]) -> str:
-    """Serialize tags tuple to sorted JSON array."""
+    """Serialize tags tuple to sorted JSON array.
+
+    Returns:
+        Result of type ``str``.
+    """
     return json.dumps(sorted(tags))
 
 
 def _tags_from_json(raw: str | list[Any]) -> tuple[NotBlankStr, ...]:
-    """Deserialize tags (JSON string or JSONB-decoded list) to tuple."""
+    """Deserialize tags (JSON string or JSONB-decoded list) to tuple.
+
+    Returns:
+        The matching collection.
+
+    Raises:
+        OrgMemoryQueryError: If the underlying call raises.
+    """
     parsed = raw if isinstance(raw, list) else json.loads(raw)
     if not isinstance(parsed, list):
         msg = f"Tags must be a JSON array, got {type(parsed).__name__}"
@@ -72,7 +88,14 @@ def _tags_from_json(raw: str | list[Any]) -> tuple[NotBlankStr, ...]:
 
 
 def _snapshot_row_to_org_fact(row: dict[str, Any]) -> OrgFact:
-    """Reconstruct an ``OrgFact`` from a snapshot row."""
+    """Reconstruct an ``OrgFact`` from a snapshot row.
+
+    Returns:
+        Result of type ``OrgFact``.
+
+    Raises:
+        OrgMemoryQueryError: If the underlying call raises.
+    """
     try:
         author = OrgFactAuthor(
             agent_id=row["author_agent_id"],
@@ -113,7 +136,14 @@ def _snapshot_row_to_org_fact(row: dict[str, Any]) -> OrgFact:
 
 
 def _row_to_operation_log_entry(row: dict[str, Any]) -> OperationLogEntry:
-    """Reconstruct an ``OperationLogEntry`` from a database row."""
+    """Reconstruct an ``OperationLogEntry`` from a database row.
+
+    Returns:
+        Result of type ``OperationLogEntry``.
+
+    Raises:
+        OrgMemoryQueryError: If the underlying call raises.
+    """
     try:
         return OperationLogEntry(
             operation_id=row["operation_id"],
@@ -154,7 +184,14 @@ def _row_to_operation_log_entry(row: dict[str, Any]) -> OperationLogEntry:
 
 
 def _row_to_snapshot(row: dict[str, Any]) -> OperationLogSnapshot:
-    """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row."""
+    """Reconstruct an ``OperationLogSnapshot`` from a time-travel query row.
+
+    Returns:
+        Result of type ``OperationLogSnapshot``.
+
+    Raises:
+        OrgMemoryQueryError: If the underlying call raises.
+    """
     try:
         op_type: str = row["operation_type"]
         retracted_at = normalize_utc(row["timestamp"]) if op_type == "RETRACT" else None
@@ -216,7 +253,11 @@ class PostgresOrgFactRepository:
         author_is_human: bool,
         author_autonomy_level: AutonomyLevel | None,
     ) -> tuple[int, datetime]:
-        """Append an operation within the caller's transaction."""
+        """Append an operation within the caller's transaction.
+
+        Returns:
+            ``(version, persisted_at)`` of the newly appended log entry.
+        """
         operation_id = str(uuid.uuid4())
         now = datetime.now(UTC)
         async with conn.cursor() as cur:
@@ -253,7 +294,11 @@ class PostgresOrgFactRepository:
         return next_version, now
 
     async def save(self, fact: OrgFact) -> None:
-        """Publish a fact: append PUBLISH to log, upsert snapshot."""
+        """Publish a fact: append PUBLISH to log, upsert snapshot.
+
+        Raises:
+            OrgMemoryWriteError: If the underlying call raises.
+        """
         try:
             async with self._pool.connection() as conn, conn.transaction():
                 version, _ = await self._append_to_operation_log(
@@ -310,6 +355,7 @@ class PostgresOrgFactRepository:
                         ),
                     )
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ORG_MEMORY_WRITE_FAILED,
                 fact_id=fact.id,
@@ -331,7 +377,14 @@ class PostgresOrgFactRepository:
         *,
         author: OrgFactAuthor,
     ) -> bool:
-        """Retract a fact: append RETRACT to log, mark snapshot."""
+        """Retract a fact: append RETRACT to log, mark snapshot.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            OrgMemoryWriteError: If the underlying call raises.
+        """
         dict_row = self._dict_row
         try:
             async with self._pool.connection() as conn, conn.transaction():
@@ -368,6 +421,7 @@ class PostgresOrgFactRepository:
                         (now, version, fact_id),
                     )
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ORG_MEMORY_WRITE_FAILED,
                 fact_id=fact_id,
@@ -385,7 +439,14 @@ class PostgresOrgFactRepository:
             return True
 
     async def get(self, fact_id: NotBlankStr) -> OrgFact | None:
-        """Get an active fact by its ID."""
+        """Get an active fact by its ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            OrgMemoryQueryError: If the underlying call raises.
+        """
         dict_row = self._dict_row
         try:
             async with (
@@ -399,6 +460,7 @@ class PostgresOrgFactRepository:
                 )
                 row = await cur.fetchone()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 fact_id=fact_id,
@@ -419,7 +481,14 @@ class PostgresOrgFactRepository:
         limit: int = _DEFAULT_LIST_LIMIT_FACTS,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
-        """Query active facts by category and/or text content."""
+        """Query active facts by category and/or text content.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            OrgMemoryQueryError: If the underlying call raises.
+        """
         dict_row = self._dict_row
         limit = max(1, min(limit, 100))
         offset = max(0, int(offset))
@@ -459,6 +528,7 @@ class PostgresOrgFactRepository:
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 error_type=type(exc).__name__,
@@ -475,7 +545,14 @@ class PostgresOrgFactRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[OrgFact, ...]:
-        """List all active facts in a category, optionally paginated."""
+        """List all active facts in a category, optionally paginated.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            OrgMemoryQueryError: If the underlying call raises.
+        """
         dict_row = self._dict_row
         sql = (
             "SELECT * FROM org_facts_snapshot "
@@ -500,6 +577,7 @@ class PostgresOrgFactRepository:
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 category=category.value,
@@ -527,6 +605,13 @@ class PostgresOrgFactRepository:
         Rows page in ``fact_id`` order so a cursor walk is repeatable
         across the same snapshot; callers needing the whole snapshot
         drain via :func:`synthorg.persistence._shared.collect_all`.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            ValueError: If an argument fails validation.
+            OrgMemoryQueryError: If the underlying call raises.
         """
         limit = validate_pagination_args(limit, offset, event=ORG_MEMORY_QUERY_FAILED)
         dict_row = self._dict_row
@@ -588,6 +673,7 @@ LIMIT %(limit)s OFFSET %(offset)s
                 )
                 rows = await cur.fetchall()
         except Exception as exc:
+            reraise_critical(exc)
             ts_iso = timestamp.isoformat()
             error_desc = safe_error_description(exc)
             logger.warning(
@@ -618,6 +704,12 @@ LIMIT %(limit)s OFFSET %(offset)s
         Version is unique per fact so the ordering is already stable;
         callers needing the full trail drain via
         :func:`synthorg.persistence._shared.collect_all`.
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            OrgMemoryQueryError: If the underlying call raises.
         """
         limit = validate_pagination_args(
             limit, offset, event=ORG_MEMORY_QUERY_FAILED, fact_id=fact_id
@@ -636,6 +728,7 @@ LIMIT %(limit)s OFFSET %(offset)s
                 )
                 rows = await cur.fetchall()
         except Exception as exc:
+            reraise_critical(exc)
             error_desc = safe_error_description(exc)
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,

@@ -161,7 +161,11 @@ class SQLiteProjectCostAggregateRepository:
         _emit_currency_pin_construction_warning_once()
 
     async def _project_lock(self, project_id: str) -> asyncio.Lock:
-        """Return the per-project ``asyncio.Lock`` for ``project_id``."""
+        """Return the per-project ``asyncio.Lock`` for ``project_id``.
+
+        Returns:
+            Result of type ``asyncio.Lock``.
+        """
         existing = self._lock_registry.get(project_id)
         if existing is not None:
             return existing

@@ -66,7 +66,11 @@ logger = get_logger(__name__)
 
 
 def _enum_value(value: Any) -> Any:
-    """Return ``value.value`` if present, else the value itself."""
+    """Return ``value.value`` if present, else the value itself.
+
+    Returns:
+        Result of type ``Any``.
+    """
     return value.value if hasattr(value, "value") else value
 
 
@@ -76,6 +80,9 @@ def _task_params(task: Task) -> dict[str, Any]:
     JSON-shaped fields are wrapped in ``Jsonb`` so psycopg adapts
     them to the JSONB wire format; datetime and scalar fields pass
     through as native Python objects.
+
+    Returns:
+        Result of type ``dict[str, Any]``.
     """
     dumped = task.model_dump(mode="json")
     return {
@@ -118,7 +125,11 @@ class PostgresTaskRepository:
         self._pool = pool
 
     async def save(self, task: Task) -> None:
-        """Persist a task (upsert semantics)."""
+        """Persist a task (upsert semantics).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         params = _task_params(task)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -189,6 +200,12 @@ class PostgresTaskRepository:
         TIMESTAMPTZ as timezone-aware datetime, so there is no
         ``json.loads`` step.  The only conversion left is the
         Pydantic round-trip via ``model_validate``.
+
+        Returns:
+            Result of type ``Task``.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             data = dict(row)
@@ -205,7 +222,14 @@ class PostgresTaskRepository:
             raise QueryError(msg) from exc
 
     async def get(self, task_id: str) -> Task | None:
-        """Retrieve a task by its ID."""
+        """Retrieve a task by its ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -244,6 +268,9 @@ class PostgresTaskRepository:
 
         Raises:
             QueryError: If the query fails or pagination is out of range.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_TASK_LIST_FAILED
@@ -286,6 +313,9 @@ class PostgresTaskRepository:
 
         Raises:
             QueryError: If the query fails or pagination is out of range.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_TASK_LIST_FAILED
@@ -328,7 +358,14 @@ class PostgresTaskRepository:
         return tasks
 
     async def count(self, filter_spec: TaskFilterSpec) -> int:
-        """Count tasks matching the given filter spec."""
+        """Count tasks matching the given filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         clauses: list[str] = []
         params: list[object] = []
         if filter_spec.status is not None:
@@ -365,7 +402,14 @@ class PostgresTaskRepository:
         return total
 
     async def delete(self, task_id: str) -> bool:
-        """Delete a task by ID."""
+        """Delete a task by ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute("DELETE FROM tasks WHERE id = %s", (task_id,))
@@ -394,7 +438,11 @@ class PostgresCostRecordRepository:
         self._pool = pool
 
     async def append(self, event: CostRecord) -> None:
-        """Persist a cost record (append-only per AppendOnlyRepository)."""
+        """Persist a cost record (append-only per AppendOnlyRepository).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -445,6 +493,9 @@ class PostgresCostRecordRepository:
 
         Raises:
             QueryError: If the query fails or pagination is out of range.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_COST_RECORD_QUERY_FAILED
@@ -511,6 +562,13 @@ class PostgresCostRecordRepository:
         (``COUNT(DISTINCT)`` + ``STRING_AGG(DISTINCT)`` + ``SUM``) so the
         two observations share one snapshot and a concurrent commit
         cannot change the result between them.
+
+        Returns:
+            Result of type ``float``.
+
+        Raises:
+            QueryError: If the database query fails.
+            MixedCurrencyAggregationError: If aggregated rows mix currencies.
         """
         conditions: list[str] = []
         params: list[str] = []
@@ -580,7 +638,14 @@ class PostgresCostRecordRepository:
         return total
 
     async def purge_before(self, threshold: datetime) -> int:
-        """Delete cost records with timestamp before threshold (retention)."""
+        """Delete cost records with timestamp before threshold (retention).
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -615,7 +680,12 @@ class PostgresMessageRepository:
         self._pool = pool
 
     async def append(self, message: Message) -> None:
-        """Persist a message (append-only per AppendOnlyRepository)."""
+        """Persist a message (append-only per AppendOnlyRepository).
+
+        Raises:
+            DuplicateRecordError: If a row with the same key already exists.
+            QueryError: If the database query fails.
+        """
         data = message.model_dump(mode="json")
         msg_id = str(message.id)
 
@@ -661,7 +731,14 @@ class PostgresMessageRepository:
             raise QueryError(msg) from exc
 
     def _row_to_message(self, row: dict[str, Any]) -> Message:
-        """Reconstruct a Message from a Postgres dict_row."""
+        """Reconstruct a Message from a Postgres dict_row.
+
+        Returns:
+            Result of type ``Message``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             data = dict(row)
             # Map DB column "sender" to Message's "from" alias.
@@ -690,7 +767,14 @@ class PostgresMessageRepository:
         *,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[Message, ...]:
-        """Retrieve message history for a channel, newest first."""
+        """Retrieve message history for a channel, newest first.
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if limit is not None and (
             not isinstance(limit, int) or isinstance(limit, bool) or limit < 1
         ):
@@ -748,6 +832,12 @@ class PostgresMessageRepository:
         key); the extra ``channel`` predicate is a deliberate scoping
         guard so a caller holding only a message id cannot read a
         message outside the channel it asked for.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         sql = (
             'SELECT id, timestamp, sender, "to", type, priority, '
@@ -793,6 +883,9 @@ class PostgresMessageRepository:
 
         Raises:
             QueryError: If the query fails or pagination is out of range.
+
+        Returns:
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_MESSAGE_HISTORY_FAILED
@@ -827,7 +920,14 @@ class PostgresMessageRepository:
         return tuple(self._row_to_message(row) for row in rows)
 
     async def purge_before(self, threshold: datetime) -> int:
-        """Delete messages with ``timestamp < threshold`` (retention)."""
+        """Delete messages with ``timestamp < threshold`` (retention).
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -854,6 +954,12 @@ class PostgresMessageRepository:
         :class:`MessageService.delete_message`; the repository never
         logs mutations itself (persistence-boundary rule, see
         ``docs/reference/persistence-boundary.md``).
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

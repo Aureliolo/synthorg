@@ -69,7 +69,14 @@ class PostgresProviderAuditRepo:
         self._pool = pool
 
     async def record(self, event: ProviderAuditEvent) -> ProviderAuditEvent:
-        """Insert one audit event and return the saved row with id populated."""
+        """Insert one audit event and return the saved row with id populated.
+
+        Returns:
+            Result of type ``ProviderAuditEvent``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         # ``event.payload`` is recursively frozen by the DTO
         # (``MappingProxyType`` / ``tuple`` / ``frozenset``) so the
         # audit row stays append-only at the Python level.
@@ -114,7 +121,15 @@ class PostgresProviderAuditRepo:
         after_id: int | None = None,
         limit: int = _DEFAULT_LIST_LIMIT_50,
     ) -> tuple[tuple[ProviderAuditEvent, ...], bool]:
-        """List events for one provider, newest first, with ``has_more``."""
+        """List events for one provider, newest first, with ``has_more``.
+
+        Returns:
+            Tuple of ``(events, has_more)`` where ``events`` is the matching
+            entities and ``has_more`` indicates whether additional pages exist.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
             raise QueryError(msg)
@@ -192,6 +207,12 @@ class PostgresProviderAuditRepo:
         modes: when ``after_id`` is set the cursor predicate already
         positions the window, so ``offset`` is forced to 0 to avoid
         skipping rows relative to the cursor.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         sql = _LIST_BASE_SQL
         params: list[Any] = [filter_spec.provider_name]
@@ -247,7 +268,14 @@ class PostgresProviderAuditRepo:
             raise QueryError(msg) from exc
 
     async def purge_before(self, threshold: datetime) -> int:
-        """Delete events with ``occurred_at < threshold`` (generic)."""
+        """Delete events with ``occurred_at < threshold`` (generic).
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -267,7 +295,14 @@ class PostgresProviderAuditRepo:
         return rowcount
 
     async def purge_before_id(self, *, before_id: int) -> int:
-        """Delete events with ``id < before_id``."""
+        """Delete events with ``id < before_id``.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -288,7 +323,14 @@ class PostgresProviderAuditRepo:
         return rowcount
 
     def _row_to_event(self, row: dict[str, Any]) -> ProviderAuditEvent:
-        """Deserialise a Postgres row dict into a ``ProviderAuditEvent``."""
+        """Deserialise a Postgres row dict into a ``ProviderAuditEvent``.
+
+        Returns:
+            Result of type ``ProviderAuditEvent``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         payload = row["payload"]
         # ``Jsonb`` round-trips natively, but if a row was inserted via
         # raw psycopg adapters we fall back to JSON-text decoding so

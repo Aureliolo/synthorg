@@ -36,14 +36,22 @@ if TYPE_CHECKING:
 
 
 def _import_dict_row() -> Any:
-    """Lazily resolve ``psycopg.rows.dict_row``."""
+    """Lazily resolve ``psycopg.rows.dict_row``.
+
+    Returns:
+        Result of type ``Any``.
+    """
     from psycopg.rows import dict_row  # noqa: PLC0415
 
     return dict_row
 
 
 def _import_integrity_error() -> type[BaseException]:
-    """Lazily resolve ``psycopg.errors.UniqueViolation``."""
+    """Lazily resolve ``psycopg.errors.UniqueViolation``.
+
+    Returns:
+        Result of type ``type[BaseException]``.
+    """
     from psycopg.errors import UniqueViolation  # noqa: PLC0415
 
     return UniqueViolation
@@ -62,7 +70,11 @@ class PostgresOntologyEntityRepository:
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier."""
+        """Human-readable backend identifier.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+        """
         return NotBlankStr("postgres")
 
     def _row_to_entity(self, row: dict[str, Any]) -> EntityDefinition:
@@ -73,6 +85,12 @@ class PostgresOntologyEntityRepository:
         values through ``json.dumps`` then fetch via raw text adapters
         get a ``str`` back instead.  Handle both so the repo stays
         portable across psycopg loader configurations.
+
+        Returns:
+            Result of type ``EntityDefinition``.
+
+        Raises:
+            OntologyError: If the underlying call raises.
         """
         entity_name = row["name"]
         try:
@@ -116,7 +134,11 @@ class PostgresOntologyEntityRepository:
             raise OntologyError(msg) from exc
 
     def _entity_to_params(self, entity: EntityDefinition) -> dict[str, str]:
-        """Serialize an EntityDefinition into SQL parameters."""
+        """Serialize an EntityDefinition into SQL parameters.
+
+        Returns:
+            Result of type ``dict[str, str]``.
+        """
         return {
             "name": entity.name,
             "tier": entity.tier.value,
@@ -136,7 +158,11 @@ class PostgresOntologyEntityRepository:
         }
 
     async def register(self, entity: EntityDefinition) -> None:
-        """Register a new entity definition."""
+        """Register a new entity definition.
+
+        Raises:
+            OntologyDuplicateError: If the underlying call raises.
+        """
         params = self._entity_to_params(entity)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -205,7 +231,11 @@ class PostgresOntologyEntityRepository:
             )
 
     async def get(self, name: str) -> EntityDefinition | None:
-        """Retrieve an entity definition by name, or None if not found."""
+        """Retrieve an entity definition by name, or None if not found.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+        """
         dict_row = self._dict_row
         async with (
             self._pool.connection() as conn,
@@ -221,7 +251,11 @@ class PostgresOntologyEntityRepository:
         return self._row_to_entity(row)
 
     async def update(self, entity: EntityDefinition) -> None:
-        """Update an existing entity definition."""
+        """Update an existing entity definition.
+
+        Raises:
+            OntologyNotFoundError: If the underlying call raises.
+        """
         params = self._entity_to_params(entity)
         async with self._pool.connection() as conn, conn.cursor() as cur:
             await cur.execute(
@@ -248,6 +282,9 @@ class PostgresOntologyEntityRepository:
         """Delete an entity definition by name.
 
         Returns ``True`` iff a row existed (generic IdKeyedRepository contract).
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
         """
         async with self._pool.connection() as conn, conn.cursor() as cur:
             await cur.execute(
@@ -262,7 +299,11 @@ class PostgresOntologyEntityRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
-        """List all entity definitions in name order."""
+        """List all entity definitions in name order.
+
+        Returns:
+            The matching entities.
+        """
         limit = validate_pagination_args(
             limit, offset, event=ONTOLOGY_ENTITY_DESERIALIZATION_FAILED
         )
@@ -287,7 +328,11 @@ class PostgresOntologyEntityRepository:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
-        """List entities, optionally filtered by tier and paginated."""
+        """List entities, optionally filtered by tier and paginated.
+
+        Returns:
+            The matching entities.
+        """
         effective_limit = 1000 if limit is None else int(limit)
         effective_offset = max(0, int(offset))
         dict_row = self._dict_row
@@ -324,7 +369,11 @@ class PostgresOntologyEntityRepository:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[EntityDefinition, ...]:
-        """Search entities by name or definition text."""
+        """Search entities by name or definition text.
+
+        Returns:
+            The matching collection.
+        """
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         effective_limit = 1000 if limit is None else int(limit)
@@ -358,7 +407,11 @@ class PostgresOntologyEntityRepository:
         self,
         rows: Iterable[dict[str, Any]],
     ) -> tuple[EntityDefinition, ...]:
-        """Deserialize rows, skipping corrupted entries."""
+        """Deserialize rows, skipping corrupted entries.
+
+        Returns:
+            The matching collection.
+        """
         results: list[EntityDefinition] = []
         for row in rows:
             try:
@@ -378,6 +431,10 @@ class PostgresOntologyEntityRepository:
         Entities page in ``entity_id`` order so a cursor walk is
         stable; callers needing the whole manifest drain via
         :func:`synthorg.persistence._shared.collect_all_mapping`.
+
+        Returns:
+            Mapping of ``entity_id`` to its current ``schema_version``; empty when no
+            entities are registered.
         """
         limit = validate_pagination_args(
             limit, offset, event=ONTOLOGY_ENTITY_DESERIALIZATION_FAILED

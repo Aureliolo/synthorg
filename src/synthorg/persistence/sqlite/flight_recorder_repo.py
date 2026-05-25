@@ -66,7 +66,12 @@ class SQLiteFlightRecorderFrameRepository:
         self._write_context = write_context
 
     async def append(self, frame: FlightRecorderFrame) -> None:
-        """Persist one frame (append-only; a duplicate id is a violation)."""
+        """Persist one frame (append-only; a duplicate id is a violation).
+
+        Raises:
+            QueryError: If the database query fails.
+            DuplicateRecordError: If a row with the same key already exists.
+        """
         async with self._write_context():
             try:
                 await self._db.execute(_INSERT_SQL, self._to_row(frame))
@@ -100,6 +105,10 @@ class SQLiteFlightRecorderFrameRepository:
         back and surfaces as ``DuplicateRecordError``; any other backend
         error rolls back and surfaces as ``QueryError``. Empty batches
         are a no-op.
+
+        Raises:
+            QueryError: If the database query fails.
+            DuplicateRecordError: If a row with the same key already exists.
         """
         if not frames:
             return
@@ -139,7 +148,14 @@ class SQLiteFlightRecorderFrameRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[FlightRecorderFrame, ...]:
-        """Return frames matching the filter, newest-first by turn index."""
+        """Return frames matching the filter, newest-first by turn index.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_FLIGHT_RECORDER_QUERY_FAILED
         )
@@ -166,7 +182,15 @@ class SQLiteFlightRecorderFrameRepository:
         self,
         filter_spec: FlightRecorderFrameFilterSpec,
     ) -> FlightRecorderFrameAggregate:
-        """Return aggregate stats over the matching frame set in one round-trip."""
+        """Return aggregate stats over the matching frame set in one round-trip.
+
+        Returns:
+            Aggregate stats over the matching frame set. Counters default to zero and
+            ``last_timestamp`` to ``None`` when the filter selects no frames.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         where, base_params = self._build_where(filter_spec)
         sql = (
             "SELECT "
@@ -215,6 +239,12 @@ class SQLiteFlightRecorderFrameRepository:
 
         ``threshold`` is an ``AwareDatetime`` so naive values cannot
         slip through silently.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         async with self._write_context():
             try:
@@ -239,7 +269,13 @@ class SQLiteFlightRecorderFrameRepository:
     def _build_where(
         self, filter_spec: FlightRecorderFrameFilterSpec
     ) -> tuple[str, list[object]]:
-        """Build the WHERE clause + positional params for ``filter_spec``."""
+        """Build the WHERE clause + positional params for ``filter_spec``.
+
+        Returns:
+            ``(where_clause, params)`` where ``where_clause`` is the SQL fragment
+            (without the leading ``WHERE``) and ``params`` is the matching positional
+            parameter list.
+        """
         conditions: list[str] = []
         params: list[object] = []
         if filter_spec.execution_id is not None:
@@ -261,7 +297,11 @@ class SQLiteFlightRecorderFrameRepository:
         return where, params
 
     def _to_row(self, frame: FlightRecorderFrame) -> dict[str, object]:
-        """Flatten a frame into a row dict (tool_calls JSON-encoded)."""
+        """Flatten a frame into a row dict (tool_calls JSON-encoded).
+
+        Returns:
+            Result of type ``dict[str, object]``.
+        """
         data = frame.model_dump(mode="json")
         data["tool_calls"] = json.dumps(list(frame.tool_calls))
         data["timestamp"] = format_iso_utc(normalize_utc(frame.timestamp))
@@ -272,6 +312,9 @@ class SQLiteFlightRecorderFrameRepository:
 
         Raises:
             QueryError: If the row cannot be deserialized.
+
+        Returns:
+            Result of type ``FlightRecorderFrame``.
         """
         try:
             raw_tool_calls = row.get("tool_calls")

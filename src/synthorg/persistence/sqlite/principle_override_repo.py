@@ -39,7 +39,11 @@ class SQLitePrincipleOverrideRepository:
         self._write_context = write_context
 
     async def save(self, entity: PrincipleOverride) -> None:
-        """Insert or update the override at ``scope``."""
+        """Insert or update the override at ``scope``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         when = format_iso_utc(entity.created_at)
         updated_when = format_iso_utc(entity.updated_at)
         async with self._write_context():
@@ -76,7 +80,14 @@ class SQLitePrincipleOverrideRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, scope: NotBlankStr) -> PrincipleOverride | None:
-        """Return the override at ``scope`` if present."""
+        """Return the override at ``scope`` if present.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 """
@@ -106,7 +117,14 @@ class SQLitePrincipleOverrideRepository:
         )
 
     async def delete(self, scope: NotBlankStr) -> bool:
-        """Remove the override; return ``True`` when a row was deleted."""
+        """Remove the override; return ``True`` when a row was deleted.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -134,7 +152,14 @@ class SQLitePrincipleOverrideRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[PrincipleOverride, ...]:
-        """List all overrides ordered by ``scope`` ascending."""
+        """List all overrides ordered by ``scope`` ascending.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_PRINCIPLE_OVERRIDE_LIST_FAILED
         )

@@ -44,7 +44,11 @@ _LOCATOR_ADAPTER: TypeAdapter[ProvenanceLocator] = TypeAdapter(ProvenanceLocator
 
 
 def _row_to_provenance(row: dict[str, Any]) -> ChunkProvenanceRow:
-    """Reconstruct a :class:`ChunkProvenanceRow` from a ``dict_row``."""
+    """Reconstruct a :class:`ChunkProvenanceRow` from a ``dict_row``.
+
+    Returns:
+        Result of type ``ChunkProvenanceRow``.
+    """
     raw_locator = row["locator_json"]
     if isinstance(raw_locator, str):
         raw_locator = json.loads(raw_locator)
@@ -68,6 +72,11 @@ class PostgresChunkProvenanceRepository:
 
     @staticmethod
     def _row_params(entity: ChunkProvenanceRow) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
+        """
         return (
             entity.chunk_id,
             entity.source_id,
@@ -82,6 +91,7 @@ class PostgresChunkProvenanceRepository:
     async def _safe_rollback(
         self, conn: psycopg.AsyncConnection[Any], *, event: str
     ) -> None:
+        """Safe rollback."""
         try:
             await conn.rollback()
         except psycopg.Error as rollback_exc:
@@ -93,7 +103,11 @@ class PostgresChunkProvenanceRepository:
             )
 
     async def save(self, entity: ChunkProvenanceRow) -> None:
-        """Persist a provenance row via upsert (PK ``chunk_id``)."""
+        """Persist a provenance row via upsert (PK ``chunk_id``).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._pool.connection() as conn, conn.cursor() as cur:
             try:
                 await cur.execute(
@@ -129,7 +143,14 @@ class PostgresChunkProvenanceRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: ChunkProvenanceKey) -> ChunkProvenanceRow | None:
-        """Retrieve a provenance row by ``chunk_id``."""
+        """Retrieve a provenance row by ``chunk_id``.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -162,7 +183,14 @@ class PostgresChunkProvenanceRepository:
         self,
         chunk_ids: tuple[ChunkProvenanceKey, ...],
     ) -> tuple[ChunkProvenanceRow, ...]:
-        """Fetch many provenance rows by id in one round trip (ADR-0001 D7)."""
+        """Fetch many provenance rows by id in one round trip (ADR-0001 D7).
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if not chunk_ids:
             return ()
         try:
@@ -192,7 +220,14 @@ class PostgresChunkProvenanceRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ChunkProvenanceRow, ...]:
-        """List provenance rows ordered by ``(source_id, chunk_index)``."""
+        """List provenance rows ordered by ``(source_id, chunk_index)``.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_KNOWLEDGE_PROVENANCE_LIST_FAILED
         )
@@ -220,7 +255,14 @@ class PostgresChunkProvenanceRepository:
         return self._rows_to_tuple(tuple(rows))
 
     async def delete(self, entity_id: ChunkProvenanceKey) -> bool:
-        """Delete a provenance row by ``chunk_id``."""
+        """Delete a provenance row by ``chunk_id``.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._pool.connection() as conn, conn.cursor() as cur:
             try:
                 await cur.execute(
@@ -244,7 +286,14 @@ class PostgresChunkProvenanceRepository:
             return deleted
 
     async def delete_by_source(self, source_id: NotBlankStr) -> int:
-        """Delete every provenance row for a source (ADR-0001 D7)."""
+        """Delete every provenance row for a source (ADR-0001 D7).
+
+        Returns:
+            Number of rows deleted.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._pool.connection() as conn, conn.cursor() as cur:
             try:
                 await cur.execute(
@@ -274,7 +323,14 @@ class PostgresChunkProvenanceRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ChunkProvenanceRow, ...]:
-        """Return provenance rows for a source, ``chunk_index`` ascending."""
+        """Return provenance rows for a source, ``chunk_index`` ascending.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_KNOWLEDGE_PROVENANCE_QUERY_FAILED
         )
@@ -310,7 +366,14 @@ class PostgresChunkProvenanceRepository:
         return rows_out
 
     async def count(self, filter_spec: ChunkProvenanceFilter) -> int:
-        """Count provenance rows for a source."""
+        """Count provenance rows for a source.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -342,7 +405,14 @@ class PostgresChunkProvenanceRepository:
     def _rows_to_tuple(
         self, rows: tuple[dict[str, Any], ...]
     ) -> tuple[ChunkProvenanceRow, ...]:
-        """Deserialise a row batch with one shared error path."""
+        """Deserialise a row batch with one shared error path.
+
+        Returns:
+            The matching collection.
+
+        Raises:
+            QueryError: If row deserialization or validation fails.
+        """
         try:
             provenance = tuple(_row_to_provenance(row) for row in rows)
         except (ValueError, ValidationError, KeyError, json.JSONDecodeError) as exc:

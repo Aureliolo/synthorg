@@ -33,6 +33,9 @@ def jsonify(value: object) -> Any:
 
     The return type is ``Any`` because psycopg's adapter accepts
     arbitrary JSON-compatible Python structures.
+
+    Returns:
+        Result of type ``Any``.
     """
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json")
@@ -47,6 +50,9 @@ def jsonify_list(items: tuple[object, ...] | list[object]) -> list[Any]:
 
     Returns an empty list for an empty input (the common "no
     reviewers yet" / "no dependencies yet" case).
+
+    Returns:
+        The matching collection.
     """
     return [jsonify(item) for item in items]
 

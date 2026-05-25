@@ -38,7 +38,11 @@ logger = get_logger(__name__)
 
 
 def _row_to_session(row: Any) -> Session:
-    """Deserialize a psycopg dict row into a :class:`Session`."""
+    """Deserialize a psycopg dict row into a :class:`Session`.
+
+    Returns:
+        Result of type ``Session``.
+    """
     return Session(
         session_id=NotBlankStr(row["session_id"]),
         user_id=NotBlankStr(row["user_id"]),
@@ -78,6 +82,9 @@ class PostgresSessionRepository:
         deserialisation errors (``ValidationError`` is a ``ValueError``
         subclass) so a corrupt row fails closed instead of escaping raw
         when row materialisation runs inside the managed block.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             yield
@@ -153,7 +160,11 @@ class PostgresSessionRepository:
             self._revoked.discard(session.session_id)
 
     async def get(self, entity_id: str) -> Session | None:
-        """Look up a session by ID."""
+        """Look up a session by ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+        """
         async with (
             self._translate_errors("Failed to fetch session", session_id=entity_id),
             self._pool.connection() as conn,
@@ -172,7 +183,11 @@ class PostgresSessionRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List all sessions with pagination."""
+        """List all sessions with pagination.
+
+        Returns:
+            The matching entities.
+        """
         limit = validate_pagination_args(
             limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
         )
@@ -193,7 +208,11 @@ class PostgresSessionRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List sessions matching the filter spec."""
+        """List sessions matching the filter spec.
+
+        Returns:
+            The matching entities.
+        """
         limit = validate_pagination_args(
             limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
         )
@@ -217,7 +236,11 @@ class PostgresSessionRepository:
             return tuple(_row_to_session(r) for r in rows)
 
     async def count(self, filter_spec: SessionFilterSpec) -> int:
-        """Count sessions matching the filter spec."""
+        """Count sessions matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+        """
         sql = "SELECT COUNT(*) AS cnt FROM sessions WHERE TRUE"
         params: list[object] = []
         if filter_spec.user_id is not None:
@@ -242,7 +265,11 @@ class PostgresSessionRepository:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List active (non-expired, non-revoked) sessions for a user."""
+        """List active (non-expired, non-revoked) sessions for a user.
+
+        Returns:
+            The matching entities.
+        """
         limit = validate_pagination_args(
             limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
         )
@@ -270,7 +297,11 @@ class PostgresSessionRepository:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List all active (non-expired, non-revoked) sessions."""
+        """List all active (non-expired, non-revoked) sessions.
+
+        Returns:
+            The matching entities.
+        """
         limit = validate_pagination_args(
             limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
         )
@@ -292,7 +323,11 @@ class PostgresSessionRepository:
             return tuple(_row_to_session(r) for r in rows)
 
     async def delete(self, entity_id: str) -> bool:
-        """Delete a session by ID."""
+        """Delete a session by ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+        """
         async with (
             self._translate_errors("Failed to delete session", session_id=entity_id),
             self._pool.connection() as conn,
@@ -311,7 +346,11 @@ class PostgresSessionRepository:
         return False
 
     async def revoke(self, session_id: str) -> bool:
-        """Revoke a session by ID."""
+        """Revoke a session by ID.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+        """
         async with (
             self._translate_errors("Failed to revoke session", session_id=session_id),
             self._pool.connection() as conn,
@@ -333,7 +372,11 @@ class PostgresSessionRepository:
         return False
 
     async def revoke_all_for_user(self, user_id: str) -> int:
-        """Revoke all active sessions for a user."""
+        """Revoke all active sessions for a user.
+
+        Returns:
+            Numeric result of the operation.
+        """
         now = datetime.now(UTC)
         async with (
             self._translate_errors(
@@ -370,7 +413,11 @@ class PostgresSessionRepository:
         user_id: str,
         max_sessions: int,
     ) -> int:
-        """Revoke oldest sessions if user exceeds the concurrent limit."""
+        """Revoke oldest sessions if user exceeds the concurrent limit.
+
+        Returns:
+            Numeric result of the operation.
+        """
         if max_sessions <= 0:
             return 0
         active = await self.list_by_user(user_id)
@@ -389,11 +436,19 @@ class PostgresSessionRepository:
         return revoked
 
     def is_revoked(self, session_id: str) -> bool:
-        """Check whether a session is revoked (sync, O(1))."""
+        """Check whether a session is revoked (sync, O(1)).
+
+        Returns:
+            ``True`` when the session has been revoked, ``False`` otherwise.
+        """
         return session_id in self._revoked
 
     async def cleanup_expired(self) -> int:
-        """Remove expired sessions from the database."""
+        """Remove expired sessions from the database.
+
+        Returns:
+            Numeric result of the operation.
+        """
         now = datetime.now(UTC)
         async with (
             self._translate_errors("Failed to clean up expired sessions"),

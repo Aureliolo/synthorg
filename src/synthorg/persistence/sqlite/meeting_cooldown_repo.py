@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import aiosqlite
 from pydantic import ValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
@@ -42,11 +43,17 @@ class SQLiteMeetingCooldownRepository:
         self._write_context = write_context
 
     async def _rollback_quietly(self, event: str) -> None:
+        """Roll back the current transaction, suppressing non-critical errors.
+
+        Calls :func:`reraise_critical` first so ``MemoryError`` and
+        ``RecursionError`` still propagate; any other rollback failure
+        is logged at WARNING and swallowed so the caller's outer
+        exception remains the operative one.
+        """
         try:
             await self._db.rollback()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 event,
                 error_type=type(exc).__name__,
@@ -54,7 +61,11 @@ class SQLiteMeetingCooldownRepository:
             )
 
     async def save(self, record: MeetingCooldownRecord) -> None:
-        """Insert or replace the cooldown row for one meeting type."""
+        """Insert or replace the cooldown row for one meeting type.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         params = (
             record.meeting_type_name,
             format_iso_utc(record.last_triggered_at),
@@ -79,7 +90,14 @@ class SQLiteMeetingCooldownRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, meeting_type_name: NotBlankStr) -> MeetingCooldownRecord | None:
-        """Read the cooldown row for one meeting type, or ``None`` if absent."""
+        """Read the cooldown row for one meeting type, or ``None`` if absent.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT meeting_type_name, last_triggered_at "
@@ -101,7 +119,14 @@ class SQLiteMeetingCooldownRepository:
         return self._row_to_record(dict(row))
 
     async def load_all(self) -> tuple[MeetingCooldownRecord, ...]:
-        """Load every cooldown row (bespoke per ADR-0001 D7)."""
+        """Load every cooldown row (bespoke per ADR-0001 D7).
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT meeting_type_name, last_triggered_at FROM meeting_cooldown"
@@ -125,7 +150,14 @@ class SQLiteMeetingCooldownRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[MeetingCooldownRecord, ...]:
-        """List cooldown rows ordered by meeting_type_name ascending."""
+        """List cooldown rows ordered by meeting_type_name ascending.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_MEETING_COOLDOWN_LOAD_FAILED
         )
@@ -148,6 +180,14 @@ class SQLiteMeetingCooldownRepository:
         return tuple(self._row_to_record(dict(r)) for r in rows)
 
     def _row_to_record(self, row: dict[str, object]) -> MeetingCooldownRecord:
+        """Row to record.
+
+        Returns:
+            Result of type ``MeetingCooldownRecord``.
+
+        Raises:
+            QueryError: If row parsing or validation fails.
+        """
         try:
             row["last_triggered_at"] = parse_iso_utc(str(row["last_triggered_at"]))
             return MeetingCooldownRecord.model_validate(row)
@@ -162,7 +202,14 @@ class SQLiteMeetingCooldownRepository:
             raise QueryError(msg) from exc
 
     async def delete(self, meeting_type_name: NotBlankStr) -> bool:
-        """Delete the cooldown row for one meeting type."""
+        """Delete the cooldown row for one meeting type.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(

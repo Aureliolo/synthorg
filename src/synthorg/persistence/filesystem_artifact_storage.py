@@ -74,7 +74,11 @@ class FileSystemArtifactStorage:
 
     @property
     def backend_name(self) -> str:
-        """Human-readable backend identifier."""
+        """Human-readable backend identifier.
+
+        Returns:
+            Result of type ``str``.
+        """
         return "filesystem"
 
     def _safe_path(self, artifact_id: str) -> Path:
@@ -156,6 +160,10 @@ class FileSystemArtifactStorage:
             artifact_id: Artifact identifier (for error messages).
             content: Binary content to write.
             size: Length of *content* in bytes.
+
+        Raises:
+            ArtifactStorageFullError: If the underlying call raises.
+            OSError: If the underlying file or socket operation fails.
         """
         current_total = await self.total_size()
         existing_size = await asyncio.to_thread(self._stat_or_zero, file_path)
@@ -196,6 +204,7 @@ class FileSystemArtifactStorage:
         Raises:
             RecordNotFoundError: If no content exists for the given ID.
             ValueError: If *artifact_id* contains path traversal.
+            OSError: If the underlying file or socket operation fails.
         """
         file_path = self._safe_path(artifact_id)
         try:
@@ -235,6 +244,7 @@ class FileSystemArtifactStorage:
 
         Raises:
             ValueError: If *artifact_id* contains path traversal.
+            OSError: If the underlying file or socket operation fails.
         """
         file_path = self._safe_path(artifact_id)
         try:
@@ -316,7 +326,13 @@ class FileSystemArtifactStorage:
 
     @staticmethod
     def _delete_file_with_size(file_path: Path) -> tuple[int, bool]:
-        """Delete a file and return (size, deleted) tuple."""
+        """Delete a file and return (size, deleted) tuple.
+
+        Returns:
+            ``(size_bytes, deleted)`` where ``size_bytes`` is the file's size in bytes
+            before deletion (0 when the file was already absent) and ``deleted`` is
+            ``True`` when this call removed the file.
+        """
         try:
             size = file_path.stat().st_size
             file_path.unlink()
@@ -326,14 +342,22 @@ class FileSystemArtifactStorage:
 
     @staticmethod
     def _stat_or_zero(path: Path) -> int:
-        """Return file size or 0 if not found."""
+        """Return file size or 0 if not found.
+
+        Returns:
+            Numeric result of the operation.
+        """
         try:
             return path.stat().st_size
         except FileNotFoundError:
             return 0
 
     def _compute_total_size(self) -> int:
-        """Sum file sizes in the artifacts directory."""
+        """Sum file sizes in the artifacts directory.
+
+        Returns:
+            Numeric result of the operation.
+        """
         if not self._artifacts_dir.exists():
             return 0
         total = 0

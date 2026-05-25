@@ -211,7 +211,11 @@ RETURNING (xmax = 0) AS created""",
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Artifact, ...]:
-        """List all artifacts with pagination (no filters)."""
+        """List all artifacts with pagination (no filters).
+
+        Returns:
+            The matching entities.
+        """
         return await self.query(
             ArtifactFilterSpec(),
             limit=limit,
@@ -225,7 +229,14 @@ RETURNING (xmax = 0) AS created""",
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Artifact, ...]:
-        """List artifacts with optional filters (paginated)."""
+        """List artifacts with optional filters (paginated).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
             logger.warning(
@@ -300,7 +311,14 @@ RETURNING (xmax = 0) AS created""",
         return artifacts
 
     async def count(self, filter_spec: ArtifactFilterSpec) -> int:
-        """Count artifacts matching the filter spec."""
+        """Count artifacts matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         conditions: list[str] = []
         params: list[object] = []
 

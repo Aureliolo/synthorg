@@ -115,7 +115,11 @@ class MigrateResult:
     current_version: str
 
     def __post_init__(self) -> None:
-        """Enforce ``applied_count == len(applied_versions)`` at construction."""
+        """Enforce ``applied_count == len(applied_versions)`` at construction.
+
+        Raises:
+            ValueError: If an argument fails validation.
+        """
         if len(self.applied_versions) != self.applied_count:
             msg = (
                 f"MigrateResult invariant violated: applied_count="
@@ -143,7 +147,11 @@ class MigrateStatus:
     applied_versions: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        """Enforce ``pending_count == len(pending_versions)`` at construction."""
+        """Enforce ``pending_count == len(pending_versions)`` at construction.
+
+        Raises:
+            ValueError: If an argument fails validation.
+        """
         if len(self.pending_versions) != self.pending_count:
             msg = (
                 f"MigrateStatus invariant violated: pending_count="
@@ -164,12 +172,19 @@ def _to_posix(path: str) -> str:
 
     On Windows, ``C:\Users\foo`` becomes ``C:/Users/foo``.  On POSIX
     systems this is a no-op.
+
+    Returns:
+        Result of type ``str``.
     """
     return str(PurePosixPath(PureWindowsPath(path)))
 
 
 def _redact_url(url: str) -> str:
-    """Return scheme prefix only, dropping host / credentials / path."""
+    """Return scheme prefix only, dropping host / credentials / path.
+
+    Returns:
+        Result of type ``str``.
+    """
     scheme_end = url.find("://")
     if scheme_end == -1:
         return "REDACTED"
@@ -350,7 +365,11 @@ def _resolve_revisions_path(
     revisions_path: Path | None,
     backend: BackendName,
 ) -> Path:
-    """Return *revisions_path* if provided, otherwise the installed dir."""
+    """Return *revisions_path* if provided, otherwise the installed dir.
+
+    Returns:
+        Result of type ``Path``.
+    """
     return revisions_path if revisions_path is not None else revisions_dir(backend)
 
 
@@ -370,6 +389,9 @@ def _discover(rev_path: Path) -> MigrationList:
     Wraps ``yoyo.read_migrations`` and drops migrations whose id is in
     :data:`_NON_MIGRATION_IDS`.  Preserves the original
     ``post_apply`` list (also filtered).
+
+    Returns:
+        Result of type ``MigrationList``.
     """
     discovered = read_migrations(str(rev_path))
     filtered_items = [m for m in discovered if m.id not in _NON_MIGRATION_IDS]
@@ -416,6 +438,11 @@ async def migrate_apply(
     )
 
     def _apply() -> tuple[int, tuple[str, ...], str]:
+        """Run yoyo's apply step inside the locked backend session.
+
+        Returns:
+            ``(applied_count, applied_steps, head_revision)`` after apply.
+        """
         b = get_backend(db_url)
         try:
             migrations = _discover(rev_path)
@@ -483,6 +510,11 @@ async def migrate_status(
     rev_path = _resolve_revisions_path(revisions_path, backend)
 
     def _status() -> MigrateStatus:
+        """Compute pending / applied migration sets and the current head.
+
+        Returns:
+            Snapshot of the current head plus the unapplied tail.
+        """
         b = get_backend(db_url)
         try:
             migrations = _discover(rev_path)
@@ -552,6 +584,11 @@ async def migrate_baseline(
     )
 
     def _mark() -> tuple[int, tuple[str, ...], str]:
+        """Mark all discovered migrations as applied without running them.
+
+        Returns:
+            ``(marked_count, marked_steps, head_revision)`` after mark.
+        """
         b = get_backend(db_url)
         try:
             migrations = _discover(rev_path)
@@ -637,6 +674,14 @@ async def migrate_rollback(
     )
 
     def _rollback() -> tuple[int, tuple[str, ...]]:
+        """Roll back applied migrations down to ``target_version``.
+
+        Returns:
+            ``(rolled_back_count, rolled_back_steps)`` after rollback.
+
+        Raises:
+            MigrationError: If the underlying call raises.
+        """
         b = get_backend(db_url)
         try:
             migrations = _discover(rev_path)
@@ -728,6 +773,7 @@ async def break_lock(db_url: str) -> None:
     """
 
     def _break() -> None:
+        """Release the backend's migration lock unconditionally."""
         b = get_backend(db_url)
         try:
             b.break_lock()

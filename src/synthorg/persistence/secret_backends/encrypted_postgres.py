@@ -20,6 +20,7 @@ from uuid import uuid4
 import psycopg
 from cryptography.fernet import Fernet, InvalidToken
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.integrations.config import EncryptedPostgresConfig
 from synthorg.integrations.errors import (
@@ -77,7 +78,11 @@ class EncryptedPostgresSecretBackend:
         self._fernet = self._init_fernet(cfg.master_key_env)
 
     def _get_pool(self) -> "AsyncConnectionPool":  # noqa: UP037
-        """Resolve the pool, whether passed concretely or via callable."""
+        """Resolve the pool, whether passed concretely or via callable.
+
+        Returns:
+            Result of type ``'AsyncConnectionPool'``.
+        """
         target = self._pool_or_getter
         if callable(target):
             return target()
@@ -85,11 +90,23 @@ class EncryptedPostgresSecretBackend:
 
     @property
     def backend_name(self) -> NotBlankStr:
-        """Human-readable backend identifier."""
+        """Human-readable backend identifier.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+        """
         return "encrypted_postgres"
 
     @staticmethod
     def _init_fernet(env_var: str) -> Fernet:
+        """Init fernet.
+
+        Returns:
+            Result of type ``Fernet``.
+
+        Raises:
+            MasterKeyError: If the configured master key is missing or invalid.
+        """
         raw = os.environ.get(env_var, "").strip()
         if not raw:
             msg = (
@@ -120,6 +137,10 @@ class EncryptedPostgresSecretBackend:
         ``secret_id`` already exists, its ciphertext and
         ``rotated_at`` are overwritten. Callers that need to detect
         overwrites must read first.
+
+        Raises:
+            SecretStorageError: If the secret store rejects the write.
+            MasterKeyError: If the configured master key is missing or invalid.
         """
         try:
             encrypted = self._fernet.encrypt(value)
@@ -162,7 +183,14 @@ class EncryptedPostgresSecretBackend:
             raise SecretStorageError(msg) from exc
 
     async def retrieve(self, secret_id: NotBlankStr) -> bytes | None:
-        """Retrieve and decrypt a secret."""
+        """Retrieve and decrypt a secret.
+
+        Returns:
+            The matching value, or ``None`` when absent.
+
+        Raises:
+            SecretRetrievalError: If decryption fails or the row is unreadable.
+        """
         pool = self._get_pool()
         try:
             async with pool.connection() as conn, conn.cursor() as cur:
@@ -212,7 +240,14 @@ class EncryptedPostgresSecretBackend:
             raise SecretRetrievalError(msg) from exc
 
     async def delete(self, secret_id: NotBlankStr) -> bool:
-        """Delete a secret."""
+        """Delete a secret.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            SecretStorageError: If the secret store rejects the write.
+        """
         pool = self._get_pool()
         try:
             async with pool.connection() as conn, conn.cursor() as cur:
@@ -245,6 +280,9 @@ class EncryptedPostgresSecretBackend:
         so callers are never left referencing a half-committed
         rotation. Rollback failures are embedded in the raised
         ``SecretRotationError`` for manual cleanup.
+
+        Returns:
+            Result of type ``NotBlankStr``.
         """
         new_id = str(uuid4())
         await self._rotate_store_new(old_id, new_id, new_value)
@@ -258,7 +296,11 @@ class EncryptedPostgresSecretBackend:
         new_id: NotBlankStr,
         new_value: bytes,
     ) -> None:
-        """Write the new secret during rotation, wrapping failures."""
+        """Write the new secret during rotation, wrapping failures.
+
+        Raises:
+            SecretRotationError: If rotation cannot complete cleanly.
+        """
         try:
             await self.store(new_id, new_value)
         except (SecretStorageError, MasterKeyError) as exc:
@@ -276,7 +318,11 @@ class EncryptedPostgresSecretBackend:
         old_id: NotBlankStr,
         new_id: NotBlankStr,
     ) -> None:
-        """Delete the old secret during rotation, rolling back new on failure."""
+        """Delete the old secret during rotation, rolling back new on failure.
+
+        Raises:
+            SecretRotationError: If rotation cannot complete cleanly.
+        """
         try:
             deleted = await self.delete(old_id)
         except SecretStorageError as exc:
@@ -311,7 +357,11 @@ class EncryptedPostgresSecretBackend:
             raise SecretRotationError(msg)
 
     async def _rollback_new(self, new_id: NotBlankStr) -> str:
-        """Attempt to delete *new_id* after a failed rotation."""
+        """Attempt to delete *new_id* after a failed rotation.
+
+        Returns:
+            Result of type ``str``.
+        """
         try:
             await self.delete(new_id)
         except SecretStorageError as rb_exc:
@@ -323,9 +373,8 @@ class EncryptedPostgresSecretBackend:
             # failure.
             try:
                 scrubbed = safe_error_description(rb_exc)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:  # pragma: no cover - defensive
+            except Exception as exc:  # pragma: no cover - defensive
+                reraise_critical(exc)
                 scrubbed = type(rb_exc).__name__
             logger.warning(
                 SECRET_BACKEND_UNAVAILABLE,

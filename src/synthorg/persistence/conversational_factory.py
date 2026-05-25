@@ -10,6 +10,7 @@ no ``api`` / ``meta`` module imports ``aiosqlite`` / ``psycopg``.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.persistence import (
     PERSISTENCE_CONVERSATIONAL_HANDLE_UNAVAILABLE,
@@ -57,6 +58,9 @@ def build_conversational_repositories(
     Returns ``None`` when the backend is absent / not connected, or is
     an unknown variant, so the caller degrades to a 503 rather than
     raising during boot.
+
+    Returns:
+        The matching value, or ``None`` when absent.
     """
     if backend is None or not getattr(backend, "is_connected", False):
         return None
@@ -75,9 +79,8 @@ def build_conversational_repositories(
     try:
         handle = backend.get_db()
         write_context = backend.write_context
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PERSISTENCE_CONVERSATIONAL_HANDLE_UNAVAILABLE,
             backend_name=name,

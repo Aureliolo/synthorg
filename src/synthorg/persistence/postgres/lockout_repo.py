@@ -24,7 +24,11 @@ if TYPE_CHECKING:
 
 
 def _import_dict_row() -> Any:
-    """Lazily resolve ``psycopg.rows.dict_row``."""
+    """Lazily resolve ``psycopg.rows.dict_row``.
+
+    Returns:
+        Result of type ``Any``.
+    """
     from psycopg.rows import dict_row  # noqa: PLC0415
 
     return dict_row
@@ -70,16 +74,28 @@ class PostgresLockoutRepository:
 
     @property
     def lockout_duration_seconds(self) -> int:
-        """Return the lockout duration in seconds for Retry-After."""
+        """Return the lockout duration in seconds for Retry-After.
+
+        Returns:
+            Numeric result of the operation.
+        """
         return self._duration_seconds
 
     @property
     def threshold(self) -> int:
-        """Failed-attempt threshold; used by the controller's audit log."""
+        """Failed-attempt threshold; used by the controller's audit log.
+
+        Returns:
+            Numeric result of the operation.
+        """
         return self._threshold
 
     def is_locked(self, username: str) -> bool:
-        """Sync O(1) lockout check for the auth hot path."""
+        """Sync O(1) lockout check for the auth hot path.
+
+        Returns:
+            ``True`` when ``username`` is currently locked out, ``False`` otherwise.
+        """
         username = username.lower()
         with self._locked_lock:
             locked_until = self._locked.get(username)
@@ -103,6 +119,9 @@ class PostgresLockoutRepository:
         least ``threshold`` failures fell inside the window ending at
         their most-recent attempt, and (2) ``max_attempted_at +
         duration`` is still in the future.
+
+        Returns:
+            Number of usernames restored to the in-memory lockout cache.
         """
         dict_row = self._dict_row
 
@@ -173,7 +192,12 @@ class PostgresLockoutRepository:
         username: str,
         ip_address: str = "",
     ) -> bool:
-        """Record a failed login attempt.  Return ``True`` if now locked."""
+        """Record a failed login attempt.  Return ``True`` if now locked.
+
+        Returns:
+            ``True`` when this failure pushed the username past the lockout threshold,
+            ``False`` otherwise.
+        """
         username = username.lower()
         now = self._clock.now()
         window_start = now - self._window
@@ -226,9 +250,15 @@ class PostgresLockoutRepository:
     async def record_success(self, username: str) -> bool:
         """Clear failure count on successful login.
 
-        Returns ``True`` if a previously-locked account was unlocked
-        (caller logs ``SECURITY_AUTH_LOCKOUT_CLEARED``); ``False``
-        when no lockout was in effect.
+        Always deletes the DB ``login_attempts`` row; the boolean
+        return reflects the in-memory cache: ``True`` when an
+        in-memory lockout entry was popped (caller logs
+        ``SECURITY_AUTH_LOCKOUT_CLEARED``), ``False`` when there was
+        nothing cached for this username.
+
+        Returns:
+            ``True`` when the in-memory lockout cache entry was popped, ``False`` when
+            none was cached.
         """
         username = username.lower()
         # Same write-lock serialisation as ``record_failure``: cache
@@ -261,6 +291,9 @@ class PostgresLockoutRepository:
         startup.  A shorter retention would silently un-lock users
         whose lockouts are still in effect but whose attempt rows
         were pruned.
+
+        Returns:
+            Numeric result of the operation.
         """
         cutoff = self._clock.now() - (self._window + self._duration)
         async with (

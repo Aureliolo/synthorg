@@ -67,7 +67,11 @@ class PostgresSettingsRepository:
         self._pool = pool
 
     async def save(self, entity: SettingRow) -> None:
-        """Persist a setting (upsert by composite key)."""
+        """Persist a setting (upsert by composite key).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         updated_at_dt = self._safe_parse_iso(
             entity.updated_at, entity.namespace, entity.key
         )
@@ -103,7 +107,14 @@ class PostgresSettingsRepository:
         self,
         entity_id: SettingRowKey,
     ) -> SettingRow | None:
-        """Retrieve a setting by composite key."""
+        """Retrieve a setting by composite key.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         namespace, key = entity_id
         try:
             async with (
@@ -151,7 +162,14 @@ class PostgresSettingsRepository:
         self,
         namespace: NotBlankStr,
     ) -> tuple[SettingRow, ...]:
-        """Retrieve all settings in a namespace."""
+        """Retrieve all settings in a namespace.
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -203,7 +221,14 @@ class PostgresSettingsRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[SettingRow, ...]:
-        """List settings across all namespaces (paginated)."""
+        """List settings across all namespaces (paginated).
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         # Validate + clamp via the shared helper (rejects limit < 1 /
         # offset < 0, caps at the repo-wide MAX_LIST_LIMIT ceiling) so
         # no inline magic ceiling and no sentinel (-1) slips through.
@@ -270,6 +295,9 @@ class PostgresSettingsRepository:
         Returns:
             ``True`` if the write succeeded, ``False`` if the CAS condition
             was not met.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         updated_at_dt = self._safe_parse_iso(
             entity.updated_at, entity.namespace, entity.key
@@ -351,6 +379,12 @@ class PostgresSettingsRepository:
         :func:`safe_error_description` so secret-log invariants hold
         even if the underlying ``ValueError`` carried a payload
         snippet.
+
+        Returns:
+            Result of type ``datetime``.
+
+        Raises:
+            QueryError: If ``value`` cannot be parsed as an ISO-8601 UTC timestamp.
         """
         try:
             return parse_iso_utc(value)
@@ -372,7 +406,15 @@ class PostgresSettingsRepository:
         *,
         expected_updated_at_map: (Mapping[SettingRowKey, str] | None) = None,
     ) -> bool:
-        """Atomically upsert multiple settings."""
+        """Atomically upsert multiple settings.
+
+        Returns:
+            True when all rows were upserted, False when a CAS conflict caused
+            the transaction to roll back.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if not items:
             return True
         cas_map: Mapping[SettingRowKey, str] = expected_updated_at_map or {}
@@ -461,7 +503,14 @@ class PostgresSettingsRepository:
         return True
 
     async def delete(self, entity_id: SettingRowKey) -> bool:
-        """Delete a setting by composite key."""
+        """Delete a setting by composite key.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         namespace, key = entity_id
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
@@ -484,7 +533,14 @@ class PostgresSettingsRepository:
         return deleted
 
     async def delete_namespace(self, namespace: NotBlankStr) -> int:
-        """Delete all settings in a namespace. Return count."""
+        """Delete all settings in a namespace. Return count.
+
+        Returns:
+            Number of rows deleted.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -514,6 +570,12 @@ class PostgresSettingsRepository:
         snapshot and the delete cannot drift under a concurrent
         ``set`` -- the returned tuple is exactly the set of keys
         whose override row was removed by *this* call.
+
+        Returns:
+            The keys whose row was removed by this call.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

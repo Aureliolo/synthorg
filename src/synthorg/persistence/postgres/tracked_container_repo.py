@@ -34,7 +34,11 @@ class PostgresTrackedContainerRepository:
         self._pool = pool
 
     async def save(self, record: TrackedContainerRecord) -> None:
-        """Insert or replace the tracking row for one container."""
+        """Insert or replace the tracking row for one container.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         params: tuple[Any, ...] = (
             record.container_id,
             record.sidecar_id,
@@ -63,7 +67,14 @@ class PostgresTrackedContainerRepository:
             raise QueryError(msg) from exc
 
     async def get(self, container_id: NotBlankStr) -> TrackedContainerRecord | None:
-        """Read the tracking row for one container, or ``None`` if absent."""
+        """Read the tracking row for one container, or ``None`` if absent.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -89,7 +100,14 @@ class PostgresTrackedContainerRepository:
         return self._row_to_record(row)
 
     async def delete(self, container_id: NotBlankStr) -> bool:
-        """Delete the tracking row for one container."""
+        """Delete the tracking row for one container.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -110,7 +128,14 @@ class PostgresTrackedContainerRepository:
         return rowcount > 0
 
     async def load_all(self) -> tuple[TrackedContainerRecord, ...]:
-        """Load every tracking row (bespoke per ADR-0001 D7)."""
+        """Load every tracking row (bespoke per ADR-0001 D7).
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -139,7 +164,14 @@ class PostgresTrackedContainerRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[TrackedContainerRecord, ...]:
-        """List tracked containers ordered by container_id ascending."""
+        """List tracked containers ordered by container_id ascending.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_TRACKED_CONTAINER_LOAD_FAILED
         )
@@ -166,6 +198,14 @@ class PostgresTrackedContainerRepository:
         return tuple(self._row_to_record(r) for r in rows)
 
     def _row_to_record(self, row: dict[str, Any]) -> TrackedContainerRecord:
+        """Row to record.
+
+        Returns:
+            Result of type ``TrackedContainerRecord``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             row["created_at"] = normalize_utc(row["created_at"])
             return TrackedContainerRecord.model_validate(row)

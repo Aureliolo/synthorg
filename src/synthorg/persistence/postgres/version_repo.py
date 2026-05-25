@@ -31,6 +31,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, ValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -118,7 +119,15 @@ class PostgresVersionRepository[T: BaseModel]:
         self._delete_sql = f"DELETE FROM {_t} WHERE entity_id = %s"  # noqa: S608
 
     def _deserialize_row(self, row: dict[str, object]) -> VersionSnapshot[T]:
-        """Reconstruct a VersionSnapshot from a database row."""
+        """Reconstruct a VersionSnapshot from a database row.
+
+        Returns:
+            Result of type ``VersionSnapshot[T]``.
+
+        Raises:
+            QueryError: If row deserialization or the row-to-entity callback
+                fails.
+        """
         try:
             entity_id_str: str = str(row["entity_id"])
             # ``int(str(...))`` (not ``safe_int(..., default=0)``): a
@@ -159,9 +168,8 @@ class PostgresVersionRepository[T: BaseModel]:
                 reason="unexpected",
             )
             raise QueryError(msg) from exc
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Catch-all for unconstrained deserialize_snapshot callbacks
             context = f"{row.get('entity_id', '?')}@v{row.get('version', '?')}"
             msg = f"Failed to deserialize version snapshot {context!r}: {safe_error_description(exc)}"  # noqa: E501
@@ -188,9 +196,8 @@ class PostgresVersionRepository[T: BaseModel]:
         """
         try:
             serialized = self._serialize(version.snapshot)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = (
                 f"Failed to serialize snapshot for version "
                 f"{version.version} of {version.entity_id!r} "
@@ -241,7 +248,14 @@ class PostgresVersionRepository[T: BaseModel]:
         entity_id: NotBlankStr,
         version: int,
     ) -> VersionSnapshot[T] | None:
-        """Retrieve a specific version snapshot."""
+        """Retrieve a specific version snapshot.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -271,7 +285,14 @@ class PostgresVersionRepository[T: BaseModel]:
         self,
         entity_id: NotBlankStr,
     ) -> VersionSnapshot[T] | None:
-        """Retrieve the most recent version snapshot for an entity."""
+        """Retrieve the most recent version snapshot for an entity.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -301,7 +322,14 @@ class PostgresVersionRepository[T: BaseModel]:
         entity_id: NotBlankStr,
         content_hash: NotBlankStr,
     ) -> VersionSnapshot[T] | None:
-        """Retrieve a version by its content hash."""
+        """Retrieve a version by its content hash.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -334,7 +362,15 @@ class PostgresVersionRepository[T: BaseModel]:
         limit: int = _DEFAULT_LIST_LIMIT_50,
         offset: int = 0,
     ) -> tuple[VersionSnapshot[T], ...]:
-        """List version snapshots ordered by version descending."""
+        """List version snapshots ordered by version descending.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            ValueError: If an argument fails validation.
+            QueryError: If the database query fails.
+        """
         if limit < 0:
             msg = f"limit must be non-negative, got {limit}"
             raise ValueError(msg)
@@ -370,7 +406,14 @@ class PostgresVersionRepository[T: BaseModel]:
         return tuple(self._deserialize_row(r) for r in rows)
 
     async def count_versions(self, entity_id: NotBlankStr) -> int:
-        """Count version snapshots for an entity."""
+        """Count version snapshots for an entity.
+
+        Returns:
+            Number of matching rows.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -391,7 +434,14 @@ class PostgresVersionRepository[T: BaseModel]:
         return int(row["count"]) if row else 0
 
     async def delete_versions_for_entity(self, entity_id: NotBlankStr) -> int:
-        """Delete all version snapshots for an entity."""
+        """Delete all version snapshots for an entity.
+
+        Returns:
+            Number of rows deleted.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(self._delete_sql, (entity_id,))

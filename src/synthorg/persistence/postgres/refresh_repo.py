@@ -35,7 +35,11 @@ if TYPE_CHECKING:
 
 
 def _import_dict_row() -> Any:
-    """Lazily resolve ``psycopg.rows.dict_row``."""
+    """Lazily resolve ``psycopg.rows.dict_row``.
+
+    Returns:
+        Result of type ``Any``.
+    """
     from psycopg.rows import dict_row  # noqa: PLC0415
 
     return dict_row
@@ -59,7 +63,13 @@ class _SessionRevokedError(
 
 
 def _raise_session_revoked() -> None:
-    """Hoist the sentinel raise out of ``consume()`` (TRY301)."""
+    """Hoist the sentinel raise out of ``consume()`` (TRY301).
+
+    Raises:
+        _SessionRevokedError: Always; the caller relies on the raise to
+            unwind the surrounding ``conn.transaction()`` block and
+            trigger psycopg's automatic rollback.
+    """
     raise _SessionRevokedError
 
 
@@ -87,6 +97,9 @@ class PostgresRefreshTokenRepository:
         that supplied an aware non-UTC datetime cannot poison the
         TIMESTAMPTZ column with an off-zone value the cleanup /
         consume paths interpret incorrectly.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         now = normalize_utc(datetime.now(UTC))
         utc_expires_at = normalize_utc(expires_at)
@@ -134,6 +147,12 @@ class PostgresRefreshTokenRepository:
         token stays unused. A post-commit check would burn the token
         even on a transient revocation-store error, leaving the user
         with no recovery path except a full re-authentication.
+
+        Returns:
+            Result of type ``RefreshConsumeOutcome``.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         dict_row = self._dict_row
         now = datetime.now(UTC)
@@ -214,6 +233,12 @@ class PostgresRefreshTokenRepository:
         Caller logs ``SECURITY_AUTH_REFRESH_REVOKED`` when count > 0
         (persistence-boundary rule -- repos do not emit decision
         events).
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with (
@@ -244,6 +269,12 @@ class PostgresRefreshTokenRepository:
         Caller logs ``SECURITY_AUTH_REFRESH_REVOKED`` when count > 0
         (persistence-boundary rule -- repos do not emit decision
         events).
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         try:
             async with (
@@ -276,6 +307,12 @@ class PostgresRefreshTokenRepository:
         ``API_AUTH_REFRESH_CLEANUP`` when count > 0; this repo only
         returns the count per the persistence-boundary rule:
         repositories do not emit operational events.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         now = normalize_utc(datetime.now(UTC))
         try:

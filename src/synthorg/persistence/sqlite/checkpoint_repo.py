@@ -65,6 +65,10 @@ class SQLiteCheckpointRepository:
         A duplicate ``id`` is a contract violation, not an update: a
         plain ``INSERT`` surfaces it as ``DuplicateRecordError`` rather
         than silently overwriting the immutable record.
+
+        Raises:
+            QueryError: If the database query fails.
+            DuplicateRecordError: If a row with the same key already exists.
         """
         async with self._write_context():
             try:
@@ -123,6 +127,10 @@ INSERT INTO checkpoints (
 
         Raises:
             ValueError: If neither filter is provided.
+            QueryError: If the database query fails.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
         """
         if execution_id is None and task_id is None:
             msg = "At least one of execution_id or task_id is required"
@@ -185,7 +193,14 @@ INSERT INTO checkpoints (
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Checkpoint, ...]:
-        """Return checkpoints matching the filter, newest first."""
+        """Return checkpoints matching the filter, newest first.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CHECKPOINT_QUERY_FAILED
         )
@@ -223,6 +238,12 @@ INSERT INTO checkpoints (
 
         ``threshold`` must be timezone-aware; a naive value would make
         the cut-off ambiguous against UTC-formatted stored timestamps.
+
+        Returns:
+            Number of rows deleted.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         if threshold.tzinfo is None:
             msg = f"threshold must be timezone-aware, got naive {threshold!r}"
@@ -253,7 +274,14 @@ INSERT INTO checkpoints (
         return count
 
     async def delete_by_execution(self, execution_id: NotBlankStr) -> int:
-        """Delete all checkpoints for an execution."""
+        """Delete all checkpoints for an execution.
+
+        Returns:
+            Number of rows deleted.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -280,6 +308,9 @@ INSERT INTO checkpoints (
 
         Raises:
             QueryError: If the row cannot be deserialized.
+
+        Returns:
+            Result of type ``Checkpoint``.
         """
         try:
             return Checkpoint.model_validate(row)

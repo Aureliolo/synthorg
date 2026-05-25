@@ -45,6 +45,10 @@ def is_unique_constraint_error(exc: BaseException) -> bool:
     messages, and silently classifies CHECK / FOREIGN KEY violations
     as duplicates when their messages happen to start with "UNIQUE
     constraint" in some upstream patches.
+
+    Returns:
+        ``True`` when ``exc`` is a SQLite UNIQUE or PRIMARY KEY violation, ``False``
+        otherwise.
     """
     if not isinstance(exc, sqlite3.IntegrityError):
         return False

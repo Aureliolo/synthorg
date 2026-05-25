@@ -36,7 +36,14 @@ class PostgresPresetOverrideRepo:
         self._pool = pool
 
     async def get(self, preset_name: NotBlankStr) -> PresetOverride | None:
-        """Read the override for ``preset_name``, if any."""
+        """Read the override for ``preset_name``, if any.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         sql = (
             "SELECT preset_name, default_models, supported_auth_types, "
             "candidate_urls, base_url, updated_at, updated_by "
@@ -79,7 +86,11 @@ class PostgresPresetOverrideRepo:
             raise QueryError(msg) from exc
 
     async def save(self, override: PresetOverride) -> None:
-        """Insert or replace the override for ``override.preset_name``."""
+        """Insert or replace the override for ``override.preset_name``.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         if override.updated_at is None or override.updated_by is None:
             msg = "PresetOverride.updated_at and updated_by must be set on save"
             logger.warning(
@@ -138,7 +149,14 @@ class PostgresPresetOverrideRepo:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[PresetOverride, ...]:
-        """List overrides ordered by preset_name ascending."""
+        """List overrides ordered by preset_name ascending.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_PRESET_OVERRIDE_QUERY_FAILED
         )
@@ -185,7 +203,14 @@ class PostgresPresetOverrideRepo:
         return tuple(overrides)
 
     async def delete(self, preset_name: NotBlankStr) -> bool:
-        """Remove the override for ``preset_name``."""
+        """Remove the override for ``preset_name``.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -206,7 +231,11 @@ class PostgresPresetOverrideRepo:
         return rowcount > 0
 
     def _row_to_override(self, row: dict[str, Any]) -> PresetOverride:
-        """Deserialise a Postgres row into a ``PresetOverride``."""
+        """Deserialise a Postgres row into a ``PresetOverride``.
+
+        Returns:
+            Result of type ``PresetOverride``.
+        """
         from synthorg.config.schema import (  # noqa: PLC0415
             ProviderModelConfig as _ProviderModelConfig,
         )

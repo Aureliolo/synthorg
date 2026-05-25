@@ -53,7 +53,11 @@ class SQLiteAgentStateRepository:
         self._write_context = write_context
 
     async def save(self, state: AgentRuntimeState) -> None:
-        """Persist an agent runtime state (upsert by agent_id)."""
+        """Persist an agent runtime state (upsert by agent_id).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 data = state.model_dump(mode="json")
@@ -82,7 +86,14 @@ INSERT OR REPLACE INTO agent_states (
                 raise QueryError(msg) from exc
 
     async def get(self, agent_id: NotBlankStr) -> AgentRuntimeState | None:
-        """Retrieve an agent runtime state by agent ID."""
+        """Retrieve an agent runtime state by agent ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT agent_id, execution_id, task_id, status, "
@@ -123,7 +134,14 @@ INSERT OR REPLACE INTO agent_states (
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[AgentRuntimeState, ...]:
-        """List agent runtime states in agent_id order."""
+        """List agent runtime states in agent_id order.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_AGENT_STATE_LIST_FAILED
         )
@@ -161,6 +179,12 @@ INSERT OR REPLACE INTO agent_states (
         ``last_activity_at`` page deterministically. Callers needing
         every active state drain via
         :func:`synthorg.persistence._shared.collect_all`.
+
+        Returns:
+            Tuple of matching rows; empty when no rows match.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_AGENT_STATE_ACTIVE_QUERY_FAILED
@@ -198,7 +222,14 @@ INSERT OR REPLACE INTO agent_states (
         return states
 
     async def delete(self, agent_id: NotBlankStr) -> bool:
-        """Delete an agent runtime state by agent ID."""
+        """Delete an agent runtime state by agent ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -230,6 +261,9 @@ INSERT OR REPLACE INTO agent_states (
 
         Raises:
             QueryError: If the row cannot be deserialized.
+
+        Returns:
+            Result of type ``AgentRuntimeState``.
         """
         try:
             return AgentRuntimeState.model_validate(row)

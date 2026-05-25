@@ -37,6 +37,9 @@ def _row_to_map(row: dict[str, Any]) -> CodebaseStructureMap:
 
     JSONB columns are decoded to Python lists by psycopg, so they pass
     straight to ``model_validate``.
+
+    Returns:
+        Result of type ``CodebaseStructureMap``.
     """
     data = dict(row)
     data["scanned_at"] = coerce_row_timestamp(data["scanned_at"])
@@ -55,6 +58,11 @@ class PostgresCodebaseStructureMapRepository:
 
     @staticmethod
     def _row_params(entity: CodebaseStructureMap) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
+        """
         return (
             entity.project_id,
             entity.source_ref,
@@ -68,7 +76,11 @@ class PostgresCodebaseStructureMapRepository:
         )
 
     async def save(self, entity: CodebaseStructureMap) -> None:
-        """Persist a structure map via upsert (insert or update)."""
+        """Persist a structure map via upsert (insert or update).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(
@@ -101,7 +113,14 @@ class PostgresCodebaseStructureMapRepository:
             raise QueryError(msg) from exc
 
     async def get(self, entity_id: NotBlankStr) -> CodebaseStructureMap | None:
-        """Retrieve a structure map by owning project id."""
+        """Retrieve a structure map by owning project id.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with (
                 self._pool.connection() as conn,
@@ -152,7 +171,14 @@ class PostgresCodebaseStructureMapRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[CodebaseStructureMap, ...]:
-        """List structure maps in project-id order."""
+        """List structure maps in project-id order.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CODEBASE_STRUCTURE_MAP_LIST_FAILED
         )
@@ -190,7 +216,14 @@ class PostgresCodebaseStructureMapRepository:
         return maps
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
-        """Delete a structure map by owning project id."""
+        """Delete a structure map by owning project id.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:
                 await cur.execute(

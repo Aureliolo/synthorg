@@ -46,6 +46,9 @@ def _row_to_session(row: Any) -> Session:
     ``datetime`` so tests that patch the bound ``datetime`` name with
     a ``MagicMock`` (and supply pre-parsed datetime row values) keep
     working alongside production reads.
+
+    Returns:
+        Result of type ``Session``.
     """
     return Session(
         session_id=NotBlankStr(row["session_id"]),
@@ -104,7 +107,11 @@ class SQLiteSessionRepository:
         self._revoked = {row["session_id"] for row in rows}
 
     async def save(self, entity: Session) -> None:
-        """Persist a session (insert or update by session_id)."""
+        """Persist a session (insert or update by session_id).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         session = entity
         async with self._write_context():
             try:
@@ -157,7 +164,11 @@ class SQLiteSessionRepository:
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: str) -> Session | None:
-        """Look up a session by ID."""
+        """Look up a session by ID.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+        """
         cursor = await self._db.execute(
             "SELECT * FROM sessions WHERE session_id = ?",
             (entity_id,),
@@ -171,7 +182,11 @@ class SQLiteSessionRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List all sessions with pagination."""
+        """List all sessions with pagination.
+
+        Returns:
+            The matching entities.
+        """
         limit = validate_pagination_args(
             limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
         )
@@ -190,7 +205,11 @@ class SQLiteSessionRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List sessions matching the filter spec."""
+        """List sessions matching the filter spec.
+
+        Returns:
+            The matching entities.
+        """
         limit = validate_pagination_args(
             limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR
         )
@@ -210,7 +229,11 @@ class SQLiteSessionRepository:
         return tuple(_row_to_session(r) for r in rows)
 
     async def count(self, filter_spec: SessionFilterSpec) -> int:
-        """Count sessions matching the filter spec."""
+        """Count sessions matching the filter spec.
+
+        Returns:
+            Number of matching rows.
+        """
         sql = "SELECT COUNT(*) AS cnt FROM sessions WHERE 1=1"
         params: list[object] = []
         if filter_spec.user_id is not None:
@@ -230,7 +253,11 @@ class SQLiteSessionRepository:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List active (non-expired, non-revoked) sessions for a user."""
+        """List active (non-expired, non-revoked) sessions for a user.
+
+        Returns:
+            The matching entities.
+        """
         now = format_iso_utc(datetime.now(UTC))
         sql = (
             "SELECT * FROM sessions "
@@ -252,7 +279,11 @@ class SQLiteSessionRepository:
         limit: int = DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[Session, ...]:
-        """List all active (non-expired, non-revoked) sessions."""
+        """List all active (non-expired, non-revoked) sessions.
+
+        Returns:
+            The matching entities.
+        """
         now = format_iso_utc(datetime.now(UTC))
         sql = (
             "SELECT * FROM sessions "
@@ -268,7 +299,14 @@ class SQLiteSessionRepository:
         return tuple(_row_to_session(r) for r in rows)
 
     async def delete(self, entity_id: str) -> bool:
-        """Delete a session by ID."""
+        """Delete a session by ID.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -297,7 +335,14 @@ class SQLiteSessionRepository:
                 return False
 
     async def revoke(self, session_id: str) -> bool:
-        """Revoke a session by ID."""
+        """Revoke a session by ID.
+
+        Returns:
+            ``True`` when the operation succeeded, ``False`` otherwise.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
@@ -334,6 +379,12 @@ class SQLiteSessionRepository:
         while ``self._revoked`` (in-memory set) stays unaware -- a
         partial-success state would route the affected sessions
         through the auth fast path until the next ``load_revoked``.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
         """
         now = format_iso_utc(datetime.now(UTC))
         async with self._write_context():
@@ -381,7 +432,11 @@ class SQLiteSessionRepository:
         user_id: str,
         max_sessions: int,
     ) -> int:
-        """Revoke oldest sessions if user exceeds the concurrent limit."""
+        """Revoke oldest sessions if user exceeds the concurrent limit.
+
+        Returns:
+            Numeric result of the operation.
+        """
         if max_sessions <= 0:
             return 0
         active = await self.list_by_user(user_id)
@@ -400,11 +455,22 @@ class SQLiteSessionRepository:
         return revoked
 
     def is_revoked(self, session_id: str) -> bool:
-        """Check whether a session is revoked (sync, O(1))."""
+        """Check whether a session is revoked (sync, O(1)).
+
+        Returns:
+            ``True`` when the session has been revoked, ``False`` otherwise.
+        """
         return session_id in self._revoked
 
     async def cleanup_expired(self) -> int:
-        """Remove expired sessions from the database."""
+        """Remove expired sessions from the database.
+
+        Returns:
+            Numeric result of the operation.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         now = format_iso_utc(datetime.now(UTC))
         async with self._write_context():
             try:

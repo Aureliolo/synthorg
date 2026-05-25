@@ -33,7 +33,11 @@ _MAX_LIST_ROWS: int = 10_000
 
 
 def _row_to_environment(row: aiosqlite.Row) -> ProjectEnvironment:
-    """Reconstruct a ``ProjectEnvironment`` from a database row."""
+    """Reconstruct a ``ProjectEnvironment`` from a database row.
+
+    Returns:
+        Result of type ``ProjectEnvironment``.
+    """
     data = dict(row)
     data["environment_type"] = EnvironmentType(data["environment_type"])
     data["provisioned_at"] = coerce_row_timestamp(data["provisioned_at"])
@@ -62,6 +66,11 @@ class SQLiteProjectEnvironmentRepository:
 
     @staticmethod
     def _row_params(environment: ProjectEnvironment) -> tuple[object, ...]:
+        """Row params.
+
+        Returns:
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
+        """
         return (
             environment.project_id,
             environment.environment_type.value,
@@ -88,7 +97,11 @@ class SQLiteProjectEnvironmentRepository:
             )
 
     async def save(self, entity: ProjectEnvironment) -> None:
-        """Persist a project environment via upsert (insert or update)."""
+        """Persist a project environment via upsert (insert or update).
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 await self._db.execute(
@@ -120,7 +133,14 @@ ON CONFLICT(project_id) DO UPDATE SET
                 raise QueryError(msg) from exc
 
     async def get(self, entity_id: NotBlankStr) -> ProjectEnvironment | None:
-        """Retrieve a project environment by owning project id."""
+        """Retrieve a project environment by owning project id.
+
+        Returns:
+            The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         try:
             cursor = await self._db.execute(
                 "SELECT project_id, environment_type, declaration_hash, "
@@ -169,7 +189,14 @@ ON CONFLICT(project_id) DO UPDATE SET
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[ProjectEnvironment, ...]:
-        """List environments in project-id order."""
+        """List environments in project-id order.
+
+        Returns:
+            The matching entities.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_PROJECT_ENVIRONMENT_LIST_FAILED
         )
@@ -205,7 +232,14 @@ ON CONFLICT(project_id) DO UPDATE SET
         return environments
 
     async def delete(self, entity_id: NotBlankStr) -> bool:
-        """Delete a project environment by owning project id."""
+        """Delete a project environment by owning project id.
+
+        Returns:
+            ``True`` when a row was deleted, ``False`` if no matching row existed.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
         async with self._write_context():
             try:
                 cursor = await self._db.execute(
