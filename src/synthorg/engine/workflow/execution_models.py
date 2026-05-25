@@ -64,7 +64,15 @@ class ExecutionFrame(BaseModel):
 
     @model_validator(mode="after")
     def _validate_depth_matches_parent(self) -> Self:
-        """Ensure ``depth == parent.depth + 1`` (root frame has depth 0)."""
+        """Ensure ``depth == parent.depth + 1`` (root frame has depth 0).
+
+        Returns:
+            ``self`` unchanged when the depth invariant holds.
+
+        Raises:
+            ValueError: When a root frame has nonzero depth or a
+                child frame's depth is not parent depth + 1.
+        """
         if self.parent_frame is None:
             if self.depth != 0:
                 msg = f"Root frame must have depth=0, got {self.depth}"
@@ -121,7 +129,19 @@ class WorkflowNodeExecution(BaseModel):
 
     @model_validator(mode="after")
     def _validate_status_fields(self) -> Self:
-        """Enforce cross-field invariants between status and optional fields."""
+        """Enforce cross-field invariants between status and optional fields.
+
+        Returns:
+            ``self`` unchanged when status / ``task_id`` /
+            ``skipped_reason`` are consistent.
+
+        Raises:
+            ValueError: When a task-linked status is set on a non-task
+                node, a task-linked status is missing ``task_id``,
+                ``task_id`` is set for a non-task-linked status, or
+                ``skipped_reason`` is set without SKIPPED (or vice
+                versa).
+        """
         if self.status in self._TASK_LINKED_STATUSES:
             if self.node_type is not WorkflowNodeType.TASK:
                 msg = (
@@ -215,7 +235,17 @@ class WorkflowExecution(BaseModel):
 
     @model_validator(mode="after")
     def _validate_status_fields(self) -> Self:
-        """Enforce cross-field invariants between status and optional fields."""
+        """Enforce cross-field invariants between status and optional fields.
+
+        Returns:
+            ``self`` unchanged when terminal-status invariants and
+            FAILED-with-error invariants both hold.
+
+        Raises:
+            ValueError: When ``completed_at`` is missing for a terminal
+                status (or present for a non-terminal status), or when
+                ``error`` is missing for FAILED (or present otherwise).
+        """
         terminal = {
             WorkflowExecutionStatus.COMPLETED,
             WorkflowExecutionStatus.FAILED,
@@ -240,7 +270,15 @@ class WorkflowExecution(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_node_ids(self) -> Self:
-        """Ensure no duplicate node_id values in node_executions."""
+        """Ensure no duplicate node_id values in node_executions.
+
+        Returns:
+            ``self`` unchanged when every ``node_id`` is unique.
+
+        Raises:
+            ValueError: When duplicate ``node_id`` values appear in
+                ``node_executions``.
+        """
         if not self.node_executions:
             return self
         node_ids = [ne.node_id for ne in self.node_executions]

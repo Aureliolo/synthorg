@@ -76,7 +76,12 @@ class AgentMiddlewareContext(BaseModel):
 
     @model_validator(mode="after")
     def _deepcopy_metadata(self) -> AgentMiddlewareContext:
-        """Defensive copy so callers cannot mutate the frozen model."""
+        """Defensive copy so callers cannot mutate the frozen model.
+
+        Returns:
+            ``self`` with its ``metadata`` field replaced by a deep
+            copy of the input mapping.
+        """
         object.__setattr__(
             self,
             "metadata",
@@ -175,7 +180,12 @@ class ToolCallResult(BaseModel):
 
     @model_validator(mode="after")
     def _deepcopy_metadata(self) -> Self:
-        """Defensive copy so callers cannot mutate the frozen model."""
+        """Defensive copy so callers cannot mutate the frozen model.
+
+        Returns:
+            ``self`` with its ``metadata`` field replaced by a deep
+            copy of the input mapping.
+        """
         object.__setattr__(
             self,
             "metadata",
@@ -185,7 +195,15 @@ class ToolCallResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_error_consistency(self) -> Self:
-        """Ensure success and error fields are consistent."""
+        """Ensure success and error fields are consistent.
+
+        Returns:
+            ``self`` unchanged when success / error fields agree.
+
+        Raises:
+            ValueError: When a successful call has an error message or
+                a failed call has none.
+        """
         if self.success and self.error is not None:
             msg = "successful tool call must not have an error"
             logger.warning(msg, tool_name=self.tool_name)
@@ -292,7 +310,14 @@ class TaskLedger(BaseModel):
 
     @model_validator(mode="after")
     def _validate_temporal_ordering(self) -> Self:
-        """Ensure superseded_at is not before created_at."""
+        """Ensure superseded_at is not before created_at.
+
+        Returns:
+            ``self`` unchanged when the temporal ordering is valid.
+
+        Raises:
+            ValueError: When ``superseded_at`` predates ``created_at``.
+        """
         if self.superseded_at is not None and self.superseded_at < self.created_at:
             msg = "superseded_at must be >= created_at"
             logger.warning(
@@ -356,7 +381,15 @@ class ProgressLedger(BaseModel):
 
     @model_validator(mode="after")
     def _validate_stall_progress_consistency(self) -> Self:
-        """Stall count must be zero when progress was made."""
+        """Stall count must be zero when progress was made.
+
+        Returns:
+            ``self`` unchanged when stall / progress are consistent.
+
+        Raises:
+            ValueError: When ``progress_made`` is ``True`` and
+                ``stall_count > 0``.
+        """
         if self.progress_made and self.stall_count > 0:
             msg = "stall_count must be 0 when progress_made is True"
             logger.warning(
