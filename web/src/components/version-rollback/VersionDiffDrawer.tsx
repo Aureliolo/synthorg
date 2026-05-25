@@ -47,26 +47,25 @@ function useDiffRequest<T>(
     diff: null,
     error: null,
   })
+  const [prevRequestKey, setPrevRequestKey] = useState<string | null>(null)
+
+  // Clear any prior diff/error during render when the request context
+  // changes (different version pair, or the drawer closed). Using the
+  // documented "prevProp tracker" render-phase setState idiom (React
+  // docs, "You Might Not Need an Effect" -> "Adjusting some state
+  // when a prop changes") keeps the stale snapshot from flashing on
+  // the next render and avoids ``@eslint-react/set-state-in-effect``.
+  if (requestKey !== prevRequestKey) {
+    setPrevRequestKey(requestKey)
+    if (result.key !== null || result.diff !== null || result.error !== null) {
+      setResult({ key: null, diff: null, error: null })
+    }
+  }
+
   const isLoading = requestKey !== null && result.key !== requestKey
 
   useEffect(() => {
-    // Clear any prior result so the drawer never renders a stale diff
-    // (or stale error) belonging to a previous version pair while the
-    // current request is unresolved or invalid. ``requestKey === null``
-    // covers the closed/null-version branch; the in-flight branch
-    // resets only when the cached key no longer matches the pending
-    // request, so re-renders with the same key don't flash empty.
-    if (requestKey === null || fromVersion === null || toVersion === null) {
-      setResult((prev) =>
-        prev.key === null && prev.diff === null && prev.error === null
-          ? prev
-          : { key: null, diff: null, error: null },
-      )
-      return
-    }
-    setResult((prev) =>
-      prev.key === requestKey ? prev : { key: null, diff: null, error: null },
-    )
+    if (requestKey === null || fromVersion === null || toVersion === null) return
     let cancelled = false
     const run = async (): Promise<void> => {
       try {
