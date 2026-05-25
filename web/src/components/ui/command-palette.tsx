@@ -61,13 +61,16 @@ function addRecentId(id: string) {
 let _recentIdsSnapshot: readonly string[] = []
 let _recentIdsRawSnapshot: string | null = null
 
-function _getRecentIdsSnapshot(): readonly string[] {
-  let raw: string | null = null
+function _readRecentIdsRaw(): string | null {
   try {
-    raw = localStorage.getItem(RECENT_STORAGE_KEY)
+    return localStorage.getItem(RECENT_STORAGE_KEY)
   } catch {
-    raw = null
+    return null
   }
+}
+
+function _getRecentIdsSnapshot(): readonly string[] {
+  const raw = _readRecentIdsRaw()
   if (raw === _recentIdsRawSnapshot) return _recentIdsSnapshot
   _recentIdsRawSnapshot = raw
   _recentIdsSnapshot = getRecentIds()
