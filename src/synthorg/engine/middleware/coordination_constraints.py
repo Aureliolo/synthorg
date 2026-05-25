@@ -12,6 +12,7 @@ Concrete middleware for the coordination pipeline:
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import AutonomyLevel
 from synthorg.engine.middleware.coordination_protocol import (
     BaseCoordinationMiddleware,
@@ -63,7 +64,13 @@ class TaskLedgerMiddleware(BaseCoordinationMiddleware):
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Create TaskLedger from decomposition result."""
+        """Create TaskLedger from decomposition result.
+
+        Returns:
+            The context with a new :class:`TaskLedger` stored, or the
+            input ``ctx`` unchanged when the decomposition is missing
+            or yields empty plan text.
+        """
         decomp = ctx.decomposition_result
         if decomp is None:
             return ctx
@@ -140,7 +147,14 @@ class ProgressLedgerMiddleware(BaseCoordinationMiddleware):
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Analyze rollup and emit ProgressLedger."""
+        """Analyze rollup and emit ProgressLedger.
+
+        Returns:
+            The context with the new :class:`ProgressLedger` stored,
+            carrying stall counters, blocking issues, and the
+            recommended next action (``continue`` / ``replan`` /
+            ``escalate``).
+        """
         rollup = ctx.status_rollup
         existing = ctx.progress_ledger
 
@@ -231,14 +245,23 @@ class NoOpReplanHook:
         self,
         ctx: CoordinationMiddlewareContext,  # noqa: ARG002
     ) -> bool:
-        """Always returns False."""
+        """Always returns False.
+
+        Returns:
+            ``False`` unconditionally; this hook never triggers a
+            replan.
+        """
         return False
 
     async def replan(
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """No-op: returns context unchanged."""
+        """No-op: returns context unchanged.
+
+        Returns:
+            The same ``ctx`` instance passed in.
+        """
         return ctx
 
 
@@ -269,7 +292,15 @@ class MagenticReplanHook:
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> bool:
-        """Check stall count against caps."""
+        """Check stall count against caps.
+
+        Returns:
+            ``True`` when the progress ledger reports a stall, both
+            stall and reset caps are below their maxima, and the
+            budget enforcer allows the replan call; ``False`` in any
+            other case (no progress ledger, no stall, cap reached, or
+            budget block).
+        """
         progress = ctx.progress_ledger
         if progress is None:
             return False
@@ -302,9 +333,8 @@ class MagenticReplanHook:
                 await self._budget_enforcer.check_can_execute(
                     agent_id="coordination-replan",
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     COORDINATION_REPLAN_BUDGET_BLOCKED,
                     task_id=task.id,
@@ -324,6 +354,12 @@ class MagenticReplanHook:
         The actual re-decomposition is handled by the coordination
         pipeline's outer loop.  This hook signals the intent and
         updates the progress ledger.
+
+        Returns:
+            The context with the progress ledger's ``reset_count``
+            incremented and ``next_action`` set to ``"replan"``; the
+            input ``ctx`` is returned unchanged when no progress
+            ledger is attached.
         """
         progress = ctx.progress_ledger
         task = ctx.coordination_context.task
@@ -373,7 +409,13 @@ class ReplanMiddleware(BaseCoordinationMiddleware):
         self,
         ctx: CoordinationMiddlewareContext,
     ) -> CoordinationMiddlewareContext:
-        """Check for replan after rollup."""
+        """Check for replan after rollup.
+
+        Returns:
+            The context after invoking the configured replan hook; the
+            input ``ctx`` is returned unchanged when the hook says no
+            replan is needed.
+        """
         if await self._hook.should_replan(ctx):
             ctx = await self._hook.replan(ctx)
         return ctx
@@ -414,6 +456,15 @@ class PlanReviewGateMiddleware(BaseCoordinationMiddleware):
 
         Reads autonomy level from the coordination context's config
         when available, otherwise falls back to ``default_autonomy_level``.
+
+        Returns:
+            The context with ``plan_review_gate`` metadata recording
+            ``gated=False`` and the resolved autonomy level.
+
+        Raises:
+            PlanReviewGatedError: When the resolved level is
+                ``SUPERVISED`` or ``LOCKED``: dispatch is blocked and
+                the plan is logged for review.
         """
         # Read autonomy from context config if available
         config = getattr(ctx.coordination_context, "config", None)
