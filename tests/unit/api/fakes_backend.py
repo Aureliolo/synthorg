@@ -1043,13 +1043,13 @@ class FakePersistenceBackend(PersistenceBackend):
         protocol; ``is_revoked`` is sync on the real protocol (auth
         hot-path) and the spec'd child mock returns ``False`` by default.
         """
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import AsyncMock
 
         from synthorg.persistence.auth_protocol import SessionRepository
 
         if self._sessions_stub is None:
             stub = AsyncMock(spec=SessionRepository)
-            stub.is_revoked = MagicMock(return_value=False)
+            stub.is_revoked.return_value = False
             self._sessions_stub = stub
         return self._sessions_stub
 
@@ -1218,8 +1218,8 @@ class FakePersistenceBackend(PersistenceBackend):
 
         if self._seen_claims_stub is None:
             stub = AsyncMock(spec=SeenClaimsRepository)
-            stub.is_completed = AsyncMock(return_value=False)
-            stub.prune_expired = AsyncMock(return_value=0)
+            stub.is_completed.return_value = False
+            stub.prune_expired.return_value = 0
             self._seen_claims_stub = stub
         return self._seen_claims_stub
 
@@ -1234,8 +1234,8 @@ class FakePersistenceBackend(PersistenceBackend):
 
         if self._principle_overrides_stub is None:
             stub = AsyncMock(spec=PrincipleOverrideRepository)
-            stub.get = AsyncMock(return_value=None)
-            stub.list_items = AsyncMock(return_value=())
+            stub.get.return_value = None
+            stub.list_items.return_value = ()
             self._principle_overrides_stub = stub
         return self._principle_overrides_stub
 
@@ -1244,18 +1244,18 @@ class FakePersistenceBackend(PersistenceBackend):
 
         Spec'd to ``LockoutRepository`` so the mock surface mirrors the
         protocol; ``is_locked`` is sync on the real protocol (auth
-        hot-path) and is overridden with a sync ``MagicMock`` returning
-        ``False``. ``record_failure`` returns ``False`` so invalid logins
+        hot-path) and its spec-bound child mock returns ``False`` by
+        default. ``record_failure`` returns ``False`` so invalid logins
         don't spuriously trip ``AccountLockedError``.
         ``lockout_duration_seconds`` is set to ``0`` so Retry-After
-        rendering never sees a ``MagicMock``.
+        rendering sees a plain ``int`` rather than a child mock.
         """
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import AsyncMock
 
         from synthorg.persistence.auth_protocol import LockoutRepository
 
         stub = AsyncMock(spec=LockoutRepository)
-        stub.is_locked = MagicMock(return_value=False)
+        stub.is_locked.return_value = False
         stub.record_failure.return_value = False
         stub.lockout_duration_seconds = 0
         return stub
