@@ -76,7 +76,7 @@ class SQLiteCodebaseStructureMapRepository:
         """Row params.
 
         Returns:
-            The matching collection.
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
         """
         return (
             entity.project_id,

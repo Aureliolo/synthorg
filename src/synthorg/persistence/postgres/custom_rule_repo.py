@@ -16,6 +16,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import ConstraintViolationError, QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -167,6 +168,7 @@ class PostgresCustomRuleRepository:
             )
             raise QueryError(msg) from exc
         except Exception as exc:
+            reraise_critical(exc)
             # Catch-all for non-psycopg helper failures (serialize_altitudes,
             # JSON encoding, datetime coercion). Without this, those raw
             # exceptions would skip the structured save-failed log + the
@@ -309,7 +311,7 @@ class PostgresCustomRuleRepository:
             QueryError: If the query or pagination validation fails.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=META_CUSTOM_RULE_LIST_FAILED

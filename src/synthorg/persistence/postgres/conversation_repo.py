@@ -487,7 +487,7 @@ class PostgresConversationTurnRepository:
                 are invalid.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATION_TURN_FAILED

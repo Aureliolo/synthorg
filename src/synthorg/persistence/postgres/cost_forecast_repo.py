@@ -409,7 +409,7 @@ class PostgresCostForecastRepository:
         """Return forecasts matching the spec, newest-first (paginated).
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.

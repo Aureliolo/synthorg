@@ -79,7 +79,7 @@ class SQLiteKnowledgeSourceRepository:
         """Row params.
 
         Returns:
-            The matching collection.
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
         """
         return (
             entity.source_id,
@@ -263,7 +263,7 @@ ON CONFLICT(source_id) DO UPDATE SET
         """Return sources matching the filter, most-recent first.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.
@@ -364,8 +364,9 @@ def _build_query_sql(
     has its own ``%s``-placeholder twin of this helper.
 
     Returns:
-        ``(sql, params)`` where ``sql`` is the complete query string and ``params`` is
-        the matching positional parameter tuple.
+        ``(sql, params)`` where ``sql`` is the ``FROM ... WHERE`` fragment (callers
+        prepend their own ``SELECT`` clause) and ``params`` is the matching
+        positional parameter tuple.
     """
     conditions: list[str] = []
     params: list[object] = []

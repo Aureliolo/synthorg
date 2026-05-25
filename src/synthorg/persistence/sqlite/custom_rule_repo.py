@@ -314,7 +314,7 @@ ON CONFLICT(id) DO UPDATE SET
             QueryError: If the query or pagination validation fails.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=META_CUSTOM_RULE_LIST_FAILED

@@ -329,7 +329,7 @@ class SQLiteSsrfViolationRepository:
             PersistenceError: If the persistence layer rejects the operation.
 
         Returns:
-            The updated entity.
+            True when the operation succeeded, False otherwise.
         """
         if status == SsrfViolationStatus.PENDING:
             msg = (

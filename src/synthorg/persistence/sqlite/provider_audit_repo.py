@@ -217,7 +217,7 @@ class SQLiteProviderAuditRepo:
         dashboard needs the ``has_more`` signal.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.

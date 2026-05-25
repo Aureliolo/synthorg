@@ -315,7 +315,7 @@ class PostgresTaskRepository:
             QueryError: If the query fails or pagination is out of range.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_TASK_LIST_FAILED
@@ -495,7 +495,7 @@ class PostgresCostRecordRepository:
             QueryError: If the query fails or pagination is out of range.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_COST_RECORD_QUERY_FAILED
@@ -885,7 +885,7 @@ class PostgresMessageRepository:
             QueryError: If the query fails or pagination is out of range.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_MESSAGE_HISTORY_FAILED

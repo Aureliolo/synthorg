@@ -85,7 +85,7 @@ class SQLiteChunkProvenanceRepository:
         """Row params.
 
         Returns:
-            The matching collection.
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
         """
         return (
             entity.chunk_id,
@@ -284,7 +284,7 @@ ON CONFLICT(chunk_id) DO UPDATE SET
         """Delete every provenance row for a source (ADR-0001 D7).
 
         Returns:
-            ``True`` when a row was deleted, ``False`` if no matching row existed.
+            Number of rows deleted.
 
         Raises:
             QueryError: If the database query fails.
@@ -320,7 +320,7 @@ ON CONFLICT(chunk_id) DO UPDATE SET
         """Return provenance rows for a source, ``chunk_index`` ascending.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.

@@ -497,7 +497,7 @@ class SQLiteOrgFactRepository:
         """Query active facts by category and/or text content.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             OrgMemoryQueryError: If the underlying call raises.

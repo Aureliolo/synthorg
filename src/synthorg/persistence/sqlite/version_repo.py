@@ -428,7 +428,7 @@ class SQLiteVersionRepository[T: BaseModel]:
         """Delete all version snapshots for an entity.
 
         Returns:
-            ``True`` when a row was deleted, ``False`` if no matching row existed.
+            Number of rows deleted.
 
         Raises:
             QueryError: If the database query fails.

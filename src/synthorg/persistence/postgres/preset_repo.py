@@ -292,7 +292,7 @@ ON CONFLICT(name) DO UPDATE SET
             QueryError: If the database query fails.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
         """
         return await self.list_items(limit=limit, offset=offset)
 

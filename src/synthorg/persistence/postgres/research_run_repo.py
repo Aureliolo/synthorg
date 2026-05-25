@@ -76,7 +76,7 @@ class PostgresResearchRunRepository:
         """Row params.
 
         Returns:
-            The matching collection.
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
         """
         return (
             entity.run_id,
@@ -242,7 +242,7 @@ class PostgresResearchRunRepository:
         """Return runs matching the filter, most-recent first.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.

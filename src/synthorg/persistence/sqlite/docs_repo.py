@@ -82,7 +82,7 @@ class SQLiteDocsRepository:
         """Row params.
 
         Returns:
-            The matching collection.
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
         """
         return (
             entity.project_id,
@@ -276,7 +276,7 @@ ON CONFLICT(project_id, slug) DO UPDATE SET
         """Return docs matching the filter spec, recency-first.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.

@@ -279,7 +279,7 @@ class SQLiteConversationalProposalRepository:
                 are invalid.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
         """
         effective_limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_CONVERSATIONAL_PROPOSAL_FAILED

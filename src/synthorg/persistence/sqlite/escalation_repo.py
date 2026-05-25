@@ -213,7 +213,7 @@ class SQLiteEscalationRepository(EscalationQueueStore):
         """Page over rows filtered by status.
 
         Returns:
-            The matching entities.
+            Tuple of (items, total_count).
 
         Raises:
             ValueError: If an argument fails validation.

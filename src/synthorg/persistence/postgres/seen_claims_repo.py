@@ -121,11 +121,10 @@ class PostgresSeenClaimsRepository:
         """Delete rows past their ``expires_at`` boundary.
 
         Returns:
-            Numeric result of the operation.
+            Number of rows deleted.
 
         Raises:
             QueryError: If the database query fails.
-            Error: If the underlying driver call fails.
         """
         cutoff = normalize_utc(now)
         try:

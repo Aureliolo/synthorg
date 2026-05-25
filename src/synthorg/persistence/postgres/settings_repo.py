@@ -409,7 +409,7 @@ class PostgresSettingsRepository:
         """Atomically upsert multiple settings.
 
         Returns:
-            The persisted value.
+            True when the operation succeeded, False otherwise.
 
         Raises:
             QueryError: If the database query fails.
@@ -536,7 +536,7 @@ class PostgresSettingsRepository:
         """Delete all settings in a namespace. Return count.
 
         Returns:
-            ``True`` when a row was deleted, ``False`` if no matching row existed.
+            Number of rows deleted.
 
         Raises:
             QueryError: If the database query fails.
@@ -572,7 +572,7 @@ class PostgresSettingsRepository:
         whose override row was removed by *this* call.
 
         Returns:
-            ``True`` when a row was deleted, ``False`` if no matching row existed.
+            The keys whose row was removed by this call.
 
         Raises:
             QueryError: If the database query fails.

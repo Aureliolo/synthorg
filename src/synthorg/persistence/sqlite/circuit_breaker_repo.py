@@ -55,7 +55,8 @@ class SQLiteCircuitBreakerStateRepository:
             reraise_critical(exc)
             logger.warning(
                 event,
-                error="rollback failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def save(self, record: CircuitBreakerStateRecord) -> None:

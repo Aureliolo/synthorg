@@ -117,6 +117,7 @@ class PostgresMcpInstallationRepository:
             )
             raise ConstraintViolationError(msg, constraint=constraint) from exc
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MCP_SERVER_INSTALL_FAILED,
                 operation="upsert",

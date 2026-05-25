@@ -394,7 +394,7 @@ class PostgresAuditRepository:
         Uses the ``@>`` containment operator (GIN-indexed).
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
         """
         self._check_jsonb_column(column)
         condition = f"{column} @> %s::jsonb"
@@ -422,7 +422,7 @@ class PostgresAuditRepository:
         Uses the ``?`` existence operator (GIN-indexed).
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
         """
         self._check_jsonb_column(column)
         condition = f"{column} ? %s"

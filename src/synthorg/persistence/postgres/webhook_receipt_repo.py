@@ -211,7 +211,7 @@ class PostgresWebhookReceiptRepository:
         when no row matched the ID.
 
         Returns:
-            The updated entity.
+            True when the operation succeeded, False otherwise.
 
         Raises:
             QueryError: If the database query fails.
@@ -260,7 +260,7 @@ class PostgresWebhookReceiptRepository:
         instead of re-publishing.
 
         Returns:
-            The updated entity.
+            True when the operation succeeded, False otherwise.
 
         Raises:
             QueryError: If the database query fails.

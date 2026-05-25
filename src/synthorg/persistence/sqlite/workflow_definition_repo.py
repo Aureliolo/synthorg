@@ -186,7 +186,7 @@ class SQLiteWorkflowDefinitionRepository:
         concurrently".
 
         Returns:
-            The updated entity.
+            True when the operation succeeded, False otherwise.
 
         Raises:
             PersistenceVersionConflictError: If the row version no longer matches.
@@ -273,7 +273,7 @@ WHERE id = ? AND revision = ?""",
         See :meth:`WorkflowDefinitionRepository.create_if_absent`.
 
         Returns:
-            The newly created entity.
+            True when the row was inserted, False when an existing row blocked it.
 
         Raises:
             QueryError: If the database query fails.

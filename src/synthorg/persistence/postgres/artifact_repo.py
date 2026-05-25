@@ -232,7 +232,7 @@ RETURNING (xmax = 0) AS created""",
         """List artifacts with optional filters (paginated).
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.

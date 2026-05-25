@@ -280,7 +280,7 @@ class PostgresTaskMetricRepository:
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.
@@ -418,7 +418,7 @@ class PostgresCollaborationMetricRepository:
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.

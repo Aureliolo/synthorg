@@ -69,7 +69,7 @@ class SQLiteProjectEnvironmentRepository:
         """Row params.
 
         Returns:
-            The matching collection.
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
         """
         return (
             environment.project_id,

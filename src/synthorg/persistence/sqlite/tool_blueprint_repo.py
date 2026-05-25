@@ -339,7 +339,7 @@ class SQLiteDynamicToolRepository:
         """List blueprints matching the filter spec (paginated).
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.
@@ -520,7 +520,7 @@ def _coerce_update_ts(value: object) -> str:
         Result of type ``str``.
 
     Raises:
-        QueryError: If the database query fails.
+        QueryError: If ``value`` is not a ``datetime``.
     """
     if not isinstance(value, datetime):
         msg = f"transition timestamp must be a datetime, got {type(value).__name__}"
@@ -538,7 +538,7 @@ def _coerce_validation(value: object) -> str | None:
         The matching value, or ``None`` when absent.
 
     Raises:
-        QueryError: If the database query fails.
+        QueryError: If ``value`` is neither ``None`` nor a ``ToolValidationResult``.
     """
     if value is None:
         return None

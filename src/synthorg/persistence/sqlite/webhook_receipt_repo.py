@@ -188,7 +188,7 @@ class SQLiteWebhookReceiptRepository:
         distinguish "not found" from a successful no-op.
 
         Returns:
-            The updated entity.
+            True when the operation succeeded, False otherwise.
 
         Raises:
             QueryError: If the database query fails.
@@ -239,7 +239,7 @@ class SQLiteWebhookReceiptRepository:
         ordering guarantee; the WHERE clause supplies the predicate.
 
         Returns:
-            The updated entity.
+            True when the operation succeeded, False otherwise.
 
         Raises:
             QueryError: If the database query fails.

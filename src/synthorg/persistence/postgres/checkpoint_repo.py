@@ -202,7 +202,7 @@ INSERT INTO checkpoints (
         """Return checkpoints matching the filter, newest first.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.
@@ -286,7 +286,7 @@ INSERT INTO checkpoints (
         """Delete all checkpoints for an execution.
 
         Returns:
-            ``True`` when a row was deleted, ``False`` if no matching row existed.
+            Number of rows deleted.
 
         Raises:
             QueryError: If the database query fails.

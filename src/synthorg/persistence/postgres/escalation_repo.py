@@ -275,7 +275,7 @@ INSERT INTO conflict_escalations (
         """Page over rows filtered by status.
 
         Returns:
-            The matching entities.
+            Tuple of (items, total_count).
 
         Raises:
             ValueError: If an argument fails validation.
@@ -541,7 +541,7 @@ INSERT INTO conflict_escalations (
                 notifies_gen = conn.notifies()
 
                 async def _payloads() -> AsyncIterator[str]:
-                    """Payloads payloads."""
+                    """Yield notification payloads from the LISTEN iterator."""
                     async for notify in notifies_gen:
                         yield notify.payload
 

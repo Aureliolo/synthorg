@@ -278,7 +278,7 @@ INSERT INTO task_metrics (
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.
@@ -418,7 +418,7 @@ INSERT INTO collaboration_metrics (
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`).
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.

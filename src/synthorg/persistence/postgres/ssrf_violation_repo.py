@@ -314,7 +314,7 @@ class PostgresSsrfViolationRepository:
             QueryError: If the database query fails.
 
         Returns:
-            The updated entity.
+            True when the operation succeeded, False otherwise.
         """
         if status == SsrfViolationStatus.PENDING:
             msg = "Cannot transition a violation back to PENDING"

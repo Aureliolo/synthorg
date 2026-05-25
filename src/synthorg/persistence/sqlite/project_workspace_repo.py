@@ -69,7 +69,7 @@ class SQLiteProjectWorkspaceRepository:
         """Row params.
 
         Returns:
-            The matching collection.
+            Tuple of scalar SQL parameter values for INSERT/UPDATE.
         """
         return (
             workspace.project_id,

@@ -211,7 +211,7 @@ class PostgresSessionRepository:
         """List sessions matching the filter spec.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
         """
         limit = validate_pagination_args(
             limit, offset, event=API_AUTH_SESSION_PERSISTENCE_ERROR

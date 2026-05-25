@@ -79,7 +79,7 @@ class InMemoryConnectionRepository:
         """List matching the filter spec (deep-copied).
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
         """
         ordered = sorted(self._store.values(), key=lambda c: c.name)
         if filter_spec.connection_type is not None:
@@ -286,7 +286,7 @@ class InMemoryWebhookReceiptRepository:
         """In-memory stub: no status update.
 
         Returns:
-            The updated entity.
+            True when the operation succeeded, False otherwise.
         """
         return False
 
@@ -302,7 +302,7 @@ class InMemoryWebhookReceiptRepository:
         """In-memory stub: no CAS update.
 
         Returns:
-            The updated entity.
+            True when the operation succeeded, False otherwise.
         """
         return False
 

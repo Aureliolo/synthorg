@@ -148,7 +148,7 @@ class PostgresWorkflowDefinitionRepository:
         ``definition.revision - 1``.
 
         Returns:
-            The updated entity.
+            True when the operation succeeded, False otherwise.
 
         Raises:
             QueryError: If the database query fails.
@@ -229,7 +229,7 @@ class PostgresWorkflowDefinitionRepository:
         See :meth:`WorkflowDefinitionRepository.create_if_absent`.
 
         Returns:
-            The newly created entity.
+            True when the row was inserted, False when an existing row blocked it.
 
         Raises:
             QueryError: If the database query fails.

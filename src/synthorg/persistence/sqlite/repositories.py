@@ -303,7 +303,7 @@ id, title, description, type, priority, project, created_by,
         callers see stable windows.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.
@@ -483,7 +483,7 @@ INSERT INTO cost_records (
         """Query cost records matching filter spec with pagination.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.
@@ -906,7 +906,7 @@ WHERE id = ? AND channel = ?"""
         """Return messages matching the filter spec, newest first.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.

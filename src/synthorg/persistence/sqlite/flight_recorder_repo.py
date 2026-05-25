@@ -151,7 +151,7 @@ class SQLiteFlightRecorderFrameRepository:
         """Return frames matching the filter, newest-first by turn index.
 
         Returns:
-            Tuple of (items, next_cursor) for paginated iteration.
+            The matching entities.
 
         Raises:
             QueryError: If the database query fails.
