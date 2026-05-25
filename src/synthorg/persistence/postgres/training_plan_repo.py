@@ -103,7 +103,7 @@ def _plan_to_params(plan: TrainingPlan) -> tuple[object, ...]:
     """Build the parameter tuple for the upsert SQL statement.
 
     Returns:
-        The matching collection.
+        Tuple of scalar SQL parameter values for the upsert statement.
     """
     return (
         str(plan.id),

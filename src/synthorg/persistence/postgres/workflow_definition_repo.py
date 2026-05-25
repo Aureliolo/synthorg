@@ -125,7 +125,7 @@ class PostgresWorkflowDefinitionRepository:
         CHECK constraint and surfacing a generic driver error.
 
         Raises:
-            QueryError: If the database query fails.
+            QueryError: If ``definition.revision`` is less than 1.
         """
         if definition.revision < 1:
             msg = (

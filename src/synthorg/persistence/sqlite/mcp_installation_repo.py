@@ -149,16 +149,30 @@ class SQLiteMcpInstallationRepository:
 
         Returns:
             The matching entity, or ``None`` when no row matches.
+
+        Raises:
+            QueryError: If the database query fails.
         """
-        async with self._db.execute(
-            """
-            SELECT catalog_entry_id, connection_name, installed_at
-            FROM mcp_installations
-            WHERE catalog_entry_id = ?
-            """,
-            (catalog_entry_id,),
-        ) as cursor:
-            row = await cursor.fetchone()
+        try:
+            async with self._db.execute(
+                """
+                SELECT catalog_entry_id, connection_name, installed_at
+                FROM mcp_installations
+                WHERE catalog_entry_id = ?
+                """,
+                (catalog_entry_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+        except Exception as exc:
+            reraise_critical(exc)
+            msg = f"Failed to fetch MCP installation {catalog_entry_id!r}"
+            logger.warning(
+                PERSISTENCE_MCP_INSTALLATION_LIST_FAILED,
+                catalog_entry_id=catalog_entry_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
         if row is None:
             return None
         return McpInstallation(

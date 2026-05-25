@@ -173,7 +173,7 @@ def _validate_update_keys(
     """Reject unknown update keys; enforce ``superseded`` semantics.
 
     Raises:
-        QueryError: If the database query fails.
+        QueryError: If unknown update keys or invalid transition inputs are supplied.
     """
     allowed = {"decided_by", "decided_at", "ceiling_amount"}
     unknown = sorted(set(updates) - allowed)

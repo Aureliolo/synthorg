@@ -286,7 +286,7 @@ class InMemoryWebhookReceiptRepository:
         """In-memory stub: no status update.
 
         Returns:
-            True when the operation succeeded, False otherwise.
+            Always ``False``; the in-memory stub does not persist updates.
         """
         return False
 
@@ -302,7 +302,7 @@ class InMemoryWebhookReceiptRepository:
         """In-memory stub: no CAS update.
 
         Returns:
-            True when the operation succeeded, False otherwise.
+            Always ``False``; the in-memory stub does not persist CAS updates.
         """
         return False
 

@@ -172,7 +172,7 @@ class PostgresProjectRepository:
             raise RecordNotFoundError(msg)
 
     async def save(self, project: Project) -> None:
-        """Persist a project via upsert (migration / import paths).
+        """Persist a project via upsert.
 
         Raises:
             QueryError: If the database query fails.

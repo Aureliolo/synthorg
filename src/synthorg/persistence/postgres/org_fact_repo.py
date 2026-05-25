@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import AwareDatetime, ValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (
     AutonomyLevel,
     OrgFactCategory,
@@ -354,6 +355,7 @@ class PostgresOrgFactRepository:
                         ),
                     )
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ORG_MEMORY_WRITE_FAILED,
                 fact_id=fact.id,
@@ -419,6 +421,7 @@ class PostgresOrgFactRepository:
                         (now, version, fact_id),
                     )
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ORG_MEMORY_WRITE_FAILED,
                 fact_id=fact_id,
@@ -457,6 +460,7 @@ class PostgresOrgFactRepository:
                 )
                 row = await cur.fetchone()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 fact_id=fact_id,
@@ -524,6 +528,7 @@ class PostgresOrgFactRepository:
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 error_type=type(exc).__name__,
@@ -572,6 +577,7 @@ class PostgresOrgFactRepository:
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,
                 category=category.value,
@@ -667,6 +673,7 @@ LIMIT %(limit)s OFFSET %(offset)s
                 )
                 rows = await cur.fetchall()
         except Exception as exc:
+            reraise_critical(exc)
             ts_iso = timestamp.isoformat()
             error_desc = safe_error_description(exc)
             logger.warning(
@@ -721,6 +728,7 @@ LIMIT %(limit)s OFFSET %(offset)s
                 )
                 rows = await cur.fetchall()
         except Exception as exc:
+            reraise_critical(exc)
             error_desc = safe_error_description(exc)
             logger.warning(
                 ORG_MEMORY_QUERY_FAILED,

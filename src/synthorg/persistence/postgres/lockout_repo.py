@@ -250,13 +250,15 @@ class PostgresLockoutRepository:
     async def record_success(self, username: str) -> bool:
         """Clear failure count on successful login.
 
-        Returns ``True`` if a previously-locked account was unlocked
-        (caller logs ``SECURITY_AUTH_LOCKOUT_CLEARED``); ``False``
-        when no lockout was in effect.
+        Always deletes the DB ``login_attempts`` row; the boolean
+        return reflects the in-memory cache: ``True`` when an
+        in-memory lockout entry was popped (caller logs
+        ``SECURITY_AUTH_LOCKOUT_CLEARED``), ``False`` when there was
+        nothing cached for this username.
 
         Returns:
-            ``True`` when an existing failure record was cleared, ``False`` when there
-            was nothing to clear.
+            ``True`` when the in-memory lockout cache entry was popped, ``False`` when
+            none was cached.
         """
         username = username.lower()
         # Same write-lock serialisation as ``record_failure``: cache

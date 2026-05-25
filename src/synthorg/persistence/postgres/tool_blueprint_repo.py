@@ -151,7 +151,7 @@ def _upsert_params(bp: ToolBlueprint) -> tuple[object, ...]:
     """Build the positional upsert parameter tuple for a blueprint.
 
     Returns:
-        The matching collection.
+        Tuple of scalar SQL parameter values for the upsert statement.
     """
     return (
         bp.id,

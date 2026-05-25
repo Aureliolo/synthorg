@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import WebhookReceipt
@@ -144,6 +145,7 @@ class PostgresWebhookReceiptRepository:
                     params,
                 )
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to log webhook receipt {receipt.id!r}"
             logger.warning(
                 PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
@@ -175,6 +177,7 @@ class PostgresWebhookReceiptRepository:
                 )
                 row = await cur.fetchone()
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to fetch webhook receipt {receipt_id!r}"
             logger.warning(
                 PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
@@ -231,6 +234,7 @@ class PostgresWebhookReceiptRepository:
                 )
                 return cur.rowcount > 0
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to update webhook receipt {receipt_id!r}"
             logger.warning(
                 PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
@@ -281,6 +285,7 @@ class PostgresWebhookReceiptRepository:
                 )
                 return cur.rowcount > 0
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to CAS webhook receipt {receipt_id!r}"
             logger.warning(
                 PERSISTENCE_WEBHOOK_RECEIPT_LOG_FAILED,
@@ -322,6 +327,7 @@ class PostgresWebhookReceiptRepository:
                 await cur.execute(sql, params)
                 rows = await cur.fetchall()
         except Exception as exc:
+            reraise_critical(exc)
             msg = "Failed to list webhook receipts"
             logger.warning(
                 PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
@@ -358,6 +364,7 @@ class PostgresWebhookReceiptRepository:
                 deleted = cur.rowcount > 0
                 await conn.commit()
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to delete webhook receipt {entity_id!r}"
             logger.warning(
                 PERSISTENCE_WEBHOOK_RECEIPT_DELETE_FAILED,
@@ -398,6 +405,7 @@ class PostgresWebhookReceiptRepository:
                 )
                 rows = await cur.fetchall()
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to list webhook receipts for {connection_name!r}"
             logger.warning(
                 PERSISTENCE_WEBHOOK_RECEIPT_LIST_FAILED,
@@ -446,6 +454,7 @@ class PostgresWebhookReceiptRepository:
                 )
                 removed = cur.rowcount
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to cleanup old webhook receipts for {connection_name!r}"
             logger.warning(
                 PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
