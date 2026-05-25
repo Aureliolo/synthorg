@@ -658,6 +658,28 @@ module = [
 disallow_any_explicit = false
 disable_error_code = ["explicit-override", "unused-awaitable"]
 
+# Test code retains ``disallow_any_explicit = false`` only. The four
+# other strict++ flags that the previous tests.* override block lifted
+# (``disallow_any_generics``, ``explicit-override``, ``unused-awaitable``,
+# ``deprecated``) are now enforced across tests/ alongside the rest of
+# the codebase. Foundation files, fakes hubs, and several subdirs went
+# further and have file-level ``# mypy: disable-error-code="explicit-any"``
+# (often combined with ``explicit-override`` or ``unused-awaitable`` where
+# the file genuinely needs them) instead of relying on this override;
+# those files can drop their pragma once the global lift below ratchets
+# off via the follow-up issue.
+#
+# Follow-up: lifting the residual ``disallow_any_explicit = false`` here
+# is tracked under issue #2061's continuation work (see
+# docs/decisions/0006-tiered-module-size-policy.md Section F). The
+# explicit-Any volume that remains in tests/unit/{api,engine,tools/...},
+# tests/integration/, tests/conformance/, tests/e2e/, tests/benchmarks/,
+# and tests/evals/ is the next ratchet target; once cleaned the block
+# below can be deleted entirely.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_any_explicit = false
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
