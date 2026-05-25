@@ -119,6 +119,36 @@ def test_service_tier_cap_is_600(tmp_path: Path) -> None:
     assert _GATE.check(project_root=project, baseline_path=baseline) == []
 
 
+def test_complex_service_tier_cap_is_1100(tmp_path: Path) -> None:
+    project = tmp_path
+    _write_src_file(
+        project,
+        "src/synthorg/cs.py",
+        lines=1100,
+        header="# module-kind: complex_service",
+    )
+    baseline = project / "scripts" / "_module_size_baseline.json"
+    baseline.parent.mkdir(parents=True)
+    _empty_baseline(baseline)
+    assert _GATE.check(project_root=project, baseline_path=baseline) == []
+
+
+def test_complex_service_tier_fails_at_1101(tmp_path: Path) -> None:
+    project = tmp_path
+    _write_src_file(
+        project,
+        "src/synthorg/cs.py",
+        lines=1101,
+        header="# module-kind: complex_service",
+    )
+    baseline = project / "scripts" / "_module_size_baseline.json"
+    baseline.parent.mkdir(parents=True)
+    _empty_baseline(baseline)
+    violations = _GATE.check(project_root=project, baseline_path=baseline)
+    assert len(violations) == 1
+    assert "complex_service" in violations[0].render()
+
+
 def test_declarative_tier_is_exempt(tmp_path: Path) -> None:
     project = tmp_path
     _write_src_file(

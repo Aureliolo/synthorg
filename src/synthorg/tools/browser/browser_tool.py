@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Headless browser tool driving Playwright inside a DockerSandbox.
 
 Single unified tool that dispatches on ``BrowserToolArgs.mode``. The

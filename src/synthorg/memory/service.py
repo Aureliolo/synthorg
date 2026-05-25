@@ -1,26 +1,33 @@
+# module-kind: complex_service
 """Memory admin service layer for fine-tuning checkpoints and runs.
 
-Encapsulates persistence access for the ``/memory/fine-tune/*`` endpoints
-so the controller stays thin (parse / shape / return) and the raw
-``app_state.persistence.get_db()`` handle stays inside the persistence
-package where it belongs.
+Encapsulates persistence access for the ``/memory/fine-tune/*``
+endpoints so the controller stays thin (parse / shape / return) and
+the raw ``app_state.persistence.get_db()`` handle stays inside the
+persistence package where it belongs.
 
 The service is backend-agnostic: both SQLite and Postgres expose the
 ``FineTuneRunRepository`` + ``FineTuneCheckpointRepository`` protocols
 via ``PersistenceBackend.fine_tune_runs`` and
 ``PersistenceBackend.fine_tune_checkpoints``, and the parametrized
-conformance suite at ``tests/conformance/persistence/`` exercises both
-arms on every run. When an active backend still does not expose those
-repos (or the orchestrator has not been wired for the current
+conformance suite at ``tests/conformance/persistence/`` exercises
+both arms on every run. When an active backend still does not expose
+those repos (or the orchestrator has not been wired for the current
 deployment), the fine-tune lifecycle methods raise a typed
-:class:`MemoryBackendUnsupportedError` so MCP handlers can route the failure
-through the standard ``not_supported()`` envelope.
+:class:`MemoryBackendUnsupportedError` so MCP handlers can route the
+failure through the standard ``not_supported()`` envelope.
+
+The fine-tune run lifecycle (start / resume / cancel / status /
+preflight / list_runs) lives in
+:class:`synthorg.memory.fine_tune_admin_service.FineTuneAdminService`;
+``MemoryService``'s fine-tune methods are thin delegates so the
+controller call surface is unchanged. Checkpoint deploy / rollback /
+delete and the embedder-state-machine helpers remain here under the
+same ``_embedder_state_lock`` they have always used.
 """
 
 import asyncio
 import json
-import os
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from synthorg.core.domain_errors import (
@@ -30,13 +37,6 @@ from synthorg.core.domain_errors import (
 )
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
-from synthorg.memory.embedding.fine_tune_models import (
-    CheckpointRecord,
-    FineTuneRun,
-    FineTuneStatus,
-    PreflightCheck,
-    PreflightResult,
-)
 from synthorg.memory.fine_tune_plan import (
     ActiveEmbedderSnapshot,
     FineTunePlan,
@@ -60,10 +60,6 @@ from synthorg.observability.events.memory import (
     MEMORY_ENTRY_DELETE_FAILED,
     MEMORY_ENTRY_DELETED,
     MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
-    MEMORY_FINE_TUNE_INVALID_REQUEST,
-    MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
-    MEMORY_FINE_TUNE_REQUESTED,
-    MEMORY_FINE_TUNE_STARTED,
 )
 from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,  # noqa: TC001
@@ -71,6 +67,12 @@ from synthorg.persistence.fine_tune_protocol import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.memory.embedding.fine_tune_models import (
+        CheckpointRecord,
+        FineTuneRun,
+        FineTuneStatus,
+        PreflightResult,
+    )
     from synthorg.memory.embedding.fine_tune_orchestrator import FineTuneOrchestrator
     from synthorg.memory.protocol import MemoryBackend
     from synthorg.settings.service import SettingsService
@@ -179,6 +181,7 @@ class MemoryService:
     __slots__ = (
         "_checkpoints",
         "_embedder_state_lock",
+        "_ft_admin",
         "_memory_backend",
         "_orchestrator",
         "_runs",
@@ -220,11 +223,19 @@ class MemoryService:
                 when no backend is wired (the entry-delete method
                 raises :class:`MemoryBackendUnsupportedError` in that case).
         """
+        from synthorg.memory.fine_tune_admin_service import (  # noqa: PLC0415
+            FineTuneAdminService,
+        )
+
         self._checkpoints = checkpoint_repo
         self._runs = run_repo
         self._settings = settings_service
         self._orchestrator = orchestrator
         self._memory_backend = memory_backend
+        self._ft_admin = FineTuneAdminService(
+            run_repo=run_repo,
+            orchestrator=orchestrator,
+        )
         # Serializes the three-step reads in ``get_active_embedder`` and
         # the multi-repo writes in ``deploy_checkpoint`` /
         # ``rollback_checkpoint`` / ``delete_checkpoint`` so a
@@ -559,194 +570,33 @@ class MemoryService:
         limit: int,
         offset: int,
     ) -> tuple[tuple[FineTuneRun, ...], int]:
-        """Return a page of fine-tune runs newest-first + the total count.
+        """Page of fine-tune runs newest-first + total (delegates to admin)."""
+        return await self._ft_admin.list_runs(limit=limit, offset=offset)
 
-        The MCP surface needs both the page and the unfiltered total so
-        ``PaginationMeta`` can be attached without a second round trip.
-
-        Raises:
-            ValueError: If ``offset`` is negative or ``limit`` is not
-                strictly positive. Enforcing the bounds here keeps
-                invalid paging inputs from reaching the repository
-                where the error mode is backend-specific.
-        """
-        if offset < 0:
-            logger.warning(
-                MEMORY_FINE_TUNE_INVALID_REQUEST,
-                surface="list_runs",
-                param="offset",
-                value=offset,
-            )
-            msg = f"offset must be >= 0, got {offset}"
-            raise ValueError(msg)
-        if limit < 1:
-            logger.warning(
-                MEMORY_FINE_TUNE_INVALID_REQUEST,
-                surface="list_runs",
-                param="limit",
-                value=limit,
-            )
-            msg = f"limit must be >= 1, got {limit}"
-            raise ValueError(msg)
-        return await self._require_runs().list_items_page(limit=limit, offset=offset)
-
-    # ── Fine-tune lifecycle ────────────────────────────────────────
+    # ── Fine-tune lifecycle (delegated) ────────────────────────────
 
     async def start_fine_tune(self, plan: FineTunePlan) -> FineTuneRun:
-        """Start a new fine-tune run from *plan*.
-
-        Args:
-            plan: MCP-facing fine-tune plan (shield over
-                :class:`FineTuneRequest`).
-
-        Returns:
-            The created run record.
-
-        Raises:
-            MemoryBackendUnsupportedError: When the active backend does not
-                expose fine-tune support.
-            RuntimeError: If another run is already active.
-        """
-        orchestrator = self._require_orchestrator()
-        logger.info(
-            MEMORY_FINE_TUNE_REQUESTED,
-            source_dir=plan.source_dir,
-            base_model=plan.base_model,
-            resume_run_id=plan.resume_run_id,
-        )
-        run = await orchestrator.start(plan.to_request())
-        logger.info(
-            MEMORY_FINE_TUNE_STARTED,
-            run_id=run.id,
-            source_dir=plan.source_dir,
-        )
-        return run
+        """Start a new fine-tune run from *plan* (delegates to admin)."""
+        return await self._ft_admin.start_fine_tune(plan)
 
     async def resume_fine_tune(self, run_id: NotBlankStr) -> FineTuneRun:
-        """Resume a failed / cancelled fine-tune run.
-
-        Translates the orchestrator's ``ValueError`` (which packs both
-        "run not found" and "stage not resumable" into the same
-        exception type) into typed variants so MCP handlers can map
-        them to ``not_found`` / ``conflict`` domain codes via
-        ``exc.domain_code`` instead of regex-matching the message.
-
-        Raises:
-            MemoryBackendUnsupportedError: When the active backend does not
-                expose fine-tune support.
-            FineTuneRunNotFoundError: If *run_id* does not exist.
-            FineTuneRunNotResumableError: If the run exists but is not
-                in a resumable stage (running, already completed, etc.).
-            RuntimeError: If another run is already active.
-        """
-        orchestrator = self._require_orchestrator()
-        try:
-            return await orchestrator.resume(str(run_id))
-        except ValueError as exc:
-            message = str(exc).lower()
-            if "not resumable" in message or "cannot resume" in message:
-                raise FineTuneRunNotResumableError(str(exc)) from exc
-            raise FineTuneRunNotFoundError(str(exc)) from exc
+        """Resume a failed / cancelled run (delegates to admin)."""
+        return await self._ft_admin.resume_fine_tune(run_id)
 
     async def get_fine_tune_status(
         self,
         run_id: NotBlankStr | None = None,
     ) -> FineTuneStatus:
-        """Return the current orchestrator status.
-
-        When ``run_id`` is omitted, returns the orchestrator's
-        idea of the current / most-recent run (matches
-        :meth:`FineTuneOrchestrator.get_status`). When provided, looks
-        up the run directly from persistence and synthesises a status
-        envelope (so historical runs remain queryable after the
-        in-memory ``current_run`` slot rotates).
-
-        Raises:
-            MemoryBackendUnsupportedError: When the backend does not support
-                fine-tune runs.
-            ValueError: If *run_id* is given but the run does not exist.
-        """
-        orchestrator = self._require_orchestrator()
-        if run_id is None:
-            return await orchestrator.get_status()
-        run = await self._require_runs().get(str(run_id))
-        if run is None:
-            logger.warning(
-                MEMORY_FINE_TUNE_INVALID_REQUEST,
-                surface="get_fine_tune_status",
-                param="run_id",
-                value=str(run_id),
-                reason="run_not_found",
-            )
-            msg = f"Fine-tune run {run_id!r} not found"
-            raise ValueError(msg)
-        return FineTuneStatus(
-            run_id=run.id,
-            stage=run.stage,
-            progress=run.progress,
-            error=run.error,
-        )
+        """Return the orchestrator status (delegates to admin)."""
+        return await self._ft_admin.get_fine_tune_status(run_id)
 
     async def cancel_fine_tune(self) -> str | None:
-        """Cancel the currently active fine-tune run.
-
-        The orchestrator tracks exactly one active run, so this is
-        scoped to that run. Completing a cancel is cooperative and
-        awaits the background task for up to 30s (see
-        :meth:`FineTuneOrchestrator.cancel`).
-
-        Returns:
-            The run id of the cancelled run, or ``None`` if no run was
-            active at the time ``cancel`` was issued. Captured **before**
-            ``cancel()`` runs because the orchestrator may clear
-            ``current_run`` during cancellation, and the MCP handler
-            needs the id for the ``MCP_ADMIN_OP_EXECUTED`` audit
-            record.
-
-        Raises:
-            MemoryBackendUnsupportedError: When the backend does not support
-                fine-tune runs.
-        """
-        orchestrator = self._require_orchestrator()
-        active = orchestrator.current_run
-        target_id = str(active.id) if active is not None else None
-        # ``FineTuneOrchestrator.cancel`` already emits
-        # ``MEMORY_FINE_TUNE_CANCELLED`` on a successful cancel (and
-        # nothing on the no-active-run branch). Emitting a second
-        # event here would (a) double-count real cancellations in
-        # dashboards keyed on the event name and (b) produce a false
-        # "cancelled" event when ``target_id is None``. Return the
-        # captured id for the MCP audit path without re-emitting.
-        await orchestrator.cancel()
-        return target_id
+        """Cancel the active run (delegates to admin)."""
+        return await self._ft_admin.cancel_fine_tune()
 
     async def run_preflight(self, plan: FineTunePlan) -> PreflightResult:
-        """Validate *plan* against local-env prerequisites.
-
-        Keeps the check minimal + deterministic so it is callable from
-        any MCP client without kicking off the full pipeline: verifies
-        that the ``source_dir`` exists and is a directory, that
-        ``output_dir`` (if provided) is writable (or at least
-        creatable), and that numeric overrides are within the runner's
-        declared bounds.
-
-        Raises:
-            MemoryBackendUnsupportedError: When the backend does not support
-                fine-tune runs.
-        """
-        self._require_orchestrator()
-        checks: list[PreflightCheck] = []
-        checks.append(_check_source_dir_exists(plan.source_dir))
-        if plan.output_dir is not None:
-            checks.append(_check_output_dir_writable(plan.output_dir))
-        checks.append(_check_overrides(plan))
-        result = PreflightResult(checks=tuple(checks))
-        logger.info(
-            MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED,
-            can_proceed=result.can_proceed,
-            check_count=len(checks),
-        )
-        return result
+        """Validate *plan* against local-env prerequisites (delegates to admin)."""
+        return await self._ft_admin.run_preflight(plan)
 
     async def get_active_embedder(self) -> ActiveEmbedderSnapshot:
         """Return the active embedder snapshot read from settings.
@@ -1011,135 +861,3 @@ class MemoryService:
                 checkpoint_id=checkpoint_id,
                 step=step,
             )
-
-
-# ── Preflight helpers ────────────────────────────────────────────
-
-
-def _check_source_dir_exists(source_dir: str) -> PreflightCheck:
-    """Verify that *source_dir* exists, is a directory, and is readable."""
-    path = Path(source_dir)
-    if not path.exists():
-        return PreflightCheck(
-            name=NotBlankStr("source_dir_exists"),
-            status="fail",
-            message=NotBlankStr(f"Source directory does not exist: {source_dir}"),
-        )
-    if not path.is_dir():
-        return PreflightCheck(
-            name=NotBlankStr("source_dir_exists"),
-            status="fail",
-            message=NotBlankStr(f"Source path is not a directory: {source_dir}"),
-        )
-    # Verify the runner can actually read AND traverse the directory.
-    # R_OK alone is insufficient: a directory without execute/search
-    # permission cannot be entered, so the runner would fail to open
-    # any file inside even though ``R_OK`` passed.
-    if not os.access(path, os.R_OK | os.X_OK):
-        return PreflightCheck(
-            name=NotBlankStr("source_dir_exists"),
-            status="fail",
-            message=NotBlankStr(
-                f"Source directory is not readable or not traversable: {source_dir}",
-            ),
-        )
-    return PreflightCheck(
-        name=NotBlankStr("source_dir_exists"),
-        status="pass",
-        message=NotBlankStr("Source directory exists and is readable"),
-    )
-
-
-def _check_output_dir_writable(output_dir: str) -> PreflightCheck:
-    """Verify that *output_dir* (or its parent, if absent) is writable.
-
-    Resolves symlinks before the writability probe so a dangling
-    symlink (``output_dir`` is a symlink whose target does not exist)
-    does not silently pass the non-existent-parent fallback. The
-    resolved target must exist and be writable for the check to pass.
-    """
-    path = Path(output_dir)
-    # Symlink -> must resolve its target before probing. A dangling
-    # symlink's ``exists()`` returns False (exists() follows the link),
-    # so detect this case explicitly so the warn/fail message can
-    # point to the broken target rather than reporting the link path.
-    if path.is_symlink():
-        resolved = path.resolve(strict=False)
-        if not resolved.exists():
-            return PreflightCheck(
-                name=NotBlankStr("output_dir_writable"),
-                status="warn",
-                message=NotBlankStr(
-                    f"Output directory symlink target does not exist: "
-                    f"{path} -> {resolved}",
-                ),
-                detail="The runner will attempt to create it at pipeline start.",
-            )
-        probe = resolved
-    else:
-        probe = path if path.exists() else path.parent
-    if not probe.exists():
-        return PreflightCheck(
-            name=NotBlankStr("output_dir_writable"),
-            status="warn",
-            message=NotBlankStr(
-                f"Output directory parent does not exist: {probe}",
-            ),
-            detail="The runner will attempt to create it at pipeline start.",
-        )
-    # Probe must be a directory -- a path that exists but resolves
-    # to a regular file cannot serve as the checkpoint output dir
-    # and would fail deep inside the runner where the error is
-    # harder to act on.
-    if not probe.is_dir():
-        return PreflightCheck(
-            name=NotBlankStr("output_dir_writable"),
-            status="fail",
-            message=NotBlankStr(
-                f"Output directory path is not a directory: {probe}",
-            ),
-        )
-    # Require both write and execute/search permissions: writing a
-    # new checkpoint file requires traversing into the directory
-    # first, so W_OK alone is insufficient.
-    if not os.access(probe, os.W_OK | os.X_OK):
-        return PreflightCheck(
-            name=NotBlankStr("output_dir_writable"),
-            status="fail",
-            message=NotBlankStr(
-                f"Output directory is not writable or not traversable: {probe}",
-            ),
-        )
-    return PreflightCheck(
-        name=NotBlankStr("output_dir_writable"),
-        status="pass",
-        message=NotBlankStr("Output directory is writable"),
-    )
-
-
-def _check_overrides(plan: FineTunePlan) -> PreflightCheck:
-    """Return a pass check -- Pydantic already enforced the bounds.
-
-    Preserved as an explicit check so the preflight report always
-    includes the override review; any operator reading the result gets
-    an audit-trail style confirmation rather than a silent omission.
-    """
-    overrides = {
-        "epochs": plan.epochs,
-        "learning_rate": plan.learning_rate,
-        "temperature": plan.temperature,
-        "top_k": plan.top_k,
-        "batch_size": plan.batch_size,
-        "validation_split": plan.validation_split,
-    }
-    non_default = {k: v for k, v in overrides.items() if v is not None}
-    message = (
-        "No overrides -- runner defaults will apply"
-        if not non_default
-        else f"Overrides within bounds: {non_default}"
-    )
-    return PreflightCheck(
-        name=NotBlankStr("override_bounds"),
-        status="pass",
-        message=NotBlankStr(message),
-    )

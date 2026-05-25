@@ -1,7 +1,19 @@
+# module-kind: complex_service
 """Performance tracker service.
 
 Central service for recording and querying agent performance metrics.
-Delegates scoring, windowing, and trend detection to pluggable strategies.
+Delegates scoring, windowing, and trend detection to pluggable
+strategies.
+
+One cohesive responsibility: track per-agent performance. Metric
+recording, snapshot computation (windows + trends), LLM-sampler
+scheduling, and inflection emission share ``_metrics_lock`` plus the
+``_background_tasks`` set plus the ``_closing`` flag plus the
+``_trend_direction_cache``, so splitting requires extracting those
+shared invariants into a separate state owner. The strategy seams
+(quality / collaboration / window / trend / inflection sink) already
+isolate the pluggable algorithms; the residual class is the
+state-owning pipeline.
 """
 
 import asyncio

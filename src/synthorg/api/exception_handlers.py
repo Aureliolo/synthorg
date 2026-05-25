@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Exception handlers mapping domain errors to HTTP responses.
 
 Each handler returns either an ``ApiResponse`` envelope (default) or a
@@ -11,6 +12,15 @@ status codes.
 
 All handlers populate structured RFC 9457 metadata (error code, category,
 retryability, title, type URI, request correlation ID).
+
+One cohesive responsibility: route exceptions to HTTP responses.
+The handler table, the content-negotiation chokepoint
+(``_build_response``), the safe-log-attrs serialiser, the
+status-code / error-code / category / retryability normalisers, and
+the per-domain handlers all share the same envelope shape + the same
+``_log_error`` call site; splitting handlers into sibling modules
+would force the envelope-construction code to live in two places and
+break the single SEC-1 redaction chokepoint.
 """
 
 import math

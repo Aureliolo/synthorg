@@ -1,4 +1,11 @@
-"""SQLite repository implementation for approval items."""
+# module-kind: complex_service
+"""SQLite repository implementation for approval items.
+
+One cohesive responsibility: persist approval items + their evidence
+packages on SQLite. The class bundles CRUD, filter-spec queries,
+JSON serialisation, and safe-rollback error handling, all sharing
+the same write-context and row-to-model helpers.
+"""
 
 import json
 import sqlite3

@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Ceremony scheduler -- runtime coordination between sprints and meetings.
 
 The ``CeremonyScheduler`` owns ceremony trigger state (counters,

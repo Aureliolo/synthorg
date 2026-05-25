@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Centralized single-writer task engine.
 
 Owns all task state mutations via an ``asyncio.Queue``.  A single

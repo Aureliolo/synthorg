@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Tool invoker -- validates and executes tool calls.
 
 Bridges LLM ``ToolCall`` objects with concrete ``BaseTool.execute``

@@ -1,4 +1,22 @@
-"""Telemetry collector -- gathers curated metrics from runtime."""
+# module-kind: complex_service
+"""Telemetry collector lifecycle.
+
+Loads the anonymous deployment ID, scrubs privacy, and emits curated
+metrics to a configurable reporter.
+
+Implements the one cohesive responsibility of "be the backend's
+telemetry surface": resolve the environment tag (operator override ->
+CI auto-detect -> Dockerfile-baked default -> parsed config), load or
+atomically create the on-disk ``deployment_id`` through a single
+``asyncio.to_thread`` boundary that preserves the
+``O_CREAT|O_EXCL`` race semantics end-to-end, run the heartbeat /
+startup / shutdown / session-summary lifecycle, and route every event
+through ``PrivacyScrubber`` before the reporter. The size reflects the
+defence-in-depth around the deployment-id path (path-validation +
+trusted-root allowlist + peer-read retry + corrupt-file repair), which
+cannot be split across modules without losing the single-thread
+race-safety guarantee the file currently enforces.
+"""
 
 import asyncio
 import contextlib

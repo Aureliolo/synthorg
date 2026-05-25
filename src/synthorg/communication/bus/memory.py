@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """In-memory message bus implementation (see Communication design page).
 
 Default backend using asyncio primitives.  Suitable for single-process

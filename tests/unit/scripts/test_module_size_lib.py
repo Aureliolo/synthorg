@@ -80,6 +80,7 @@ def test_count_loc_empty_file_is_zero(tmp_path: Path) -> None:
     [
         ("# module-kind: controller\n\nimport x\n", "controller"),
         ("# module-kind: service\n\nimport x\n", "service"),
+        ("# module-kind: complex_service\n\nimport x\n", "complex_service"),
         ("# module-kind: repository\n\nimport x\n", "repository"),
         ("# module-kind: adapter\n\nimport x\n", "adapter"),
         ("# module-kind: feature\n\nimport x\n", "feature"),
@@ -199,6 +200,7 @@ def test_tier_limits_table_matches_plan() -> None:
     assert _LIB.TIER_LIMITS["controller"] == 400
     assert _LIB.TIER_LIMITS["service"] == 600
     assert _LIB.TIER_LIMITS["orchestrator"] == 600
+    assert _LIB.TIER_LIMITS["complex_service"] == 1100
     assert _LIB.TIER_LIMITS["repository"] == 500
     assert _LIB.TIER_LIMITS["adapter"] == 700
     assert _LIB.TIER_LIMITS["integration"] == 700

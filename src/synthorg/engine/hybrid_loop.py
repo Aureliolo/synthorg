@@ -1,9 +1,17 @@
+# module-kind: complex_service
 """Hybrid Plan + ReAct execution loop.
 
 Three-phase approach: plan, execute (mini-ReAct per step with
 per-step turn limits), and checkpoint (progress summary + optional
 replanning). See ``hybrid.step_helpers`` and ``hybrid.replan_helpers``
 for the extracted free-function helpers.
+
+One cohesive responsibility: drive the three-phase Plan + ReAct
+execution strategy. The plan, per-step mini-loop with turn limits,
+and checkpoint + optional replan phases share the same step-budget
+accounting, completion-callback, and execution-context propagation;
+the helper modules already extract the free functions, so the
+residual orchestrator is the cohesive driver.
 """
 
 import copy

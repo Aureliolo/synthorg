@@ -1,3 +1,4 @@
+# module-kind: complex_service
 """Tool factory -- instantiate built-in workspace tools with config-driven parameters.
 
 Provides ``build_default_tools`` (core factory) and
