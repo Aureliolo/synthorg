@@ -18,12 +18,14 @@ ci:
   #     too slow / toolchain-heavy for the cloud runner.
   #     lychee is also a Rust binary not bundled with pre-commit-uv;
   #     operators install it via `bash scripts/install_cli_tools.sh`,
-  #     and CI runs it via .github/workflows/lychee.yml. vale follows the
-  #     same shape: a Go binary not bundled with pre-commit-uv, operators
-  #     install it via `bash scripts/install_cli_tools.sh vale` (which
-  #     also runs `vale sync` to materialise the Google style package
-  #     under the gitignored `.vale/styles/Google/`). vale has no CI
-  #     workflow yet; pre-push is the only gate.
+  #     and CI runs it via .github/workflows/lychee.yml. vale follows
+  #     the same binary-install shape (operators install the binary
+  #     once per machine via `bash scripts/install_cli_tools.sh vale`),
+  #     but the gitignored `.vale/styles/Google/` package is populated
+  #     lazily by the `scripts/vale-prepush.sh` wrapper on the first
+  #     push in each worktree, so new worktrees do not need an explicit
+  #     sync step. vale has no CI workflow yet; pre-push is the only
+  #     gate.
   #   - no-em-dashes / no-redundant-timeout / forbidden-literals /
   #     persistence-boundary / no-new-logger-exception-str-exc /
   #     orphan-fixtures / boundary-typed / setting-to-startup-trace /
@@ -432,14 +434,18 @@ repos:
 
       - id: vale
         name: vale (prose linter -- Google style + British vocab)
-        entry: vale
+        # Wrapper that lazily runs `vale sync` when a worktree's
+        # gitignored `.vale/styles/Google/` cache is missing, then execs
+        # vale on the staged files. Subsequent pushes pay a single
+        # stat() call. The vale binary itself is installed once per
+        # machine via `bash scripts/install_cli_tools.sh vale`; the
+        # wrapper prints a clear pointer if it is missing.
+        #
         # MinAlertLevel = suggestion is set in `.vale.ini` itself
         # (single source of truth). The corpus is drained to zero
         # findings against the strictest level, so any future regression
-        # blocks pre-push. The package files live under
-        # `.vale/styles/Google/` (gitignored) and are populated by
-        # `vale sync` from scripts/install_cli_tools.sh.
-        args: ["--config", ".vale.ini"]
+        # blocks pre-push.
+        entry: bash scripts/vale-prepush.sh
         language: system
         # Same glob as lychee + markdownlint: README, every CLAUDE.md
         # tier, and every Markdown under docs/. Pre-push only -- vale

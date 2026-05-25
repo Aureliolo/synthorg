@@ -535,15 +535,27 @@ install_vale() {
 
 # Lifted out of install_vale so the early `return 0` on the
 # already-installed path does NOT skip the sync -- a fresh worktree with the
-# binary already on PATH still needs `.vale/styles/Google/` populated. Cheap
-# when the package is already current.
+# binary already on PATH still needs `.vale/styles/Google/` populated.
+#
+# Idempotent: skips the network round-trip when the Google package's
+# Acronyms.yml sentinel is already present. The pre-push wrapper
+# (scripts/vale-prepush.sh) uses the same sentinel and runs `vale sync`
+# lazily on first push in a worktree, so explicitly invoking this
+# function from `install_cli_tools.sh vale` is now only useful for
+# pre-warming a worktree before going offline. Re-running is cheap.
 sync_vale_packages() {
   local repo_root vale_ini vale_bin install_dir binary_name
+
   repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
   vale_ini="${repo_root}/.vale.ini"
 
   if [ ! -f "${vale_ini}" ]; then
     echo "vale sync skipped: no .vale.ini at ${vale_ini} (this branch may pre-date the vale wiring)"
+    return 0
+  fi
+
+  if [ -s "${repo_root}/.vale/styles/Google/Acronyms.yml" ]; then
+    echo "vale sync skipped: Google style package already present at ${repo_root}/.vale/styles/Google/"
     return 0
   fi
 
