@@ -39,6 +39,17 @@ from tests.unit.scripts._setting_to_startup_trace_helpers import (
 
 pytestmark = pytest.mark.unit
 
+# Heavy module-level computation: ``_MODULE.scan_repo`` walks the full
+# ``src/synthorg/`` AST tree and takes 3-5 seconds. Computing it here
+# (at module import / collection time) amortises the cost across the
+# whole session rather than billing it to the per-test wall-clock
+# guard, which would otherwise trip the 6.0s unit limit under
+# ``--count 2`` isolation-gate contention on Windows. The result is a
+# pure function of the on-disk repo state and is stable for the run.
+_REAL_REPO_VIOLATIONS: tuple[object, ...] = tuple(
+    _MODULE.scan_repo(_REPO_ROOT, baseline_path=None)  # type: ignore[attr-defined]
+)
+
 
 # ── Settings-inventory loader ───────────────────────────────────
 
@@ -182,11 +193,8 @@ def test_real_repo_violations_match_expected() -> None:
     correct against real-world wiring. If it fails, the lint logic is
     wrong; baseline drift is irrelevant here -- no baseline is loaded.
     """
-    violations = _MODULE.scan_repo(  # type: ignore[attr-defined]
-        _REPO_ROOT,
-        baseline_path=None,
-    )
-    flagged = {v.setting_key for v in violations}
+    violations = _REAL_REPO_VIOLATIONS
+    flagged = {v.setting_key for v in violations}  # type: ignore[attr-defined]
 
     must_not_flag = {
         "backup.compression",
