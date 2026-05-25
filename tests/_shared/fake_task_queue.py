@@ -152,7 +152,7 @@ class FakeJetStreamTaskQueue:
     async def core_subscribe(
         self,
         subject: str,
-        cb: Callable[[bytes], Awaitable[None]],
+        cb: Callable[[_FakeNatsMsg], Awaitable[None]],
     ) -> FakeSubscription:
         """Register a core-NATS subscription; returns an unsub handle."""
         self.subscribed_subject = subject

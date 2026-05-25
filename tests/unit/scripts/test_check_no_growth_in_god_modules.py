@@ -1,4 +1,3 @@
-# mypy: disable-error-code="explicit-any"
 """Unit tests for ``scripts/check_no_growth_in_god_modules.py``.
 
 The gate's job: a diff that touches an explicit god-module allowlist
@@ -31,7 +30,7 @@ def _load_gate() -> ModuleType:
     return module
 
 
-_GATE: Any = cast("Any", _load_gate())
+_GATE: Any = cast("Any", _load_gate())  # type: ignore[explicit-any]
 
 
 # ── Allowlist is the canonical set ──────────────────────────────

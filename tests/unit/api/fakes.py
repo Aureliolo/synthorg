@@ -1233,12 +1233,11 @@ class FakeMessageBus:
 
     async def subscribe(self, channel_name: str, subscriber_id: str) -> Subscription:
         from datetime import UTC
-        from datetime import datetime as _dt
 
         return Subscription(
             channel_name=NotBlankStr(channel_name),
             subscriber_id=NotBlankStr(subscriber_id),
-            subscribed_at=_dt.now(UTC),
+            subscribed_at=datetime.now(UTC),
         )
 
     async def unsubscribe(self, channel_name: str, subscriber_id: str) -> None:
