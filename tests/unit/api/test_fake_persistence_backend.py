@@ -55,10 +55,18 @@ def test_lazy_stub_properties_are_cached_and_spec_bound() -> None:
     ]
     for stub, spec_cls in spec_pairs:
         assert isinstance(stub, AsyncMock)
-        # AsyncMock surfaces the spec class via the public ``_spec_class``
-        # attribute set during construction; tests assert identity (not a
-        # subclass match) to catch accidental spec widening.
-        assert stub._spec_class is spec_cls
+        # Behavioural spec-binding check: every public method of the
+        # protocol is accessible on the stub, and attribute access for
+        # any name not on the protocol raises ``AttributeError`` (which
+        # ``AsyncMock(spec=...)`` enforces). Avoids inspecting the
+        # private ``_spec_class`` attribute, which is not part of the
+        # public ``unittest.mock`` surface.
+        for attr in (n for n in dir(spec_cls) if not n.startswith("_")):
+            assert hasattr(stub, attr), (
+                f"{spec_cls.__name__}.{attr} missing on spec-bound stub"
+            )
+        with pytest.raises(AttributeError):
+            stub.not_a_real_repository_method_xyz_42()
 
     # Identity stability across repeat property access.
     assert fake.sessions is fake.sessions

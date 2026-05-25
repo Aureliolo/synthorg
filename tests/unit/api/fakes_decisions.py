@@ -7,7 +7,7 @@ continue to work.
 """
 
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC
 from types import MappingProxyType
 
 from pydantic import AwareDatetime
@@ -177,7 +177,7 @@ class FakeDecisionRepository:
         matching.sort(key=lambda r: (r.recorded_at, r.id), reverse=True)
         return tuple(matching[offset : offset + limit])
 
-    async def purge_before(self, threshold: datetime) -> int:
+    async def purge_before(self, threshold: AwareDatetime) -> int:
         before = len(self._records)
         self._records = {
             k: r for k, r in self._records.items() if r.recorded_at >= threshold
