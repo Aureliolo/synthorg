@@ -84,6 +84,10 @@ class AgentEngineFactoriesMixin:
         not be defeated by the engine's own ``approval_store is None``
         short-circuit, since the boot gate is wired independently of
         and before the engine's approval-store wiring.
+
+        Returns:
+            The injected gate when present; a freshly-built gate when
+            an approval store is configured; ``None`` when neither.
         """
         if self._injected_approval_gate is not None:
             return self._injected_approval_gate  # type: ignore[no-any-return]
@@ -108,7 +112,13 @@ class AgentEngineFactoriesMixin:
         return ApprovalGate(**kwargs)
 
     def _make_default_loop(self) -> ExecutionLoop:
-        """Build the default ``react`` loop via the shared factory."""
+        """Build the default ``react`` loop via the shared factory.
+
+        Returns:
+            A freshly-built ReAct :class:`ExecutionLoop` wired with
+            this engine's approval gate, stagnation detector, and
+            compaction callback.
+        """
         return build_execution_loop(
             "react",
             approval_gate=self._approval_gate,
@@ -122,7 +132,14 @@ class AgentEngineFactoriesMixin:
         agent_id: str = "",
         task_id: str = "",
     ) -> ExecutionLoop:
-        """Select the execution loop for a task."""
+        """Select the execution loop for a task.
+
+        Returns:
+            The configured default loop when auto-selection is off;
+            otherwise an :class:`ExecutionLoop` of the type selected
+            from task complexity and (when relevant) live budget
+            utilisation.
+        """
         if self._auto_loop_config is None:
             return self._loop  # type: ignore[no-any-return]
 
@@ -178,7 +195,13 @@ class AgentEngineFactoriesMixin:
         self,
         effective_autonomy: EffectiveAutonomy | None = None,
     ) -> SecurityInterceptionStrategy | None:
-        """Build the SecOps security interceptor if configured."""
+        """Build the SecOps security interceptor if configured.
+
+        Returns:
+            A :class:`SecurityInterceptionStrategy` when the security
+            wiring is present; ``None`` when the feature is not
+            configured.
+        """
         return make_security_interceptor(
             self._security_config,
             self._audit_log,
@@ -235,7 +258,14 @@ class AgentEngineFactoriesMixin:
         task_id: str | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
     ) -> ToolInvoker | None:
-        """Create a ToolInvoker with permission checking and security."""
+        """Create a ToolInvoker with permission checking and security.
+
+        Returns:
+            A :class:`ToolInvoker` wired with the registry (extended
+            with approval / external-API / memory tools when their
+            dependencies are wired); ``None`` when no tool registry
+            is configured.
+        """
         if self._tool_registry is None:
             return None
 

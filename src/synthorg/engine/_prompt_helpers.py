@@ -251,7 +251,9 @@ def _try_condensed(
     of whether the budget is met.  Subsequent tiers build on this
     side-effect.
 
-    Returns the new token count if within budget, else ``None``.
+    Returns:
+        The new token count when the condensed-mode estimate fits
+        the budget; ``None`` when it still exceeds.
     """
     ctx["personality_mode"] = "condensed"
     tokens = _estimate_personality_tokens(ctx, "condensed", estimator)
@@ -270,7 +272,9 @@ def _try_truncate_description(
     empty) value regardless of whether the budget is met.  Subsequent
     tiers may overwrite the description further.
 
-    Returns the new token count if within budget, else ``None``.
+    Returns:
+        The new token count when the truncated description fits the
+        budget; ``None`` when even the truncated form exceeds.
     """
     saved_desc = ctx["personality_description"]
     ctx["personality_description"] = ""
@@ -358,6 +362,10 @@ def _make_trim_info(
 
     The engine layer separately logs at INFO with agent context.
     Emits a WARNING when the budget was not met (tier 3 best-effort).
+
+    Returns:
+        A :class:`PersonalityTrimInfo` summarising before/after token
+        counts and the trim tier that produced them.
     """
     logger.debug(
         PROMPT_PERSONALITY_TRIMMED,
@@ -455,7 +463,13 @@ def build_core_context(  # noqa: PLR0913
 def _format_autonomy(
     effective_autonomy: EffectiveAutonomy | None,
 ) -> dict[str, object] | None:
-    """Format effective autonomy for template context."""
+    """Format effective autonomy for template context.
+
+    Returns:
+        A dict carrying the autonomy level, sorted approval-action
+        lists, and the security-agent flag; ``None`` when no
+        effective autonomy was supplied.
+    """
     if effective_autonomy is None:
         return None
     return {

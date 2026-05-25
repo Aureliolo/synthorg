@@ -177,7 +177,13 @@ def make_security_interceptor(  # noqa: PLR0913
 
 
 def _build_rule_engine(cfg: SecurityConfig) -> RuleEngine:
-    """Assemble the rule engine with built-in detectors and custom policies."""
+    """Assemble the rule engine with built-in detectors and custom policies.
+
+    Returns:
+        A :class:`RuleEngine` whose rule list is the policy validator,
+        the enabled built-in detectors, and the configured custom
+        policies (ordered per the bypass flag).
+    """
     re_cfg = cfg.rule_engine
     policy_validator = PolicyValidator(
         hard_deny_action_types=frozenset(cfg.hard_deny_action_types),
@@ -259,8 +265,10 @@ def registry_with_approval_tool(
 ) -> ToolRegistry:
     """Build a registry with the approval tool added if applicable.
 
-    Returns the original registry unchanged when no approval store
-    is configured.
+    Returns:
+        A :class:`ToolRegistry` with the approval tool appended when
+        an approval store is configured; the original registry
+        unchanged when ``approval_store`` is ``None``.
     """
     if approval_store is None:
         return tool_registry
@@ -297,6 +305,11 @@ def registry_with_external_api_tool(  # noqa: PLR0913 -- run-scoped wiring input
     approval store is available (sensitive calls could not be gated). The
     tool is run-scoped: it binds the run's identity, task, and effective
     autonomy alongside the boot-scoped catalog / provider / policy.
+
+    Returns:
+        A :class:`ToolRegistry` with the external-API tool appended
+        when both ``runtime`` and ``approval_store`` are wired;
+        otherwise the original registry unchanged.
     """
     if runtime is None or approval_store is None:
         return tool_registry
