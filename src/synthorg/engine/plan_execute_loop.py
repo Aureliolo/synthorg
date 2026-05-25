@@ -232,7 +232,13 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         shutdown_checker: ShutdownChecker | None,
         budget_checker: BudgetChecker | None,
     ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
-        """Run pre-checks and generate the initial plan."""
+        """Run pre-checks and generate the initial plan.
+
+        Returns:
+            ``(updated_ctx, plan)`` when shutdown / budget checks pass
+            and the planner succeeds; a terminal :class:`ExecutionResult`
+            when any pre-check trips so the caller bails out early.
+        """
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
         if shutdown_result is not None:
             return shutdown_result
@@ -263,7 +269,12 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
     ) -> ExecutionResult:
-        """Iterate through plan steps, handling failures and replanning."""
+        """Iterate through plan steps, handling failures and replanning.
+
+        Returns:
+            The terminal :class:`ExecutionResult` once the loop exits
+            (success, MAX_TURNS, replan exhaustion, or shutdown).
+        """
         step_idx = 0
         while step_idx < len(plan.steps):
             if not ctx.has_turns_remaining:
@@ -434,7 +445,12 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         all_plans: list[ExecutionPlan],
         replans_used: int,
     ) -> ExecutionResult:
-        """Build the final result after step iteration completes."""
+        """Build the final result after step iteration completes.
+
+        Returns:
+            The terminal :class:`ExecutionResult` with ``MAX_TURNS``
+            when turns ran out mid-plan and ``COMPLETED`` otherwise.
+        """
         # Sync live plan so final_plan metadata reflects step statuses
         if all_plans:
             all_plans[-1] = plan
@@ -473,7 +489,13 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         config: CompletionConfig,
         turns: list[TurnRecord],
     ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
-        """Generate an execution plan from the LLM."""
+        """Generate an execution plan from the LLM.
+
+        Returns:
+            ``(updated_ctx, plan)`` on a successful plan generation,
+            or the terminal :class:`ExecutionResult` propagated from
+            the planner call (budget exhaustion, shutdown, etc.).
+        """
         plan_msg = ChatMessage(
             role=MessageRole.USER,
             content=_PLANNING_PROMPT,
@@ -507,7 +529,13 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         failed_step: PlanStep,
         turns: list[TurnRecord],
     ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
-        """Generate a revised plan after a step failure."""
+        """Generate a revised plan after a step failure.
+
+        Returns:
+            ``(updated_ctx, new_plan)`` carrying the revised plan with
+            ``revision_number`` incremented; the terminal
+            :class:`ExecutionResult` when the planner call fails.
+        """
         logger.info(
             EXECUTION_PLAN_REPLAN_START,
             execution_id=ctx.execution_id,
@@ -573,6 +601,11 @@ class PlanExecuteLoop(PlanExecuteStepMixin):
         Sends the message to the LLM, records the turn, checks for
         response errors, parses the plan, and returns either
         ``(ctx, plan)`` or an error result.
+
+        Returns:
+            ``(updated_ctx, parsed_plan)`` on a successful planner
+            call and parse; a terminal :class:`ExecutionResult` when
+            the planner errored or parsing failed.
         """
         task_summary = extract_task_summary(ctx)
         ctx = ctx.with_message(message)

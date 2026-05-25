@@ -69,6 +69,10 @@ class RoutingScorerConfig(BaseModel):
         misconfiguration without breaking the resolver hot path
         (Pydantic ``ValidationError`` would block bridge resolution
         and crash bootstrap).
+
+        Returns:
+            ``self`` unchanged; weight sums above the documented
+            ceiling only log a warning.
         """
         weight_sum = (
             self.primary_skill_weight
@@ -97,6 +101,10 @@ class RoutingScorerConfig(BaseModel):
         routing module stays free of a runtime dependency on
         ``settings.bridge_configs`` (which would cycle through the engine
         namespace).
+
+        Returns:
+            A :class:`RoutingScorerConfig` populated from the
+            ``routing_*`` fields of ``bridge``.
         """
         return cls(
             primary_skill_weight=bridge.routing_weight_primary_skill,
@@ -240,6 +248,11 @@ def _score_skill_tiers(
     """Score primary, secondary, and tag tiers; return (score, matched_ids).
 
     Mutates *reasons* with human-readable explanations.
+
+    Returns:
+        ``(score, matched_ids)`` -- the aggregated skill / tag score
+        and the sorted list of matched skill ids (primary first,
+        then secondary).
     """
     required = set(subtask.required_skills)
     if not required:
@@ -298,7 +311,12 @@ def _score_role(
     reasons: list[str],
     config: RoutingScorerConfig,
 ) -> float:
-    """Award the role-match bonus when the agent's role matches required_role."""
+    """Award the role-match bonus when the agent's role matches required_role.
+
+    Returns:
+        ``config.role_match_bonus`` when the agent's role matches the
+        subtask's required role (case-insensitive); ``0.0`` otherwise.
+    """
     if subtask.required_role is not None and compare_ci(
         agent.role, subtask.required_role
     ):
@@ -313,7 +331,13 @@ def _score_seniority_alignment(
     reasons: list[str],
     config: RoutingScorerConfig,
 ) -> float:
-    """Award the seniority-alignment bonus when level matches complexity."""
+    """Award the seniority-alignment bonus when level matches complexity.
+
+    Returns:
+        ``config.seniority_alignment_bonus`` when the agent's
+        seniority covers the subtask's estimated complexity; ``0.0``
+        otherwise.
+    """
     aligned = _SENIORITY_COMPLEXITY.get(agent.level, ())
     if subtask.estimated_complexity in aligned:
         reasons.append(
