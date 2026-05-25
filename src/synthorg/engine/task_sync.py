@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel, TaskStatus
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import TerminationReason
@@ -87,9 +88,10 @@ async def sync_to_task_engine(  # noqa: PLR0913
             reason=reason,
         )
         result = await task_engine.submit(mutation)
-    except MemoryError, RecursionError, asyncio.CancelledError:
+    except asyncio.CancelledError:
         raise
     except Exception as exc:
+        reraise_critical(exc)
         _log_sync_issue(
             critical=critical,
             agent_id=agent_id,
@@ -155,6 +157,11 @@ async def transition_task_if_needed(
     """Transition ASSIGNED -> IN_PROGRESS; pass through IN_PROGRESS.
 
     Also syncs the transition to TaskEngine (best-effort).
+
+    Returns:
+        The (possibly updated) :class:`AgentContext` with status
+        transitioned to ``IN_PROGRESS`` when the entry status was
+        ``ASSIGNED``; otherwise ``ctx`` unchanged.
     """
     if (
         ctx.task_execution is not None
@@ -192,9 +199,10 @@ async def apply_post_execution_transitions(
     IN_REVIEW, an ``ApprovalItem`` is created so the human knows
     there is a task to review.
 
-    Returns the original ``execution_result`` unchanged if no
-    transitions apply, or a copy with updated context reflecting
-    the furthest-reached state on success or partial failure.
+    Returns:
+        The original ``execution_result`` unchanged if no transitions
+        apply, or a copy with updated context reflecting the
+        furthest-reached state on success or partial failure.
     """
     ctx = execution_result.context
     if ctx.task_execution is None:
@@ -260,9 +268,11 @@ async def _transition_and_sync(  # noqa: PLR0913
 ) -> AgentContext:
     """Apply a local task transition, log it, and sync to TaskEngine.
 
-    Returns the updated context.  The local transition (via
-    ``with_task_transition``) is applied unconditionally; the remote
-    sync is best-effort.
+    The local transition (via ``with_task_transition``) is applied
+    unconditionally; the remote sync is best-effort.
+
+    Returns:
+        The updated :class:`AgentContext` after the local transition.
     """
     prev_status = ctx.task_execution.status  # type: ignore[union-attr]
     ctx = ctx.with_task_transition(target_status, reason=reason)
@@ -325,9 +335,8 @@ async def _create_review_approval(
     )
     try:
         await approval_store.add(item)
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             EXECUTION_ENGINE_ERROR,
             approval_id=approval_id,
@@ -353,7 +362,13 @@ async def _transition_to_interrupted(
     task_id: str,
     task_engine: TaskEngine | None,
 ) -> ExecutionResult:
-    """Transition task to INTERRUPTED on graceful shutdown."""
+    """Transition task to INTERRUPTED on graceful shutdown.
+
+    Returns:
+        A copy of ``execution_result`` with the context updated to
+        the ``INTERRUPTED`` status; the original ``execution_result``
+        is returned unchanged when the transition raises.
+    """
     try:
         ctx = await _transition_and_sync(
             ctx,

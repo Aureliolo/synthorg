@@ -8,6 +8,7 @@ check for LLM errors -> update context -> handle completion or
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
@@ -232,7 +233,14 @@ class ReactLoop:
         completion_config: CompletionConfig | None,
         tool_invoker: ToolInvokerProtocol | None,
     ) -> tuple[str, CompletionConfig, list[ToolDefinition] | None, list[TurnRecord]]:
-        """Log loop start and resolve config, model ID, and tool defs."""
+        """Log loop start and resolve config, model ID, and tool defs.
+
+        Returns:
+            ``(model_id, config, tool_defs, turns)``: the resolved
+            model id, the effective :class:`CompletionConfig`, the
+            tool definitions for the loop (``None`` when no invoker),
+            and an empty turn-record list to accumulate into.
+        """
         logger.info(
             EXECUTION_LOOP_START,
             execution_id=context.execution_id,
@@ -260,7 +268,14 @@ class ReactLoop:
         tool_invoker: ToolInvokerProtocol | None,
         shutdown_checker: ShutdownChecker | None = None,
     ) -> AgentContext | ExecutionResult:
-        """Check errors, update context, handle completion or tool calls."""
+        """Check errors, update context, handle completion or tool calls.
+
+        Returns:
+            The updated :class:`AgentContext` when the loop should
+            continue, or an :class:`ExecutionResult` when this turn
+            terminates the loop (completion, error, shutdown, or
+            tool-execution outcome).
+        """
         error = check_response_errors(ctx, response, turn_number, turns)
         if error is not None:
             return error
@@ -286,9 +301,8 @@ class ReactLoop:
         if self._checkpoint_callback is not None:
             try:
                 await self._checkpoint_callback(ctx)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
                     execution_id=ctx.execution_id,
@@ -324,7 +338,14 @@ class ReactLoop:
         response: CompletionResponse,
         turns: list[TurnRecord],
     ) -> ExecutionResult:
-        """Handle no-tool-call responses: normal completion or TOOL_USE error."""
+        """Handle no-tool-call responses: normal completion or TOOL_USE error.
+
+        Returns:
+            An :class:`ExecutionResult` with
+            ``termination_reason=ERROR`` for the malformed
+            ``TOOL_USE``-without-tools case, or ``COMPLETED`` for the
+            normal text-response completion.
+        """
         if response.finish_reason == FinishReason.TOOL_USE:
             error_msg = (
                 "Provider returned TOOL_USE with no tool calls "

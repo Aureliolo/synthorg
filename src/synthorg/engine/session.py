@@ -24,6 +24,7 @@ from pydantic import (
 )
 
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -79,7 +80,11 @@ class SessionEvent(BaseModel):
 
     @model_validator(mode="after")
     def _deepcopy_data(self) -> Self:
-        """Defensive copy so callers cannot mutate the frozen model."""
+        """Defensive copy so callers cannot mutate the frozen model.
+
+        Returns:
+            ``self`` with ``data`` replaced by a deepcopy.
+        """
         object.__setattr__(self, "data", copy.deepcopy(self.data))
         return self
 
@@ -116,7 +121,14 @@ class ReplayResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_processed_le_total(self) -> Self:
-        """Ensure events_processed does not exceed events_total."""
+        """Ensure events_processed does not exceed events_total.
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If ``events_processed > events_total``.
+        """
         if self.events_processed > self.events_total:
             msg = (
                 f"events_processed ({self.events_processed}) "
@@ -283,7 +295,13 @@ def _apply_transition_event(
     ctx: AgentContext,
     event: SessionEvent,
 ) -> AgentContext:
-    """Apply a task-transition event to the context."""
+    """Apply a task-transition event to the context.
+
+    Returns:
+        A copy of ``ctx`` with the task status replaced when the event
+        carries a ``target_status``; the original ``ctx`` when no
+        transition applies.
+    """
     target = event.data.get("target_status")
     if target is not None and ctx.task_execution is not None:
         from_status = ctx.task_execution.status
@@ -316,7 +334,13 @@ def _replay_from_events(
     max_turns: int,
     execution_id: str,
 ) -> ReplayResult:
-    """Walk sorted events and reconstruct AgentContext."""
+    """Walk sorted events and reconstruct AgentContext.
+
+    Returns:
+        A :class:`ReplayResult` carrying the reconstructed context,
+        the completeness fraction, and the events-processed /
+        events-total counts.
+    """
     ctx = AgentContext.from_identity(
         identity,
         task=task,
@@ -365,8 +389,6 @@ def _replay_from_events(
                 found_transition = True
                 ctx = _apply_transition_event(ctx, event)
 
-        except MemoryError, RecursionError:
-            raise
         except (ValueError, TypeError, KeyError) as exc:
             logger.warning(
                 SESSION_REPLAY_ERROR,
@@ -377,6 +399,7 @@ def _replay_from_events(
                 error=safe_error_description(exc),
             )
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SESSION_REPLAY_ERROR,
                 execution_id=execution_id,
@@ -433,6 +456,9 @@ def _compute_completeness(
         Contiguous turn sequence:    +0.25 (bonus on top of turn)
         Cost data in turn events:    +0.15
         Task transition events:      +0.15
+
+    Returns:
+        The clamped completeness score in ``[0.0, 1.0]``.
     """
     score = 0.0
 
