@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gate every frozen Pydantic model under ``src/synthorg/`` to forbid extras.
+"""Gate every frozen Pydantic model under ``src/synthorg/`` and ``tests/`` to forbid extras.
 
 A frozen model that does not declare ``extra="forbid"`` silently
 absorbs unknown construction keys, masking caller typos and letting
@@ -9,9 +9,12 @@ does not need to round-trip through ``model_dump()``. This gate
 enforces that statically and project-wide (it strictly supersedes the
 old API-DTO-only ``check_dto_forbid_extra.py``).
 
-Scope: every class under ``src/synthorg/`` whose OWN body assigns
-``model_config = ConfigDict(...)`` (or a dict literal) with
-``frozen=True``.
+Scope: every class under ``src/synthorg/`` and ``tests/`` whose OWN
+body assigns ``model_config = ConfigDict(...)`` (or a dict literal)
+with ``frozen=True``. Test fixture models are included because the
+project-wide convention applies equally to fixtures: silently
+absorbing unknown construction keys in a test fixture masks the same
+class of caller typos the gate catches in production code.
 
 Carve-outs:
 
@@ -41,6 +44,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = REPO_ROOT / "src" / "synthorg"
+TEST_DIR = REPO_ROOT / "tests"
 
 _OPTOUT_WITH_REASON_RE = re.compile(
     r"#\s*lint-allow:\s*frozen-extra-forbid\s*--\s*(?P<reason>\S.*?)\s*$"
@@ -154,6 +158,13 @@ def _optout_status(
 def _walk(path: Path) -> list[tuple[Path, int, str]]:
     """Return ``(path, lineno, class_name)`` violations in ``path``."""
     source = path.read_text(encoding="utf-8")
+    # Fast pre-filter: a frozen ConfigDict always assigns to the
+    # literal name ``model_config``. Files without that token cannot
+    # produce a violation, so skip the AST parse. Cuts the gate from
+    # ~7s to <1s by avoiding 90%+ of the tree (tests/ + src/) where
+    # no Pydantic model is declared.
+    if "model_config" not in source:
+        return []
     try:
         tree = ast.parse(source, filename=str(path))
     except SyntaxError as exc:
@@ -183,13 +194,15 @@ def _walk(path: Path) -> list[tuple[Path, int, str]]:
 
 
 def main() -> int:
-    """Walk ``src/synthorg/`` and report frozen models without forbid."""
-    if not SRC_DIR.is_dir():
-        print(f"{SRC_DIR} does not exist", file=sys.stderr)
-        return 2
+    """Walk ``src/synthorg/`` + ``tests/`` and report frozen models without forbid."""
+    for scan_root in (SRC_DIR, TEST_DIR):
+        if not scan_root.is_dir():
+            print(f"{scan_root} does not exist", file=sys.stderr)
+            return 2
     violations: list[tuple[Path, int, str]] = []
-    for path in sorted(SRC_DIR.rglob("*.py")):
-        violations.extend(_walk(path))
+    for scan_root in (SRC_DIR, TEST_DIR):
+        for path in sorted(scan_root.rglob("*.py")):
+            violations.extend(_walk(path))
     if not violations:
         return 0
     print(

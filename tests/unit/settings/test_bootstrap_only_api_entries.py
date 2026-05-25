@@ -24,7 +24,7 @@ pytestmark = pytest.mark.unit
 
 
 class _FakeConfig(BaseModel):
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
 
 class _RepoMustNotBeReadError(RuntimeError):

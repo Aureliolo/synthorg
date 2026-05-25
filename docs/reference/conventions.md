@@ -186,8 +186,11 @@ Every Pydantic model declares
 `model_config = ConfigDict(frozen=True, allow_inf_nan=False)` with
 `extra="forbid"`. This is enforced project-wide (not API-DTO-only)
 by `scripts/check_frozen_model_extra_forbid.py`: every class under
-`src/synthorg/` whose own `model_config` is a `ConfigDict` (or dict
-literal) with `frozen=True` MUST also set `extra="forbid"`.
+`src/synthorg/` and `tests/` whose own `model_config` is a
+`ConfigDict` (or dict literal) with `frozen=True` MUST also set
+`extra="forbid"`. The rule applies equally to test fixtures: a
+fixture model that silently absorbs unknown construction keys masks
+the same class of caller typos the gate catches in production code.
 
 Two carve-outs:
 

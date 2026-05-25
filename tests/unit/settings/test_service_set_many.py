@@ -26,7 +26,7 @@ from synthorg.settings.service import SettingsService
 
 
 class _FakeConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 def _plain_def() -> SettingDefinition:

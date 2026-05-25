@@ -26,7 +26,7 @@ pytestmark = pytest.mark.unit
 
 
 class _FakeConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 def _read_only_definition() -> SettingDefinition:

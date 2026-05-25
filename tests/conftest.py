@@ -12,11 +12,10 @@ Cross-worker coordination rule (read before adding a new fixture):
     fixtures (including autouse ones) during the FIRST referencing
     test's ``pytest_runtest_setup`` phase, which IS covered by
     ``pytest-timeout``. Autouse just MARKS every test as a referencer;
-    it does not move setup outside the per-test phase. We verified
-    this in PR #2080: an autouse session fixture for the migrated_db
-    template build still killed 3 workers at +30s on UNRELATED tests
-    (whichever test happened to be the first one dispatched to each
-    worker).
+    it does not move setup outside the per-test phase. An autouse
+    session fixture wrapping a slow cross-worker template build will
+    therefore kill workers at +30s on whichever test happens to be
+    the first one dispatched to that worker, not on the build itself.
 
     Why pytest_sessionstart works: the hook runs in ``pytest_collection``
     BEFORE any test, is NOT covered by ``pytest-timeout``, and runs
@@ -133,10 +132,9 @@ socket.getfqdn = _fast_getfqdn
 # write goes through pytest's TerminalWriter -> xdist Channel ->
 # execnet IPC, all of which buffer. ``os._exit`` 5 lines later kills
 # the worker process before the IPC buffer has drained, so the banner
-# never reaches the master's log. We saw this empirically in PR #2080
-# round 14b/15: three xdist workers died at exactly +30.06s after
-# their last passed test (the per-test timeout) with ZERO ``+++
-# Timeout +++`` banners in the GHA log.
+# never reaches the master's log. Empirically: xdist workers die at
+# exactly +30.06s after their last passed test (the per-test timeout)
+# with ZERO ``+++ Timeout +++`` banners in the captured log.
 #
 # ``faulthandler.dump_traceback`` writes raw bytes to the stderr fd via
 # ``os.write``, bypassing all Python and xdist buffering. execnet
@@ -453,6 +451,18 @@ DISALLOWED_VENDOR_NAMES: frozenset[str] = frozenset(
 # that belongs in ``tests/integration/`` instead.
 _UNIT_TEST_WALL_CLOCK_LIMIT = 6.0  # seconds
 _FUZZ_PROFILE_ACTIVE = os.environ.get("HYPOTHESIS_PROFILE") in ("fuzz", "extreme")
+# pytest-repeat's ``--count`` flag is used exclusively by
+# ``scripts/run_affected_tests.py``'s isolation regression gate (a
+# ``--count 2`` replay of every affected test to detect fixture
+# state leaks). That replay doubles xdist contention; legitimate
+# unit tests routinely cross the 6s wall-clock guard on Windows
+# under that load even though they run well under it in the primary
+# pass. The primary run (no ``--count``) still enforces the guard;
+# disabling it on the replay keeps the gate focused on its actual
+# purpose (fixture leak detection) rather than re-litigating timing.
+_COUNT_ISOLATION_RUN = "--count" in sys.argv or any(
+    arg.startswith("--count=") for arg in sys.argv
+)
 _start_key = pytest.StashKey[float]()
 # Accumulator for unit-only wall-clock time, summed across tests in
 # ``pytest_runtest_teardown``.  Used by the suite regression guard
@@ -520,6 +530,7 @@ def pytest_runtest_teardown(item: pytest.Item) -> None:
         _template_build_secs = 0.0
     if (
         not _FUZZ_PROFILE_ACTIVE
+        and not _COUNT_ISOLATION_RUN
         and item.get_closest_marker("unit")
         and guard_elapsed > _UNIT_TEST_WALL_CLOCK_LIMIT
     ):
@@ -547,13 +558,13 @@ def _session_needs_postgres(session: pytest.Session) -> bool:
     The conformance/integration/e2e arms use a real postgres -- either
     via ``SYNTHORG_TEST_POSTGRES_*`` env vars (CI service-container) or
     via a per-session testcontainer. Unit shards never touch postgres,
-    so we MUST NOT pre-acquire the testcontainer there: in PR #2080 the
-    unconditional call ran the postgres FileLock + container start on
-    every shard, and unit-shard non-leader workers timed out at 180s
-    waiting on the migrated_db FileLock (3 of 4 workers crashed via
-    the forensic os.abort, pytest reported tests=0, the workflow step
-    still exited 0 because xdist doesn't fail when workers die in
-    pytest_sessionstart).
+    so we MUST NOT pre-acquire the testcontainer there: an unconditional
+    pre-acquire runs the postgres FileLock + container start on every
+    shard, and unit-shard non-leader workers will time out at 180s
+    waiting on the FileLock. Worker deaths in ``pytest_sessionstart``
+    leave the workflow step exit-0 (xdist does not fail when workers
+    die before any test runs), so the unit shard reports tests=0 with
+    no clear failure signal.
 
     Detection (any single match is enough):
 
@@ -598,15 +609,14 @@ def pytest_sessionstart(session: pytest.Session) -> None:
        coordination, not per-test work, and the wait MUST NOT count
        against ``pytest-timeout``'s 30s per-test budget.
 
-       Initial attempt was a ``@pytest.fixture(scope="session",
-       autouse=True)``; that doesn't move the work out of the per-test
-       phase because pytest resolves session-scope fixtures during the
-       FIRST referencing test's ``pytest_runtest_setup``, which IS
-       covered by ``pytest-timeout``. Verified in PR #2080: three
-       workers killed at +30s on UNRELATED tests (the first dispatched
-       to each worker), with faulthandler showing only the wrapper
-       frame because every other thread was blocked in C code waiting
-       on the FileLock.
+       A ``@pytest.fixture(scope="session", autouse=True)`` does NOT
+       move the work out of the per-test phase: pytest resolves
+       session-scope fixtures during the FIRST referencing test's
+       ``pytest_runtest_setup``, which IS covered by ``pytest-timeout``.
+       Empirically, that pattern kills workers at +30s on whichever
+       unrelated test happens to be the first one dispatched to each
+       worker, with faulthandler showing only the wrapper frame while
+       every other thread is blocked in C code waiting on the FileLock.
 
        ``pytest_sessionstart`` runs before any test, is NOT covered by
        ``pytest-timeout``, and runs once per xdist worker subprocess.
@@ -638,19 +648,15 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         tmp_path_factory = session.config._tmp_path_factory  # type: ignore[attr-defined]
         asyncio.run(_get_template_db(tmp_path_factory))
 
-        # Issue 1 fix: the conformance/persistence conftest's
-        # ``pytest_sessionstart`` does NOT fire on xdist workers
-        # because that conftest is loaded lazily during collection
-        # (after sessionstart). Forensic diagnostic on PR #2080
-        # proved this: the fixture writes its diagnostic line but
-        # the hook writes nothing. The root conftest IS loaded
-        # eagerly (we are it), so we call the conformance helper
-        # from here -- BUT ONLY for sessions that actually run
-        # postgres-backed tests. Unit shards do not need a postgres
-        # testcontainer; the unconditional call previously held the
+        # The conformance/persistence conftest's ``pytest_sessionstart``
+        # does NOT fire on xdist workers because that conftest is
+        # loaded lazily during collection (after sessionstart). The
+        # root conftest IS loaded eagerly (we are it), so we call the
+        # conformance helper from here, but ONLY for sessions that
+        # actually run postgres-backed tests. Unit shards do not need
+        # a postgres testcontainer; an unconditional call holds the
         # FileLock long enough for non-leader workers to time out at
-        # 180s (PR #2080: unit shards reported tests=0, gw1/gw2/gw3
-        # crashed via the forensic os.abort() below).
+        # 180s, leaving unit shards with tests=0 and worker crashes.
         if _session_needs_postgres(session):
             from tests.conformance.persistence.conftest import (
                 _pre_acquire_postgres_container_state,
@@ -969,15 +975,14 @@ async def _get_template_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     re-check between slices) instead of a single
     ``lock.acquire(timeout=_FILE_LOCK_TIMEOUT_SECONDS)`` so the
     follower wait tracks the leader's ACTUAL build time, not the
-    catastrophe ceiling. PR #2080's matrix sharding + sysmon coverage
-    pushed cold-cache leader builds past the previous 180s budget on
-    slow CI runners; the poll-loop makes the budget elastic upward
-    without making the worst-case-success wait any longer than
-    necessary. Pattern mirrors ``tests/conformance/persistence/
-    conftest.py``'s Postgres testcontainer coordination; that path
-    bumped its raw timeout (refcount semantics there require an
-    acquire on every worker, so polling doesn't help) but the
-    ceiling is aligned with this one.
+    catastrophe ceiling. Cold-cache leader builds can exceed the
+    historical 180s budget on slow CI runners under matrix sharding,
+    so the poll-loop keeps the budget elastic upward without making
+    the worst-case-success wait any longer than necessary. Pattern
+    mirrors ``tests/conformance/persistence/conftest.py``'s Postgres
+    testcontainer coordination; that path uses a raw timeout because
+    its refcount semantics require an acquire on every worker (so
+    polling does not help), but the ceiling is aligned with this one.
     """
     global _TEMPLATE_DB  # noqa: PLW0603
     if _TEMPLATE_DB is not None and await asyncio.to_thread(_TEMPLATE_DB.exists):

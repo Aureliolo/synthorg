@@ -667,14 +667,15 @@ repos:
         stages: [pre-push]
 
       - id: frozen-extra-forbid
-        name: Frozen model extra="forbid" gate (src/synthorg)
+        name: Frozen model extra="forbid" gate (src/synthorg + tests)
         entry: uv run python scripts/check_frozen_model_extra_forbid.py
         language: system
         # Project-wide successor to the old api-only dto-forbid-extra
-        # gate. Trigger on any change to the scanned tree, the checker
-        # itself, or this config so a PR that weakens the gate cannot
-        # bypass it by not touching scanned Python files.
-        files: ^(src/synthorg/.*\.py|scripts/check_frozen_model_extra_forbid\.py|\.pre-commit-config\.yaml)$
+        # gate. Trigger on any change to the scanned trees (src and
+        # tests), the checker itself, or this config so a PR that
+        # weakens the gate cannot bypass it by not touching scanned
+        # Python files.
+        files: ^(src/synthorg/.*\.py|tests/.*\.py|scripts/check_frozen_model_extra_forbid\.py|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 

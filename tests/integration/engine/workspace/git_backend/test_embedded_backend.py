@@ -1,4 +1,13 @@
-"""Unit tests for ``EmbeddedGitBackend`` (real git in tmp_path)."""
+"""Integration tests for ``EmbeddedGitBackend`` (real git in tmp_path).
+
+These tests spawn real ``git`` subprocesses (provision, push, fetch,
+worktree). On Windows, each subprocess creation costs ~200ms and the
+provision step alone fires ~9 subprocesses, so the test cannot fit
+under the 6.0s per-test unit wall-clock guard under ``--count 2``
+isolation-gate contention. Per the comment in ``tests/conftest.py``,
+work like this ("real subprocess, real network, real heavy I/O")
+belongs in ``tests/integration/`` rather than ``tests/unit/``.
+"""
 
 import asyncio
 import os
@@ -10,7 +19,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.git_backend import EmbeddedGitBackend
 from tests._shared import FakeClock
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
 def _clean_env() -> dict[str, str]:

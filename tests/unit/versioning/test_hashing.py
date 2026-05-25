@@ -7,13 +7,13 @@ from synthorg.versioning.hashing import compute_content_hash
 
 
 class _Simple(BaseModel):
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
     name: str
     value: int
 
 
 class _WithEnum(BaseModel):
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
     name: str
     tags: tuple[str, ...]
 

@@ -10,17 +10,17 @@ from synthorg.core.types import NotBlankStr, validate_unique_strings
 
 
 class _ScalarModel(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     value: NotBlankStr
 
 
 class _OptionalModel(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     value: NotBlankStr | None = None
 
 
 class _TupleModel(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     values: tuple[NotBlankStr, ...]
 
 
@@ -130,12 +130,12 @@ class TestValidateUniqueStrings:
 
 
 class _CurrencyModel(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     currency: CurrencyCode
 
 
 class _OptionalCurrencyModel(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     currency: CurrencyCode | None = None
 
 

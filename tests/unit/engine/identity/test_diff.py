@@ -13,7 +13,7 @@ from synthorg.engine.identity.diff import (
 class _Flat(BaseModel):
     """Minimal flat model -- simulates a simple identity with two fields."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
     role: str
@@ -22,7 +22,7 @@ class _Flat(BaseModel):
 class _Nested(BaseModel):
     """Model with one level of nesting -- simulates personality sub-model."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
     settings: dict[str, object]
@@ -31,7 +31,7 @@ class _Nested(BaseModel):
 class _Deep(BaseModel):
     """Model with a nested sub-model."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     title: str
     personality: _Flat

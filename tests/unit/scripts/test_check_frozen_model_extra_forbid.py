@@ -116,6 +116,99 @@ def test_last_write_wins(tmp_path: Path) -> None:
     assert violations[0][2] == "Sneaky"
 
 
+def test_main_scope_includes_both_src_and_tests() -> None:
+    """The project-wide gate walks src/synthorg/ AND tests/."""
+    gate = _load_gate()
+    assert gate.SRC_DIR.name == "synthorg"  # type: ignore[attr-defined]
+    assert gate.TEST_DIR.name == "tests"  # type: ignore[attr-defined]
+    assert gate.SRC_DIR.is_dir()  # type: ignore[attr-defined]
+    assert gate.TEST_DIR.is_dir()  # type: ignore[attr-defined]
+
+
+def test_main_walks_both_dirs_and_reports_combined_violations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``main()`` scans both SRC_DIR and TEST_DIR and merges violations.
+
+    Builds two synthetic trees with a violating frozen model each,
+    points the gate's scan roots at them, and verifies the combined
+    output names BOTH classes. Guards against a refactor that
+    accidentally collapses the dual-root loop to a single root.
+    """
+    gate = _load_gate()
+    fake_src = tmp_path / "src" / "synthorg"
+    fake_tests = tmp_path / "tests"
+    fake_src.mkdir(parents=True)
+    fake_tests.mkdir(parents=True)
+    src_violator = fake_src / "mod_src.py"
+    src_violator.write_text(
+        "from pydantic import BaseModel, ConfigDict\n\n\n"
+        "class BadSrcModel(BaseModel):\n"
+        "    model_config = ConfigDict(frozen=True)\n",
+        encoding="utf-8",
+    )
+    test_violator = fake_tests / "mod_test.py"
+    test_violator.write_text(
+        "from pydantic import BaseModel, ConfigDict\n\n\n"
+        "class BadTestModel(BaseModel):\n"
+        "    model_config = ConfigDict(frozen=True)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(gate, "SRC_DIR", fake_src)  # type: ignore[attr-defined]
+    monkeypatch.setattr(gate, "TEST_DIR", fake_tests)  # type: ignore[attr-defined]
+    # ``main()`` calls ``path.relative_to(REPO_ROOT)`` when printing
+    # violations; re-anchor it so the synthetic paths resolve.
+    monkeypatch.setattr(gate, "REPO_ROOT", tmp_path)  # type: ignore[attr-defined]
+    rc = gate.main()  # type: ignore[attr-defined]
+    assert rc == 1
+    stderr = capsys.readouterr().err
+    assert "BadSrcModel" in stderr
+    assert "BadTestModel" in stderr
+
+
+def test_walk_prefilter_skips_files_without_model_config_token(
+    tmp_path: Path,
+) -> None:
+    """A file with no ``model_config`` token must short-circuit.
+
+    The fast pre-filter (`if "model_config" not in source: return []`)
+    is the optimisation that drops gate runtime from ~7s to ~1.5s on
+    the full src + tests tree. A regression that removes or inverts
+    the check would silently slow every commit and pre-push.
+    """
+    gate = _load_gate()
+    target = tmp_path / "no_config.py"
+    # Realistic-looking module with imports + a class, but no Pydantic
+    # config: should be invisible to the gate.
+    target.write_text(
+        "from dataclasses import dataclass\n\n\n"
+        "@dataclass\n"
+        "class Plain:\n"
+        "    name: str\n",
+        encoding="utf-8",
+    )
+    assert gate._walk(target) == []  # type: ignore[attr-defined]
+
+
+def test_walk_prefilter_does_not_skip_files_with_model_config_token(
+    tmp_path: Path,
+) -> None:
+    """Files containing ``model_config`` are fully parsed."""
+    gate = _load_gate()
+    target = tmp_path / "has_config.py"
+    target.write_text(
+        "from pydantic import BaseModel, ConfigDict\n\n\n"
+        "class HasConfig(BaseModel):\n"
+        "    model_config = ConfigDict(frozen=True)\n",
+        encoding="utf-8",
+    )
+    violations = gate._walk(target)  # type: ignore[attr-defined]
+    assert len(violations) == 1
+    assert violations[0][2] == "HasConfig"
+
+
 def test_real_codebase_is_compliant() -> None:
     """The gate must be green against the actual tree (no regressions)."""
     gate = _load_gate()

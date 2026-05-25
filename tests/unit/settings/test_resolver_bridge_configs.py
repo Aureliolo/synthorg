@@ -40,7 +40,7 @@ from synthorg.settings.resolver import ConfigResolver
 
 
 class _FakeRootConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 @pytest.fixture

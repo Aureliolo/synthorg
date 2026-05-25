@@ -32,7 +32,7 @@ class FakeAgentConfig(BaseModel):
         department: Owning department.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     name: str = "agent-1"
     role: str = "developer"
     department: str = "eng"
@@ -46,7 +46,7 @@ class FakeDepartment(BaseModel):
         head: Department head name (optional, mirrors real model).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     name: str = "eng"
     head: str | None = "lead"
 
@@ -58,5 +58,5 @@ class FakeProviderConfig(BaseModel):
         driver: Provider driver name.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
     driver: str = "litellm"

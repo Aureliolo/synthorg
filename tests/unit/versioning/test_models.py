@@ -13,7 +13,7 @@ _NOW = datetime(2026, 4, 7, 12, 0, tzinfo=UTC)
 class _Simple(BaseModel):
     """Minimal Pydantic model used as a stand-in for real entity types."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
     value: int
