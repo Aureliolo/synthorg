@@ -187,7 +187,12 @@ class ThroughputAdaptiveStrategy:
         on_drop: bool,
         on_spike: bool,
     ) -> str | None:
-        """Classify the current rate as drop, spike, or normal."""
+        """Classify the current rate as drop, spike, or normal.
+
+        Returns:
+            ``"drop"`` or ``"spike"`` when the corresponding anomaly
+            is detected and enabled; ``None`` when no anomaly fires.
+        """
         if on_drop and self._is_velocity_drop(current_rate):
             return "drop"
         if on_spike and self._is_velocity_spike(current_rate):
@@ -485,7 +490,12 @@ class ThroughputAdaptiveStrategy:
         *,
         default: bool,
     ) -> bool:
-        """Resolve a boolean config value with lenient fallback."""
+        """Resolve a boolean config value with lenient fallback.
+
+        Returns:
+            The configured bool when present and well-typed; otherwise
+            ``default`` (with a warning log).
+        """
         value = config.get(key)
         if value is None:
             return default
@@ -507,7 +517,13 @@ class ThroughputAdaptiveStrategy:
         key: str,
         default: float,
     ) -> float:
-        """Resolve a percentage threshold with lenient validation."""
+        """Resolve a percentage threshold with lenient validation.
+
+        Returns:
+            The configured threshold when present, numeric, finite,
+            and inside ``[_MIN_THRESHOLD_PCT, _MAX_THRESHOLD_PCT]``;
+            otherwise ``default`` (with a warning log).
+        """
         value = config.get(key)
         if value is None:
             return default
@@ -538,7 +554,13 @@ class ThroughputAdaptiveStrategy:
 
     @staticmethod
     def _resolve_window_size(config: Mapping[str, Any]) -> int:
-        """Resolve the measurement window size with lenient validation."""
+        """Resolve the measurement window size with lenient validation.
+
+        Returns:
+            The configured window size when present, an integer, and
+            within ``[_MIN_WINDOW_SIZE, _MAX_WINDOW_SIZE]``; otherwise
+            :data:`_DEFAULT_WINDOW_SIZE` (with a warning log).
+        """
         value = config.get(_KEY_MEASUREMENT_WINDOW_TASKS)
         if value is None:
             return _DEFAULT_WINDOW_SIZE
@@ -568,7 +590,14 @@ class ThroughputAdaptiveStrategy:
         config: Mapping[str, Any],
         key: str,
     ) -> None:
-        """Validate a percentage threshold key (strict)."""
+        """Validate a percentage threshold key (strict).
+
+        Raises:
+            TypeError: When ``config[key]`` is present but not a
+                non-bool int / float.
+            ValueError: When the numeric value is non-finite or outside
+                ``[_MIN_THRESHOLD_PCT, _MAX_THRESHOLD_PCT]``.
+        """
         value = config.get(key)
         if value is None:
             return
@@ -599,7 +628,13 @@ class ThroughputAdaptiveStrategy:
 
     @staticmethod
     def _validate_window_key(config: Mapping[str, Any]) -> None:
-        """Validate measurement_window_tasks key (strict)."""
+        """Validate measurement_window_tasks key (strict).
+
+        Raises:
+            TypeError: When the key is present but not a non-bool int.
+            ValueError: When the integer is outside the allowed window
+                range.
+        """
         value = config.get(_KEY_MEASUREMENT_WINDOW_TASKS)
         if value is None:
             return
@@ -633,7 +668,11 @@ class ThroughputAdaptiveStrategy:
         config: Mapping[str, Any],
         key: str,
     ) -> None:
-        """Validate a boolean config key (strict)."""
+        """Validate a boolean config key (strict).
+
+        Raises:
+            TypeError: When ``config[key]`` is present but not a bool.
+        """
         value = config.get(key)
         if value is None:
             return

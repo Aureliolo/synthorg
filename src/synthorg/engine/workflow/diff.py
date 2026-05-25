@@ -33,7 +33,14 @@ def _validate_change_values(
     old_value: dict[str, object] | None,
     new_value: dict[str, object] | None,
 ) -> None:
-    """Validate old_value/new_value presence rules per change_type."""
+    """Validate old_value/new_value presence rules per change_type.
+
+    Raises:
+        ValueError: When the presence of ``old_value`` / ``new_value``
+            does not match the rules for ``change_type`` (added needs
+            only ``new_value``; removed needs only ``old_value``; all
+            other change types need both).
+    """
     if change_type == "added":
         if old_value is not None or new_value is None:
             msg = "added change must have new_value only"
@@ -73,7 +80,15 @@ class NodeChange(BaseModel):
 
     @model_validator(mode="after")
     def _validate_values(self) -> Self:
-        """Enforce old_value/new_value presence rules per change_type."""
+        """Enforce old_value/new_value presence rules per change_type.
+
+        Returns:
+            ``self`` unchanged when the change values are consistent.
+
+        Raises:
+            ValueError: Propagated from :func:`_validate_change_values`
+                when the value presence rules are violated.
+        """
         _validate_change_values(
             self.change_type,
             self.old_value,
@@ -107,7 +122,15 @@ class EdgeChange(BaseModel):
 
     @model_validator(mode="after")
     def _validate_values(self) -> Self:
-        """Enforce old_value/new_value presence rules per change_type."""
+        """Enforce old_value/new_value presence rules per change_type.
+
+        Returns:
+            ``self`` unchanged when the change values are consistent.
+
+        Raises:
+            ValueError: Propagated from :func:`_validate_change_values`
+                when the value presence rules are violated.
+        """
         _validate_change_values(
             self.change_type,
             self.old_value,
@@ -157,7 +180,14 @@ class WorkflowDiff(BaseModel):
 
     @model_validator(mode="after")
     def _validate_version_range(self) -> Self:
-        """Reject diffs where source version is not less than target."""
+        """Reject diffs where source version is not less than target.
+
+        Returns:
+            ``self`` unchanged when ``from_version < to_version``.
+
+        Raises:
+            ValueError: When ``from_version >= to_version``.
+        """
         if self.from_version >= self.to_version:
             msg = "from_version must be less than to_version"
             raise ValueError(msg)
@@ -296,7 +326,12 @@ def _diff_nodes(
     old: WorkflowDefinition,
     new: WorkflowDefinition,
 ) -> list[NodeChange]:
-    """Compare nodes between two versions."""
+    """Compare nodes between two versions.
+
+    Returns:
+        List of :class:`NodeChange` records covering added, removed,
+        and modified nodes (move, type, label, config changes).
+    """
     old_map = {n.id: n for n in old.nodes}
     new_map = {n.id: n for n in new.nodes}
     changes: list[NodeChange] = []
@@ -395,7 +430,12 @@ def _diff_edges(
     old: WorkflowDefinition,
     new: WorkflowDefinition,
 ) -> list[EdgeChange]:
-    """Compare edges between two versions."""
+    """Compare edges between two versions.
+
+    Returns:
+        List of :class:`EdgeChange` records covering added, removed,
+        and modified edges (reconnect, type, label changes).
+    """
     old_map = {e.id: e for e in old.edges}
     new_map = {e.id: e for e in new.edges}
     changes: list[EdgeChange] = []
@@ -435,7 +475,12 @@ def _diff_metadata(
     old: WorkflowDefinition,
     new: WorkflowDefinition,
 ) -> list[MetadataChange]:
-    """Compare metadata fields between two versions."""
+    """Compare metadata fields between two versions.
+
+    Returns:
+        List of :class:`MetadataChange` records, one per differing
+        metadata field (name, description, workflow_type).
+    """
     changes: list[MetadataChange] = []
 
     if old.name != new.name:
@@ -473,7 +518,11 @@ def _build_summary(
     edge_changes: list[EdgeChange],
     metadata_changes: list[MetadataChange],
 ) -> str:
-    """Build a human-readable summary from change lists."""
+    """Build a human-readable summary from change lists.
+
+    Returns:
+        A short text summary aggregating change counts per category.
+    """
     parts: list[str] = []
 
     # Count node changes by type.

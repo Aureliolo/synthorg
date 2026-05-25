@@ -184,6 +184,9 @@ def _try_load_user_blueprint(name: str) -> BlueprintData | None:
 
     Raises:
         BlueprintValidationError: If found but invalid.
+        OSError: When the blueprint file cannot be read from disk
+            (only when the name is not a built-in fallback; otherwise
+            it is logged and ``None`` is returned).
     """
     if not _USER_BLUEPRINTS_DIR.is_dir():
         return None
@@ -252,7 +255,12 @@ def _blueprint_info_from_data(
     data: BlueprintData,
     source: Literal["builtin", "user"],
 ) -> BlueprintInfo:
-    """Build a :class:`BlueprintInfo` from validated data."""
+    """Build a :class:`BlueprintInfo` from validated data.
+
+    Returns:
+        A :class:`BlueprintInfo` populated from ``data`` and stamped
+        with the ``source`` discriminator.
+    """
     return BlueprintInfo(
         name=data.name,
         display_name=data.display_name,
@@ -267,6 +275,10 @@ def _blueprint_info_from_data(
 
 def _parse_blueprint_yaml(yaml_text: str, source_name: str) -> BlueprintData:
     """Parse and validate a blueprint YAML string.
+
+    Returns:
+        The parsed :class:`BlueprintData` when both YAML parsing
+        and schema validation succeed.
 
     Raises:
         BlueprintValidationError: On YAML parse or schema errors.
@@ -309,7 +321,16 @@ def _parse_blueprint_yaml(yaml_text: str, source_name: str) -> BlueprintData:
 
 
 def _load_builtin(name: str) -> BlueprintData:
-    """Load a built-in blueprint by name."""
+    """Load a built-in blueprint by name.
+
+    Returns:
+        The :class:`BlueprintData` parsed from the bundled YAML.
+
+    Raises:
+        BlueprintNotFoundError: When ``name`` is not a built-in.
+        BlueprintValidationError: When the bundled YAML cannot be
+            read or validated.
+    """
     filename = BUILTIN_BLUEPRINTS.get(name)
     if filename is None:
         msg = f"Unknown built-in blueprint: {name!r}"
@@ -334,7 +355,16 @@ def _load_builtin(name: str) -> BlueprintData:
 
 
 def _load_from_file(path: Path, name: str) -> BlueprintData:
-    """Load a blueprint from a file path."""
+    """Load a blueprint from a file path.
+
+    Returns:
+        The parsed :class:`BlueprintData` whose ``name`` matches the
+        file stem ``name``.
+
+    Raises:
+        BlueprintValidationError: When the file is unreadable, not
+            valid UTF-8, or its declared name does not match ``name``.
+    """
     source_name = str(path)
     try:
         yaml_text = path.read_text(encoding="utf-8")
@@ -376,7 +406,13 @@ def _load_from_file(path: Path, name: str) -> BlueprintData:
 
 
 def _collect_user_blueprints() -> dict[str, BlueprintInfo]:
-    """Scan user blueprints directory and return discovered blueprints."""
+    """Scan user blueprints directory and return discovered blueprints.
+
+    Returns:
+        Mapping of blueprint name to :class:`BlueprintInfo` for every
+        well-formed YAML in the user directory; empty when the
+        directory does not exist.
+    """
     seen: dict[str, BlueprintInfo] = {}
     if not _USER_BLUEPRINTS_DIR.is_dir():
         return seen
