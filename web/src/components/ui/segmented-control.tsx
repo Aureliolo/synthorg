@@ -62,6 +62,12 @@ function SegmentOption<T extends string>({
   )
 }
 
+function _arrowKeyDirection(key: string): -1 | 0 | 1 {
+  if (key === 'ArrowRight' || key === 'ArrowDown') return 1
+  if (key === 'ArrowLeft' || key === 'ArrowUp') return -1
+  return 0
+}
+
 export function SegmentedControl<T extends string>({
   label,
   options,
@@ -76,31 +82,21 @@ export function SegmentedControl<T extends string>({
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (disabled) return
-
       const enabledOptions = options.filter((o) => !o.disabled)
       const currentIndex = enabledOptions.findIndex((o) => o.value === value)
       if (currentIndex === -1) return
-
-      let nextIndex: number | null = null
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        e.preventDefault()
-        nextIndex = (currentIndex + 1) % enabledOptions.length
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        e.preventDefault()
-        nextIndex = (currentIndex - 1 + enabledOptions.length) % enabledOptions.length
-      }
-
-      if (nextIndex !== null) {
-        const next = enabledOptions[nextIndex]
-        if (!next) return
-        onChange(next.value)
-        // Focus the new option button
-        const buttons = groupRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]')
-        const targetButton = Array.from(buttons ?? []).find(
-          (btn) => btn.dataset.value === next.value,
-        )
-        targetButton?.focus()
-      }
+      const direction = _arrowKeyDirection(e.key)
+      if (direction === 0) return
+      e.preventDefault()
+      const nextIndex = (currentIndex + direction + enabledOptions.length) % enabledOptions.length
+      const next = enabledOptions[nextIndex]
+      if (!next) return
+      onChange(next.value)
+      const buttons = groupRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]')
+      const targetButton = Array.from(buttons ?? []).find(
+        (btn) => btn.dataset.value === next.value,
+      )
+      targetButton?.focus()
     },
     [disabled, options, value, onChange],
   )

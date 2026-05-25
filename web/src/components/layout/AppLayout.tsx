@@ -59,28 +59,25 @@ function PageLoadingFallback() {
   )
 }
 
-export default function AppLayout() {
-  const location = useLocation()
-  const navigate = useNavigate()
-  const [sidebarOverlayOpen, setSidebarOverlayOpen] = useState(false)
+function _isShortcutOriginEditable(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  if (target.isContentEditable) return true
+  return target.closest('[role="combobox"]') !== null
+}
+
+function _isShiftNShortcut(e: KeyboardEvent): boolean {
+  if (e.ctrlKey || e.metaKey || e.altKey) return false
+  return e.shiftKey && e.key === 'N'
+}
+
+function useNotificationDrawerShortcuts(): {
+  notificationDrawerOpen: boolean
+  setNotificationDrawerOpen: React.Dispatch<React.SetStateAction<boolean>>
+} {
   const [notificationDrawerOpen, setNotificationDrawerOpen] = useState(false)
 
-  // Global WebSocket subscription for app-wide notifications (e.g. personality
-  // trimming toasts) so they render regardless of the current page.
-  useGlobalNotifications()
-
-  // Drive ``document.title`` from the active route so the browser tab
-  // reflects the page the user is actually on.  Previously only three
-  // pages set the title imperatively and never reverted it, so visiting
-  // MCP Catalog left the tab labelled "MCP Catalog · SynthOrg" for the
-  // rest of the session regardless of where the user navigated next.
-  useEffect(() => {
-    document.title = titleForPath(location.pathname)
-  }, [location.pathname])
-
-  // Listen for toggle-notification-drawer events (dispatched by Shift+N and
-  // by the NotificationBell button). Handled here in AppLayout so the
-  // listener stays mounted even when the sidebar is hidden at tablet.
   useEffect(() => {
     function handleToggle() {
       setNotificationDrawerOpen((prev) => !prev)
@@ -89,8 +86,6 @@ export default function AppLayout() {
     return () => window.removeEventListener('toggle-notification-drawer', handleToggle)
   }, [])
 
-  // Listen for open-notification-drawer events (one-directional open, used
-  // by the bell button click which should always open, not toggle).
   useEffect(() => {
     function handleOpen() {
       setNotificationDrawerOpen(true)
@@ -99,23 +94,34 @@ export default function AppLayout() {
     return () => window.removeEventListener('open-notification-drawer', handleOpen)
   }, [])
 
-  // Shift+N toggles the notification drawer via the custom event above.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.defaultPrevented || e.repeat) return
-      const tag = (e.target as HTMLElement)?.tagName
-      const el = e.target as HTMLElement
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable || el?.closest('[role="combobox"]')) return
-      if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'N') {
-        e.preventDefault()
-        window.dispatchEvent(new CustomEvent('toggle-notification-drawer'))
-      }
+      if (_isShortcutOriginEditable(e.target)) return
+      if (!_isShiftNShortcut(e)) return
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('toggle-notification-drawer'))
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // Click-to-focus from browser notifications navigates via React Router
+  return { notificationDrawerOpen, setNotificationDrawerOpen }
+}
+
+function useDocumentTitle(pathname: string): void {
+  // Drive ``document.title`` from the active route so the browser tab
+  // reflects the page the user is actually on. Previously only three
+  // pages set the title imperatively and never reverted it, so visiting
+  // MCP Catalog left the tab labelled "MCP Catalog · SynthOrg" for the
+  // rest of the session regardless of where the user navigated next.
+  useEffect(() => {
+    document.title = titleForPath(pathname)
+  }, [pathname])
+}
+
+function useNotificationNavigateBridge(): void {
+  const navigate = useNavigate()
   useEffect(() => {
     function handleNav(e: Event) {
       const detail = (e as CustomEvent<{ href: string }>).detail
@@ -127,6 +133,102 @@ export default function AppLayout() {
     window.addEventListener('notification-navigate', handleNav)
     return () => window.removeEventListener('notification-navigate', handleNav)
   }, [navigate])
+}
+
+interface ThemeMeta {
+  PALETTE: Record<ColorPalette, { label: string; keywords: string[] }>
+  DENSITY: Record<Density, { label: string; keywords: string[] }>
+  TYPOGRAPHY: Record<Typography, { label: string }>
+  ANIMATION: Record<AnimationPreset, { label: string; keywords: string[] }>
+  SIDEBAR: Record<SidebarMode, { label: string; keywords: string[] }>
+}
+
+const THEME_META: ThemeMeta = {
+  PALETTE: {
+    'warm-ops': { label: 'Warm Ops', keywords: ['blue'] },
+    'ice-station': { label: 'Ice Station', keywords: ['green', 'mint'] },
+    stealth: { label: 'Stealth', keywords: ['purple', 'violet'] },
+    signal: { label: 'Signal', keywords: ['orange', 'amber'] },
+    neon: { label: 'Neon', keywords: ['cyan'] },
+  },
+  DENSITY: {
+    dense: { label: 'Dense', keywords: ['compact', 'tight'] },
+    balanced: { label: 'Balanced', keywords: ['default'] },
+    medium: { label: 'Medium', keywords: [] },
+    sparse: { label: 'Sparse', keywords: ['spacious'] },
+  },
+  TYPOGRAPHY: {
+    geist: { label: 'Geist' },
+    jetbrains: { label: 'JetBrains + Inter' },
+    'ibm-plex': { label: 'IBM Plex' },
+  },
+  ANIMATION: {
+    minimal: { label: 'Minimal', keywords: ['reduced'] },
+    spring: { label: 'Spring', keywords: ['bouncy'] },
+    instant: { label: 'Instant', keywords: ['none'] },
+    'status-driven': { label: 'Status-driven', keywords: [] },
+    aggressive: { label: 'Aggressive', keywords: ['energy'] },
+  },
+  SIDEBAR: {
+    rail: { label: 'Rail', keywords: ['icons'] },
+    collapsible: { label: 'Collapsible', keywords: ['default'] },
+    hidden: { label: 'Hidden', keywords: ['full'] },
+    persistent: { label: 'Persistent', keywords: ['always'] },
+    compact: { label: 'Compact', keywords: ['narrow'] },
+  },
+}
+
+function _buildThemeCommands(): CommandItem[] {
+  return [
+    { id: 'theme-open', label: 'Open theme preferences', icon: Palette, action: () => useThemeStore.getState().setPopoverOpen(true), group: 'Theme', keywords: ['theme', 'appearance', 'customize'] },
+    ...COLOR_PALETTES.map((v) => ({ id: `theme-${v}`, label: `Theme: ${THEME_META.PALETTE[v].label}`, action: () => useThemeStore.getState().setColorPalette(v), group: 'Theme', keywords: ['color', 'palette', ...THEME_META.PALETTE[v].keywords] })),
+    ...DENSITIES.map((v) => ({ id: `density-${v}`, label: `Set density: ${THEME_META.DENSITY[v].label}`, action: () => useThemeStore.getState().setDensity(v), group: 'Theme', keywords: ['density', ...THEME_META.DENSITY[v].keywords] })),
+    ...TYPOGRAPHIES.map((v) => ({ id: `font-${v}`, label: `Font: ${THEME_META.TYPOGRAPHY[v].label}`, action: () => useThemeStore.getState().setTypography(v), group: 'Theme', keywords: ['typography', 'font'] })),
+    ...ANIMATION_PRESETS.map((v) => ({ id: `animation-${v}`, label: `Motion: ${THEME_META.ANIMATION[v].label}`, action: () => useThemeStore.getState().setAnimation(v), group: 'Theme', keywords: ['animation', ...THEME_META.ANIMATION[v].keywords] })),
+    ...SIDEBAR_MODES.map((v) => ({ id: `sidebar-${v}`, label: `Sidebar: ${THEME_META.SIDEBAR[v].label}`, action: () => useThemeStore.getState().setSidebarMode(v), group: 'Theme', keywords: ['sidebar', ...THEME_META.SIDEBAR[v].keywords] })),
+  ]
+}
+
+function _buildGlobalNavCommands(
+  navigate: (path: string) => void,
+  navigateToDocs: () => void,
+  openNotificationDrawer: () => void,
+): CommandItem[] {
+  return [
+    { id: 'nav-dashboard', label: 'Dashboard', icon: LayoutDashboard, action: () => navigate(ROUTES.DASHBOARD), group: 'Navigation' },
+    { id: 'nav-org', label: 'Org Chart', icon: GitBranch, action: () => navigate(ROUTES.ORG), group: 'Navigation' },
+    { id: 'nav-tasks', label: 'Tasks', icon: KanbanSquare, action: () => navigate(ROUTES.TASKS), group: 'Navigation' },
+    { id: 'nav-budget', label: 'Budget', icon: DollarSign, action: () => navigate(ROUTES.BUDGET), group: 'Navigation' },
+    { id: 'nav-approvals', label: 'Approvals', icon: ShieldCheck, action: () => navigate(ROUTES.APPROVALS), group: 'Navigation' },
+    { id: 'nav-agents', label: 'Agents', icon: Users, action: () => navigate(ROUTES.AGENTS), group: 'Navigation' },
+    { id: 'nav-messages', label: 'Messages', icon: MessageSquare, action: () => navigate(ROUTES.MESSAGES), group: 'Navigation' },
+    { id: 'nav-meetings', label: 'Meetings', icon: Video, action: () => navigate(ROUTES.MEETINGS), group: 'Navigation' },
+    { id: 'nav-providers', label: 'Providers', icon: Cpu, action: () => navigate(ROUTES.PROVIDERS), group: 'Navigation' },
+    { id: 'nav-docs', label: 'Documentation', icon: BookOpen, action: navigateToDocs, group: 'Navigation', keywords: ['docs', 'help', 'guide', 'reference'] },
+    { id: 'nav-settings', label: 'Settings', icon: Settings, action: () => navigate(ROUTES.SETTINGS), group: 'Navigation', shortcut: ['ctrl', ','] },
+    { id: 'notifications-open', label: 'Notifications', icon: Bell, action: openNotificationDrawer, group: 'Navigation', shortcut: ['shift', 'N'] },
+  ]
+}
+
+const GLOBAL_SHORTCUTS = [
+  { keys: ['Ctrl', 'K'], label: 'Open command palette', group: 'Global' },
+  { keys: ['?'], label: 'Show keyboard shortcuts', group: 'Global' },
+  { keys: ['Shift', 'N'], label: 'Toggle notifications', group: 'Global' },
+  { keys: ['Ctrl', ','], label: 'Open settings', group: 'Global' },
+] as const
+
+export default function AppLayout() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [sidebarOverlayOpen, setSidebarOverlayOpen] = useState(false)
+  const { notificationDrawerOpen, setNotificationDrawerOpen } = useNotificationDrawerShortcuts()
+
+  // Global WebSocket subscription for app-wide notifications (e.g.
+  // personality trimming toasts) so they render regardless of the
+  // current page.
+  useGlobalNotifications()
+  useDocumentTitle(location.pathname)
+  useNotificationNavigateBridge()
 
   const openSidebarOverlay = useCallback(() => setSidebarOverlayOpen(true), [])
   const closeSidebarOverlay = useCallback(() => setSidebarOverlayOpen(false), [])
@@ -143,83 +245,22 @@ export default function AppLayout() {
     window.dispatchEvent(new CustomEvent('open-notification-drawer'))
   }, [])
 
-  // Register global navigation commands for the command palette
-  const globalCommands: CommandItem[] = useMemo(
-    () => [
-      { id: 'nav-dashboard', label: 'Dashboard', icon: LayoutDashboard, action: () => navigate(ROUTES.DASHBOARD), group: 'Navigation' },
-      { id: 'nav-org', label: 'Org Chart', icon: GitBranch, action: () => navigate(ROUTES.ORG), group: 'Navigation' },
-      { id: 'nav-tasks', label: 'Tasks', icon: KanbanSquare, action: () => navigate(ROUTES.TASKS), group: 'Navigation' },
-      { id: 'nav-budget', label: 'Budget', icon: DollarSign, action: () => navigate(ROUTES.BUDGET), group: 'Navigation' },
-      { id: 'nav-approvals', label: 'Approvals', icon: ShieldCheck, action: () => navigate(ROUTES.APPROVALS), group: 'Navigation' },
-      { id: 'nav-agents', label: 'Agents', icon: Users, action: () => navigate(ROUTES.AGENTS), group: 'Navigation' },
-      { id: 'nav-messages', label: 'Messages', icon: MessageSquare, action: () => navigate(ROUTES.MESSAGES), group: 'Navigation' },
-      { id: 'nav-meetings', label: 'Meetings', icon: Video, action: () => navigate(ROUTES.MEETINGS), group: 'Navigation' },
-      { id: 'nav-providers', label: 'Providers', icon: Cpu, action: () => navigate(ROUTES.PROVIDERS), group: 'Navigation' },
-      { id: 'nav-docs', label: 'Documentation', icon: BookOpen, action: navigateToDocs, group: 'Navigation', keywords: ['docs', 'help', 'guide', 'reference'] },
-      { id: 'nav-settings', label: 'Settings', icon: Settings, action: () => navigate(ROUTES.SETTINGS), group: 'Navigation', shortcut: ['ctrl', ','] },
-      { id: 'notifications-open', label: 'Notifications', icon: Bell, action: openNotificationDrawer, group: 'Navigation', shortcut: ['shift', 'N'] },
-    ],
-    [navigate, navigateToDocs, openNotificationDrawer],
+  const navigatePath = useCallback((path: string) => {
+    void navigate(path)
+  }, [navigate])
+  const globalCommands = useMemo(
+    () => _buildGlobalNavCommands(navigatePath, navigateToDocs, openNotificationDrawer),
+    [navigatePath, navigateToDocs, openNotificationDrawer],
   )
   useRegisterCommands(globalCommands)
 
-  const themeCommands: CommandItem[] = useMemo(() => {
-    const PALETTE_META: Record<ColorPalette, { label: string; keywords: string[] }> = {
-      'warm-ops': { label: 'Warm Ops', keywords: ['blue'] },
-      'ice-station': { label: 'Ice Station', keywords: ['green', 'mint'] },
-      stealth: { label: 'Stealth', keywords: ['purple', 'violet'] },
-      signal: { label: 'Signal', keywords: ['orange', 'amber'] },
-      neon: { label: 'Neon', keywords: ['cyan'] },
-    }
-    const DENSITY_META: Record<Density, { label: string; keywords: string[] }> = {
-      dense: { label: 'Dense', keywords: ['compact', 'tight'] },
-      balanced: { label: 'Balanced', keywords: ['default'] },
-      medium: { label: 'Medium', keywords: [] },
-      sparse: { label: 'Sparse', keywords: ['spacious'] },
-    }
-    const TYPOGRAPHY_META: Record<Typography, { label: string }> = {
-      geist: { label: 'Geist' },
-      jetbrains: { label: 'JetBrains + Inter' },
-      'ibm-plex': { label: 'IBM Plex' },
-    }
-    const ANIMATION_META: Record<AnimationPreset, { label: string; keywords: string[] }> = {
-      minimal: { label: 'Minimal', keywords: ['reduced'] },
-      spring: { label: 'Spring', keywords: ['bouncy'] },
-      instant: { label: 'Instant', keywords: ['none'] },
-      'status-driven': { label: 'Status-driven', keywords: [] },
-      aggressive: { label: 'Aggressive', keywords: ['energy'] },
-    }
-    const SIDEBAR_META: Record<SidebarMode, { label: string; keywords: string[] }> = {
-      rail: { label: 'Rail', keywords: ['icons'] },
-      collapsible: { label: 'Collapsible', keywords: ['default'] },
-      hidden: { label: 'Hidden', keywords: ['full'] },
-      persistent: { label: 'Persistent', keywords: ['always'] },
-      compact: { label: 'Compact', keywords: ['narrow'] },
-    }
-
-    return [
-      { id: 'theme-open', label: 'Open theme preferences', icon: Palette, action: () => useThemeStore.getState().setPopoverOpen(true), group: 'Theme', keywords: ['theme', 'appearance', 'customize'] },
-      ...COLOR_PALETTES.map((v) => ({ id: `theme-${v}`, label: `Theme: ${PALETTE_META[v].label}`, action: () => useThemeStore.getState().setColorPalette(v), group: 'Theme', keywords: ['color', 'palette', ...PALETTE_META[v].keywords] })),
-      ...DENSITIES.map((v) => ({ id: `density-${v}`, label: `Set density: ${DENSITY_META[v].label}`, action: () => useThemeStore.getState().setDensity(v), group: 'Theme', keywords: ['density', ...DENSITY_META[v].keywords] })),
-      ...TYPOGRAPHIES.map((v) => ({ id: `font-${v}`, label: `Font: ${TYPOGRAPHY_META[v].label}`, action: () => useThemeStore.getState().setTypography(v), group: 'Theme', keywords: ['typography', 'font'] })),
-      ...ANIMATION_PRESETS.map((v) => ({ id: `animation-${v}`, label: `Motion: ${ANIMATION_META[v].label}`, action: () => useThemeStore.getState().setAnimation(v), group: 'Theme', keywords: ['animation', ...ANIMATION_META[v].keywords] })),
-      ...SIDEBAR_MODES.map((v) => ({ id: `sidebar-${v}`, label: `Sidebar: ${SIDEBAR_META[v].label}`, action: () => useThemeStore.getState().setSidebarMode(v), group: 'Theme', keywords: ['sidebar', ...SIDEBAR_META[v].keywords] })),
-    ]
-  }, [])
+  const themeCommands = useMemo(() => _buildThemeCommands(), [])
   useRegisterCommands(themeCommands)
 
-  // Register global shortcuts surfaced by the ? cheatsheet. Memoised so the
-  // registry's effect key (JSON.stringify(shortcuts)) is computed from a
-  // stable reference; otherwise every AppLayout render re-registers the set.
-  const globalShortcuts = useMemo(
-    () => [
-      { keys: ['Ctrl', 'K'], label: 'Open command palette', group: 'Global' },
-      { keys: ['?'], label: 'Show keyboard shortcuts', group: 'Global' },
-      { keys: ['Shift', 'N'], label: 'Toggle notifications', group: 'Global' },
-      { keys: ['Ctrl', ','], label: 'Open settings', group: 'Global' },
-    ],
-    [],
-  )
+  // Memoised so the registry's effect key (JSON.stringify(shortcuts))
+  // is computed from a stable reference; otherwise every AppLayout
+  // render re-registers the set.
+  const globalShortcuts = useMemo(() => GLOBAL_SHORTCUTS.map((s) => ({ ...s, keys: [...s.keys] })), [])
   useRegisterShortcuts(globalShortcuts)
 
   return (

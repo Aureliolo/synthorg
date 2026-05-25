@@ -17,6 +17,33 @@ export interface RollbackConfirmDialogProps<T> {
   onSuccess?: () => void
 }
 
+function RollbackReasonBody({
+  validationError,
+  reason,
+  onChange,
+}: {
+  validationError: string | null
+  reason: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className="flex flex-col gap-grid-gap">
+      {validationError && (
+        <ErrorBanner severity="warning" title={validationError} />
+      )}
+      <InputField
+        label="Reason"
+        hint="Required for the audit trail."
+        value={reason}
+        onChange={(e) => onChange(e.target.value)}
+        multiline
+        rows={3}
+        required
+      />
+    </div>
+  )
+}
+
 /**
  * Confirmation dialog for rolling a versioned resource back to an
  * earlier snapshot.  Surfaces a required reason field; the backend
@@ -36,23 +63,14 @@ export function RollbackConfirmDialog<T>({
   const [submitting, setSubmitting] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const handleConfirm = async (): Promise<void> => {
-    if (submitting) return
-    if (toVersion === null) return
-    if (!reason.trim()) {
-      setValidationError('Rollback requires a reason for the audit log.')
-      return
-    }
-    setValidationError(null)
-    setSubmitting(true)
-    let succeeded = false
+  const submitRollback = async (): Promise<boolean> => {
     try {
-      await client.rollback({ to_version: toVersion, reason: reason.trim() })
-      succeeded = true
+      await client.rollback({ to_version: toVersion!, reason: reason.trim() })
       useToastStore.getState().add({
         variant: 'success',
         title: `Rolled back to v${toVersion}`,
       })
+      return true
     } catch (err) {
       log.warn('Rollback failed:', getErrorMessage(err))
       useToastStore.getState().add({
@@ -60,22 +78,33 @@ export function RollbackConfirmDialog<T>({
         title: 'Rollback failed',
         description: getErrorMessage(err),
       })
+      return false
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleConfirm = async (): Promise<void> => {
+    if (submitting || toVersion === null) return
+    if (!reason.trim()) {
+      setValidationError('Rollback requires a reason for the audit log.')
+      return
+    }
+    setValidationError(null)
+    setSubmitting(true)
+    const succeeded = await submitRollback()
     // Run the success callback OUTSIDE the rollback try/catch so a
     // throw from the host page (e.g. a failed re-fetch) does not
     // surface as "Rollback failed": the rollback already committed
     // server-side.
-    if (succeeded) {
-      try {
-        onSuccess?.()
-      } catch (err) {
-        log.warn('Rollback onSuccess callback failed:', getErrorMessage(err))
-      }
-      setReason('')
-      onClose()
+    if (!succeeded) return
+    try {
+      onSuccess?.()
+    } catch (err) {
+      log.warn('Rollback onSuccess callback failed:', getErrorMessage(err))
     }
+    setReason('')
+    onClose()
   }
 
   return (
@@ -95,20 +124,11 @@ export function RollbackConfirmDialog<T>({
       onConfirm={handleConfirm}
       loading={submitting}
     >
-      <div className="flex flex-col gap-grid-gap">
-        {validationError && (
-          <ErrorBanner severity="warning" title={validationError} />
-        )}
-        <InputField
-          label="Reason"
-          hint="Required for the audit trail."
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          multiline
-          rows={3}
-          required
-        />
-      </div>
+      <RollbackReasonBody
+        validationError={validationError}
+        reason={reason}
+        onChange={setReason}
+      />
     </ConfirmDialog>
   )
 }

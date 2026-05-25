@@ -43,6 +43,49 @@ export interface ConfirmDialogProps {
   children?: React.ReactNode
 }
 
+function ConfirmDialogActions({
+  busy,
+  variant,
+  cancelLabel,
+  confirmLabel,
+  onCancel,
+  onConfirmClick,
+}: {
+  busy: boolean
+  variant: 'default' | 'destructive'
+  cancelLabel: string
+  confirmLabel: string
+  onCancel?: () => void
+  onConfirmClick: () => void
+}) {
+  return (
+    <div className="mt-6 flex justify-end gap-3">
+      <AlertDialog.Close
+        render={
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => onCancel?.()}
+          >
+            {cancelLabel}
+          </Button>
+        }
+      />
+      <Button
+        variant={variant === 'destructive' ? 'destructive' : 'default'}
+        data-variant={variant}
+        disabled={busy}
+        onClick={onConfirmClick}
+      >
+        {busy && (
+          <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
+        )}
+        {confirmLabel}
+      </Button>
+    </div>
+  )
+}
+
 export function ConfirmDialog({
   open,
   onOpenChange,
@@ -60,20 +103,39 @@ export function ConfirmDialog({
   const [submitting, setSubmitting] = useState(false)
   const busy = loading || submitting
 
+  const handleConfirmClick = async (): Promise<void> => {
+    if (busy) return
+    setSubmitting(true)
+    try {
+      const result = await onConfirm()
+      // Stay open when the caller explicitly signals failure via a
+      // `false` return (sentinel store mutations); any other return
+      // value (void / true / undefined) closes.
+      if (result !== false) onOpenChange(false)
+    } catch (err) {
+      // Dialog stays open on a thrown error too, so the caller can
+      // retry from the same surface. Log the cause in case the caller
+      // forgets to toast.
+      log.warn('ConfirmDialog onConfirm threw', { title: sanitizeForLog(title) }, err)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleOpenChange = (nextOpen: boolean): void => {
+    // Lock the dialog while a confirm action is in flight: without
+    // this, Escape and backdrop clicks flow straight through to
+    // ``onOpenChange`` and callers that clear state on close (e.g.
+    // ApprovalDetailDrawer resetting its ``comment`` state) would drop
+    // the user's retry context mid-operation, even though this
+    // component stays open on failure so the caller can retry from
+    // the same surface.
+    if (busy && !nextOpen) return
+    onOpenChange(nextOpen)
+  }
+
   return (
-    <AlertDialog.Root
-      open={open}
-      onOpenChange={(nextOpen: boolean) => {
-        // Lock the dialog while a confirm action is in flight: without this,
-        // Escape and backdrop clicks flow straight through to `onOpenChange`
-        // and callers that clear state on close (e.g. ApprovalDetailDrawer
-        // resetting its `comment` state) would drop the user's retry context
-        // mid-operation, even though this component's intent is to stay open
-        // on failure so the caller can retry from the same surface.
-        if (busy && !nextOpen) return
-        onOpenChange(nextOpen)
-      }}
-    >
+    <AlertDialog.Root open={open} onOpenChange={handleOpenChange}>
       <AlertDialog.Portal>
         <AlertDialog.Backdrop
           className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0"
@@ -97,49 +159,14 @@ export function ConfirmDialog({
             </AlertDialog.Description>
           )}
           {children}
-          <div className="mt-6 flex justify-end gap-3">
-            <AlertDialog.Close
-              render={
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => onCancel?.()}
-                >
-                  {cancelLabel}
-                </Button>
-              }
-            />
-            <Button
-              variant={variant === 'destructive' ? 'destructive' : 'default'}
-              data-variant={variant}
-              disabled={busy}
-              onClick={async () => {
-                if (busy) return
-                setSubmitting(true)
-                try {
-                  const result = await onConfirm()
-                  // Stay open when the caller explicitly signals failure
-                  // via a `false` return (sentinel store mutations); any
-                  // other return value (void / true / undefined) closes.
-                  if (result !== false) {
-                    onOpenChange(false)
-                  }
-                } catch (err) {
-                  // Dialog stays open on a thrown error too, so the
-                  // caller can retry from the same surface. Log the
-                  // cause in case the caller forgets to toast.
-                  log.warn('ConfirmDialog onConfirm threw', { title: sanitizeForLog(title) }, err)
-                } finally {
-                  setSubmitting(false)
-                }
-              }}
-            >
-              {busy && (
-                <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
-              )}
-              {confirmLabel}
-            </Button>
-          </div>
+          <ConfirmDialogActions
+            busy={busy}
+            variant={variant}
+            cancelLabel={cancelLabel}
+            confirmLabel={confirmLabel}
+            onCancel={onCancel}
+            onConfirmClick={() => { void handleConfirmClick() }}
+          />
         </AlertDialog.Popup>
       </AlertDialog.Portal>
     </AlertDialog.Root>

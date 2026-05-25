@@ -21,19 +21,30 @@ export interface ListAuditEntriesParams {
   limit?: number | null
 }
 
+const AUDIT_FILTER_KEYS = [
+  ['agentId', 'agent_id'],
+  ['toolName', 'tool_name'],
+  ['actionType', 'action_type'],
+  ['verdict', 'verdict'],
+  ['since', 'since'],
+  ['until', 'until'],
+  ['cursor', 'cursor'],
+] as const satisfies ReadonlyArray<readonly [keyof ListAuditEntriesParams, string]>
+
+function _buildAuditQuery(params: ListAuditEntriesParams): URLSearchParams {
+  const query = new URLSearchParams()
+  for (const [optionKey, wireKey] of AUDIT_FILTER_KEYS) {
+    const value = params[optionKey]
+    if (typeof value === 'string' && value) query.set(wireKey, value)
+  }
+  if (params.limit != null) query.set('limit', String(params.limit))
+  return query
+}
+
 export async function listAuditEntries(
   params: ListAuditEntriesParams = {},
 ): Promise<PaginatedResult<AuditEntry>> {
-  const query = new URLSearchParams()
-  if (params.agentId) query.set('agent_id', params.agentId)
-  if (params.toolName) query.set('tool_name', params.toolName)
-  if (params.actionType) query.set('action_type', params.actionType)
-  if (params.verdict) query.set('verdict', params.verdict)
-  if (params.since) query.set('since', params.since)
-  if (params.until) query.set('until', params.until)
-  if (params.cursor) query.set('cursor', params.cursor)
-  if (params.limit != null) query.set('limit', String(params.limit))
-  const qs = query.toString()
+  const qs = _buildAuditQuery(params).toString()
   const url = qs ? `/security/audit?${qs}` : '/security/audit'
   const response = await apiClient.get<PaginatedResponse<AuditEntry>>(url)
   return unwrapPaginated(response)

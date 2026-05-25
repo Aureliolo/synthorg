@@ -37,7 +37,7 @@ export interface ErrorBannerProps {
    * (``Retry in 12s``) until the cooldown expires. Pass the seconds
    * value parsed from a server ``Retry-After`` header (or
    * ``ErrorDetail.retry_after``); the banner re-enables Retry when
-   * the countdown reaches zero. The countdown is cosmetic only -- the
+   * the countdown reaches zero. The countdown is cosmetic only: the
    * caller still owns the actual retry decision via ``onRetry``.
    */
   retryAfterSeconds?: number | null
@@ -78,6 +78,171 @@ const SEVERITY_STYLES: Record<ErrorBannerSeverity, string> = {
   info: 'border-accent/30 bg-accent/5 text-accent',
 }
 
+function _isValidCooldown(seconds: number | null | undefined): seconds is number {
+  return typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0
+}
+
+/**
+ * Live countdown for Retry-After cooldowns. Seeded from
+ * ``retryAfterSeconds`` via render-phase derivation (no synchronous
+ * ``setRemaining`` inside the effect, which ESLint's
+ * ``set-state-in-effect`` rule rightly flags as a render-loop hazard).
+ * The effect owns only the ``setInterval`` that ticks the value down
+ * once per second; ``clearInterval`` runs when the prop changes or
+ * the component unmounts.
+ *
+ * Computes an absolute deadline (ms since epoch) per cooldown so the
+ * displayed remaining is always derived from wall-clock time rather
+ * than ``prev - 1`` per tick. Browsers throttle ``setInterval`` in
+ * backgrounded tabs (typically to 1 Hz max, more aggressively under
+ * load), so a decrement-per-tick countdown drifts behind real time
+ * and can keep the Retry button disabled past the actual cooldown
+ * expiry. Recomputing from the deadline keeps the timer correct even
+ * after the tab returns to the foreground.
+ */
+function useRetryCountdown(
+  retryAfterSeconds: number | null | undefined,
+  retryResetToken: string | number | null | undefined,
+): number | null {
+  const isValidCooldown = _isValidCooldown(retryAfterSeconds)
+  const initialRemaining = isValidCooldown ? Math.ceil(retryAfterSeconds) : null
+  const [remaining, setRemaining] = useState<number | null>(initialRemaining)
+  // Track ``retryAfterSeconds`` AND ``retryResetToken`` so a fresh 429
+  // with the SAME duration but a NEW token (e.g. a different error
+  // instance) restarts the countdown. Without the token an identical-
+  // duration follow-up would silently leave Retry enabled because the
+  // countdown ran to zero on the previous error.
+  const seedSignature = `${retryAfterSeconds ?? ''}|${retryResetToken ?? ''}`
+  const prevSeedRef = useRef<string>(seedSignature)
+  if (prevSeedRef.current !== seedSignature) {
+    prevSeedRef.current = seedSignature
+    setRemaining(initialRemaining)
+  }
+  useEffect(() => {
+    if (!isValidCooldown) return
+    const deadline = Date.now() + retryAfterSeconds * 1000
+    const id = setInterval(() => {
+      const next = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+      if (next <= 0) {
+        clearInterval(id)
+        setRemaining(null)
+        return
+      }
+      setRemaining(next)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [retryAfterSeconds, seedSignature, isValidCooldown])
+  return remaining
+}
+
+function ErrorBannerRetry({
+  onRetry,
+  remaining,
+}: {
+  onRetry: () => void
+  remaining: number | null
+}) {
+  const disabled = remaining !== null && remaining > 0
+  return (
+    <div className="inline-flex items-center gap-2">
+      <Button size="xs" variant="outline" onClick={onRetry} disabled={disabled}>
+        Retry
+      </Button>
+      {disabled && (
+        // Countdown text rendered as a separate ``aria-hidden`` sibling
+        // so the per-second ticks don't mutate the Retry button's
+        // accessible name (the previous design caused screen readers
+        // to re-announce "Retry in 12s" every second). Sighted users
+        // still see the timer; the button's disabled state is what
+        // assistive tech conveys, and re-enabling fires a single
+        // state-change announcement instead of N per-second updates.
+        <span aria-hidden="true" className="font-mono text-compact text-muted-foreground">
+          Retry in {remaining}s
+        </span>
+      )}
+    </div>
+  )
+}
+
+function ErrorBannerActionSlot({ action }: { action: ErrorBannerAction | React.ReactNode }) {
+  if (action == null || action === false) return null
+  if (isActionObject(action)) {
+    return (
+      <Button size="xs" variant="ghost" onClick={action.onClick}>
+        {action.label}
+      </Button>
+    )
+  }
+  return <>{action}</>
+}
+
+function ErrorBannerDescription({
+  description,
+}: {
+  description: string | React.ReactNode | undefined
+}) {
+  if (description === undefined || description === null) return null
+  if (typeof description === 'string') {
+    return <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+  }
+  return <div className="mt-1 text-xs text-muted-foreground">{description}</div>
+}
+
+function _normalizeCorrelationId(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+interface BannerPresentation {
+  readonly severity: ErrorBannerSeverity
+  readonly Icon: LucideIcon
+  readonly role: 'alert' | 'status'
+  readonly ariaLive: 'assertive' | 'polite'
+  readonly densityClasses: string
+  readonly titleClass: string
+}
+
+function _resolvePresentation(
+  variant: ErrorBannerVariant,
+  severityProp: ErrorBannerSeverity,
+  iconOverride: LucideIcon | undefined,
+): BannerPresentation {
+  const severity = variant === 'offline' ? 'warning' : severityProp
+  const Icon = iconOverride ?? (variant === 'offline' ? WifiOff : SEVERITY_ICON[severity])
+  return {
+    severity,
+    Icon,
+    role: severity === 'error' ? 'alert' : 'status',
+    ariaLive: severity === 'error' ? 'assertive' : 'polite',
+    densityClasses: variant === 'inline' ? 'gap-2 p-card text-xs' : 'gap-3 p-card text-sm',
+    titleClass: variant === 'inline' ? 'text-xs' : 'text-sm',
+  }
+}
+
+function ErrorBannerActions({
+  onRetry,
+  remaining,
+  action,
+  correlationId,
+}: {
+  onRetry: (() => void) | undefined
+  remaining: number | null
+  action: ErrorBannerAction | React.ReactNode
+  correlationId: string | null
+}) {
+  const hasAction = action != null && action !== false
+  const hasAny = onRetry != null || hasAction || correlationId !== null
+  if (!hasAny) return null
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {onRetry && <ErrorBannerRetry onRetry={onRetry} remaining={remaining} />}
+      <ErrorBannerActionSlot action={action} />
+      {correlationId !== null && <CorrelationIdChip correlationId={correlationId} />}
+    </div>
+  )
+}
+
 /**
  * Shared error / warning / info banner for list fetch failures, offline
  * state, onboarding retry guidance, and form-level errors.
@@ -100,162 +265,41 @@ export function ErrorBanner({
   correlationId,
   className,
 }: ErrorBannerProps) {
-  const severity: ErrorBannerSeverity = variant === 'offline' ? 'warning' : severityProp
-  const Icon = icon ?? (variant === 'offline' ? WifiOff : SEVERITY_ICON[severity])
-
-  const role = severity === 'error' ? 'alert' : 'status'
-  const ariaLive = severity === 'error' ? 'assertive' : 'polite'
-
-  const densityClasses = variant === 'inline' ? 'gap-2 p-card text-xs' : 'gap-3 p-card text-sm'
-
-  // Live countdown for Retry-After cooldowns. ``remaining`` is seeded
-  // from the latest ``retryAfterSeconds`` prop via render-phase deriv-
-  // ation (no synchronous ``setRemaining`` inside the effect, which
-  // ESLint's ``set-state-in-effect`` rule rightly flags as a render-
-  // loop hazard). The effect owns only the ``setInterval`` that ticks
-  // the value down once per second; ``clearInterval`` runs when the
-  // prop changes or the component unmounts.
-  // Reject ``Infinity`` and ``NaN``: either would lock the Retry button
-  // forever (``Infinity > 0`` is true and never decrements; ``Math.ceil(NaN)``
-  // is ``NaN`` which fails every ``<= 1`` comparison).
-  // Compute an absolute deadline (ms since epoch) per cooldown so the
-  // displayed remaining is always derived from wall-clock time rather
-  // than ``prev - 1`` per tick. Browsers throttle ``setInterval`` in
-  // backgrounded tabs (typically to 1 Hz max, more aggressively under
-  // load), so a decrement-per-tick countdown drifts behind real time
-  // and can keep the Retry button disabled past the actual cooldown
-  // expiry. Recomputing from the deadline keeps the timer correct even
-  // after the tab returns to the foreground.
-  const isValidCooldown =
-    typeof retryAfterSeconds === 'number' &&
-    Number.isFinite(retryAfterSeconds) &&
-    retryAfterSeconds > 0
-  const initialRemaining = isValidCooldown ? Math.ceil(retryAfterSeconds) : null
-  const [remaining, setRemaining] = useState<number | null>(initialRemaining)
-  // Track ``retryAfterSeconds`` AND ``retryResetToken`` so a fresh
-  // 429 with the SAME duration but a NEW token (e.g. a different error
-  // instance) restarts the countdown -- without the token, an
-  // identical-duration follow-up would silently leave Retry enabled
-  // because the countdown ran to zero on the previous error.
-  // ``useRef`` (not ``useState``) for the previous-signature sentinel:
-  // we don't need to trigger a render when the signature changes (we
-  // reseed ``remaining`` directly), and ``useRef`` avoids the extra
-  // render-phase state update + commit that ``useState`` would force.
-  const seedSignature = `${retryAfterSeconds ?? ''}|${retryResetToken ?? ''}`
-  const prevSeedRef = useRef<string>(seedSignature)
-  if (prevSeedRef.current !== seedSignature) {
-    prevSeedRef.current = seedSignature
-    setRemaining(initialRemaining)
-  }
-  useEffect(() => {
-    if (!isValidCooldown) return
-    // Compute the absolute expiry once per cooldown inside the effect
-    // (calling ``Date.now()`` during render violates React's purity
-    // rules; effects are the canonical place for "now"). Each tick
-    // recomputes ``remaining`` from the deadline so a backgrounded
-    // tab whose ``setInterval`` was throttled catches up to wall-clock
-    // time on the next tick instead of drifting behind by N seconds.
-    const deadline = Date.now() + retryAfterSeconds * 1000
-    const id = setInterval(() => {
-      const next = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
-      if (next <= 0) {
-        clearInterval(id)
-        setRemaining(null)
-        return
-      }
-      setRemaining(next)
-    }, 1000)
-    return () => clearInterval(id)
-    // ``seedSignature`` covers ``retryResetToken`` changes too: when a
-    // fresh error arrives with the same ``retryAfterSeconds`` but a new
-    // token, render-phase reseed sets ``remaining`` back to the initial
-    // value AND this effect fires to compute a fresh deadline + start
-    // a new interval (without it the previous interval -- already
-    // cleared at zero -- would not restart, leaving the disabled-Retry
-    // state stuck).
-  }, [retryAfterSeconds, seedSignature, isValidCooldown])
-  const retryDisabled = remaining !== null && remaining > 0
+  const presentation = _resolvePresentation(variant, severityProp, icon)
+  const remaining = useRetryCountdown(retryAfterSeconds, retryResetToken)
   // Normalise once: an empty / whitespace-only ``correlationId`` would
   // pass the ``!= null`` predicate (rendering the action row with
   // ``mt-2`` spacing) but fail the truthy guard at the chip render
   // site, leaving a visible empty row. Treat any blank as "absent" so
   // the row only appears when there is a real chip to draw.
-  const normalizedCorrelationId =
-    typeof correlationId === 'string' ? correlationId.trim() : null
-  const hasCorrelationId = Boolean(normalizedCorrelationId)
+  const normalizedCorrelationId = _normalizeCorrelationId(correlationId)
 
   return (
     <div
-      role={role}
-      aria-live={ariaLive}
+      role={presentation.role}
+      aria-live={presentation.ariaLive}
       className={cn(
         'flex items-start rounded-lg border',
-        SEVERITY_STYLES[severity],
-        densityClasses,
+        SEVERITY_STYLES[presentation.severity],
+        presentation.densityClasses,
         className,
       )}
     >
-      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" strokeWidth={1.75} />
-
+      <presentation.Icon
+        className="mt-0.5 size-4 shrink-0"
+        aria-hidden="true"
+        strokeWidth={1.75}
+      />
       <div className="min-w-0 flex-1">
-        <p className={cn('font-medium', variant === 'inline' ? 'text-xs' : 'text-sm')}>
-          {title}
-        </p>
-        {description !== undefined && description !== null && (
-          typeof description === 'string' ? (
-            <p className={cn('mt-1 text-xs text-muted-foreground')}>
-              {description}
-            </p>
-          ) : (
-            <div className={cn('mt-1 text-xs text-muted-foreground')}>
-              {description}
-            </div>
-          )
-        )}
-        {(onRetry != null || (action != null && action !== false) || hasCorrelationId) && (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {onRetry && (
-              <div className="inline-flex items-center gap-2">
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={onRetry}
-                  disabled={retryDisabled}
-                >
-                  Retry
-                </Button>
-                {retryDisabled && (
-                  /*
-                   * Countdown text rendered as a separate ``aria-hidden``
-                   * sibling so the per-second ticks don't mutate the
-                   * Retry button's accessible name (the previous design
-                   * caused screen readers to re-announce ``Retry in 12s``
-                   * every second). Sighted users still see the timer; the
-                   * button's disabled state is what assistive tech
-                   * conveys, and re-enabling fires a single state change
-                   * announcement instead of N per-second updates.
-                   */
-                  <span
-                    aria-hidden="true"
-                    className="font-mono text-compact text-muted-foreground"
-                  >
-                    Retry in {remaining}s
-                  </span>
-                )}
-              </div>
-            )}
-            {action != null && action !== false && (isActionObject(action) ? (
-              <Button size="xs" variant="ghost" onClick={action.onClick}>
-                {action.label}
-              </Button>
-            ) : action)}
-            {hasCorrelationId && normalizedCorrelationId !== null && (
-              <CorrelationIdChip correlationId={normalizedCorrelationId} />
-            )}
-          </div>
-        )}
+        <p className={cn('font-medium', presentation.titleClass)}>{title}</p>
+        <ErrorBannerDescription description={description} />
+        <ErrorBannerActions
+          onRetry={onRetry}
+          remaining={remaining}
+          action={action}
+          correlationId={normalizedCorrelationId}
+        />
       </div>
-
       {onDismiss && (
         <Button
           size="icon-xs"

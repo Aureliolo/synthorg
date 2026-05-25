@@ -126,6 +126,94 @@ const DEFAULT_EXTENSIONS: Extension[] = []
 // Component
 // ---------------------------------------------------------------------------
 
+interface EditorCompartments {
+  language: React.RefObject<Compartment>
+  readOnly: React.RefObject<Compartment>
+  extra: React.RefObject<Compartment>
+}
+
+function _buildInitialState(args: {
+  value: string
+  language: CodeMirrorEditorProps['language']
+  readOnly: boolean
+  extraExtensions: readonly Extension[]
+  cspNonce: string | undefined
+  compartments: EditorCompartments
+  updateListener: Extension
+}): EditorState {
+  const { value, language, readOnly, extraExtensions, cspNonce, compartments, updateListener } = args
+  return EditorState.create({
+    doc: value,
+    extensions: [
+      ...(cspNonce ? [EditorView.cspNonce.of(cspNonce)] : []),
+      lineNumbers(),
+      drawSelection(),
+      bracketMatching(),
+      history(),
+      keymap.of([...defaultKeymap, ...historyKeymap]),
+      syntaxHighlighting(highlightStyle),
+      compartments.language.current.of(getLanguageExtension(language)),
+      compartments.readOnly.current.of(EditorState.readOnly.of(readOnly)),
+      compartments.extra.current.of(extraExtensions),
+      EditorView.lineWrapping,
+      darkTheme,
+      updateListener,
+    ],
+  })
+}
+
+function useCompartments(): EditorCompartments {
+  const ref = useRef<EditorCompartments>({
+    language: { current: new Compartment() },
+    readOnly: { current: new Compartment() },
+    extra: { current: new Compartment() },
+  } as unknown as EditorCompartments)
+  return ref.current
+}
+
+function useEditorMount(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  viewRef: React.RefObject<EditorView | null>,
+  args: {
+    value: string
+    language: CodeMirrorEditorProps['language']
+    readOnly: boolean
+    extraExtensions: readonly Extension[]
+    cspNonce: string | undefined
+    compartments: EditorCompartments
+    onChangeRef: React.RefObject<(value: string) => void>
+    onViewReadyRef: React.RefObject<((view: EditorView) => void) | undefined>
+    isProgrammaticRef: React.RefObject<boolean>
+  },
+): void {
+  useEffect(() => {
+    if (!containerRef.current) return
+    const updateListener = EditorView.updateListener.of((update) => {
+      if (update.docChanged && !args.isProgrammaticRef.current) {
+        args.onChangeRef.current(update.state.doc.toString())
+      }
+    })
+    const state = _buildInitialState({
+      value: args.value,
+      language: args.language,
+      readOnly: args.readOnly,
+      extraExtensions: args.extraExtensions,
+      cspNonce: args.cspNonce,
+      compartments: args.compartments,
+      updateListener,
+    })
+    const view = new EditorView({ state, parent: containerRef.current })
+    viewRef.current = view
+    args.onViewReadyRef.current?.(view)
+    return () => {
+      view.destroy()
+      viewRef.current = null
+    }
+    // Only run on mount: value/language/readOnly/extensions synced via separate effects.
+    // eslint-disable-next-line @eslint-react/exhaustive-deps
+  }, [])
+}
+
 export function CodeMirrorEditor({
   value,
   onChange,
@@ -138,127 +226,62 @@ export function CodeMirrorEditor({
 }: CodeMirrorEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
-  const languageCompartmentRef = useRef(new Compartment())
-  const readOnlyCompartmentRef = useRef(new Compartment())
-  const extraExtensionsCompartmentRef = useRef(new Compartment())
-
-  // Keep callbacks in refs to avoid recreating extensions
+  const compartments = useCompartments()
+  // Keep callbacks in refs to avoid recreating extensions.
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
-
   const onViewReadyRef = useRef(onViewReady)
   onViewReadyRef.current = onViewReady
-
-  // Track whether a programmatic update is in progress
   const isProgrammaticRef = useRef(false)
-
   // Resolve the per-request CSP nonce so CodeMirror's injected
   // <style> elements pass the page's ``style-src-elem 'self'
-  // 'nonce-...''`` policy.  Without this, the editor renders with
-  // unstyled line numbers + raw text and the browser logs a
-  // "blocked inline style" violation.  ``cspNonce`` is a static
-  // Facet on EditorView; supplied through the initial state so all
-  // theme + syntax-highlight modules pick it up at mount.
+  // 'nonce-...'`` policy.
   const cspNonce = useMemo(() => getCspNonce(), [])
 
-  // Create editor on mount
-  useEffect(() => {
-    if (!containerRef.current) return
+  useEditorMount(containerRef, viewRef, {
+    value, language, readOnly, extraExtensions, cspNonce, compartments,
+    onChangeRef, onViewReadyRef, isProgrammaticRef,
+  })
 
-    const updateListener = EditorView.updateListener.of((update) => {
-      if (update.docChanged && !isProgrammaticRef.current) {
-        onChangeRef.current(update.state.doc.toString())
-      }
-    })
-
-    const state = EditorState.create({
-      doc: value,
-      extensions: [
-        ...(cspNonce ? [EditorView.cspNonce.of(cspNonce)] : []),
-        lineNumbers(),
-        drawSelection(),
-        bracketMatching(),
-        history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
-        syntaxHighlighting(highlightStyle),
-        languageCompartmentRef.current.of(getLanguageExtension(language)),
-        readOnlyCompartmentRef.current.of(EditorState.readOnly.of(readOnly)),
-        extraExtensionsCompartmentRef.current.of(extraExtensions),
-        EditorView.lineWrapping,
-        darkTheme,
-        updateListener,
-      ],
-    })
-
-    const view = new EditorView({
-      state,
-      parent: containerRef.current,
-    })
-
-    viewRef.current = view
-    onViewReadyRef.current?.(view)
-
-    return () => {
-      view.destroy()
-      viewRef.current = null
-    }
-    // Only run on mount -- value/language/readOnly/extensions synced via separate effects
-    // eslint-disable-next-line @eslint-react/exhaustive-deps
-  }, [])
-
-  // Sync external value changes to CodeMirror
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
-
     const currentDoc = view.state.doc.toString()
-    if (value !== currentDoc) {
-      isProgrammaticRef.current = true
-      try {
-        view.dispatch({
-          changes: { from: 0, to: currentDoc.length, insert: value },
-        })
-      } finally {
-        isProgrammaticRef.current = false
-      }
+    if (value === currentDoc) return
+    isProgrammaticRef.current = true
+    try {
+      view.dispatch({ changes: { from: 0, to: currentDoc.length, insert: value } })
+    } finally {
+      isProgrammaticRef.current = false
     }
   }, [value])
 
-  // Reconfigure language when format changes
+  // Reconfigure language when format changes.
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
-
     view.dispatch({
-      effects: languageCompartmentRef.current.reconfigure(
-        getLanguageExtension(language),
-      ),
+      effects: compartments.language.current.reconfigure(getLanguageExtension(language)),
     })
-  }, [language])
+  }, [language, compartments])
 
-  // Reconfigure readOnly when the prop changes
+  // Reconfigure readOnly when the prop changes.
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
-
     view.dispatch({
-      effects: readOnlyCompartmentRef.current.reconfigure(
-        EditorState.readOnly.of(readOnly),
-      ),
+      effects: compartments.readOnly.current.reconfigure(EditorState.readOnly.of(readOnly)),
     })
-  }, [readOnly])
+  }, [readOnly, compartments])
 
-  // Reconfigure extra extensions when they change
+  // Reconfigure extra extensions when they change.
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
-
     view.dispatch({
-      effects: extraExtensionsCompartmentRef.current.reconfigure(
-        extraExtensions,
-      ),
+      effects: compartments.extra.current.reconfigure(extraExtensions),
     })
-  }, [extraExtensions])
+  }, [extraExtensions, compartments])
 
   return (
     <div

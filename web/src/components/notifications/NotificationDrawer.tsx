@@ -17,6 +17,29 @@ interface NotificationDrawerProps {
   readonly onClose: () => void
 }
 
+function NotificationSummary({
+  unreadCount,
+  onMarkAllRead,
+}: {
+  unreadCount: number
+  onMarkAllRead: () => void
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <LiveRegion>
+        <span className="text-xs text-muted-foreground">
+          {unreadCount > 0 ? `${unreadCount} unread` : 'All read'}
+        </span>
+      </LiveRegion>
+      {unreadCount > 0 && (
+        <Button variant="ghost" size="sm" onClick={onMarkAllRead} className="text-xs">
+          Mark all read
+        </Button>
+      )}
+    </div>
+  )
+}
+
 export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
   const items = useNotificationsStore((s) => s.items)
   const markRead = useNotificationsStore((s) => s.markRead)
@@ -28,9 +51,7 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
 
   const filteredItems = useMemo(() => {
     if (filter === 'all') return items
-    return items.filter(
-      (item) => CATEGORY_CONFIGS[item.category].group === filter,
-    )
+    return items.filter((item) => CATEGORY_CONFIGS[item.category].group === filter)
   }, [items, filter])
 
   const filteredUnreadCount = useMemo(
@@ -38,12 +59,12 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
     [filteredItems],
   )
 
-  function handleMarkAllRead() {
+  const handleMarkAllRead = (): void => {
     const ids = filteredItems.filter((item) => !item.read).map((item) => item.id)
     if (ids.length > 0) markReadBatch(ids)
   }
 
-  function handleClearAll() {
+  const handleClearAll = (): void => {
     const ids = filteredItems.map((item) => item.id)
     if (ids.length > 0) dismissBatch(ids)
   }
@@ -51,31 +72,11 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
   return (
     <Drawer open={open} onClose={onClose} title="Notifications" side="right">
       <div className="flex h-full flex-col gap-3 p-card">
-        {/* Filter bar */}
         <NotificationFilterBar value={filter} onChange={setFilter} />
-
-        {/* Summary row */}
-        <div className="flex items-center justify-between">
-          <LiveRegion>
-            <span className="text-xs text-muted-foreground">
-              {filteredUnreadCount > 0
-                ? `${filteredUnreadCount} unread`
-                : 'All read'}
-            </span>
-          </LiveRegion>
-          {filteredUnreadCount > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleMarkAllRead}
-              className="text-xs"
-            >
-              Mark all read
-            </Button>
-          )}
-        </div>
-
-        {/* Notification list */}
+        <NotificationSummary
+          unreadCount={filteredUnreadCount}
+          onMarkAllRead={handleMarkAllRead}
+        />
         <div className="flex-1 overflow-y-auto">
           {filteredItems.length === 0 ? (
             <NotificationEmptyState filter={filter} />
@@ -95,8 +96,6 @@ export function NotificationDrawer({ open, onClose }: NotificationDrawerProps) {
             </div>
           )}
         </div>
-
-        {/* Footer */}
         {filteredItems.length > 0 && (
           <div className="border-t border-border pt-2">
             <Button

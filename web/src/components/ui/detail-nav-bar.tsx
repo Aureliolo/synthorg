@@ -58,13 +58,17 @@ export function DetailNavBar({
       const tag = target.tagName
       return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
     }
+    const PREV_KEYS = new Set(['j', 'ArrowLeft'])
+    const NEXT_KEYS = new Set(['k', 'ArrowRight'])
+    function hasModifier(event: KeyboardEvent): boolean {
+      return event.metaKey || event.ctrlKey || event.altKey || event.shiftKey
+    }
     function onKey(event: KeyboardEvent) {
-      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
-      if (isEditable(event.target)) return
-      if ((event.key === 'j' || event.key === 'ArrowLeft') && canPrev) {
+      if (hasModifier(event) || isEditable(event.target)) return
+      if (PREV_KEYS.has(event.key) && canPrev) {
         event.preventDefault()
         onPrev()
-      } else if ((event.key === 'k' || event.key === 'ArrowRight') && canNext) {
+      } else if (NEXT_KEYS.has(event.key) && canNext) {
         event.preventDefault()
         onNext()
       }

@@ -101,11 +101,88 @@ apiClient.interceptors.request.use(
 
 // ── Response interceptor: 401 redirect + error passthrough ──
 
+type ApiAxiosError = AxiosError<{
+  error?: string
+  success?: boolean
+  error_detail?: ErrorDetail | null
+}>
+
+function _normalizeHeaders(headers: unknown): Record<string, string> {
+  const result: Record<string, string> = {}
+  if (!headers || typeof headers !== 'object') return result
+  for (const [k, v] of Object.entries(headers as Record<string, unknown>)) {
+    if (typeof v === 'string') result[k.toLowerCase()] = v
+  }
+  return result
+}
+
+/**
+ * Whether a 429 retry is permitted: idempotent verbs always, or an
+ * explicit non-blank ``Idempotency-Key`` header on a mutation. An
+ * empty or whitespace-only header is a client bug, not an opt-in,
+ * and must not license replaying an accepted mutation.
+ */
+function _isReplayableRequest(config: RetriableConfig): boolean {
+  const method = (config.method ?? '').toLowerCase()
+  if (IDEMPOTENT_METHODS.has(method)) return true
+  const normalized = _normalizeHeaders(config.headers)
+  const key = normalized[IDEMPOTENCY_KEY_HEADER]
+  return typeof key === 'string' && key.trim().length > 0
+}
+
+function _parseRetryAfter(error: ApiAxiosError): number {
+  return parseRetryAfterMs(
+    error.response?.headers?.['retry-after'] as string | undefined,
+    error.response?.data?.error_detail ?? null,
+  )
+}
+
+async function _performRateLimitRetry(
+  config: RetriableConfig,
+  waitMs: number,
+): Promise<AxiosResponse> {
+  const retryCount = (config._rateLimitRetries ?? 0) + 1
+  config._rateLimitRetries = retryCount
+  // Surfaces backend rate-limit pressure to dashboards / operators.
+  // ``log.warn`` (not ``info``) because the web logger ships only
+  // ``debug | warn | error`` levels; a silent absorbed 429 is a
+  // signal an SRE wants to see, not a debug-stripped trace.
+  log.warn('http.rate_limited', {
+    retry_count: retryCount,
+    method: (config.method ?? '').toLowerCase(),
+    status: 429,
+  })
+  const nextHeaders = { ...(config.headers ?? {}) } as Record<string, string>
+  nextHeaders[RETRY_COUNT_HEADER] = String(retryCount)
+  const retryConfig: AxiosRequestConfig = { ...config, headers: nextHeaders }
+  if (waitMs > 0) await sleep(waitMs)
+  return apiClient.request(retryConfig)
+}
+
+/**
+ * Attempt a single bounded 429 retry. Returns the replayed response
+ * on success or ``null`` when the request is not eligible (non-
+ * idempotent, retry budget exhausted, or the server's Retry-After
+ * exceeds our budget). ``waitMs === DO_NOT_RETRY`` propagates the
+ * 429 to the caller instead of hammering the backend with a
+ * shortened retry that would just 429 again. ``waitMs === 0`` is a
+ * real "retry immediately" signal (RFC 9110 ``Retry-After: 0`` or
+ * no header) and still routes through the retry path.
+ */
+async function _retryRateLimit(
+  error: ApiAxiosError,
+  config: RetriableConfig,
+): Promise<AxiosResponse | null> {
+  if (!_isReplayableRequest(config)) return null
+  if ((config._rateLimitRetries ?? 0) >= MAX_RATE_LIMIT_RETRIES) return null
+  const waitMs = _parseRetryAfter(error)
+  if (waitMs === DO_NOT_RETRY) return null
+  return _performRateLimitRetry(config, waitMs)
+}
+
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
-  async (
-    error: AxiosError<{ error?: string; success?: boolean; error_detail?: ErrorDetail | null }>,
-  ) => {
+  async (error: ApiAxiosError) => {
     if (error.response?.status === 401 && !IS_DEV_AUTH_BYPASS) {
       // The server clears the session cookie via Set-Cookie: Max-Age=0.
       // We only need to sync the Zustand auth state. Routed through the
@@ -113,69 +190,13 @@ apiClient.interceptors.response.use(
       // dependency on the auth store.
       notifyUnauthorized()
     }
-    // Transparent retry for 429 responses when the backend surfaces
-    // a Retry-After.  Bounded so a hostile or mis-tuned server can't
-    // hang the UI; surfaces the error to the caller after retries
-    // exhaust so per-endpoint UX (toasts, disabled buttons) can take
-    // over from there.
-    const status = error.response?.status
-    const config = error.config as RetriableConfig | undefined
-    if (status === 429 && config) {
-      const method = (config.method ?? '').toLowerCase()
-      const rawHeaders = (config.headers ?? {}) as Record<string, string>
-      const normalizedHeaders: Record<string, string> = {}
-      for (const [k, v] of Object.entries(rawHeaders)) {
-        if (typeof v === 'string') normalizedHeaders[k.toLowerCase()] = v
-      }
-      // An idempotency key only enables retry when it's a non-empty,
-      // non-whitespace value -- an empty or blank header is a client
-      // bug, not an opt-in, and must not license replaying an
-      // accepted mutation.
-      const idempotencyKey = normalizedHeaders[IDEMPOTENCY_KEY_HEADER]
-      const isIdempotent =
-        IDEMPOTENT_METHODS.has(method) ||
-        (typeof idempotencyKey === 'string' && idempotencyKey.trim().length > 0)
-      const retries = config._rateLimitRetries ?? 0
-      if (isIdempotent && retries < MAX_RATE_LIMIT_RETRIES) {
-        const waitMs = parseRetryAfterMs(
-          error.response?.headers?.['retry-after'] as string | undefined,
-          error.response?.data?.error_detail ?? null,
-        )
-        // ``waitMs === DO_NOT_RETRY`` means the server wants us to wait
-        // longer than our bounded budget -- propagate the 429 to the
-        // caller instead of hammering the backend with a shortened retry
-        // that would just 429 again.  ``waitMs === 0`` is a real
-        // "retry immediately" signal (RFC 9110 ``Retry-After: 0`` or no
-        // header) and must still go through the retry path; the axios
-        // branch previously short-circuited it, diverging from the
-        // ``fetchWithRetryAfter`` contract used by non-axios call sites.
-        if (waitMs !== DO_NOT_RETRY) {
-          const retryCount = retries + 1
-          // Surfaces backend rate-limit pressure to dashboards / operators.
-          // ``log.warn`` (not ``info``) because the web logger ships only
-          // ``debug | warn | error`` levels; a silent absorbed 429 is a
-          // signal an SRE wants to see, not a debug-stripped trace.
-          // Pass the structured payload object directly: the logger's
-          // sanitizer routes objects through unchanged for devtools
-          // inspection (it stringifies primitives + strings only).
-          log.warn('http.rate_limited', {
-            retry_count: retryCount,
-            method,
-            status: 429,
-          })
-          config._rateLimitRetries = retryCount
-          const nextHeaders = { ...(config.headers ?? {}) } as Record<string, string>
-          nextHeaders[RETRY_COUNT_HEADER] = String(retryCount)
-          const retryConfig: AxiosRequestConfig = {
-            ...config,
-            headers: nextHeaders,
-          }
-          if (waitMs > 0) {
-            await sleep(waitMs)
-          }
-          return apiClient.request(retryConfig)
-        }
-      }
+    // Transparent retry for 429 responses when the backend surfaces a
+    // Retry-After. Bounded so a hostile or mis-tuned server can't hang
+    // the UI; surfaces the error to the caller after retries exhaust
+    // so per-endpoint UX (toasts, disabled buttons) can take over.
+    if (error.response?.status === 429 && error.config) {
+      const retryResponse = await _retryRateLimit(error, error.config as RetriableConfig)
+      if (retryResponse) return retryResponse
     }
     return Promise.reject(error)
   },

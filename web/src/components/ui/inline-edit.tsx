@@ -20,32 +20,39 @@ export interface InlineEditProps {
   disabled?: boolean
 }
 
-export function InlineEdit({
-  value,
-  onSave,
-  validate,
-  placeholder,
-  renderDisplay,
-  type = 'text',
-  className,
-  disabled,
-}: InlineEditProps) {
+interface InlineEditMachine {
+  state: EditState
+  editValue: string
+  error: string | null
+  inputRef: React.RefObject<HTMLInputElement | null>
+  flashClassName: string
+  startEditing: () => void
+  cancel: () => void
+  save: () => Promise<void>
+  setEditValue: (next: string) => void
+  clearError: () => void
+}
+
+function useInlineEdit(
+  value: string,
+  onSave: (newValue: string) => Promise<void>,
+  validate: ((value: string) => string | null) | undefined,
+  disabled: boolean | undefined,
+): InlineEditMachine {
   const [state, setState] = useState<EditState>('display')
   const [editValue, setEditValue] = useState(value)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const { flashClassName, triggerFlash } = useFlash()
-  const errorId = useId()
-
-  // Track whether save was triggered by Enter (to skip blur-triggered save)
+  // Track whether save was triggered by Enter (to skip blur-triggered save).
   const saveInProgressRef = useRef(false)
 
-  // Sync editValue when prop value changes externally while in display mode
+  // Sync editValue when prop value changes externally while in display mode.
   if (state === 'display' && value !== editValue) {
     setEditValue(value)
   }
 
-  // Focus input when entering edit mode
+  // Focus input when entering edit mode.
   useEffect(() => {
     if (state === 'editing') {
       inputRef.current?.focus()
@@ -67,84 +74,105 @@ export function InlineEdit({
   }, [value])
 
   const save = useCallback(async () => {
-    // Prevent double-save (Enter triggers save, then blur fires save again)
-    if (saveInProgressRef.current) return
-    if (state !== 'editing') return
+    // Prevent double-save (Enter triggers save, then blur fires save again).
+    if (saveInProgressRef.current || state !== 'editing') return
     if (editValue === value) {
       setState('display')
       setError(null)
       return
     }
     saveInProgressRef.current = true
-
     try {
-      // Validate
-      if (validate) {
-        const validationError = validate(editValue)
-        if (validationError) {
-          setError(validationError)
-          return
-        }
+      const validationError = validate ? validate(editValue) : null
+      if (validationError) {
+        setError(validationError)
+        return
       }
-
       setState('saving')
       setError(null)
-
       await onSave(editValue)
       setState('display')
       triggerFlash()
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Save failed'
-      setError(message)
+      setError(err instanceof Error ? err.message : 'Save failed')
       setState('editing')
     } finally {
       saveInProgressRef.current = false
     }
   }, [editValue, onSave, validate, triggerFlash, state, value])
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.nativeEvent.isComposing) return
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        void save()
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        cancel()
-      }
-    },
-    [save, cancel],
-  )
-
-  const handleBlur = useCallback(() => {
-    // Skip if save is already in progress (Enter key) or not in editing state
-    if (saveInProgressRef.current || state !== 'editing') return
-    void save()
-  }, [save, state])
-
-  if (state === 'display') {
-    return (
-      <div className={cn('inline-block', className)}>
-        <button
-          type="button"
-          onClick={startEditing}
-          disabled={disabled}
-          data-inline-display=""
-          aria-label={`Edit: ${value || placeholder || 'empty'}`}
-          className={cn(
-            'cursor-pointer rounded-sm border-b border-dashed border-transparent text-left transition-colors',
-            !disabled && 'hover:border-border-bright',
-            !disabled && FOCUS_RING,
-            disabled && 'cursor-default opacity-60',
-            flashClassName,
-          )}
-        >
-          {renderDisplay ? renderDisplay(value) : <span>{value || placeholder}</span>}
-        </button>
-      </div>
-    )
+  return {
+    state, editValue, error, inputRef, flashClassName,
+    startEditing, cancel, save,
+    setEditValue,
+    clearError: () => setError(null),
   }
+}
 
+function InlineEditDisplay({
+  value,
+  placeholder,
+  disabled,
+  flashClassName,
+  renderDisplay,
+  onClick,
+  className,
+}: {
+  value: string
+  placeholder: string | undefined
+  disabled: boolean | undefined
+  flashClassName: string
+  renderDisplay: ((value: string) => React.ReactNode) | undefined
+  onClick: () => void
+  className?: string
+}) {
+  return (
+    <div className={cn('inline-block', className)}>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        data-inline-display=""
+        aria-label={`Edit: ${value || placeholder || 'empty'}`}
+        className={cn(
+          'cursor-pointer rounded-sm border-b border-dashed border-transparent text-left transition-colors',
+          !disabled && 'hover:border-border-bright',
+          !disabled && FOCUS_RING,
+          disabled && 'cursor-default opacity-60',
+          flashClassName,
+        )}
+      >
+        {renderDisplay ? renderDisplay(value) : <span>{value || placeholder}</span>}
+      </button>
+    </div>
+  )
+}
+
+function InlineEditField({
+  machine,
+  type,
+  className,
+}: {
+  machine: InlineEditMachine
+  type: 'text' | 'number'
+  className?: string
+}) {
+  const errorId = useId()
+  const { state, editValue, error, inputRef } = machine
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      void machine.save()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      machine.cancel()
+    }
+  }
+  const handleBlur = () => {
+    if (state !== 'editing') return
+    void machine.save()
+  }
   return (
     <div className={cn('inline-block', className)}>
       <div className="relative">
@@ -153,8 +181,8 @@ export function InlineEdit({
           type={type}
           value={editValue}
           onChange={(e) => {
-            setEditValue(e.target.value)
-            setError(null)
+            machine.setEditValue(e.target.value)
+            machine.clearError()
           }}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
@@ -182,4 +210,31 @@ export function InlineEdit({
       )}
     </div>
   )
+}
+
+export function InlineEdit({
+  value,
+  onSave,
+  validate,
+  placeholder,
+  renderDisplay,
+  type = 'text',
+  className,
+  disabled,
+}: InlineEditProps) {
+  const machine = useInlineEdit(value, onSave, validate, disabled)
+  if (machine.state === 'display') {
+    return (
+      <InlineEditDisplay
+        value={value}
+        placeholder={placeholder}
+        disabled={disabled}
+        flashClassName={machine.flashClassName}
+        renderDisplay={renderDisplay}
+        onClick={machine.startEditing}
+        className={className}
+      />
+    )
+  }
+  return <InlineEditField machine={machine} type={type} className={className} />
 }

@@ -14,51 +14,58 @@ interface DeptHealthBarProps {
   className?: string
 }
 
+function _clampHealth(health: number | null | undefined): number | null {
+  if (health == null) return null
+  return Math.max(0, Math.min(health, 100))
+}
+
+function HealthBarMeter({ name, clamped }: { name: string; clamped: number | null }) {
+  const label = `${name} utilization: ${clamped != null ? `${clamped}%` : 'unavailable'}`
+  const meterProps = clamped != null
+    ? { role: 'meter' as const, 'aria-valuenow': clamped, 'aria-valuemin': 0, 'aria-valuemax': 100 }
+    : {}
+  const color = clamped != null ? getHealthColor(clamped) : null
+  return (
+    <div
+      {...meterProps}
+      aria-label={label}
+      className="h-1.5 w-full overflow-hidden rounded-full bg-border"
+    >
+      {clamped != null && color != null && (
+        <div
+          className={cn(
+            'h-full rounded-full transition-all duration-[900ms]',
+            BAR_COLOR_CLASSES[color],
+          )}
+          style={{
+            width: `${clamped}%`,
+            transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
 export function DeptHealthBar({
   name,
   health,
   agentCount,
   className,
 }: DeptHealthBarProps) {
-  const hasHealth = health != null
-  const clamped = hasHealth ? Math.max(0, Math.min(health, 100)) : null
-  const color = clamped != null ? getHealthColor(clamped) : null
-
+  const clamped = _clampHealth(health)
+  const agentLabel = agentCount === 1 ? 'agent' : 'agents'
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      {/* Header row */}
       <div className="flex items-baseline justify-between">
         <span className="text-sm font-medium text-foreground">{name}</span>
         <span className="font-mono text-xs font-semibold text-foreground">
           {clamped != null ? `${clamped}%` : 'N/A'}
         </span>
       </div>
-
-      {/* Health bar */}
-      <div
-        {...(clamped != null
-          ? { role: 'meter', 'aria-valuenow': clamped, 'aria-valuemin': 0, 'aria-valuemax': 100 }
-          : {})}
-        aria-label={`${name} utilization: ${clamped != null ? `${clamped}%` : 'unavailable'}`}
-        className="h-1.5 w-full overflow-hidden rounded-full bg-border"
-      >
-        {clamped != null && color != null && (
-          <div
-            className={cn(
-              'h-full rounded-full transition-all duration-[900ms]',
-              BAR_COLOR_CLASSES[color],
-            )}
-            style={{
-              width: `${clamped}%`,
-              transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-            }}
-          />
-        )}
-      </div>
-
-      {/* Stats row */}
+      <HealthBarMeter name={name} clamped={clamped} />
       <div className="flex gap-3 text-xs text-muted-foreground">
-        <span>{agentCount} {agentCount === 1 ? 'agent' : 'agents'}</span>
+        <span>{agentCount} {agentLabel}</span>
       </div>
     </div>
   )

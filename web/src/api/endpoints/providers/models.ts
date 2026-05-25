@@ -1,0 +1,216 @@
+import { createLogger } from '@/lib/logger'
+import { getCsrfToken } from '@/utils/csrf'
+import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
+import { fetchWithRetryAfter } from '@/utils/fetch-with-retry'
+import { apiClient, unwrap, unwrapVoid } from '../../client'
+import type { ApiResponse } from '../../types/http'
+import type {
+  AddModelRequest,
+  LocalModelParams,
+  ProviderConfig,
+  ProviderModelResponse,
+  PullModelRequest,
+  PullProgressEvent,
+  SyncModelsRequest,
+  SyncModelsResponse,
+  UpdateModelConfigRequest,
+} from '../../types/providers'
+
+const log = createLogger('providers-api-models')
+
+/** Encode a model ID for use in URL paths, preserving `/` for :path params. */
+function encodeModelIdPath(modelId: string): string {
+  return modelId.split('/').map(encodeURIComponent).join('/')
+}
+
+type SseState = { currentEvent: string }
+type SseLine =
+  | { kind: 'event'; name: string }
+  | { kind: 'data'; raw: string }
+  | { kind: 'other' }
+
+function _parseSseLine(line: string): SseLine {
+  if (line.startsWith('event: ')) return { kind: 'event', name: line.slice(7).trim() }
+  if (line.startsWith('data: ')) return { kind: 'data', raw: line.slice(6) }
+  return { kind: 'other' }
+}
+
+function _decodeSsePayload(raw: string): PullProgressEvent | null {
+  try {
+    return JSON.parse(raw) as PullProgressEvent
+  } catch {
+    log.warn('Malformed JSON in pull stream line')
+    return null
+  }
+}
+
+function _dispatchSseEvent(
+  payload: PullProgressEvent,
+  state: SseState,
+  onProgress: (event: PullProgressEvent) => void,
+): void {
+  const isError = state.currentEvent === 'error' || Boolean(payload.error)
+  state.currentEvent = ''
+  onProgress(payload)
+  if (isError) {
+    const message = payload.error ?? payload.status ?? 'Pull failed'
+    throw new Error(message)
+  }
+}
+
+/** Process buffered SSE lines, dispatching events to the callback. */
+function processSseLines(
+  lines: string[],
+  state: SseState,
+  onProgress: (event: PullProgressEvent) => void,
+): void {
+  for (const line of lines) {
+    const parsed = _parseSseLine(line)
+    if (parsed.kind === 'event') {
+      state.currentEvent = parsed.name
+      continue
+    }
+    if (parsed.kind === 'data') {
+      const payload = _decodeSsePayload(parsed.raw)
+      if (payload) _dispatchSseEvent(payload, state, onProgress)
+    }
+  }
+}
+
+async function _handlePullUnauthorized(): Promise<void> {
+  if (IS_DEV_AUTH_BYPASS) return
+  try {
+    const { useAuthStore } = await import('@/stores/auth')
+    useAuthStore.getState().handleUnauthorized()
+  } catch (importErr: unknown) {
+    log.error('Auth store cleanup failed during SSE 401 handling:', importErr)
+    if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
+      window.location.href = '/login'
+    }
+  }
+}
+
+async function _openPullStream(
+  name: string,
+  modelName: string,
+  signal: AbortSignal | undefined,
+): Promise<Response> {
+  const baseUrl = apiClient.defaults.baseURL ?? ''
+  const url = `${baseUrl}/providers/${encodeURIComponent(name)}/models/pull`
+  const csrfToken = getCsrfToken()
+  // Pull-model is a long-running SSE stream but the *initial* POST that
+  // opens the stream is safe to retry on 429. Each call resolves the
+  // model once on the server (idempotent re-pull behaviour) so we opt
+  // into retry explicitly even though POST is non-idempotent by default.
+  const response = await fetchWithRetryAfter(
+    url,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+      },
+      body: JSON.stringify({ model_name: modelName } satisfies PullModelRequest),
+      signal,
+    },
+    { idempotent: true },
+  )
+
+  if (!response.ok || !response.body) {
+    if (response.status === 401) await _handlePullUnauthorized()
+    throw new Error(`Pull failed: HTTP ${response.status}`)
+  }
+  return response
+}
+
+async function _consumePullStream(
+  response: Response,
+  onProgress: (event: PullProgressEvent) => void,
+): Promise<void> {
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let receivedDone = false
+  const sseState: SseState = { currentEvent: '' }
+  const dispatch = (event: PullProgressEvent): void => {
+    if (event.done) receivedDone = true
+    onProgress(event)
+  }
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    processSseLines(lines, sseState, dispatch)
+  }
+
+  buffer += decoder.decode()
+  if (buffer.trim()) {
+    processSseLines(buffer.split('\n'), sseState, dispatch)
+  }
+
+  if (!receivedDone) {
+    throw new Error('Pull stream ended without completion event')
+  }
+}
+
+/**
+ * Pull a model on a local provider via SSE streaming.
+ *
+ * Uses fetch + ReadableStream because the endpoint is POST-based
+ * and EventSource only supports GET.
+ */
+export async function pullModel(
+  name: string,
+  modelName: string,
+  onProgress: (event: PullProgressEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await _openPullStream(name, modelName, signal)
+  await _consumePullStream(response, onProgress)
+}
+
+export async function deleteModel(name: string, modelId: string): Promise<void> {
+  const response = await apiClient.delete<ApiResponse<null>>(
+    `/providers/${encodeURIComponent(name)}/models/${encodeModelIdPath(modelId)}`,
+  )
+  unwrapVoid(response)
+}
+
+export async function updateModelConfig(
+  name: string,
+  modelId: string,
+  params: LocalModelParams,
+): Promise<ProviderModelResponse> {
+  const payload: UpdateModelConfigRequest = { local_params: params }
+  const response = await apiClient.put<ApiResponse<ProviderModelResponse>>(
+    `/providers/${encodeURIComponent(name)}/models/${encodeModelIdPath(modelId)}/config`,
+    payload,
+  )
+  return unwrap(response)
+}
+
+export async function addProviderModel(
+  name: string,
+  data: AddModelRequest,
+): Promise<ProviderConfig> {
+  const response = await apiClient.post<ApiResponse<ProviderConfig>>(
+    `/providers/${encodeURIComponent(name)}/models`,
+    data,
+  )
+  return unwrap(response)
+}
+
+export async function syncProviderModels(
+  name: string,
+  data: SyncModelsRequest,
+): Promise<SyncModelsResponse> {
+  const response = await apiClient.post<ApiResponse<SyncModelsResponse>>(
+    `/providers/${encodeURIComponent(name)}/models/sync`,
+    data,
+  )
+  return unwrap(response)
+}

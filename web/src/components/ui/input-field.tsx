@@ -200,112 +200,159 @@ function PasswordToggleButton({
   )
 }
 
-function InputVariant(props: InputProps) {
-  const {
-    label,
-    error,
-    hint,
-    className,
-    ref,
-    onValueChange,
-    onChange,
-    leadingIcon,
-    trailingElement,
-    hidePasswordToggle,
-    type,
-    multiline: _multiline,
-    ...domProps
-  } = props
-  void _multiline
-  const id = useId()
-  const errorId = `${id}-error`
-  const hintId = `${id}-hint`
-  const hasError = !!error
-
+function usePasswordVisibility(): { visible: boolean; toggle: () => void } {
   const groupContext = use(PasswordVisibilityContext)
   const [localVisible, setLocalVisible] = useState(false)
-  const isPassword = type === 'password'
-  const callerProvidedTrailing = trailingElement != null && trailingElement !== false
-  const showPasswordToggle = isPassword && !hidePasswordToggle && !callerProvidedTrailing
-
   const visible = groupContext !== null ? groupContext.visible : localVisible
-  const toggleVisible = useCallback(() => {
+  const toggle = useCallback(() => {
     if (groupContext !== null) {
       groupContext.setVisible(!groupContext.visible)
     } else {
       setLocalVisible((prev) => !prev)
     }
   }, [groupContext])
+  return { visible, toggle }
+}
 
-  const effectiveType = isPassword && visible ? 'text' : type
-  const renderedTrailing: React.ReactNode = callerProvidedTrailing
-    ? trailingElement
-    : showPasswordToggle
-      ? (
-          <PasswordToggleButton
-            visible={visible}
-            onToggle={toggleVisible}
-            disabled={Boolean(domProps.disabled)}
-          />
-        )
-      : null
+interface TrailingArgs {
+  trailingElement: InputProps['trailingElement']
+  isPassword: boolean
+  hidePasswordToggle: boolean | undefined
+  visible: boolean
+  toggleVisible: () => void
+  disabled: boolean
+}
 
+function _renderTrailing(args: TrailingArgs): React.ReactNode {
+  if (args.trailingElement != null && args.trailingElement !== false) return args.trailingElement
+  if (!args.isPassword || args.hidePasswordToggle) return null
+  return (
+    <PasswordToggleButton
+      visible={args.visible}
+      onToggle={args.toggleVisible}
+      disabled={args.disabled}
+    />
+  )
+}
+
+function InputBody({
+  inputProps,
+  ref,
+  leadingIcon,
+  renderedTrailing,
+  inputClasses,
+}: {
+  inputProps: React.InputHTMLAttributes<HTMLInputElement>
+  ref: React.Ref<HTMLInputElement> | undefined
+  leadingIcon: React.ReactNode
+  renderedTrailing: React.ReactNode
+  inputClasses: string
+}) {
+  return (
+    <div className="relative">
+      {leadingIcon != null && leadingIcon !== false && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-2.5 top-1/2 flex -translate-y-1/2 items-center text-muted-foreground"
+        >
+          {leadingIcon}
+        </span>
+      )}
+      <input ref={ref} {...inputProps} className={inputClasses} />
+      {renderedTrailing !== null && (
+        <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
+          {renderedTrailing}
+        </span>
+      )}
+    </div>
+  )
+}
+
+interface InputIds {
+  id: string
+  errorId: string
+  hintId: string
+}
+
+interface BuildInputPropsArgs {
+  domProps: Omit<InputProps, 'label' | 'error' | 'hint' | 'className' | 'ref' | 'onValueChange' | 'onChange' | 'leadingIcon' | 'trailingElement' | 'hidePasswordToggle' | 'type' | 'multiline'>
+  type: InputProps['type']
+  isPassword: boolean
+  visible: boolean
+  hasError: boolean
+  hint: string | undefined
+  ids: InputIds
+  handleChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+}
+
+function _buildInputProps(args: BuildInputPropsArgs): React.InputHTMLAttributes<HTMLInputElement> {
+  const { domProps, type, isPassword, visible, hasError, hint, ids, handleChange } = args
+  return {
+    ...domProps,
+    id: ids.id,
+    type: isPassword && visible ? 'text' : type,
+    'aria-invalid': hasError ? true : (domProps['aria-invalid'] ?? false),
+    'aria-errormessage': mergeAriaToken(
+      domProps['aria-errormessage'],
+      hasError ? ids.errorId : undefined,
+    ),
+    'aria-describedby': mergeAriaToken(
+      domProps['aria-describedby'],
+      hint && !hasError ? ids.hintId : undefined,
+    ),
+    onChange: handleChange,
+  }
+}
+
+function InputVariant(props: InputProps) {
+  const {
+    label, error, hint, className, ref,
+    onValueChange, onChange,
+    leadingIcon, trailingElement, hidePasswordToggle, type,
+    multiline: _multiline, ...domProps
+  } = props
+  void _multiline
+  const id = useId()
+  const ids: InputIds = { id, errorId: `${id}-error`, hintId: `${id}-hint` }
+  const hasError = !!error
+  const isPassword = type === 'password'
+  const { visible, toggle } = usePasswordVisibility()
+  const renderedTrailing = _renderTrailing({
+    trailingElement,
+    isPassword,
+    hidePasswordToggle,
+    visible,
+    toggleVisible: toggle,
+    disabled: Boolean(domProps.disabled),
+  })
   const inputClasses = buildInputClasses({
     hasError,
     // Match the ``leadingIcon != null && leadingIcon !== false`` render
-    // guards on the icon ``<span>``s below so the padding flag and the
+    // guards on the icon ``<span>`` below so the padding flag and the
     // actual JSX presence agree on every legal ReactNode value (incl.
     // ``0`` / ``''`` / ``false``).
     hasLeadingIcon: leadingIcon != null && leadingIcon !== false,
     hasTrailingElement: renderedTrailing !== null,
     className,
   })
-
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     onValueChange?.(event.target.value)
     onChange?.(event)
   }
-
+  const inputProps = _buildInputProps({
+    domProps, type, isPassword, visible, hasError, hint, ids, handleChange,
+  })
   return (
     <div className="flex flex-col gap-1.5">
-      <FieldLabel
-        htmlFor={id}
-        label={label}
-        required={Boolean(domProps.required)}
+      <FieldLabel htmlFor={ids.id} label={label} required={Boolean(domProps.required)} />
+      <InputBody
+        inputProps={inputProps}
+        ref={ref}
+        leadingIcon={leadingIcon}
+        renderedTrailing={renderedTrailing}
+        inputClasses={inputClasses}
       />
-      <div className="relative">
-        {leadingIcon != null && leadingIcon !== false && (
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute left-2.5 top-1/2 flex -translate-y-1/2 items-center text-muted-foreground"
-          >
-            {leadingIcon}
-          </span>
-        )}
-        <input
-          id={id}
-          ref={ref}
-          {...domProps}
-          type={effectiveType}
-          aria-invalid={hasError ? true : (domProps['aria-invalid'] ?? false)}
-          aria-errormessage={mergeAriaToken(
-            domProps['aria-errormessage'],
-            hasError ? errorId : undefined,
-          )}
-          aria-describedby={mergeAriaToken(
-            domProps['aria-describedby'],
-            hint && !hasError ? hintId : undefined,
-          )}
-          className={inputClasses}
-          onChange={handleChange}
-        />
-        {renderedTrailing !== null && (
-          <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
-            {renderedTrailing}
-          </span>
-        )}
-      </div>
-      <FieldHelp hintId={hintId} errorId={errorId} hint={hint} error={error} />
+      <FieldHelp hintId={ids.hintId} errorId={ids.errorId} hint={hint} error={error} />
     </div>
   )
 }

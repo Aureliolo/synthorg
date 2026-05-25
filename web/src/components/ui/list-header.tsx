@@ -33,6 +33,46 @@ export interface ListHeaderProps {
  * placement consistent across the dashboard so operators don't have to hunt
  * for "New X" between pages.
  */
+function _resolveCountText(count: number | undefined, countLabel: string | undefined): string | undefined {
+  if (countLabel) return countLabel
+  if (count !== undefined) return `(${formatNumber(count)})`
+  return undefined
+}
+
+function ListHeaderTitle({
+  title,
+  countText,
+  refreshing,
+  description,
+}: {
+  title: string
+  countText: string | undefined
+  refreshing: boolean
+  description: string | undefined
+}) {
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="flex items-baseline gap-2">
+        <h1 className="truncate text-lg font-semibold text-foreground">{title}</h1>
+        {countText && (
+          <span className="shrink-0 font-mono text-sm text-muted-foreground">
+            {countText}
+          </span>
+        )}
+        {refreshing && (
+          <span aria-live="polite" className="shrink-0 text-muted-foreground">
+            <RefreshCw className="size-3 animate-spin" aria-hidden="true" />
+            <span className="sr-only">{`Refreshing ${title}`}</span>
+          </span>
+        )}
+      </div>
+      {description && (
+        <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+      )}
+    </div>
+  )
+}
+
 export function ListHeader({
   title,
   count,
@@ -43,40 +83,21 @@ export function ListHeader({
   refreshing = false,
   className,
 }: ListHeaderProps) {
-  const countText =
-    countLabel ??
-    (count !== undefined ? `(${formatNumber(count)})` : undefined)
-
+  const countText = _resolveCountText(count, countLabel)
+  const hasPrimary = primaryAction != null && primaryAction !== false
+  const hasSecondary = secondaryActions != null && secondaryActions !== false
   return (
     <header className={cn('flex flex-col gap-3', className)}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
-            <h1 className="truncate text-lg font-semibold text-foreground">{title}</h1>
-            {countText && (
-              <span className="shrink-0 font-mono text-sm text-muted-foreground">
-                {countText}
-              </span>
-            )}
-            {refreshing && (
-              <span
-                aria-live="polite"
-                className="shrink-0 text-muted-foreground"
-              >
-                <RefreshCw className="size-3 animate-spin" aria-hidden="true" />
-                <span className="sr-only">{`Refreshing ${title}`}</span>
-              </span>
-            )}
-          </div>
-          {description && (
-            <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-          )}
-        </div>
-        {primaryAction != null && primaryAction !== false && (
-          <div className="shrink-0">{primaryAction}</div>
-        )}
+        <ListHeaderTitle
+          title={title}
+          countText={countText}
+          refreshing={refreshing}
+          description={description}
+        />
+        {hasPrimary && <div className="shrink-0">{primaryAction}</div>}
       </div>
-      {secondaryActions != null && secondaryActions !== false && (
+      {hasSecondary && (
         <div className="flex flex-wrap items-center gap-2">{secondaryActions}</div>
       )}
     </header>

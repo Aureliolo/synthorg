@@ -50,6 +50,94 @@ export interface PresetPickerSectionsProps {
  * first-run and ongoing management share the same UX.  All state and
  * data come in via props -- the component owns no fetching of its own.
  */
+function MoreCloudPresets({
+  presets,
+  addedPresets,
+  onSelect,
+}: {
+  presets: readonly CloudPreset[]
+  addedPresets: ReadonlySet<string>
+  onSelect: (presetName: string) => void
+}) {
+  return (
+    <section aria-labelledby="more-providers-heading" className="space-y-3">
+      <details className="group space-y-3">
+        <summary
+          id="more-providers-heading"
+          className={cn(
+            // Suppress the native disclosure triangle; the
+            // ChevronDown below is the only indicator.
+            'list-none [&::-webkit-details-marker]:hidden',
+            'flex cursor-pointer items-center justify-between',
+            'rounded-lg border border-border bg-card p-card',
+            'text-sm font-semibold text-foreground',
+            'transition-colors duration-[var(--so-transition-fast)]',
+            'hover:bg-card-hover hover:border-bright',
+          )}
+        >
+          <span>More providers via LiteLLM ({presets.length})</span>
+          <ChevronDown
+            aria-hidden="true"
+            className="size-4 text-text-muted transition-transform group-open:rotate-180"
+          />
+        </summary>
+        <p className="text-xs text-text-muted">
+          Auto-derived from the LiteLLM model catalog. Logos and curated
+          defaults are not provided -- click any card to open the credential
+          form.
+        </p>
+        <CloudProviderGrid presets={presets} addedPresets={addedPresets} onSelect={onSelect} />
+      </details>
+    </section>
+  )
+}
+
+function CustomEndpointSection({ onConfigureManually }: { onConfigureManually: () => void }) {
+  return (
+    <section aria-labelledby="custom-endpoint-heading" className="space-y-2">
+      <h3
+        id="custom-endpoint-heading"
+        className="text-sm font-semibold text-foreground"
+      >
+        Configure manually
+      </h3>
+      <p className="text-xs text-text-muted">
+        Use a private gateway, an Anthropic-compatible self-hosted API, or any
+        provider not listed above.
+      </p>
+      <CustomConfigButton onClick={onConfigureManually} />
+    </section>
+  )
+}
+
+interface PartitionedPresets {
+  featured: readonly CloudPreset[]
+  more: readonly CloudPreset[]
+  localWithCandidates: readonly LocalPreset[]
+  addedPresets: ReadonlySet<string>
+}
+
+function _partitionPresets(
+  presets: readonly (CloudPreset | LocalPreset)[],
+  providers: PresetPickerSectionsProps['providers'],
+): PartitionedPresets {
+  const featured = presets.filter(
+    (p): p is CloudPreset => p.kind === 'cloud' && p.is_featured,
+  )
+  const more = presets.filter(
+    (p): p is CloudPreset => p.kind === 'cloud' && !p.is_featured,
+  )
+  const localWithCandidates = presets.filter(
+    (p): p is LocalPreset => p.kind === 'local' && p.candidate_urls.length > 0,
+  )
+  const addedPresets = new Set(
+    Object.values(providers)
+      .map((p) => p.preset_name)
+      .filter((name): name is string => Boolean(name)),
+  )
+  return { featured, more, localWithCandidates, addedPresets }
+}
+
 export function PresetPickerSections({
   presets,
   probeResults,
@@ -62,37 +150,10 @@ export function PresetPickerSections({
   onReprobe,
   onConfigureManually,
 }: PresetPickerSectionsProps) {
-  const featuredCloudPresets: readonly CloudPreset[] = useMemo(
-    () =>
-      presets.filter(
-        (p): p is CloudPreset => p.kind === 'cloud' && p.is_featured,
-      ),
-    [presets],
+  const { featured, more, localWithCandidates, addedPresets } = useMemo(
+    () => _partitionPresets(presets, providers),
+    [presets, providers],
   )
-  const moreCloudPresets: readonly CloudPreset[] = useMemo(
-    () =>
-      presets.filter(
-        (p): p is CloudPreset => p.kind === 'cloud' && !p.is_featured,
-      ),
-    [presets],
-  )
-  const localPresetsWithCandidates: readonly LocalPreset[] = useMemo(
-    () =>
-      presets.filter(
-        (p): p is LocalPreset => p.kind === 'local' && p.candidate_urls.length > 0,
-      ),
-    [presets],
-  )
-  const addedPresets = useMemo(
-    () =>
-      new Set(
-        Object.values(providers)
-          .map((p) => p.preset_name)
-          .filter((name): name is string => Boolean(name)),
-      ),
-    [providers],
-  )
-
   return (
     <div className="space-y-section-gap">
       <section aria-labelledby="cloud-providers-heading" className="space-y-3">
@@ -103,52 +164,20 @@ export function PresetPickerSections({
           Cloud providers
         </h3>
         <CloudProviderGrid
-          presets={featuredCloudPresets}
+          presets={featured}
           addedPresets={addedPresets}
           onSelect={onSelectCloud}
         />
       </section>
-
-      {moreCloudPresets.length > 0 && (
-        <section aria-labelledby="more-providers-heading" className="space-y-3">
-          <details className="group space-y-3">
-            <summary
-              id="more-providers-heading"
-              className={cn(
-                // Suppress the native disclosure triangle; the
-                // ChevronDown below is the only indicator.
-                'list-none [&::-webkit-details-marker]:hidden',
-                'flex cursor-pointer items-center justify-between',
-                'rounded-lg border border-border bg-card p-card',
-                'text-sm font-semibold text-foreground',
-                'transition-colors duration-[var(--so-transition-fast)]',
-                'hover:bg-card-hover hover:border-bright',
-              )}
-            >
-              <span>
-                More providers via LiteLLM ({moreCloudPresets.length})
-              </span>
-              <ChevronDown
-                aria-hidden="true"
-                className="size-4 text-text-muted transition-transform group-open:rotate-180"
-              />
-            </summary>
-            <p className="text-xs text-text-muted">
-              Auto-derived from the LiteLLM model catalog. Logos and curated
-              defaults are not provided -- click any card to open the credential
-              form.
-            </p>
-            <CloudProviderGrid
-              presets={moreCloudPresets}
-              addedPresets={addedPresets}
-              onSelect={onSelectCloud}
-            />
-          </details>
-        </section>
+      {more.length > 0 && (
+        <MoreCloudPresets
+          presets={more}
+          addedPresets={addedPresets}
+          onSelect={onSelectCloud}
+        />
       )}
-
       <DetectedLocalList
-        localPresets={localPresetsWithCandidates}
+        localPresets={localWithCandidates}
         probeResults={probeResults}
         probeErrors={probeErrors}
         probing={probing}
@@ -157,20 +186,7 @@ export function PresetPickerSections({
         onAddCloud={onAddCloudCounterpart}
         onReprobe={onReprobe}
       />
-
-      <section aria-labelledby="custom-endpoint-heading" className="space-y-2">
-        <h3
-          id="custom-endpoint-heading"
-          className="text-sm font-semibold text-foreground"
-        >
-          Configure manually
-        </h3>
-        <p className="text-xs text-text-muted">
-          Use a private gateway, an Anthropic-compatible self-hosted API, or any
-          provider not listed above.
-        </p>
-        <CustomConfigButton onClick={onConfigureManually} />
-      </section>
+      <CustomEndpointSection onConfigureManually={onConfigureManually} />
     </div>
   )
 }

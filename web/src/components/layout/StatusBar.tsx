@@ -78,43 +78,79 @@ interface StatusBarProps {
   sidebarOverlayOpen?: boolean
 }
 
-export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: StatusBarProps) {
-  const { isTablet } = useBreakpoint()
+function AgentMetricsRow() {
   const totalAgents = useAnalyticsStore((s) => s.overview?.total_agents)
   const activeAgents = useAnalyticsStore((s) => s.overview?.active_agents_count)
   const idleAgents = useAnalyticsStore((s) => s.overview?.idle_agents_count)
   const totalTasks = useAnalyticsStore((s) => s.overview?.total_tasks)
   const dataLoaded = useAnalyticsStore((s) => s.overview !== null)
+  return (
+    <LiveRegion debounceMs={1500} politeness="polite" className="contents">
+      <StatusItem>
+        <Dot color="bg-accent" />
+        <span>{dataLoaded ? `${totalAgents} agents` : '--'}</span>
+      </StatusItem>
+      <StatusItem>
+        <Dot color="bg-success" />
+        <span>{dataLoaded ? `${activeAgents} active` : '--'}</span>
+      </StatusItem>
+      <StatusItem>
+        <Dot color="bg-muted-foreground" />
+        <span>{dataLoaded ? `${idleAgents} idle` : '--'}</span>
+      </StatusItem>
+      <StatusItem>
+        <Dot color="bg-warning" />
+        <span>{dataLoaded ? `${totalTasks} tasks` : '--'}</span>
+      </StatusItem>
+    </LiveRegion>
+  )
+}
+
+function BudgetSpendRow() {
   const totalCost = useAnalyticsStore((s) => s.overview?.total_cost)
   const currency = useAnalyticsStore((s) => s.overview?.currency)
   const budgetPercent = useAnalyticsStore((s) => s.overview?.budget_used_percent)
   const inReviewCount = useAnalyticsStore((s) => s.overview?.tasks_by_status?.in_review)
+  const costDisplay = totalCost != null ? formatCurrency(totalCost, currency) : '--'
+  const budgetDisplay = budgetPercent != null ? `${Math.round(budgetPercent)}%` : '--%'
+  return (
+    <>
+      <StatusItem>
+        <span className="text-muted-foreground">spend</span>
+        <span className="ml-1.5 text-foreground">{costDisplay}</span>
+        <span className="ml-1 text-muted-foreground">today</span>
+      </StatusItem>
+      <StatusItem>
+        <span className="text-muted-foreground">budget</span>
+        <span className="ml-1.5 text-foreground">{budgetDisplay}</span>
+      </StatusItem>
+      {inReviewCount != null && inReviewCount > 0 && (
+        <StatusItem>
+          <Dot color="bg-danger" />
+          <span>{inReviewCount} in review</span>
+        </StatusItem>
+      )}
+    </>
+  )
+}
 
+function HealthStatusButton() {
   const wsConnected = useWebSocketStore((s) => s.connected)
   const wsReconnectExhausted = useWebSocketStore((s) => s.reconnectExhausted)
-
   const [healthStatus, setHealthStatus] = useState<SystemStatus>('unknown')
 
-  // Trigger overview fetch on mount if data isn't loaded yet
-  useEffect(() => {
-    const state = useAnalyticsStore.getState()
-    if (!state.overview && !state.loading) {
-      void state.fetchOverview()
-    }
-  }, [])
-
-  // Poll system health.  Readiness returns a binary outcome
-  // (``ok`` / ``unavailable``); map ``unavailable`` to ``down`` so the
-  // StatusBar's richer tri-state (unknown/ok/degraded/down) surfaces a
-  // failed readiness probe as a hard-down signal rather than leaking
-  // through as unknown.
+  // Poll system health. Readiness returns a binary outcome (``ok`` /
+  // ``unavailable``); map ``unavailable`` to ``down`` so the StatusBar's
+  // richer tri-state (unknown/ok/degraded/down) surfaces a failed
+  // readiness probe as a hard-down signal rather than leaking through
+  // as unknown.
   const pollHealth = useCallback(async () => {
     try {
       const health: HealthStatus = await getHealth()
       setHealthStatus(health.status === 'ok' ? 'ok' : 'down')
     } catch {
-      // Preserve last known state on transient failures; only real health
-      // payloads should set 'degraded' or 'down'
+      // Preserve last known state on transient failures; only real
+      // health payloads should set 'degraded' or 'down'.
     }
   }, [])
 
@@ -122,15 +158,55 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
   useEffect(() => {
     healthPolling.start()
     return () => healthPolling.stop()
-    // healthPolling.start/stop are stable refs from usePolling
+    // healthPolling.start/stop are stable refs from usePolling.
     // eslint-disable-next-line @eslint-react/exhaustive-deps
   }, [])
 
   const statusCfg = resolveCombinedStatus(healthStatus, wsConnected, wsReconnectExhausted)
-  const costDisplay =
-    totalCost !== undefined && totalCost !== null
-      ? formatCurrency(totalCost, currency)
-      : '--'
+  return (
+    <HealthPopover>
+      <button
+        type="button"
+        aria-label={`System health: ${statusCfg.label}. Click for details.`}
+        className="flex items-center whitespace-nowrap rounded px-1 -mx-1 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <Dot color={statusCfg.color} />
+        <span className="text-muted-foreground" aria-live="polite">{statusCfg.label}</span>
+      </button>
+    </HealthPopover>
+  )
+}
+
+function HamburgerToggle({
+  onClick,
+  expanded,
+}: {
+  onClick: () => void
+  expanded: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Open navigation menu"
+      aria-expanded={expanded}
+      className="flex items-center justify-center rounded-md p-0.5 text-muted-foreground hover:bg-card-hover hover:text-foreground"
+    >
+      <Menu className="size-4" aria-hidden="true" />
+    </button>
+  )
+}
+
+export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: StatusBarProps) {
+  const { isTablet } = useBreakpoint()
+
+  // Trigger overview fetch on mount if data isn't loaded yet.
+  useEffect(() => {
+    const state = useAnalyticsStore.getState()
+    if (!state.overview && !state.loading) {
+      void state.fetchOverview()
+    }
+  }, [])
 
   return (
     <div
@@ -142,78 +218,14 @@ export function StatusBar({ onHamburgerClick, sidebarOverlayOpen = false }: Stat
       )}
     >
       {isTablet && onHamburgerClick && (
-        <button
-          type="button"
-          onClick={onHamburgerClick}
-          aria-label="Open navigation menu"
-          aria-expanded={sidebarOverlayOpen}
-          className="flex items-center justify-center rounded-md p-0.5 text-muted-foreground hover:bg-card-hover hover:text-foreground"
-        >
-          <Menu className="size-4" aria-hidden="true" />
-        </button>
+        <HamburgerToggle onClick={onHamburgerClick} expanded={sidebarOverlayOpen} />
       )}
-
-      <LiveRegion debounceMs={1500} politeness="polite" className="contents">
-        <StatusItem>
-          <Dot color="bg-accent" />
-          <span>{dataLoaded ? `${totalAgents} agents` : '--'}</span>
-        </StatusItem>
-
-        <StatusItem>
-          <Dot color="bg-success" />
-          <span>{dataLoaded ? `${activeAgents} active` : '--'}</span>
-        </StatusItem>
-
-        <StatusItem>
-          <Dot color="bg-muted-foreground" />
-          <span>{dataLoaded ? `${idleAgents} idle` : '--'}</span>
-        </StatusItem>
-
-        <StatusItem>
-          <Dot color="bg-warning" />
-          <span>{dataLoaded ? `${totalTasks} tasks` : '--'}</span>
-        </StatusItem>
-      </LiveRegion>
-
+      <AgentMetricsRow />
       <Divider />
-
-      <StatusItem>
-        <span className="text-muted-foreground">spend</span>
-        <span className="ml-1.5 text-foreground">{costDisplay}</span>
-        <span className="ml-1 text-muted-foreground">today</span>
-      </StatusItem>
-
-      <StatusItem>
-        <span className="text-muted-foreground">budget</span>
-        <span className="ml-1.5 text-foreground">
-          {budgetPercent !== undefined && budgetPercent !== null
-            ? `${Math.round(budgetPercent)}%`
-            : '--%'}
-        </span>
-      </StatusItem>
-
-      {inReviewCount != null && inReviewCount > 0 && (
-        <StatusItem>
-          <Dot color="bg-danger" />
-          <span>{inReviewCount} in review</span>
-        </StatusItem>
-      )}
-
+      <BudgetSpendRow />
       <div className="flex-1" />
-
-      <HealthPopover>
-        <button
-          type="button"
-          aria-label={`System health: ${statusCfg.label}. Click for details.`}
-          className="flex items-center whitespace-nowrap rounded px-1 -mx-1 hover:bg-card-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <Dot color={statusCfg.color} />
-          <span className="text-muted-foreground" aria-live="polite">{statusCfg.label}</span>
-        </button>
-      </HealthPopover>
-
+      <HealthStatusButton />
       <Divider />
-
       <ThemeToggle />
     </div>
   )

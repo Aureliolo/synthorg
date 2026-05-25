@@ -21,6 +21,10 @@ export interface SearchFilterSortProps {
  * This is a pure layout primitive: the actual `<input>` / `<select>` elements
  * are composed by the caller so pages keep control over filter semantics.
  */
+function _isRenderable(node: ReactNode): boolean {
+  return node != null && node !== false
+}
+
 export function SearchFilterSort({
   search,
   filters,
@@ -34,16 +38,16 @@ export function SearchFilterSort({
       aria-label="List controls"
       className={cn('flex flex-wrap items-center gap-3', className)}
     >
-      {search != null && search !== false && (
+      {_isRenderable(search) && (
         <div className="min-w-48 flex-1 max-w-md">{search}</div>
       )}
-      {filters != null && filters !== false && (
+      {_isRenderable(filters) && (
         <div className="flex flex-wrap items-center gap-2">{filters}</div>
       )}
-      {sort != null && sort !== false && (
+      {_isRenderable(sort) && (
         <div className="flex items-center gap-2">{sort}</div>
       )}
-      {trailing != null && trailing !== false && (
+      {_isRenderable(trailing) && (
         <div className="ml-auto flex items-center gap-2">{trailing}</div>
       )}
     </div>

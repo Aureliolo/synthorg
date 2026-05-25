@@ -73,7 +73,7 @@ function makeProps(overrides: Partial<React.ComponentProps<typeof PresetPickerSe
   }
 }
 
-describe('PresetPickerSections', () => {
+describe('PresetPickerSections rendering', () => {
   it('renders the cloud grid with each cloud preset card', () => {
     render(<PresetPickerSections {...makeProps()} />)
     expect(screen.getByText('Anthropic')).toBeInTheDocument()
@@ -117,6 +117,9 @@ describe('PresetPickerSections', () => {
     expect(screen.queryByText('vLLM')).not.toBeInTheDocument()
   })
 
+})
+
+describe('PresetPickerSections interactions', () => {
   it('invokes onSelectCloud when a cloud card is clicked', () => {
     const onSelectCloud = vi.fn()
     render(<PresetPickerSections {...makeProps({ onSelectCloud })} />)
@@ -163,6 +166,9 @@ describe('PresetPickerSections', () => {
     expect(onConfigureManually).toHaveBeenCalledTimes(1)
   })
 
+})
+
+describe('PresetPickerSections "More providers" expansion', () => {
   it('hides the More providers section when no soft (non-featured) cloud presets are present', () => {
     // All fixtures here are featured (is_featured=true), so the
     // collapsible "More providers via LiteLLM" surface should not

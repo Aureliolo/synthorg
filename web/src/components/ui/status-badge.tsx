@@ -49,6 +49,64 @@ export interface StatusBadgeProps {
   decorative?: boolean
 }
 
+function StatusDot({
+  color,
+  pulse,
+  dotClassName,
+  animated,
+  motionProps,
+}: {
+  color: SemanticColor | 'text-secondary'
+  pulse: boolean
+  dotClassName: string | undefined
+  animated: boolean
+  motionProps: ReturnType<typeof useStatusTransition>['motionProps']
+}) {
+  const dotClass = cn(
+    'size-1.5 shrink-0 rounded-full',
+    DOT_COLOR_CLASSES[color],
+    pulse && 'animate-pulse',
+    dotClassName,
+  )
+  if (animated) {
+    return <motion.span data-slot="status-dot" className={dotClass} {...motionProps} />
+  }
+  return <span data-slot="status-dot" className={dotClass} />
+}
+
+interface BadgeWrapperProps {
+  decorative: boolean
+  announce: boolean
+  ariaLabel: string | undefined
+  statusLabel: string
+  className: string | undefined
+  children: React.ReactNode
+}
+
+function BadgeWrapper({
+  decorative,
+  announce,
+  ariaLabel,
+  statusLabel,
+  className,
+  children,
+}: BadgeWrapperProps) {
+  const baseClass = cn('inline-flex items-center gap-1.5', className)
+  if (decorative) {
+    return <span className={baseClass} aria-hidden="true">{children}</span>
+  }
+  return (
+    <span
+      role={announce ? 'status' : 'img'}
+      aria-label={ariaLabel ?? statusLabel}
+      aria-live={announce ? 'polite' : undefined}
+      className={baseClass}
+    >
+      {children}
+    </span>
+  )
+}
+
 export function StatusBadge({
   status,
   label = false,
@@ -63,76 +121,22 @@ export function StatusBadge({
   const color = getStatusColor(status)
   const statusLabel = STATUS_LABELS[status]
   const { motionProps } = useStatusTransition(status)
-
-  // Decorative mode: the caller already names the status; hide the dot
-  // tree entirely from screen readers.
-  if (decorative) {
-    return (
-      <span
-        className={cn('inline-flex items-center gap-1.5', className)}
-        aria-hidden="true"
-      >
-        {animated ? (
-          <motion.span
-            data-slot="status-dot"
-            className={cn(
-              'size-1.5 shrink-0 rounded-full',
-              DOT_COLOR_CLASSES[color],
-              pulse && 'animate-pulse',
-              dotClassName,
-            )}
-            {...motionProps}
-          />
-        ) : (
-          <span
-            data-slot="status-dot"
-            className={cn(
-              'size-1.5 shrink-0 rounded-full',
-              DOT_COLOR_CLASSES[color],
-              pulse && 'animate-pulse',
-              dotClassName,
-            )}
-          />
-        )}
-        {label && (
-          <span className="text-xs text-text-secondary">{statusLabel}</span>
-        )}
-      </span>
-    )
-  }
-
   return (
-    <span
-      role={announce ? 'status' : 'img'}
-      aria-label={ariaLabel ?? statusLabel}
-      aria-live={announce ? 'polite' : undefined}
-      className={cn('inline-flex items-center gap-1.5', className)}
+    <BadgeWrapper
+      decorative={decorative}
+      announce={announce}
+      ariaLabel={ariaLabel}
+      statusLabel={statusLabel}
+      className={className}
     >
-      {animated ? (
-        <motion.span
-          data-slot="status-dot"
-          className={cn(
-            'size-1.5 shrink-0 rounded-full',
-            DOT_COLOR_CLASSES[color],
-            pulse && 'animate-pulse',
-            dotClassName,
-          )}
-          {...motionProps}
-        />
-      ) : (
-        <span
-          data-slot="status-dot"
-          className={cn(
-            'size-1.5 shrink-0 rounded-full',
-            DOT_COLOR_CLASSES[color],
-            pulse && 'animate-pulse',
-            dotClassName,
-          )}
-        />
-      )}
-      {label && (
-        <span className="text-xs text-text-secondary">{statusLabel}</span>
-      )}
-    </span>
+      <StatusDot
+        color={color}
+        pulse={pulse}
+        dotClassName={dotClassName}
+        animated={animated}
+        motionProps={motionProps}
+      />
+      {label && <span className="text-xs text-text-secondary">{statusLabel}</span>}
+    </BadgeWrapper>
   )
 }

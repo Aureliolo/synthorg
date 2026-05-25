@@ -3,8 +3,8 @@ import { http, HttpResponse } from 'msw'
 import type { getHealth } from '@/api/endpoints/health'
 import { ErrorCategory, ErrorCode } from '@/api/types/errors'
 import { apiError, successFor } from '@/mocks/handlers/helpers'
-import { Button } from './button'
-import { HealthPopover } from './health-popover'
+import { Button } from '@/components/ui/button'
+import { HealthPopover } from './HealthPopover'
 
 const meta = {
   title: 'Overlays/HealthPopover',
@@ -136,7 +136,7 @@ export const Loading: Story = {
 export const Hover = AllSystemsOk
 
 // Empty: the popover always renders a health summary while the probe resolves
-// or after it succeeds. There is no "no data" surface to document -- the empty
+// or after it succeeds. There is no "no data" surface to document. The empty
 // state is represented by `Loading` (probe in flight) and `LoadError` (probe
 // rejected).
 export const Empty = Loading

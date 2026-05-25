@@ -47,15 +47,70 @@ export type DrawerProps = DrawerPropsBase & (
   | { title?: undefined; /** Explicit aria-label (required when title is omitted). */ ariaLabel: string }
 )
 
-export function Drawer({ open, onClose, title, ariaLabel, side = 'right', width = 'default', contentClassName, children, className }: DrawerProps) {
-  const trimmedTitle = title?.trim() || undefined
-  const explicitLabel = ariaLabel?.trim() || undefined
+function DrawerHeader({
+  trimmedTitle,
+  explicitLabel,
+}: {
+  trimmedTitle: string
+  explicitLabel: string | undefined
+}) {
+  return (
+    <div className="flex items-center justify-between border-b border-border p-card">
+      {/* When explicitLabel is set, use a plain <h2> so BaseDrawer.Title
+          doesn't add aria-labelledby which would override the aria-label
+          on Popup per ARIA spec. When no explicitLabel, BaseDrawer.Title
+          provides the accessible name via aria-labelledby. */}
+      {explicitLabel ? (
+        <h2 className="text-sm font-semibold text-foreground">{trimmedTitle}</h2>
+      ) : (
+        <BaseDrawer.Title className="text-sm font-semibold text-foreground">
+          {trimmedTitle}
+        </BaseDrawer.Title>
+      )}
+      <BaseDrawer.Close
+        render={
+          <button
+            type="button"
+            className={cn(
+              'rounded-md p-1 text-muted-foreground transition-colors',
+              'hover:bg-card-hover hover:text-foreground',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+            )}
+            aria-label="Close"
+          />
+        }
+      >
+        <X className="size-4" />
+      </BaseDrawer.Close>
+    </div>
+  )
+}
 
+function _drawerSlideClass(side: 'left' | 'right'): string {
+  return side === 'right'
+    ? 'data-[closed]:translate-x-full data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full'
+    : 'data-[closed]:-translate-x-full data-[starting-style]:-translate-x-full data-[ending-style]:-translate-x-full'
+}
+
+function _trimToUndefined(value: string | undefined): string | undefined {
+  return value?.trim() || undefined
+}
+
+function useAccessibilityWarning(
+  trimmedTitle: string | undefined,
+  explicitLabel: string | undefined,
+): void {
   useEffect(() => {
-    if (process.env.NODE_ENV !== 'production' && !trimmedTitle && !explicitLabel) {
-      log.warn('Either `title` or `ariaLabel` must be a non-empty string for accessible dialog naming.')
-    }
+    if (process.env.NODE_ENV === 'production') return
+    if (trimmedTitle || explicitLabel) return
+    log.warn('Either `title` or `ariaLabel` must be a non-empty string for accessible dialog naming.')
   }, [trimmedTitle, explicitLabel])
+}
+
+export function Drawer({ open, onClose, title, ariaLabel, side = 'right', width = 'default', contentClassName, children, className }: DrawerProps) {
+  const trimmedTitle = _trimToUndefined(title)
+  const explicitLabel = _trimToUndefined(ariaLabel)
+  useAccessibilityWarning(trimmedTitle, explicitLabel)
 
   return (
     <BaseDrawer.Root
@@ -80,41 +135,12 @@ export function Drawer({ open, onClose, title, ariaLabel, side = 'right', width 
             // Slide transition: 200ms matches tweenDefault duration; the custom easing
             // curve (0.32, 0.72, 0, 1) decelerates into position for a fluid slide feel.
             'transition-[opacity,translate] duration-200 [transition-timing-function:cubic-bezier(0.32,0.72,0,1)]',
-            side === 'right'
-              ? 'data-[closed]:translate-x-full data-[starting-style]:translate-x-full data-[ending-style]:translate-x-full'
-              : 'data-[closed]:-translate-x-full data-[starting-style]:-translate-x-full data-[ending-style]:-translate-x-full',
+            _drawerSlideClass(side),
             className,
           )}
         >
           {trimmedTitle && (
-            <div className="flex items-center justify-between border-b border-border p-card">
-              {/* When explicitLabel is set, use a plain <h2> so BaseDrawer.Title
-                  doesn't add aria-labelledby which would override the aria-label
-                  on Popup per ARIA spec.  When no explicitLabel, BaseDrawer.Title
-                  provides the accessible name via aria-labelledby. */}
-              {explicitLabel ? (
-                <h2 className="text-sm font-semibold text-foreground">{trimmedTitle}</h2>
-              ) : (
-                <BaseDrawer.Title className="text-sm font-semibold text-foreground">
-                  {trimmedTitle}
-                </BaseDrawer.Title>
-              )}
-              <BaseDrawer.Close
-                render={
-                  <button
-                    type="button"
-                    className={cn(
-                      'rounded-md p-1 text-muted-foreground transition-colors',
-                      'hover:bg-card-hover hover:text-foreground',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                    )}
-                    aria-label="Close"
-                  />
-                }
-              >
-                <X className="size-4" />
-              </BaseDrawer.Close>
-            </div>
+            <DrawerHeader trimmedTitle={trimmedTitle} explicitLabel={explicitLabel} />
           )}
           <div data-testid="drawer-content" className={cn('flex-1 overflow-y-auto p-card', contentClassName)}>
             {children}

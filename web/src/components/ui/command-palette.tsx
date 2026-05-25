@@ -46,18 +46,14 @@ export interface CommandPaletteProps {
   className?: string
 }
 
-export function CommandPalette({ className }: CommandPaletteProps) {
-  const { commands, isOpen, close, toggle, setOpen } = useCommandPalette()
-  const [search, setSearch] = useState('')
-  const [scope, setScope] = useState<'global' | 'local'>('global')
-
-  // Cmd+K / Ctrl+K global toggle. Escape is handled by Base UI Dialog inside
-  // cmdk-base's Command.Dialog, so we no longer need a manual Escape handler.
+function useCommandPaletteShortcut(toggle: () => void): void {
+  // Cmd+K / Ctrl+K global toggle. Escape is handled by Base UI Dialog
+  // inside cmdk-base's Command.Dialog, so no manual Escape handler.
   //
-  // Uses toLowerCase() to match both 'k' and 'K' -- with Caps Lock on (or
-  // AZERTY layouts that remap the key), `e.key` reports 'K' for the same
-  // physical keystroke. The sibling useSettingsKeyboard.ts hook follows
-  // the same convention for its Ctrl+S/ handlers.
+  // Uses toLowerCase() to match both 'k' and 'K' -- with Caps Lock on
+  // (or AZERTY layouts that remap the key), `e.key` reports 'K' for
+  // the same physical keystroke. The sibling useSettingsKeyboard.ts
+  // hook follows the same convention for its Ctrl+S handlers.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey)) {
@@ -68,8 +64,61 @@ export function CommandPalette({ className }: CommandPaletteProps) {
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [toggle])
+}
 
-  // Reset search and scope when palette opens
+interface FilteredCommands {
+  grouped: Map<string, CommandItem[]>
+  recentItems: CommandItem[]
+  recentIdSet: Set<string>
+  hasLocalCommands: boolean
+}
+
+function _matchesScope(cmd: CommandItem, scope: 'global' | 'local'): boolean {
+  const cmdScope = cmd.scope ?? 'global'
+  return scope === 'global' ? true : cmdScope === 'local'
+}
+
+function _groupCommands(commands: readonly CommandItem[]): Map<string, CommandItem[]> {
+  const groups = new Map<string, CommandItem[]>()
+  for (const cmd of commands) {
+    const existing = groups.get(cmd.group) ?? []
+    existing.push(cmd)
+    groups.set(cmd.group, existing)
+  }
+  return groups
+}
+
+function useFilteredCommands(
+  commands: readonly CommandItem[],
+  scope: 'global' | 'local',
+  isOpen: boolean,
+  search: string,
+): FilteredCommands {
+  const filtered = useMemo(
+    () => commands.filter((cmd) => _matchesScope(cmd, scope)),
+    [commands, scope],
+  )
+  const grouped = useMemo(() => _groupCommands(filtered), [filtered])
+  // Re-read recent items each time the palette opens.
+  const recentIds = useMemo(() => getRecentIds(), [isOpen]) // eslint-disable-line @eslint-react/exhaustive-deps
+  const recentItems = useMemo(() => {
+    if (search) return []
+    return recentIds
+      .map((id) => commands.find((c) => c.id === id))
+      .filter((c): c is CommandItem => c !== undefined && _matchesScope(c, scope))
+  }, [search, recentIds, commands, scope])
+  const recentIdSet = useMemo(() => new Set(recentItems.map((c) => c.id)), [recentItems])
+  const hasLocalCommands = commands.some((c) => c.scope === 'local')
+  return { grouped, recentItems, recentIdSet, hasLocalCommands }
+}
+
+export function CommandPalette({ className }: CommandPaletteProps) {
+  const { commands, isOpen, close, toggle, setOpen } = useCommandPalette()
+  const [search, setSearch] = useState('')
+  const [scope, setScope] = useState<'global' | 'local'>('global')
+  useCommandPaletteShortcut(toggle)
+
+  // Reset search and scope when palette opens.
   useEffect(() => {
     if (isOpen) {
       setSearch('') // eslint-disable-line @eslint-react/set-state-in-effect -- intentional reset on open
@@ -77,40 +126,8 @@ export function CommandPalette({ className }: CommandPaletteProps) {
     }
   }, [isOpen])
 
-  const filteredCommands = useMemo(() => {
-    return commands.filter((cmd) => {
-      const cmdScope = cmd.scope ?? 'global'
-      return scope === 'global' ? true : cmdScope === 'local'
-    })
-  }, [commands, scope])
-
-  const grouped = useMemo(() => {
-    const groups = new Map<string, CommandItem[]>()
-    for (const cmd of filteredCommands) {
-      const existing = groups.get(cmd.group) ?? []
-      existing.push(cmd)
-      groups.set(cmd.group, existing)
-    }
-    return groups
-  }, [filteredCommands])
-
-  // Recent items (only shown when search is empty)
-  // Re-read recent items each time the palette opens
-  const recentIds = useMemo(() => getRecentIds(), [isOpen]) // eslint-disable-line @eslint-react/exhaustive-deps
-  const recentItems = useMemo(() => {
-    if (search) return []
-    return recentIds
-      .map((id) => commands.find((c) => c.id === id))
-      .filter((c): c is CommandItem => {
-        if (c === undefined) return false
-        const cmdScope = c.scope ?? 'global'
-        return scope === 'global' ? true : cmdScope === 'local'
-      })
-  }, [search, recentIds, commands, scope])
-
-  const recentIdSet = useMemo(
-    () => new Set(recentItems.map((c) => c.id)),
-    [recentItems],
+  const { grouped, recentItems, recentIdSet, hasLocalCommands } = useFilteredCommands(
+    commands, scope, isOpen, search,
   )
 
   const handleSelect = useCallback(
@@ -118,15 +135,15 @@ export function CommandPalette({ className }: CommandPaletteProps) {
       addRecentId(cmd.id)
       try {
         // Await via Promise.resolve so both sync and async actions are
-        // handled. A promise rejection from an async action would otherwise
-        // escape the try/catch and close() below would run as if the action
-        // succeeded -- the opposite of the "user sees failures" contract.
+        // handled. A promise rejection from an async action would
+        // otherwise escape the try/catch and close() below would run
+        // as if the action succeeded -- the opposite of the "user sees
+        // failures" contract.
         await Promise.resolve(cmd.action())
       } catch (err) {
-        // Always log + toast so users see when a destructive command (e.g.
-        // "Delete agent") fails instead of the palette closing silently as
-        // if the action succeeded. Getting this wrong would mean users
-        // believe destructive actions completed when they did not.
+        // Always log + toast so users see when a destructive command
+        // (e.g. "Delete agent") fails instead of the palette closing
+        // silently as if the action succeeded.
         log.error('Command action failed', { commandId: cmd.id, label: cmd.label }, err)
         useToastStore.getState().add({
           variant: 'error',
@@ -144,15 +161,13 @@ export function CommandPalette({ className }: CommandPaletteProps) {
 
   const handleScopeToggle = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Tab' && commands.some((c) => c.scope === 'local')) {
+      if (e.key === 'Tab' && hasLocalCommands) {
         e.preventDefault()
         setScope((prev) => (prev === 'global' ? 'local' : 'global'))
       }
     },
-    [commands],
+    [hasLocalCommands],
   )
-
-  const hasLocalCommands = commands.some((c) => c.scope === 'local')
 
   return (
     <Command.Dialog
@@ -174,65 +189,101 @@ export function CommandPalette({ className }: CommandPaletteProps) {
       )}
       onKeyDown={handleScopeToggle}
     >
-      {/* Search input */}
-      <div className="flex items-center gap-3 border-b border-border px-4">
-        <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <Command.Input
-          value={search}
-          onValueChange={setSearch}
-          placeholder={scope === 'global' ? 'Search commands...' : 'Search page commands...'}
-          className="flex-1 bg-transparent py-3 text-base text-foreground placeholder:text-muted-foreground outline-none"
-        />
-        {hasLocalCommands && (
-          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            Tab: {scope}
-          </span>
-        )}
-      </div>
-
-      <Command.List className="max-h-[320px] overflow-y-auto p-2">
-        <Command.Empty className="py-6 text-center text-sm text-muted-foreground">
-          No results found.
-        </Command.Empty>
-
-        {/* Recent items */}
-        {recentItems.length > 0 && (
-          <Command.Group heading="Recent" className="mb-1">
-            {recentItems.map((cmd) => (
-              <CommandItemRow key={`recent-${cmd.id}`} item={cmd} onSelect={(item) => { void handleSelect(item) }} />
-            ))}
-          </Command.Group>
-        )}
-
-        {/* Command groups */}
-        {[...grouped.entries()].map(([groupName, items]) => (
-          <Command.Group
-            key={groupName}
-            heading={groupName}
-            className="mb-1"
-          >
-            {items.filter((cmd) => !recentIdSet.has(cmd.id)).map((cmd) => (
-              <CommandItemRow key={cmd.id} item={cmd} onSelect={(item) => { void handleSelect(item) }} />
-            ))}
-          </Command.Group>
-        ))}
-      </Command.List>
-
-      {/* Footer hint */}
-      <div className="flex items-center gap-4 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-        <span>
-          <kbd className="rounded border border-border px-1">Enter</kbd> select
-        </span>
-        <span>
-          <kbd className="rounded border border-border px-1">Esc</kbd> close
-        </span>
-        {hasLocalCommands && (
-          <span>
-            <kbd className="rounded border border-border px-1">Tab</kbd> scope
-          </span>
-        )}
-      </div>
+      <CommandPaletteSearch
+        search={search}
+        setSearch={setSearch}
+        scope={scope}
+        hasLocalCommands={hasLocalCommands}
+      />
+      <CommandPaletteList
+        grouped={grouped}
+        recentItems={recentItems}
+        recentIdSet={recentIdSet}
+        onSelect={(item) => { void handleSelect(item) }}
+      />
+      <CommandPaletteFooter hasLocalCommands={hasLocalCommands} />
     </Command.Dialog>
+  )
+}
+
+function CommandPaletteSearch({
+  search,
+  setSearch,
+  scope,
+  hasLocalCommands,
+}: {
+  search: string
+  setSearch: (value: string) => void
+  scope: 'global' | 'local'
+  hasLocalCommands: boolean
+}) {
+  return (
+    <div className="flex items-center gap-3 border-b border-border px-4">
+      <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <Command.Input
+        value={search}
+        onValueChange={setSearch}
+        placeholder={scope === 'global' ? 'Search commands...' : 'Search page commands...'}
+        className="flex-1 bg-transparent py-3 text-base text-foreground placeholder:text-muted-foreground outline-none"
+      />
+      {hasLocalCommands && (
+        <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          Tab: {scope}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function CommandPaletteList({
+  grouped,
+  recentItems,
+  recentIdSet,
+  onSelect,
+}: {
+  grouped: Map<string, CommandItem[]>
+  recentItems: CommandItem[]
+  recentIdSet: Set<string>
+  onSelect: (item: CommandItem) => void
+}) {
+  return (
+    <Command.List className="max-h-[320px] overflow-y-auto p-2">
+      <Command.Empty className="py-6 text-center text-sm text-muted-foreground">
+        No results found.
+      </Command.Empty>
+      {recentItems.length > 0 && (
+        <Command.Group heading="Recent" className="mb-1">
+          {recentItems.map((cmd) => (
+            <CommandItemRow key={`recent-${cmd.id}`} item={cmd} onSelect={onSelect} />
+          ))}
+        </Command.Group>
+      )}
+      {[...grouped.entries()].map(([groupName, items]) => (
+        <Command.Group key={groupName} heading={groupName} className="mb-1">
+          {items.filter((cmd) => !recentIdSet.has(cmd.id)).map((cmd) => (
+            <CommandItemRow key={cmd.id} item={cmd} onSelect={onSelect} />
+          ))}
+        </Command.Group>
+      ))}
+    </Command.List>
+  )
+}
+
+function CommandPaletteFooter({ hasLocalCommands }: { hasLocalCommands: boolean }) {
+  return (
+    <div className="flex items-center gap-4 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+      <span>
+        <kbd className="rounded border border-border px-1">Enter</kbd> select
+      </span>
+      <span>
+        <kbd className="rounded border border-border px-1">Esc</kbd> close
+      </span>
+      {hasLocalCommands && (
+        <span>
+          <kbd className="rounded border border-border px-1">Tab</kbd> scope
+        </span>
+      )}
+    </div>
   )
 }
 
