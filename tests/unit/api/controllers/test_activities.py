@@ -728,6 +728,7 @@ class TestActivityFeedLifecycleCap:
         self,
         test_client: TestClient[Any],
         fake_persistence: FakePersistenceBackend,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         captured: dict[str, Any] = {}
         original = fake_persistence.lifecycle_events.list_events
@@ -736,11 +737,8 @@ class TestActivityFeedLifecycleCap:
             captured.update(kwargs)
             return await original(**kwargs)
 
-        fake_persistence.lifecycle_events.list_events = _spy
-        try:
-            resp = test_client.get("/api/v1/activities")
-        finally:
-            fake_persistence.lifecycle_events.list_events = original
+        monkeypatch.setattr(fake_persistence.lifecycle_events, "list_events", _spy)
+        resp = test_client.get("/api/v1/activities")
 
         assert resp.status_code == 200
         app_state = test_client.app.state.app_state
@@ -753,6 +751,7 @@ class TestActivityFeedLifecycleCap:
         self,
         test_client: TestClient[Any],
         fake_persistence: FakePersistenceBackend,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from synthorg.settings.bridge_configs import ApiBridgeConfig
 
@@ -768,11 +767,10 @@ class TestActivityFeedLifecycleCap:
             captured.update(kwargs)
             return await original(**kwargs)
 
-        fake_persistence.lifecycle_events.list_events = _spy
+        monkeypatch.setattr(fake_persistence.lifecycle_events, "list_events", _spy)
         try:
             resp = test_client.get("/api/v1/activities")
         finally:
-            fake_persistence.lifecycle_events.list_events = original
             app_state.swap_api_bridge_config(previous)
 
         assert resp.status_code == 200
