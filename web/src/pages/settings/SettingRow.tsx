@@ -47,6 +47,94 @@ function formatKey(key: string, namespace?: string): string {
   return formatted
 }
 
+interface RowFlags {
+  displayValue: string
+  isEnvLocked: boolean
+  isReadOnlyPostInit: boolean
+  isDisabled: boolean
+  isSecuritySensitive: boolean
+}
+
+function computeRowFlags(
+  entry: SettingEntry,
+  dirtyValue: string | undefined,
+  saving: boolean,
+  controllerDisabled: boolean | undefined,
+): RowFlags {
+  const isEnvLocked = entry.source === 'env'
+  const isReadOnlyPostInit = entry.definition.read_only_post_init
+  const compositeKey = `${entry.definition.namespace}/${entry.definition.key}`
+  return {
+    displayValue: dirtyValue ?? entry.value,
+    isEnvLocked,
+    isReadOnlyPostInit,
+    isDisabled: isEnvLocked || saving || controllerDisabled === true || isReadOnlyPostInit,
+    isSecuritySensitive: SECURITY_SENSITIVE_SETTINGS.has(compositeKey),
+  }
+}
+
+interface NoticeIds {
+  env: string
+  readonly: string
+  security: string
+}
+
+function buildDescribedBy(flags: RowFlags, ids: NoticeIds): string {
+  return [
+    flags.isEnvLocked ? ids.env : null,
+    flags.isReadOnlyPostInit && !flags.isEnvLocked ? ids.readonly : null,
+    flags.isSecuritySensitive ? ids.security : null,
+  ]
+    .filter((id): id is string => id !== null)
+    .join(' ')
+}
+
+function SettingRowNotices({ flags, ids }: { flags: RowFlags; ids: NoticeIds }) {
+  return (
+    <>
+      {flags.isEnvLocked && (
+        <p id={ids.env} className="text-micro text-warning">
+          Value set by environment variable (read-only)
+        </p>
+      )}
+      {flags.isReadOnlyPostInit && !flags.isEnvLocked && (
+        <p id={ids.readonly} className="text-micro text-warning">
+          Read-only after startup. Configure via environment variable or YAML before launch.
+        </p>
+      )}
+      {flags.isSecuritySensitive && (
+        <p id={ids.security} className="text-micro text-danger">
+          Security-sensitive setting: misconfiguration may expose the system
+        </p>
+      )}
+    </>
+  )
+}
+
+function SettingRowLabel({
+  entry,
+  highlightQuery,
+}: {
+  entry: SettingEntry
+  highlightQuery: string | undefined
+}) {
+  const { definition, source } = entry
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-foreground">
+          {highlightText(formatKey(definition.key, definition.namespace), highlightQuery)}
+        </span>
+        <SourceBadge source={source} />
+        {definition.restart_required && <RestartBadge />}
+      </div>
+      <p className="text-xs text-text-secondary">
+        {highlightText(definition.description, highlightQuery)}
+      </p>
+    </>
+  )
+}
+
 export function SettingRow({
   entry,
   dirtyValue,
@@ -56,7 +144,7 @@ export function SettingRow({
   flash,
   highlightQuery,
 }: SettingRowProps) {
-  const { definition, source } = entry
+  const { definition } = entry
   const compositeKey = `${definition.namespace}/${definition.key}`
   const { flashStyle, triggerFlash } = useFlash()
   const noticeRootId = useId()
@@ -64,25 +152,18 @@ export function SettingRow({
   useEffect(() => {
     if (flash) triggerFlash()
   }, [flash, triggerFlash])
-  const displayValue = dirtyValue ?? entry.value
-  const isEnvLocked = source === 'env'
-  const isReadOnlyPostInit = definition.read_only_post_init
-  const isDisabled =
-    isEnvLocked || saving || controllerDisabled === true || isReadOnlyPostInit
-  const isSecuritySensitive = SECURITY_SENSITIVE_SETTINGS.has(compositeKey)
-  // Stable per-row IDs so the warning paragraphs can be referenced by
-  // the field's accessible description (screen readers announce the
+
+  const flags = computeRowFlags(entry, dirtyValue, saving, controllerDisabled)
+  // Stable per-row IDs so the warning paragraphs can be referenced by the
+  // field's accessible description (screen readers announce the
   // explanation alongside the disabled control).
-  const envLockedNoticeId = `${noticeRootId}-env`
-  const readOnlyNoticeId = `${noticeRootId}-readonly`
-  const securityNoticeId = `${noticeRootId}-security`
-  const describedByIds = [
-    isEnvLocked ? envLockedNoticeId : null,
-    isReadOnlyPostInit && !isEnvLocked ? readOnlyNoticeId : null,
-    isSecuritySensitive ? securityNoticeId : null,
-  ]
-    .filter((id): id is string => id !== null)
-    .join(' ')
+  const ids: NoticeIds = {
+    env: `${noticeRootId}-env`,
+    readonly: `${noticeRootId}-readonly`,
+    security: `${noticeRootId}-security`,
+  }
+  const describedByIds = buildDescribedBy(flags, ids)
+  const fieldLabel = formatKey(definition.key, definition.namespace)
 
   return (
     <div
@@ -95,47 +176,24 @@ export function SettingRow({
       style={flashStyle}
       title={controllerDisabled ? 'Enable the parent setting to configure this option' : undefined}
     >
-      {/* Left: label, description, badges */}
       <div className="min-w-0 space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-foreground">
-            {highlightText(formatKey(definition.key, definition.namespace), highlightQuery)}
-          </span>
-          <SourceBadge source={source} />
-          {definition.restart_required && <RestartBadge />}
-        </div>
-        <p className="text-xs text-text-secondary">{highlightText(definition.description, highlightQuery)}</p>
-        {isEnvLocked && (
-          <p id={envLockedNoticeId} className="text-micro text-warning">
-            Value set by environment variable (read-only)
-          </p>
-        )}
-        {isReadOnlyPostInit && !isEnvLocked && (
-          <p id={readOnlyNoticeId} className="text-micro text-warning">
-            Read-only after startup. Configure via environment variable or YAML before launch.
-          </p>
-        )}
-        {isSecuritySensitive && (
-          <p id={securityNoticeId} className="text-micro text-danger">
-            Security-sensitive setting: misconfiguration may expose the system
-          </p>
-        )}
+        <SettingRowLabel entry={entry} highlightQuery={highlightQuery} />
+        <SettingRowNotices flags={flags} ids={ids} />
       </div>
 
-      {/* Right: field control. Wrapper carries aria-describedby so the
-          warning paragraphs above are announced together with the
-          control by assistive tech, even on disabled states. */}
+      {/* Field wrapper carries aria-describedby so the warning paragraphs
+          are announced together with the control, even when disabled. */}
       <div
         className="w-56 shrink-0"
         role="group"
-        aria-label={formatKey(definition.key, definition.namespace)}
+        aria-label={fieldLabel}
         aria-describedby={describedByIds || undefined}
       >
         <SettingField
           definition={definition}
-          value={displayValue}
+          value={flags.displayValue}
           onChange={onChange}
-          disabled={isDisabled}
+          disabled={flags.isDisabled}
         />
       </div>
     </div>
