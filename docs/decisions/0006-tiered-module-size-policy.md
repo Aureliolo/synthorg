@@ -47,6 +47,7 @@ docstring or interleaved with imports are ignored. Tiers:
 |------|--------:|-------|
 | `controller` | 400 | API controllers, MCP handlers |
 | `service` / `orchestrator` | 600 | Long-lived stateful services, coordinators |
+| `complex_service` | 1100 | Audit-verdict tier for single-responsibility files that legitimately exceed the service / adapter caps. Reserved for #2052-style cohesion verdicts; see "Complex-service tier" below |
 | `repository` | 500 | Per-entity persistence repos |
 | `adapter` / `integration` | 700 | External-system adapters, browser/sandbox tools |
 | `feature` | 100 | A feature directory's `feature.py` manifest (lands in PR 2) |
@@ -76,6 +77,39 @@ In addition, an explicit god-module allowlist (`api/app.py`,
 This gate (`check_no_growth_in_god_modules.py`) prevents the central
 files from absorbing more responsibility while PR 2 / PR 3 / PR 4
 decompose them.
+
+### Complex-service tier
+
+`complex_service` (cap 1100) is the audit-verdict tier: a single
+cohesive responsibility expressed across more features than the 600 /
+700 caps allow. It exists because the #2052 cohesion audit confirmed a
+set of files as one responsibility each, at 642 to 1051 LOC. The
+standard caps (`service` / `orchestrator` 600, `adapter` /
+`integration` 700) cannot express "this file is cohesive AND larger
+than 700", so the verdict could not be honoured under them: a 948-LOC
+file tagged `# module-kind: service` stays over its cap and therefore
+stays in the baseline. The 1100 cap lets a confirmed-cohesive file drop
+out of the baseline while still imposing a real ceiling.
+
+A cohesion verdict resolves to one of three states:
+
+1. Cohesive AND <= 1100 LOC -- tag `# module-kind: complex_service`.
+   The file falls under cap and drops from
+   `_module_size_baseline.json` on the next regeneration.
+2. Cohesive BUT > 1100 LOC -- tag `# module-kind: complex_service`. The
+   file stays in the baseline and is enforced against the 1100 ceiling
+   with baseline absorption, exactly like any other tier. The 1100 cap
+   binds even here, so the tier is not a way to exempt a file from a
+   ceiling.
+3. Two or more responsibilities -- not eligible. The file is
+   reclassified as a decomposition target with a follow-up issue filed.
+
+The tier is reserved for audit verdicts. It is assigned by a
+cohesion-audit verdict, not opted into by new code. New `service`,
+`adapter`, and `controller` files still hit their strict caps (600 /
+700 / 400). A contributor facing an over-cap new file fixes the
+cohesion or shrinks the file; reaching for `complex_service` to silence
+the gate is a misuse of the tier.
 
 ### Ten new custom gates
 
@@ -302,7 +336,7 @@ follow-ups below is the contract for "100% enforced".**
 
 | Exemption | Mechanism |
 |-----------|-----------|
-| ~30 `_module_size_baseline.json` entries for the Group-F legitimately-complex files | #2052 tags each with `# module-kind: service` (or appropriate tier); confirmed-cohesive files drop from baseline, reclassified files become new decomposition issues |
+| `_module_size_baseline.json` entries for the Group-F legitimately-complex files | #2052 tags each file the audit confirms as one cohesive responsibility with `# module-kind: complex_service` (cap 1100). Files at or below 1100 LOC drop from the baseline on regeneration; files above 1100 stay baselined under the 1100 ceiling; files with two or more responsibilities are reclassified into new decomposition issues. See the "Complex-service tier" subsection above |
 
 ### F. Requires NEW follow-up issues (no existing PR lifts)
 
