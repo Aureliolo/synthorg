@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useMemo } from 'react'
+import { useCallback, useRef, useEffect, useMemo, type RefObject } from 'react'
 import { Pencil, Trash2, UserPlus, ArrowRightLeft, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToastStore } from '@/stores/toast'
@@ -18,6 +18,88 @@ interface MenuItem {
   icon: React.ElementType
   action: () => void
   variant?: 'default' | 'destructive'
+}
+
+const MENU_WIDTH = 180
+const MENU_ITEM_HEIGHT = 32
+const MENU_PADDING = 8
+const MENU_MARGIN = 8
+
+interface MenuItemContext {
+  nodeId: string
+  onClose: () => void
+  stubAction: (action: string) => void
+  onViewDetails?: (nodeId: string) => void
+  onDelete?: (nodeId: string) => void
+}
+
+/** Build the action list for a node type (agent / ceo / department). */
+function buildMenuItems(
+  nodeType: NodeContextMenuProps['nodeType'],
+  ctx: MenuItemContext,
+): MenuItem[] {
+  const viewDetails: MenuItem = {
+    label: 'View Details',
+    icon: Eye,
+    action: () => {
+      ctx.onViewDetails?.(ctx.nodeId)
+      ctx.onClose()
+    },
+  }
+  const remove = (label: string): MenuItem => ({
+    label,
+    icon: Trash2,
+    variant: 'destructive',
+    action: () => {
+      ctx.onDelete?.(ctx.nodeId)
+      ctx.onClose()
+    },
+  })
+  if (nodeType === 'department') {
+    return [
+      { label: 'Edit Department', icon: Pencil, action: () => ctx.stubAction('Edit Department') },
+      { label: 'Add Agent', icon: UserPlus, action: () => ctx.stubAction('Add Agent') },
+      remove('Delete Department'),
+    ]
+  }
+  if (nodeType === 'ceo') return [viewDetails]
+  return [
+    viewDetails,
+    { label: 'Edit Agent', icon: Pencil, action: () => ctx.stubAction('Edit Agent') },
+    {
+      label: 'Assign to Department',
+      icon: ArrowRightLeft,
+      action: () => ctx.stubAction('Assign to Department'),
+    },
+    remove('Remove Agent'),
+  ]
+}
+
+/** Close the menu on an outside mousedown or the Escape key. */
+function useDismissOnOutside(
+  ref: RefObject<HTMLElement | null>,
+  onClose: () => void,
+): void {
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [ref, onClose])
+}
+
+function menuLabelFor(nodeType: NodeContextMenuProps['nodeType']): string {
+  if (nodeType === 'department') return 'Department actions'
+  if (nodeType === 'ceo') return 'CEO actions'
+  return 'Agent actions'
 }
 
 export function NodeContextMenu({
@@ -43,90 +125,22 @@ export function NodeContextMenu({
     [addToast, onClose],
   )
 
-  // Close on outside click or Escape
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose()
-      }
-    }
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('mousedown', handleClick)
-    document.addEventListener('keydown', handleKey)
-    return () => {
-      document.removeEventListener('mousedown', handleClick)
-      document.removeEventListener('keydown', handleKey)
-    }
-  }, [onClose])
+  useDismissOnOutside(menuRef, onClose)
 
-  const agentItems: MenuItem[] = [
-    {
-      label: 'View Details',
-      icon: Eye,
-      action: () => {
-        onViewDetails?.(nodeId)
-        onClose()
-      },
-    },
-    { label: 'Edit Agent', icon: Pencil, action: () => stubAction('Edit Agent') },
-    { label: 'Assign to Department', icon: ArrowRightLeft, action: () => stubAction('Assign to Department') },
-    {
-      label: 'Remove Agent',
-      icon: Trash2,
-      variant: 'destructive',
-      action: () => {
-        onDelete?.(nodeId)
-        onClose()
-      },
-    },
-  ]
-
-  const departmentItems: MenuItem[] = [
-    { label: 'Edit Department', icon: Pencil, action: () => stubAction('Edit Department') },
-    { label: 'Add Agent', icon: UserPlus, action: () => stubAction('Add Agent') },
-    {
-      label: 'Delete Department',
-      icon: Trash2,
-      variant: 'destructive',
-      action: () => {
-        onDelete?.(nodeId)
-        onClose()
-      },
-    },
-  ]
-
-  const ceoItems: MenuItem[] = [
-    {
-      label: 'View Details',
-      icon: Eye,
-      action: () => {
-        onViewDetails?.(nodeId)
-        onClose()
-      },
-    },
-  ]
-
-  const items =
-    nodeType === 'department' ? departmentItems : nodeType === 'ceo' ? ceoItems : agentItems
+  const items = buildMenuItems(nodeType, { nodeId, onClose, stubAction, onViewDetails, onDelete })
 
   // Clamp menu position to viewport bounds. ``useViewportSize`` keeps
   // the clamp reactive to resizes without touching ``window`` directly
   // in the render body.
-  const menuWidth = 180
-  const menuItemHeight = 32
-  const menuPadding = 8
-  const menuHeight = items.length * menuItemHeight + menuPadding
-  const margin = 8
+  const menuHeight = items.length * MENU_ITEM_HEIGHT + MENU_PADDING
   const viewport = useViewportSize()
-  const boundedPosition = useMemo(() => ({
-    x: Math.max(margin, Math.min(position.x, viewport.width - menuWidth - margin)),
-    y: Math.max(margin, Math.min(position.y, viewport.height - menuHeight - margin)),
-  }), [position.x, position.y, menuHeight, viewport.width, viewport.height])
-
-  const menuLabel =
-    nodeType === 'department' ? 'Department actions' : nodeType === 'ceo' ? 'CEO actions' : 'Agent actions'
+  const boundedPosition = useMemo(
+    () => ({
+      x: Math.max(MENU_MARGIN, Math.min(position.x, viewport.width - MENU_WIDTH - MENU_MARGIN)),
+      y: Math.max(MENU_MARGIN, Math.min(position.y, viewport.height - menuHeight - MENU_MARGIN)),
+    }),
+    [position.x, position.y, menuHeight, viewport.width, viewport.height],
+  )
 
   return (
     <div
@@ -134,7 +148,7 @@ export function NodeContextMenu({
       className="fixed z-50 min-w-[180px] rounded-lg border border-border bg-card p-1 shadow-lg"
       style={{ top: boundedPosition.y, left: boundedPosition.x }}
       role="menu"
-      aria-label={menuLabel}
+      aria-label={menuLabelFor(nodeType)}
       data-testid="node-context-menu"
     >
       {items.map((item) => (

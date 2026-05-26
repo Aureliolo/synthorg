@@ -239,9 +239,13 @@ export function useOrgChartData(
 
   const { nodes, edges, allNodes } = useMemo(() => {
     if (!config) return { nodes: [], edges: [], allNodes: [] }
-    const tree = buildOrgTree(
-      config, runtimeStatuses, departmentHealths, owners, [], currentUser?.id,
-    )
+    const tree = buildOrgTree({
+      config,
+      runtimeStatuses,
+      departmentHealths,
+      owners,
+      currentUserId: currentUser?.id,
+    })
     return _deriveView({
       tree,
       viewMode,

@@ -9,6 +9,18 @@ import type { AgentConfig } from '@/api/types/agents'
 import type { DepartmentHealth } from '@/api/types/analytics'
 import type { DepartmentName } from '@/api/types/enums'
 import type { CompanyConfig } from '@/api/types/org'
+import type { AgentRuntimeStatus } from '@/lib/utils'
+
+// Positional adapter over the args-object `buildOrgTree` signature so
+// the table-driven test cases below stay terse.
+function buildTree(
+  config: CompanyConfig,
+  runtimeStatuses: Record<string, AgentRuntimeStatus> = {},
+  departmentHealths: readonly DepartmentHealth[] = [],
+  owners?: readonly OwnerInfo[],
+): ReturnType<typeof buildOrgTree> {
+  return buildOrgTree({ config, runtimeStatuses, departmentHealths, owners })
+}
 
 // ── Test helpers ────────────────────────────────────────────
 
@@ -137,7 +149,7 @@ function findCompanyCeo(nodes: ReturnType<typeof buildOrgTree>['nodes']) {
 describe('buildOrgTree', () => {
   it('returns empty nodes and edges for empty config', () => {
     const config = makeConfig([])
-    const result = buildOrgTree(config, {}, [])
+    const result = buildTree(config, {}, [])
     expect(result.nodes).toEqual([])
     expect(result.edges).toEqual([])
   })
@@ -147,7 +159,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'ceo-1', name: 'Alice', role: 'CEO', department: 'executive', level: 'c_suite' }),
       makeAgent({ id: 'dev-1', name: 'Bob', department: 'engineering', level: 'senior' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     const ceo = findCompanyCeo(result.nodes)
     expect(ceo).toBeDefined()
@@ -160,7 +172,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'cto', name: 'CTO', department: 'engineering', level: 'c_suite' }),
       makeAgent({ id: 'dev', name: 'Dev', department: 'engineering', level: 'mid' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     const ceo = findCompanyCeo(result.nodes)
     expect(ceo).toBeDefined()
@@ -173,7 +185,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'lead-1', name: 'Carol', department: 'engineering', level: 'lead' }),
       makeAgent({ id: 'jr-1', name: 'Dave', department: 'engineering', level: 'junior' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     const ceo = findCompanyCeo(result.nodes)
     expect(ceo).toBeDefined()
@@ -185,7 +197,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'ceo', name: 'CEO', department: 'executive', level: 'c_suite' }),
       makeAgent({ id: 'cto', name: 'CTO', department: 'engineering', level: 'c_suite' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     const execDept = result.nodes.find((n) => n.id === 'dept-executive')
     expect(execDept).toBeDefined()
@@ -204,7 +216,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'a2', name: 'A2', department: 'engineering', level: 'mid' }),
       makeAgent({ id: 'a3', name: 'A3', department: 'product', level: 'lead' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     const deptNodes = result.nodes.filter((n) => n.type === 'department')
     expect(deptNodes).toHaveLength(2)
@@ -222,7 +234,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'cto', name: 'CTO', department: 'engineering', level: 'c_suite' }),
       makeAgent({ id: 'cpo', name: 'CPO', department: 'product', level: 'c_suite' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     // Visible edges from the root dept box (dept-executive) to each
     // other dept box.  Non-visible (hidden) layout edges live
@@ -249,7 +261,7 @@ describe('buildOrgTree', () => {
     const agents = [
       makeAgent({ id: 'ceo', name: 'CEO', department: 'executive', level: 'c_suite' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [], makeOwners())
+    const result = buildTree(makeConfig(agents), {}, [], makeOwners())
 
     const ownerNode = result.nodes.find((n) => n.type === 'owner')
     expect(ownerNode).toBeDefined()
@@ -269,7 +281,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'vp-b', name: 'VP Beta', department: 'engineering', level: 'vp' }),
       makeAgent({ id: 'vp-c', name: 'VP Gamma', department: 'engineering', level: 'vp' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     // Visible edge: root dept box (executive) → engineering box
     const rootOut = result.edges.filter((e) => e.source === 'dept-executive' && !e.hidden)
@@ -291,7 +303,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'dev1', name: 'Dev1', department: 'engineering', level: 'mid' }),
       makeAgent({ id: 'dev2', name: 'Dev2', department: 'engineering', level: 'junior' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     // `lead` is the CEO (highest seniority) and also the head of
     // engineering.  It emits edges to the other two members.
@@ -304,7 +316,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'active-1', name: 'Active', department: 'engineering', level: 'lead', status: 'active' }),
       makeAgent({ id: 'fired-1', name: 'Fired', department: 'engineering', level: 'mid', status: 'terminated' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     const agentNodes = result.nodes.filter((n) => n.type === 'agent')
     expect(agentNodes).toHaveLength(1)
@@ -316,7 +328,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'a1', name: 'Dev', department: 'engineering', level: 'mid' }),
     ]
     const healthData = [makeHealth('engineering', 85)]
-    const result = buildOrgTree(makeConfig(agents), {}, healthData)
+    const result = buildTree(makeConfig(agents), {}, healthData)
 
     const deptNode = result.nodes.find((n) => n.type === 'department')
     expect(deptNode).toBeDefined()
@@ -329,7 +341,7 @@ describe('buildOrgTree', () => {
     const agents = [
       makeAgent({ id: 'a1', name: 'Dev', department: 'engineering', level: 'mid', status: 'active' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), { a1: 'error' }, [])
+    const result = buildTree(makeConfig(agents), { a1: 'error' }, [])
 
     const agentNode = result.nodes.find((n) => n.id === 'a1')
     expect((agentNode!.data as AgentNodeData).runtimeStatus).toBe('error')
@@ -346,7 +358,7 @@ describe('buildOrgTree', () => {
         { name: 'backend', lead: 'Lead', members: ['Lead', 'Senior', 'Junior'] },
       ]),
     ])
-    const result = buildOrgTree(config, {}, [])
+    const result = buildTree(config, {}, [])
 
     const leadEdges = result.edges.filter((e) => e.source === 'lead' && !e.hidden)
     expect(leadEdges.map((e) => e.target).sort()).toEqual(['jr', 'sr'])
@@ -366,7 +378,7 @@ describe('buildOrgTree', () => {
         makeDept('product', 'Product'),
       ],
     }
-    const result = buildOrgTree(config, {}, [])
+    const result = buildTree(config, {}, [])
 
     const deptNodes = result.nodes.filter((n) => n.type === 'department')
     expect(deptNodes).toHaveLength(2)
@@ -385,7 +397,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'ceo', name: 'CEO', department: 'executive', level: 'c_suite' }),
       makeAgent({ id: 'dev', name: 'Dev', department: 'engineering', level: 'mid' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [], makeOwners())
+    const result = buildTree(makeConfig(agents), {}, [], makeOwners())
 
     const types = result.nodes.map((n) => n.type).sort()
     // owner + 2 dept boxes + 2 agents (CEO + dev) = 5 nodes, no 'ceo' type
@@ -396,7 +408,7 @@ describe('buildOrgTree', () => {
     const agents = [
       makeAgent({ id: 'a1', name: 'Dev', department: 'engineering', level: 'mid' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     const deptNode = result.nodes.find((n) => n.type === 'department')
     const data = deptNode!.data as DepartmentGroupData
@@ -414,7 +426,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'cto', name: 'CTO', department: 'engineering', level: 'c_suite' }),
       makeAgent({ id: 'dev', name: 'Dev', department: 'engineering', level: 'mid' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     for (const edge of result.edges) {
       expect(edge.type).toBe('hierarchy')
@@ -426,7 +438,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'lead-1', name: 'Lead', department: 'engineering', level: 'lead' }),
       makeAgent({ id: undefined, name: 'NoIdAgent', department: 'engineering', level: 'mid' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     const agentNode = result.nodes.find((n) => (n.data as AgentNodeData).name === 'NoIdAgent')
     expect(agentNode).toBeDefined()
@@ -440,7 +452,7 @@ describe('buildOrgTree', () => {
       makeAgent({ id: 'a1', name: 'ActiveDefault', department: 'engineering', level: 'mid', status: undefined }),
       makeAgent({ id: 'a2', name: 'Terminated', department: 'engineering', level: 'mid', status: 'terminated' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
 
     const agentNames = result.nodes
       .filter((n) => n.type === 'agent')
@@ -463,7 +475,7 @@ describe('team group nodes', () => {
         { name: 'backend', lead: 'Alice', members: ['Alice', 'Bob'] },
       ]),
     ]
-    const result = buildOrgTree(makeConfig(agents, depts), {}, [])
+    const result = buildTree(makeConfig(agents, depts), {}, [])
     const teamNodes = result.nodes.filter((n) => n.type === 'team')
     expect(teamNodes).toHaveLength(1)
     expect(teamNodes[0]!.id).toBe('team-engineering-backend')
@@ -480,7 +492,7 @@ describe('team group nodes', () => {
         { name: 'backend', lead: 'Alice', members: ['Alice', 'Bob'] },
       ]),
     ]
-    const result = buildOrgTree(makeConfig(agents, depts), {}, [])
+    const result = buildTree(makeConfig(agents, depts), {}, [])
     const bob = result.nodes.find((n) => n.id === 'a2')
     expect(bob?.parentId).toBe('team-engineering-backend')
   })
@@ -489,7 +501,7 @@ describe('team group nodes', () => {
     const agents = [
       makeAgent({ id: 'a1', name: 'Alice', department: 'engineering', level: 'lead' }),
     ]
-    const result = buildOrgTree(makeConfig(agents), {}, [])
+    const result = buildTree(makeConfig(agents), {}, [])
     const teamNodes = result.nodes.filter((n) => n.type === 'team')
     expect(teamNodes).toHaveLength(0)
   })
@@ -505,7 +517,7 @@ describe('team group nodes', () => {
         { name: 'backend', lead: 'Alice', members: ['Alice', 'Bob'] },
       ]),
     ]
-    const result = buildOrgTree(makeConfig(agents, depts), {}, [])
+    const result = buildTree(makeConfig(agents, depts), {}, [])
     const carol = result.nodes.find((n) => n.id === 'a3')
     expect(carol?.parentId).toBe('dept-engineering')
   })

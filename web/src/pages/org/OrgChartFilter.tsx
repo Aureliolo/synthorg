@@ -11,6 +11,16 @@ export interface OrgChartFilterResult {
   overlay: React.ReactNode
 }
 
+/** True when a node's label or (for agents) role contains the query. */
+function nodeMatchesQuery(n: Node, query: string): boolean {
+  if (getNodeLabel(n).toLowerCase().includes(query)) return true
+  if (n.type === 'agent' || n.type === 'ceo') {
+    const role = (n.data as AgentNodeData).role?.toLowerCase() ?? ''
+    return role.includes(query)
+  }
+  return false
+}
+
 /**
  * Command-palette-style search over the full org tree (including collapsed
  * departments), plus the dim-others highlight effect that's applied when
@@ -41,17 +51,7 @@ export function useOrgChartFilter(allNodes: Node[]): OrgChartFilterResult {
     if (!normalisedQuery) return null
     const matches = new Set<string>()
     for (const n of allNodes) {
-      const label = getNodeLabel(n).toLowerCase()
-      if (label.includes(normalisedQuery)) {
-        matches.add(n.id)
-        continue
-      }
-      if (n.type === 'agent' || n.type === 'ceo') {
-        const role = (n.data as AgentNodeData).role?.toLowerCase() ?? ''
-        if (role.includes(normalisedQuery)) {
-          matches.add(n.id)
-        }
-      }
+      if (nodeMatchesQuery(n, normalisedQuery)) matches.add(n.id)
     }
     return matches
   }, [normalisedQuery, allNodes])
