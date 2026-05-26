@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workflow.ceremony_bridge import (
     build_trigger_event_name,
@@ -168,9 +169,8 @@ class CeremonyScheduler:
             return (0.0, 0.0)
         try:
             return self._budget_snapshot()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SPRINT_CEREMONY_BUDGET_SNAPSHOT_FAILED,
                 error_type=type(exc).__name__,
@@ -286,9 +286,8 @@ class CeremonyScheduler:
                 # failure -- otherwise the scheduler stays running with
                 # ceremonies already fired and a retry double-triggers.
                 await self._save_state_unlocked(sprint.id)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     SPRINT_CEREMONY_SCHEDULER_START_FAILED,
@@ -324,9 +323,8 @@ class CeremonyScheduler:
             return
         try:
             record = await self._state_repo.get(NotBlankStr(sprint_id))
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SPRINT_CEREMONY_SCHEDULER_START_FAILED,
                 sprint_id=sprint_id,
@@ -423,9 +421,8 @@ class CeremonyScheduler:
         )
         try:
             await self._state_repo.save(record)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SPRINT_CEREMONY_SCHEDULER_START_FAILED,
                 sprint_id=sprint_id,
@@ -441,7 +438,13 @@ class CeremonyScheduler:
         sprint: Sprint,
         previous_velocity_history_size: int,
     ) -> StrategyMigrationInfo | None:
-        """Detect and log a strategy migration (if any)."""
+        """Detect and log a strategy migration (if any).
+
+        Returns:
+            A :class:`StrategyMigrationInfo` describing the change when
+            the active strategy type differs from the previous sprint's
+            strategy, ``None`` when there is no migration.
+        """
         migration = detect_strategy_migration(
             previous_strategy_type,
             strategy.strategy_type,
@@ -479,9 +482,8 @@ class CeremonyScheduler:
         if self._active_strategy is not None:
             try:
                 await self._active_strategy.on_sprint_deactivated()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     SPRINT_CEREMONY_DEACTIVATION_HOOK_FAILED,
@@ -501,9 +503,8 @@ class CeremonyScheduler:
                 await self._state_repo.delete(
                     NotBlankStr(self._active_sprint.id),
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     SPRINT_CEREMONY_SCHEDULER_STOPPED,
                     sprint_id=sprint_id,
@@ -566,9 +567,8 @@ class CeremonyScheduler:
                     story_points,
                     context,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     SPRINT_CEREMONY_STRATEGY_HOOK_FAILED,
@@ -618,7 +618,15 @@ class CeremonyScheduler:
         sprint: Sprint,
         context: CeremonyEvalContext,
     ) -> Sprint:
-        """Check and apply auto-transition if strategy says so."""
+        """Check and apply auto-transition if strategy says so.
+
+        Returns:
+            The (possibly transitioned) sprint object. When the
+            strategy targets a transition while the sprint is
+            ``ACTIVE``, returns the sprint after
+            :py:meth:`Sprint.with_transition` is applied; otherwise
+            returns ``sprint`` unchanged.
+        """
         assert self._active_strategy is not None  # noqa: S101
         assert self._sprint_config is not None  # noqa: S101
 
@@ -743,6 +751,11 @@ class CeremonyScheduler:
         auto-transition), ``completions_since_last_trigger`` is set
         to 0 because there is no specific ceremony in scope.
         Per-ceremony contexts use ``_build_ceremony_context`` instead.
+
+        Returns:
+            A :class:`CeremonyEvalContext` populated with sprint-wide
+            progress, budget snapshot, velocity history, and zero
+            per-ceremony counters.
         """
         total_tasks, _, pct = self._compute_sprint_progress(sprint)
         consumed_fraction, remaining = self._resolve_budget_snapshot()
@@ -766,7 +779,13 @@ class CeremonyScheduler:
         ceremony_name: str,
         sprint: Sprint,
     ) -> CeremonyEvalContext:
-        """Build context for a specific ceremony (per-ceremony counter)."""
+        """Build context for a specific ceremony (per-ceremony counter).
+
+        Returns:
+            A :class:`CeremonyEvalContext` carrying the per-ceremony
+            completions counter alongside the same sprint-wide metrics
+            as :py:meth:`_build_context`.
+        """
         total_tasks, _, pct = self._compute_sprint_progress(sprint)
         consumed_fraction, remaining = self._resolve_budget_snapshot()
 
@@ -790,7 +809,12 @@ class CeremonyScheduler:
     # -- Trigger execution ---------------------------------------------
 
     def _is_one_shot_fired(self, ceremony_name: str) -> bool:
-        """Check if a one-shot ceremony has already fired."""
+        """Check if a one-shot ceremony has already fired.
+
+        Returns:
+            ``True`` if the ceremony was already fired this sprint,
+            ``False`` otherwise.
+        """
         return ceremony_name in self._fired_once_triggers
 
     async def _trigger_ceremony(
@@ -824,9 +848,8 @@ class CeremonyScheduler:
                 event_name,
                 context=context,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 SPRINT_CEREMONY_TRIGGER_FAILED,
@@ -840,7 +863,13 @@ class CeremonyScheduler:
 
 
 def _get_trigger(ceremony: SprintCeremonyConfig) -> str | None:
-    """Extract the trigger string from a ceremony's policy override."""
+    """Extract the trigger string from a ceremony's policy override.
+
+    Returns:
+        The configured trigger string, or ``None`` when the ceremony
+        has no policy override or no ``trigger`` key in its strategy
+        config.
+    """
     if ceremony.policy_override is None:
         return None
     sc = ceremony.policy_override.strategy_config or {}

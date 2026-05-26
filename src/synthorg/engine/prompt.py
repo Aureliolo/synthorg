@@ -32,6 +32,7 @@ from synthorg.budget.currency import (
 from synthorg.communication.async_tasks.models import (  # noqa: TC001
     AsyncTaskStateChannel,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine._prompt_helpers import SECTION_COMPANY as _SECTION_COMPANY
 from synthorg.engine._prompt_helpers import (
     SECTION_ORG_POLICIES as _SECTION_ORG_POLICIES,
@@ -238,9 +239,8 @@ def build_system_prompt(  # noqa: PLR0913
     if org_policies:
         try:
             validate_policy_quality(org_policies)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROMPT_POLICY_VALIDATION_FAILED,
                 agent_id=str(agent.id),
@@ -281,15 +281,8 @@ def build_system_prompt(  # noqa: PLR0913
         )
     except PromptBuildError:
         raise  # Already logged by inner functions.
-    except MemoryError, RecursionError:
-        logger.error(
-            PROMPT_BUILD_ERROR,
-            agent_id=str(agent.id),
-            agent_name=agent.name,
-            error="non-recoverable error building prompt",
-        )
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PROMPT_BUILD_ERROR,
             agent_id=str(agent.id),
@@ -310,9 +303,8 @@ def build_system_prompt(  # noqa: PLR0913
                 async_task_state,
                 estimator,
             )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PROMPT_BUILD_ERROR,
             agent_id=str(agent.id),
@@ -336,6 +328,10 @@ def _inject_async_task_section(
 
     This section is appended after trimming so it is never trimmed away.
     Recomputes ``estimated_tokens`` to reflect the injected content.
+
+    Returns:
+        A copy of ``prompt`` with the appended section and refreshed
+        ``estimated_tokens``.
     """
     new_content, new_tokens = inject_async_task_section(
         content=prompt.content,
@@ -355,7 +351,11 @@ def _log_and_return(
     agent: AgentIdentity,
     result: SystemPrompt,
 ) -> SystemPrompt:
-    """Log prompt build success and return the result."""
+    """Log prompt build success and return the result.
+
+    Returns:
+        The same ``result`` echoed back to the caller.
+    """
     log_prompt_build_success(
         agent,
         sections=result.sections,
@@ -504,8 +504,10 @@ def _trim_sections(  # noqa: PLR0913
 ]:
     """Progressively remove optional sections until under token budget.
 
-    Returns ``(content, estimated, task, company, org_policies,
-    strategy_config)`` so the caller can reuse the final render.
+    Returns:
+        ``(content, estimated, task, company, org_policies,
+        strategy_config)`` so the caller can reuse the final render
+        (each section may be dropped to fit ``max_tokens``).
     """
     from synthorg.engine._prompt_helpers import (  # noqa: PLC0415
         SECTION_STRATEGY as _SECTION_STRATEGY_LOCAL,
@@ -594,7 +596,13 @@ def _render_with_trimming(  # noqa: PLR0913
     trimming_enabled: bool = True,
     strategy_config: StrategyConfig | None = None,
 ) -> SystemPrompt:
-    """Render the prompt, trimming optional sections if over token budget."""
+    """Render the prompt, trimming optional sections if over token budget.
+
+    Returns:
+        The rendered :class:`SystemPrompt` (trimmed sections recorded
+        in ``trimmed_sections`` when the initial render was over
+        budget).
+    """
     content, estimated, trim_info = _render_and_estimate(
         template_str,
         agent,
@@ -666,7 +674,13 @@ def _build_prompt_result(  # noqa: PLR0913
     personality_trim_info: PersonalityTrimInfo | None = None,
     strategy_config: StrategyConfig | None = None,
 ) -> SystemPrompt:
-    """Assemble the final ``SystemPrompt`` from rendered content."""
+    """Assemble the final ``SystemPrompt`` from rendered content.
+
+    Returns:
+        The composed :class:`SystemPrompt` with sections, token
+        estimate, template version, and optional personality-trim
+        info populated.
+    """
     from synthorg.engine.strategy.prompt_injection import (  # noqa: PLC0415
         should_inject_strategy,
     )

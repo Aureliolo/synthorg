@@ -109,6 +109,11 @@ def _is_transient_build_failure(outcome: BuildOutcome) -> bool:
     scanned for registry / network / daemon markers. A plain non-zero
     exit with no transient marker is a deterministic Dockerfile failure
     and is not retried.
+
+    Returns:
+        ``True`` when the build outcome looks transient (timeout or a
+        known registry/network/daemon marker in the log) and should
+        be retried; ``False`` for deterministic Dockerfile failures.
     """
     if outcome.timed_out:
         return True
@@ -163,7 +168,13 @@ class DevcontainerEnvironmentStrategy:
         return self._declaration_path(workspace_path).is_file()
 
     async def scaffold(self, workspace_path: Path) -> ScaffoldResult:
-        """Write the default declaration if absent (idempotent no-op otherwise)."""
+        """Write the default declaration if absent (idempotent no-op otherwise).
+
+        Returns:
+            A :class:`ScaffoldResult` with ``seeded=True`` and the
+            written file path when a fresh declaration was created;
+            ``seeded=False`` when one already existed.
+        """
         if self.detect(workspace_path):
             return ScaffoldResult(seeded=False)
         target = self._nested_path(workspace_path)
@@ -195,7 +206,17 @@ class DevcontainerEnvironmentStrategy:
         return raw
 
     def declaration_hash(self, workspace_path: Path) -> NotBlankStr:
-        """SHA-256 over the declaration plus its referenced Dockerfile."""
+        """SHA-256 over the declaration plus its referenced Dockerfile.
+
+        Returns:
+            The lowercase hex SHA-256 digest covering the declaration
+            bytes and (when a ``build:`` declaration is used) the
+            referenced Dockerfile.
+
+        Raises:
+            EnvironmentConfigError: When the declaration file is missing
+                or unreadable as JSON.
+        """
         path = self._declaration_path(workspace_path)
         if not path.is_file():
             msg = f"devcontainer declaration {_DEVCONTAINER_JSON!r} not found"
@@ -220,7 +241,12 @@ class DevcontainerEnvironmentStrategy:
         return NotBlankStr(digest.hexdigest())
 
     def managed_paths(self, workspace_path: Path) -> tuple[str, ...]:
-        """The devcontainer declaration plus its referenced Dockerfile."""
+        """The devcontainer declaration plus its referenced Dockerfile.
+
+        Returns:
+            Workspace-relative paths managed by this strategy in
+            POSIX form; ``()`` when no declaration is present.
+        """
         path = self._declaration_path(workspace_path)
         if not path.is_file():
             return ()
@@ -236,7 +262,13 @@ class DevcontainerEnvironmentStrategy:
         return tuple(paths)
 
     def runtime_env_vars(self, workspace_path: Path) -> dict[str, str]:
-        """The declaration's ``containerEnv`` additions (empty if absent)."""
+        """The declaration's ``containerEnv`` additions (empty if absent).
+
+        Returns:
+            Mapping of environment variable name to string value from
+            the declaration's ``containerEnv``; ``{}`` when the field
+            is missing or not a JSON object.
+        """
         if not self.detect(workspace_path):
             return {}
         container_env = self._read_config(workspace_path).get("containerEnv")
@@ -247,7 +279,17 @@ class DevcontainerEnvironmentStrategy:
     def _resolve_within(
         self, workspace_path: Path, base_dir: Path, candidate: object
     ) -> Path | None:
-        """Resolve *candidate* under *base_dir*, rejecting workspace escape."""
+        """Resolve *candidate* under *base_dir*, rejecting workspace escape.
+
+        Returns:
+            The resolved absolute :class:`Path` when ``candidate`` is
+            a non-empty string under the workspace; ``None`` when the
+            input is unusable (non-string, empty).
+
+        Raises:
+            EnvironmentConfigError: When the resolved path escapes the
+                workspace root.
+        """
         if not isinstance(candidate, str) or not candidate:
             return None
         resolved = (base_dir / candidate).resolve()
@@ -388,7 +430,19 @@ class DevcontainerEnvironmentStrategy:
         runner: EnvironmentCommandRunner,
         sandbox_kind: NotBlankStr,
     ) -> ProvisionedEnvironment:
-        """Build/select the image and run any postCreateCommand."""
+        """Build/select the image and run any postCreateCommand.
+
+        Returns:
+            A :class:`ProvisionedEnvironment` carrying the declaration
+            hash, the resolved image reference, the merged container
+            env vars, and the post-create setup log.
+
+        Raises:
+            EnvironmentBackendUnavailableError: When the sandbox backend
+                is not Docker (devcontainer requires the sealed-image
+                Docker path; a host subprocess backend would silently
+                degrade and is rejected).
+        """
         if str(sandbox_kind) != _DOCKER_BACKEND:
             msg = (
                 "devcontainer environment requires the Docker sandbox backend; "

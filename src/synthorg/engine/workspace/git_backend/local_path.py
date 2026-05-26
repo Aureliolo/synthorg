@@ -70,11 +70,19 @@ class LocalPathGitBackend:
         self._clock: Clock = clock if clock is not None else SystemClock()
 
     def get_backend_type(self) -> GitBackendType:
-        """Return the ``LOCAL_PATH`` discriminator."""
+        """Return the ``LOCAL_PATH`` discriminator.
+
+        Returns:
+            :attr:`GitBackendType.LOCAL_PATH`.
+        """
         return GitBackendType.LOCAL_PATH
 
     def _repo_path_for_project(self, project_id: str) -> Path:
-        """Derive the per-project repository path under the base."""
+        """Derive the per-project repository path under the base.
+
+        Returns:
+            ``<local_repo_path>/<project_id>``.
+        """
         return self._repo_base / project_id
 
     def _non_empty_non_repo_dir(self, repo_path: Path) -> bool:
@@ -84,6 +92,11 @@ class LocalPathGitBackend:
         "non-empty" -- ``iterdir()`` on a file raises ``NotADirectoryError``,
         and the caller's intent is to refuse provisioning over a
         non-empty location regardless of whether it is a file or a dir.
+
+        Returns:
+            ``True`` when ``repo_path`` exists and is either a file
+            or a non-empty directory; ``False`` for absent paths and
+            empty directories.
         """
         if not repo_path.exists():
             return False
@@ -99,6 +112,10 @@ class LocalPathGitBackend:
         working tree; in that case ``git init`` would silently no-op and
         the subsequent ``git config`` / ``git commit`` would mutate the
         outer repo. Raise instead of silently corrupting it.
+
+        Raises:
+            GitBackendProvisionError: When ``path`` is nested inside
+                an existing working tree at a different toplevel.
         """
         from synthorg.engine.workspace._git_subprocess import (  # noqa: PLC0415
             run_git_subprocess,
@@ -133,7 +150,19 @@ class LocalPathGitBackend:
         workspace_path: Path,  # noqa: ARG002 -- per-project base path derived from config
         default_branch: NotBlankStr,
     ) -> ProvisionResult:
-        """Validate / initialise the per-project local repository."""
+        """Validate / initialise the per-project local repository.
+
+        Returns:
+            A :class:`ProvisionResult` carrying the per-project repo
+            root, the default branch, and ``newly_created`` reporting
+            whether ``git init`` ran (``False`` for an existing repo).
+
+        Raises:
+            GitBackendConfigError: When the target path already exists
+                but is not a git repository and is not empty.
+            GitBackendProvisionError: When directory creation, ``git
+                init``, or any follow-up ``git config`` / commit fails.
+        """
         pid = str(project_id)
         repo_path = self._repo_path_for_project(pid)
         logger.info(
@@ -230,7 +259,12 @@ class LocalPathGitBackend:
         source: ResolvedSource,
         default_branch: NotBlankStr,
     ) -> SeedResult:
-        """Import *source* into the per-project repo (on-disk durable store)."""
+        """Import *source* into the per-project repo (on-disk durable store).
+
+        Returns:
+            A :class:`SeedResult` recording the repo root, default
+            branch, head SHA after seeding, and the source kind.
+        """
         pid = str(project_id)
         logger.info(
             GIT_BACKEND_SEED_START,
@@ -270,7 +304,13 @@ class LocalPathGitBackend:
         branch: NotBlankStr,
         base_branch: NotBlankStr,  # noqa: ARG002 -- no remote; on-disk is durable
     ) -> PushResult:
-        """Resolve the branch head (on-disk repo is the durable store)."""
+        """Resolve the branch head (on-disk repo is the durable store).
+
+        Returns:
+            A :class:`PushResult` carrying the branch name and the
+            resolved HEAD SHA (the on-disk repo is the durable
+            store, so this is a no-op apart from SHA capture).
+        """
         # Local-path: the on-disk repo IS the durable store; "push" is
         # the no-op durability point. Resolve the branch head so callers
         # still get a verifiable commit SHA.
@@ -294,7 +334,12 @@ class LocalPathGitBackend:
         repo_root: Path,  # noqa: ARG002
         branch: NotBlankStr | None = None,  # noqa: ARG002
     ) -> FetchResult:
-        """No remote to fetch from; returns empty refs for protocol parity."""
+        """No remote to fetch from; returns empty refs for protocol parity.
+
+        Returns:
+            A :class:`FetchResult` with ``updated_refs=()`` (the
+            local-path backend has no remote to fetch from).
+        """
         # No remote: nothing to fetch. Returning empty refs keeps the
         # protocol contract uniform across backends.
         return FetchResult(updated_refs=())

@@ -121,6 +121,10 @@ class IntakeEngine:
         Args:
             request: A client request already in SCOPING status.
 
+        Returns:
+            ``(updated_request, IntakeResult)`` -- the request after
+            its terminal transition and the strategy outcome.
+
         Raises:
             ValueError: If ``request.status`` is not ``SCOPING``.
         """

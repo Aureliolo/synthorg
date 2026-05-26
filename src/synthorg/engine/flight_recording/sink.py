@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from synthorg.providers.models import ChatMessage
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
@@ -79,13 +80,12 @@ class PersistenceFlightRecorderSink:
             return
         try:
             await self._repository.append_many(frames)
-        except MemoryError, RecursionError:
-            # System errors escape the broad ``Exception`` catch below so
-            # the engine still gets the operator-fatal signal it expects
-            # at the per-turn boundary. The recording path is best-effort
-            # for storage faults only.
-            raise
         except Exception as exc:
+            # ``reraise_critical`` ensures system errors escape so the
+            # engine still gets the operator-fatal signal it expects
+            # at the per-turn boundary. The recording path is best-
+            # effort for storage faults only.
+            reraise_critical(exc)
             logger.warning(
                 FLIGHT_RECORDER_RECORD_FAILED,
                 execution_id=frames[0].execution_id,
@@ -118,9 +118,10 @@ def build_flight_recorder_sink(
 ) -> FlightRecorderSink:
     """Select the configured recorder sink.
 
-    Returns a :class:`NoOpFlightRecorderSink` when recording is disabled,
-    the strategy is ``"noop"``, or no repository is available; otherwise
-    the persistence-backed sink.
+    Returns:
+        A :class:`NoOpFlightRecorderSink` when recording is disabled,
+        the strategy is ``"noop"``, or no repository is available;
+        otherwise the persistence-backed sink.
     """
     if not enabled or strategy == "noop" or repository is None:
         return NoOpFlightRecorderSink()
@@ -128,14 +129,25 @@ def build_flight_recorder_sink(
 
 
 def _truncate(text: str | None, max_chars: int) -> str | None:
-    """Trim *text* to *max_chars*, returning ``None`` when empty."""
+    """Trim *text* to *max_chars*, returning ``None`` when empty.
+
+    Returns:
+        The first ``max_chars`` characters of ``text``, or ``None``
+        when ``text`` is falsy.
+    """
     if not text:
         return None
     return text[:max_chars]
 
 
 def _classify_decision(turn: TurnRecord) -> str:
-    """Classify a turn's outcome for the replay decision label."""
+    """Classify a turn's outcome for the replay decision label.
+
+    Returns:
+        ``"tool_call"`` when the turn invoked tools; ``"completed"``
+        for a plain STOP finish; otherwise the literal finish-reason
+        value.
+    """
     if turn.tool_calls_made:
         return "tool_call"
     if turn.finish_reason is FinishReason.STOP:
@@ -162,6 +174,11 @@ def build_frames(  # noqa: PLR0913 -- keyword-only frame builder, all required
     still correlates each turn with its actual assistant message instead
     of the first one in the full history. The terminal turn carries the
     run's outcome status; earlier turns are ``IN_PROGRESS``.
+
+    Returns:
+        Tuple of :class:`FlightRecorderFrame`, one per turn, with the
+        run's terminal status stamped on the final frame and
+        ``IN_PROGRESS`` on earlier frames.
     """
     timestamp = (clock or SystemClock()).now()
     assistant_messages = [
@@ -199,6 +216,10 @@ def _response_for_turn(
     whether the run started fresh or resumed from a checkpoint. An
     out-of-range index (e.g. the conversation never recorded an
     assistant turn for that index) returns ``None`` rather than raising.
+
+    Returns:
+        The matching assistant message content; ``None`` when the
+        turn index is outside the assistant-message range.
     """
     msg_index = turn.turn_number - 1
     if 0 <= msg_index < len(assistant_messages):
@@ -217,7 +238,12 @@ def _frame_for_turn(  # noqa: PLR0913 -- per-turn frame fields, all required
     timestamp: AwareDatetime,
     summary_max_chars: int,
 ) -> FlightRecorderFrame:
-    """Build one flight-recorder frame from a turn record."""
+    """Build one flight-recorder frame from a turn record.
+
+    Returns:
+        A :class:`FlightRecorderFrame` carrying the turn's summary,
+        decision, tool calls, token / cost / status fields.
+    """
     return FlightRecorderFrame(
         execution_id=execution_id,
         task_id=task_id,

@@ -40,7 +40,15 @@ _VALUE_TYPE_CHECKS: dict[WorkflowValueType, type | tuple[type, ...]] = {
 
 
 def _check_default_type(name: str, default: object, vtype: WorkflowValueType) -> None:
-    """Validate that *default* is compatible with *vtype*."""
+    """Validate that *default* is compatible with *vtype*.
+
+    Raises:
+        TypeError: If ``default`` is not serialisable as JSON when
+            ``vtype`` is ``JSON``, if ``default``'s Python type does
+            not match ``vtype``, if a ``DATETIME`` default is not a
+            valid ISO-8601 string, or if a ``FLOAT`` default is not
+            finite.
+    """
     if vtype is WorkflowValueType.JSON:
         try:
             json.dumps(default, allow_nan=False)
@@ -106,7 +114,16 @@ class WorkflowIODeclaration(BaseModel):
 
     @model_validator(mode="after")
     def _validate_default_compatible(self) -> Self:
-        """Reject defaults on required declarations and type-check defaults."""
+        """Reject defaults on required declarations and type-check defaults.
+
+        Returns:
+            The unmodified ``self`` (validators must return the model).
+
+        Raises:
+            ValueError: If a required declaration carries a default,
+                or if :func:`_check_default_type` re-raises a typed
+                rejection that surfaces here as a ``ValueError``.
+        """
         if self.required and self.default is not None:
             msg = (
                 f"Declaration {self.name!r}: required declarations "
@@ -248,7 +265,15 @@ class WorkflowDefinition(BaseModel):
     @field_validator("version")
     @classmethod
     def _validate_semver(cls, value: str) -> str:
-        """Reject non-strict semver (must be MAJOR.MINOR.PATCH)."""
+        """Reject non-strict semver (must be MAJOR.MINOR.PATCH).
+
+        Returns:
+            The validated ``value`` unchanged.
+
+        Raises:
+            ValueError: If ``value`` is not strict ``MAJOR.MINOR.PATCH``
+                semver.
+        """
         if not re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", value):
             msg = (
                 f"Invalid version {value!r}: must be strict"
@@ -259,7 +284,15 @@ class WorkflowDefinition(BaseModel):
 
     @model_validator(mode="after")
     def _validate_outputs_required(self) -> Self:
-        """Ensure all output declarations are required."""
+        """Ensure all output declarations are required.
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If any output declaration has ``required=False``
+                (optional outputs are not supported).
+        """
         for decl in self.outputs:
             if not decl.required:
                 msg = (
@@ -271,7 +304,15 @@ class WorkflowDefinition(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_io_names(self) -> Self:
-        """Reject duplicate input or output names within the same scope."""
+        """Reject duplicate input or output names within the same scope.
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If any input or output name appears more than
+                once in its respective collection.
+        """
         input_names = tuple(decl.name for decl in self.inputs)
         if len(input_names) != len(set(input_names)):
             dupes = sorted(v for v, c in Counter(input_names).items() if c > 1)
@@ -287,7 +328,14 @@ class WorkflowDefinition(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_ids(self) -> Self:
-        """Reject duplicate node or edge IDs."""
+        """Reject duplicate node or edge IDs.
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If any node id or edge id is not unique.
+        """
         node_ids = tuple(n.id for n in self.nodes)
         if len(node_ids) != len(set(node_ids)):
             dupes = sorted(v for v, c in Counter(node_ids).items() if c > 1)
@@ -304,7 +352,15 @@ class WorkflowDefinition(BaseModel):
 
     @model_validator(mode="after")
     def _validate_edge_references(self) -> Self:
-        """Ensure all edges reference existing nodes and no self-loops."""
+        """Ensure all edges reference existing nodes and no self-loops.
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If an edge self-references the same node, or if
+                either endpoint id is not in the node set.
+        """
         node_id_set = frozenset(n.id for n in self.nodes)
         for edge in self.edges:
             if edge.source_node_id == edge.target_node_id:
@@ -326,7 +382,15 @@ class WorkflowDefinition(BaseModel):
 
     @model_validator(mode="after")
     def _validate_terminal_nodes(self) -> Self:
-        """Require exactly one START and one END node."""
+        """Require exactly one START and one END node.
+
+        Returns:
+            The unmodified ``self``.
+
+        Raises:
+            ValueError: If the node set has any count other than one
+                START node or one END node.
+        """
         start_count = sum(1 for n in self.nodes if n.type == WorkflowNodeType.START)
         end_count = sum(1 for n in self.nodes if n.type == WorkflowNodeType.END)
 

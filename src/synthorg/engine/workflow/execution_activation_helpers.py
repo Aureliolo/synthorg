@@ -65,6 +65,11 @@ def find_downstream_task_ids(
     intervening control nodes (CONDITIONAL, SPLIT, JOIN, etc.)
     to reach the actual TASK nodes.  Stops at other
     AGENT_ASSIGNMENT nodes (which override).
+
+    Returns:
+        List of TASK node ids reachable from ``nid`` via control
+        nodes; the search stops at downstream AGENT_ASSIGNMENT
+        nodes (those override the upstream assignment).
     """
     result: list[str] = []
     visited: set[str] = set()
@@ -111,6 +116,10 @@ def find_upstream_task_ids(
     (not in ``node_task_ids``) are also excluded.  SUBWORKFLOW
     entries may contain a tuple of terminal task IDs from the child
     graph.
+
+    Returns:
+        Sorted tuple of unique upstream task ids reachable from
+        ``node_id`` via the control-node hops described above.
     """
     result: list[str] = []
     visited: set[str] = set()
@@ -148,6 +157,10 @@ def find_skipped_nodes(
 
     BFS from the untaken target, collecting all downstream nodes
     that are NOT reachable from the taken target.
+
+    Returns:
+        Set of node ids reachable from ``untaken_target`` but not
+        from ``taken_target`` (i.e. the skipped-branch frontier).
     """
     # Find all nodes reachable from the taken branch
     taken_reachable: set[str] = set()
@@ -277,6 +290,10 @@ def parse_task_config(
 
     Returns:
         A 5-tuple of (title, description, task_type, priority, complexity).
+
+    Raises:
+        ValueError: When ``task_type``, ``priority``, or
+            ``estimated_complexity`` carry unknown literals.
     """
     title = str(config.get("title", node.label))
     description = str(config.get("description", f"Task from workflow node {nid}"))

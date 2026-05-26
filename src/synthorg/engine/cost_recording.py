@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
@@ -34,6 +35,11 @@ def resolve_tracker_currency(tracker: CostTracker | None) -> CurrencyCode:
     budget config is unset.  Used by every site that constructs an
     ``AgentRunResult`` so the result carries the same currency as the
     cost rows the tracker emits.
+
+    Returns:
+        The configured :class:`CurrencyCode`, or
+        :data:`DEFAULT_CURRENCY` when no tracker / budget config is
+        available.
     """
     budget_config = getattr(tracker, "budget_config", None)
     if budget_config is None:
@@ -57,9 +63,13 @@ async def record_execution_costs(  # noqa: PLR0913
     granularity.  Turns with zero cost and zero tokens are skipped.
 
     Recording failures for regular exceptions are logged but do not
-    affect the execution result.  ``MemoryError`` and
-    ``RecursionError`` propagate unconditionally as non-recoverable
-    system errors.
+    affect the execution result.
+
+    Raises:
+        MemoryError: Re-raised unconditionally via
+            :func:`reraise_critical` (non-recoverable).
+        RecursionError: Re-raised unconditionally via
+            :func:`reraise_critical` (non-recoverable).
     """
     if tracker is None:
         logger.debug(
@@ -106,9 +116,8 @@ async def record_execution_costs(  # noqa: PLR0913
                 finish_reason=turn.finish_reason,
                 success=turn.success,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Validator rejection (e.g. negative cost, blank identifier)
             # would otherwise bubble up and abort the whole recording
             # pass. This function documents recording failures as
@@ -157,9 +166,8 @@ async def record_execution_costs(  # noqa: PLR0913
                 output_tokens=turn.output_tokens,
                 cost=turn.cost,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EXECUTION_ENGINE_COST_FAILED,
                 agent_id=agent_id,
@@ -170,6 +178,8 @@ async def record_execution_costs(  # noqa: PLR0913
                 output_tokens=turn.output_tokens,
                 cost=turn.cost,
                 reason="metrics_mirror_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
 
@@ -191,9 +201,8 @@ async def _submit_cost_record(
     """
     try:
         await tracker.record(record)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             EXECUTION_ENGINE_COST_FAILED,
             agent_id=agent_id,

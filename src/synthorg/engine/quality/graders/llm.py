@@ -1,3 +1,4 @@
+# module-kind: adapter
 """LLM-based rubric grader.
 
 Grades a ``HandoffArtifact`` against a ``VerificationRubric`` by
@@ -20,6 +21,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_UNTRUSTED_ARTIFACT,
@@ -104,7 +106,13 @@ _GRADER_TOOL_REQUIRED_KEYS: Final[frozenset[str]] = frozenset(
 
 
 def _render_rubric_block(rubric: VerificationRubric) -> dict[str, Any]:
-    """Serialize rubric criteria + calibration examples for the prompt."""
+    """Serialize rubric criteria + calibration examples for the prompt.
+
+    Returns:
+        A JSON-serialisable dict carrying the rubric name, minimum
+        confidence, the criteria list (name, description, weight,
+        grade type), and the calibration examples.
+    """
     calibration = [
         {
             "artifact_summary": ex.artifact_summary,
@@ -135,7 +143,12 @@ def _render_rubric_block(rubric: VerificationRubric) -> dict[str, Any]:
 def _render_probes_block(
     probes: tuple[AtomicProbe, ...],
 ) -> list[dict[str, Any]]:
-    """Serialize probes for the prompt."""
+    """Serialize probes for the prompt.
+
+    Returns:
+        A list of probe dicts (``id`` / ``probe_text`` /
+        ``source_criterion``) in input order.
+    """
     return [
         {
             "id": p.id,
@@ -151,7 +164,13 @@ def _render_artifact_block(
     *,
     payload_text: str,
 ) -> dict[str, Any]:
-    """Serialize the artifact metadata + (possibly truncated) payload."""
+    """Serialize the artifact metadata + (possibly truncated) payload.
+
+    Returns:
+        A dict carrying the handoff endpoints, artifact refs, and the
+        wrapped ``payload`` body (already passed through
+        :func:`wrap_untrusted` by the caller).
+    """
     return {
         "from_agent_id": artifact.from_agent_id,
         "to_agent_id": artifact.to_agent_id,
@@ -167,7 +186,13 @@ def _build_instructions(
     payload_truncated: bool,
     original_len: int,
 ) -> str:
-    """Render the final instruction block, adding a truncation notice."""
+    """Render the final instruction block, adding a truncation notice.
+
+    Returns:
+        The instruction text passed to the LLM, suffixed with an
+        explicit truncation notice when ``payload_truncated`` is true so
+        the model can route insufficient evidence to ``REFER``.
+    """
     base = (
         "Call emit_rubric_verdict exactly once.  Provide a grade "
         "for every rubric criterion by name (use the criterion "
@@ -203,7 +228,12 @@ class LLMRubricGrader:
         min_confidence_override: float | None = None,
         cost_tracker: CostTracker | None = None,
     ) -> None:
-        """Store dependencies and validate override bounds."""
+        """Store dependencies and validate override bounds.
+
+        Raises:
+            ValueError: If ``min_confidence_override`` is outside
+                ``[0, 1]``.
+        """
         if min_confidence_override is not None and not (
             0.0 <= min_confidence_override <= 1.0
         ):
@@ -299,16 +329,20 @@ class LLMRubricGrader:
         generator_agent_id: NotBlankStr,
         evaluator_agent_id: NotBlankStr,
     ) -> list[ChatMessage]:
-        """Build grader messages; log + re-raise on envelope failure."""
+        """Build grader messages; log + re-raise on envelope failure.
+
+        Returns:
+            The list of ``ChatMessage`` instances (system + user) passed
+            to the provider's ``complete()`` call.
+        """
         try:
             return self._build_messages(
                 artifact=artifact,
                 rubric=rubric,
                 probes=probes,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 VERIFICATION_GRADER_FAILED,
@@ -337,7 +371,13 @@ class LLMRubricGrader:
         generator_agent_id: NotBlankStr,
         evaluator_agent_id: NotBlankStr,
     ) -> VerificationResult:
-        """Build the ``VerificationResult`` + emit the completion event."""
+        """Build the ``VerificationResult`` + emit the completion event.
+
+        Returns:
+            A :class:`VerificationResult` carrying the LLM-decided
+            verdict, confidence, per-criterion grades, findings, and
+            grading metadata for downstream routing.
+        """
         per_criterion_grades, verdict, confidence, findings = interpreted
         result = VerificationResult(
             verdict=verdict,
@@ -365,7 +405,12 @@ class LLMRubricGrader:
         rubric: VerificationRubric,
         probes: tuple[AtomicProbe, ...],
     ) -> list[ChatMessage]:
-        """Build the system + user message list for the grader call."""
+        """Build the system + user message list for the grader call.
+
+        Returns:
+            A two-message list (system prompt + JSON-rendered grader
+            envelope) ready for ``CompletionProvider.complete()``.
+        """
         user_prompt = self._build_user_prompt(
             artifact=artifact,
             rubric=rubric,
@@ -389,13 +434,23 @@ class LLMRubricGrader:
 
         Infrastructure errors propagate unchanged:
 
-        * ``MemoryError``/``RecursionError`` are fatal interpreter
-          signals and always re-raise.
+        * ``MemoryError`` / ``RecursionError`` are fatal interpreter
+          signals and always re-raise (via :func:`reraise_critical`
+          at the head of the broad-except block).
         * ``RetryExhaustedError`` logs a
           ``VERIFICATION_GRADER_FAILED`` event with full grading
           context then re-raises so the engine fallback chain takes
           over.
         * Any other exception also logs and re-raises.
+
+        Returns:
+            The provider's raw completion response (an object whose
+            ``tool_calls`` field is inspected by
+            :meth:`_locate_tool_call`).
+
+        Raises:
+            RetryExhaustedError: When the provider's retry budget for
+                this call is exhausted.
         """
         tool = ToolDefinition(
             name=_GRADER_TOOL_NAME,
@@ -424,8 +479,6 @@ class LLMRubricGrader:
                         max_tokens=_DEFAULT_MAX_TOKENS,
                     ),
                 )
-        except MemoryError, RecursionError:
-            raise
         except RetryExhaustedError as exc:
             log_exception_redacted(
                 logger,
@@ -442,6 +495,7 @@ class LLMRubricGrader:
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 VERIFICATION_GRADER_FAILED,
@@ -502,7 +556,13 @@ class LLMRubricGrader:
         ]
         | str
     ):
-        """Parse tool arguments and apply the min-confidence downgrade."""
+        """Parse tool arguments and apply the min-confidence downgrade.
+
+        Returns:
+            The parsed ``(grades, verdict, confidence, findings)`` tuple
+            on success, or a reason string describing why the response
+            is unusable (callers route the latter to ``REFER``).
+        """
         arguments = getattr(tool_call, "arguments", None)
         if not isinstance(arguments, Mapping):
             logger.warning(
@@ -551,7 +611,11 @@ class LLMRubricGrader:
         rubric: VerificationRubric,
         probes: tuple[AtomicProbe, ...],
     ) -> str:
-        """Serialize the grader envelope to JSON."""
+        """Serialize the grader envelope to JSON.
+
+        Returns:
+            The JSON-encoded grader envelope sent as the user message.
+        """
         envelope = self._render_envelope(
             artifact=artifact,
             rubric=rubric,
@@ -566,7 +630,12 @@ class LLMRubricGrader:
         rubric: VerificationRubric,
         probes: tuple[AtomicProbe, ...],
     ) -> dict[str, Any]:
-        """Render the prompt envelope (rubric / calibration / probes / artifact)."""
+        """Render the prompt envelope (rubric / calibration / probes / artifact).
+
+        Returns:
+            The envelope dict (``rubric`` / ``probes`` / ``artifact`` /
+            ``instructions``) that becomes the JSON user-message body.
+        """
         payload_text, payload_truncated, original_len = self._prepare_payload_text(
             artifact=artifact,
             rubric=rubric,
@@ -592,6 +661,13 @@ class LLMRubricGrader:
         The serialized payload is wrapped in an ``<untrusted-artifact>``
         fence so the model cannot mistake attacker-controlled
         artifact content for instructions.
+
+        Returns:
+            ``(payload_text, payload_truncated, original_len)``:
+            ``payload_text`` is the wrapped (and possibly truncated)
+            JSON body, ``payload_truncated`` is ``True`` when truncation
+            fired, and ``original_len`` is the pre-truncation character
+            count for telemetry.
         """
         raw_payload = json.dumps(dict(artifact.payload), ensure_ascii=False)
         original_len = len(raw_payload)
@@ -621,8 +697,12 @@ class LLMRubricGrader:
         * every ``required`` key must be present (no implicit defaults),
         * ``additionalProperties=False`` is enforced (reject unknown keys),
 
-        before delegating to the per-field parsers.  Returns the parsed
-        tuple on success or a reason string on failure.
+        before delegating to the per-field parsers.
+
+        Returns:
+            The parsed ``(grades, verdict, confidence, findings)`` tuple
+            on success, or a reason string describing the validation
+            failure on any malformed key, type, or out-of-range value.
         """
         actual = set(arguments.keys())
         extra = actual - _GRADER_TOOL_REQUIRED_KEYS
@@ -665,7 +745,14 @@ class LLMRubricGrader:
         evaluator_agent_id: NotBlankStr,
         reason: str,
     ) -> VerificationResult:
-        """Build a safe REFER result when the model response is unusable."""
+        """Build a safe REFER result when the model response is unusable.
+
+        Returns:
+            A :class:`VerificationResult` with verdict ``REFER``,
+            ``confidence=0.0``, zeroed per-criterion grades, and a
+            findings entry naming the failure reason; the caller emits
+            the ``grading.completed`` event.
+        """
         logger.error(
             VERIFICATION_GRADER_RESPONSE_INVALID,
             rubric_name=rubric.name,
@@ -697,7 +784,12 @@ def _parse_grades(
     *,
     rubric: VerificationRubric,
 ) -> dict[str, float] | str:
-    """Validate the per-criterion grades mapping."""
+    """Validate the per-criterion grades mapping.
+
+    Returns:
+        A ``{criterion_name: grade}`` dict on success, or a reason
+        string describing the malformed entry on failure.
+    """
     if not isinstance(raw, Mapping):
         return "per_criterion_grades is not an object"
     expected = {c.name for c in rubric.criteria}
@@ -716,7 +808,12 @@ def _parse_grades(
 
 
 def _parse_verdict(raw: Any) -> VerificationVerdict | str:
-    """Coerce the verdict string into a ``VerificationVerdict``."""
+    """Coerce the verdict string into a ``VerificationVerdict``.
+
+    Returns:
+        The matching :class:`VerificationVerdict` enum member, or a
+        reason string if ``raw`` is not a known verdict name.
+    """
     if not isinstance(raw, str):
         return "verdict is not a string"
     try:
@@ -726,17 +823,26 @@ def _parse_verdict(raw: Any) -> VerificationVerdict | str:
 
 
 def _parse_confidence(raw: Any) -> float | str:
-    """Validate confidence is a finite float in [0, 1]."""
+    """Validate confidence is a finite float in [0, 1].
+
+    Returns:
+        The validated float, or a reason string when ``raw`` is
+        non-numeric, non-finite, or out of range.
+    """
     return _parse_unit_interval(raw, label="confidence")
 
 
 def _parse_findings(raw: Any) -> tuple[str, ...] | str:
     """Validate findings is a list of non-blank strings.
 
-    Fails closed -- any non-string entry or blank string surfaces a
+    Fails closed: any non-string entry or blank string surfaces a
     descriptive error so callers route the whole response to ``REFER``
     rather than silently discarding malformed items and acting on the
     residual.
+
+    Returns:
+        A tuple of the stripped findings on success, or a reason string
+        when the input is not a list of non-blank strings.
     """
     if not isinstance(raw, list):
         return "findings is not a list"

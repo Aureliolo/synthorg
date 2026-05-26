@@ -70,7 +70,15 @@ class SubtaskDefinition(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_self_dependency(self) -> Self:
-        """Ensure subtask does not depend on itself."""
+        """Ensure subtask does not depend on itself.
+
+        Returns:
+            ``self`` unchanged when no self-cycle exists.
+
+        Raises:
+            ValueError: When the subtask's id appears in its
+                ``dependencies`` tuple.
+        """
         if self.id in self.dependencies:
             msg = f"Subtask {self.id!r} cannot depend on itself"
             raise ValueError(msg)
@@ -111,7 +119,16 @@ class DecompositionPlan(BaseModel):
 
     @model_validator(mode="after")
     def _validate_subtasks(self) -> Self:
-        """Validate subtask collection integrity."""
+        """Validate subtask collection integrity.
+
+        Returns:
+            ``self`` unchanged when subtasks are non-empty, IDs are
+            unique, and every dependency points to a known subtask.
+
+        Raises:
+            ValueError: When ``subtasks`` is empty, ids duplicate, or
+                a subtask depends on an unknown id.
+        """
         if not self.subtasks:
             msg = "subtasks must contain at least one entry"
             raise ValueError(msg)
@@ -158,7 +175,17 @@ class DecompositionResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_plan_task_consistency(self) -> Self:
-        """Ensure created_tasks align with plan subtasks."""
+        """Ensure created_tasks align with plan subtasks.
+
+        Returns:
+            ``self`` unchanged when tasks and edges are consistent with
+            the plan.
+
+        Raises:
+            ValueError: When the task count mismatches, task ids
+                differ from plan subtask ids, or an edge endpoint is
+                an unknown task id.
+        """
         if len(self.created_tasks) != len(self.plan.subtasks):
             msg = (
                 f"created_tasks count ({len(self.created_tasks)}) "
@@ -228,7 +255,15 @@ class SubtaskStatusRollup(BaseModel):
 
     @model_validator(mode="after")
     def _validate_counts(self) -> Self:
-        """Ensure counts don't exceed total."""
+        """Ensure counts don't exceed total.
+
+        Returns:
+            ``self`` unchanged when status counts sum to <= ``total``.
+
+        Raises:
+            ValueError: When the sum of per-status counts exceeds
+                ``total``.
+        """
         counted = (
             self.completed
             + self.failed

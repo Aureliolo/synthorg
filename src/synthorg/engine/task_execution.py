@@ -140,6 +140,10 @@ class TaskExecution(BaseModel):
     ) -> TaskExecution:
         """Validate and apply a status transition.
 
+        Returns:
+            A new :class:`TaskExecution` with the requested status
+            applied (Pydantic copy-on-write).
+
         Raises:
             ValueError: If the transition is invalid.
         """
@@ -237,7 +241,13 @@ def _build_transition_updates(
     transition: StatusTransition,
     now: datetime,
 ) -> dict[str, object]:
-    """Assemble the ``model_copy`` update dict for a status transition."""
+    """Assemble the ``model_copy`` update dict for a status transition.
+
+    Returns:
+        Dict of field updates including the new status, appended
+        transition log, and any ``started_at`` / ``completed_at``
+        timestamps required by the target state.
+    """
     updates: dict[str, object] = {
         "status": target,
         "transition_log": (*execution.transition_log, transition),

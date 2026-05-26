@@ -46,7 +46,12 @@ class PerTaskTrigger:
         agent_id: NotBlankStr,
         context: EvolutionContext,  # noqa: ARG002
     ) -> bool:
-        """Always triggers if enough tasks have elapsed."""
+        """Always triggers if enough tasks have elapsed.
+
+        Returns:
+            ``True`` when the per-agent task count reaches
+            ``min_tasks`` (and resets); ``False`` otherwise.
+        """
         key = str(agent_id)
         async with self._lock:
             count = self._tasks_since_evolution.get(key, 0) + 1

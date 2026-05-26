@@ -62,6 +62,10 @@ def _redact_source_ref(source_ref: str) -> str:
 
     The resolver rejects credential-bearing remote refs, but the import-started
     log fires before resolution, so redact defensively here too.
+
+    Returns:
+        The source ref with any ``user:token@`` userinfo replaced by
+        ``[REDACTED]@`` ; unchanged when no userinfo is present.
     """
     return _URL_USERINFO.sub(r"\1[REDACTED]@", source_ref)
 
@@ -89,6 +93,15 @@ class BrownfieldImportService:
         self._locks_guard = asyncio.Lock()
 
     async def _lock_for(self, project_id: str) -> asyncio.Lock:
+        """Return the per-project import lock, creating it on first use.
+
+        Args:
+            project_id: Project whose imports must be serialised.
+
+        Returns:
+            The :class:`asyncio.Lock` guarding imports for ``project_id``;
+            the same instance is returned on every subsequent call.
+        """
         async with self._locks_guard:
             return self._locks.setdefault(project_id, asyncio.Lock())
 
@@ -96,6 +109,12 @@ class BrownfieldImportService:
         self, submission: CodebaseImportSubmission
     ) -> CodebaseImportResult:
         """Import the codebase at ``submission.source_ref`` into its project.
+
+        Returns:
+            A :class:`CodebaseImportResult` describing the imported
+            structure map; a re-import outcome when a structure map
+            already exists for this project, a fresh-import outcome
+            otherwise.
 
         Raises:
             BrownfieldWorkspaceNotEmptyError: A different codebase is
@@ -124,6 +143,19 @@ class BrownfieldImportService:
         workspace: ProjectWorkspace,
         repo_root: Path,
     ) -> CodebaseImportResult:
+        """Seed, scan, and index a codebase into an empty project.
+
+        Indexes before persisting the structure map so a failed index
+        leaves no "already imported" marker behind.
+
+        Args:
+            submission: The import request being fulfilled.
+            workspace: The provisioned workspace for the project.
+            repo_root: Filesystem root the source is seeded into.
+
+        Returns:
+            A fresh-import :class:`CodebaseImportResult`.
+        """
         resolved = await self._resolver.resolve(submission.source_ref)
         await self._workspaces.git_backend.seed(
             project_id=submission.project_id,
@@ -156,6 +188,25 @@ class BrownfieldImportService:
         repo_root: Path,
         existing: CodebaseStructureMap,
     ) -> CodebaseImportResult:
+        """Re-scan an already-imported project in place.
+
+        A matching source re-scans idempotently and short-circuits to an
+        unchanged result when the content hash is identical; a different
+        source onto an occupied project is refused.
+
+        Args:
+            submission: The import request being fulfilled.
+            repo_root: Filesystem root of the existing checkout.
+            existing: The persisted structure map for this project.
+
+        Returns:
+            A re-import :class:`CodebaseImportResult` (unchanged when the
+            re-scan matches the persisted content hash).
+
+        Raises:
+            BrownfieldWorkspaceNotEmptyError: ``submission`` names a
+                different source than the one already imported.
+        """
         if existing.source_ref != submission.source_ref:
             logger.warning(
                 BROWNFIELD_IMPORT_REJECTED,
@@ -180,6 +231,16 @@ class BrownfieldImportService:
     async def _scan(
         self, submission: CodebaseImportSubmission, repo_root: Path
     ) -> CodebaseStructureMap:
+        """Scan the checked-out source into a structure map.
+
+        Args:
+            submission: The import request being fulfilled.
+            repo_root: Filesystem root to scan.
+
+        Returns:
+            The :class:`CodebaseStructureMap` describing modules and
+            dependencies discovered under ``repo_root``.
+        """
         structure_map = await scan_codebase(
             workspace_path=repo_root,
             project_id=submission.project_id,
@@ -198,6 +259,15 @@ class BrownfieldImportService:
     async def _index(
         self, submission: CodebaseImportSubmission, repo_root: Path
     ) -> NotBlankStr:
+        """Ingest the checked-out source into the knowledge store.
+
+        Args:
+            submission: The import request being fulfilled.
+            repo_root: Filesystem root to ingest.
+
+        Returns:
+            The knowledge-source id assigned to the ingested codebase.
+        """
         source = await self._knowledge.ingest(
             source_type=SourceType.REPO,
             uri=NotBlankStr(str(repo_root)),
@@ -218,6 +288,17 @@ class BrownfieldImportService:
         *,
         unchanged: bool,
     ) -> CodebaseImportResult:
+        """Build the import result DTO from a structure map.
+
+        Args:
+            structure_map: The scanned (or existing) structure map.
+            knowledge_source_id: Knowledge-source id, or ``None`` when the
+                re-scan was unchanged and no re-index occurred.
+            unchanged: Whether the re-scan matched the persisted map.
+
+        Returns:
+            The assembled :class:`CodebaseImportResult`.
+        """
         return CodebaseImportResult(
             project_id=structure_map.project_id,
             source_ref=structure_map.source_ref,

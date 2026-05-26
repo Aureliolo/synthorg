@@ -58,7 +58,12 @@ class WorkflowConfig(BaseModel):
 
     @model_validator(mode="after")
     def _warn_unused_subconfigs(self) -> Self:
-        """Log advisory warning when sub-configs are customized but unused."""
+        """Log advisory warning when sub-configs are customized but unused.
+
+        Returns:
+            ``self`` unchanged; only emits warnings for unused
+            sub-configs (advisory, never fatal).
+        """
         if self.workflow_type not in _KANBAN_TYPES and self.kanban != KanbanConfig():
             logger.warning(
                 WORKFLOW_CONFIG_UNUSED_SUBCONFIG,

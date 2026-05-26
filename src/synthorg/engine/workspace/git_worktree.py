@@ -143,6 +143,12 @@ class PlannerWorktreeStrategy:
                 "git_command_timeout_seconds")`` at the call site.
             semantic_analyzer: Optional semantic conflict analyzer.
             clock: Injectable time source; defaults to ``SystemClock``.
+
+        Raises:
+            ValueError: When ``cmd_timeout`` is not a finite positive
+                float; ``asyncio.wait_for`` would otherwise behave
+                indeterminately or downstream ``timedelta`` math would
+                overflow.
         """
         if not math.isfinite(cmd_timeout) or cmd_timeout <= 0:
             # Reject NaN / +Inf / -Inf alongside zero and negatives:
@@ -183,6 +189,10 @@ class PlannerWorktreeStrategy:
         under it so a symlinked entry cannot escape. ``event`` /
         ``error_cls`` let merge/teardown callers classify a bad id as a
         merge/cleanup failure rather than a setup failure.
+
+        Returns:
+            The strategy's singleton root when ``project_id`` is
+            ``None``; otherwise ``<root>/projects/<project_id>``.
         """
         if project_id is None:
             return self._repo_root
@@ -299,7 +309,12 @@ class PlannerWorktreeStrategy:
             return workspace
 
     def _check_workspace_limit(self) -> None:
-        """Raise if max concurrent worktrees reached."""
+        """Raise if max concurrent worktrees reached.
+
+        Raises:
+            WorkspaceLimitError: When the active workspaces count is at
+                or above ``config.max_concurrent_worktrees``.
+        """
         if len(self._active_workspaces) >= self._config.max_concurrent_worktrees:
             logger.warning(
                 WORKSPACE_LIMIT_REACHED,
@@ -321,7 +336,13 @@ class PlannerWorktreeStrategy:
         worktree_dir: Path,
         effective_root: Path,
     ) -> None:
-        """Create a git branch and worktree, cleaning up on failure."""
+        """Create a git branch and worktree, cleaning up on failure.
+
+        Raises:
+            WorkspaceSetupError: When ``git branch`` or ``git worktree
+                add`` fails; the branch is best-effort deleted before
+                re-raising so a failed setup does not leak refs.
+        """
         rc, _, stderr = await self._run_git(
             "branch",
             branch_name,
@@ -479,7 +500,17 @@ class PlannerWorktreeStrategy:
         workspace: Workspace,
         effective_root: Path,
     ) -> str:
-        """Checkout the base branch and capture HEAD SHA."""
+        """Checkout the base branch and capture HEAD SHA.
+
+        Returns:
+            The base-branch HEAD SHA after checkout, or an empty
+            string when ``git rev-parse`` failed (the merge can
+            still proceed; semantic analysis just degrades).
+
+        Raises:
+            WorkspaceMergeError: When ``git checkout`` of the base
+                branch fails.
+        """
         logger.info(
             WORKSPACE_MERGE_START,
             workspace_id=workspace.workspace_id,
@@ -529,6 +560,11 @@ class PlannerWorktreeStrategy:
 
         Returns:
             Tuple of (MergeResult, pre_merge_sha).
+
+        Raises:
+            WorkspaceMergeError: When ``git rev-parse HEAD`` fails
+                after a successful merge (the merge landed but the
+                resulting commit SHA could not be recorded).
         """
         rc_sha, sha_out, sha_err = await self._run_git(
             "rev-parse",
@@ -675,7 +711,12 @@ class PlannerWorktreeStrategy:
         workspace: Workspace,
         effective_root: Path,
     ) -> list[str]:
-        """Remove worktree and branch, returning error messages."""
+        """Remove worktree and branch, returning error messages.
+
+        Returns:
+            List of error strings (one per failed git operation);
+            empty when both removals succeed.
+        """
         errors: list[str] = []
 
         rc, _, stderr = await self._run_git(
@@ -808,7 +849,12 @@ class PlannerWorktreeStrategy:
         pre_merge_sha: str,
         merge_sha: str,
     ) -> tuple[MergeConflict, ...]:
-        """Delegate to ``semantic_git_ops.run_semantic_analysis``."""
+        """Delegate to ``semantic_git_ops.run_semantic_analysis``.
+
+        Returns:
+            Tuple of semantic :class:`MergeConflict` instances; ``()``
+            when no analyzer is configured or analysis is disabled.
+        """
         return await run_semantic_analysis(
             run_git=self._run_git,
             config=self._config.semantic_analysis,

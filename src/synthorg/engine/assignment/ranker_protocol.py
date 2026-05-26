@@ -40,7 +40,12 @@ class RankingResult:
     reason: str
 
     def __post_init__(self) -> None:
-        """Enforce that ``selected`` is not duplicated in ``alternatives``."""
+        """Enforce that ``selected`` is not duplicated in ``alternatives``.
+
+        Raises:
+            ValueError: When the selected candidate's agent id appears
+                in ``alternatives``.
+        """
         selected_id = self.selected.agent_identity.id
         for alt in self.alternatives:
             if alt.agent_identity.id == selected_id:

@@ -8,6 +8,7 @@ import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.evolution.models import (
     AdaptationAxis,
     AdaptationDecision,
@@ -105,6 +106,10 @@ class EvolutionService:
         Returns:
             Tuple of evolution events (one per proposal).
             Empty if no proposals or all rejected.
+
+        Raises:
+            asyncio.CancelledError: If the evolution task is cancelled
+                during context build.
         """
         if not self._config.enabled:
             return ()
@@ -117,11 +122,10 @@ class EvolutionService:
         # 1. Build context.
         try:
             context = await self._build_context(agent_id)
-        except MemoryError, RecursionError:
-            raise
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EVOLUTION_CONTEXT_BUILD_FAILED,
                 agent_id=str(agent_id),
@@ -184,7 +188,12 @@ class EvolutionService:
         agent_id: NotBlankStr,
         proposal: AdaptationProposal,
     ) -> EvolutionEvent:
-        """Evaluate a single proposal through guards and apply."""
+        """Evaluate a single proposal through guards and apply.
+
+        Returns:
+            An :class:`EvolutionEvent` describing the proposal, the
+            guard decision, and whether the adapter applied it.
+        """
         # Check if the axis is enabled.
         axis_enabled = self._is_axis_enabled(proposal.axis)
         if not axis_enabled:
@@ -278,7 +287,12 @@ class EvolutionService:
         )
 
     def _is_axis_enabled(self, axis: AdaptationAxis) -> bool:
-        """Check if an adaptation axis is enabled in config."""
+        """Check if an adaptation axis is enabled in config.
+
+        Returns:
+            ``True`` when the matching ``EvolutionConfig.adapters``
+            flag is on, ``False`` otherwise.
+        """
         adapter_cfg = self._config.adapters
         if axis == AdaptationAxis.IDENTITY:
             return adapter_cfg.identity
@@ -293,7 +307,13 @@ class EvolutionService:
         agent_id: NotBlankStr,
         proposal: AdaptationProposal,
     ) -> int | None:
-        """Get identity version before adaptation (for identity axis only)."""
+        """Get identity version before adaptation (for identity axis only).
+
+        Returns:
+            The current identity version, or ``None`` when the
+            proposal is not on the identity axis or no versions
+            exist.
+        """
         if proposal.axis != AdaptationAxis.IDENTITY:
             return None
 
@@ -306,14 +326,24 @@ class EvolutionService:
         proposal: AdaptationProposal,
         adapter: AdaptationAdapter,
     ) -> bool:
-        """Apply the adaptation. Return True on success, False on failure."""
+        """Apply the adaptation. Return True on success, False on failure.
+
+        Returns:
+            ``True`` when ``adapter.apply`` completes without raising,
+            ``False`` when the adapter raises a non-critical exception
+            (logged via :data:`EVOLUTION_ADAPTATION_FAILED`).
+
+        Raises:
+            asyncio.CancelledError: If the task is cancelled mid-apply
+                (the adapter is given no time to clean up; treat the
+                adaptation as not-applied).
+        """
         try:
             await adapter.apply(proposal, agent_id)
-        except MemoryError, RecursionError:
-            raise
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             # Adapter should log via EVOLUTION_ADAPTATION_FAILED;
             # this defensive fallback runs only when the adapter
             # omits the failure event. Log at WARNING (not DEBUG)
@@ -337,7 +367,12 @@ class EvolutionService:
         agent_id: NotBlankStr,
         proposal: AdaptationProposal,
     ) -> int | None:
-        """Get identity version after adaptation (for identity axis only)."""
+        """Get identity version after adaptation (for identity axis only).
+
+        Returns:
+            The new identity version, or ``None`` when the proposal
+            is not on the identity axis or no versions exist.
+        """
         if proposal.axis != AdaptationAxis.IDENTITY:
             return None
 
@@ -348,7 +383,16 @@ class EvolutionService:
         self,
         agent_id: NotBlankStr,
     ) -> EvolutionContext:
-        """Build the evolution context for an agent."""
+        """Build the evolution context for an agent.
+
+        Returns:
+            A populated :class:`EvolutionContext` carrying the current
+            identity, performance snapshot, procedural memories, and
+            up to the last 20 task metrics.
+
+        Raises:
+            ValueError: If ``agent_id`` is not in the identity store.
+        """
         from synthorg.engine.evolution.protocols import (  # noqa: PLC0415
             EvolutionContext,
         )
@@ -385,12 +429,16 @@ class EvolutionService:
         self,
         agent_id: NotBlankStr,
     ) -> AgentPerformanceSnapshot | None:
-        """Fetch performance snapshot (best-effort)."""
+        """Fetch performance snapshot (best-effort).
+
+        Returns:
+            The :class:`AgentPerformanceSnapshot` from the tracker, or
+            ``None`` when the tracker raises a non-critical exception.
+        """
         try:
             return await self._tracker.get_snapshot(agent_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EVOLUTION_CONTEXT_SNAPSHOT_FAILED,
                 agent_id=str(agent_id),
@@ -403,7 +451,14 @@ class EvolutionService:
         self,
         agent_id: NotBlankStr,
     ) -> tuple[MemoryEntry, ...]:
-        """Fetch procedural memories (best-effort)."""
+        """Fetch procedural memories (best-effort).
+
+        Returns:
+            A tuple of procedural :class:`MemoryEntry` (up to 10) from
+            the configured memory backend, or an empty tuple when no
+            backend is wired or the backend raises a non-critical
+            exception.
+        """
         if self._memory_backend is None:
             return ()
 
@@ -423,9 +478,8 @@ class EvolutionService:
                     limit=10,
                 ),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EVOLUTION_CONTEXT_MEMORY_FAILED,
                 agent_id=str(agent_id),

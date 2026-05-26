@@ -96,7 +96,17 @@ class AgentContribution(BaseModel):
 
     @model_validator(mode="after")
     def _validate_score_attribution_consistency(self) -> Self:
-        """Score < 1.0 requires failure_attribution; 1.0 forbids it."""
+        """Score < 1.0 requires failure_attribution; 1.0 forbids it.
+
+        Returns:
+            ``self`` unchanged when score / attribution are
+            consistent.
+
+        Raises:
+            ValueError: When score < 1.0 carries no
+                ``failure_attribution`` or score == 1.0 carries
+                one.
+        """
         if self.contribution_score < 1.0 and self.failure_attribution is None:
             msg = (
                 "failure_attribution must be set when "

@@ -14,6 +14,7 @@ already depend on its narrow surface; this service is the broader
 
 from typing import ClassVar
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
@@ -137,6 +138,15 @@ class SubworkflowService:
             is acceptable while subworkflow rosters stay small; revisit
             if request latency starts being dominated by the full
             fetch.
+
+        Returns:
+            ``(page, total)`` where ``page`` is the paginated tuple of
+            :class:`SubworkflowSummary` rows and ``total`` is the full
+            match count before pagination.
+
+        Raises:
+            ValueError: If ``offset`` is negative or ``limit`` is
+                less than 1.
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
@@ -186,6 +196,16 @@ class SubworkflowService:
 
         When ``version`` is omitted, the latest semver is selected. A
         missing subworkflow raises :class:`SubworkflowNotFoundError`.
+
+        Returns:
+            The resolved :class:`WorkflowDefinition` for the requested
+            coordinate (latest version when ``version`` is ``None``).
+
+        Raises:
+            SubworkflowNotFoundError: If no version exists when
+                ``version`` is ``None``, or if the registry has no
+                row for the explicit ``(subworkflow_id, version)``
+                coordinate.
         """
         if version is None:
             latest = await self._registry.latest_version(subworkflow_id)
@@ -216,6 +236,16 @@ class SubworkflowService:
         Validates that ``is_subworkflow=True``, delegates to the
         registry for the atomic write, and emits the publish audit
         event including the actor.
+
+        Returns:
+            The published :class:`WorkflowDefinition` (input echoed
+            back for convenience).
+
+        Raises:
+            ValueError: If ``definition.is_subworkflow`` is ``False``;
+                ``ValueError`` lets the MCP handler map to
+                ``invalid_argument`` so storage failures keep the
+                dedicated :class:`SubworkflowIOError` path.
         """
         if not definition.is_subworkflow:
             msg = (
@@ -240,9 +270,8 @@ class SubworkflowService:
             raise ValueError(msg)
         try:
             await self._registry.register(definition)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Log a service-level failure event before the exception
             # escapes so the control-plane audit trail records the
             # publish attempt with the same identifying fields the
@@ -292,6 +321,9 @@ class SubworkflowService:
                 carries the parent list so callers can surface the
                 conflict without a second query.
             SubworkflowNotFoundError: If the coordinate does not exist.
+            SubworkflowIOError: If the registry's atomic delete raises
+                a storage error after the TOCTOU recheck cannot prove
+                a parent-cascade conflict.
         """
         # Referential-integrity gate: the conflict error reports the
         # exact parent count + names, so the complete set is required
@@ -352,9 +384,8 @@ class SubworkflowService:
                         offset=offset,
                     ),
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as recheck_exc:
+                reraise_critical(recheck_exc)
                 # Use the neutral ``SUBWORKFLOW_DELETE_FAILED`` event
                 # rather than ``SUBWORKFLOW_DELETE_BLOCKED``: at this
                 # point we have NOT proven a parent-cascade conflict,

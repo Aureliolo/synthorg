@@ -70,6 +70,11 @@ def build_agent_middleware_chain(
 
     Returns:
         Composed ``AgentMiddlewareChain``.
+
+    Raises:
+        TypeError: When a factory body raises ``TypeError`` after
+            its signature has been bind-checked (treated as a
+            factory implementation bug).
     """
     middleware: list[AgentMiddleware] = []
     effective_deps = deps or {}
@@ -141,6 +146,11 @@ def build_coordination_middleware_chain(
 
     Returns:
         Composed ``CoordinationMiddlewareChain``.
+
+    Raises:
+        TypeError: When a factory body raises ``TypeError`` after
+            its signature has been bind-checked (treated as a
+            factory implementation bug).
     """
     middleware: list[CoordinationMiddleware] = []
     effective_deps = deps or {}

@@ -108,7 +108,15 @@ class BlueprintData(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_ids(self) -> Self:
-        """Reject duplicate node or edge IDs."""
+        """Reject duplicate node or edge IDs.
+
+        Returns:
+            ``self`` unchanged when every node and edge id is unique.
+
+        Raises:
+            ValueError: When ``nodes`` or ``edges`` carry duplicate
+                ids.
+        """
         node_ids = tuple(n.id for n in self.nodes)
         if len(node_ids) != len(set(node_ids)):
             dupes = sorted(v for v, c in Counter(node_ids).items() if c > 1)
@@ -125,7 +133,16 @@ class BlueprintData(BaseModel):
 
     @model_validator(mode="after")
     def _validate_edge_references(self) -> Self:
-        """Ensure edges reference existing nodes, no self-loops."""
+        """Ensure edges reference existing nodes, no self-loops.
+
+        Returns:
+            ``self`` unchanged when every edge points at distinct,
+            known nodes.
+
+        Raises:
+            ValueError: When an edge is self-referencing or its
+                source/target id is not in the node set.
+        """
         node_id_set = frozenset(n.id for n in self.nodes)
         for edge in self.edges:
             if edge.source_node_id == edge.target_node_id:
@@ -147,7 +164,16 @@ class BlueprintData(BaseModel):
 
     @model_validator(mode="after")
     def _validate_terminal_nodes(self) -> Self:
-        """Require exactly one START and one END node."""
+        """Require exactly one START and one END node.
+
+        Returns:
+            ``self`` unchanged when the blueprint has exactly one
+            START and one END node.
+
+        Raises:
+            ValueError: When the count of START or END nodes is not
+                exactly one.
+        """
         start_count = sum(1 for n in self.nodes if n.type == WorkflowNodeType.START)
         end_count = sum(1 for n in self.nodes if n.type == WorkflowNodeType.END)
 

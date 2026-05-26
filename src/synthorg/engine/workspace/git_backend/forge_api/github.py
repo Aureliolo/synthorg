@@ -92,7 +92,12 @@ class GitHubForgeClient(BaseForgeClient):
         repo: NotBlankStr,
         private: bool = True,
     ) -> ForgeRepo:
-        """Create ``owner/repo`` under the user or org namespace."""
+        """Create ``owner/repo`` under the user or org namespace.
+
+        Returns:
+            The created :class:`ForgeRepo` parsed from the GitHub
+            API response.
+        """
         login = await self._authenticated_login()
         # Forge logins are case-insensitive, so match case-folded.
         url = (
@@ -113,7 +118,16 @@ class GitHubForgeClient(BaseForgeClient):
         return repo_model
 
     async def _authenticated_login(self) -> str:
-        """Resolve the token's account login (``GET /user``)."""
+        """Resolve the token's account login (``GET /user``).
+
+        Returns:
+            The authenticated user's ``login`` string from
+            ``/user``.
+
+        Raises:
+            GitBackendForgeApiError: When the response does not
+                carry a ``login`` field.
+        """
         action = "resolve authenticated user"
         resp = await self._request("GET", "/user", action=action)
         raise_for_forge_status(resp, action=action)

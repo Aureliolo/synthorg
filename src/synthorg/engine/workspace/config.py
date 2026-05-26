@@ -79,7 +79,15 @@ class SemanticAnalysisConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_file_extensions(self) -> Self:
-        """Reject empty or malformed file extensions."""
+        """Reject empty or malformed file extensions.
+
+        Returns:
+            ``self`` unchanged when every extension is well-formed.
+
+        Raises:
+            ValueError: When ``file_extensions`` is empty or any
+                entry does not start with ``.`` / contains a space.
+        """
         if not self.file_extensions:
             msg = "file_extensions must not be empty"
             raise ValueError(msg)

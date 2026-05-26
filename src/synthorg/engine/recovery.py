@@ -196,7 +196,12 @@ class RecoveryResult(BaseModel):
     @field_validator("failure_context", mode="before")
     @classmethod
     def _deep_copy_failure_context(cls, value: object) -> object:
-        """Deep-copy failure_context at construction boundary."""
+        """Deep-copy failure_context at construction boundary.
+
+        Returns:
+            A deep copy of ``value`` when it is a mapping; otherwise
+            ``value`` unchanged for downstream validation.
+        """
         return deep_copy_mapping(value)
 
     @field_validator("criteria_failed", mode="after")
@@ -205,13 +210,26 @@ class RecoveryResult(BaseModel):
         cls,
         value: tuple[NotBlankStr, ...],
     ) -> tuple[NotBlankStr, ...]:
-        """Reject duplicate criteria -- they represent unique rules."""
+        """Reject duplicate criteria -- they represent unique rules.
+
+        Returns:
+            ``value`` unchanged when every criterion is unique.
+        """
         validate_unique_strings(value, "criteria_failed")
         return value
 
     @model_validator(mode="after")
     def _validate_checkpoint_consistency(self) -> Self:
-        """Validate checkpoint_context_json and resume_attempt are consistent."""
+        """Validate checkpoint_context_json and resume_attempt are consistent.
+
+        Returns:
+            ``self`` unchanged when both fields agree.
+
+        Raises:
+            ValueError: When ``checkpoint_context_json`` and
+                ``resume_attempt`` are not jointly set (or jointly
+                default), or when the JSON is not a valid object.
+        """
         has_json = self.checkpoint_context_json is not None
         has_attempt = self.resume_attempt > 0
         if has_json != has_attempt:
@@ -246,6 +264,15 @@ class RecoveryResult(BaseModel):
         - ``criteria_failed`` must be non-empty when
           ``failure_category`` is ``QUALITY_GATE_FAILED`` (if we know
           the quality gate failed we must record which criterion).
+
+        Returns:
+            ``self`` unchanged when every cross-field invariant holds.
+
+        Raises:
+            ValueError: When ``stagnation_evidence`` and
+                ``failure_category`` disagree, the evidence verdict
+                contradicts the category, or ``QUALITY_GATE_FAILED``
+                has no ``criteria_failed`` entries.
         """
         if self.failure_category is FailureCategory.STAGNATION:
             if self.stagnation_evidence is None:

@@ -75,7 +75,12 @@ class DefaultStakesAssessor:
         complexity: Complexity,
         priority: Priority | None,
     ) -> Stakes:
-        """Combine complexity, priority, and keyword signals (upward bias)."""
+        """Combine complexity, priority, and keyword signals (upward bias).
+
+        Returns:
+            The resolved :class:`Stakes` after applying the upward
+            bias from complexity, priority, and keyword scans.
+        """
         # Unknown complexity biases upward (fail-safe) rather than to LOW.
         stakes = self._base_by_complexity.get(complexity, Stakes.HIGH)
 

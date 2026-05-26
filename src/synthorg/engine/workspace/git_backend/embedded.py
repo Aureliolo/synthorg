@@ -79,7 +79,17 @@ class EmbeddedGitBackend:
         workspace_path: Path,
         default_branch: NotBlankStr,
     ) -> ProvisionResult:
-        """Create the bare repo + working tree (idempotent)."""
+        """Create the bare repo + working tree (idempotent).
+
+        Returns:
+            A :class:`ProvisionResult` with ``newly_created=True``
+            after fresh creation, or ``newly_created=False`` when
+            the working tree was already a git repo.
+
+        Raises:
+            GitBackendProvisionError: When workspace dir creation or
+                any ``git`` invocation during provisioning fails.
+        """
         pid = str(project_id)
         logger.info(
             GIT_BACKEND_PROVISION_START,
@@ -189,7 +199,12 @@ class EmbeddedGitBackend:
         source: ResolvedSource,
         default_branch: NotBlankStr,
     ) -> SeedResult:
-        """Import *source* into the working tree, then push to the bare repo."""
+        """Import *source* into the working tree, then push to the bare repo.
+
+        Returns:
+            A :class:`SeedResult` recording the repo root, default
+            branch, head SHA after the seed push, and source kind.
+        """
         pid = str(project_id)
         logger.info(
             GIT_BACKEND_SEED_START,
@@ -248,7 +263,12 @@ class EmbeddedGitBackend:
         branch: NotBlankStr,
         base_branch: NotBlankStr,  # noqa: ARG002 -- local origin tracks base
     ) -> PushResult:
-        """Push *branch* to the project's bare repo; return its head SHA."""
+        """Push *branch* to the project's bare repo; return its head SHA.
+
+        Returns:
+            A :class:`PushResult` carrying the branch name and the
+            head SHA observed after the push.
+        """
         pid = str(project_id)
         await git(
             repo_root,
@@ -279,7 +299,12 @@ class EmbeddedGitBackend:
         repo_root: Path,
         branch: NotBlankStr | None = None,
     ) -> FetchResult:
-        """Fetch from the project's bare repo into *repo_root*."""
+        """Fetch from the project's bare repo into *repo_root*.
+
+        Returns:
+            A :class:`FetchResult` listing the refs updated by the
+            fetch (may be empty when nothing changed).
+        """
         pid = str(project_id)
         args = ["fetch", REMOTE_NAME]
         if branch is not None:

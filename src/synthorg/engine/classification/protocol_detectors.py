@@ -166,7 +166,7 @@ class ReviewPipelineProtocolDetector:
                 DETECTOR_COMPLETE,
                 detector="review_pipeline_protocol",
                 finding_count=0,
-                reason="no review_results in context (pending #1170)",
+                reason="no review_results in context (not yet populated)",
             )
             return ()
         findings: list[ErrorFinding] = []

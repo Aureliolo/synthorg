@@ -8,6 +8,7 @@ as explicit parameters (no ``self``).
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.consolidation import (
     DISTILLATION_CAPTURE_FAILED,
@@ -46,6 +47,10 @@ async def try_capture_distillation(
     Skips when disabled or no backend; failures are swallowed and
     logged.  System errors (``MemoryError``, ``RecursionError``)
     and cancellation propagate.
+
+    Raises:
+        asyncio.CancelledError: If the capture task is cancelled
+            mid-flight.
     """
     if not distillation_capture_enabled:
         logger.debug(
@@ -76,11 +81,10 @@ async def try_capture_distillation(
             task_id=_nb.validate_python(task_id),
             backend=memory_backend,
         )
-    except MemoryError, RecursionError:
-        raise
     except asyncio.CancelledError:
         raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             DISTILLATION_CAPTURE_FAILED,
             agent_id=agent_id,
@@ -105,6 +109,10 @@ async def try_procedural_memory(  # noqa: PLR0913
 
     Skips when proposer is absent or no recovery occurred.  System
     errors and cancellation propagate; all others are swallowed.
+
+    Raises:
+        asyncio.CancelledError: If the pipeline task is cancelled
+            mid-flight.
     """
     if procedural_proposer is None or recovery_result is None:
         logger.debug(
@@ -142,11 +150,10 @@ async def try_procedural_memory(  # noqa: PLR0913
             memory_backend=memory_backend,
             config=procedural_memory_config,
         )
-    except MemoryError, RecursionError:
-        raise
     except asyncio.CancelledError:
         raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PROCEDURAL_MEMORY_ERROR,
             agent_id=agent_id,
@@ -173,6 +180,10 @@ async def try_evolution_trigger(
         agent_id: Agent that executed the task.
         task_id: Task that was executed.
         evolution_service: Evolution service (None = skip).
+
+    Raises:
+        asyncio.CancelledError: If the trigger task is cancelled
+            mid-flight.
     """
     if evolution_service is None:
         logger.debug(
@@ -191,11 +202,10 @@ async def try_evolution_trigger(
         await evolution_service.evolve(
             agent_id=_nb.validate_python(agent_id),
         )
-    except MemoryError, RecursionError:
-        raise
     except asyncio.CancelledError:
         raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             EVOLUTION_TRIGGER_FAILED,
             agent_id=agent_id,

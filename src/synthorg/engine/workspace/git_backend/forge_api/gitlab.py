@@ -101,7 +101,12 @@ class GitLabForgeClient(BaseForgeClient):
         repo: NotBlankStr,
         private: bool = True,
     ) -> ForgeRepo:
-        """Create ``owner/repo``; resolve the group namespace if needed."""
+        """Create ``owner/repo``; resolve the group namespace if needed.
+
+        Returns:
+            The created :class:`ForgeRepo` parsed from the GitLab
+            API response.
+        """
         payload: dict[str, object] = {
             "name": str(repo),
             "path": str(repo),

@@ -11,6 +11,7 @@ to the company's ``AgentMiddlewareConfig.chain``.
 
 from typing import Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.loop_protocol import BehaviorTag
 from synthorg.engine.middleware.models import AgentMiddlewareContext  # noqa: TC001
 from synthorg.engine.middleware.protocol import BaseAgentMiddleware
@@ -98,9 +99,8 @@ class BehaviorTaggerMiddleware(BaseAgentMiddleware):
         """
         try:
             tags = self._infer_tags(ctx)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 BEHAVIOR_TAGGER_ERROR,
@@ -181,6 +181,10 @@ class BehaviorTaggerMiddleware(BaseAgentMiddleware):
 
         Tries exact match first, then prefix match (tool names
         may include namespaced prefixes like ``mcp__server__tool``).
+
+        Returns:
+            The matching :class:`BehaviorTag`, or ``None`` when neither
+            exact nor prefix match hits.
         """
         # Exact match.
         if tool_name in self._tool_tag_map:

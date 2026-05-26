@@ -113,6 +113,11 @@ class FlightRecorderService:
         the most recent ``_MAX_SEEK_FRAMES`` turns and ``truncated`` is
         ``True``; ``cumulative_cost`` and ``current_frame`` remain
         accurate.
+
+        Returns:
+            A :class:`ReplaySeekView` carrying the (possibly
+            truncated) frame window, cumulative cost up to
+            ``turn_index``, and the current frame.
         """
         filter_spec = FlightRecorderFrameFilterSpec(
             execution_id=NotBlankStr(execution_id),

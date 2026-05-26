@@ -49,7 +49,16 @@ class GitWorkspaceCommitter:
         paths: tuple[str, ...],
         message: str,
     ) -> bool:
-        """Stage *paths* and commit them; ``False`` if nothing changed."""
+        """Stage *paths* and commit them; ``False`` if nothing changed.
+
+        Returns:
+            ``True`` when a commit was created; ``False`` when the
+            stage left the index clean (nothing to commit).
+
+        Raises:
+            EnvironmentProvisionError: When any ``git`` subprocess
+                fails outside the "nothing to commit" path.
+        """
         if not paths:
             return False
         add_rc, _add_out, _add_err = await run_git_subprocess(

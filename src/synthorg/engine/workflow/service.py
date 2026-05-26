@@ -9,6 +9,7 @@ place so the audit trail stays consistent.
 
 from typing import TYPE_CHECKING, ClassVar
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
@@ -160,6 +161,9 @@ class WorkflowService:
 
         Bounded by *limit* (default :data:`DEFAULT_LIST_LIMIT`) so an
         unauth'd caller cannot materialise the full table.
+
+        Returns:
+            The tuple of matching :class:`WorkflowDefinition` rows.
         """
         from synthorg.persistence.workflow_definition_protocol import (  # noqa: PLC0415
             WorkflowDefinitionFilterSpec,
@@ -174,7 +178,12 @@ class WorkflowService:
         self,
         definition_id: NotBlankStr,
     ) -> WorkflowDefinition | None:
-        """Fetch a single definition by id."""
+        """Fetch a single definition by id.
+
+        Returns:
+            The :class:`WorkflowDefinition`, or ``None`` if no row
+            matches ``definition_id``.
+        """
         return await self._definitions.get(definition_id)
 
     async def fetch_for_update(
@@ -191,6 +200,10 @@ class WorkflowService:
         * the definition exists;
         * when *expected_revision* is supplied, the stored revision
           matches it.
+
+        Returns:
+            The matching :class:`WorkflowDefinition` confirmed to
+            satisfy ``expected_revision`` (when supplied).
 
         Raises:
             WorkflowDefinitionNotFoundError: The id does not exist.
@@ -248,13 +261,17 @@ class WorkflowService:
         the best-effort snapshot path, so callers should still handle
         them.
 
+        Returns:
+            The :class:`WorkflowDefinition` after the successful insert
+            (the input ``definition`` echoed back for convenience).
+
         Raises:
             WorkflowDefinitionExistsError: ``definition.id`` already
-                exists -- caller should use ``update_definition``.
+                exists; the caller should use ``update_definition``.
             MemoryError: Propagated from the best-effort snapshot if
                 raised there; never swallowed.
-            RecursionError: Propagated from the best-effort snapshot if
-                raised there; never swallowed.
+            RecursionError: Propagated from the best-effort snapshot
+                if raised there; never swallowed.
         """
         inserted = await self._definitions.create_if_absent(definition)
         if not inserted:
@@ -313,6 +330,10 @@ class WorkflowService:
             RecursionError: Propagated from either the stored-revision
                 lookup probe or the best-effort snapshot; never
                 swallowed.
+
+        Returns:
+            The :class:`WorkflowDefinition` after the successful update
+            (the input ``definition`` echoed back for convenience).
         """
         try:
             updated = await self._definitions.update_if_exists(definition)
@@ -333,12 +354,11 @@ class WorkflowService:
             stored_revision: int | None = None
             try:
                 existing = await self._definitions.get(definition.id)
-            except MemoryError, RecursionError:
-                # Fatal system errors must propagate even from a
-                # best-effort probe; otherwise the outer ``raise`` below
-                # would swallow them.
-                raise
             except Exception as lookup_exc:
+                # ``reraise_critical`` propagates fatal system errors
+                # even from this best-effort probe; otherwise the
+                # outer ``raise`` below would swallow them.
+                reraise_critical(lookup_exc)
                 logger.debug(
                     WORKFLOW_DEF_VERSION_CONFLICT,
                     definition_id=str(definition.id),
@@ -394,9 +414,15 @@ class WorkflowService:
         No-op when either the versioning service is not attached or the
         caller did not provide ``saved_by`` (e.g. system-driven writes
         that do not attribute authorship). Snapshot failures are logged
-        at WARNING and swallowed -- orphaned snapshots are tolerable and
+        at WARNING and swallowed; orphaned snapshots are tolerable and
         periodically swept; losing a definition write because the
         snapshot table is momentarily unavailable is not.
+
+        Raises:
+            MemoryError: Re-raised from :func:`reraise_critical` so a
+                fatal interpreter signal cannot be silently absorbed
+                from the best-effort path.
+            RecursionError: Same path as ``MemoryError``.
         """
         if self._versioning is None or saved_by is None:
             return
@@ -406,11 +432,11 @@ class WorkflowService:
                 snapshot=definition,
                 saved_by=saved_by,
             )
-        except MemoryError, RecursionError:
-            # Fatal system errors must propagate so the workload can
-            # shed load; best-effort logging is the wrong response here.
-            raise
         except Exception as exc:
+            # ``reraise_critical`` propagates fatal system errors
+            # so the workload can shed load; best-effort logging is
+            # the wrong response here.
+            reraise_critical(exc)
             logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=definition.id,
@@ -428,10 +454,14 @@ class WorkflowService:
         Wraps the pure :func:`validate_workflow` topology checks in a
         thin async surface so the MCP write facade can ``await`` it
         through the same service it uses for create/update. Validation
-        failures are *valid* responses -- they return a result with
-        ``valid=False`` rather than raising -- since callers may use
+        failures are *valid* responses; they return a result with
+        ``valid=False`` rather than raising, since callers may use
         this method to drive a UI that surfaces structural errors back
         to the operator before submitting a real create/update.
+
+        Returns:
+            A :class:`WorkflowValidationResult` carrying ``valid`` plus
+            structured ``errors`` for the candidate.
         """
         # Local import: ``validate_workflow`` lives alongside the
         # specialised graph checks and pulling it eagerly would create
@@ -453,12 +483,14 @@ class WorkflowService:
     ) -> bool:
         """Delete a definition and its version snapshots.
 
-        Returns ``True`` when the definition row was removed, ``False``
-        when no row matched. The version-snapshot cleanup is best-effort:
-        a failure there is logged with
-        :data:`WORKFLOW_VERSION_SNAPSHOT_FAILED` but does not block the
-        overall delete (orphaned snapshots are tolerable and
-        periodically swept).
+        The version-snapshot cleanup is best-effort: a failure there is
+        logged with :data:`WORKFLOW_VERSION_SNAPSHOT_FAILED` but does
+        not block the overall delete (orphaned snapshots are tolerable
+        and periodically swept).
+
+        Returns:
+            ``True`` when the definition row was removed, ``False``
+            when no row matched.
         """
         deleted = await self._definitions.delete(definition_id)
         if not deleted:
@@ -471,9 +503,8 @@ class WorkflowService:
 
         try:
             await self._versions.delete_versions_for_entity(definition_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 WORKFLOW_VERSION_SNAPSHOT_FAILED,
                 definition_id=definition_id,

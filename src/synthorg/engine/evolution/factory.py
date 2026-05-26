@@ -183,6 +183,11 @@ def _build_trigger(
     trigger is enabled. An empty list falls back to a config-aware
     ``BatchedTrigger`` built via ``_build_batched_trigger`` so the
     operator-tuned ``triggers.batched_interval_seconds`` is honoured.
+
+    Returns:
+        A single :class:`EvolutionTrigger` (the only configured one
+        or a :class:`CompositeTrigger` wrapping multiple); the
+        config-aware batched trigger when no types are listed.
     """
     from synthorg.engine.evolution.triggers.composite import (  # noqa: PLC0415
         CompositeTrigger,
@@ -262,7 +267,12 @@ def _build_proposer(
     *,
     provider: CompletionProvider | None,
 ) -> AdaptationProposer:
-    """Build proposer from config; falls back to no-op when no provider."""
+    """Build proposer from config; falls back to no-op when no provider.
+
+    Returns:
+        An :class:`AdaptationProposer` for the configured proposer
+        type; a no-op proposer when ``provider`` is ``None``.
+    """
     if provider is None:
         return _NoOpProposer()
     return _PROPOSER_REGISTRY.build(config.proposer.type, config, provider=provider)
@@ -275,7 +285,13 @@ def _build_guard(
     shadow_runner: ShadowAgentRunner | None,
     shadow_task_sampler: TaskSampler | None,
 ) -> AdaptationGuard:
-    """Build guard chain from config."""
+    """Build guard chain from config.
+
+    Returns:
+        A composed :class:`AdaptationGuard`: the single enabled guard
+        when only one is configured, a composite when more than one,
+        or an ``ApproveAllGuard`` when no guard is enabled.
+    """
     guards: list[AdaptationGuard] = []
     guard_cfg = config.guards
 
@@ -339,7 +355,17 @@ def _build_shadow_guard(
     shadow_runner: ShadowAgentRunner | None,
     shadow_task_sampler: TaskSampler | None,
 ) -> AdaptationGuard:
-    """Wire a real ShadowEvaluationGuard; raise if dependencies are missing."""
+    """Wire a real ShadowEvaluationGuard; raise if dependencies are missing.
+
+    Returns:
+        A :class:`ShadowEvaluationGuard` wired with the resolved
+        task provider and runner.
+
+    Raises:
+        ValueError: When ``shadow_runner`` is missing, the configured
+            task provider needs a sampler but none was supplied, or
+            the task provider literal is unknown.
+    """
     from synthorg.observability.events.evolution import (  # noqa: PLC0415
         EVOLUTION_SHADOW_MISCONFIGURED,
     )
@@ -411,7 +437,13 @@ def _build_adapters(
     identity_store: IdentityVersionStore,
     memory_backend: MemoryBackend | None,
 ) -> dict[AdaptationAxis, AdaptationAdapter]:
-    """Build adapters from config."""
+    """Build adapters from config.
+
+    Returns:
+        Mapping from :class:`AdaptationAxis` to the configured
+        :class:`AdaptationAdapter`; adapters whose dependencies are
+        missing are omitted from the mapping.
+    """
     adapters: dict[AdaptationAxis, AdaptationAdapter] = {}
     adapter_cfg = config.adapters
 

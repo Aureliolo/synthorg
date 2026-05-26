@@ -604,6 +604,56 @@ class TestAgentEngineRecovery:
         assert task_execution is not None
         assert task_execution.status is TaskStatus.FAILED
 
+    async def test_timeout_does_not_block_on_cancellation_ignoring_loop(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Timeout returns ERROR promptly even when the loop swallows cancel."""
+        import asyncio
+
+        release = asyncio.Event()
+
+        async def cancellation_ignoring_execute(**_kwargs: object) -> ExecutionResult:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                # Swallow the cancellation and keep "working" until released;
+                # the engine must not wait on this task past the wall clock.
+                await release.wait()
+            ctx = AgentContext.from_identity(
+                sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+            return ExecutionResult(
+                context=ctx,
+                termination_reason=TerminationReason.COMPLETED,
+            )
+
+        mock_loop = MagicMock(spec=ExecutionLoop)
+        mock_loop.execute = AsyncMock(side_effect=cancellation_ignoring_execute)
+        mock_loop.get_loop_type = MagicMock(return_value="react")
+
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+
+        try:
+            result = await asyncio.wait_for(
+                engine.run(
+                    identity=sample_agent_with_personality,
+                    task=sample_task_with_criteria,
+                    timeout_seconds=0.01,
+                ),
+                timeout=5.0,
+            )
+            assert result.termination_reason == TerminationReason.ERROR
+        finally:
+            # Release the orphaned loop task so it completes cleanly instead
+            # of lingering until the event loop is torn down.
+            release.set()
+            await asyncio.sleep(0)
+
     async def test_custom_recovery_strategy_used(
         self,
         sample_agent_with_personality: AgentIdentity,

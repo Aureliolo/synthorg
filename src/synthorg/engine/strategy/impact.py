@@ -94,7 +94,12 @@ class CompositeImpactScorer:
         risk_card: RiskCard,
         config: ProgressiveConfig,
     ) -> ImpactScore:
-        """Compute weighted composite score from risk card."""
+        """Compute weighted composite score from risk card.
+
+        Returns:
+            An :class:`ImpactScore` carrying per-dimension scores, the
+            clamped weighted composite, and the resolved cost tier.
+        """
         dimensions = self._score_dimensions(context, risk_card)
         weights = config.weights.as_dict()
 
@@ -123,7 +128,13 @@ class CompositeImpactScorer:
         context: StrategicContext,  # noqa: ARG002
         risk_card: RiskCard,
     ) -> dict[str, float]:
-        """Normalize risk card fields into dimension scores."""
+        """Normalize risk card fields into dimension scores.
+
+        Returns:
+            Mapping of dimension name to scalar score in ``[0, 1]``;
+            unknown / unmapped values fall back to the mid-range
+            defaults documented inline.
+        """
         return {
             ImpactDimension.REVERSIBILITY.value: _REVERSIBILITY_SCORES.get(
                 risk_card.reversibility.value, 0.5
@@ -164,7 +175,12 @@ class ExplicitImpactScorer:
         risk_card: RiskCard,  # noqa: ARG002
         config: ProgressiveConfig,
     ) -> ImpactScore:
-        """Compute composite from explicit dimension values."""
+        """Compute composite from explicit dimension values.
+
+        Returns:
+            An :class:`ImpactScore` derived from the caller-supplied
+            per-dimension scores.
+        """
         weights = config.weights.as_dict()
         composite = sum(
             self._dimensions.get(dim.value, 0.0) * weight
@@ -203,7 +219,12 @@ class HybridImpactScorer:
         risk_card: RiskCard,
         config: ProgressiveConfig,
     ) -> ImpactScore:
-        """Merge explicit scores with composite fallback."""
+        """Merge explicit scores with composite fallback.
+
+        Returns:
+            An :class:`ImpactScore` where explicit per-dimension
+            values override the composite scorer's defaults.
+        """
         base = self._composite.score(
             context=context,
             risk_card=risk_card,
@@ -230,7 +251,12 @@ def _resolve_tier(
     composite: float,
     config: ProgressiveConfig,
 ) -> CostTierPreset:
-    """Map composite score to cost tier using thresholds."""
+    """Map composite score to cost tier using thresholds.
+
+    Returns:
+        The :class:`CostTierPreset` whose threshold band contains
+        the ``composite`` score.
+    """
     if composite < config.thresholds.moderate:
         return CostTierPreset.MINIMAL
     if composite < config.thresholds.generous:

@@ -37,7 +37,12 @@ def _candidates_covered_by(
     candidates: Sequence[AssignmentCandidate],
     keys: set[str],
 ) -> bool:
-    """True if every candidate's id is in ``keys``."""
+    """True if every candidate's id is in ``keys``.
+
+    Returns:
+        ``True`` when every candidate's ``str(agent_identity.id)``
+        appears in ``keys``; ``False`` otherwise.
+    """
     return all(str(c.agent_identity.id) in keys for c in candidates)
 
 

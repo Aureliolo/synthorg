@@ -234,7 +234,13 @@ class HybridLoop:
         shutdown_checker: ShutdownChecker | None,
         budget_checker: BudgetChecker | None,
     ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
-        """Run pre-checks and generate the initial plan."""
+        """Run pre-checks and generate the initial plan.
+
+        Returns:
+            ``(updated_ctx, plan)`` when shutdown / budget checks pass
+            and the planner succeeds; the terminal :class:`ExecutionResult`
+            when any pre-check trips so the caller bails out early.
+        """
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
         if shutdown_result is not None:
             return shutdown_result
@@ -265,7 +271,12 @@ class HybridLoop:
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
     ) -> ExecutionResult:
-        """Iterate through plan steps with checkpointing/replanning."""
+        """Iterate through plan steps with checkpointing/replanning.
+
+        Returns:
+            The terminal :class:`ExecutionResult` once the loop exits
+            (success, budget exhausted, shutdown, or replan exhaustion).
+        """
         step_idx = 0
         while step_idx < len(plan.steps):
             if not ctx.has_turns_remaining:
@@ -377,7 +388,14 @@ class HybridLoop:
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
     ) -> tuple[AgentContext, ExecutionPlan, int, bool] | ExecutionResult:
-        """Handle a completed step: update status, checkpoint, replan."""
+        """Handle a completed step: update status, checkpoint, replan.
+
+        Returns:
+            Either a terminal :class:`ExecutionResult` when the
+            progress summary halts the loop, or
+            ``(ctx, plan, replans_used, restart)`` where ``restart``
+            asks the outer loop to begin from step 0 after a replan.
+        """
         plan = update_step_status(
             plan,
             step_idx,
@@ -508,7 +526,13 @@ class HybridLoop:
         all_plans: list[ExecutionPlan],
         replans_used: int,
     ) -> ExecutionResult:
-        """Build the final result after step iteration completes."""
+        """Build the final result after step iteration completes.
+
+        Returns:
+            The terminal :class:`ExecutionResult`, with a
+            ``MAX_TURNS`` termination reason when turns ran out
+            mid-plan and ``COMPLETED`` otherwise.
+        """
         # Sync live plan into all_plans so final_plan reflects
         # step status changes (COMPLETED, IN_PROGRESS, etc.).
         if all_plans:
@@ -553,7 +577,13 @@ class HybridLoop:
         config: CompletionConfig,
         turns: list[TurnRecord],
     ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
-        """Generate an execution plan from the LLM."""
+        """Generate an execution plan from the LLM.
+
+        Returns:
+            ``(updated_ctx, plan)`` on a successful plan generation,
+            or the terminal :class:`ExecutionResult` propagated from
+            :func:`call_planner` (budget exhaustion, shutdown, etc.).
+        """
         plan_msg = ChatMessage(
             role=MessageRole.USER,
             content=_PLANNING_PROMPT,
@@ -664,7 +694,13 @@ class HybridLoop:
         return ctx, False
 
     async def _compact(self, ctx: AgentContext) -> AgentContext:
-        """Run context compaction at turn boundaries."""
+        """Run context compaction at turn boundaries.
+
+        Returns:
+            The compacted context returned by the compaction callback,
+            or ``ctx`` unchanged when compaction is disabled or
+            returns ``None``.
+        """
         compacted = await invoke_compaction(
             ctx,
             self._compaction_callback,
@@ -768,7 +804,13 @@ class HybridLoop:
         turns: list[TurnRecord],
         shutdown_checker: ShutdownChecker | None,
     ) -> AgentContext | ExecutionResult:
-        """Check shutdown and execute tool calls for a step turn."""
+        """Check shutdown and execute tool calls for a step turn.
+
+        Returns:
+            The :class:`AgentContext` propagated from tool execution
+            (with tool outputs appended) or a terminal
+            :class:`ExecutionResult` when a shutdown intervenes.
+        """
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
         if shutdown_result is not None:
             clear_last_turn_tool_calls(turns)
@@ -793,7 +835,12 @@ class HybridLoop:
         all_plans: list[ExecutionPlan],
         replans_used: int,
     ) -> ExecutionResult:
-        """Attach hybrid metadata to the execution result."""
+        """Attach hybrid metadata to the execution result.
+
+        Returns:
+            A copy of ``result`` whose metadata carries the hybrid
+            loop's plan history, final plan dump, and replan count.
+        """
         metadata = copy.deepcopy(result.metadata)
         metadata.update(
             {

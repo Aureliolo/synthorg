@@ -1,3 +1,4 @@
+# module-kind: service
 """Error classification pipeline.
 
 Orchestrates the detection of coordination errors from an execution
@@ -18,6 +19,7 @@ from synthorg.budget.coordination_config import (
     ErrorCategory,
     ErrorTaxonomyConfig,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.classification.budget_tracker import (
     ClassificationBudgetTracker,
 )
@@ -160,6 +162,11 @@ def _build_detectors(
     variant.  When multiple variants target the same category,
     wraps them in a ``CompositeDetector``.  Skips LLM variants
     when no provider is available.
+
+    Returns:
+        A tuple of :class:`Detector` instances (one per category,
+        wrapped in :class:`CompositeDetector` when multiple variants
+        target the same category).
     """
     detectors: list[Detector] = []
 
@@ -189,7 +196,12 @@ def _build_variants(
     provider: BaseCompletionProvider | None,
     budget_tracker: ClassificationBudgetTracker | None,
 ) -> list[Detector]:
-    """Build detector instances for a single category."""
+    """Build detector instances for a single category.
+
+    Returns:
+        A list of :class:`Detector` instances (one per configured
+        variant); empty when no variant resolves to a factory.
+    """
     variants: list[Detector] = []
     for variant in cat_config.variants:
         if variant == DetectorVariant.LLM_SEMANTIC:
@@ -350,7 +362,18 @@ async def _classify_safely(  # noqa: PLR0913
     task_repo: TaskRepository | None,
     provider: BaseCompletionProvider | None,
 ) -> ClassificationResult | None:
-    """Run the pipeline and catch all non-fatal errors."""
+    """Run the pipeline and catch all non-fatal errors.
+
+    Returns:
+        The :class:`ClassificationResult` from ``_run_pipeline``, or
+        ``None`` when a non-critical exception is logged and swallowed.
+
+    Raises:
+        MemoryError: Re-raised unchanged after logging redacted
+            context (interpreter-critical, never swallowed).
+        RecursionError: Re-raised unchanged after logging redacted
+            context (interpreter-critical, never swallowed).
+    """
     try:
         return await _run_pipeline(
             execution_result,
@@ -401,9 +424,8 @@ async def _dispatch_to_sinks(
     for sink in sinks:
         try:
             await sink.on_classification(result)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CLASSIFICATION_SINK_ERROR,
                 agent_id=agent_id,
@@ -424,7 +446,14 @@ async def _run_pipeline(  # noqa: PLR0913
     task_repo: TaskRepository | None,
     provider: BaseCompletionProvider | None,
 ) -> ClassificationResult:
-    """Build detectors, load contexts, run, and collect findings."""
+    """Build detectors, load contexts, run, and collect findings.
+
+    Returns:
+        A :class:`ClassificationResult` carrying the execution id,
+        agent id, task id, the categories that were actually
+        checked, and every :class:`ErrorFinding` collected from the
+        detectors.
+    """
     budget_tracker = ClassificationBudgetTracker(
         budget=config.classification_budget_per_task,
     )
@@ -483,12 +512,12 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
 ) -> tuple[list[ErrorFinding], set[ErrorCategory]]:
     """Group detectors by scope, load contexts, and run them.
 
-    Returns a tuple of (findings, checked_categories) where
-    ``checked_categories`` contains only the categories for which
-    at least one detector actually executed.  Categories are
-    excluded when: their scope's loader is unavailable (TASK_TREE
-    without ``task_repo``), the loader raises, or a scope mismatch
-    prevents invocation.
+    Returns:
+        ``(findings, checked_categories)`` where ``findings`` is the
+        flat list of :class:`ErrorFinding` from every executed
+        detector and ``checked_categories`` is the subset of
+        categories whose detector actually ran (excluding scopes
+        with no loader, loader failures, or scope mismatches).
     """
     scope_detectors: dict[DetectionScope, list[Detector]] = {}
     for detector in all_detectors:
@@ -513,9 +542,8 @@ async def _run_detectors_by_scope(  # noqa: PLR0913
             continue
         try:
             context = await loader.load(execution_result, agent_id, task_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             detector_names = [type(d).__name__ for d in detectors]
             logger.warning(
                 CONTEXT_LOADER_ERROR,
@@ -564,15 +592,19 @@ async def _safe_detect(  # noqa: PLR0913
 ) -> tuple[ErrorFinding, ...]:
     """Run a single detector with isolation and a timeout.
 
-    Re-raises ``MemoryError`` and ``RecursionError``; catches and
-    logs all other exceptions (including ``asyncio.TimeoutError``)
-    without stopping the pipeline.
+    Re-raises ``MemoryError`` and ``RecursionError`` via
+    :func:`reraise_critical`; catches and logs all other exceptions
+    (including ``asyncio.TimeoutError``) without stopping the
+    pipeline.
+
+    Returns:
+        The tuple of :class:`ErrorFinding` produced by the detector,
+        or an empty tuple when the detector timed out or raised a
+        non-critical exception.
     """
     try:
         async with engine_timeout(timeout_seconds):
             return await detector.detect(context)
-    except MemoryError, RecursionError:
-        raise
     except TimeoutError:
         logger.warning(
             DETECTOR_TIMEOUT,
@@ -584,6 +616,7 @@ async def _safe_detect(  # noqa: PLR0913
         )
         return ()
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             DETECTOR_ERROR,
             agent_id=agent_id,

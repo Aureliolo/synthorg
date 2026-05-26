@@ -1,3 +1,4 @@
+# module-kind: adapter
 """Agent engine -- top-level orchestrator.
 
 Ties together prompt construction, execution context, execution loop,
@@ -9,6 +10,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict
 
 from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine._validation import (
     validate_agent,
@@ -354,7 +356,15 @@ class AgentEngine(
         self,
         context: CoordinationContext,
     ) -> CoordinationResultWithAttribution:
-        """Delegate to the multi-agent coordinator."""
+        """Delegate to the multi-agent coordinator.
+
+        Returns:
+            The :class:`CoordinationResultWithAttribution` from the
+            coordinator's ``coordinate()`` call.
+
+        Raises:
+            ExecutionStateError: If no coordinator was configured.
+        """
         if self._coordinator is None:
             msg = "No coordinator configured for multi-agent dispatch"
             logger.warning(
@@ -376,6 +386,11 @@ class AgentEngine(
         on the decision is consumed downstream by the review pipeline,
         which derives it from the persisted ``task.stakes``; this method
         only adjusts the model the subtask runs with.
+
+        Returns:
+            ``identity`` with its model replaced when the router picks
+            a different one; the original ``identity`` is returned
+            unchanged when the router's selection matches.
         """
         assert self._stakes_router is not None  # noqa: S101  # caller checks
         decision = await self._stakes_router.route(task=task, identity=identity)
@@ -395,7 +410,23 @@ class AgentEngine(
         effective_autonomy: EffectiveAutonomy | None = None,
         resume_execution_id: str | None = None,
     ) -> AgentRunResult:
-        """Execute an agent on a task."""
+        """Execute an agent on a task.
+
+        Returns:
+            The :class:`AgentRunResult` from the loop, with cost
+            tracking, post-execution transitions, and recovery /
+            checkpoint resume applied.
+
+        Raises:
+            MemoryError: Re-raised after logging from the explicit
+                log-and-raise critical-error path (the engine surfaces
+                non-recoverable interpreter signals to the worker).
+            RecursionError: Same path as ``MemoryError``.
+            ProjectNotFoundError: From project validation when the
+                task references a missing project.
+            ProjectAgentNotMemberError: From project validation when
+                the agent is not a member of the project's team.
+        """
         agent_id = str(identity.id)
         task_id = task.id
 
@@ -593,7 +624,13 @@ class AgentEngine(
         provider: CompletionProvider | None = None,
         project_budget: float = 0.0,
     ) -> AgentRunResult:
-        """Run execution loop, record costs, apply transitions, and build result."""
+        """Run execution loop, record costs, apply transitions, and build result.
+
+        Returns:
+            The :class:`AgentRunResult` carrying the loop outcome,
+            recovery decision (when one fired), and post-execution
+            telemetry for the orchestrator.
+        """
         with _tracer.start_as_current_span(
             "agent.execution",
             attributes={
@@ -699,9 +736,8 @@ class AgentEngine(
             )
             if frames:
                 await self._flight_recorder_sink.record_frames(frames)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 FLIGHT_RECORDER_RECORD_FAILED,
                 execution_id=execution_result.context.execution_id,

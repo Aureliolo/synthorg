@@ -110,7 +110,12 @@ def validate_run_inputs(
     max_turns: int,
     timeout_seconds: float | None,
 ) -> None:
-    """Validate scalar ``run()`` arguments before execution."""
+    """Validate scalar ``run()`` arguments before execution.
+
+    Raises:
+        ValueError: When ``max_turns < 1`` or ``timeout_seconds`` is
+            set to a non-positive value.
+    """
     if max_turns < 1:
         msg = f"max_turns must be >= 1, got {max_turns}"
         logger.warning(
@@ -132,7 +137,12 @@ def validate_run_inputs(
 
 
 def validate_agent(identity: AgentIdentity, agent_id: str) -> None:
-    """Raise if agent is not ACTIVE."""
+    """Raise if agent is not ACTIVE.
+
+    Raises:
+        ExecutionStateError: When the agent's status is not
+            :attr:`AgentStatus.ACTIVE`.
+    """
     if identity.status != AgentStatus.ACTIVE:
         msg = (
             f"Agent {agent_id} has status {identity.status.value!r}; "
@@ -151,7 +161,13 @@ def validate_task(
     agent_id: str,
     task_id: str,
 ) -> None:
-    """Raise if task is not executable or not assigned to this agent."""
+    """Raise if task is not executable or not assigned to this agent.
+
+    Raises:
+        ExecutionStateError: When the task is not in an executable
+            status (``assigned`` / ``in_progress``) or is not assigned
+            to ``agent_id``.
+    """
     if task.status not in _EXECUTABLE_STATUSES:
         msg = (
             f"Task {task_id!r} has status {task.status.value!r}; "

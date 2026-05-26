@@ -160,7 +160,16 @@ class ShadowEvaluationConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_provider_consistency(self) -> Self:
-        """Reject configs whose ``probe_tasks`` contradicts ``task_provider``."""
+        """Reject configs whose ``probe_tasks`` contradicts ``task_provider``.
+
+        Returns:
+            ``self`` unchanged when provider / probe-tasks agree.
+
+        Raises:
+            ValueError: When ``task_provider='configured'`` lacks
+                probe tasks, or ``task_provider='recent_history'``
+                still carries probe tasks.
+        """
         if self.task_provider == "configured" and not self.probe_tasks:
             msg = (
                 "task_provider='configured' requires at least one entry in probe_tasks"

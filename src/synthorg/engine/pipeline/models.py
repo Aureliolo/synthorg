@@ -165,7 +165,15 @@ class WorkPhaseResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_success_error_consistency(self) -> Self:
-        """Ensure ``success`` and ``error`` are mutually consistent."""
+        """Ensure ``success`` and ``error`` are mutually consistent.
+
+        Returns:
+            ``self`` unchanged when ``success`` / ``error`` agree.
+
+        Raises:
+            ValueError: When a successful phase has an error or a
+                failed phase lacks one.
+        """
         if self.success and self.error is not None:
             msg = "successful phase must not carry an error"
             raise ValueError(msg)

@@ -6,6 +6,7 @@ to decompose a parent task into executable subtasks.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
 from synthorg.engine.decomposition.dag import DependencyGraph
@@ -83,9 +84,8 @@ class DecompositionService:
 
         try:
             return await self._do_decompose(task, context)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DECOMPOSITION_FAILED,
                 task_id=task.id,

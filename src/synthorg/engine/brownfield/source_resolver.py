@@ -55,6 +55,11 @@ class BrownfieldSourceResolver:
     async def resolve(self, source_ref: NotBlankStr) -> ResolvedSource:
         """Resolve *source_ref* (local path or remote URL) for fetching.
 
+        Returns:
+            A :class:`ResolvedSource` carrying the fetch URL and
+            source-kind discriminator (and any token / pinning args
+            for remote HTTPS sources).
+
         Raises:
             BrownfieldSourceUnavailableError: The source is an unreadable
                 local path or a disallowed / SSRF-blocked remote URL.
@@ -65,6 +70,15 @@ class BrownfieldSourceResolver:
 
     @staticmethod
     def _is_remote(source_ref: str) -> bool:
+        """Classify *source_ref* as a remote URL vs a local path.
+
+        Args:
+            source_ref: The operator-supplied source reference.
+
+        Returns:
+            ``True`` for a remote URL (known scheme or scp-like
+            ``user@host:path``); ``False`` for a local / ``file://`` path.
+        """
         if source_ref.startswith("file://"):
             return False
         scheme = urlsplit(source_ref).scheme
@@ -75,6 +89,18 @@ class BrownfieldSourceResolver:
         return "@" in before_slash and ":" in before_slash
 
     def _resolve_local(self, source_ref: str) -> ResolvedSource:
+        """Resolve a local-path source into a fetch-ready reference.
+
+        Args:
+            source_ref: A local path, optionally ``file://``-prefixed.
+
+        Returns:
+            A :class:`ResolvedSource` with ``LOCAL_PATH`` kind.
+
+        Raises:
+            BrownfieldSourceUnavailableError: The path is not a readable
+                directory.
+        """
         raw = source_ref.removeprefix("file://")
         path = Path(raw)
         if not path.is_dir():
@@ -86,6 +112,22 @@ class BrownfieldSourceResolver:
         )
 
     async def _resolve_remote(self, source_ref: str) -> ResolvedSource:
+        """Resolve a remote-URL source, applying auth and SSRF guards.
+
+        Validates the scheme, rejects URL-embedded credentials, SSRF-checks
+        and DNS-pins the host, and injects a matching forge token for HTTPS.
+
+        Args:
+            source_ref: The remote source URL.
+
+        Returns:
+            A :class:`ResolvedSource` with ``REMOTE`` kind, the (possibly
+            token-injected) fetch URL, and DNS-pinning args.
+
+        Raises:
+            BrownfieldSourceUnavailableError: Disallowed scheme,
+                URL-embedded credentials, or a blocked / unresolvable host.
+        """
         if not is_allowed_clone_scheme(source_ref):
             msg = (
                 f"brownfield remote source {source_ref!r} uses a disallowed "
@@ -119,7 +161,12 @@ class BrownfieldSourceResolver:
 
     @staticmethod
     def _pin_args(validation: DnsValidationOk) -> tuple[str, ...]:
-        """Build ``git -c http.curloptResolve`` pinning args for HTTPS."""
+        """Build ``git -c http.curloptResolve`` pinning args for HTTPS.
+
+        Returns:
+            ``("-c", "http.curloptResolve=...")`` when the validation
+            is HTTPS with resolved IPs to pin; ``()`` otherwise.
+        """
         if not validation.is_https or not validation.resolved_ips:
             return ()
         resolve_value = build_curl_resolve_value(
@@ -132,7 +179,13 @@ class BrownfieldSourceResolver:
     async def _maybe_inject_token(
         self, source_ref: str, validation: DnsValidationOk
     ) -> str:
-        """Inject a forge token into HTTPS userinfo when the host matches."""
+        """Inject a forge token into HTTPS userinfo when the host matches.
+
+        Returns:
+            The original ``source_ref`` when no catalog / matching
+            token is wired (or the URL is not HTTPS); otherwise a
+            URL string with the token injected into userinfo.
+        """
         if not validation.is_https or self._catalog is None:
             return source_ref
         token = await self._token_for_host(validation.hostname)

@@ -153,6 +153,10 @@ class ObjectiveEntryAdapter:
         defaults declared on :class:`WorkItem` itself (Priority.MEDIUM,
         TaskType.DEVELOPMENT, Complexity.MEDIUM) when the submission
         does not specify them.
+
+        Returns:
+            A :class:`WorkItem` built from the submission with any
+            optional fields filled from the WorkItem defaults.
         """
         base = WorkItem(
             origin_adapter_id=_ORIGIN_ADAPTER_ID,

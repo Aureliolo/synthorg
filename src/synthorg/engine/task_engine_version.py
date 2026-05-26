@@ -61,6 +61,10 @@ class VersionTracker:
 
         If *task_id* is not yet tracked, it is seeded at version 1
         first, so the returned value will be 2 (not 1).
+
+        Returns:
+            The post-increment version (``>= 2`` for a newly-tracked
+            task, otherwise ``previous + 1``).
         """
         self.seed(task_id)
         version = self._versions[task_id] + 1
@@ -84,6 +88,11 @@ class VersionTracker:
 
         Seeds the version at 1 if the task is not yet tracked so that
         optimistic concurrency works within the current engine lifetime.
+
+        Raises:
+            TaskVersionConflictError: When ``expected_version`` does
+                not match the tracker's current version for
+                ``task_id``.
         """
         if expected_version is None:
             return

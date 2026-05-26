@@ -20,7 +20,12 @@ logger = get_logger(__name__)
 
 
 def _log_and_raise(event: str, msg: str, **kwargs: object) -> NoReturn:
-    """Log a warning with *event* and structured *kwargs*, then raise ``ValueError``."""
+    """Log a warning with *event* and structured *kwargs*, then raise ``ValueError``.
+
+    Raises:
+        ValueError: Always; the function exists to centralise the
+            log + raise pair.
+    """
     logger.warning(event, **kwargs)
     raise ValueError(msg)
 

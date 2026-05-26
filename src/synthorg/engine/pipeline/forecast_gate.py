@@ -55,6 +55,10 @@ def _signal_from_work_item(
     forecast is a coarse estimate over the brief text. A sharper
     estimate can be computed downstream once the work pipeline
     assigns concrete agents to roles.
+
+    Returns:
+        A :class:`BriefSignal` carrying the work item's raw intent,
+        the placeholder role skeleton, and the configured currency.
     """
     return BriefSignal(
         brief_text=work_item.raw_intent,
@@ -112,6 +116,10 @@ class ForecastGate:
           :class:`CostForecastApprovalRequiredError` with the new
           forecast id so the dashboard can show the estimate.
 
+        Returns:
+            The :class:`WorkPipelineResult` produced by the wrapped
+            pipeline when the gate permits dispatch.
+
         Raises:
             CostForecastApprovalRequiredError: When operator approval
                 is required before dispatch.
@@ -162,6 +170,16 @@ class ForecastGate:
         only one per brief). On a save race where a concurrent dispatch
         wins that index, re-reads the winner rather than surfacing the
         constraint violation.
+
+        Returns:
+            The pending :class:`Forecast` for the brief: an existing
+            one when present, a freshly persisted one otherwise (or
+            the winning row when a save race occurred).
+
+        Raises:
+            ConstraintViolationError: When a save race occurs but the
+                winner cannot be re-read (the original error is
+                re-raised so the operator sees the constraint hit).
         """
         signal = _signal_from_work_item(
             work_item,
@@ -182,7 +200,12 @@ class ForecastGate:
         return fresh
 
     def _raise_approval_required(self, forecast: Forecast) -> NoReturn:
-        """Log and raise the approval-required signal for a pending forecast."""
+        """Log and raise the approval-required signal for a pending forecast.
+
+        Raises:
+            CostForecastApprovalRequiredError: Always; the function
+                exists to centralise the log + raise pair.
+        """
         self._log_approval_required(forecast)
         msg = (
             f"Pre-flight cost forecast required: "
@@ -198,7 +221,12 @@ class ForecastGate:
         )
 
     def _raise_rejected(self, forecast: Forecast) -> NoReturn:
-        """Log and raise the rejected signal for a rejected forecast."""
+        """Log and raise the rejected signal for a rejected forecast.
+
+        Raises:
+            CostForecastRejectedError: Always; the function exists to
+                centralise the log + raise pair.
+        """
         self._log_rejected(forecast)
         msg = f"Cost forecast {forecast.forecast_id!s} was rejected by the operator"
         raise CostForecastRejectedError(
@@ -208,7 +236,12 @@ class ForecastGate:
         )
 
     async def _lookup_forecast(self, work_item: WorkItem) -> Forecast | None:
-        """Look up a forecast row by ``work_item.forecast_id``."""
+        """Look up a forecast row by ``work_item.forecast_id``.
+
+        Returns:
+            The :class:`Forecast` referenced by ``work_item.forecast_id``;
+            ``None`` when no id is set or no row matches.
+        """
         if work_item.forecast_id is None:
             return None
         return await self._forecast_repo.get(work_item.forecast_id)
@@ -221,6 +254,10 @@ class ForecastGate:
 
         The repository's partial-unique index allows at most one pending
         row per brief, so a hit here is the single reusable forecast.
+
+        Returns:
+            The pending :class:`Forecast` for ``brief_hash`` when one
+            exists; ``None`` otherwise.
         """
         rows = await self._forecast_repo.query(
             CostForecastFilterSpec(
@@ -243,6 +280,11 @@ class ForecastGate:
         issued) must not carry its stale approval / rejection / ceiling
         onto the new brief. On a mismatch the gate falls through to
         issue a fresh forecast for the current brief.
+
+        Returns:
+            ``True`` when the existing forecast's brief hash matches
+            the current work item; ``False`` when the brief has
+            drifted (a fresh forecast is required).
         """
         expected = compute_brief_hash(
             _signal_from_work_item(

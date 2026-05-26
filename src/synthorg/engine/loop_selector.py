@@ -70,7 +70,14 @@ class AutoLoopRule(BaseModel):
     @field_validator("loop_type")
     @classmethod
     def _validate_known_loop_type(cls, v: str) -> str:
-        """Reject loop types not in the known set."""
+        """Reject loop types not in the known set.
+
+        Returns:
+            ``v`` unchanged when it appears in :data:`_KNOWN_LOOP_TYPES`.
+
+        Raises:
+            ValueError: When ``v`` is not a known loop type.
+        """
         if v not in _KNOWN_LOOP_TYPES:
             msg = f"Unknown loop_type {v!r}; allowed: {sorted(_KNOWN_LOOP_TYPES)}"
             raise ValueError(msg)
@@ -137,7 +144,17 @@ class AutoLoopConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_rules_and_fallbacks(self) -> Self:
-        """Validate unique complexities, known types, and buildability."""
+        """Validate unique complexities, known types, and buildability.
+
+        Returns:
+            ``self`` unchanged when every rule and fallback resolves
+            to a known, buildable loop type.
+
+        Raises:
+            ValueError: When complexities duplicate, an unknown loop
+                type is named, or a fallback / default is not
+                buildable.
+        """
         seen: set[Complexity] = set()
         for rule in self.rules:
             if rule.complexity in seen:
@@ -176,7 +193,12 @@ def _match_loop_type(
     complexity: Complexity,
     default_loop_type: str,
 ) -> str:
-    """Find the first rule matching *complexity*, or fall back to default."""
+    """Find the first rule matching *complexity*, or fall back to default.
+
+    Returns:
+        The matching rule's ``loop_type`` if any rule matches;
+        otherwise ``default_loop_type`` (with a warning log).
+    """
     matched = next(
         (r.loop_type for r in rules if r.complexity == complexity),
         None,
@@ -197,7 +219,13 @@ def _downgrade_for_budget(
     budget_utilization_pct: float | None,
     budget_tight_threshold: int,
 ) -> str:
-    """Downgrade hybrid to plan_execute when budget is tight."""
+    """Downgrade hybrid to plan_execute when budget is tight.
+
+    Returns:
+        ``"plan_execute"`` when ``loop_type`` is hybrid and budget
+        utilisation meets / exceeds the tight threshold; otherwise
+        ``loop_type`` unchanged.
+    """
     if (
         loop_type == "hybrid"
         and budget_utilization_pct is not None
@@ -218,7 +246,12 @@ def _apply_hybrid_fallback(
     loop_type: str,
     hybrid_fallback: str | None,
 ) -> str:
-    """Replace hybrid with the configured fallback when set."""
+    """Replace hybrid with the configured fallback when set.
+
+    Returns:
+        ``hybrid_fallback`` when ``loop_type`` is hybrid and a
+        fallback is configured; otherwise ``loop_type`` unchanged.
+    """
     if loop_type == "hybrid" and hybrid_fallback is not None:
         logger.info(
             EXECUTION_LOOP_HYBRID_FALLBACK,
@@ -274,6 +307,12 @@ def _build_react_loop(
     compaction_callback: CompactionCallback | None = None,
     **_unused: object,
 ) -> ExecutionLoop:
+    """Build a :class:`ReactLoop` for the ``react`` strategy.
+
+    Returns:
+        A configured :class:`ReactLoop`. Unrecognised keyword arguments
+        are ignored so all builders share one call signature.
+    """
     return ReactLoop(
         checkpoint_callback=checkpoint_callback,
         approval_gate=approval_gate,
@@ -291,6 +330,12 @@ def _build_plan_execute_loop(
     plan_execute_config: PlanExecuteConfig | None = None,
     **_unused: object,
 ) -> ExecutionLoop:
+    """Build a :class:`PlanExecuteLoop` for the ``plan_execute`` strategy.
+
+    Returns:
+        A configured :class:`PlanExecuteLoop`. Unrecognised keyword
+        arguments are ignored so all builders share one call signature.
+    """
     return PlanExecuteLoop(
         config=plan_execute_config,
         checkpoint_callback=checkpoint_callback,
@@ -309,6 +354,12 @@ def _build_hybrid_loop(
     hybrid_loop_config: HybridLoopConfig | None = None,
     **_unused: object,
 ) -> ExecutionLoop:
+    """Build a :class:`HybridLoop` for the ``hybrid`` strategy.
+
+    Returns:
+        A configured :class:`HybridLoop`. Unrecognised keyword arguments
+        are ignored so all builders share one call signature.
+    """
     return HybridLoop(
         config=hybrid_loop_config,
         checkpoint_callback=checkpoint_callback,

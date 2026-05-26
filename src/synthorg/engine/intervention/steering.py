@@ -97,7 +97,13 @@ class SafeDefaultSteeringDirective:
         agent_id: str,
         details: Mapping[str, object],
     ) -> SteeringOutcome:
-        """Queue a hint/redirect interrupt for the running agent."""
+        """Queue a hint/redirect interrupt for the running agent.
+
+        Returns:
+            A :class:`SteeringOutcome` with ``applied=True`` when the
+            interrupt was queued; ``applied=False`` when the kind is
+            unhandled or the directive text is empty.
+        """
         if kind not in _STEERABLE_KINDS:
             return SteeringOutcome(
                 kind=kind,
@@ -141,7 +147,14 @@ def build_steering_directive(
     strategy: str = "safe_default",
     clock: Clock | None = None,
 ) -> SteeringDirective:
-    """Select the configured steering directive implementation."""
+    """Select the configured steering directive implementation.
+
+    Returns:
+        A :class:`SteeringDirective` matching ``strategy``.
+
+    Raises:
+        ValueError: When ``strategy`` is not a known implementation.
+    """
     if strategy != "safe_default":
         msg = f"Unknown steering directive strategy: {strategy!r}"
         raise ValueError(msg)

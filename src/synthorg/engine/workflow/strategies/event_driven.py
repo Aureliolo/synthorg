@@ -200,7 +200,13 @@ class EventDrivenStrategy:
         transition_event: str,
         context: CeremonyEvalContext,
     ) -> SprintStatus | None:
-        """Check if transition event has been observed."""
+        """Check if transition event has been observed.
+
+        Returns:
+            ``SprintStatus.IN_REVIEW`` when the named event appears
+            in ``context.external_events`` or the internal counter;
+            ``None`` otherwise.
+        """
         if transition_event in context.external_events:
             logger.info(
                 SPRINT_AUTO_TRANSITION,
@@ -398,7 +404,12 @@ class EventDrivenStrategy:
         config: Mapping[str, Any],
         key: str,
     ) -> None:
-        """Validate that *key* is a non-empty string if present."""
+        """Validate that *key* is a non-empty string if present.
+
+        Raises:
+            ValueError: When the key is present but not a non-blank
+                string of length ``<= _MAX_EVENT_NAME_LEN``.
+        """
         value = config.get(key)
         if value is None:
             return
@@ -420,7 +431,12 @@ class EventDrivenStrategy:
     def _validate_debounce_keys(
         config: Mapping[str, Any],
     ) -> None:
-        """Validate debounce and debounce_default if present."""
+        """Validate debounce and debounce_default if present.
+
+        Raises:
+            ValueError: When a debounce value is not a positive
+                integer or exceeds :data:`_MAX_DEBOUNCE`.
+        """
         for key in (_KEY_DEBOUNCE, _KEY_DEBOUNCE_DEFAULT):
             value = config.get(key)
             if value is None:
@@ -450,7 +466,13 @@ class EventDrivenStrategy:
         config: Mapping[str, Any],
         ceremony_name: str,
     ) -> int:
-        """Resolve debounce value with type validation."""
+        """Resolve debounce value with type validation.
+
+        Returns:
+            The configured ``debounce`` integer when valid; the
+            strategy's debounce default otherwise (with a warning
+            log).
+        """
         raw = config.get(_KEY_DEBOUNCE, self._debounce_default)
         if (
             isinstance(raw, bool)

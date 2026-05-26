@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.classification.models import (
     ErrorFinding,
     ErrorSeverity,
@@ -52,6 +53,10 @@ def _dedup_key(finding: ErrorFinding) -> str:
     key actually matches the documented
     ``(turn_range, sha256(description), category)`` identity and
     cannot produce false merges via short-digest collisions.
+
+    Returns:
+        A pipe-delimited string carrying turn range, full SHA-256 of
+        the description, and the category value.
     """
     desc_hash = hashlib.sha256(
         finding.description.encode(),
@@ -135,9 +140,8 @@ async def _run_detector_safely(
     """
     try:
         return await detector.detect(context)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_exception_redacted(
             logger,
             DETECTOR_ERROR,

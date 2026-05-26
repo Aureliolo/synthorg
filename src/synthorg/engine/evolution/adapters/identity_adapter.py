@@ -57,6 +57,9 @@ class IdentityAdapter:
             agent_id: Target agent.
 
         Raises:
+            ValueError: When the proposal targets an unknown axis or
+                the requested changes cannot be applied to the
+                current identity (e.g. invalid field path).
             Exception: If the identity cannot be retrieved or persisted.
         """
         try:

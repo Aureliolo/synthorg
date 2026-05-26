@@ -28,7 +28,13 @@ logger = get_logger(__name__)
 def extract_subworkflow_config(
     node_config: object,
 ) -> tuple[str, str | None, dict[str, object], dict[str, object]] | None:
-    """Unpack subworkflow node config into ``(id, version, ib, ob)``."""
+    """Unpack subworkflow node config into ``(id, version, ib, ob)``.
+
+    Returns:
+        ``(subworkflow_id, version, input_bindings, output_bindings)``
+        on a well-formed config; ``None`` when ``node_config`` is not
+        a dict or carries an invalid ``subworkflow_id`` / ``version``.
+    """
     if not isinstance(node_config, dict):
         return None
     subworkflow_id = node_config.get("subworkflow_id")
@@ -104,7 +110,13 @@ def _check_bindings_against_declarations(  # noqa: PLR0913
     unknown_code: ValidationErrorCode,
     type_code: ValidationErrorCode,
 ) -> list[WorkflowValidationError]:
-    """Validate binding keys/literals against a set of declarations."""
+    """Validate binding keys/literals against a set of declarations.
+
+    Returns:
+        List of :class:`WorkflowValidationError` entries for missing
+        required bindings, unknown binding names, and literal /
+        declared-type mismatches.
+    """
     errors: list[WorkflowValidationError] = [
         WorkflowValidationError(
             code=missing_code,
@@ -171,7 +183,12 @@ def _check_subworkflow_io_for_node(  # noqa: PLR0913
     child_inputs: tuple[WorkflowIODeclaration, ...],
     child_outputs: tuple[WorkflowIODeclaration, ...],
 ) -> list[WorkflowValidationError]:
-    """Check a single SUBWORKFLOW node's bindings against child I/O."""
+    """Check a single SUBWORKFLOW node's bindings against child I/O.
+
+    Returns:
+        Combined list of input + output binding errors; ``[]`` when
+        the bindings agree with the child's declarations.
+    """
     ref_label = f"{subworkflow_id!r}@{version!r}"
     errors = _check_bindings_against_declarations(
         node_id=node_id,
@@ -202,7 +219,12 @@ async def validate_subworkflow_io(
     definition: WorkflowDefinition,
     registry: SubworkflowRegistry,
 ) -> WorkflowValidationResult:
-    """Validate every SUBWORKFLOW node's bindings against its child."""
+    """Validate every SUBWORKFLOW node's bindings against its child.
+
+    Returns:
+        A :class:`WorkflowValidationResult` collecting every binding
+        violation; carries an empty error tuple on success.
+    """
     errors: list[WorkflowValidationError] = []
     from synthorg.engine.errors import SubworkflowNotFoundError  # noqa: PLC0415
 
@@ -279,7 +301,12 @@ async def validate_subworkflow_graph(
     definition: WorkflowDefinition,
     registry: SubworkflowRegistry,
 ) -> WorkflowValidationResult:
-    """Detect cycles across the static subworkflow reference graph."""
+    """Detect cycles across the static subworkflow reference graph.
+
+    Returns:
+        A :class:`WorkflowValidationResult` carrying a cycle-detection
+        error for each cycle found; empty when no cycles exist.
+    """
     errors: list[WorkflowValidationError] = []
     root_key = (definition.id, definition.version)
     visiting: set[tuple[str, str]] = set()

@@ -391,6 +391,11 @@ class ExternalTriggerStrategy:
         via count comparison -- each ``on_external_event`` call
         increments the count, and a ceremony only fires when the
         count has increased since its last fire.
+
+        Returns:
+            ``True`` when ``event_name`` appears in ``context_events``
+            or the buffered count has increased since the last fire;
+            ``False`` otherwise.
         """
         # Context events: one-shot by nature
         if event_name in context_events:
@@ -434,7 +439,12 @@ class ExternalTriggerStrategy:
 
     @staticmethod
     def _is_valid_event_name(value: object) -> bool:
-        """Check if a value is a valid external event name."""
+        """Check if a value is a valid external event name.
+
+        Returns:
+            ``True`` when ``value`` is a non-blank string at most
+            ``_MAX_EVENT_NAME_LEN`` characters long.
+        """
         return (
             isinstance(value, str)
             and bool(value.strip())
@@ -446,7 +456,12 @@ class ExternalTriggerStrategy:
         config: Mapping[str, Any],
         key: str,
     ) -> None:
-        """Validate that *key* is a non-empty string if present."""
+        """Validate that *key* is a non-empty string if present.
+
+        Raises:
+            ValueError: When ``key`` is present but not a non-blank
+                string of length ``<= _MAX_EVENT_NAME_LEN``.
+        """
         value = config.get(key)
         if value is None:
             return
@@ -473,7 +488,12 @@ class ExternalTriggerStrategy:
 
     @staticmethod
     def _validate_sources(config: Mapping[str, Any]) -> None:
-        """Validate the sources list if present."""
+        """Validate the sources list if present.
+
+        Raises:
+            TypeError: When ``sources`` is set but not a list.
+            ValueError: When the list exceeds ``_MAX_SOURCES`` entries.
+        """
         sources = config.get(_KEY_SOURCES)
         if sources is None:
             return
@@ -501,7 +521,13 @@ class ExternalTriggerStrategy:
 
     @staticmethod
     def _validate_single_source(index: int, entry: object) -> None:
-        """Validate a single source entry (type + structure)."""
+        """Validate a single source entry (type + structure).
+
+        Raises:
+            TypeError: When ``entry`` is not a dict.
+            ValueError: When the entry lacks a ``type`` key or
+                otherwise violates the source schema.
+        """
         if not isinstance(entry, dict):
             msg = f"sources[{index}] must be a dict"
             logger.warning(

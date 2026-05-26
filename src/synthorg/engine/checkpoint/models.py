@@ -54,7 +54,16 @@ class Checkpoint(BaseModel):
 
     @model_validator(mode="after")
     def _validate_context_json(self) -> Self:
-        """Validate that context_json is a valid JSON object."""
+        """Validate that context_json is a valid JSON object.
+
+        Returns:
+            ``self`` unchanged when ``context_json`` parses as a JSON
+            object.
+
+        Raises:
+            ValueError: When ``context_json`` is not parseable JSON
+                or parses to a non-object value.
+        """
         try:
             parsed = json.loads(self.context_json)
         except (json.JSONDecodeError, TypeError) as exc:

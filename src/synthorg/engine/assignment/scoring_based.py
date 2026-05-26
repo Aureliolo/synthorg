@@ -81,6 +81,12 @@ class ScoringBasedAssignmentStrategy:
         Returns ``selected=None`` when either the filter narrows to
         an empty pool (with the filter's ``reason``) or when no
         survivor scores above ``request.min_score``.
+
+        Returns:
+            The :class:`AssignmentResult` carrying the selected
+            candidate, alternatives, and a human-readable reason; or
+            a no-eligible result with structured reason when no agent
+            could be selected.
         """
         filter_result = self._pool_filter.filter(request)
         if not filter_result.agents:
@@ -122,6 +128,11 @@ class ScoringBasedAssignmentStrategy:
         On exception we log a warning and fall back to the ranker's
         reason -- the assignment itself is still valid since the
         rewriter only affects the human-readable explanation.
+
+        Returns:
+            The rewriter's output when it ran successfully; the
+            ranker's reason when no rewriter is configured or when
+            the rewriter raised.
         """
         if rewriter is None:
             return ranking.reason
@@ -143,7 +154,13 @@ class ScoringBasedAssignmentStrategy:
         request: AssignmentRequest,
         filter_reason: str | None,
     ) -> AssignmentResult:
-        """Build a no-eligible result when the pool filter returned empty."""
+        """Build a no-eligible result when the pool filter returned empty.
+
+        Returns:
+            An :class:`AssignmentResult` with ``selected=None`` and
+            either the filter's structured reason or a generic
+            fallback reason.
+        """
         reason = filter_reason or (
             f"Pool filter {self._pool_filter.name!r} returned no candidates"
         )
@@ -154,7 +171,12 @@ class ScoringBasedAssignmentStrategy:
         )
 
     def _no_eligible_result(self, request: AssignmentRequest) -> AssignmentResult:
-        """Build a no-eligible result when no candidate passed the score threshold."""
+        """Build a no-eligible result when no candidate passed the score threshold.
+
+        Returns:
+            An :class:`AssignmentResult` with ``selected=None`` and a
+            reason citing the score threshold.
+        """
         logger.warning(
             TASK_ASSIGNMENT_NO_ELIGIBLE,
             task_id=request.task.id,

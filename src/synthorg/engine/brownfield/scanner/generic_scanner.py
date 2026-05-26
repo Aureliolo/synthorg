@@ -40,11 +40,22 @@ class GenericScanner:
         return Ecosystem.GENERIC
 
     def detect(self, workspace_path: Path) -> bool:  # noqa: ARG002 -- always available
-        """Always ``True``: the generic scanner is the universal fallback."""
+        """Always ``True``: the generic scanner is the universal fallback.
+
+        Returns:
+            ``True`` unconditionally so the aggregator can fall back
+            to this scanner when no specific scanner matched.
+        """
         return True
 
     def scan(self, workspace_path: Path) -> EcosystemScan:
-        """Contribute top-level directories and well-known build files."""
+        """Contribute top-level directories and well-known build files.
+
+        Returns:
+            An :class:`EcosystemScan` listing top-level directories
+            (as ``DIRECTORY`` modules), recognised root build files,
+            and ``test``/``tests`` directories as test suites.
+        """
         dirs = top_level_dirs(workspace_path)
         modules = tuple(
             Module(path=name, language=Ecosystem.GENERIC, kind=ModuleKind.DIRECTORY)

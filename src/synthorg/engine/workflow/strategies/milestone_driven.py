@@ -518,7 +518,13 @@ class MilestoneDrivenStrategy:
 
     @staticmethod
     def _validate_milestones(config: Mapping[str, Any]) -> None:
-        """Validate the ``milestones`` config key."""
+        """Validate the ``milestones`` config key.
+
+        Raises:
+            TypeError: When ``milestones`` is set but not a list.
+            ValueError: When the list exceeds ``_MAX_MILESTONES``
+                entries or any entry fails validation.
+        """
         raw = config.get(_KEY_MILESTONES)
         if raw is None:
             return
@@ -552,7 +558,12 @@ class MilestoneDrivenStrategy:
     def _validate_transition_milestone(
         config: Mapping[str, Any],
     ) -> None:
-        """Validate the ``transition_milestone`` config key."""
+        """Validate the ``transition_milestone`` config key.
+
+        Raises:
+            ValueError: When ``transition_milestone`` is set but is
+                blank, not a string, or exceeds ``_MAX_NAME_LEN``.
+        """
         raw = config.get(_KEY_TRANSITION_MILESTONE)
         if raw is None:
             return
@@ -587,7 +598,13 @@ def _validate_single_milestone(
     index: int,
     seen_names: set[str],
 ) -> None:
-    """Validate a single milestone entry in the config list."""
+    """Validate a single milestone entry in the config list.
+
+    Raises:
+        TypeError: When the entry is not a mapping.
+        ValueError: When required string fields are missing / blank or
+            the milestone ``name`` duplicates an earlier entry.
+    """
     if not isinstance(entry, dict):
         msg = f"'milestones[{index}]' must be a mapping"
         logger.warning(
@@ -617,7 +634,12 @@ def _validate_milestone_string(
     key: str,
     index: int,
 ) -> None:
-    """Validate that a milestone entry has a non-empty string key."""
+    """Validate that a milestone entry has a non-empty string key.
+
+    Raises:
+        ValueError: When ``entry[key]`` is missing, not a string, or
+            exceeds ``_MAX_NAME_LEN`` characters.
+    """
     value = entry.get(key)
     if isinstance(value, bool) or not isinstance(value, str) or not value.strip():
         msg = f"'milestones[{index}].{key}' must be a non-empty string"

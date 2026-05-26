@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Final
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import GitBackendType
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.types import NotBlankStr
@@ -109,7 +110,12 @@ _RATE_LIMIT_STATUS_RE: Final[re.Pattern[str]] = re.compile(r"(?<!\d)429(?!\d)")
 
 
 def _is_rate_limit(haystack: str) -> bool:
-    """True iff *haystack* (lowered git stderr) looks like a rate-limit."""
+    """True iff *haystack* (lowered git stderr) looks like a rate-limit.
+
+    Returns:
+        ``True`` when ``haystack`` contains a known rate-limit marker or
+        a word-bounded HTTP 429 status code.
+    """
     return _matches(haystack, _RATE_LIMIT_MARKERS) or bool(
         _RATE_LIMIT_STATUS_RE.search(haystack)
     )
@@ -122,6 +128,10 @@ def _is_retryable_git_op(exc: Exception) -> bool:
     transient forge-API errors. Never retries auth failures or a
     confirmed-missing remote (the latter is handled by lazy creation,
     not backoff).
+
+    Returns:
+        ``True`` when ``exc`` is a transient git or forge-API failure
+        eligible for backoff, ``False`` otherwise.
     """
     if isinstance(exc, GitBackendRemoteMissingError | GitBackendForgeAuthError):
         return False
@@ -146,7 +156,11 @@ _URL_USERINFO: Final[re.Pattern[str]] = re.compile(r"(\w+://)[^/@\s]+@")
 
 
 def _redact_stderr(text: str) -> str:
-    """Strip ``user:token@`` userinfo from any URL in git stderr."""
+    """Strip ``user:token@`` userinfo from any URL in git stderr.
+
+    Returns:
+        ``text`` with every userinfo segment replaced by ``[REDACTED]``.
+    """
     return _URL_USERINFO.sub(r"\1[REDACTED]@", text)
 
 
@@ -212,7 +226,12 @@ class ExternalRemoteGitBackend:
         return token
 
     def _split_base(self, connection: Connection) -> tuple[str, str, str, str]:
-        """Return ``(scheme, host_with_port, path, owner)`` from base_url."""
+        """Return ``(scheme, host_with_port, path, owner)`` from base_url.
+
+        Raises:
+            GitBackendConfigError: If ``connection.base_url`` is not
+                ``https`` or has no host component.
+        """
         split = urlsplit(str(connection.base_url).rstrip("/"))
         if split.scheme != "https":
             msg = "external git remote must be an https URL"
@@ -229,7 +248,16 @@ class ExternalRemoteGitBackend:
         return split.scheme, host_with_port, split.path, owner
 
     async def _authenticated_remote_url(self, project_id: str) -> str:
-        """Resolve ``<base_url>/<project_id>.git`` with a token injected."""
+        """Resolve ``<base_url>/<project_id>.git`` with a token injected.
+
+        Returns:
+            The HTTPS clone URL with ``x-access-token`` userinfo set so
+            git can authenticate without a credential helper.
+
+        Raises:
+            GitBackendConfigError: If the base URL is not HTTPS, has no
+                host, or has no owner/namespace path component.
+        """
         connection = await self._connection()
         token = await self._token()
         scheme, host_with_port, path, owner = self._split_base(connection)
@@ -255,7 +283,20 @@ class ExternalRemoteGitBackend:
         workspace_path: Path,
         default_branch: NotBlankStr,
     ) -> ProvisionResult:
-        """Clone the forge remote, or init locally if it does not exist."""
+        """Clone the forge remote, or init locally if it does not exist.
+
+        Returns:
+            A :class:`ProvisionResult` describing the workspace root,
+            the default branch, and whether the worktree was newly
+            created or already present.
+
+        Raises:
+            GitBackendProvisionError: If the workspace directory cannot
+                be created, the clone fails for a non-missing-remote
+                reason (incl. auth), or lazy local-init fails.
+            GitBackendConfigError: If the base URL or token cannot be
+                resolved.
+        """
         pid = str(project_id)
         logger.info(
             GIT_BACKEND_PROVISION_START,
@@ -314,7 +355,13 @@ class ExternalRemoteGitBackend:
         stderr: str,
         default_branch: NotBlankStr,
     ) -> None:
-        """Init a local tree when the remote is missing; else fail."""
+        """Init a local tree when the remote is missing; else fail.
+
+        Raises:
+            GitBackendProvisionError: If git stderr matches an auth
+                marker, or if the clone failure is neither an auth
+                failure nor a missing-remote-with-lazy-init recovery.
+        """
         lowered = stderr.lower()
         # Surface the clone stderr before any classification branch so a
         # clone failure that is neither auth nor missing-remote (the
@@ -355,7 +402,13 @@ class ExternalRemoteGitBackend:
         source: ResolvedSource,
         default_branch: NotBlankStr,
     ) -> SeedResult:
-        """Import *source*, then push to the forge (lazy-creating it)."""
+        """Import *source*, then push to the forge (lazy-creating it).
+
+        Returns:
+            A :class:`SeedResult` carrying the repo root, default
+            branch, HEAD sha of the pushed branch, and the imported
+            source kind.
+        """
         pid = str(project_id)
         logger.info(
             GIT_BACKEND_SEED_START,
@@ -395,7 +448,12 @@ class ExternalRemoteGitBackend:
         branch: NotBlankStr,
         base_branch: NotBlankStr,  # noqa: ARG002 -- remote tracks its own base
     ) -> PushResult:
-        """Push *branch*, lazily creating the forge repo if it is missing."""
+        """Push *branch*, lazily creating the forge repo if it is missing.
+
+        Returns:
+            A :class:`PushResult` naming the pushed branch and the
+            resolved HEAD sha after push.
+        """
         pid = str(project_id)
 
         async def _attempt() -> None:
@@ -426,7 +484,17 @@ class ExternalRemoteGitBackend:
         return PushResult(branch=branch, head_sha=NotBlankStr(head))
 
     async def _do_push(self, repo_root: Path, branch: str, pid: str) -> None:
-        """Run one push attempt; classify a failure into a typed error."""
+        """Run one push attempt; classify a failure into a typed error.
+
+        Raises:
+            GitBackendForgeAuthError: If git stderr matches an auth
+                marker.
+            GitBackendRateLimitError: If git stderr matches a rate-limit
+                marker (incl. word-bounded HTTP 429).
+            GitBackendRemoteMissingError: If the forge REST API reports
+                the repo does not exist and lazy provisioning is on.
+            GitBackendPushError: For any other non-zero git exit.
+        """
         rc, _stdout, stderr = await run_git_subprocess(
             repo_root,
             "push",
@@ -463,7 +531,13 @@ class ExternalRemoteGitBackend:
         repo_root: Path,
         branch: NotBlankStr | None = None,
     ) -> FetchResult:
-        """Fetch from the forge remote into *repo_root* (retried)."""
+        """Fetch from the forge remote into *repo_root* (retried).
+
+        Returns:
+            A :class:`FetchResult` listing the refs updated by the
+            fetch. When *branch* is ``None`` the result reports no
+            specific updated refs.
+        """
         pid = str(project_id)
         args = ["fetch", REMOTE_NAME]
         if branch is not None:
@@ -485,8 +559,15 @@ class ExternalRemoteGitBackend:
         Mirrors :meth:`_do_push` so an auth failure raises the
         non-retryable :class:`GitBackendForgeAuthError` instead of the
         retryable :class:`GitBackendFetchError` that ``git`` would wrap
-        every non-zero exit as -- otherwise the retry handler would burn
+        every non-zero exit as: otherwise the retry handler would burn
         attempts re-running a fetch that can only ever fail.
+
+        Raises:
+            GitBackendForgeAuthError: If git stderr matches an auth
+                marker.
+            GitBackendRateLimitError: If git stderr matches a rate-limit
+                marker.
+            GitBackendFetchError: For any other non-zero git exit.
         """
         rc, _stdout, stderr = await run_git_subprocess(
             repo_root,
@@ -513,7 +594,16 @@ class ExternalRemoteGitBackend:
         raise GitBackendFetchError(msg)
 
     async def _remote_repo_exists(self, pid: str) -> bool:
-        """Check the forge REST API for ``<owner>/<project_id>``."""
+        """Check the forge REST API for ``<owner>/<project_id>``.
+
+        Returns:
+            ``True`` when the forge confirms the repo exists, ``False``
+            when it confirms the repo is missing.
+
+        Raises:
+            GitBackendConfigError: If the connection base URL has no
+                owner/namespace component.
+        """
         connection = await self._connection()
         token = await self._token()
         _scheme, _host, _path, owner = self._split_base(connection)
@@ -543,9 +633,8 @@ class ExternalRemoteGitBackend:
                 owner=NotBlankStr(owner),
                 repo=NotBlankStr(pid),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 GIT_BACKEND_PROVISION_FAILED,
                 project_id=pid,
@@ -558,7 +647,12 @@ class ExternalRemoteGitBackend:
             await client.aclose()
 
     async def _provision_remote_repo(self, pid: str) -> None:
-        """Create ``<owner>/<project_id>`` on the forge via its REST API."""
+        """Create ``<owner>/<project_id>`` on the forge via its REST API.
+
+        Raises:
+            GitBackendConfigError: If the connection base URL has no
+                owner/namespace component.
+        """
         connection = await self._connection()
         token = await self._token()
         _scheme, _host, _path, owner = self._split_base(connection)
@@ -586,9 +680,8 @@ class ExternalRemoteGitBackend:
                 repo=NotBlankStr(pid),
                 private=self._forge_repo_private,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 GIT_BACKEND_PROVISION_FAILED,
                 project_id=pid,

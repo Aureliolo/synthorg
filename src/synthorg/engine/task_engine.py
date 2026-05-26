@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError as PydanticValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.errors import (
     TaskEngineNotRunningError,
     TaskEngineQueueFullError,
@@ -282,6 +283,13 @@ class TaskEngine(TaskEngineLoopsMixin):
 
         Raises:
             ValueError: If ``timeout`` is not ``None`` and ``<= 0``.
+            TimeoutError: If the drain exceeds the hard deadline
+                (``2 * effective_timeout``); the engine is marked
+                unrestartable.
+            asyncio.CancelledError: If the caller cancels ``stop()``
+                mid-drain; the engine is marked unrestartable so a
+                later ``start()`` cannot attach a second loop pair on
+                top of orphaned drain tasks.
         """
         # Validate at the system boundary so callers with a bad
         # argument never mutate lifecycle state. A zero / negative
@@ -499,6 +507,8 @@ class TaskEngine(TaskEngineLoopsMixin):
             TaskEngineNotRunningError: If the engine is not running.
             TaskEngineQueueFullError: If the queue is at capacity.
             TaskMutationError: If the mutation fails.
+            TaskInternalError: If the mutation succeeds but the engine
+                returns no task object (unexpected internal state).
         """
         try:
             mutation = CreateTaskMutation(
@@ -541,6 +551,8 @@ class TaskEngine(TaskEngineLoopsMixin):
             TaskNotFoundError: If the task is not found.
             TaskVersionConflictError: If ``expected_version`` doesn't match.
             TaskMutationError: If the mutation fails.
+            TaskInternalError: If the mutation succeeds but the engine
+                returns no task object (unexpected internal state).
         """
         try:
             mutation = UpdateTaskMutation(
@@ -591,6 +603,8 @@ class TaskEngine(TaskEngineLoopsMixin):
             TaskNotFoundError: If the task is not found.
             TaskVersionConflictError: If ``expected_version`` doesn't match.
             TaskMutationError: If the mutation fails.
+            TaskInternalError: If the mutation succeeds but the engine
+                returns no task object (unexpected internal state).
         """
         effective_reason = reason or f"Transition to {target_status.value}"
         try:
@@ -673,6 +687,8 @@ class TaskEngine(TaskEngineLoopsMixin):
             TaskEngineQueueFullError: If the queue is at capacity.
             TaskNotFoundError: If the task is not found.
             TaskMutationError: If the mutation fails.
+            TaskInternalError: If the mutation succeeds but the engine
+                returns no task object (unexpected internal state).
         """
         try:
             mutation = CancelTaskMutation(
@@ -693,7 +709,17 @@ class TaskEngine(TaskEngineLoopsMixin):
 
     @staticmethod
     def _raise_typed_error(result: TaskMutationResult) -> Never:
-        """Raise a typed error from a failed mutation result."""
+        """Raise a typed error from a failed mutation result.
+
+        Raises:
+            TaskNotFoundError: When ``result.error_code`` is
+                ``"not_found"``.
+            TaskVersionConflictError: When ``result.error_code`` is
+                ``"version_conflict"``.
+            TaskInternalError: When ``result.error_code`` is
+                ``"internal"``.
+            TaskMutationError: For every other error code.
+        """
         error = result.error or "Mutation failed"
         logger.warning(
             TASK_ENGINE_MUTATION_FAILED,
@@ -727,9 +753,8 @@ class TaskEngine(TaskEngineLoopsMixin):
         """
         try:
             return await self._persistence.tasks.get(task_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to read task: {safe_error_description(exc)}"
             logger.warning(
                 TASK_ENGINE_READ_FAILED,
@@ -749,6 +774,11 @@ class TaskEngine(TaskEngineLoopsMixin):
         leading rows.  Callers that want offset must pass an explicit
         ``limit`` so the engine can route through the paginated branch
         that issues a dedicated ``count_tasks`` round-trip.
+
+        Raises:
+            ValueError: If ``limit`` is negative, ``offset`` is
+                negative, or ``offset > 0`` is passed without an
+                explicit ``limit``.
         """
         if limit is not None and limit < 0:
             msg = f"limit must be non-negative when set; got {limit}"
@@ -777,6 +807,12 @@ class TaskEngine(TaskEngineLoopsMixin):
         ``limit=None`` means "fetch everything"; the repository protocol
         requires an ``int``, so translate it into the safety cap and
         rely on the in-memory truncation downstream.
+
+        Returns:
+            The tuple of matching tasks from the repository query.
+
+        Raises:
+            TaskInternalError: If the persistence backend fails.
         """
         from synthorg.persistence.task_protocol import TaskFilterSpec  # noqa: PLC0415
 
@@ -791,9 +827,8 @@ class TaskEngine(TaskEngineLoopsMixin):
                 limit=repo_limit,
                 offset=offset,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = "Failed to list tasks"
             logger.warning(
                 TASK_ENGINE_READ_FAILED,
@@ -809,7 +844,14 @@ class TaskEngine(TaskEngineLoopsMixin):
         assigned_to: str | None,
         project: str | None,
     ) -> int:
-        """Accurate total count with sanitised logging."""
+        """Accurate total count with sanitised logging.
+
+        Returns:
+            The number of tasks matching the filter spec.
+
+        Raises:
+            TaskInternalError: If the persistence backend fails.
+        """
         from synthorg.persistence.task_protocol import TaskFilterSpec  # noqa: PLC0415
 
         try:
@@ -820,9 +862,8 @@ class TaskEngine(TaskEngineLoopsMixin):
                     project=project,
                 ),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = "Failed to count tasks"
             logger.warning(
                 TASK_ENGINE_READ_FAILED,

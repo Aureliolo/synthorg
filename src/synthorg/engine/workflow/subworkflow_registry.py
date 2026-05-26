@@ -66,6 +66,10 @@ def encode_subworkflow_keyset(summary: SubworkflowSummary) -> str:
     component contains the delimiter -- ``NotBlankStr`` does not
     forbid pipes, colons, or other separator characters.  JSON-encoding
     the tuple gives an unambiguous round-trip regardless of content.
+
+    Returns:
+        A compact JSON-encoded ``[name, version, id]`` string suitable
+        for use as a cursor on the keyset list endpoint.
     """
     return json.dumps(
         [summary.name, summary.latest_version, summary.subworkflow_id],
@@ -78,6 +82,13 @@ def _decode_subworkflow_keyset(after_key: str) -> tuple[str, str, str]:
 
     Tolerates malformed inputs by raising ``ValueError`` -- the
     controller catches this through the cursor decode layer.
+
+    Returns:
+        ``(name, version, subworkflow_id)`` decoded from the cursor.
+
+    Raises:
+        ValueError: When ``after_key`` is not a JSON-encoded list of
+            three strings.
     """
     parsed = json.loads(after_key)
     if (
@@ -183,7 +194,11 @@ class SubworkflowRegistry:
         *,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[str, ...]:
-        """List semver strings for a subworkflow, newest first (bounded by *limit*)."""
+        """List semver strings for a subworkflow, newest first (bounded by *limit*).
+
+        Returns:
+            Tuple of semver strings newest-first, bounded by ``limit``.
+        """
         return await self._repo.list_versions(subworkflow_id, limit=limit)
 
     async def latest_version(
@@ -203,7 +218,12 @@ class SubworkflowRegistry:
         *,
         limit: int = DEFAULT_LIST_LIMIT,
     ) -> tuple[SubworkflowSummary, ...]:
-        """Return summaries for unique subworkflows (bounded by *limit*)."""
+        """Return summaries for unique subworkflows (bounded by *limit*).
+
+        Returns:
+            Tuple of :class:`SubworkflowSummary` rows from the
+            repository's bounded page.
+        """
         return await self._repo.list_summaries(limit=limit)
 
     async def list_page(
@@ -278,6 +298,10 @@ class SubworkflowRegistry:
         Pass-through to the repository's bounded, deterministically
         ordered page; callers needing every match drain via
         :func:`synthorg.persistence._shared.collect_all`.
+
+        Returns:
+            Matching :class:`SubworkflowSummary` rows in the
+            repository's canonical order.
         """
         return await self._repo.search(query, limit=limit, offset=offset)
 

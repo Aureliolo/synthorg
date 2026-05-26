@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING, Any
 
 from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     deserialize_and_reconcile,
@@ -70,7 +71,23 @@ class AgentEngineRecoveryMixin:
         provider: CompletionProvider | None = None,
         project_id: str | None = None,
     ) -> tuple[ExecutionResult, RecoveryResult | None]:
-        """Invoke the configured recovery strategy on error outcomes."""
+        """Invoke the configured recovery strategy on error outcomes.
+
+        Returns:
+            ``(execution_result, recovery_result)`` where
+            ``execution_result`` is the (possibly resumed) execution
+            and ``recovery_result`` is the strategy's decision (``None``
+            when no strategy is wired or recovery raised a non-typed
+            error that was logged and swallowed).
+
+        Raises:
+            ProjectNotFoundError: Re-raised from the strategy when the
+                project context is gone.
+            ProjectAgentNotMemberError: Re-raised from the strategy
+                when the agent is no longer a project member.
+            BudgetExhaustedError: Re-raised from the strategy when
+                resume cost would exceed the remaining budget.
+        """
         if self._recovery_strategy is None:
             return execution_result, None
         ctx = execution_result.context
@@ -106,13 +123,12 @@ class AgentEngineRecoveryMixin:
                 update={"context": updated_ctx},
             )
             return updated_result, recovery_result  # noqa: TRY300
-        except MemoryError, RecursionError:
-            raise
         except ProjectNotFoundError, ProjectAgentNotMemberError:
             raise
         except BudgetExhaustedError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EXECUTION_RECOVERY_FAILED,
                 agent_id=agent_id,
@@ -128,7 +144,16 @@ class AgentEngineRecoveryMixin:
         agent_id: str,
         task_id: str,
     ) -> str:
-        """Return checkpoint JSON or raise if unexpectedly absent."""
+        """Return checkpoint JSON or raise if unexpectedly absent.
+
+        Returns:
+            The serialised checkpoint context JSON string from
+            ``recovery_result``.
+
+        Raises:
+            RuntimeError: If ``checkpoint_context_json`` is ``None``
+                despite the strategy reporting ``can_resume`` true.
+        """
         if recovery_result.checkpoint_context_json is None:
             logger.error(
                 EXECUTION_RESUME_FAILED,
@@ -153,7 +178,13 @@ class AgentEngineRecoveryMixin:
         provider: CompletionProvider | None = None,
         project_id: str | None = None,
     ) -> ExecutionResult:
-        """Resume execution from a checkpoint."""
+        """Resume execution from a checkpoint.
+
+        Returns:
+            The :class:`ExecutionResult` from the resumed loop, after
+            post-execution cost recording and task-state transitions
+            have been applied.
+        """
         project_budget = 0.0
         if self._project_repo is not None:
             project_budget = await self._validate_project(
@@ -189,9 +220,8 @@ class AgentEngineRecoveryMixin:
                 project_id=project_id,
                 project_budget=project_budget,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EXECUTION_RESUME_FAILED,
                 agent_id=agent_id,
@@ -225,7 +255,14 @@ class AgentEngineRecoveryMixin:
         project_id: str | None = None,
         project_budget: float = 0.0,
     ) -> tuple[ExecutionResult, str]:
-        """Deserialize checkpoint context and run the resumed loop."""
+        """Deserialize checkpoint context and run the resumed loop.
+
+        Returns:
+            ``(execution_result, execution_id)`` where
+            ``execution_result`` is the loop's outcome and
+            ``execution_id`` is the reconciled checkpoint's execution
+            id (used by :py:meth:`_finalize_resume` for cleanup).
+        """
         checkpoint_ctx = deserialize_and_reconcile(
             checkpoint_context_json,
             error_message,
@@ -258,7 +295,12 @@ class AgentEngineRecoveryMixin:
         project_id: str | None = None,
         project_budget: float = 0.0,
     ) -> ExecutionResult:
-        """Run the execution loop on a reconstituted checkpoint context."""
+        """Run the execution loop on a reconstituted checkpoint context.
+
+        Returns:
+            The :class:`ExecutionResult` from running the engine's
+            configured loop against the reconciled checkpoint context.
+        """
         budget_checker: BudgetChecker | None
         if checkpoint_ctx.task_execution is None:
             budget_checker = None
@@ -306,7 +348,13 @@ class AgentEngineRecoveryMixin:
         *,
         project_id: str | None = None,
     ) -> ExecutionResult:
-        """Record costs, apply transitions, and clean up after resume."""
+        """Record costs, apply transitions, and clean up after resume.
+
+        Returns:
+            The :class:`ExecutionResult` with post-execution task-state
+            transitions applied; checkpoint artefacts are cleaned up
+            when the resumed run did not terminate with ``ERROR``.
+        """
         await record_execution_costs(
             result,
             identity,

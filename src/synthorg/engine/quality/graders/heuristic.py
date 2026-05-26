@@ -56,6 +56,10 @@ class HeuristicGraderConfig(BaseModel):
         grader module stays free of a runtime dependency on
         ``settings.bridge_configs`` (which would cycle through the engine
         namespace).
+
+        Returns:
+            A :class:`HeuristicGraderConfig` populated from the
+            ``quality_heuristic_*`` fields of ``bridge``.
         """
         return cls(
             pass_threshold=bridge.quality_heuristic_pass_threshold,
@@ -100,7 +104,13 @@ class HeuristicRubricGrader:
         generator_agent_id: NotBlankStr,
         evaluator_agent_id: NotBlankStr,
     ) -> VerificationResult:
-        """Grade via simple heuristic matching."""
+        """Grade via simple heuristic matching.
+
+        Returns:
+            A :class:`VerificationResult` with PASS / FAIL / REFER
+            verdict based on the per-criterion match ratio against
+            the configured pass threshold.
+        """
         logger.info(
             VERIFICATION_GRADING_STARTED,
             rubric_name=rubric.name,

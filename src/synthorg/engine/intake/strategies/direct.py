@@ -48,7 +48,12 @@ class DirectIntake:
         self._requested_by = requested_by
 
     async def process(self, request: ClientRequest) -> IntakeResult:
-        """Create a task from the request and return an accepted result."""
+        """Create a task from the request and return an accepted result.
+
+        Returns:
+            An :class:`IntakeResult` with ``accepted=True`` carrying
+            the new task's id; this strategy never rejects.
+        """
         data = self._build_task_data(request.requirement)
         task = await self._task_engine.create_task(
             data,

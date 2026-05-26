@@ -39,7 +39,12 @@ class StructuredFormatter:
     """Renders confidence as labeled fields."""
 
     def format(self, *, metadata: ConfidenceMetadata) -> str:
-        """Format as structured text block."""
+        """Format as structured text block.
+
+        Returns:
+            A Markdown bullet block listing the confidence level,
+            range, assumptions, and uncertainty factors.
+        """
         parts = [
             f"- **Confidence**: {metadata.level:.0%}",
             f"- **Range**: {metadata.range_lower:.0%} -- {metadata.range_upper:.0%}",
@@ -64,7 +69,12 @@ class NarrativeFormatter:
     """Renders confidence as prose paragraph."""
 
     def format(self, *, metadata: ConfidenceMetadata) -> str:
-        """Format as narrative text."""
+        """Format as narrative text.
+
+        Returns:
+            A prose paragraph describing confidence, range,
+            assumptions, and uncertainty factors.
+        """
         pct = f"{metadata.level:.0%}"
         low = f"{metadata.range_lower:.0%}"
         high = f"{metadata.range_upper:.0%}"
@@ -99,7 +109,12 @@ class BothFormatter:
         self._narrative = NarrativeFormatter()
 
     def format(self, *, metadata: ConfidenceMetadata) -> str:
-        """Format as structured block followed by narrative."""
+        """Format as structured block followed by narrative.
+
+        Returns:
+            The structured block concatenated with the narrative
+            paragraph (separated by a blank line).
+        """
         structured = self._structured.format(metadata=metadata)
         narrative = self._narrative.format(metadata=metadata)
         result = f"{structured}\n\n{narrative}"
@@ -115,7 +130,12 @@ class ProbabilityFormatter:
     """Renders confidence as calibrated probability ranges."""
 
     def format(self, *, metadata: ConfidenceMetadata) -> str:
-        """Format as probability range text."""
+        """Format as probability range text.
+
+        Returns:
+            A probability-of-success line with a 90% CI range,
+            assumptions, and uncertainty factors.
+        """
         low = f"{metadata.range_lower:.0%}"
         high = f"{metadata.range_upper:.0%}"
         level = f"{metadata.level:.0%}"

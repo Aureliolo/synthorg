@@ -93,7 +93,13 @@ class StakesAwareStrategy:
         task: Task,
         identity: AgentIdentity,
     ) -> StakesRoutingDecision:
-        """Pick a model tier matched to ``task.stakes`` (see class docstring)."""
+        """Pick a model tier matched to ``task.stakes`` (see class docstring).
+
+        Returns:
+            A :class:`StakesRoutingDecision` carrying the selected
+            model, red-team requirement flag, stakes, reason, and
+            source label.
+        """
         stakes = task.stakes
         red_team_required = (
             compare_stakes(stakes, self._config.red_team_min_stakes) >= 0
@@ -142,7 +148,13 @@ class StakesAwareStrategy:
         floor: float,
         floor_cleared: bool,
     ) -> StakesRoutingDecision:
-        """Assemble the decision, resolving the target tier to a model."""
+        """Assemble the decision, resolving the target tier to a model.
+
+        Returns:
+            A :class:`StakesRoutingDecision` whose ``selected_model``
+            is the resolved tier (when changed) or the agent's
+            current model.
+        """
         current = identity.model
         selected_model = current
         source = "stakes_aware:noop"
@@ -245,13 +257,24 @@ class StakesAwareStrategy:
         return strongest_resolvable, False
 
     def _resolve_tier(self, tier: ModelTier) -> ResolvedModel | None:
-        """Resolve a tier alias to a model, or ``None``."""
+        """Resolve a tier alias to a model, or ``None``.
+
+        Returns:
+            The :class:`ResolvedModel` for ``tier`` when the resolver
+            is wired and finds a match; ``None`` otherwise.
+        """
         if self._resolver is None:
             return None
         return self._resolver.resolve_safe(tier)
 
     def _coordination_unhealthy(self, task_id: str) -> bool:
-        """True when recent coordination metrics breach a nudge threshold."""
+        """True when recent coordination metrics breach a nudge threshold.
+
+        Returns:
+            ``True`` when at least one record in the lookback window
+            shows error amplification past the threshold; ``False``
+            otherwise (or when no store is wired).
+        """
         if self._coordination_store is None:
             return False
         records, _ = self._coordination_store.query(

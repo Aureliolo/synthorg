@@ -85,7 +85,13 @@ class LlmJudgedRoutingPolicy:
         task: Task,
         available_agents: tuple[AgentIdentity, ...],
     ) -> RoutingVerdict:
-        """Classify *task* via the provider, falling back when ambiguous."""
+        """Classify *task* via the provider, falling back when ambiguous.
+
+        Returns:
+            The :class:`RoutingVerdict` parsed from the LLM response;
+            when the response is ambiguous, the verdict from the
+            deterministic fallback policy.
+        """
         messages = [
             ChatMessage(role=MessageRole.SYSTEM, content=_SYSTEM_PROMPT),
             ChatMessage(
@@ -143,6 +149,10 @@ class LlmJudgedRoutingPolicy:
         (e.g. ``"not splittable"``), is treated as ambiguous so the
         caller falls back to the deterministic policy instead of
         acting on a misread verdict.
+
+        Returns:
+            The :class:`RoutingVerdict` parsed from the text; ``None``
+            when the response is missing, ambiguous, or negated.
         """
         if content is None:
             return None

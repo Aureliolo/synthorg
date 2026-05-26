@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.text_similarity import cosine_word_similarity
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.middleware.protocol import BaseAgentMiddleware, ModelCallable
@@ -140,9 +141,8 @@ class SemanticDriftDetector(BaseAgentMiddleware):
                 )
                 ctx = ctx.with_metadata("semantic_drift_score", similarity)
 
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MIDDLEWARE_SEMANTIC_DRIFT_ERROR,
                 agent_id=str(ctx.agent_id),

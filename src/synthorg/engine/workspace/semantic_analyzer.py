@@ -8,6 +8,7 @@ duplicate definitions, and import conflicts.
 import asyncio
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.workspace.semantic_checks import (
     check_duplicate_definitions,
     check_import_conflicts,
@@ -90,7 +91,13 @@ def _run_ast_checks(
     base_sources: Mapping[str, str],
     merged_sources: Mapping[str, str],
 ) -> tuple[MergeConflict, ...]:
-    """Run all AST semantic checks and return combined results."""
+    """Run all AST semantic checks and return combined results.
+
+    Returns:
+        Combined tuple of :class:`MergeConflict` instances surfaced
+        by removed-reference, signature, duplicate-definition, and
+        import-conflict checks.
+    """
     all_conflicts: list[MergeConflict] = []
     all_conflicts.extend(
         check_removed_references(
@@ -190,7 +197,12 @@ class AstSemanticAnalyzer:
         *,
         conflicts: tuple[MergeConflict, ...] = (),
     ) -> tuple[MergeConflict, ...]:
-        """Log completion and return conflicts."""
+        """Log completion and return conflicts.
+
+        Returns:
+            The ``conflicts`` tuple unchanged (passes through for the
+            caller's convenience).
+        """
         logger.info(
             WORKSPACE_SEMANTIC_ANALYSIS_COMPLETE,
             workspace_id=workspace_id,
@@ -203,7 +215,12 @@ class AstSemanticAnalyzer:
 def _deduplicate_conflicts(
     conflicts: list[MergeConflict],
 ) -> tuple[MergeConflict, ...]:
-    """Remove duplicate conflicts by ``(file_path, description)``."""
+    """Remove duplicate conflicts by ``(file_path, description)``.
+
+    Returns:
+        A tuple of conflicts in input order with the first
+        occurrence of each ``(file_path, description)`` pair kept.
+    """
     seen: set[tuple[str, str]] = set()
     unique: list[MergeConflict] = []
     for conflict in conflicts:
@@ -274,9 +291,8 @@ class CompositeSemanticAnalyzer:
                     base_sources=base_sources,
                     merged_sources=merged_sources,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     WORKSPACE_SEMANTIC_ANALYSIS_FAILED,
                     workspace_id=workspace.workspace_id,

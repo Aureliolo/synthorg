@@ -54,7 +54,14 @@ class CoordinationContext(BaseModel):
 
     @model_validator(mode="after")
     def _validate_agents_non_empty(self) -> Self:
-        """Ensure at least one agent is available."""
+        """Ensure at least one agent is available.
+
+        Returns:
+            ``self`` unchanged when ``available_agents`` is non-empty.
+
+        Raises:
+            ValueError: When ``available_agents`` is empty.
+        """
         if not self.available_agents:
             msg = "available_agents must contain at least one agent"
             raise ValueError(msg)
@@ -95,7 +102,16 @@ class CoordinationPhaseResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_success_error_consistency(self) -> Self:
-        """Ensure success and error fields are consistent."""
+        """Ensure success and error fields are consistent.
+
+        Returns:
+            ``self`` unchanged when success/error coherency holds.
+
+        Raises:
+            ValueError: When ``success`` is ``True`` but ``error`` is
+                set, or when ``success`` is ``False`` but ``error`` is
+                missing.
+        """
         if self.success and self.error is not None:
             msg = "successful phase must not have an error"
             raise ValueError(msg)
@@ -127,7 +143,14 @@ class CoordinationWave(BaseModel):
 
     @model_validator(mode="after")
     def _validate_subtask_ids_non_empty(self) -> Self:
-        """Ensure at least one subtask ID is present."""
+        """Ensure at least one subtask ID is present.
+
+        Returns:
+            ``self`` unchanged when ``subtask_ids`` is non-empty.
+
+        Raises:
+            ValueError: When ``subtask_ids`` is empty.
+        """
         if not self.subtask_ids:
             msg = "subtask_ids must contain at least one ID"
             raise ValueError(msg)
@@ -192,7 +215,15 @@ class CoordinationResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_topology_resolved(self) -> Self:
-        """Ensure topology is resolved (not AUTO) in final result."""
+        """Ensure topology is resolved (not AUTO) in final result.
+
+        Returns:
+            ``self`` unchanged when the topology is a concrete value.
+
+        Raises:
+            ValueError: When ``topology`` is still
+                :attr:`CoordinationTopology.AUTO`.
+        """
         if self.topology == CoordinationTopology.AUTO:
             msg = "CoordinationResult topology must be resolved, not AUTO"
             raise ValueError(msg)

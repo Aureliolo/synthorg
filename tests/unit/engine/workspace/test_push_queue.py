@@ -1,6 +1,7 @@
 """Unit tests for the coordinator-owned serial merge/push queue."""
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -134,6 +135,26 @@ class TestPushQueueCoordinator:
         finally:
             await coord.stop()
         assert r2.success
+
+    async def test_critical_error_completes_future_before_worker_dies(self) -> None:
+        # A critical error (MemoryError) raised inside the worker must
+        # resolve the dequeued item's future before the worker re-raises
+        # and dies; otherwise the awaiting caller hangs forever (the
+        # outer drain loop only rescues items still on the queue).
+        strategy = mock_of[WorkspaceIsolationStrategy]()
+        strategy.merge_workspace.side_effect = MemoryError("oom")
+        git_backend = mock_of[GitBackend]()
+        coord = _coordinator(strategy, git_backend)
+        await coord.start()
+        try:
+            with pytest.raises(MemoryError):
+                await asyncio.wait_for(
+                    coord.enqueue_merge_push(workspace=_workspace("w1", "b1")),
+                    timeout=5.0,
+                )
+        finally:
+            with contextlib.suppress(MemoryError):
+                await coord.stop()
 
     async def test_push_failure_raises_workspace_push_error(self) -> None:
         strategy = mock_of[WorkspaceIsolationStrategy]()

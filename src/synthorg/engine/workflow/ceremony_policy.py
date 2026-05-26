@@ -203,7 +203,12 @@ class ResolvedCeremonyPolicy(BaseModel):
 
     @model_validator(mode="after")
     def _validate_threshold_with_auto_transition(self) -> Self:
-        """Warn if threshold is set but auto-transition is disabled."""
+        """Warn if threshold is set but auto-transition is disabled.
+
+        Returns:
+            ``self`` unchanged; the mismatch only emits a warning
+            (kept non-fatal so legacy configs still load).
+        """
         if not self.auto_transition and self.transition_threshold != 1.0:
             logger.warning(
                 SPRINT_CEREMONY_POLICY_CONFIG_CONFLICT,
@@ -286,6 +291,10 @@ def _resolve_field[T](
 
     Iterates from the last layer (most specific) to the first,
     returning the first non-``None`` value.
+
+    Returns:
+        The first non-``None`` field value walking layers
+        most-specific-first; ``default`` when every layer is unset.
     """
     for layer in reversed(layers):
         value = getattr(layer, field_name)

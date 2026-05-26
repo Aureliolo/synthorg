@@ -78,7 +78,13 @@ class ProgressiveTierResolver:
         impact: ImpactScore | None,
         config: StrategyConfig,
     ) -> CostTierPreset:
-        """Resolve tier from impact score thresholds."""
+        """Resolve tier from impact score thresholds.
+
+        Returns:
+            The :class:`CostTierPreset` selected from the composite
+            score's threshold band; the config's default tier when
+            no impact score is supplied.
+        """
         if impact is None:
             tier = config.cost_tier
             logger.debug(

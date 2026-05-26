@@ -61,7 +61,11 @@ _MAX_THRESHOLD_COUNT: int = 20
 
 
 def _check_threshold_element(t: object) -> None:
-    """Validate a single threshold element (raises on invalid)."""
+    """Validate a single threshold element (raises on invalid).
+
+    Raises:
+        ValueError: When ``t`` is not a finite number in ``(0, 100]``.
+    """
     # bool is a subclass of int; check first
     if (
         isinstance(t, bool)
@@ -80,7 +84,12 @@ def _check_threshold_element(t: object) -> None:
 
 
 def _coerce_threshold(t: object, ceremony_name: str) -> float | None:
-    """Coerce a single threshold element, returning None on failure."""
+    """Coerce a single threshold element, returning None on failure.
+
+    Returns:
+        The threshold as ``float`` when ``t`` is a finite numeric in
+        ``(0, 100]``; ``None`` otherwise (a warning is logged).
+    """
     if isinstance(t, bool) or not isinstance(t, int | float):
         logger.warning(
             SPRINT_CEREMONY_SKIPPED,
@@ -353,7 +362,13 @@ class BudgetDrivenStrategy:
 
     @staticmethod
     def _validate_thresholds(thresholds: object) -> None:
-        """Validate budget_thresholds list values (strict)."""
+        """Validate budget_thresholds list values (strict).
+
+        Raises:
+            TypeError: When ``thresholds`` is not a list.
+            ValueError: When the list exceeds the entry cap, contains
+                an invalid element, or duplicates a value.
+        """
         if not isinstance(thresholds, list):
             msg = (
                 f"'{_KEY_BUDGET_THRESHOLDS}' must be a list, "
@@ -401,8 +416,10 @@ class BudgetDrivenStrategy:
     ) -> list[float] | None:
         """Validate and filter budget thresholds at read time.
 
-        Returns a deduplicated list of valid numeric thresholds,
-        or ``None`` if the config is missing or entirely invalid.
+        Returns:
+            A deduplicated sorted list of valid numeric thresholds,
+            or ``None`` when ``raw`` is missing, not a list,
+            over-sized, or every entry is invalid.
         """
         if not raw:
             logger.debug(
@@ -442,7 +459,12 @@ class BudgetDrivenStrategy:
 
     @staticmethod
     def _get_transition_threshold(config: SprintConfig) -> float:
-        """Resolve transition threshold with type + range validation."""
+        """Resolve transition threshold with type + range validation.
+
+        Returns:
+            The configured threshold as ``float`` when valid;
+            :data:`_DEFAULT_TRANSITION_THRESHOLD_PCT` otherwise.
+        """
         strategy_config = config.ceremony_policy.strategy_config or {}
         raw = strategy_config.get(
             _KEY_TRANSITION_THRESHOLD,
@@ -470,7 +492,12 @@ class BudgetDrivenStrategy:
         thresholds: list[float],
         budget_pct: float,
     ) -> bool:
-        """Find and fire the lowest unfired threshold crossed."""
+        """Find and fire the lowest unfired threshold crossed.
+
+        Returns:
+            ``True`` when ``budget_pct`` crossed an unfired threshold
+            (which is now marked fired); ``False`` otherwise.
+        """
         fired = self._fired_thresholds.setdefault(ceremony_name, set())
         for threshold in sorted(thresholds):
             if threshold in fired:

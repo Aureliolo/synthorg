@@ -165,7 +165,15 @@ class Sprint(BaseModel):
 
     @model_validator(mode="after")
     def _validate_date_formats(self) -> Self:
-        """Validate ISO 8601 date format when present."""
+        """Validate ISO 8601 date format when present.
+
+        Returns:
+            ``self`` unchanged after format validation passes.
+
+        Raises:
+            ValueError: When a date field is whitespace-only or not a
+                valid ISO 8601 string.
+        """
         for field_name in ("start_date", "end_date"):
             value = getattr(self, field_name)
             if value is not None:
@@ -181,7 +189,14 @@ class Sprint(BaseModel):
 
     @model_validator(mode="after")
     def _validate_date_ordering(self) -> Self:
-        """Ensure end_date >= start_date when both are present."""
+        """Ensure end_date >= start_date when both are present.
+
+        Returns:
+            ``self`` unchanged when ordering is valid.
+
+        Raises:
+            ValueError: When ``end_date`` precedes ``start_date``.
+        """
         if self.start_date is not None and self.end_date is not None:
             start = datetime.fromisoformat(self.start_date)
             end = datetime.fromisoformat(self.end_date)
@@ -195,7 +210,16 @@ class Sprint(BaseModel):
 
     @model_validator(mode="after")
     def _validate_task_collections(self) -> Self:
-        """Validate task ID uniqueness and subset constraint."""
+        """Validate task ID uniqueness and subset constraint.
+
+        Returns:
+            ``self`` unchanged when both collections are well-formed.
+
+        Raises:
+            ValueError: When ``task_ids`` or ``completed_task_ids``
+                contain duplicates, or when ``completed_task_ids`` is
+                not a subset of ``task_ids``.
+        """
         if len(self.task_ids) != len(set(self.task_ids)):
             dupes = sorted(t for t, c in Counter(self.task_ids).items() if c > 1)
             msg = f"Duplicate entries in task_ids: {dupes}"
@@ -215,7 +239,15 @@ class Sprint(BaseModel):
 
     @model_validator(mode="after")
     def _validate_story_points(self) -> Self:
-        """story_points_completed must not exceed committed."""
+        """story_points_completed must not exceed committed.
+
+        Returns:
+            ``self`` unchanged when story-point totals are consistent.
+
+        Raises:
+            ValueError: When completed story points exceed the
+                committed total.
+        """
         if self.story_points_completed > self.story_points_committed:
             msg = (
                 f"story_points_completed ({self.story_points_completed}) "
@@ -231,6 +263,13 @@ class Sprint(BaseModel):
 
         - ACTIVE and later require ``start_date``.
         - COMPLETED requires ``end_date``.
+
+        Returns:
+            ``self`` unchanged when the required dates are present.
+
+        Raises:
+            ValueError: When ``start_date`` is missing for ACTIVE+ or
+                ``end_date`` is missing for COMPLETED.
         """
         requires_start = {
             SprintStatus.ACTIVE,

@@ -8,6 +8,7 @@ concrete dispatchers.
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.coordination.models import (
     CoordinationPhaseResult,
     CoordinationWave,
@@ -51,7 +52,12 @@ def build_workspace_requests(
     config: CoordinationConfig,
     project_id: NotBlankStr | None = None,
 ) -> tuple[WorkspaceRequest, ...]:
-    """Build workspace requests from routing decisions."""
+    """Build workspace requests from routing decisions.
+
+    Returns:
+        A tuple of :class:`WorkspaceRequest` (one per routed subtask),
+        carrying task id, agent id, base branch, and project id.
+    """
     return tuple(
         WorkspaceRequest(
             task_id=d.subtask_id,
@@ -99,7 +105,13 @@ async def setup_workspaces(
     clock: Clock,
     project_id: NotBlankStr | None = None,
 ) -> tuple[tuple[Workspace, ...], CoordinationPhaseResult]:
-    """Set up workspaces and return them with a phase result."""
+    """Set up workspaces and return them with a phase result.
+
+    Returns:
+        ``(workspaces, phase)`` where ``workspaces`` is the tuple of
+        provisioned :class:`Workspace` (empty on failure) and ``phase``
+        is the :class:`CoordinationPhaseResult` for the setup stage.
+    """
     start = clock.monotonic()
     phase_name = "workspace_setup"
 
@@ -107,9 +119,8 @@ async def setup_workspaces(
     try:
         requests = build_workspace_requests(routing_result, config, project_id)
         workspaces = await workspace_service.setup_group(requests=requests)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         elapsed = clock.monotonic() - start
         phase = CoordinationPhaseResult(
             phase=phase_name,
@@ -161,6 +172,10 @@ async def _merge_group_via_push_queue(
     downstream consumers see no contract drift. The queue serialises
     the merge+push per project, exercising forge-collision safety end
     to end at runtime.
+
+    Returns:
+        A :class:`WorkspaceGroupResult` aggregating each workspace's
+        :class:`MergeResult` and the total elapsed seconds.
     """
     start = clock.monotonic()
     results: list[MergeResult] = [
@@ -193,6 +208,12 @@ async def merge_workspaces(  # noqa: PLR0913 -- project/repo routing inputs
     When *project_id* and *repo_root* are both supplied the merge runs
     through the per-project push queue (``merge_workspace_with_push``);
     otherwise it falls back to the in-memory ``merge_group``.
+
+    Returns:
+        ``(merge_result, phase)`` where ``merge_result`` is the
+        :class:`WorkspaceGroupResult` on success, ``None`` on failure,
+        and ``phase`` is the :class:`CoordinationPhaseResult` for the
+        merge stage.
     """
     start = clock.monotonic()
 
@@ -212,9 +233,8 @@ async def merge_workspaces(  # noqa: PLR0913 -- project/repo routing inputs
             merge_result = await workspace_service.merge_group(
                 workspaces=workspaces,
             )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         elapsed = clock.monotonic() - start
         phase = CoordinationPhaseResult(
             phase=phase_name,
@@ -257,9 +277,8 @@ async def teardown_workspaces(
     )
     try:
         await workspace_service.teardown_group(workspaces=workspaces)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             COORDINATION_CLEANUP_FAILED,
             workspace_count=len(workspaces),
@@ -280,7 +299,14 @@ async def execute_waves(
     clock: Clock,
     fail_fast: bool,
 ) -> tuple[list[CoordinationWave], list[CoordinationPhaseResult]]:
-    """Execute wave groups sequentially, returning waves and phases."""
+    """Execute wave groups sequentially, returning waves and phases.
+
+    Returns:
+        ``(waves, phases)`` where ``waves`` lists every executed
+        :class:`CoordinationWave` (including failed ones with no
+        ``execution_result``) and ``phases`` carries the matching
+        :class:`CoordinationPhaseResult` for each wave.
+    """
     waves: list[CoordinationWave] = []
     phases: list[CoordinationPhaseResult] = []
 
@@ -341,9 +367,8 @@ async def execute_waves(
             if not success and fail_fast:
                 break
 
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             elapsed = clock.monotonic() - start
             logger.warning(
                 COORDINATION_PHASE_FAILED,
@@ -376,7 +401,14 @@ def rebuild_group_with_workspaces(
     group: ParallelExecutionGroup,
     wave_workspaces: tuple[Workspace, ...],
 ) -> ParallelExecutionGroup:
-    """Rebuild an execution group with workspace resource claims."""
+    """Rebuild an execution group with workspace resource claims.
+
+    Returns:
+        A new :class:`ParallelExecutionGroup` whose assignments carry
+        each subtask's workspace worktree path as a resource claim;
+        assignments without a matching workspace are returned
+        unchanged.
+    """
     ws_lookup = {ws.task_id: ws.worktree_path for ws in wave_workspaces}
     new_assignments = tuple(
         a.model_copy(update={"resource_claims": (ws_lookup[a.task.id],)})

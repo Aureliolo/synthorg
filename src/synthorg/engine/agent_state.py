@@ -67,7 +67,12 @@ class AgentRuntimeState(BaseModel):
     )
 
     def _idle_violations(self) -> list[str]:
-        """Collect field violations for IDLE status."""
+        """Collect field violations for IDLE status.
+
+        Returns:
+            List of violation strings; empty when every IDLE
+            invariant holds.
+        """
         violations: list[str] = []
         if self.execution_id is not None:
             violations.append("execution_id must be None")
@@ -90,6 +95,14 @@ class AgentRuntimeState(BaseModel):
           ``accumulated_cost`` to be zero.
         * **EXECUTING** / **PAUSED** require ``execution_id`` and
           ``started_at`` to be set.
+
+        Returns:
+            ``self`` unchanged when every status-dependent
+            invariant holds.
+
+        Raises:
+            ValueError: When any status-specific field invariant is
+                violated (the message names the offending fields).
         """
         if self.status == ExecutionStatus.IDLE:
             violations = self._idle_violations()

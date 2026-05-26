@@ -9,6 +9,7 @@ import contextlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine_apply import dispatch as _dispatch_mutation
 from synthorg.engine.task_engine_events import (
     build_state_changed_event,
@@ -169,7 +170,12 @@ class TaskEngineLoopsMixin:
 
     @staticmethod
     def _shutdown_result(envelope: _MutationEnvelope) -> TaskMutationResult:
-        """Build an internal-failure result for a shutdown-aborted envelope."""
+        """Build an internal-failure result for a shutdown-aborted envelope.
+
+        Returns:
+            A :class:`TaskMutationResult` marked unsuccessful with
+            ``error_code='internal'`` and a shutdown-specific message.
+        """
         return TaskMutationResult(
             request_id=envelope.mutation.request_id,
             success=False,
@@ -182,6 +188,12 @@ class TaskEngineLoopsMixin:
 
         Continues draining queued mutations after ``_running`` is set to
         ``False``, enabling graceful shutdown.
+
+        Raises:
+            MemoryError: Re-raised from the SKIP log-and-raise path so
+                the worker process surfaces the interpreter-critical
+                failure.
+            RecursionError: Same path as ``MemoryError``.
         """
         while self._running or not self._queue.empty():
             try:
@@ -278,9 +290,8 @@ class TaskEngineLoopsMixin:
                             mutation_type=event.mutation_type,
                             queue_size=self._observer_queue.qsize(),
                         )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 TASK_ENGINE_MUTATION_FAILED,
@@ -316,9 +327,8 @@ class TaskEngineLoopsMixin:
                 break
             try:
                 await self._notify_observers(event)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     TASK_ENGINE_LOOP_ERROR,
@@ -339,9 +349,8 @@ class TaskEngineLoopsMixin:
         for observer in self._observers:
             try:
                 await observer(event)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     TASK_ENGINE_OBSERVER_FAILED,
                     observer=getattr(observer, "__qualname__", repr(observer)),

@@ -56,7 +56,15 @@ class ConsensusVelocityResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_action_consistency(self) -> Self:
-        """Ensure action/detected are consistent."""
+        """Ensure action/detected are consistent.
+
+        Returns:
+            ``self`` unchanged when ``detected`` / ``action`` agree.
+
+        Raises:
+            ValueError: When ``detected`` is set without an
+                ``action`` or vice versa.
+        """
         if self.detected and self.action is None:
             msg = "action must not be None when detected is True"
             raise ValueError(msg)

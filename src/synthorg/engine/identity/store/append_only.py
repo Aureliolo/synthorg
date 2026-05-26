@@ -75,6 +75,9 @@ class AppendOnlyIdentityStore:
         Raises:
             AgentNotFoundError: If agent does not exist.
             PersistenceError: If versioning fails.
+            RuntimeError: When the versioning seam returns ``None``
+                even though no prior snapshot exists (defensive
+                guard; should not happen in practice).
         """
         snapshot = await self._versioning.snapshot_if_changed(
             str(agent_id),
@@ -99,7 +102,12 @@ class AppendOnlyIdentityStore:
         self,
         agent_id: NotBlankStr,
     ) -> AgentIdentity | None:
-        """Get the current active identity from the registry."""
+        """Get the current active identity from the registry.
+
+        Returns:
+            The current :class:`AgentIdentity` when the agent exists;
+            ``None`` otherwise.
+        """
         return await self._registry.get(agent_id)
 
     async def get_version(
@@ -107,7 +115,12 @@ class AppendOnlyIdentityStore:
         agent_id: NotBlankStr,
         version: int,
     ) -> AgentIdentity | None:
-        """Get a specific identity version."""
+        """Get a specific identity version.
+
+        Returns:
+            The :class:`AgentIdentity` stored at ``version``; ``None``
+            when no matching snapshot exists.
+        """
         snapshot = await self._repo.get_version(str(agent_id), version)
         if snapshot is None:
             return None
@@ -117,7 +130,12 @@ class AppendOnlyIdentityStore:
         self,
         agent_id: NotBlankStr,
     ) -> tuple[VersionSnapshot[AgentIdentity], ...]:
-        """List all identity versions (newest first)."""
+        """List all identity versions (newest first).
+
+        Returns:
+            Tuple of :class:`VersionSnapshot` records in newest-first
+            order; ``()`` when no versions exist.
+        """
         return await self._repo.list_versions(str(agent_id))
 
     async def set_current(

@@ -59,6 +59,12 @@ def _require_non_blank_model_id(
     runtime callable; untrusted callers may still return a blank
     string. Fail here with a clear message instead of letting Pydantic
     raise from inside ``LLMCriteriaDecomposer`` / ``LLMRubricGrader``.
+
+    Returns:
+        ``value`` typed as :class:`NotBlankStr` when it is non-blank.
+
+    Raises:
+        ValueError: When ``value`` is blank or whitespace-only.
     """
     try:
         return require_non_blank(value, name=f"{component} tier_resolver({tier!r})")

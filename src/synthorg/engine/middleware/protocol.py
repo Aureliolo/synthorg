@@ -145,14 +145,22 @@ class BaseAgentMiddleware:
         self,
         ctx: AgentMiddlewareContext,
     ) -> AgentMiddlewareContext:
-        """No-op: return context unchanged."""
+        """No-op: return context unchanged.
+
+        Returns:
+            The same ``ctx`` instance passed in.
+        """
         return ctx
 
     async def before_model(
         self,
         ctx: AgentMiddlewareContext,
     ) -> AgentMiddlewareContext:
-        """No-op: return context unchanged."""
+        """No-op: return context unchanged.
+
+        Returns:
+            The same ``ctx`` instance passed in.
+        """
         return ctx
 
     async def wrap_model_call(
@@ -160,7 +168,11 @@ class BaseAgentMiddleware:
         ctx: AgentMiddlewareContext,
         call: ModelCallable,
     ) -> ModelCallResult:
-        """No-op: delegate to inner callable unchanged."""
+        """No-op: delegate to inner callable unchanged.
+
+        Returns:
+            The result produced by ``call(ctx)``.
+        """
         return await call(ctx)
 
     async def wrap_tool_call(
@@ -168,21 +180,33 @@ class BaseAgentMiddleware:
         ctx: AgentMiddlewareContext,
         call: ToolCallable,
     ) -> ToolCallResult:
-        """No-op: delegate to inner callable unchanged."""
+        """No-op: delegate to inner callable unchanged.
+
+        Returns:
+            The result produced by ``call(ctx)``.
+        """
         return await call(ctx)
 
     async def after_model(
         self,
         ctx: AgentMiddlewareContext,
     ) -> AgentMiddlewareContext:
-        """No-op: return context unchanged."""
+        """No-op: return context unchanged.
+
+        Returns:
+            The same ``ctx`` instance passed in.
+        """
         return ctx
 
     async def after_agent(
         self,
         ctx: AgentMiddlewareContext,
     ) -> AgentMiddlewareContext:
-        """No-op: return context unchanged."""
+        """No-op: return context unchanged.
+
+        Returns:
+            The same ``ctx`` instance passed in.
+        """
         return ctx
 
 
@@ -250,7 +274,13 @@ class AgentMiddlewareChain:
         self,
         ctx: AgentMiddlewareContext,
     ) -> AgentMiddlewareContext:
-        """Run ``before_agent`` hooks left-to-right."""
+        """Run ``before_agent`` hooks left-to-right.
+
+        Returns:
+            The context after every middleware's ``before_agent`` hook
+            has run; each hook's return value is threaded into the
+            next.
+        """
         for mw in self._middleware:
             logger.debug(
                 MIDDLEWARE_BEFORE_AGENT,
@@ -271,7 +301,13 @@ class AgentMiddlewareChain:
         self,
         ctx: AgentMiddlewareContext,
     ) -> AgentMiddlewareContext:
-        """Run ``before_model`` hooks left-to-right."""
+        """Run ``before_model`` hooks left-to-right.
+
+        Returns:
+            The context after every middleware's ``before_model``
+            hook has run; each hook's return value is threaded into
+            the next.
+        """
         for mw in self._middleware:
             logger.debug(
                 MIDDLEWARE_BEFORE_MODEL,
@@ -292,7 +328,13 @@ class AgentMiddlewareChain:
         self,
         ctx: AgentMiddlewareContext,
     ) -> AgentMiddlewareContext:
-        """Run ``after_model`` hooks right-to-left."""
+        """Run ``after_model`` hooks right-to-left.
+
+        Returns:
+            The context after every middleware's ``after_model`` hook
+            has run in reverse order; each hook's return value is
+            threaded into the next.
+        """
         for mw in reversed(self._middleware):
             logger.debug(
                 MIDDLEWARE_AFTER_MODEL,
@@ -313,7 +355,13 @@ class AgentMiddlewareChain:
         self,
         ctx: AgentMiddlewareContext,
     ) -> AgentMiddlewareContext:
-        """Run ``after_agent`` hooks right-to-left."""
+        """Run ``after_agent`` hooks right-to-left.
+
+        Returns:
+            The context after every middleware's ``after_agent`` hook
+            has run in reverse order; each hook's return value is
+            threaded into the next.
+        """
         for mw in reversed(self._middleware):
             logger.debug(
                 MIDDLEWARE_AFTER_AGENT,
@@ -339,6 +387,10 @@ class AgentMiddlewareChain:
 
         Builds a nested chain where each middleware wraps the next.
         The innermost callable is the actual model call.
+
+        Returns:
+            The :class:`ModelCallResult` produced by the innermost
+            ``call`` after every wrapper has run.
         """
         logger.debug(
             MIDDLEWARE_WRAP_MODEL_CALL,
@@ -367,6 +419,10 @@ class AgentMiddlewareChain:
 
         Builds a nested chain where each middleware wraps the next.
         The innermost callable is the actual tool call.
+
+        Returns:
+            The :class:`ToolCallResult` produced by the innermost
+            ``call`` after every wrapper has run.
         """
         logger.debug(
             MIDDLEWARE_WRAP_TOOL_CALL,
@@ -394,7 +450,12 @@ def _make_model_wrapper(
     mw: AgentMiddleware,
     inner: ModelCallable,
 ) -> ModelCallable:
-    """Build an onion wrapper for a model call middleware."""
+    """Build an onion wrapper for a model call middleware.
+
+    Returns:
+        An async callable that invokes ``mw.wrap_model_call`` with
+        ``inner`` as the wrapped target.
+    """
 
     async def wrapper(ctx: AgentMiddlewareContext) -> ModelCallResult:
         return await mw.wrap_model_call(ctx, inner)
@@ -406,7 +467,12 @@ def _make_tool_wrapper(
     mw: AgentMiddleware,
     inner: ToolCallable,
 ) -> ToolCallable:
-    """Build an onion wrapper for a tool call middleware."""
+    """Build an onion wrapper for a tool call middleware.
+
+    Returns:
+        An async callable that invokes ``mw.wrap_tool_call`` with
+        ``inner`` as the wrapped target.
+    """
 
     async def wrapper(ctx: AgentMiddlewareContext) -> ToolCallResult:
         return await mw.wrap_tool_call(ctx, inner)

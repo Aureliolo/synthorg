@@ -111,6 +111,10 @@ class EnvironmentService:
         ``image_ref`` comes from the persisted row (building is the
         expensive part worth caching); ``env_vars`` are re-derived from
         the declaration (cheap, never persisted).
+
+        Returns:
+            A :class:`ProvisionedEnvironment` synthesised from the
+            persisted ``row`` and the live declaration's env vars.
         """
         return ProvisionedEnvironment(
             environment_type=row.environment_type,
@@ -200,7 +204,12 @@ class EnvironmentService:
         sandbox_kind: NotBlankStr,
         prior: ProjectEnvironment | None,
     ) -> ProvisionedEnvironment:
-        """Provision via the strategy, commit, persist the row, and return it."""
+        """Provision via the strategy, commit, persist the row, and return it.
+
+        Returns:
+            The :class:`ProvisionedEnvironment` from the strategy
+            (the cached row reflects the same content).
+        """
         provisioned = await self._strategy.provision(
             project_id=project_id,
             workspace_path=workspace_path,

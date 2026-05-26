@@ -105,7 +105,12 @@ def _parse_json_plan(
     task_summary: str,
     revision_number: int,
 ) -> ExecutionPlan | None:
-    """Try to extract a JSON plan from the content."""
+    """Try to extract a JSON plan from the content.
+
+    Returns:
+        The parsed :class:`ExecutionPlan`; ``None`` when ``content``
+        is not parseable JSON.
+    """
     json_str = content.strip()
     fence_match = re.search(
         r"```(?:json)?\s*\n?(.*?)```",
@@ -134,7 +139,13 @@ def _parse_text_plan(
     task_summary: str,
     revision_number: int,
 ) -> ExecutionPlan | None:
-    """Fallback: extract steps from numbered text lines."""
+    """Fallback: extract steps from numbered text lines.
+
+    Returns:
+        An :class:`ExecutionPlan` derived from numbered step lines;
+        ``None`` when no numbered steps are found or every step
+        description is empty.
+    """
     step_pattern = re.compile(
         r"(?:^|\n)\s*(\d+)\.\s+(.+?)(?=\n\s*\d+\.|\Z)",
         re.DOTALL,
@@ -190,7 +201,12 @@ def _data_to_plan(
     task_summary: str,
     revision_number: int,
 ) -> ExecutionPlan | None:
-    """Convert parsed JSON data to an ExecutionPlan."""
+    """Convert parsed JSON data to an ExecutionPlan.
+
+    Returns:
+        The built :class:`ExecutionPlan`; ``None`` when ``data`` is
+        not a dict or fails schema construction.
+    """
     if not isinstance(data, dict):
         logger.debug(
             EXECUTION_PLAN_PARSE_ERROR,

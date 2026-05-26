@@ -146,7 +146,12 @@ class RuleBasedStepClassifier:
         termination_reason: TerminationReason,
         stagnation_result: StagnationResult | None = None,
     ) -> StepQualitySignal:
-        """Classify a step using deterministic heuristics."""
+        """Classify a step using deterministic heuristics.
+
+        Returns:
+            A :class:`StepQualitySignal` carrying quality, confidence,
+            and a short reason text describing which rule fired.
+        """
         turn_range = _compute_turn_range(turns)
 
         # Rule 1: stagnation-triggered termination is definitively incorrect.
@@ -219,7 +224,12 @@ class RuleBasedStepClassifier:
 
 
 def _compute_turn_range(turns: tuple[TurnRecord, ...]) -> tuple[int, int]:
-    """Extract inclusive (start, end) turn numbers from turn records."""
+    """Extract inclusive (start, end) turn numbers from turn records.
+
+    Returns:
+        ``(first_turn_number, last_turn_number)``; ``(1, 1)`` when
+        ``turns`` is empty.
+    """
     if not turns:
         return (1, 1)
     return (turns[0].turn_number, turns[-1].turn_number)

@@ -226,7 +226,12 @@ class ParallelExecutionResult(BaseModel):
     )
 
     def _completed_results(self) -> tuple[AgentRunResult, ...]:
-        """Outcomes that produced an :class:`AgentRunResult`."""
+        """Outcomes that produced an :class:`AgentRunResult`.
+
+        Returns:
+            Tuple of completed :class:`AgentRunResult` instances
+            (outcomes whose ``result`` field is non-``None``).
+        """
         return tuple(o.result for o in self.outcomes if o.result is not None)
 
     def _resolved_currency(self) -> CurrencyCode | None:
@@ -238,6 +243,11 @@ class ParallelExecutionResult(BaseModel):
         :attr:`currency` consult the cache so ``model_dump()`` emits at
         most one ``BUDGET_MIXED_CURRENCY_REJECTED`` warning even when
         the underlying outcomes mix currencies.
+
+        Returns:
+            The shared :class:`CurrencyCode` across completed
+            outcomes; ``None`` when outcomes mix currencies (the
+            mismatch already logged on first resolution).
         """
         cached: CurrencyCode | None | object = self.__dict__.get(
             "_currency_cache",

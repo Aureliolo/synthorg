@@ -114,7 +114,12 @@ XML-like fences.
 
 
 def _validate_tag(tag: str) -> None:
-    """Raise ``ValueError`` if ``tag`` does not match :data:`_TAG_NAME_RE`."""
+    """Raise ``ValueError`` if ``tag`` does not match :data:`_TAG_NAME_RE`.
+
+    Raises:
+        ValueError: When ``tag`` does not match the allowed
+            ``[a-z][a-z0-9-]{0,31}`` pattern.
+    """
     if not _TAG_NAME_RE.fullmatch(tag):
         msg = (
             f"invalid tag name {tag!r}: must match ``[a-z][a-z0-9-]{{0,31}}``. "
@@ -133,6 +138,10 @@ def _escape_closing_tag(tag: str, content: str) -> str:
     Optional whitespace between the tag name and the closing ``>`` is
     accepted and preserved, so lenient XML/HTML-style closing forms
     like ``</tag >`` or ``</tag\t>`` cannot slip past the escape.
+
+    Returns:
+        ``content`` with every embedded closing form rewritten so the
+        outer fence remains parseable by the LLM.
     """
     pattern = re.compile(rf"</({re.escape(tag)})(\s*)>", re.IGNORECASE)
     return pattern.sub(r"<\\/\1\2>", content)

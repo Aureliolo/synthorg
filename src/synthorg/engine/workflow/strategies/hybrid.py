@@ -290,7 +290,12 @@ class HybridStrategy:
         ceremony: SprintCeremonyConfig,
         context: CeremonyEvalContext,
     ) -> bool:
-        """Check the calendar (time-based) leg."""
+        """Check the calendar (time-based) leg.
+
+        Returns:
+            ``True`` when the elapsed time since the ceremony's last
+            fire meets the configured interval; ``False`` otherwise.
+        """
         interval = resolve_interval(ceremony, "hybrid")
         if interval is None:
             return False
@@ -310,6 +315,11 @@ class HybridStrategy:
         has already fired within the current calendar interval.
         Non-sticky triggers (every_n_completions) reset naturally
         via ``completions_since_last_trigger`` and are not suppressed.
+
+        Returns:
+            ``True`` when the task-driven trigger fires (and is not
+            suppressed by the sticky-fire window); ``False``
+            otherwise.
         """
         if ceremony.policy_override is None:
             return False

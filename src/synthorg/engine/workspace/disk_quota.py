@@ -11,6 +11,7 @@ from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.workspace import (
     WORKSPACE_DISK_CHECK_ERROR,
@@ -49,7 +50,9 @@ class DiskQuotaStatus(BaseModel):
 def _compute_dir_size_bytes(path: Path) -> int:
     """Recursively compute directory size in bytes.
 
-    Returns 0 for non-existent or inaccessible directories.
+    Returns:
+        Total bytes consumed by regular files under ``path``;
+        ``0`` for a non-existent, non-directory, or inaccessible path.
     """
     if not path.exists() or not path.is_dir():
         return 0
@@ -147,9 +150,8 @@ class DiskQuotaWatcher:
         async def _safe_check(p: Path) -> DiskQuotaStatus:
             try:
                 return await self.check_worktree(p)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     WORKSPACE_DISK_CHECK_ERROR,
                     path=str(p),

@@ -58,7 +58,13 @@ class CompositeTrigger:
         agent_id: NotBlankStr,
         context: EvolutionContext,
     ) -> bool:
-        """OR-combine sub-triggers (evaluate all, no short-circuit)."""
+        """OR-combine sub-triggers (evaluate all, no short-circuit).
+
+        Returns:
+            ``True`` when any sub-trigger fires; ``False`` when none
+            do (sub-triggers that raise are treated as ``False`` and
+            logged).
+        """
         results = []
         for t in self._triggers:
             try:

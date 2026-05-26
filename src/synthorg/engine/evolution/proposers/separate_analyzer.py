@@ -15,6 +15,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # public annotation, so it must resolve at runtime when downstream
 # tooling evaluates type hints (DI containers, doc generators).
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.evolution.models import (
@@ -76,7 +77,12 @@ _SYSTEM_PROMPT = (
 
 
 def _extract_json(text: str) -> dict[str, Any] | None:
-    """Extract a JSON object from LLM response text via the shared helper."""
+    """Extract a JSON object from LLM response text via the shared helper.
+
+    Returns:
+        The parsed JSON object when extraction succeeds; ``None``
+        when the response carries no parseable object.
+    """
 
     def _log_parse_failure(detail: str) -> None:
         logger.debug(
@@ -130,6 +136,10 @@ def _summarise_tasks(
 
     The tuple is capped from the tail so the most recent entries win
     when the fleet exceeds *cap*.
+
+    Returns:
+        A newline-joined block of one summary line per recent task;
+        ``"  (none)"`` when no tasks are available.
     """
     if not tasks or cap <= 0:
         return "  (none)"
@@ -160,6 +170,10 @@ def _summarise_memories(
     Content strings are clamped at code-point boundaries to
     ``content_max_chars`` characters so a single oversized memory
     cannot balloon the prompt.
+
+    Returns:
+        A newline-joined block of one summary line per recent
+        memory; ``"  (none)"`` when no memories are available.
     """
     if not memories or cap <= 0:
         return "  (none)"
@@ -311,6 +325,11 @@ class SeparateAnalyzerProposer:
 
         Returns:
             Tuple of proposals (empty if no adaptations suggested).
+
+        Raises:
+            ProviderError: Re-raised on a non-retryable provider
+                failure so operators see the underlying cause; the
+                retryable branch logs and returns ``()``.
         """
         try:
             messages = [
@@ -335,8 +354,6 @@ class SeparateAnalyzerProposer:
                     self._model,
                     config=self._completion_config,
                 )
-        except MemoryError, RecursionError:
-            raise
         except ProviderError as exc:
             if not exc.is_retryable:
                 # Non-retryable provider failures must surface to
@@ -364,6 +381,7 @@ class SeparateAnalyzerProposer:
             )
             return ()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EVOLUTION_PROPOSER_PARSE_ERROR,
                 agent_id=str(agent_id),

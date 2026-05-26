@@ -33,7 +33,12 @@ _REQUIREMENT_NAME_RE: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9._-]+")
 
 
 def _requirement_name(spec: str) -> str | None:
-    """Extract the package name from a PEP 508 requirement string."""
+    """Extract the package name from a PEP 508 requirement string.
+
+    Returns:
+        The matched distribution name, or ``None`` when the spec
+        starts with a non-name token.
+    """
     match = _REQUIREMENT_NAME_RE.match(spec.strip())
     return match.group(0) if match else None
 
@@ -46,11 +51,22 @@ class PythonScanner:
         return Ecosystem.PYTHON
 
     def detect(self, workspace_path: Path) -> bool:
-        """True if any Python packaging manifest sits at the tree root."""
+        """True if any Python packaging manifest sits at the tree root.
+
+        Returns:
+            ``True`` when any of :data:`_MANIFESTS` exists at the
+            workspace root; ``False`` otherwise.
+        """
         return any((workspace_path / name).is_file() for name in _MANIFESTS)
 
     def scan(self, workspace_path: Path) -> EcosystemScan:
-        """Read manifests + tree and contribute Python structure facts."""
+        """Read manifests + tree and contribute Python structure facts.
+
+        Returns:
+            An :class:`EcosystemScan` carrying packages discovered
+            under the tree, declared script / module entry points,
+            test directories, build files, and declared dependencies.
+        """
         rel_paths = walk_relative_paths(workspace_path)
         pyproject = self._load_pyproject(workspace_path)
         return EcosystemScan(
@@ -62,6 +78,15 @@ class PythonScanner:
         )
 
     def _load_pyproject(self, workspace_path: Path) -> dict[str, Any]:
+        """Parse ``pyproject.toml`` at the tree root.
+
+        Args:
+            workspace_path: Codebase root being scanned.
+
+        Returns:
+            The parsed TOML table, or an empty dict when the file is
+            absent or malformed.
+        """
         text = read_text_if_present(workspace_path / "pyproject.toml")
         if text is None:
             return {}
@@ -71,6 +96,15 @@ class PythonScanner:
             return {}
 
     def _build_files(self, workspace_path: Path) -> tuple[BuildFile, ...]:
+        """Identify packaging manifests present at the tree root.
+
+        Args:
+            workspace_path: Codebase root being scanned.
+
+        Returns:
+            A :class:`BuildFile` per manifest in :data:`_MANIFESTS` that
+            exists at the root, tagged with its build tool.
+        """
         tools = {
             "pyproject.toml": "pyproject",
             "setup.py": "setuptools",
@@ -83,6 +117,15 @@ class PythonScanner:
         )
 
     def _modules(self, rel_paths: list[str]) -> tuple[Module, ...]:
+        """Discover importable packages from ``__init__.py`` locations.
+
+        Args:
+            rel_paths: Tree-relative file paths in the workspace.
+
+        Returns:
+            A :class:`Module` per package directory, capped at
+            :data:`_MAX_PACKAGES`.
+        """
         packages = sorted(
             {
                 path.removesuffix("/__init__.py") if "/" in path else "."
@@ -98,6 +141,16 @@ class PythonScanner:
     def _entry_points(
         self, rel_paths: list[str], pyproject: dict[str, Any]
     ) -> tuple[EntryPoint, ...]:
+        """Collect console-script and ``__main__`` entry points.
+
+        Args:
+            rel_paths: Tree-relative file paths in the workspace.
+            pyproject: Parsed ``pyproject.toml`` table.
+
+        Returns:
+            An :class:`EntryPoint` per declared console script and per
+            ``__main__.py`` module found in the tree.
+        """
         points: list[EntryPoint] = []
         project = pyproject.get("project")
         if not isinstance(project, dict):
@@ -125,6 +178,16 @@ class PythonScanner:
         rel_paths: list[str],
         pyproject: dict[str, Any],
     ) -> tuple[TestSuite, ...]:
+        """Locate test roots and tag them with the detected framework.
+
+        Args:
+            workspace_path: Codebase root being scanned.
+            rel_paths: Tree-relative file paths in the workspace.
+            pyproject: Parsed ``pyproject.toml`` table.
+
+        Returns:
+            A :class:`TestSuite` per ``tests/`` / ``test/`` root.
+        """
         framework = self._test_framework(workspace_path, pyproject)
         roots = sorted(
             {
@@ -138,6 +201,16 @@ class PythonScanner:
     def _test_framework(
         self, workspace_path: Path, pyproject: dict[str, Any]
     ) -> str | None:
+        """Detect the test framework from config markers.
+
+        Args:
+            workspace_path: Codebase root being scanned.
+            pyproject: Parsed ``pyproject.toml`` table.
+
+        Returns:
+            ``"pytest"`` when a pytest marker is present; ``None`` when
+            no framework can be inferred.
+        """
         tool_table = pyproject.get("tool", {})
         if isinstance(tool_table, dict) and "pytest" in tool_table:
             return "pytest"
@@ -148,6 +221,15 @@ class PythonScanner:
         return None
 
     def _dependencies(self, pyproject: dict[str, Any]) -> tuple[Dependency, ...]:
+        """Collect runtime and optional dependencies from ``pyproject``.
+
+        Args:
+            pyproject: Parsed ``pyproject.toml`` table.
+
+        Returns:
+            A :class:`Dependency` per declared runtime and optional
+            requirement.
+        """
         project = pyproject.get("project")
         if not isinstance(project, dict):
             project = {}
@@ -165,6 +247,15 @@ class PythonScanner:
     def _parse_specs(
         self, specs: list[Any], scope: DependencyScope
     ) -> list[Dependency]:
+        """Parse PEP 508 requirement strings into dependencies.
+
+        Args:
+            specs: Raw requirement entries (non-strings are skipped).
+            scope: Dependency scope to tag each parsed entry with.
+
+        Returns:
+            A :class:`Dependency` per spec whose distribution name parses.
+        """
         parsed: list[Dependency] = []
         for spec in specs:
             if not isinstance(spec, str):

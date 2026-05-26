@@ -7,6 +7,7 @@ helpers module under the project size limit.
 import re
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -128,7 +129,12 @@ def _build_error_result(
     *,
     metadata: dict[str, object] | None = None,
 ) -> ExecutionResult:
-    """Inline build_result helper avoiding a circular import."""
+    """Inline build_result helper avoiding a circular import.
+
+    Returns:
+        An ERROR :class:`ExecutionResult` carrying the supplied
+        ``error_message`` and optional metadata.
+    """
     from synthorg.engine.loop_helpers import build_result  # noqa: PLC0415
 
     return build_result(
@@ -159,7 +165,13 @@ async def _park_for_approval(
     approval_gate: ApprovalGate,
     turns: list[TurnRecord],
 ) -> ExecutionResult:
-    """Park the context for approval and return a PARKED or ERROR result."""
+    """Park the context for approval and return a PARKED or ERROR result.
+
+    Returns:
+        An :class:`ExecutionResult` with ``termination_reason=PARKED``
+        on successful park, or ``ERROR`` when parking fails (the
+        critical-error branch propagates upward).
+    """
     from synthorg.engine.loop_helpers import build_result  # noqa: PLC0415
 
     agent_id = str(ctx.identity.id)
@@ -181,9 +193,8 @@ async def _park_for_approval(
             agent_id=agent_id,
             task_id=task_id,
         )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         return build_result(
             ctx,
             TerminationReason.ERROR,
@@ -218,7 +229,14 @@ async def execute_tool_calls(  # noqa: PLR0913
     *,
     approval_gate: ApprovalGate | None = None,
 ) -> AgentContext | ExecutionResult:
-    """Execute tool calls and append results to context."""
+    """Execute tool calls and append results to context.
+
+    Returns:
+        The updated :class:`AgentContext` when execution should
+        continue, or an :class:`ExecutionResult` (PARKED on
+        approval-gate escalation, ERROR on missing invoker / tool
+        failure).
+    """
     if tool_invoker is None:
         error_msg = (
             f"LLM requested {len(response.tool_calls)} tool "
@@ -245,9 +263,8 @@ async def execute_tool_calls(  # noqa: PLR0913
         results = await tool_invoker.invoke_all(
             response.tool_calls,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         error_msg = f"Tool execution failed on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         log_exception_redacted(
             logger,

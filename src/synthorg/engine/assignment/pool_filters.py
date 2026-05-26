@@ -87,6 +87,11 @@ class HierarchicalPoolFilter:
         treated as "no eligible pool" so the assignment falls through
         to a structured ``AssignmentResult(selected=None, ...)``
         instead of crashing the engine.
+
+        Returns:
+            A :class:`PoolFilterResult` with the subordinate pool, or
+            an empty pool plus a structured reason when the delegator
+            is unknown or no subordinates exist (or a lookup failed).
         """
         delegator = self._resolve_delegator(request)
         try:
@@ -137,7 +142,12 @@ class HierarchicalPoolFilter:
         *,
         stage: str,
     ) -> PoolFilterResult:
-        """Log a hierarchy lookup failure and return an empty pool."""
+        """Log a hierarchy lookup failure and return an empty pool.
+
+        Returns:
+            A :class:`PoolFilterResult` with no agents and a reason
+            string identifying the failed stage.
+        """
         logger.warning(
             TASK_ASSIGNMENT_HIERARCHY_LOOKUP_FAILED,
             task_id=request.task.id,
@@ -155,7 +165,12 @@ class HierarchicalPoolFilter:
         )
 
     def _resolve_delegator(self, request: AssignmentRequest) -> str:
-        """Pick delegator from ``delegation_chain[-1]`` or ``created_by``."""
+        """Pick delegator from ``delegation_chain[-1]`` or ``created_by``.
+
+        Returns:
+            The most recent delegator in ``task.delegation_chain`` when
+            present; otherwise the task's ``created_by``.
+        """
         task = request.task
         if task.delegation_chain:
             delegator = task.delegation_chain[-1]
@@ -186,6 +201,11 @@ class HierarchicalPoolFilter:
         each candidate against both ``a.name`` and ``str(a.id)`` so a
         graph keyed by IDs (typical when explicit ``ReportingLine``
         entries are used) still resolves correctly.
+
+        Returns:
+            Tuple of direct reports when any are in the available
+            pool; otherwise any transitive subordinates that are
+            available (or ``()`` when none).
         """
         direct_reports = set(self._hierarchy.get_direct_reports(delegator))
         direct = tuple(
@@ -223,6 +243,11 @@ class HierarchicalPoolFilter:
         is treated as unknown so the strategy returns a precise
         no-eligible reason rather than silently picking up the leaf
         with-no-subordinates path.
+
+        Returns:
+            ``True`` when ``delegator`` has at least one direct report
+            or a supervisor recorded in the hierarchy; ``False``
+            otherwise.
         """
         has_reports = bool(self._hierarchy.get_direct_reports(delegator))
         has_supervisor = self._hierarchy.get_supervisor(delegator) is not None

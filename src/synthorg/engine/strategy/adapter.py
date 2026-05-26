@@ -59,8 +59,6 @@ def inject_strategy_context(
         principles = load_and_merge(
             strategy_config.constitutional_principles,
         )
-    except MemoryError, RecursionError:
-        raise
     except (StrategyPackNotFoundError, StrategyPackValidationError) as exc:
         logger.warning(
             STRATEGY_PRINCIPLES_LOAD_FAILED,

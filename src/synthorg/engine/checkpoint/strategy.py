@@ -8,6 +8,7 @@ After ``max_resume_attempts`` resume attempts, falls back to the
 import asyncio
 from typing import Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.checkpoint.models import (
@@ -180,14 +181,18 @@ class CheckpointRecoveryStrategy:
         trigger fallback).  Other exceptions (e.g. ``ValueError``)
         propagate -- they indicate programming errors, not transient
         storage failures.
+
+        Returns:
+            The latest :class:`Checkpoint` for the execution, or
+            ``None`` when no checkpoint exists yet or persistence
+            raised a recoverable error.
         """
         try:
             checkpoint = await self._checkpoint_repo.get_latest(
                 execution_id=execution_id,
             )
-        except MemoryError, RecursionError:
-            raise
         except PersistenceError as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 CHECKPOINT_LOAD_FAILED,
@@ -260,7 +265,13 @@ class CheckpointRecoveryStrategy:
         checkpoint: Checkpoint,
         resume_attempt: int,
     ) -> RecoveryResult:
-        """Build a resumable ``RecoveryResult``."""
+        """Build a resumable ``RecoveryResult``.
+
+        Returns:
+            A :class:`RecoveryResult` carrying the checkpoint
+            context JSON, the resume-attempt count, and the inferred
+            failure category.
+        """
         execution_id = context.execution_id
         snapshot = context.to_snapshot()
         logger.info(
@@ -306,6 +317,10 @@ class CheckpointRecoveryStrategy:
 
         Also cleans up any orphaned checkpoint/heartbeat rows for
         this execution, since the resume path will not be entered.
+
+        Returns:
+            The :class:`RecoveryResult` produced by the fallback
+            strategy.
         """
         await cleanup_checkpoint_artifacts(
             self._checkpoint_repo,

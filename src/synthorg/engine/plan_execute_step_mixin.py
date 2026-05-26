@@ -8,6 +8,7 @@ top-level loop file stays under the project's size limit.
 import copy
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.loop_helpers import (
     call_provider,
     check_budget,
@@ -70,7 +71,14 @@ class PlanExecuteStepMixin:
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
     ) -> AgentContext | ExecutionResult | tuple[AgentContext, bool]:
-        """Execute a single turn within a step's mini-ReAct sub-loop."""
+        """Execute a single turn within a step's mini-ReAct sub-loop.
+
+        Returns:
+            The updated :class:`AgentContext` to continue the
+            sub-loop, an :class:`ExecutionResult` to terminate
+            execution (shutdown / budget / completion), or
+            ``(ctx, True)`` when the step completed successfully.
+        """
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
         if shutdown_result is not None:
             return shutdown_result
@@ -136,7 +144,12 @@ class PlanExecuteStepMixin:
         response: CompletionResponse,
         turn_number: int,
     ) -> tuple[AgentContext, bool]:
-        """Assess step success and log truncation if applicable."""
+        """Assess step success and log truncation if applicable.
+
+        Returns:
+            ``(ctx, success)``: the unchanged context and the step's
+            success flag from :func:`assess_step_success`.
+        """
         success = assess_step_success(response)
         if response.finish_reason == FinishReason.MAX_TOKENS:
             logger.warning(
@@ -156,7 +169,13 @@ class PlanExecuteStepMixin:
         turns: list[TurnRecord],
         shutdown_checker: ShutdownChecker | None,
     ) -> AgentContext | ExecutionResult:
-        """Check shutdown and execute tool calls for a step turn."""
+        """Check shutdown and execute tool calls for a step turn.
+
+        Returns:
+            The updated :class:`AgentContext` after tool execution
+            appends results, or an :class:`ExecutionResult` when
+            shutdown fires or tool execution terminates the loop.
+        """
         shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
         if shutdown_result is not None:
             clear_last_turn_tool_calls(turns)
@@ -180,16 +199,20 @@ class PlanExecuteStepMixin:
     ) -> None:
         """Invoke the checkpoint callback if configured.
 
-        Errors are logged but never propagated -- checkpointing must
-        not interrupt execution.
+        Non-critical errors are logged and suppressed so checkpointing
+        does not interrupt execution; critical system errors are
+        re-raised via :func:`reraise_critical`.
+
+        Raises:
+            MemoryError: Propagated as a critical system error.
+            RecursionError: Propagated as a critical system error.
         """
         if self._checkpoint_callback is None:
             return
         try:
             await self._checkpoint_callback(ctx)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EXECUTION_CHECKPOINT_CALLBACK_FAILED,
                 execution_id=ctx.execution_id,
@@ -204,7 +227,13 @@ class PlanExecuteStepMixin:
         all_plans: list[ExecutionPlan],
         replans_used: int,
     ) -> ExecutionResult:
-        """Attach plan metadata to the execution result."""
+        """Attach plan metadata to the execution result.
+
+        Returns:
+            A copy of ``result`` with ``loop_type='plan_execute'``,
+            the final plan, and the replan counter merged into
+            ``metadata``.
+        """
         metadata = copy.deepcopy(result.metadata)
         metadata.update(
             {

@@ -43,7 +43,12 @@ def validate_max_tokens(
     agent: AgentIdentity,
     max_tokens: int | None,
 ) -> None:
-    """Raise ``PromptBuildError`` if ``max_tokens`` is non-positive."""
+    """Raise ``PromptBuildError`` if ``max_tokens`` is non-positive.
+
+    Raises:
+        PromptBuildError: When ``max_tokens`` is provided but not a
+            positive integer.
+    """
     if max_tokens is not None and max_tokens <= 0:
         msg = f"max_tokens must be > 0, got {max_tokens}"
         logger.error(
@@ -177,6 +182,10 @@ def log_prompt_build_success(
 def resolve_template(custom_template: str | None) -> str:
     """Resolve the template string to use for rendering.
 
+    Returns:
+        ``custom_template`` when supplied and syntactically valid;
+        the default template otherwise.
+
     Raises:
         PromptBuildError: If custom template syntax is invalid.
     """
@@ -203,6 +212,9 @@ def resolve_template(custom_template: str | None) -> str:
 
 def render_template(template_str: str, context: dict[str, Any]) -> str:
     """Render a Jinja2 template string with the given context.
+
+    Returns:
+        The rendered template output.
 
     Raises:
         PromptBuildError: If rendering fails.

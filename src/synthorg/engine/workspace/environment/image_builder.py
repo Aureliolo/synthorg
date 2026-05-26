@@ -50,7 +50,16 @@ class BuildOutcome(BaseModel):
 
     @model_validator(mode="after")
     def _check_timeout_marker(self) -> Self:
-        """A timed-out build is signalled by the reserved ``-1`` exit code."""
+        """A timed-out build is signalled by the reserved ``-1`` exit code.
+
+        Returns:
+            ``self`` unchanged when ``timed_out`` and ``exit_code``
+            agree.
+
+        Raises:
+            ValueError: When ``timed_out`` is ``True`` and
+                ``exit_code`` is not the reserved ``-1`` marker.
+        """
         if self.timed_out and self.exit_code != -1:
             msg = "timed_out build must use exit_code -1"
             raise ValueError(msg)
@@ -98,7 +107,17 @@ class SubprocessImageBuilder:
         context_dir: Path,
         timeout: float,  # noqa: ASYNC109 -- caller-tuned build ceiling
     ) -> BuildOutcome:
-        """Run ``docker build`` and capture its combined output."""
+        """Run ``docker build`` and capture its combined output.
+
+        Returns:
+            A :class:`BuildOutcome` carrying the tag, exit code,
+            combined log, and ``timed_out`` flag.
+
+        Raises:
+            CancelledError: Propagated after the subprocess is
+                killed and reaped (the kill-and-reap pair runs under
+                ``asyncio.shield`` to avoid leaking a zombie).
+        """
         proc = await asyncio.create_subprocess_exec(
             _DOCKER,
             "build",

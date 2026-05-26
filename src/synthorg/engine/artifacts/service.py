@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.artifact import Artifact
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ArtifactPersistenceNoStorageError
 from synthorg.core.enums import ArtifactType  # noqa: TC001
 from synthorg.core.types import NotBlankStr
@@ -70,6 +71,10 @@ class ArtifactService:
 
         All three filters are AND-combined when provided; passing
         ``None`` for a filter omits it from the query.
+
+        Returns:
+            Tuple of matching artifacts ordered by the repository's
+            default ordering.
         """
         return await self._repo.query(
             ArtifactFilterSpec(
@@ -101,6 +106,11 @@ class ArtifactService:
         set to the current UTC time; callers do not provide either.
         Truncating the UUID shrinks entropy enough for collisions to
         become a real risk at scale, so the full hex is retained.
+
+        Returns:
+            The newly-constructed :class:`Artifact` after persistence
+            (caller-supplied fields plus the generated id and UTC
+            timestamp).
         """
         artifact = Artifact(
             id=NotBlankStr(f"artifact-{uuid.uuid4().hex}"),
@@ -141,7 +151,12 @@ class ArtifactService:
         )
 
     async def delete(self, artifact_id: NotBlankStr) -> bool:
-        """Delete an artifact; returns ``True`` when a row was removed."""
+        """Delete an artifact; returns ``True`` when a row was removed.
+
+        Returns:
+            ``True`` when the repository deleted a matching row;
+            ``False`` when no row matched ``artifact_id``.
+        """
         deleted = await self._repo.delete(artifact_id)
         if deleted:
             logger.info(
@@ -191,9 +206,8 @@ class ArtifactService:
             raise ArtifactPersistenceNoStorageError(msg)
         try:
             blob_deleted = await self._storage.delete(artifact_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PERSISTENCE_ARTIFACT_STORAGE_DELETE_FAILED,
                 artifact_id=artifact_id,
@@ -206,9 +220,8 @@ class ArtifactService:
         # context before re-raising so operators can reconcile.
         try:
             metadata_deleted = await self.delete(artifact_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PERSISTENCE_ARTIFACT_DELETE_FAILED,
                 artifact_id=artifact_id,

@@ -147,7 +147,12 @@ class QualityErosionDetector:
 
 
 def _build_corrective_message(erosion_score: float) -> str:
-    """Build a corrective message for quality erosion."""
+    """Build a corrective message for quality erosion.
+
+    Returns:
+        A bracketed system-intervention prompt embedding the erosion
+        score and suggesting simplification.
+    """
     return (
         "[SYSTEM INTERVENTION: Quality erosion detected -- your recent "
         "output shows rising structural degradation (duplicated blocks, "

@@ -1,3 +1,4 @@
+# module-kind: adapter
 """LLM-based criteria decomposer.
 
 Decomposes acceptance criteria into atomic binary probes by invoking a
@@ -102,7 +103,13 @@ class LLMDecompositionError(DomainError):
 
 
 def _decomposer_instructions(max_probes: int) -> str:
-    """Build the instruction block passed in the user prompt."""
+    """Build the instruction block passed in the user prompt.
+
+    Returns:
+        The instruction text constraining the model to call
+        ``emit_atomic_probes`` once with at most ``max_probes`` probes
+        per criterion.
+    """
     return (
         "Call emit_atomic_probes with one array of probe "
         "objects.  Each probe references a criterion by its "
@@ -132,6 +139,9 @@ def _encode_decomposer_payload(
     an explicit boundary between trusted envelope and untrusted
     criterion text, so a well-crafted breakout string cannot read as
     plausible schema content.
+
+    Returns:
+        The JSON-encoded payload sent as the user message body.
     """
     payload = {
         "criteria": [
@@ -150,7 +160,13 @@ def _proportionally_truncate(
     overflow: int,
     min_chars: int,
 ) -> list[str]:
-    """Trim descriptions proportionally to their length, respecting min_chars."""
+    """Trim descriptions proportionally to their length, respecting min_chars.
+
+    Returns:
+        The list of trimmed descriptions in the same order as the
+        input, each shortened by a length-proportional amount but
+        never below ``min_chars``.
+    """
     total_desc_chars = sum(len(d) for d in descriptions) or 1
     per_desc_cuts = [
         max(0, round(len(d) * overflow / total_desc_chars)) for d in descriptions
@@ -215,7 +231,11 @@ class LLMCriteriaDecomposer:
         max_probes_per_criterion: int = _DEFAULT_MAX_PROBES_PER_CRITERION,
         cost_tracker: CostTracker | None = None,
     ) -> None:
-        """Store dependencies and enforce a positive cap."""
+        """Store dependencies and enforce a positive cap.
+
+        Raises:
+            ValueError: If ``max_probes_per_criterion`` is less than 1.
+        """
         if max_probes_per_criterion < 1:
             msg = "max_probes_per_criterion must be >= 1"
             raise ValueError(msg)
@@ -292,7 +312,13 @@ class LLMCriteriaDecomposer:
         self,
         criteria: tuple[AcceptanceCriterion, ...],
     ) -> tuple[ToolDefinition, list[ChatMessage]]:
-        """Build the ``emit_atomic_probes`` tool + system/user messages."""
+        """Build the ``emit_atomic_probes`` tool + system/user messages.
+
+        Returns:
+            ``(tool, messages)`` where ``tool`` is the
+            :class:`ToolDefinition` registered for the call and
+            ``messages`` is the two-message system+user prompt list.
+        """
         tool = ToolDefinition(
             name=_DECOMPOSER_TOOL_NAME,
             description=_DECOMPOSER_TOOL_DESCRIPTION,
@@ -318,7 +344,12 @@ class LLMCriteriaDecomposer:
         agent_id: NotBlankStr,
         task_id: NotBlankStr,
     ) -> Any:
-        """Invoke ``self._provider.complete`` with the decomposer config."""
+        """Invoke ``self._provider.complete`` with the decomposer config.
+
+        Returns:
+            The provider's raw completion response (its ``tool_calls``
+            attribute is consumed by :meth:`_extract_raw_probes`).
+        """
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
             agent_id=agent_id,
@@ -347,6 +378,15 @@ class LLMCriteriaDecomposer:
         Any deviation logs a structured
         ``VERIFICATION_DECOMPOSER_RESPONSE_INVALID`` event with a
         precise reason and raises ``LLMDecompositionError``.
+
+        Returns:
+            The raw ``probes`` list from the validated tool call.
+
+        Raises:
+            LLMDecompositionError: When the response shape does not
+                match the schema (zero / multiple tool calls, missing
+                or non-mapping arguments, unexpected keys, or
+                non-list ``probes`` value).
         """
         tool_calls = getattr(response, "tool_calls", None) or []
         matches = [tc for tc in tool_calls if tc.name == _DECOMPOSER_TOOL_NAME]
@@ -399,7 +439,12 @@ class LLMCriteriaDecomposer:
         reason: str,
         **extra_context: Any,
     ) -> NoReturn:
-        """Log ``VERIFICATION_DECOMPOSER_RESPONSE_INVALID`` and raise."""
+        """Log ``VERIFICATION_DECOMPOSER_RESPONSE_INVALID`` and raise.
+
+        Raises:
+            LLMDecompositionError: Always raised; the function returns
+                only via the exception (``NoReturn``).
+        """
         logger.error(
             VERIFICATION_DECOMPOSER_RESPONSE_INVALID,
             task_id=task_id,
@@ -424,6 +469,14 @@ class LLMCriteriaDecomposer:
         logged; when the payload is irreducible even at the per-item
         floor we surface ``LLMDecompositionError`` instead of
         returning oversized text.
+
+        Returns:
+            The JSON-encoded user prompt body, post-truncation.
+
+        Raises:
+            LLMDecompositionError: If the encoded payload cannot be
+                shrunk to fit ``_MAX_PROMPT_CRITERIA_CHARS`` even at
+                the per-item floor.
         """
         instructions = _decomposer_instructions(self._max_probes_per_criterion)
         descriptions = [c.description for c in criteria]
@@ -474,7 +527,18 @@ class LLMCriteriaDecomposer:
         instructions: str,
         criteria_count: int,
     ) -> tuple[list[str], str]:
-        """Shrink descriptions until the encoded payload fits or raise."""
+        """Shrink descriptions until the encoded payload fits or raise.
+
+        Returns:
+            ``(descriptions, text)`` where ``descriptions`` is the
+            list shrunk in place per iteration and ``text`` is the
+            re-encoded payload that fits ``_MAX_PROMPT_CRITERIA_CHARS``.
+
+        Raises:
+            LLMDecompositionError: When every description is already at
+                ``_MIN_CRITERION_DESC_CHARS`` and the payload still
+                does not fit (the prompt is irreducible).
+        """
         while len(text) > _MAX_PROMPT_CRITERIA_CHARS:
             if all(len(d) <= _MIN_CRITERION_DESC_CHARS for d in descriptions):
                 logger.error(
@@ -579,7 +643,14 @@ class LLMCriteriaDecomposer:
         task_id: NotBlankStr,
         agent_id: NotBlankStr,
     ) -> AtomicProbe | None:
-        """Validate one raw probe dict; return the built probe or ``None``."""
+        """Validate one raw probe dict; return the built probe or ``None``.
+
+        Returns:
+            The constructed :class:`AtomicProbe` when the raw entry
+            passes :func:`_probe_rejection_reason`, or ``None`` when the
+            entry is rejected (logged via
+            :data:`VERIFICATION_DECOMPOSER_PROBE_REJECTED`).
+        """
         reason = _probe_rejection_reason(
             raw,
             criteria=criteria,

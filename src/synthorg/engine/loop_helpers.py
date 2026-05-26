@@ -29,6 +29,7 @@ import hashlib
 import json
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_COMPACTION_FAILED,
@@ -96,9 +97,8 @@ def check_shutdown(
         return None
     try:
         shutting_down = shutdown_checker()
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         error_msg = f"Shutdown checker failed: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             EXECUTION_LOOP_ERROR,
@@ -142,9 +142,8 @@ def check_budget(
         return None
     try:
         exhausted = budget_checker(ctx)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         error_msg = f"Budget checker failed: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             EXECUTION_LOOP_ERROR,
@@ -241,9 +240,8 @@ async def call_provider(  # noqa: PLR0913
                     )
                 if response.model:
                     span.set_attribute("gen_ai.response.model", response.model)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     SPAN_ATTRIBUTE_WRITE_FAILED,
                     execution_id=ctx.execution_id,
@@ -251,9 +249,8 @@ async def call_provider(  # noqa: PLR0913
                     reason="span_attribute_write_failed",
                 )
             return response
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         error_msg = f"Provider error on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
         logger.warning(
             EXECUTION_LOOP_ERROR,
@@ -331,7 +328,12 @@ def get_tool_definitions(
 
 
 def response_to_message(response: CompletionResponse) -> ChatMessage:
-    """Convert a ``CompletionResponse`` to an assistant ``ChatMessage``."""
+    """Convert a ``CompletionResponse`` to an assistant ``ChatMessage``.
+
+    Returns:
+        A :class:`ChatMessage` with role ASSISTANT carrying the
+        response content and tool calls.
+    """
     return ChatMessage(
         role=MessageRole.ASSISTANT,
         content=response.content,
@@ -373,6 +375,11 @@ def make_turn_record(  # noqa: PLR0913
             turn (for PTE computation).
         tool_response_tokens: Tokens from tool responses this
             turn (for PTE computation).
+
+    Returns:
+        A :class:`TurnRecord` carrying the input/output token usage,
+        derived node types, behaviour tags, and extracted metadata
+        fields.
     """
     md = provider_metadata or {}
     latency_ms_raw = md.get("_synthorg_latency_ms")
@@ -501,7 +508,13 @@ def build_result(
     error_message: str | None = None,
     metadata: dict[str, object] | None = None,
 ) -> ExecutionResult:
-    """Build an ``ExecutionResult`` from loop state."""
+    """Build an ``ExecutionResult`` from loop state.
+
+    Returns:
+        An :class:`ExecutionResult` carrying the current context,
+        termination reason, turn records, and optional error /
+        metadata payload.
+    """
     return ExecutionResult(
         context=ctx,
         termination_reason=reason,
@@ -554,9 +567,8 @@ async def check_stagnation(  # noqa: PLR0913
             tuple(turns),
             corrections_injected=corrections_injected,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             EXECUTION_LOOP_ERROR,
             execution_id=execution_id,
@@ -663,9 +675,8 @@ async def invoke_compaction(
         return None
     try:
         return await compaction_callback(ctx)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             CONTEXT_BUDGET_COMPACTION_FAILED,
             execution_id=ctx.execution_id,

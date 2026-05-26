@@ -70,7 +70,12 @@ class InflectionTrigger:
         agent_id: NotBlankStr,
         context: EvolutionContext,  # noqa: ARG002
     ) -> bool:
-        """Trigger if there are pending inflections for the agent."""
+        """Trigger if there are pending inflections for the agent.
+
+        Returns:
+            ``True`` when at least one inflection is pending (and
+            consumed by this call); ``False`` otherwise.
+        """
         key = str(agent_id)
         async with self._lock:
             pending = self._pending.pop(key, [])
@@ -88,6 +93,11 @@ class InflectionTrigger:
         self,
         agent_id: NotBlankStr,
     ) -> tuple[PerformanceInflection, ...]:
-        """Peek at pending inflections without consuming them."""
+        """Peek at pending inflections without consuming them.
+
+        Returns:
+            Tuple of pending inflections for ``agent_id``; ``()`` when
+            none are queued.
+        """
         async with self._lock:
             return tuple(self._pending.get(str(agent_id), []))

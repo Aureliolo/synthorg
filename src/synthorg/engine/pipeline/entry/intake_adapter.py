@@ -90,7 +90,12 @@ class IntakeEntryAdapter:
 
     @staticmethod
     def _build_raw_intent(request: ClientRequest) -> str:
-        """Compose the intent body, folding in reviewer scope notes."""
+        """Compose the intent body, folding in reviewer scope notes.
+
+        Returns:
+            The requirement description, optionally extended with a
+            ``Scoping notes`` block from request metadata.
+        """
         body = request.requirement.description
         notes = request.metadata.get(_SCOPING_NOTES_KEY)
         if isinstance(notes, str) and notes.strip():

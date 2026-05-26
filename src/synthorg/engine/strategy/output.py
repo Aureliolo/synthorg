@@ -60,7 +60,13 @@ def _resolve_mode(
     mode: StrategicOutputMode,
     agent: AgentIdentity | None,
 ) -> StrategicOutputMode:
-    """Resolve context_dependent mode to a concrete mode."""
+    """Resolve context_dependent mode to a concrete mode.
+
+    Returns:
+        ``mode`` unchanged when it is already concrete; otherwise
+        ``DECISION_MAKER`` for senior agents and ``ADVISOR`` for
+        everyone else.
+    """
     if mode != StrategicOutputMode.CONTEXT_DEPENDENT:
         return mode
 
@@ -76,7 +82,12 @@ def _resolve_mode(
 def _format_lens_instructions(
     lenses: tuple[LensDefinition, ...],
 ) -> str:
-    """Format active lenses into evaluation instructions."""
+    """Format active lenses into evaluation instructions.
+
+    Returns:
+        A newline-joined block of lens-evaluation instructions;
+        empty string when no lenses are active.
+    """
     if not lenses:
         return ""
 

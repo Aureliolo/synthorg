@@ -47,6 +47,13 @@ def _lookup_path(source: Mapping[str, object], path: str) -> object:
 
     Raises ``KeyError`` if any segment is missing or traverses a
     non-mapping leaf.
+
+    Returns:
+        The leaf value addressed by the dotted ``path``.
+
+    Raises:
+        KeyError: When ``path`` is empty, a segment is missing, or a
+            non-mapping leaf is traversed before reaching the leaf.
     """
     if not path:
         msg = "Empty lookup path"
@@ -76,6 +83,14 @@ def _resolve_expression(
     ``@parent.<path>`` and ``@child.<path>`` are dotted-path lookups.
     Non-string values and strings not starting with ``@`` are literals.
     Any other ``@``-prefixed string raises ``SubworkflowIOError``.
+
+    Returns:
+        The resolved value (looked up via ``@parent`` / ``@child`` or
+        the literal ``expression`` itself when no prefix matches).
+
+    Raises:
+        SubworkflowIOError: When ``@child`` is used without a child
+            scope or an unsupported ``@``-prefix is encountered.
     """
     if not isinstance(expression, str):
         return expression
@@ -109,6 +124,10 @@ def _validate_value_type(
     Raises ``SubworkflowIOError`` on mismatch.  ``JSON`` accepts any
     value (it is deliberately permissive for structured payloads);
     ``TASK_REF``/``AGENT_REF`` accept non-blank strings.
+
+    Raises:
+        SubworkflowIOError: When ``value`` is not compatible with
+            the declared ``expected`` type.
     """
     if expected is WorkflowValueType.STRING:
         if not isinstance(value, str):

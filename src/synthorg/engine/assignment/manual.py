@@ -53,6 +53,10 @@ class ManualAssignmentStrategy:
         (API path) or declarative ``name`` (workflow path); both
         forms are accepted.
 
+        Returns:
+            The :class:`AgentIdentity` whose UUID or name matches
+            ``task.assigned_to`` and whose status is ACTIVE.
+
         Raises:
             TaskAssignmentError: If ``task.assigned_to`` is None.
             NoEligibleAgentError: If not in the pool or not ACTIVE.

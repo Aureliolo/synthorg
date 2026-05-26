@@ -74,7 +74,12 @@ class InMemoryResourceLock:
         self._mutex = asyncio.Lock()
 
     async def acquire(self, resource: str, holder: str) -> bool:
-        """Attempt to acquire exclusive access to *resource*."""
+        """Attempt to acquire exclusive access to *resource*.
+
+        Returns:
+            ``True`` when the lock was acquired (or re-acquired by
+            ``holder``); ``False`` when held by a different holder.
+        """
         async with self._mutex:
             current = self._locks.get(resource)
             if current is None:
@@ -116,7 +121,11 @@ class InMemoryResourceLock:
                 )
 
     async def release_all(self, holder: str) -> int:
-        """Release all locks held by *holder*."""
+        """Release all locks held by *holder*.
+
+        Returns:
+            The number of locks released.
+        """
         async with self._mutex:
             to_release = [r for r, h in self._locks.items() if h == holder]
             for resource in to_release:

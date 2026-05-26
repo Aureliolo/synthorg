@@ -1,3 +1,4 @@
+# module-kind: service
 """Error handling mixin for :class:`AgentEngine`.
 
 Extracts completion logging, provider degradation, and fatal-error
@@ -14,6 +15,7 @@ from synthorg.budget.errors import (
     RunHardCeilingExceededError,
 )
 from synthorg.budget.quota import DegradationAction
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
 from synthorg.engine.cost_recording import resolve_tracker_currency
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
@@ -108,7 +110,18 @@ class AgentEngineErrorsMixin:
         identity: AgentIdentity,
         provider: CompletionProvider,
     ) -> tuple[CompletionProvider, AgentIdentity]:
-        """Apply degradation result: swap provider if FALLBACK selected."""
+        """Apply degradation result: swap provider if FALLBACK selected.
+
+        Returns:
+            ``(provider, identity)``: the swapped-in provider plus the
+            identity copy carrying the fallback provider name, or the
+            original pair when no swap was needed.
+
+        Raises:
+            QuotaExhaustedError: If FALLBACK selected a provider but
+                no ``provider_registry`` is wired, or the registry
+                does not know the fallback provider name.
+        """
         effective = preflight.effective_provider
         if effective is None or effective == identity.model.provider:
             return provider, identity
@@ -188,6 +201,12 @@ class AgentEngineErrorsMixin:
         engine crash. All other ``BudgetExhaustedError`` subclasses
         (monthly / daily / project / quota) keep the original
         controlled-stop path.
+
+        Returns:
+            An :class:`AgentRunResult` whose
+            ``execution_result.termination_reason`` is ``PARKED`` for
+            a parked hard-ceiling crossing or ``BUDGET_EXHAUSTED`` for
+            every other controlled-stop path.
         """
         logger.warning(
             EXECUTION_ENGINE_BUDGET_STOPPED,
@@ -234,15 +253,8 @@ class AgentEngineErrorsMixin:
                     getattr(self, "_cost_tracker", None),
                 ),
             )
-        except MemoryError, RecursionError:
-            logger.warning(
-                EXECUTION_ENGINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                error="non-recoverable error while building budget-exhausted result",
-            )
-            raise
         except Exception as build_exc:
+            reraise_critical(build_exc)
             logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
@@ -270,12 +282,16 @@ class AgentEngineErrorsMixin:
     ) -> bool:
         """Persist a parked context for a hard-ceiling crossing.
 
-        Returns ``True`` when ``ApprovalGate.park_context()`` succeeds.
         On failure (no parked-context repo, serialization error,
         persistence error) returns ``False`` so the caller degrades
         to the BUDGET_EXHAUSTED controlled-stop path. The failure is
         logged but never re-raised: a ceiling halt must not crash the
         engine even if the persistence layer is in a bad state.
+
+        Returns:
+            ``True`` when :py:meth:`ApprovalGate.park_context` succeeds
+            and the halt context was stamped on the forecast, ``False``
+            on any failure (no gate, persistence error, missing repo).
         """
         from synthorg.approval.models import (  # noqa: PLC0415
             EscalationInfo,
@@ -315,9 +331,8 @@ class AgentEngineErrorsMixin:
                 agent_id=agent_id,
                 task_id=task_id,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as park_exc:
+            reraise_critical(park_exc)
             logger.warning(
                 EXECUTION_ENGINE_BUDGET_STOPPED,
                 agent_id=agent_id,
@@ -364,9 +379,8 @@ class AgentEngineErrorsMixin:
                 },
             )
             await repo.save(updated)
-        except MemoryError, RecursionError:
-            raise
         except Exception as stamp_exc:
+            reraise_critical(stamp_exc)
             logger.warning(
                 EXECUTION_ENGINE_BUDGET_STOPPED,
                 task_id=task_id,
@@ -398,7 +412,16 @@ class AgentEngineErrorsMixin:
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
     ) -> AgentRunResult:
-        """Build an error ``AgentRunResult`` when the execution pipeline fails."""
+        """Build an error ``AgentRunResult`` when the execution pipeline fails.
+
+        Returns:
+            An :class:`AgentRunResult` whose
+            ``execution_result.termination_reason`` is ``ERROR`` and
+            whose ``error_message`` is the sanitised description of
+            ``exc``; on a secondary failure during error-result
+            construction the original ``exc`` is re-raised with a
+            ``note`` describing the secondary error.
+        """
         # ``error_msg`` propagates back into agent context (the LLM
         # sees it on retry / handoff) and must not carry credential
         # material. Build it from ``safe_error_description`` (the
@@ -468,15 +491,8 @@ class AgentEngineErrorsMixin:
                     getattr(self, "_cost_tracker", None),
                 ),
             )
-        except MemoryError, RecursionError:
-            logger.warning(
-                EXECUTION_ENGINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                error="non-recoverable error while building error result",
-            )
-            raise
         except Exception as build_exc:
+            reraise_critical(build_exc)
             logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
@@ -506,7 +522,13 @@ class AgentEngineErrorsMixin:
         effective_autonomy: EffectiveAutonomy | None = None,
         provider: CompletionProvider | None = None,
     ) -> ExecutionResult:
-        """Create an error ``ExecutionResult`` and apply recovery."""
+        """Create an error ``ExecutionResult`` and apply recovery.
+
+        Returns:
+            The :class:`ExecutionResult` after recovery has been
+            applied (the engine's recovery hook may rewrite the
+            termination reason or context).
+        """
         error_ctx = ctx or AgentContext.from_identity(identity, task=task)
         error_execution = ExecutionResult(
             context=error_ctx,

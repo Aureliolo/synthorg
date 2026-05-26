@@ -44,7 +44,11 @@ _ACTIVE_STATUSES: Final[tuple[TaskStatus, ...]] = (
 
 
 def _sum_costs(costs: Iterable[float]) -> float:
-    """Sum costs known to share one budget currency by construction."""
+    """Sum costs known to share one budget currency by construction.
+
+    Returns:
+        Arithmetic sum of ``costs``.
+    """
     return sum(costs)  # lint-allow: currency-aggregation -- single budget
 
 
@@ -120,6 +124,11 @@ class CockpitService:
         an ``asyncio.TaskGroup`` so snapshot latency stays bounded by
         the slowest single ``get_aggregate`` round-trip rather than
         scaling linearly with the active-task count.
+
+        Returns:
+            A :class:`LiveActivitySnapshot` carrying per-agent
+            activity rows plus aggregate stuck/runaway markers and
+            total cost.
         """
         runaway_pct = runaway_cost_percent
         now = self._clock.now()
@@ -175,6 +184,12 @@ class CockpitService:
         pattern across active tasks and prevents the cost number from
         capping at the page-size window when a run produces more turns
         than fit in one page.
+
+        Returns:
+            An :class:`AgentActivity` carrying the agent id, execution
+            id, turn count, last-active timestamp, cumulative cost,
+            and stuck / runaway flags derived from ``stuck_cutoff``
+            and ``runaway_pct``.
         """
         agent_id = task.assigned_to or "unassigned"
         aggregate = await self._frames.get_aggregate(

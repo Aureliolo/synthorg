@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     WorkspaceCleanupError,
@@ -131,9 +132,8 @@ class WorkspaceIsolationService:
                     request=request,
                 )
                 workspaces.append(ws)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Catch ``Exception`` so any setup failure -- not just the
             # documented ``WorkspaceLimitError`` / ``WorkspaceSetupError``
             # -- triggers rollback. Without this fallback an
@@ -171,9 +171,8 @@ class WorkspaceIsolationService:
                 await self._strategy.teardown_workspace(
                     workspace=ws,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Rollback cleanup errors can wrap filesystem / DB
                 # exceptions whose str() embeds paths or connection
                 # strings.
@@ -224,6 +223,11 @@ class WorkspaceIsolationService:
         Double-checked under ``_push_queues_lock`` so two agents
         finishing concurrently on a fresh project create exactly one
         coordinator.
+
+        Raises:
+            WorkspaceCleanupError: When shutdown started before this
+                call acquired the lock, or when no git backend was
+                configured (push queue cannot exist without one).
         """
         async with self._push_queues_lock:
             existing = self._push_queues.get(project_id)
@@ -298,9 +302,8 @@ class WorkspaceIsolationService:
         for queue in queues:
             try:
                 await queue.stop()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     WORKSPACE_TEARDOWN_FAILED,
                     reason="push_queue_stop_failed",
@@ -335,9 +338,8 @@ class WorkspaceIsolationService:
                 await self._strategy.teardown_workspace(
                     workspace=workspace,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # The ``errors`` list flows into
                 # ``WorkspaceCleanupError`` which callers may log as
                 # a message; raw ``exc`` text could leak DB

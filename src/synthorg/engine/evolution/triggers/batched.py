@@ -54,7 +54,13 @@ class BatchedTrigger:
         agent_id: NotBlankStr,
         context: EvolutionContext,  # noqa: ARG002
     ) -> bool:
-        """Trigger if the interval has elapsed since last run."""
+        """Trigger if the interval has elapsed since last run.
+
+        Returns:
+            ``True`` when the configured interval has elapsed since
+            the last fire for ``agent_id`` (or no previous fire is
+            recorded); ``False`` otherwise.
+        """
         key = str(agent_id)
         now = datetime.now(UTC)
         async with self._lock:

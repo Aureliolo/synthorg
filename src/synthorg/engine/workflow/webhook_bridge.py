@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Final
 
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.message import DataPart
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler  # noqa: TC001
 from synthorg.engine.workflow.strategies.external_trigger import (
     ExternalTriggerStrategy,
@@ -99,6 +100,15 @@ class WebhookEventBridge:
         A transient settings outage or malformed value must not crash
         the polling loop. Warnings are log-once per run of failures
         (cleared on recovery) so a prolonged outage cannot flood logs.
+
+        Returns:
+            The operator-tuned poll timeout in seconds, or the
+            ``_POLL_TIMEOUT`` fallback when no resolver is wired or
+            the resolver fails.
+
+        Raises:
+            asyncio.CancelledError: If the polling task is cancelled
+                during the resolver call.
         """
         if self._config_resolver is None:
             return _POLL_TIMEOUT
@@ -109,9 +119,8 @@ class WebhookEventBridge:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             if not self._poll_timeout_fallback_logged:
                 logger.warning(
                     WEBHOOK_BRIDGE_POLL_ERROR,
@@ -131,6 +140,15 @@ class WebhookEventBridge:
 
         Same guard and log-once-per-failure-run semantics as
         :meth:`_get_poll_timeout`.
+
+        Returns:
+            The operator-tuned consecutive-error budget, or the
+            ``_MAX_CONSECUTIVE_ERRORS`` fallback when no resolver is
+            wired or the resolver fails.
+
+        Raises:
+            asyncio.CancelledError: If the polling task is cancelled
+                during the resolver call.
         """
         if self._config_resolver is None:
             return _MAX_CONSECUTIVE_ERRORS
@@ -141,9 +159,8 @@ class WebhookEventBridge:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             if not self._max_errors_fallback_logged:
                 logger.warning(
                     WEBHOOK_BRIDGE_POLL_ERROR,
@@ -232,6 +249,14 @@ class WebhookEventBridge:
         bridge task. Resolver outage returns ``True`` because silently
         pausing event forwarding on a settings hiccup would queue
         webhook events indefinitely.
+
+        Returns:
+            The current operator setting, or ``True`` when no resolver
+            is wired or the resolver fails (fail-safe).
+
+        Raises:
+            asyncio.CancelledError: If the polling task is cancelled
+                during the resolver call.
         """
         if self._config_resolver is None:
             return True
@@ -242,9 +267,8 @@ class WebhookEventBridge:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             if not self._enabled_fallback_logged:
                 logger.warning(
                     WEBHOOK_BRIDGE_RESOLVE_FAILED,
@@ -267,6 +291,12 @@ class WebhookEventBridge:
         Gated by ``communication.webhook_bridge_enabled`` (live,
         per-iteration): when False the loop stays resident but each
         iteration short-circuits before consuming a bus message.
+
+        Raises:
+            asyncio.CancelledError: If the polling task is cancelled
+                by ``stop()``; propagation lets the surrounding
+                ``contextlib.suppress`` in ``stop()`` short-circuit
+                cleanly.
         """
         consecutive_errors = 0
         while True:
@@ -302,15 +332,15 @@ class WebhookEventBridge:
                 consecutive_errors = 0
             except asyncio.CancelledError:
                 raise
-            except MemoryError, RecursionError:
-                # Catastrophic interpreter-level errors must surface to
-                # the event-loop exception handler via the
-                # ``add_done_callback(log_task_exceptions(...))``
+            except Exception as exc:
+                # ``reraise_critical`` propagates catastrophic
+                # interpreter-level errors (``MemoryError`` /
+                # ``RecursionError``) to the event-loop exception
+                # handler via the ``add_done_callback(log_task_exceptions(...))``
                 # registered in ``start()``; logging-and-continuing past
                 # them would mask the failure for the lifetime of the
                 # bridge.
-                raise
-            except Exception as exc:
+                reraise_critical(exc)
                 # ``logger.exception`` would attach a traceback whose
                 # frame-locals can leak transport credentials (auth
                 # headers in NATS connect URLs, callback secrets in

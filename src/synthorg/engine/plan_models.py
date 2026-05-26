@@ -76,7 +76,16 @@ class ExecutionPlan(BaseModel):
 
     @model_validator(mode="after")
     def _validate_sequential_step_numbers(self) -> Self:
-        """Ensure step numbers are sequential starting from 1."""
+        """Ensure step numbers are sequential starting from 1.
+
+        Returns:
+            ``self`` unchanged when step numbers form the sequence
+            ``1, 2, ..., len(steps)``.
+
+        Raises:
+            ValueError: When step numbers are out of order or do not
+                start from 1.
+        """
         expected = tuple(range(1, len(self.steps) + 1))
         actual = tuple(s.step_number for s in self.steps)
         if actual != expected:

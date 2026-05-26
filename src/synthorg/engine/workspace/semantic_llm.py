@@ -16,6 +16,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # annotations and must resolve at runtime when downstream tooling
 # evaluates type hints (DI containers, doc generators).
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.config import SemanticAnalysisConfig  # noqa: TC001
 from synthorg.engine.workspace.models import (  # noqa: TC001
@@ -223,6 +224,11 @@ class LlmSemanticAnalyzer:
         Returns:
             Parsed conflicts on success, empty tuple on terminal
             failure, or ``None`` to signal a retry.
+
+        Raises:
+            CancelledError: Propagated unchanged from the inner
+                provider call so cooperative cancellation still
+                unwinds the calling task.
         """
         try:
             async with cost_recording_scope(
@@ -239,9 +245,8 @@ class LlmSemanticAnalyzer:
                 )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Drop exc_info + scrub the message -- provider
             # HTTPStatusError can carry the API key in str(exc), and
             # the traceback would re-emit it from frame-locals.
@@ -313,7 +318,13 @@ def _build_diff_summary(
     merged_contents: dict[str, str],
     base_sources: Mapping[str, str],
 ) -> str:
-    """Build a change-type summary (NEW FILE / MODIFIED) for each file."""
+    """Build a change-type summary (NEW FILE / MODIFIED) for each file.
+
+    Returns:
+        A newline-joined summary annotating each changed file as
+        ``NEW FILE`` or ``MODIFIED``, or ``"No changes"`` when
+        nothing differs.
+    """
     parts: list[str] = []
     for path, merged in merged_contents.items():
         base = base_sources.get(path)

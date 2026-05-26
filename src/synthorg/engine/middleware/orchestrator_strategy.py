@@ -87,7 +87,12 @@ class MagenticDynamicSelectStrategy:
         subtask_ids: tuple[NotBlankStr, ...],
         progress: ProgressLedger | None,
     ) -> tuple[NotBlankStr, ...]:
-        """Prioritize blocked subtasks, then remaining in order."""
+        """Prioritize blocked subtasks, then remaining in order.
+
+        Returns:
+            Subtask ids re-ordered to place blocked ids first; the
+            original order when no blocking issues exist.
+        """
         if progress is None or not progress.blocking_issues:
             return subtask_ids
 

@@ -30,14 +30,24 @@ logger = get_logger(__name__)
 def _build_workspace_lookup(
     workspaces: tuple[Workspace, ...],
 ) -> dict[str, str]:
-    """Map task_id → worktree_path from workspaces."""
+    """Map task_id → worktree_path from workspaces.
+
+    Returns:
+        Dict mapping ``task_id`` to ``worktree_path`` for the given
+        workspaces.
+    """
     return {ws.task_id: ws.worktree_path for ws in workspaces}
 
 
 def _build_routing_lookup(
     routing_result: RoutingResult,
 ) -> dict[str, RoutingDecision]:
-    """Map subtask_id → RoutingDecision."""
+    """Map subtask_id → RoutingDecision.
+
+    Returns:
+        Dict mapping ``subtask_id`` to the :class:`RoutingDecision`
+        that covers it.
+    """
     return {d.subtask_id: d for d in routing_result.decisions}
 
 
@@ -68,6 +78,11 @@ def build_execution_waves(
 
     Returns:
         Tuple of execution groups, one per wave.
+
+    Raises:
+        CoordinationError: When the plan / routing inputs are
+            inconsistent (e.g. cycle in the DAG or unbuildable
+            assignments).
     """
     plan = decomposition_result.plan
     dag = DependencyGraph(plan.subtasks)

@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Final
 from synthorg.budget.coordination_collector import CollectionInputs
 from synthorg.budget.currency import assert_currencies_match
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import CoordinationTopology
 from synthorg.engine.coordination.attribution import (
     AgentContribution,
@@ -326,9 +327,8 @@ class MultiAgentCoordinator:
                     phase=topology_phase,
                     partial_phases=tuple(phases),
                 ) from phase_exc
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 elapsed = self._clock.monotonic() - topology_start
                 logger.warning(
                     COORDINATION_PHASE_FAILED,
@@ -433,9 +433,8 @@ class MultiAgentCoordinator:
 
         except CoordinationPhaseError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORDINATION_FAILED,
                 parent_task_id=task.id,
@@ -461,9 +460,8 @@ class MultiAgentCoordinator:
                 routing_result,
                 dispatch_result.waves,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as attr_exc:
+            reraise_critical(attr_exc)
             logger.warning(
                 COORDINATION_CLEANUP_FAILED,
                 parent_task_id=task.id,
@@ -477,9 +475,8 @@ class MultiAgentCoordinator:
                 await self._performance_tracker.record_coordination_contributions(
                     contributions,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as tracker_exc:
+                reraise_critical(tracker_exc)
                 logger.warning(
                     COORDINATION_CLEANUP_FAILED,
                     parent_task_id=task.id,
@@ -525,9 +522,8 @@ class MultiAgentCoordinator:
                 collector.collect(inputs),
                 timeout=_METRICS_COLLECT_TIMEOUT_SECONDS,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORDINATION_CLEANUP_FAILED,
                 parent_task_id=task_id,
@@ -543,13 +539,16 @@ class MultiAgentCoordinator:
     ) -> CollectionInputs | None:
         """Aggregate sub-agent results into the collector inputs.
 
-        Returns ``None`` when no sub-agent produced a result. The
-        aggregate ``ExecutionResult`` carries the team-wide turn records
-        (``model_copy`` off a real sub-agent result, swapping only
-        ``turns`` -- the collector reads nothing else off it) so
-        ``turns_mas`` is the total reasoning turns across the system.
-        Multi-agent coordination has no single lead, so ``agent_id`` is
-        the system-level ``_COORDINATOR_ACTOR`` label.
+        The aggregate ``ExecutionResult`` carries the team-wide turn
+        records (``model_copy`` off a real sub-agent result, swapping
+        only ``turns`` since the collector reads nothing else off it)
+        so ``turns_mas`` is the total reasoning turns across the
+        system. Multi-agent coordination has no single lead, so
+        ``agent_id`` is the system-level ``_COORDINATOR_ACTOR`` label.
+
+        Returns:
+            The :class:`CollectionInputs` payload ready for the
+            collector, or ``None`` when no sub-agent produced a result.
         """
         outcomes = [
             outcome
@@ -594,7 +593,17 @@ class MultiAgentCoordinator:
         context: CoordinationContext,
         phases: list[CoordinationPhaseResult],
     ) -> DecompositionResult:
-        """Run decomposition phase."""
+        """Run decomposition phase.
+
+        Returns:
+            The :class:`DecompositionResult` produced by the
+            decomposition service for the parent task.
+
+        Raises:
+            CoordinationPhaseError: When decomposition fails; the
+                partial phase list is attached to the error so callers
+                see which phases completed.
+        """
         start = self._clock.monotonic()
         phase_name = "decompose"
 
@@ -603,9 +612,8 @@ class MultiAgentCoordinator:
             result = await self._decomposition_service.decompose_task(
                 context.task, context.decomposition_context
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             elapsed = self._clock.monotonic() - start
             logger.warning(
                 COORDINATION_PHASE_FAILED,
@@ -649,7 +657,17 @@ class MultiAgentCoordinator:
         decomp_result: DecompositionResult,
         phases: list[CoordinationPhaseResult],
     ) -> RoutingResult:
-        """Run routing phase."""
+        """Run routing phase.
+
+        Returns:
+            The :class:`RoutingResult` mapping each routable subtask to
+            an agent (with the rest in ``unroutable``).
+
+        Raises:
+            CoordinationPhaseError: When routing fails; the partial
+                phase list is attached so callers see the pipeline
+                shape up to the failure.
+        """
         start = self._clock.monotonic()
         phase_name = "route"
 
@@ -660,9 +678,8 @@ class MultiAgentCoordinator:
                 context.available_agents,
                 context.task,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             elapsed = self._clock.monotonic() - start
             logger.warning(
                 COORDINATION_PHASE_FAILED,
@@ -708,6 +725,14 @@ class MultiAgentCoordinator:
         """Resolve the coordination topology from routing decisions.
 
         Validates that all routing decisions agree on one topology.
+
+        Returns:
+            The :class:`CoordinationTopology` selected for dispatch
+            (with ``AUTO`` resolved to a concrete topology).
+
+        Raises:
+            CoordinationPhaseError: If routing decisions disagree on
+                topology (mixed-topology runs are not supported).
         """
         if routing_result.decisions:
             topology = routing_result.decisions[0].topology
@@ -757,7 +782,13 @@ class MultiAgentCoordinator:
         routing_result: RoutingResult,
         phases: list[CoordinationPhaseResult],
     ) -> None:
-        """Validate routing result -- fail if all subtasks unroutable."""
+        """Validate routing result; fail if all subtasks unroutable.
+
+        Raises:
+            CoordinationPhaseError: When every subtask landed in
+                ``routing_result.unroutable`` and none were dispatched
+                to an agent.
+        """
         if not routing_result.decisions and routing_result.unroutable:
             error_msg = (
                 f"All {len(routing_result.unroutable)} subtask(s) are unroutable"
@@ -785,10 +816,12 @@ class MultiAgentCoordinator:
     async def _resolve_repo_root(self, project_id: NotBlankStr | None) -> Path | None:
         """Resolve the project's on-disk repo root for push-queue merges.
 
-        Returns ``None`` when there is no project context or no
-        project-workspace service is wired (the empty-company /
-        no-durable-backing path), which makes the dispatch merge fall
-        back to the in-memory ``merge_group``.
+        Returns:
+            The :class:`Path` to the per-project workspace root, or
+            ``None`` when there is no project context or no project-
+            workspace service is wired (the empty-company / no-durable-
+            backing path), which makes the dispatch merge fall back to
+            the in-memory ``merge_group``.
         """
         if project_id is None or self._project_workspace_service is None:
             return None
@@ -803,7 +836,17 @@ class MultiAgentCoordinator:
         context: CoordinationContext,
         phases: list[CoordinationPhaseResult],
     ) -> DispatchResult:
-        """Run dispatch phase with error wrapping."""
+        """Run dispatch phase with error wrapping.
+
+        Returns:
+            The :class:`DispatchResult` from the topology-selected
+            dispatcher, including its per-wave phases.
+
+        Raises:
+            CoordinationPhaseError: When dispatch fails (any
+                non-``CoordinationPhaseError`` exception is wrapped
+                into one with the partial phase list).
+        """
         start = self._clock.monotonic()
         phase_name = "dispatch"
 
@@ -823,9 +866,8 @@ class MultiAgentCoordinator:
             )
         except CoordinationPhaseError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             elapsed = self._clock.monotonic() - start
             logger.warning(
                 COORDINATION_PHASE_FAILED,

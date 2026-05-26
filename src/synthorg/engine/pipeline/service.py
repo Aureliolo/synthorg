@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, TypeVar
 
 from synthorg.client.models import ClientRequest, TaskRequirement
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.engine.coordination.models import CoordinationContext
@@ -125,7 +126,25 @@ class DefaultWorkPipeline:
         self._stakes_assessor = stakes_assessor or build_stakes_assessor()
 
     async def run(self, work_item: WorkItem) -> WorkPipelineResult:
-        """Drive *work_item* through the full spine (see module docstring)."""
+        """Drive *work_item* through the full spine (see module docstring).
+
+        Returns:
+            A :class:`WorkPipelineResult` carrying the verdict,
+            execution path, final task status, per-phase timings, and
+            total wall-clock duration.
+
+        Raises:
+            WorkIntakeRejectedError: If intake rejects the request or
+                does not persist a task.
+            WorkProjectNotFoundError: If ``work_item.project`` does not
+                resolve.
+            WorkRoutingUndecidableError: If no viable execution path or
+                solo agent can be selected.
+            WorkPipelineTeamPathUnavailableError: If team execution is
+                required but no coordinator is wired.
+            WorkPipelineError: If execution completes without a readable
+                terminal task state.
+        """
         started = self._clock.monotonic()
         phases: list[WorkPhaseResult] = []
         logger.info(
@@ -151,9 +170,8 @@ class DefaultWorkPipeline:
                     phases, _PHASE_TEAM, self._run_team(work_item, task, agents)
                 )
             await self._phase(phases, _PHASE_METRICS, self._metrics_stage())
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PIPELINE_RUN_FAILED,
                 correlation_id=work_item.correlation_id,
@@ -188,13 +206,18 @@ class DefaultWorkPipeline:
         name: str,
         awaitable: Awaitable[_T],
     ) -> _T:
-        """Await *awaitable*, recording a timed :class:`WorkPhaseResult`."""
+        """Await *awaitable*, recording a timed :class:`WorkPhaseResult`.
+
+        Returns:
+            The value produced by ``awaitable`` on success; on failure
+            a :class:`WorkPhaseResult` is appended to ``phases`` and
+            the exception propagates.
+        """
         start = self._clock.monotonic()
         try:
             value = await awaitable
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             elapsed = max(0.0, self._clock.monotonic() - start)
             phases.append(
                 WorkPhaseResult(
@@ -219,7 +242,16 @@ class DefaultWorkPipeline:
         return value
 
     async def _intake(self, work_item: WorkItem) -> Task:
-        """Map the work item through intake and return the created task."""
+        """Map the work item through intake and return the created task.
+
+        Returns:
+            The persisted :class:`Task`, with forecast linkage and
+            parent-task stakes already stamped.
+
+        Raises:
+            WorkIntakeRejectedError: If intake rejects the request,
+                produces no ``task_id``, or the task is not persisted.
+        """
         request = ClientRequest(
             request_id=work_item.correlation_id,
             client_id=work_item.origin_adapter_id,
@@ -258,6 +290,11 @@ class DefaultWorkPipeline:
         but a LEAF task is executed directly without decomposition, so the
         parent task itself must carry its stakes for the routing layer.
         Stamped here, at the single intake funnel, so both paths converge.
+
+        Returns:
+            The task with its ``stakes`` field updated; the original
+            ``task`` is returned unchanged when the assessor produces
+            the same stakes already on the task.
         """
         stakes = self._stakes_assessor.assess_task(task)
         if stakes is task.stakes:
@@ -285,6 +322,11 @@ class DefaultWorkPipeline:
         here: the in-loop ``BudgetChecker`` reads ``Task.hard_ceiling``
         to enforce the per-brief ceiling, and the engine reads
         ``Task.forecast_id`` to stamp halt context for the resume banner.
+
+        Returns:
+            The task with the forecast linkage applied; the original
+            ``task`` is returned unchanged when neither field is set
+            on ``work_item``.
         """
         updates: dict[str, object] = {}
         if work_item.forecast_id is not None:
@@ -300,7 +342,12 @@ class DefaultWorkPipeline:
         )
 
     async def _resolve_project(self, work_item: WorkItem) -> None:
-        """Bind the work to its project context (existence check)."""
+        """Bind the work to its project context (existence check).
+
+        Raises:
+            WorkProjectNotFoundError: If the project referenced by
+                ``work_item.project`` is not in the project repository.
+        """
         project = await self._project_repository.get(work_item.project)
         if project is None:
             msg = f"project {work_item.project!r} not found"
@@ -315,6 +362,11 @@ class DefaultWorkPipeline:
         Both the agent-registry lookup and the routing decision run
         inside the decompose phase so registry errors and lookup
         latency are captured by the phase telemetry.
+
+        Returns:
+            ``(verdict, agents)`` where ``verdict`` is the
+            solo-vs-team decision and ``agents`` is the tuple of
+            active agents passed to the routing policy.
         """
         agents = await self._agent_registry.list_active()
         verdict = await self._routing_policy.decide(task=task, available_agents=agents)
@@ -326,7 +378,12 @@ class DefaultWorkPipeline:
         task: Task,
         agents: tuple[AgentIdentity, ...],
     ) -> TaskStatus:
-        """Assign one agent and execute the leaf task single-agent."""
+        """Assign one agent and execute the leaf task single-agent.
+
+        Returns:
+            The post-execution :class:`TaskStatus` reported by the
+            worker execution service.
+        """
         if not task.assigned_to:
             assigned_id = self._select_solo_agent(task, agents)
             await self._task_engine.transition_task(
@@ -350,7 +407,17 @@ class DefaultWorkPipeline:
         task: Task,
         agents: tuple[AgentIdentity, ...],
     ) -> str:
-        """Pick the top-scoring viable agent for the leaf task."""
+        """Pick the top-scoring viable agent for the leaf task.
+
+        Returns:
+            The ID of the highest-scoring viable agent (tie-broken
+            by stable lexicographic id).
+
+        Raises:
+            WorkRoutingUndecidableError: When ``agents`` is empty or
+                no agent scored above
+                :attr:`AgentTaskScorer.min_score`.
+        """
         if not agents:
             msg = "no active agents available for solo execution"
             raise WorkRoutingUndecidableError(msg)
@@ -387,7 +454,19 @@ class DefaultWorkPipeline:
         task: Task,
         agents: tuple[AgentIdentity, ...],
     ) -> TaskStatus:
-        """Hand splittable work to the multi-agent coordinator."""
+        """Hand splittable work to the multi-agent coordinator.
+
+        Returns:
+            The post-coordination :class:`TaskStatus` read from the
+            task engine after the coordinator returns.
+
+        Raises:
+            WorkPipelineTeamPathUnavailableError: If no coordinator
+                is wired (empty-company boot).
+            WorkRoutingUndecidableError: If ``agents`` is empty.
+            WorkPipelineError: If the task is missing from the task
+                engine after coordination.
+        """
         del work_item
         if self._coordinator is None:
             raise WorkPipelineTeamPathUnavailableError

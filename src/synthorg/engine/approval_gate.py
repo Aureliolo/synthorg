@@ -1,3 +1,4 @@
+# module-kind: service
 """Approval gate -- coordinates approval-required parking and resumption.
 
 Bridges the gap between SecOps ESCALATE verdicts (or
@@ -26,6 +27,7 @@ from synthorg.communication.event_stream.interrupt import (
 )
 from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
 from synthorg.communication.event_stream.types import AgUiEventType
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import get_logger, log_exception_redacted
@@ -210,9 +212,8 @@ class ApprovalGate:
                 )
                 await self._interrupt_store.create(interrupt)
                 interrupt_id = interrupt.id
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     APPROVAL_GATE_NOTIFICATION_FAILED,
                     approval_id=escalation.approval_id,
@@ -236,9 +237,8 @@ class ApprovalGate:
                     "reason": escalation.reason,
                 },
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_NOTIFICATION_FAILED,
                 approval_id=escalation.approval_id,
@@ -277,9 +277,8 @@ class ApprovalGate:
                     },
                 ),
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_NOTIFICATION_FAILED,
                 approval_id=escalation.approval_id,
@@ -294,7 +293,13 @@ class ApprovalGate:
         *,
         interrupt_id: str | None = None,
     ) -> ParkedContext:
-        """Serialize the agent context via ParkService."""
+        """Serialize the agent context via ParkService.
+
+        Returns:
+            The :class:`ParkedContext` carrying the serialised state,
+            approval id, and metadata (tool name, action type, risk
+            level, and optional interrupt id).
+        """
         metadata = {
             "tool_name": escalation.tool_name,
             "action_type": escalation.action_type,
@@ -310,9 +315,8 @@ class ApprovalGate:
                 task_id=task_id,
                 metadata=metadata,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 APPROVAL_GATE_CONTEXT_PARK_FAILED,
@@ -341,9 +345,8 @@ class ApprovalGate:
             return
         try:
             await self._parked_context_repo.save(parked)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 APPROVAL_GATE_CONTEXT_PARK_FAILED,
@@ -418,9 +421,8 @@ class ApprovalGate:
                     agent_id=parked.agent_id,
                     payload={"approval_id": approval_id},
                 )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     APPROVAL_GATE_NOTIFICATION_FAILED,
                     approval_id=approval_id,
@@ -447,9 +449,8 @@ class ApprovalGate:
         )
         try:
             await self._interrupt_store.resolve(resolution)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_NOTIFICATION_FAILED,
                 approval_id=parked.approval_id,
@@ -460,7 +461,13 @@ class ApprovalGate:
         self,
         approval_id: str,
     ) -> ParkedContext | None:
-        """Load the parked context from the repository."""
+        """Load the parked context from the repository.
+
+        Returns:
+            The matching :class:`ParkedContext`, ``None`` when no
+            repository is configured, or ``None`` when no row matches
+            ``approval_id``.
+        """
         if self._parked_context_repo is None:
             logger.info(
                 APPROVAL_GATE_NO_PARKED_CONTEXT,
@@ -487,12 +494,16 @@ class ApprovalGate:
         parked: ParkedContext,
         approval_id: str,
     ) -> AgentContext:
-        """Deserialize the parked context. Preserves record on failure."""
+        """Deserialize the parked context. Preserves record on failure.
+
+        Returns:
+            The restored :class:`AgentContext` ready for the loop to
+            resume execution from.
+        """
         try:
             return self._park_service.resume(parked)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 APPROVAL_GATE_RESUME_FAILED,
@@ -508,14 +519,19 @@ class ApprovalGate:
         parked: ParkedContext,
         approval_id: str,
     ) -> None:
-        """Delete the parked record after successful deserialization."""
+        """Delete the parked record after successful deserialization.
+
+        Raises:
+            ExecutionStateError: If the parked row was already absent
+                between load and delete (a concurrent resume won the
+                race); the caller aborts to avoid duplicate execution.
+        """
         if self._parked_context_repo is None:  # pragma: no cover
             return
         try:
             deleted = await self._parked_context_repo.delete(parked.id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Fail-safe: a delete exception means the parked row may
             # still exist. Re-raise so ``resume_context`` aborts
             # *before* handing the context to the caller, rather than

@@ -71,7 +71,16 @@ class RoutingDecision(BaseModel):
 
     @model_validator(mode="after")
     def _validate_selected_not_in_alternatives(self) -> Self:
-        """Ensure selected candidate is not duplicated in alternatives."""
+        """Ensure selected candidate is not duplicated in alternatives.
+
+        Returns:
+            ``self`` unchanged when the selected candidate's id does
+            not appear in ``alternatives``.
+
+        Raises:
+            ValueError: When the selected candidate's agent id also
+                appears in ``alternatives``.
+        """
         selected_id = self.selected_candidate.agent_identity.id
         for alt in self.alternatives:
             if alt.agent_identity.id == selected_id:
@@ -111,7 +120,16 @@ class RoutingResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_subtask_ids(self) -> Self:
-        """Ensure no duplicate or overlapping subtask IDs."""
+        """Ensure no duplicate or overlapping subtask IDs.
+
+        Returns:
+            ``self`` unchanged when ids in ``decisions`` and
+            ``unroutable`` are unique and disjoint.
+
+        Raises:
+            ValueError: When either collection has duplicates or
+                when the two collections overlap.
+        """
         # Check for duplicate IDs within decisions
         decision_id_list = [d.subtask_id for d in self.decisions]
         decision_dupes = sorted(
@@ -190,7 +208,17 @@ class AutoTopologyConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_auto_defaults(self) -> Self:
-        """Ensure topology defaults are concrete, not AUTO."""
+        """Ensure topology defaults are concrete, not AUTO.
+
+        Returns:
+            ``self`` unchanged when every default topology is a
+            concrete value.
+
+        Raises:
+            ValueError: When any default is
+                :attr:`CoordinationTopology.AUTO` (which would cause
+                infinite resolution).
+        """
         for field_name in (
             "sequential_override",
             "parallel_default",

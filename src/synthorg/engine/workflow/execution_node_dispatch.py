@@ -74,7 +74,12 @@ async def _handle_terminal(
     service: WorkflowExecutionService,  # noqa: ARG001
     ctx: _NodeDispatchContext,
 ) -> WorkflowNodeExecution:
-    """START / END / PARALLEL_SPLIT / PARALLEL_JOIN: complete immediately."""
+    """START / END / PARALLEL_SPLIT / PARALLEL_JOIN: complete immediately.
+
+    Returns:
+        A :class:`WorkflowNodeExecution` recording the node as
+        COMPLETED; these node types have no per-node side effects.
+    """
     logger.debug(
         WORKFLOW_EXEC_NODE_COMPLETED,
         execution_id=ctx.execution_id,
@@ -92,7 +97,13 @@ async def _handle_agent_assignment(
     service: WorkflowExecutionService,  # noqa: ARG001
     ctx: _NodeDispatchContext,
 ) -> WorkflowNodeExecution:
-    """AGENT_ASSIGNMENT: record pending assignments on downstream tasks."""
+    """AGENT_ASSIGNMENT: record pending assignments on downstream tasks.
+
+    Returns:
+        A COMPLETED :class:`WorkflowNodeExecution`; downstream TASK
+        nodes receive the resolved agent assignment via the
+        ``pending_assignments`` accumulator.
+    """
     agent_name = ctx.node.config.get("agent_name")
     if agent_name:
         task_targets = find_downstream_task_ids(
@@ -126,7 +137,14 @@ async def _handle_verification(
     service: WorkflowExecutionService,  # noqa: ARG001
     ctx: _NodeDispatchContext,
 ) -> WorkflowNodeExecution:
-    """VERIFICATION: resolve verdict, delegate, requalify node_id."""
+    """VERIFICATION: resolve verdict, delegate, requalify node_id.
+
+    Returns:
+        The :class:`WorkflowNodeExecution` produced by
+        :func:`process_verification_node`, with its ``node_id``
+        replaced by the qualified id so persistence uses the
+        frame-scoped identifier.
+    """
     verdict_str = str(ctx.node.config.get("_verdict_override", "refer"))
     try:
         verdict = VerificationVerdict(verdict_str)
@@ -150,7 +168,13 @@ async def _handle_conditional(
     service: WorkflowExecutionService,  # noqa: ARG001
     ctx: _NodeDispatchContext,
 ) -> WorkflowNodeExecution:
-    """CONDITIONAL: evaluate branch, requalify node_id for stable persistence."""
+    """CONDITIONAL: evaluate branch, requalify node_id for stable persistence.
+
+    Returns:
+        The :class:`WorkflowNodeExecution` produced by
+        :func:`process_conditional_node`, with its ``node_id``
+        replaced by the qualified id.
+    """
     conditional_execution = process_conditional_node(
         ctx.nid,
         ctx.node,
@@ -169,7 +193,12 @@ async def _handle_subworkflow(
     service: WorkflowExecutionService,
     ctx: _NodeDispatchContext,
 ) -> WorkflowNodeExecution:
-    """SUBWORKFLOW: push a child frame and walk it."""
+    """SUBWORKFLOW: push a child frame and walk it.
+
+    Returns:
+        The :class:`WorkflowNodeExecution` produced by the service's
+        private subworkflow processor.
+    """
     # SLF001: these handlers are the extracted bodies of what was a
     # private dispatch method on the service; they remain internal to
     # this module's node-dispatch machinery and intentionally call the
@@ -192,7 +221,12 @@ async def _handle_task(
     service: WorkflowExecutionService,
     ctx: _NodeDispatchContext,
 ) -> WorkflowNodeExecution:
-    """TASK: create a task for the node under its qualified key."""
+    """TASK: create a task for the node under its qualified key.
+
+    Returns:
+        The :class:`WorkflowNodeExecution` produced by the service's
+        private task processor (records the new task id and frame).
+    """
     # SLF001: see ``_handle_subworkflow`` -- same in-module dispatch
     # rationale for calling the service's private task processor.
     return await service._process_task_node_in_frame(  # noqa: SLF001

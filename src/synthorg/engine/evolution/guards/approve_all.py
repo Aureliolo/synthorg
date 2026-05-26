@@ -25,7 +25,12 @@ class ApproveAllGuard:
         self,
         proposal: AdaptationProposal,
     ) -> AdaptationDecision:
-        """Approve the proposal unconditionally with an audit-friendly reason."""
+        """Approve the proposal unconditionally with an audit-friendly reason.
+
+        Returns:
+            An :class:`AdaptationDecision` with ``approved=True`` and
+            an audit-friendly auto-approval reason.
+        """
         logger.info(
             EVOLUTION_GUARDS_PASSED,
             proposal_id=str(proposal.id),

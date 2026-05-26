@@ -8,6 +8,7 @@ Used by ``AgentEngine`` to keep resume orchestration concise.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import FailureCategory  # noqa: TC001
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
 from synthorg.engine.checkpoint.models import CheckpointConfig  # noqa: TC001
@@ -134,6 +135,11 @@ def make_loop_with_callback(  # noqa: PLR0913
     If ``checkpoint_repo`` and ``heartbeat_repo`` are both set,
     creates a checkpoint callback and returns a new loop instance
     with it injected.  Otherwise returns the original loop unchanged.
+
+    Returns:
+        A new loop instance with the checkpoint callback injected,
+        or the original ``loop`` when either repository is ``None``
+        or the loop type is not one of the supported variants.
     """
     if checkpoint_repo is None or heartbeat_repo is None:
         return loop
@@ -202,9 +208,8 @@ async def cleanup_checkpoint_artifacts(
                 execution_id=execution_id,
                 deleted_count=count,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CHECKPOINT_DELETE_FAILED,
                 execution_id=execution_id,
@@ -218,9 +223,8 @@ async def cleanup_checkpoint_artifacts(
                 HEARTBEAT_DELETED,
                 execution_id=execution_id,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 HEARTBEAT_DELETE_FAILED,
                 execution_id=execution_id,

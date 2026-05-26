@@ -17,6 +17,7 @@ from contextlib import nullcontext
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.errors import ParallelExecutionError, ResourceConflictError
 from synthorg.engine.parallel_models import (
     AgentAssignment,
@@ -67,7 +68,12 @@ class _ProgressState:
     failed: int = 0
 
     def snapshot(self) -> ParallelProgress:
-        """Create a frozen progress snapshot."""
+        """Create a frozen progress snapshot.
+
+        Returns:
+            A :class:`ParallelProgress` immutable snapshot of the
+            current counters.
+        """
         return ParallelProgress(
             group_id=self.group_id,
             total=self.total,
@@ -164,9 +170,8 @@ class ParallelExecutor:
             if lock is not None:
                 try:
                     await self._release_all_locks(group, lock)
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as release_exc:
+                    reraise_critical(release_exc)
                     logger.warning(
                         PARALLEL_LOCK_RELEASE_ERROR,
                         note="Failed to release resource locks",
@@ -271,11 +276,17 @@ class ParallelExecutor:
         """Execute a single agent, isolating errors from siblings.
 
         Follows the ``ToolInvoker._run_guarded()`` pattern:
-        - ``MemoryError``/``RecursionError`` → collected in fatal_errors
-        - Regular ``Exception`` → stored as error outcome;
-          re-raised when ``fail_fast`` is enabled
-        - ``CancelledError`` → stored as cancelled outcome, re-raised
-        - ``BaseException`` → propagates through TaskGroup
+        - ``MemoryError`` / ``RecursionError`` are collected in
+          ``fatal_errors`` and propagated by the SKIP log-and-raise path.
+        - Regular ``Exception`` is stored as an error outcome and
+          re-raised when ``fail_fast`` is enabled.
+        - ``CancelledError`` is stored as a cancelled outcome and
+          re-raised so the surrounding TaskGroup tears down siblings.
+        - ``BaseException`` propagates through TaskGroup.
+
+        Raises:
+            asyncio.CancelledError: When the task is cancelled
+                mid-execution; the cancelled outcome is recorded first.
         """
         task_id = assignment.task_id
         agent_id = assignment.agent_id
@@ -343,8 +354,11 @@ class ParallelExecutor:
     ) -> bool:
         """Register with shutdown manager.
 
-        Returns ``False`` and records an error outcome if shutdown
-        is already in progress.
+        Returns:
+            ``True`` when the task was registered (or no shutdown
+            manager is wired). ``False`` when registration was
+            rejected because shutdown is in progress; an error outcome
+            is recorded in that case.
         """
         if self._shutdown_manager is None:
             return True
@@ -482,7 +496,14 @@ class ParallelExecutor:
         outcomes: dict[str, AgentOutcome],
         duration: float,
     ) -> ParallelExecutionResult:
-        """Build execution result, filling cancelled outcomes."""
+        """Build execution result, filling cancelled outcomes.
+
+        Returns:
+            A :class:`ParallelExecutionResult` carrying one outcome
+            per assignment (cancelled placeholders for any task that
+            never produced an outcome), the total duration, and the
+            currency tag.
+        """
         return ParallelExecutionResult(
             group_id=group.group_id,
             outcomes=tuple(
@@ -548,7 +569,12 @@ class ParallelExecutor:
         group: ParallelExecutionGroup,
         lock: ResourceLock,
     ) -> None:
-        """Acquire resource locks for all assignments."""
+        """Acquire resource locks for all assignments.
+
+        Raises:
+            ResourceConflictError: If any lock cannot be acquired; the
+                acquired locks are released before re-raising.
+        """
         for assignment in group.assignments:
             holder_id = f"{group.group_id}:{assignment.task_id}"
             for resource in assignment.resource_claims:
@@ -595,9 +621,8 @@ class ParallelExecutor:
         )
         try:
             self._progress_callback(snapshot)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PARALLEL_PROGRESS_UPDATE,
                 note="Progress callback raised",

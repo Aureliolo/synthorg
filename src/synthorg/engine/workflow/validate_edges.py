@@ -36,7 +36,12 @@ def check_conditional_edges(
     definition: WorkflowDefinition,
     outgoing: dict[str, list[WorkflowEdgeType]],
 ) -> list[WorkflowValidationError]:
-    """Validate conditional node edge constraints."""
+    """Validate conditional node edge constraints.
+
+    Returns:
+        List of edge-constraint violations for CONDITIONAL nodes
+        (missing TRUE / FALSE branches, extra outgoing edges).
+    """
     errors: list[WorkflowValidationError] = []
     for node in definition.nodes:
         if node.type != WorkflowNodeType.CONDITIONAL:
@@ -77,7 +82,12 @@ def check_parallel_splits(
     definition: WorkflowDefinition,
     outgoing: dict[str, list[WorkflowEdgeType]],
 ) -> list[WorkflowValidationError]:
-    """Validate parallel split nodes have enough branches."""
+    """Validate parallel split nodes have enough branches.
+
+    Returns:
+        List of split-branch violations: one per PARALLEL_SPLIT node
+        that carries fewer than :data:`_MIN_SPLIT_BRANCHES` branches.
+    """
     errors: list[WorkflowValidationError] = []
     for node in definition.nodes:
         if node.type != WorkflowNodeType.PARALLEL_SPLIT:
@@ -103,7 +113,12 @@ def check_verification_edges(
     definition: WorkflowDefinition,
     outgoing: dict[str, list[WorkflowEdgeType]],
 ) -> list[WorkflowValidationError]:
-    """Validate verification node edge constraints."""
+    """Validate verification node edge constraints.
+
+    Returns:
+        List of edge-constraint violations for VERIFICATION nodes
+        (missing PASS / FAIL / REFER edges, duplicates, extras).
+    """
     errors: list[WorkflowValidationError] = []
     for node in definition.nodes:
         if node.type != WorkflowNodeType.VERIFICATION:
@@ -164,7 +179,12 @@ def check_verification_edge_scope(
     definition: WorkflowDefinition,
     outgoing: dict[str, list[WorkflowEdgeType]],
 ) -> list[WorkflowValidationError]:
-    """Reject verification edges leaving non-verification nodes."""
+    """Reject verification edges leaving non-verification nodes.
+
+    Returns:
+        List of scope violations: one per non-VERIFICATION node that
+        carries a VERIFICATION_PASS / FAIL / REFER outgoing edge.
+    """
     errors: list[WorkflowValidationError] = []
     for node in definition.nodes:
         if node.type == WorkflowNodeType.VERIFICATION:

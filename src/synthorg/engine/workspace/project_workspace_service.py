@@ -235,7 +235,12 @@ class ProjectWorkspaceService:
         prior: ProjectWorkspace | None,
         kind: GitBackendType,
     ) -> ProjectWorkspace:
-        """Provision (or re-provision) and persist the workspace row."""
+        """Provision (or re-provision) and persist the workspace row.
+
+        Returns:
+            The newly persisted :class:`ProjectWorkspace` row
+            describing the per-project workspace.
+        """
         # Reuse the persisted on-disk location across re-provisions: this
         # avoids relocating the tree if ``_workspace_path()`` ever moves
         # in a future refactor, and on a same-kind re-provision keeps the

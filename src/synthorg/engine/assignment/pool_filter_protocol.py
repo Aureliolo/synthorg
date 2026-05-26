@@ -62,6 +62,11 @@ class PoolFilterResult:
           ``AssignmentResult.reason`` of the no-eligible result).
         - Non-empty pool MUST NOT carry a reason (the ranker will
           produce the success reason; carrying both is ambiguous).
+
+        Raises:
+            ValueError: When the agents/reason invariant is violated
+                (empty pool without a reason, or non-empty pool with
+                a reason).
         """
         if not self.agents and self.reason is None:
             msg = "PoolFilterResult: empty agents requires a non-None reason"

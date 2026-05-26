@@ -44,6 +44,10 @@ def _redact_arg(arg: str) -> str:
     TOKEN@host/...`` style URLs. Without redaction the token would land in the
     structured log when the spawn / timeout / cancellation handlers below
     record the failing args.
+
+    Returns:
+        The arg with userinfo stripped when it looks like a URL with
+        embedded credentials; the arg unchanged otherwise.
     """
     if "://" not in arg or "@" not in arg:
         return arg
@@ -58,7 +62,12 @@ def _redact_arg(arg: str) -> str:
 
 
 def _redact_args(args: tuple[str, ...]) -> tuple[str, ...]:
-    """Redact every URL-looking element of *args* (token-in-URL safe)."""
+    """Redact every URL-looking element of *args* (token-in-URL safe).
+
+    Returns:
+        Tuple of args with embedded URL userinfo stripped from each
+        element.
+    """
     return tuple(_redact_arg(a) for a in args)
 
 
