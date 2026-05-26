@@ -104,7 +104,6 @@ export interface TeamGroupData {
 // ── Dept admin node dimensions ──────────────────────────────
 
 export const DEPT_ADMIN_WIDTH = 200
-export const DEPT_ADMIN_HEIGHT = 70
 
 // ── Seniority ordering ──────────────────────────────────────
 

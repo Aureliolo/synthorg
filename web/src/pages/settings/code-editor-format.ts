@@ -11,13 +11,13 @@ import {
 
 const YAML_DUMP_OPTIONS = { indent: 2, lineWidth: 120, noRefs: true, sortKeys: false }
 
-export function errMessage(err: unknown, fallback: string): string {
+function errMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback
 }
 
 export type TextResult = { text: string } | { error: string }
 
-export function serializeFor(entries: SettingEntry[], format: CodeFormat): TextResult {
+function serializeFor(entries: SettingEntry[], format: CodeFormat): TextResult {
   try {
     return { text: serializeEntries(entries, format) }
   } catch (err) {
@@ -25,7 +25,7 @@ export function serializeFor(entries: SettingEntry[], format: CodeFormat): TextR
   }
 }
 
-export function convertText(text: string, fromFormat: CodeFormat, toFormat: CodeFormat): TextResult {
+function convertText(text: string, fromFormat: CodeFormat, toFormat: CodeFormat): TextResult {
   try {
     const parsed = parseText(text, fromFormat)
     return {
@@ -39,7 +39,7 @@ export function convertText(text: string, fromFormat: CodeFormat, toFormat: Code
 
 export type ChangeResult = { changes: Map<string, string> } | { error: string }
 
-export function validateChanges(
+function validateChanges(
   text: string,
   format: CodeFormat,
   entries: SettingEntry[],

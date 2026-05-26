@@ -91,7 +91,7 @@ export function resolveDepartments(
 }
 
 /** Compute the rendered group data for a single department. */
-export function buildDeptData(
+function buildDeptData(
   dept: DashboardDepartment,
   ctx: BuildContext,
 ): DepartmentGroupData {

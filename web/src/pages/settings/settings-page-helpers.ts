@@ -2,7 +2,7 @@ import type { SettingEntry, SettingNamespace } from '@/api/types/settings'
 import { HIDDEN_SETTINGS, NAMESPACE_ORDER } from '@/utils/constants'
 import { matchesSetting } from './utils'
 
-export function compositeKey(entry: SettingEntry): string {
+function compositeKey(entry: SettingEntry): string {
   return `${entry.definition.namespace}/${entry.definition.key}`
 }
 
