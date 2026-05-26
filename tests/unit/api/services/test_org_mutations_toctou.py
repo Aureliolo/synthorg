@@ -1,11 +1,11 @@
 """TOCTOU regression tests for OrgMutationService.delete_department.
 
-PR #1239 left a gap in ``delete_department``: between the
+``delete_department`` must close the race where, between the
 ``reference check on agents`` and the ``write on departments``,
-a concurrent ``create_agent`` could bind a new agent to the
-department being deleted.  The follow-up switches the delete to
-``SettingsService.set_many`` with CAS on BOTH departments AND
-agents, so any concurrent agents mutation rolls back the delete.
+a concurrent ``create_agent`` binds a new agent to the department
+being deleted.  The delete uses ``SettingsService.set_many`` with
+CAS on BOTH departments AND agents, so any concurrent agents
+mutation rolls back the delete.
 """
 
 from typing import Any

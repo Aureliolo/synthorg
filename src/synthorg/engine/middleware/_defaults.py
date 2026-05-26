@@ -1,6 +1,6 @@
 """Default middleware registration.
 
-Registers all built-in, S1, and #1257 middleware factories so
+Registers all built-in, S1, and coordination middleware factories so
 that ``build_agent_middleware_chain`` and
 ``build_coordination_middleware_chain`` can resolve the default
 chain names.

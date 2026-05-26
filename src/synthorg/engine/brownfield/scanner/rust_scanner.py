@@ -63,6 +63,15 @@ class RustScanner:
         )
 
     def _load_cargo(self, workspace_path: Path) -> dict[str, Any]:
+        """Parse ``Cargo.toml`` at the tree root.
+
+        Args:
+            workspace_path: Codebase root being scanned.
+
+        Returns:
+            The parsed TOML table, or an empty dict when the file is
+            absent or malformed.
+        """
         text = read_text_if_present(workspace_path / "Cargo.toml")
         if text is None:
             return {}
@@ -74,6 +83,16 @@ class RustScanner:
     def _modules(
         self, workspace_path: Path, cargo: dict[str, Any]
     ) -> tuple[Module, ...]:
+        """Map ``src/lib.rs`` to a crate module when present.
+
+        Args:
+            workspace_path: Codebase root being scanned.
+            cargo: Parsed ``Cargo.toml`` table.
+
+        Returns:
+            A single-element tuple for ``src/lib.rs`` (package kind when
+            the crate is named), or ``()`` when there is no library root.
+        """
         if not (workspace_path / "src" / "lib.rs").is_file():
             return ()
         package = cargo.get("package", {})
@@ -89,6 +108,16 @@ class RustScanner:
     def _entry_points(
         self, workspace_path: Path, cargo: dict[str, Any]
     ) -> tuple[EntryPoint, ...]:
+        """Collect binary entry points from ``src/main.rs`` and ``[[bin]]``.
+
+        Args:
+            workspace_path: Codebase root being scanned.
+            cargo: Parsed ``Cargo.toml`` table.
+
+        Returns:
+            A binary :class:`EntryPoint` for ``src/main.rs`` (when present)
+            and for each ``[[bin]]`` target with a path.
+        """
         points: list[EntryPoint] = []
         if (workspace_path / "src" / "main.rs").is_file():
             points.append(EntryPoint(path="src/main.rs", kind=EntryPointKind.BINARY))
@@ -110,11 +139,29 @@ class RustScanner:
         return tuple(points)
 
     def _test_suites(self, workspace_path: Path) -> tuple[TestSuite, ...]:
+        """Map the conventional ``tests/`` directory to a test suite.
+
+        Args:
+            workspace_path: Codebase root being scanned.
+
+        Returns:
+            A single ``cargo test`` :class:`TestSuite` when ``tests/``
+            exists, else ``()``.
+        """
         if (workspace_path / "tests").is_dir():
             return (TestSuite(path="tests", framework="cargo test"),)
         return ()
 
     def _dependencies(self, cargo: dict[str, Any]) -> tuple[Dependency, ...]:
+        """Collect runtime / dev / build dependencies from ``Cargo.toml``.
+
+        Args:
+            cargo: Parsed ``Cargo.toml`` table.
+
+        Returns:
+            A :class:`Dependency` per entry across the tables in
+            :data:`_DEP_TABLES`.
+        """
         deps: list[Dependency] = []
         for table, scope in _DEP_TABLES:
             block = cargo.get(table, {})
@@ -134,6 +181,15 @@ class RustScanner:
         return tuple(deps)
 
     def _version_of(self, spec: Any) -> str | None:
+        """Extract a version string from a Cargo dependency spec.
+
+        Args:
+            spec: Either a bare version string or a table with a
+                ``version`` key.
+
+        Returns:
+            The version string, or ``None`` when none is declared.
+        """
         if isinstance(spec, str) and spec:
             return spec
         if isinstance(spec, dict):

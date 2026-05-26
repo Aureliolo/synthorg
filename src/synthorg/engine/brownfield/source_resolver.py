@@ -70,6 +70,15 @@ class BrownfieldSourceResolver:
 
     @staticmethod
     def _is_remote(source_ref: str) -> bool:
+        """Classify *source_ref* as a remote URL vs a local path.
+
+        Args:
+            source_ref: The operator-supplied source reference.
+
+        Returns:
+            ``True`` for a remote URL (known scheme or scp-like
+            ``user@host:path``); ``False`` for a local / ``file://`` path.
+        """
         if source_ref.startswith("file://"):
             return False
         scheme = urlsplit(source_ref).scheme
@@ -80,6 +89,18 @@ class BrownfieldSourceResolver:
         return "@" in before_slash and ":" in before_slash
 
     def _resolve_local(self, source_ref: str) -> ResolvedSource:
+        """Resolve a local-path source into a fetch-ready reference.
+
+        Args:
+            source_ref: A local path, optionally ``file://``-prefixed.
+
+        Returns:
+            A :class:`ResolvedSource` with ``LOCAL_PATH`` kind.
+
+        Raises:
+            BrownfieldSourceUnavailableError: The path is not a readable
+                directory.
+        """
         raw = source_ref.removeprefix("file://")
         path = Path(raw)
         if not path.is_dir():
@@ -91,6 +112,22 @@ class BrownfieldSourceResolver:
         )
 
     async def _resolve_remote(self, source_ref: str) -> ResolvedSource:
+        """Resolve a remote-URL source, applying auth and SSRF guards.
+
+        Validates the scheme, rejects URL-embedded credentials, SSRF-checks
+        and DNS-pins the host, and injects a matching forge token for HTTPS.
+
+        Args:
+            source_ref: The remote source URL.
+
+        Returns:
+            A :class:`ResolvedSource` with ``REMOTE`` kind, the (possibly
+            token-injected) fetch URL, and DNS-pinning args.
+
+        Raises:
+            BrownfieldSourceUnavailableError: Disallowed scheme,
+                URL-embedded credentials, or a blocked / unresolvable host.
+        """
         if not is_allowed_clone_scheme(source_ref):
             msg = (
                 f"brownfield remote source {source_ref!r} uses a disallowed "

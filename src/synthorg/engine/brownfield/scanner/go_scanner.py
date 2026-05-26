@@ -77,6 +77,15 @@ class GoScanner:
         )
 
     def _modules(self, gomod: str) -> tuple[Module, ...]:
+        """Extract the Go module from the ``go.mod`` ``module`` directive.
+
+        Args:
+            gomod: Raw ``go.mod`` text (empty when absent).
+
+        Returns:
+            A single-element tuple with the module, or ``()`` when no
+            ``module`` directive is present.
+        """
         match = _MODULE_RE.search(gomod)
         if match is None:
             return ()
@@ -91,6 +100,17 @@ class GoScanner:
     def _entry_points(
         self, workspace_path: Path, go_files: list[str]
     ) -> tuple[EntryPoint, ...]:
+        """Find ``package main`` directories as binary entry points.
+
+        Args:
+            workspace_path: Codebase root being scanned.
+            go_files: Tree-relative ``*.go`` paths (capped at
+                :data:`_MAX_GO_FILES`).
+
+        Returns:
+            A binary :class:`EntryPoint` per directory containing a
+            ``package main`` file.
+        """
         main_dirs: set[str] = set()
         for rel in go_files[:_MAX_GO_FILES]:
             if rel.endswith("_test.go"):
@@ -105,6 +125,15 @@ class GoScanner:
         )
 
     def _test_suites(self, go_files: list[str]) -> tuple[TestSuite, ...]:
+        """Locate ``*_test.go`` directories as test suites.
+
+        Args:
+            go_files: Tree-relative ``*.go`` paths.
+
+        Returns:
+            A :class:`TestSuite` per directory containing a ``*_test.go``
+            file, tagged ``go test``.
+        """
         dirs = sorted(
             {
                 (rel.rsplit("/", 1)[0] if "/" in rel else ".")
@@ -115,6 +144,18 @@ class GoScanner:
         return tuple(TestSuite(path=path, framework="go test") for path in dirs)
 
     def _dependencies(self, gomod: str) -> tuple[Dependency, ...]:
+        """Parse ``require`` directives into dependencies.
+
+        The module's own path is skipped and duplicate requires are
+        de-duplicated.
+
+        Args:
+            gomod: Raw ``go.mod`` text (empty when absent).
+
+        Returns:
+            A :class:`Dependency` per distinct required module, sorted by
+            name.
+        """
         module = _MODULE_RE.search(gomod)
         module_path = module.group(1) if module else None
         seen: dict[str, Dependency] = {}

@@ -307,6 +307,12 @@ def _build_react_loop(
     compaction_callback: CompactionCallback | None = None,
     **_unused: object,
 ) -> ExecutionLoop:
+    """Build a :class:`ReactLoop` for the ``react`` strategy.
+
+    Returns:
+        A configured :class:`ReactLoop`. Unrecognised keyword arguments
+        are ignored so all builders share one call signature.
+    """
     return ReactLoop(
         checkpoint_callback=checkpoint_callback,
         approval_gate=approval_gate,
@@ -324,6 +330,12 @@ def _build_plan_execute_loop(
     plan_execute_config: PlanExecuteConfig | None = None,
     **_unused: object,
 ) -> ExecutionLoop:
+    """Build a :class:`PlanExecuteLoop` for the ``plan_execute`` strategy.
+
+    Returns:
+        A configured :class:`PlanExecuteLoop`. Unrecognised keyword
+        arguments are ignored so all builders share one call signature.
+    """
     return PlanExecuteLoop(
         config=plan_execute_config,
         checkpoint_callback=checkpoint_callback,
@@ -342,6 +354,12 @@ def _build_hybrid_loop(
     hybrid_loop_config: HybridLoopConfig | None = None,
     **_unused: object,
 ) -> ExecutionLoop:
+    """Build a :class:`HybridLoop` for the ``hybrid`` strategy.
+
+    Returns:
+        A configured :class:`HybridLoop`. Unrecognised keyword arguments
+        are ignored so all builders share one call signature.
+    """
     return HybridLoop(
         config=hybrid_loop_config,
         checkpoint_callback=checkpoint_callback,

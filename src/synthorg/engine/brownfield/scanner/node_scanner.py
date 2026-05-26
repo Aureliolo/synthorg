@@ -69,6 +69,15 @@ class NodeScanner:
         )
 
     def _load_manifest(self, workspace_path: Path) -> dict[str, Any]:
+        """Parse ``package.json`` at the tree root.
+
+        Args:
+            workspace_path: Codebase root being scanned.
+
+        Returns:
+            The parsed manifest object, or an empty dict when the file
+            is absent, unparseable, or not a JSON object.
+        """
         text = read_text_if_present(workspace_path / "package.json")
         if text is None:
             return {}
@@ -79,6 +88,15 @@ class NodeScanner:
         return loaded if isinstance(loaded, dict) else {}
 
     def _modules(self, workspace_path: Path, language: Ecosystem) -> tuple[Module, ...]:
+        """Map conventional source directories to modules.
+
+        Args:
+            workspace_path: Codebase root being scanned.
+            language: Ecosystem discriminator (JS or TS) for each module.
+
+        Returns:
+            A :class:`Module` per present directory in :data:`_SOURCE_DIRS`.
+        """
         present = [d for d in _SOURCE_DIRS if d in top_level_dirs(workspace_path)]
         return tuple(
             Module(path=name, language=language, kind=ModuleKind.DIRECTORY)
@@ -86,6 +104,15 @@ class NodeScanner:
         )
 
     def _entry_points(self, manifest: dict[str, Any]) -> tuple[EntryPoint, ...]:
+        """Collect ``main`` and ``bin`` entry points from the manifest.
+
+        Args:
+            manifest: Parsed ``package.json`` object.
+
+        Returns:
+            An :class:`EntryPoint` for the ``main`` module and for each
+            ``bin`` target (string or name-to-target map).
+        """
         points: list[EntryPoint] = []
         main = manifest.get("main")
         if isinstance(main, str) and main:
@@ -108,11 +135,29 @@ class NodeScanner:
     def _test_suites(
         self, workspace_path: Path, manifest: dict[str, Any]
     ) -> tuple[TestSuite, ...]:
+        """Locate test directories and tag them with the framework.
+
+        Args:
+            workspace_path: Codebase root being scanned.
+            manifest: Parsed ``package.json`` object.
+
+        Returns:
+            A :class:`TestSuite` per present directory in :data:`_TEST_DIRS`.
+        """
         framework = self._test_framework(manifest)
         present = [d for d in _TEST_DIRS if d in top_level_dirs(workspace_path)]
         return tuple(TestSuite(path=name, framework=framework) for name in present)
 
     def _test_framework(self, manifest: dict[str, Any]) -> str | None:
+        """Detect the test framework from declared dependencies.
+
+        Args:
+            manifest: Parsed ``package.json`` object.
+
+        Returns:
+            The first matching name in :data:`_KNOWN_FRAMEWORKS`, or
+            ``None`` when none is declared.
+        """
         names: set[str] = set()
         for block in (manifest.get("dependencies"), manifest.get("devDependencies")):
             if isinstance(block, dict):
@@ -123,6 +168,15 @@ class NodeScanner:
         return None
 
     def _dependencies(self, manifest: dict[str, Any]) -> tuple[Dependency, ...]:
+        """Collect runtime and dev dependencies from the manifest.
+
+        Args:
+            manifest: Parsed ``package.json`` object.
+
+        Returns:
+            A :class:`Dependency` per ``dependencies`` and
+            ``devDependencies`` entry.
+        """
         deps: list[Dependency] = []
         deps.extend(
             self._parse_block(manifest.get("dependencies"), DependencyScope.RUNTIME)
@@ -135,6 +189,15 @@ class NodeScanner:
         return tuple(deps)
 
     def _parse_block(self, block: Any, scope: DependencyScope) -> list[Dependency]:
+        """Parse one dependency block (name-to-version map).
+
+        Args:
+            block: A ``package.json`` dependency map (non-dicts yield ``[]``).
+            scope: Dependency scope to tag each parsed entry with.
+
+        Returns:
+            A :class:`Dependency` per named entry in the block.
+        """
         if not isinstance(block, dict):
             return []
         parsed: list[Dependency] = []

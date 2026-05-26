@@ -1,4 +1,4 @@
-"""#1257 coordination middleware implementations.
+"""Coordination middleware implementations.
 
 Concrete middleware for the coordination pipeline:
 
