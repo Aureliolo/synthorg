@@ -159,6 +159,9 @@ export default tseslint.config(
     //   PR B (#2093): src/stores/**
     //   PR C (#2094): src/components/**, src/api/types/**,
     //                 src/api/endpoints/**, src/mocks/**
+    //   PR D1 (#2095): src/pages/{org,org-edit,settings,approvals,
+    //                  connections,escalations}/** plus the cleaned
+    //                  top-level *Page.tsx entries for those families.
     files: ['src/**/*.{ts,tsx}'],
     ignores: [
       'src/utils/**',
@@ -170,6 +173,20 @@ export default tseslint.config(
       'src/api/types/**',
       'src/api/endpoints/**',
       'src/mocks/**',
+      'src/pages/org/**',
+      'src/pages/org-edit/**',
+      'src/pages/settings/**',
+      'src/pages/approvals/**',
+      'src/pages/connections/**',
+      'src/pages/escalations/**',
+      'src/pages/OrgChartPage.tsx',
+      'src/pages/OrgEditPage.tsx',
+      'src/pages/SettingsPage.tsx',
+      'src/pages/SettingsNamespacePage.tsx',
+      'src/pages/SettingsSinksPage.tsx',
+      'src/pages/ApprovalsPage.tsx',
+      'src/pages/ConnectionsPage.tsx',
+      'src/pages/EscalationQueuePage.tsx',
     ],
     rules: {
       complexity: 'off',
