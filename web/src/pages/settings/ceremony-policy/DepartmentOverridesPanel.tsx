@@ -15,56 +15,126 @@ export interface DepartmentOverridesPanelProps {
   departments: readonly Department[]
 }
 
-function DepartmentRow({ dept }: { dept: Department }) {
-  const [expanded, setExpanded] = useState(false)
-  const policy = useCeremonyPolicyStore((s) => s.departmentPolicies.get(dept.name))
+function derivePolicyFields(policy: CeremonyPolicyConfig | null | undefined, strategy: CeremonyStrategyType) {
+  const p: Partial<CeremonyPolicyConfig> = policy ?? {}
+  return {
+    strategyConfig: (p.strategy_config ?? {}) as Record<string, unknown>,
+    velocityCalculator: p.velocity_calculator ?? STRATEGY_DEFAULT_VELOCITY_CALC[strategy],
+    autoTransition: p.auto_transition ?? true,
+    transitionThreshold: p.transition_threshold ?? 1.0,
+  }
+}
+
+interface DeptPolicyState {
+  saving: boolean
+  departmentError: string | undefined
+  isEditing: boolean
+  effectivePolicy: CeremonyPolicyConfig | null | undefined
+  strategy: CeremonyStrategyType
+  handleInheritChange: (inherit: boolean) => void
+  handleStrategyChange: (strategy: CeremonyStrategyType) => void
+  handlePolicyFieldChange: (field: keyof CeremonyPolicyConfig, value: unknown) => void
+}
+
+function useDepartmentPolicy(deptName: string): DeptPolicyState {
+  const policy = useCeremonyPolicyStore((s) => s.departmentPolicies.get(deptName))
   const fetchPolicy = useCeremonyPolicyStore((s) => s.fetchDepartmentPolicy)
   const updatePolicy = useCeremonyPolicyStore((s) => s.updateDepartmentPolicy)
   const clearPolicy = useCeremonyPolicyStore((s) => s.clearDepartmentPolicy)
   const saving = useCeremonyPolicyStore((s) => s.saving)
-  const departmentError = useCeremonyPolicyStore((s) => s.departmentErrors.get(dept.name))
+  const departmentError = useCeremonyPolicyStore((s) => s.departmentErrors.get(deptName))
 
   useEffect(() => {
-    void fetchPolicy(dept.name)
-  }, [dept.name, fetchPolicy])
+    void fetchPolicy(deptName)
+  }, [deptName, fetchPolicy])
 
   const hasOverride = policy != null && Object.keys(policy).length > 0
-  // Local draft for new overrides (defers API call until explicit save via strategy/field changes)
+  // Local draft defers the API call until the user sets a strategy/field.
   const [localDraft, setLocalDraft] = useState<CeremonyPolicyConfig | null>(null)
   const isEditing = hasOverride || localDraft != null
   const effectivePolicy = policy ?? localDraft
-  const strategy = effectivePolicy?.strategy ?? 'task_driven'
 
   const handleInheritChange = useCallback(
     (inherit: boolean) => {
       if (inherit) {
         setLocalDraft(null)
-        void clearPolicy(dept.name)
+        void clearPolicy(deptName)
       } else {
-        // Seed from existing policy if available, otherwise empty override
         setLocalDraft(policy ?? {})
       }
     },
-    [dept.name, clearPolicy, policy],
+    [deptName, clearPolicy, policy],
   )
 
   const handleStrategyChange = useCallback(
     (s: CeremonyStrategyType) => {
-      const data = { ...effectivePolicy, strategy: s }
-      void updatePolicy(dept.name, data)
+      void updatePolicy(deptName, { ...effectivePolicy, strategy: s })
       setLocalDraft(null)
     },
-    [dept.name, effectivePolicy, updatePolicy],
+    [deptName, effectivePolicy, updatePolicy],
   )
 
   const handlePolicyFieldChange = useCallback(
     (field: keyof CeremonyPolicyConfig, value: unknown) => {
-      void updatePolicy(dept.name, { ...effectivePolicy, [field]: value })
+      void updatePolicy(deptName, { ...effectivePolicy, [field]: value })
       setLocalDraft(null)
     },
-    [dept.name, effectivePolicy, updatePolicy],
+    [deptName, effectivePolicy, updatePolicy],
   )
 
+  return {
+    saving,
+    departmentError,
+    isEditing,
+    effectivePolicy,
+    strategy: effectivePolicy?.strategy ?? 'task_driven',
+    handleInheritChange,
+    handleStrategyChange,
+    handlePolicyFieldChange,
+  }
+}
+
+interface DepartmentOverrideBodyProps {
+  effectivePolicy: CeremonyPolicyConfig | null | undefined
+  strategy: CeremonyStrategyType
+  saving: boolean
+  onStrategyChange: (strategy: CeremonyStrategyType) => void
+  onFieldChange: (field: keyof CeremonyPolicyConfig, value: unknown) => void
+}
+
+function DepartmentOverrideBody({
+  effectivePolicy,
+  strategy,
+  saving,
+  onStrategyChange,
+  onFieldChange,
+}: DepartmentOverrideBodyProps) {
+  const fields = derivePolicyFields(effectivePolicy, strategy)
+  return (
+    <div className={cn('space-y-3 pl-2 border-l-2 border-accent/20')}>
+      <StrategyPicker value={strategy} onChange={onStrategyChange} disabled={saving} />
+      <StrategyConfigPanel
+        strategy={strategy}
+        config={fields.strategyConfig}
+        onChange={(c) => onFieldChange('strategy_config', c)}
+        disabled={saving}
+      />
+      <PolicyFieldsPanel
+        velocityCalculator={fields.velocityCalculator}
+        autoTransition={fields.autoTransition}
+        transitionThreshold={fields.transitionThreshold}
+        onVelocityCalculatorChange={(v) => onFieldChange('velocity_calculator', v)}
+        onAutoTransitionChange={(v) => onFieldChange('auto_transition', v)}
+        onTransitionThresholdChange={(v) => onFieldChange('transition_threshold', v)}
+        disabled={saving}
+      />
+    </div>
+  )
+}
+
+function DepartmentRow({ dept }: { dept: Department }) {
+  const [expanded, setExpanded] = useState(false)
+  const p = useDepartmentPolicy(dept.name)
   const Chevron = expanded ? ChevronDown : ChevronRight
 
   return (
@@ -78,47 +148,22 @@ function DepartmentRow({ dept }: { dept: Department }) {
         <Chevron className="size-3.5 text-text-muted" />
         <span className="flex-1 text-sm font-medium">{dept.name}</span>
         <span className="text-xs text-text-muted">
-          {isEditing
-            ? CEREMONY_STRATEGY_LABELS[strategy as CeremonyStrategyType]
-            : 'Inherit'}
+          {p.isEditing ? CEREMONY_STRATEGY_LABELS[p.strategy] : 'Inherit'}
         </span>
       </button>
 
       {expanded && (
         <div className="space-y-3 px-3 pb-3">
-          {departmentError && (
-            <p className="text-xs text-danger">{departmentError}</p>
-          )}
-
-          <InheritToggle
-            inherit={!isEditing}
-            onChange={handleInheritChange}
-            disabled={saving}
-          />
-
-          {isEditing && (
-            <div className={cn('space-y-3 pl-2 border-l-2 border-accent/20')}>
-              <StrategyPicker
-                value={strategy as CeremonyStrategyType}
-                onChange={handleStrategyChange}
-                disabled={saving}
-              />
-              <StrategyConfigPanel
-                strategy={strategy as CeremonyStrategyType}
-                config={(effectivePolicy?.strategy_config ?? {}) as Record<string, unknown>}
-                onChange={(c) => handlePolicyFieldChange('strategy_config', c)}
-                disabled={saving}
-              />
-              <PolicyFieldsPanel
-                velocityCalculator={effectivePolicy?.velocity_calculator ?? STRATEGY_DEFAULT_VELOCITY_CALC[effectivePolicy?.strategy ?? 'task_driven']}
-                autoTransition={effectivePolicy?.auto_transition ?? true}
-                transitionThreshold={effectivePolicy?.transition_threshold ?? 1.0}
-                onVelocityCalculatorChange={(v) => handlePolicyFieldChange('velocity_calculator', v)}
-                onAutoTransitionChange={(v) => handlePolicyFieldChange('auto_transition', v)}
-                onTransitionThresholdChange={(v) => handlePolicyFieldChange('transition_threshold', v)}
-                disabled={saving}
-              />
-            </div>
+          {p.departmentError && <p className="text-xs text-danger">{p.departmentError}</p>}
+          <InheritToggle inherit={!p.isEditing} onChange={p.handleInheritChange} disabled={p.saving} />
+          {p.isEditing && (
+            <DepartmentOverrideBody
+              effectivePolicy={p.effectivePolicy}
+              strategy={p.strategy}
+              saving={p.saving}
+              onStrategyChange={p.handleStrategyChange}
+              onFieldChange={p.handlePolicyFieldChange}
+            />
           )}
         </div>
       )}
@@ -127,8 +172,8 @@ function DepartmentRow({ dept }: { dept: Department }) {
 }
 
 export function DepartmentOverridesPanel({ departments }: DepartmentOverridesPanelProps) {
-  // Store-wide saveError displayed once at the panel level (only one department
-  // save runs at a time, so a single error banner is sufficient).
+  // Store-wide saveError shown once at the panel level (only one department
+  // save runs at a time, so a single banner is sufficient).
   const saveError = useCeremonyPolicyStore((s) => s.saveError)
 
   if (departments.length === 0) {
@@ -141,9 +186,7 @@ export function DepartmentOverridesPanel({ departments }: DepartmentOverridesPan
 
   return (
     <SectionCard title="Department Overrides" icon={Building2}>
-      {saveError && (
-        <p className="mb-2 text-xs text-danger">Save failed: {saveError}</p>
-      )}
+      {saveError && <p className="mb-2 text-xs text-danger">Save failed: {saveError}</p>}
       <div className="divide-y divide-border rounded-md border border-border">
         {departments.map((dept) => (
           <DepartmentRow key={dept.name} dept={dept} />
