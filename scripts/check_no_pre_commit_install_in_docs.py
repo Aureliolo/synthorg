@@ -105,9 +105,13 @@ def scan_text(text: str, *, file_label: str) -> list[str]:
     violations: list[Violation] = []
     for lineno, raw_line in enumerate(text.splitlines(), start=1):
         lowered = raw_line.lower().replace(_CURLY_APOSTROPHE, "'")
-        if _FORBIDDEN not in lowered:
+        # Collapse runs of whitespace so a tab- or double-space-separated
+        # "pre-commit  install" is still caught, and the two-word cue
+        # "no longer" still matches when authored with irregular spacing.
+        normalized = re.sub(r"\s+", " ", lowered)
+        if _FORBIDDEN not in normalized:
             continue
-        if any(pattern.search(lowered) for pattern in _DISCOURAGEMENT_PATTERNS):
+        if any(pattern.search(normalized) for pattern in _DISCOURAGEMENT_PATTERNS):
             continue
         violations.append(
             Violation(file_label=file_label, lineno=lineno, line=raw_line.strip())
@@ -146,7 +150,7 @@ def main() -> int:
         for line in all_violations:
             print(line, file=sys.stderr)
         print(
-            f"\n{len(all_violations)} doc(s) recommend running "
+            f"\n{len(all_violations)} violation(s) found: docs recommend running "
             "`pre-commit install`. The sanctioned setup command is "
             "`bash scripts/install_git_hooks.sh`.",
             file=sys.stderr,
