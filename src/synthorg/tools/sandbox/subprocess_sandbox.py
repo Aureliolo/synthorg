@@ -148,8 +148,7 @@ class SubprocessSandbox:
         are case-insensitive.
 
         Returns:
-            ``True`` if *name* matches any allowlist entry, ``False``
-            otherwise.
+            ``True`` if *name* matches any allowlist entry, else ``False``.
         """
         check_name = name.upper() if os.name == "nt" else name
         for pattern in self._config.env_allowlist:
@@ -166,8 +165,7 @@ class SubprocessSandbox:
         casing.
 
         Returns:
-            ``True`` if *name* matches any denylist pattern, ``False``
-            otherwise.
+            ``True`` if *name* matches any denylist pattern, else ``False``.
         """
         upper = name.upper()
         return any(
@@ -768,8 +766,7 @@ class SubprocessSandbox:
         """Return ``True`` if the workspace directory exists.
 
         Returns:
-            ``True`` if the workspace is healthy (the directory exists),
-            ``False`` otherwise.
+            ``True`` if the workspace directory exists, else ``False``.
         """
         healthy = self._workspace.is_dir()
         logger.debug(
