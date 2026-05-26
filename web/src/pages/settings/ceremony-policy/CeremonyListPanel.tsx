@@ -26,6 +26,55 @@ interface CeremonyRowProps {
   saving?: boolean
 }
 
+function policyFieldsFromOverride(policy: CeremonyPolicyConfig | null, strategy: CeremonyStrategyType) {
+  return {
+    velocityCalculator: policy?.velocity_calculator ?? STRATEGY_DEFAULT_VELOCITY_CALC[strategy],
+    autoTransition: policy?.auto_transition ?? true,
+    transitionThreshold: policy?.transition_threshold ?? 1.0,
+  }
+}
+
+interface CeremonyOverrideBodyProps {
+  name: string
+  policy: CeremonyPolicyConfig | null
+  strategy: CeremonyStrategyType
+  onOverrideChange: (name: string, policy: CeremonyPolicyConfig | null) => void
+  onStrategyChange: (strategy: CeremonyStrategyType) => void
+  saving?: boolean
+}
+
+function CeremonyOverrideBody({
+  name,
+  policy,
+  strategy,
+  onOverrideChange,
+  onStrategyChange,
+  saving,
+}: CeremonyOverrideBodyProps) {
+  const fields = policyFieldsFromOverride(policy, strategy)
+  const strategyConfig = (policy?.strategy_config ?? {}) as Record<string, unknown>
+  return (
+    <div className={cn('space-y-3 pl-2 border-l-2 border-accent/20')}>
+      <StrategyPicker value={strategy} onChange={onStrategyChange} disabled={saving} />
+      <StrategyConfigPanel
+        strategy={strategy}
+        config={strategyConfig}
+        onChange={(c) => onOverrideChange(name, { ...policy, strategy_config: c })}
+        disabled={saving}
+      />
+      <PolicyFieldsPanel
+        velocityCalculator={fields.velocityCalculator}
+        autoTransition={fields.autoTransition}
+        transitionThreshold={fields.transitionThreshold}
+        onVelocityCalculatorChange={(v) => onOverrideChange(name, { ...policy, velocity_calculator: v })}
+        onAutoTransitionChange={(v) => onOverrideChange(name, { ...policy, auto_transition: v })}
+        onTransitionThresholdChange={(v) => onOverrideChange(name, { ...policy, transition_threshold: v })}
+        disabled={saving}
+      />
+    </div>
+  )
+}
+
 const CeremonyRow = memo(function CeremonyRow({
   name,
   policy,
@@ -87,28 +136,14 @@ const CeremonyRow = memo(function CeremonyRow({
           />
 
           {hasOverride && (
-            <div className={cn('space-y-3 pl-2 border-l-2 border-accent/20')}>
-              <StrategyPicker
-                value={strategy as CeremonyStrategyType}
-                onChange={handleStrategyChange}
-                disabled={saving}
-              />
-              <StrategyConfigPanel
-                strategy={strategy as CeremonyStrategyType}
-                config={(policy?.strategy_config ?? {}) as Record<string, unknown>}
-                onChange={(c) => onOverrideChange(name, { ...policy, strategy_config: c })}
-                disabled={saving}
-              />
-              <PolicyFieldsPanel
-                velocityCalculator={policy?.velocity_calculator ?? STRATEGY_DEFAULT_VELOCITY_CALC[strategy as CeremonyStrategyType]}
-                autoTransition={policy?.auto_transition ?? true}
-                transitionThreshold={policy?.transition_threshold ?? 1.0}
-                onVelocityCalculatorChange={(v) => onOverrideChange(name, { ...policy, velocity_calculator: v })}
-                onAutoTransitionChange={(v) => onOverrideChange(name, { ...policy, auto_transition: v })}
-                onTransitionThresholdChange={(v) => onOverrideChange(name, { ...policy, transition_threshold: v })}
-                disabled={saving}
-              />
-            </div>
+            <CeremonyOverrideBody
+              name={name}
+              policy={policy}
+              strategy={strategy as CeremonyStrategyType}
+              onOverrideChange={onOverrideChange}
+              onStrategyChange={handleStrategyChange}
+              saving={saving}
+            />
           )}
         </div>
       )}

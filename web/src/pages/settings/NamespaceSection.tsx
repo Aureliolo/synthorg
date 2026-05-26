@@ -7,58 +7,40 @@ import { useAnimationPreset } from '@/hooks/useAnimationPreset'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { SettingRow } from './SettingRow'
 
-interface NamespaceSettingRowProps {
-  entry: SettingEntry
+interface RowRenderProps {
   dirtyValues: ReadonlyMap<string, string>
-  onValueChange: (ck: string, v: string) => void
+  onValueChange: (compositeKey: string, value: string) => void
   savingKeys: ReadonlyMap<string, number>
   controllerDisabledMap: ReadonlyMap<string, boolean>
   changedKeys?: ReadonlySet<string>
   highlightQuery?: string
 }
 
-function NamespaceSettingRow({
-  entry,
-  dirtyValues,
-  onValueChange,
-  savingKeys,
-  controllerDisabledMap,
-  changedKeys,
-  highlightQuery,
-}: NamespaceSettingRowProps) {
+function NamespaceSettingRow({ entry, rows }: { entry: SettingEntry; rows: RowRenderProps }) {
   const ck = `${entry.definition.namespace}/${entry.definition.key}`
   return (
     <ErrorBoundary level="component">
       <SettingRow
         entry={entry}
-        dirtyValue={dirtyValues.get(ck)}
-        onChange={(value) => onValueChange(ck, value)}
-        saving={savingKeys.has(ck)}
-        controllerDisabled={controllerDisabledMap.get(ck)}
-        flash={changedKeys?.has(ck)}
-        highlightQuery={highlightQuery}
+        dirtyValue={rows.dirtyValues.get(ck)}
+        onChange={(value) => rows.onValueChange(ck, value)}
+        saving={rows.savingKeys.has(ck)}
+        controllerDisabled={rows.controllerDisabledMap.get(ck)}
+        flash={rows.changedKeys?.has(ck)}
+        highlightQuery={rows.highlightQuery}
       />
     </ErrorBoundary>
   )
 }
 
-export interface NamespaceSectionProps {
+export interface NamespaceSectionProps extends RowRenderProps {
   displayName: string
   icon: React.ReactNode
   entries: SettingEntry[]
-  dirtyValues: ReadonlyMap<string, string>
-  onValueChange: (compositeKey: string, value: string) => void
-  savingKeys: ReadonlyMap<string, number>
-  /** Map of composite key -> boolean indicating if its controller is disabled. */
-  controllerDisabledMap: ReadonlyMap<string, boolean>
   /** Whether the section is forced open (e.g. during search). */
   forceOpen?: boolean
-  /** Set of composite keys that changed externally (flash animation). */
-  changedKeys?: ReadonlySet<string>
   /** Hide the collapsible header (when tab bar serves as the header). */
   hideHeader?: boolean
-  /** Search query to highlight in setting rows. */
-  highlightQuery?: string
   /** Optional footer content rendered at the bottom of the section. */
   footerAction?: React.ReactNode
 }
@@ -68,116 +50,126 @@ function groupByGroup(entries: SettingEntry[]): Map<string, SettingEntry[]> {
   for (const entry of entries) {
     const group = entry.definition.group
     const existing = groups.get(group)
-    if (existing) {
-      existing.push(entry)
-    } else {
-      groups.set(group, [entry])
-    }
+    if (existing) existing.push(entry)
+    else groups.set(group, [entry])
   }
   return groups
 }
 
-export function NamespaceSection({
-  displayName,
-  icon,
-  entries,
-  dirtyValues,
-  onValueChange,
-  savingKeys,
-  controllerDisabledMap,
-  forceOpen,
-  changedKeys,
-  hideHeader,
-  highlightQuery,
-  footerAction,
-}: NamespaceSectionProps) {
+interface NamespaceGroupsProps {
+  groups: Map<string, SettingEntry[]>
+  hideHeader: boolean | undefined
+  anim: ReturnType<typeof useAnimationPreset>
+  rows: RowRenderProps
+}
+
+function entryKey(entry: SettingEntry): string {
+  return `${entry.definition.namespace}/${entry.definition.key}`
+}
+
+function NamespaceGroups({ groups, hideHeader, anim, rows }: NamespaceGroupsProps) {
+  const multiGroup = groups.size > 1
+  return (
+    <>
+      {[...groups.entries()].map(([group, groupEntries]) => (
+        <div key={group} className={multiGroup ? 'py-2' : undefined}>
+          {multiGroup && (
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-text-muted">{group}</h3>
+          )}
+          <div className="space-y-1">
+            {groupEntries.map((entry, i) =>
+              hideHeader ? (
+                <div key={entryKey(entry)}>
+                  <NamespaceSettingRow entry={entry} rows={rows} />
+                </div>
+              ) : (
+                <motion.div
+                  key={entryKey(entry)}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * anim.staggerDelay, ...anim.tween }}
+                >
+                  <NamespaceSettingRow entry={entry} rows={rows} />
+                </motion.div>
+              ),
+            )}
+          </div>
+        </div>
+      ))}
+    </>
+  )
+}
+
+function NamespaceFooter({ footerAction }: { footerAction?: React.ReactNode }) {
+  if (footerAction == null || footerAction === false) return null
+  return <div className="pt-1">{footerAction}</div>
+}
+
+interface NamespaceHeaderProps {
+  displayName: string
+  icon: React.ReactNode
+  count: number
+  isOpen: boolean
+  forceOpen: boolean | undefined
+  onToggle: () => void
+  contentId: string
+}
+
+function NamespaceHeader({ displayName, icon, count, isOpen, forceOpen, onToggle, contentId }: NamespaceHeaderProps) {
+  return (
+    <h2 className="text-sm font-semibold text-foreground">
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={forceOpen}
+        className={cn('flex w-full items-center gap-3 p-card', 'text-left transition-colors', !forceOpen && 'hover:bg-card-hover')}
+        aria-expanded={isOpen}
+        aria-controls={contentId}
+      >
+        <span className="text-text-secondary">{icon}</span>
+        <span>{displayName}</span>
+        <span className="ml-1 text-xs text-text-muted">({count})</span>
+        <ChevronDown
+          className={cn('ml-auto size-4 text-text-muted transition-transform duration-200', isOpen && 'rotate-180')}
+          aria-hidden
+        />
+      </button>
+    </h2>
+  )
+}
+
+export function NamespaceSection(props: NamespaceSectionProps) {
+  const { displayName, icon, entries, forceOpen, hideHeader, footerAction } = props
   const [collapsed, setCollapsed] = useState(false)
-  const isOpen = hideHeader || forceOpen || !collapsed
+  const isOpen = Boolean(hideHeader) || Boolean(forceOpen) || !collapsed
   const anim = useAnimationPreset()
   const groups = groupByGroup(entries)
   const contentId = `ns-${displayName.replace(/\s+/g, '-').toLowerCase()}-content`
-
-  function renderRow(entry: SettingEntry) {
-    return (
-      <NamespaceSettingRow
-        entry={entry}
-        dirtyValues={dirtyValues}
-        onValueChange={onValueChange}
-        savingKeys={savingKeys}
-        controllerDisabledMap={controllerDisabledMap}
-        changedKeys={changedKeys}
-        highlightQuery={highlightQuery}
-      />
-    )
-  }
-
-  function renderGroups() {
-    return [...groups.entries()].map(([group, groupEntries]) => (
-      <div key={group} className={groups.size > 1 ? 'py-2' : undefined}>
-        {groups.size > 1 && (
-          <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-text-muted">
-            {group}
-          </h3>
-        )}
-        <div className="space-y-1">
-          {hideHeader
-            ? groupEntries.map((entry) => (
-              <div key={`${entry.definition.namespace}/${entry.definition.key}`}>
-                {renderRow(entry)}
-              </div>
-            ))
-            : groupEntries.map((entry, i) => (
-              <motion.div
-                key={`${entry.definition.namespace}/${entry.definition.key}`}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * anim.staggerDelay, ...anim.tween }}
-              >
-                {renderRow(entry)}
-              </motion.div>
-            ))
-          }
-        </div>
-      </div>
-    ))
-  }
+  const rows: RowRenderProps = props
+  const inner = (
+    <>
+      <NamespaceGroups groups={groups} hideHeader={hideHeader} anim={anim} rows={rows} />
+      <NamespaceFooter footerAction={footerAction} />
+    </>
+  )
 
   return (
     <section className="rounded-lg border border-border bg-card">
       {!hideHeader && (
-        <h2 className="text-sm font-semibold text-foreground">
-          <button
-            type="button"
-            onClick={() => setCollapsed((v) => !v)}
-            disabled={forceOpen}
-            className={cn(
-              'flex w-full items-center gap-3 p-card',
-              'text-left transition-colors',
-              !forceOpen && 'hover:bg-card-hover',
-            )}
-            aria-expanded={isOpen}
-            aria-controls={contentId}
-          >
-            <span className="text-text-secondary">{icon}</span>
-            <span>{displayName}</span>
-          <span className="ml-1 text-xs text-text-muted">({entries.length})</span>
-          <ChevronDown
-            className={cn(
-              'ml-auto size-4 text-text-muted transition-transform duration-200',
-              isOpen && 'rotate-180',
-            )}
-            aria-hidden
-          />
-        </button>
-        </h2>
+        <NamespaceHeader
+          displayName={displayName}
+          icon={icon}
+          count={entries.length}
+          isOpen={isOpen}
+          forceOpen={forceOpen}
+          onToggle={() => setCollapsed((v) => !v)}
+          contentId={contentId}
+        />
       )}
 
       {isOpen && hideHeader && (
         <div id={contentId} className="p-card">
-          {renderGroups()}
-          {footerAction != null && footerAction !== false && (
-            <div className="pt-1">{footerAction}</div>
-          )}
+          {inner}
         </div>
       )}
 
@@ -191,12 +183,7 @@ export function NamespaceSection({
             transition={anim.spring}
             className="overflow-hidden border-t border-border"
           >
-            <div className="p-card">
-              {renderGroups()}
-              {footerAction != null && footerAction !== false && (
-                <div className="pt-1">{footerAction}</div>
-              )}
-            </div>
+            <div className="p-card">{inner}</div>
           </motion.div>
         )}
       </AnimatePresence>

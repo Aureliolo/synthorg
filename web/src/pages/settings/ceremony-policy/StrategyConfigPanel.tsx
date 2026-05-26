@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react'
 import type { CeremonyStrategyType } from '@/api/types/ceremony-policy'
 import { TaskDrivenConfig } from './strategies/TaskDrivenConfig'
 import { CalendarConfig } from './strategies/CalendarConfig'
@@ -8,10 +9,6 @@ import { ThroughputAdaptiveConfig } from './strategies/ThroughputAdaptiveConfig'
 import { ExternalTriggerConfig } from './strategies/ExternalTriggerConfig'
 import { MilestoneDrivenConfig } from './strategies/MilestoneDrivenConfig'
 
-function assertNever(value: never): never {
-  throw new Error(`Unhandled strategy: ${String(value)}`)
-}
-
 export interface StrategyConfigPanelProps {
   strategy: CeremonyStrategyType
   config: Record<string, unknown>
@@ -19,30 +16,26 @@ export interface StrategyConfigPanelProps {
   disabled?: boolean
 }
 
-export function StrategyConfigPanel({
-  strategy,
-  config,
-  onChange,
-  disabled,
-}: StrategyConfigPanelProps) {
-  switch (strategy) {
-    case 'task_driven':
-      return <TaskDrivenConfig config={config} onChange={onChange} disabled={disabled} />
-    case 'calendar':
-      return <CalendarConfig config={config} onChange={onChange} disabled={disabled} />
-    case 'hybrid':
-      return <HybridConfig config={config} onChange={onChange} disabled={disabled} />
-    case 'event_driven':
-      return <EventDrivenConfig config={config} onChange={onChange} disabled={disabled} />
-    case 'budget_driven':
-      return <BudgetDrivenConfig config={config} onChange={onChange} disabled={disabled} />
-    case 'throughput_adaptive':
-      return <ThroughputAdaptiveConfig config={config} onChange={onChange} disabled={disabled} />
-    case 'external_trigger':
-      return <ExternalTriggerConfig config={config} onChange={onChange} disabled={disabled} />
-    case 'milestone_driven':
-      return <MilestoneDrivenConfig config={config} onChange={onChange} disabled={disabled} />
-    default:
-      return assertNever(strategy)
-  }
+type StrategyConfigBody = ComponentType<{
+  config: Record<string, unknown>
+  onChange: (config: Record<string, unknown>) => void
+  disabled?: boolean
+}>
+
+// Table-driven dispatch: the exhaustive Record makes TypeScript enforce a
+// component for every strategy (replacing the old switch + assertNever).
+const STRATEGY_COMPONENTS: Record<CeremonyStrategyType, StrategyConfigBody> = {
+  task_driven: TaskDrivenConfig,
+  calendar: CalendarConfig,
+  hybrid: HybridConfig,
+  event_driven: EventDrivenConfig,
+  budget_driven: BudgetDrivenConfig,
+  throughput_adaptive: ThroughputAdaptiveConfig,
+  external_trigger: ExternalTriggerConfig,
+  milestone_driven: MilestoneDrivenConfig,
+}
+
+export function StrategyConfigPanel({ strategy, config, onChange, disabled }: StrategyConfigPanelProps) {
+  const Body = STRATEGY_COMPONENTS[strategy]
+  return <Body config={config} onChange={onChange} disabled={disabled} />
 }
