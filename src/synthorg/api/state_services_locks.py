@@ -398,6 +398,7 @@ class _RequestLockAuthMixin:
         """Validate + cache the revalidation sliding-window length.
 
         Raises:
+            TypeError: If ``value`` is not an ``int`` (via ``_reject_non_int``).
             ValueError: Raised on the corresponding failure path.
         """
         _reject_non_int(value, field="auth_revalidate_window_seconds")
@@ -436,6 +437,7 @@ class _RequestLockAuthMixin:
         """Validate + cache the revalidation max-failures cap.
 
         Raises:
+            TypeError: If ``value`` is not an ``int`` (via ``_reject_non_int``).
             ValueError: Raised on the corresponding failure path.
         """
         _reject_non_int(value, field="auth_revalidate_max_failures")

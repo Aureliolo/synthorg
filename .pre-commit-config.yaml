@@ -778,6 +778,19 @@ repos:
         # no-review-origin-in-code above. Moved to pre-push.
         stages: [pre-push]
 
+      - id: docstring-completeness
+        name: docstring completeness (DOC201/DOC202/DOC501 via ruff)
+        # Thin wrapper over ruff's pydoclint rules so the
+        # docstring-completeness convention ships an explicit gate
+        # rather than living only in the shared ``ruff check`` config.
+        # Ruff stays the engine; the wrapper inherits the
+        # per-file-ignores scope, so it never drifts from the config.
+        entry: uv run python scripts/check_docstring_completeness.py
+        language: system
+        files: ^(src/synthorg/.*\.py|tests/.*\.py|scripts/check_docstring_completeness\.py|pyproject\.toml)$
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: no-api-dto-in-persistence-or-service
         name: forbid synthorg.api.dto_* imports inside persistence/ and service/
         entry: uv run python scripts/check_no_api_dto_in_persistence_or_service.py
