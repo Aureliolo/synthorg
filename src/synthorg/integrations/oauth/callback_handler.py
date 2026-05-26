@@ -42,8 +42,10 @@ async def resolve_oauth_http_timeout(
     Returns ``None`` when no resolver is wired in or the lookup fails;
     callers then fall back to the ``AuthorizationCodeFlow`` default
     (:data:`integrations.oauth.flows.authorization_code._DEFAULT_HTTP_TIMEOUT_SECONDS`).
-    Never propagates -- a settings outage must not break the OAuth
-    callback path.
+    Non-critical exceptions are swallowed so a settings outage cannot
+    break the OAuth callback path; interpreter-critical errors
+    (``MemoryError`` / ``RecursionError``) still propagate via
+    ``reraise_critical``.
     """
     if config_resolver is None:
         return None
