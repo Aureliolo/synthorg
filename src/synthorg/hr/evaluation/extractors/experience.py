@@ -120,7 +120,7 @@ class ExperienceMetricExtractor:
         # final confidence to be ``len(feedback) /
         # (min_feedback_count * 3)``, capped at 1.0. The multiplier
         # below converts the base ratio to the desired one:
-        #   final = (data_points / FULL) * (FULL / (min_count * 3))
+        #   final confidence = (data_points / FULL) * (FULL / (min_count * 3))
         #         = data_points / (min_count * 3)
         # The composite then clamps to [0, 1].
         confidence_multiplier = FULL_CONFIDENCE_DATA_POINTS / (

@@ -530,7 +530,7 @@ _FEATURED_PRESETS: tuple[CloudPreset | LocalPreset, ...] = (
     _SAMBANOVA,
     _TOGETHER,
     _XAI,
-    # Self-hosted (alphabetical)
+    # Self-hosted providers, alphabetical
     _LM_STUDIO,
     _OLLAMA,
     _VLLM,

@@ -612,7 +612,7 @@ class SettingsService:
                 updated_at=updated_at,
             )
 
-        # Fallback: env > default
+        # Fall back to env, then default
         fallback = await self._resolve_fallback(definition)
         display = _SENSITIVE_MASK if definition.sensitive else fallback.value
         return SettingEntry(

@@ -28,7 +28,7 @@ ANALYTICS_TOOL_METRIC_RECORDED: Final[str] = "analytics.tool.metric_recorded"
 ANALYTICS_TOOL_METRIC_RECORD_FAILED: Final[str] = "analytics.tool.metric_record_failed"
 ANALYTICS_TOOL_METRIC_NOT_ALLOWED: Final[str] = "analytics.tool.metric_not_allowed"
 
-# Tool: provider
+# Tool: provider config
 ANALYTICS_TOOL_PROVIDER_NOT_CONFIGURED: Final[str] = (
     "analytics.tool.provider_not_configured"
 )

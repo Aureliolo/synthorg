@@ -50,7 +50,7 @@ logger = get_logger(__name__)
 #   drain (25)  +  task_engine outer (8 * 2 + 1 = 17)  +
 #   meeting (2) +  perf (2)  +  backup (5)  +  settings (2)  +
 #   bridge (2)  +  distributed (3)  +  bus (3)  +  persistence (5)  +
-#   approval (1)
+#   approval scheduler (1)
 #   = 25 + 42 = ~67 s worst case if the drain is held for its full
 #     budget AND every service uses its full budget. In practice the
 #     drain runs concurrently with no service work and most services

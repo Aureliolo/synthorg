@@ -393,7 +393,6 @@ max-complexity = 8
     "PLR0911", # too-many-return-statements
     "PLR0912", # too-many-branches
     "PLR0915", # too-many-statements
-    "ERA001",  # commented-out code (cleanup in a dedicated docs sweep)
     "INP001",  # implicit namespace packages (some directories lack __init__)
 ]
 # DOC201/DOC202/DOC501 still ignored on every top-level package except
