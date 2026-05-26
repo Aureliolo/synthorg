@@ -355,7 +355,6 @@ class SeparateAnalyzerProposer:
                     config=self._completion_config,
                 )
         except ProviderError as exc:
-            reraise_critical(exc)
             if not exc.is_retryable:
                 # Non-retryable provider failures must surface to
                 # operators with context before propagating; otherwise

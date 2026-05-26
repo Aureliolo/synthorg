@@ -174,6 +174,12 @@ class PushQueueCoordinator:
                 try:
                     await self._process(item)
                 except Exception as exc:
+                    # Complete the dequeued item's future BEFORE re-raising
+                    # a critical error: this item is no longer on the queue,
+                    # so the outer ``finally`` (which only fails still-queued
+                    # items) cannot rescue its caller from hanging otherwise.
+                    if not item.future.done():
+                        item.future.set_exception(exc)
                     reraise_critical(exc)
                     # A bug in _process must not kill the worker and strand
                     # every later caller; surface it to this caller and
@@ -184,8 +190,6 @@ class PushQueueCoordinator:
                         exc,
                         project_id=self._project_id,
                     )
-                    if not item.future.done():
-                        item.future.set_exception(exc)
         finally:
             # Worker is exiting (sentinel drain OR a re-raised
             # MemoryError/RecursionError). Fail every still-pending
@@ -224,7 +228,6 @@ class PushQueueCoordinator:
                 base_branch=self._default_branch,
             )
         except WorkspacePushError as exc:
-            reraise_critical(exc)
             # Preserve forge-specific push error subtypes (rejection,
             # auth failure ...) so callers can discriminate; wrapping
             # in a fresh ``WorkspacePushError`` would erase the subclass.
@@ -263,7 +266,6 @@ class PushQueueCoordinator:
                 workspace=item.workspace,
             )
         except WorkspaceMergeError as exc:
-            reraise_critical(exc)
             if not item.future.done():
                 item.future.set_exception(exc)
             return

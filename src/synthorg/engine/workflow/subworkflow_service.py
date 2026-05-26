@@ -139,6 +139,11 @@ class SubworkflowService:
             if request latency starts being dominated by the full
             fetch.
 
+        Returns:
+            ``(page, total)`` where ``page`` is the paginated tuple of
+            :class:`SubworkflowSummary` rows and ``total`` is the full
+            match count before pagination.
+
         Raises:
             ValueError: If ``offset`` is negative or ``limit`` is
                 less than 1.

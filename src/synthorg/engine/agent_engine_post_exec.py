@@ -1,7 +1,6 @@
 """Post-execution pipeline mixin for :class:`AgentEngine`."""
 
 import asyncio
-import contextlib
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.budget.coordination_collector import CollectionInputs
@@ -453,8 +452,12 @@ class AgentEnginePostExecMixin:
             timeout_seconds=timeout_seconds,
         )
         loop_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await loop_task
+        # Do not await the cancelled task: a loop stuck in synchronous
+        # work or swallowing cancellation would keep the worker hung past
+        # the wall-clock limit, breaking the timeout contract. A
+        # done-callback retrieves the eventual result so a later failure
+        # is not logged as an unretrieved task exception.
+        loop_task.add_done_callback(lambda t: t.cancelled() or t.exception())
         return ExecutionResult(
             context=ctx,
             termination_reason=TerminationReason.ERROR,

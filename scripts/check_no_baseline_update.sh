@@ -26,8 +26,10 @@ fi
 
 # Approved-bypass: an explicit ALLOW_BASELINE_GROWTH=1 (or =true) prefix is the
 # user's per-invocation approval signal, mirroring `ALLOW_BASELINE_GROWTH=1 git
-# commit`. When present, the regeneration is sanctioned and allowed through.
-if [[ "$COMMAND" =~ ALLOW_BASELINE_GROWTH=(1|true)([[:space:]]|$) ]]; then
+# commit`. The token must anchor to the start of the command (after optional
+# leading whitespace) so a token buried mid-command -- e.g. an echo earlier in
+# a `&&` chain -- cannot smuggle a bypass past the guard.
+if [[ "$COMMAND" =~ ^[[:space:]]*ALLOW_BASELINE_GROWTH=(1|true)([[:space:]]|$) ]]; then
     exit 0
 fi
 

@@ -293,9 +293,11 @@ class ContextDependentDispatcher:
                 )
 
         except Exception as exc:
+            # Mark the wave failed BEFORE re-raising a critical error so the
+            # ``finally`` block skips the merge path on a critical unwind.
+            wave_failed = True
             reraise_critical(exc)
             elapsed = self._clock.monotonic() - start
-            wave_failed = True
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=f"execute_wave_{wave_idx}",

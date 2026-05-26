@@ -199,8 +199,13 @@ class PlanExecuteStepMixin:
     ) -> None:
         """Invoke the checkpoint callback if configured.
 
-        Errors are logged but never propagated -- checkpointing must
-        not interrupt execution.
+        Non-critical errors are logged and suppressed so checkpointing
+        does not interrupt execution; critical system errors are
+        re-raised via :func:`reraise_critical`.
+
+        Raises:
+            MemoryError: Propagated as a critical system error.
+            RecursionError: Propagated as a critical system error.
         """
         if self._checkpoint_callback is None:
             return

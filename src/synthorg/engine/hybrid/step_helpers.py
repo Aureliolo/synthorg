@@ -172,13 +172,17 @@ async def invoke_checkpoint_callback(
 ) -> None:
     """Invoke the checkpoint callback if provided.
 
-    Errors are logged but never propagated. Checkpointing must not
-    interrupt execution.
+    Non-critical errors are logged and swallowed so checkpointing does
+    not interrupt execution. Critical system errors are propagated.
 
     Args:
         callback: Optional checkpoint callback to invoke.
         ctx: Agent context for the current turn.
         turn_number: Current turn number for logging.
+
+    Raises:
+        MemoryError: Propagated as a critical system error.
+        RecursionError: Propagated as a critical system error.
     """
     if callback is None:
         return

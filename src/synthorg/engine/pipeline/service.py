@@ -132,6 +132,18 @@ class DefaultWorkPipeline:
             A :class:`WorkPipelineResult` carrying the verdict,
             execution path, final task status, per-phase timings, and
             total wall-clock duration.
+
+        Raises:
+            WorkIntakeRejectedError: If intake rejects the request or
+                does not persist a task.
+            WorkProjectNotFoundError: If ``work_item.project`` does not
+                resolve.
+            WorkRoutingUndecidableError: If no viable execution path or
+                solo agent can be selected.
+            WorkPipelineTeamPathUnavailableError: If team execution is
+                required but no coordinator is wired.
+            WorkPipelineError: If execution completes without a readable
+                terminal task state.
         """
         started = self._clock.monotonic()
         phases: list[WorkPhaseResult] = []

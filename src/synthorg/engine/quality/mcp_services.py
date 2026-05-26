@@ -92,8 +92,6 @@ class QualityFacadeService:
             CapabilityNotSupportedError: If the underlying tracker
                 does not expose ``list_quality_scores`` (raised via
                 the ``_capability`` builder).
-            _capability: Local builder alias for the
-                ``CapabilityNotSupportedError`` documented above.
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"

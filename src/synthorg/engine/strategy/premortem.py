@@ -190,7 +190,7 @@ class DefaultPremortemExecutor:
 
         Returns:
             Empty tuple when ``PremortemParticipation.NONE``; the first
-            half (rounded up to at least one) when ``STRATEGIC``; the
+            half (rounded down to at least one) when ``STRATEGIC``; the
             full ``participant_ids`` tuple when ``ALL``.
         """
         if config.participants == PremortemParticipation.NONE:
