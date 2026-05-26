@@ -402,7 +402,7 @@ max-complexity = 8
 # waves shrink the expansion further and Wave 6 deletes the entry
 # entirely. See https://github.com/Aureliolo/synthorg/issues/2065 for
 # the wave plan.
-"src/synthorg/{a2a,approval,backup,client,cli,communication,config,coordination,core,docs_engine,experiments,infrastructure,integrations,knowledge,llm,notifications,observability,ontology,organization,providers,research,security,settings,telemetry,templates,versioning,workers}/**/*.py" = [
+"src/synthorg/{a2a,approval,backup,budget,client,cli,communication,config,coordination,core,docs_engine,engine,experiments,hr,infrastructure,integrations,knowledge,llm,memory,notifications,observability,ontology,organization,providers,research,security,settings,telemetry,templates,tools,versioning,workers}/**/*.py" = [
     "DOC201",
     "DOC202",
     "DOC501",
