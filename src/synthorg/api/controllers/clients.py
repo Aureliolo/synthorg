@@ -1,5 +1,6 @@
 """Client simulation CRUD endpoints at /clients."""
 
+import hashlib
 from datetime import UTC, datetime
 from typing import Any, Final
 
@@ -184,7 +185,17 @@ def _build_default_client(
     cfg = config if config is not None else ClientBridgeConfig()
     return AIClient(
         profile=profile,
-        generator=ProceduralGenerator(seed=abs(hash(profile.client_id)) & 0xFFFF),
+        generator=ProceduralGenerator(
+            # Python's built-in ``hash`` is salted per process, so a
+            # client's simulation would drift across restarts. A stable
+            # digest keeps the seed deterministic for a given client_id.
+            seed=int.from_bytes(
+                hashlib.blake2s(
+                    profile.client_id.encode("utf-8"), digest_size=2
+                ).digest(),
+                byteorder="big",
+            ),
+        ),
         feedback=ScoredFeedback(
             client_id=profile.client_id,
             passing_score=cfg.scored_feedback_passing_score,

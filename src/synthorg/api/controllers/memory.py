@@ -946,26 +946,41 @@ class MemoryAdminController(Controller):
         if app_state.has_settings_service:
             svc = app_state.settings_service
             try:
-                provider_sv = await svc.get(
-                    "memory",
-                    "embedder_provider",
-                )
-                model_sv = await svc.get("memory", "embedder_model")
-                dims_sv = await svc.get("memory", "embedder_dims")
+                # Each setting is independently optional: a successful
+                # auto-selection persists only ``embedder_model`` +
+                # ``embedder_dims``, so a missing ``embedder_provider``
+                # is "unset", not a backend failure. Treat a per-field
+                # SettingNotFoundError as ``None`` and reserve the outer
+                # re-raise for genuine settings-backend errors.
+                try:
+                    provider_sv = await svc.get("memory", "embedder_provider")
+                    provider_value = provider_sv.value or None
+                except SettingNotFoundError:
+                    provider_value = None
+                try:
+                    model_sv = await svc.get("memory", "embedder_model")
+                    model_value = model_sv.value or None
+                except SettingNotFoundError:
+                    model_value = None
+                try:
+                    dims_sv = await svc.get("memory", "embedder_dims")
+                    dims_raw = dims_sv.value
+                except SettingNotFoundError:
+                    dims_raw = None
                 dims_value: int | None = None
-                if dims_sv.value:
+                if dims_raw:
                     try:
-                        dims_value = int(dims_sv.value)
+                        dims_value = int(dims_raw)
                     except ValueError, TypeError:
                         logger.warning(
                             MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
                             setting="embedder_dims",
-                            value=dims_sv.value,
+                            value=dims_raw,
                             reason="invalid integer value",
                         )
                 result = ActiveEmbedderResponse(
-                    provider=provider_sv.value or None,
-                    model=model_sv.value or None,
+                    provider=provider_value,
+                    model=model_value,
                     dims=dims_value,
                 )
             except Exception as exc:

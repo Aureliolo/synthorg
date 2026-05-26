@@ -332,7 +332,8 @@ class IdempotencyService:
         leader, defeating redelivery semantics.
 
         Returns:
-            The ``tuple[_PollOutcome, Any]`` value when present, ``None`` otherwise.
+            ``tuple[_PollOutcome, Any | None]``; always a tuple, with
+            the second element (cached body) possibly ``None``.
         """
         deadline = self._clock.monotonic() + _IN_FLIGHT_POLL_TIMEOUT_SECONDS
         backoff = _IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS

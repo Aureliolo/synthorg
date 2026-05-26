@@ -1,7 +1,9 @@
 """Config applier.
 
-Applies approved config tuning proposals by reconstructing the
-``RootConfig`` with the proposed changes.  ``dry_run()`` walks the
+Validates approved config tuning proposals against the ``RootConfig``
+schema; ``apply()`` is a documented stub pending the meta-apply
+mutation epic (see :meth:`ConfigApplier.apply`), matching the
+architecture / prompt appliers.  ``dry_run()`` walks the
 current ``RootConfig`` tree by dotted path and checks each leaf
 assignment against its declared type / ``Annotated`` metadata via
 ``TypeAdapter``.  Cross-field ``@model_validator`` rules on
@@ -91,6 +93,17 @@ class ConfigApplier:
     ) -> ApplyResult:
         """Apply config changes from the proposal.
 
+        .. warning::
+            Config persistence is **not** implemented here. Like the
+            architecture applier, this ships ``dry_run`` validation
+            only; the mutating ``apply`` path still needs a write seam
+            on the config provider and a transactional settings writer,
+            tracked separately. For now ``apply()`` counts the changes
+            and logs ``META_APPLY_COMPLETED`` (with ``note`` flagging
+            that nothing was persisted) so the meta-loop's bookkeeping
+            stays consistent with the other appliers. Callers must not
+            rely on this method to persist config yet.
+
         Args:
             proposal: The approved config tuning proposal.
 
@@ -104,6 +117,7 @@ class ConfigApplier:
                 altitude="config_tuning",
                 changes=count,
                 proposal_id=str(proposal.id),
+                note="config persistence not yet implemented",
             )
             return ApplyResult(success=True, changes_applied=count)
         except Exception as exc:

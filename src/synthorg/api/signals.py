@@ -116,7 +116,6 @@ def _make_handler(
     """
 
     def handler() -> None:
-        """Handle handler."""
         _on_signal(sig, app_state)
 
     return handler

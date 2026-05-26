@@ -1,9 +1,11 @@
 """Prompt applier.
 
-Applies approved prompt tuning proposals by injecting or removing
-constitutional principles in the strategy configuration.
-``dry_run()`` validates target scope references, principle text
-quality, duplicates, and conflicting evolution modes.
+Validates approved prompt tuning proposals (constitutional principles
+injected or removed in the strategy configuration); ``apply()`` is a
+documented stub pending the meta-apply mutation epic (see
+:meth:`PromptApplier.apply`), matching the architecture / config
+appliers. ``dry_run()`` validates target scope references, principle
+text quality, duplicates, and conflicting evolution modes.
 """
 
 from typing import Final, Protocol, runtime_checkable
@@ -95,6 +97,17 @@ class PromptApplier:
     ) -> ApplyResult:
         """Apply prompt changes from the proposal.
 
+        .. warning::
+            Prompt persistence is **not** implemented here. Like the
+            architecture applier, this ships ``dry_run`` validation
+            only; the mutating ``apply`` path still needs a write seam
+            on the prompt context and a transactional principle-store
+            writer, tracked separately. For now ``apply()`` counts the
+            changes and logs ``META_APPLY_COMPLETED`` (with ``note``
+            flagging that nothing was persisted) so the meta-loop's
+            bookkeeping stays consistent with the other appliers.
+            Callers must not rely on this method to persist prompts yet.
+
         Args:
             proposal: The approved prompt tuning proposal.
 
@@ -108,6 +121,7 @@ class PromptApplier:
                 altitude="prompt_tuning",
                 changes=count,
                 proposal_id=str(proposal.id),
+                note="prompt persistence not yet implemented",
             )
             return ApplyResult(success=True, changes_applied=count)
         except Exception as exc:

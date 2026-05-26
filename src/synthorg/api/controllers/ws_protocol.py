@@ -156,7 +156,9 @@ def _parse_ws_message(data: str) -> dict[str, Any] | str:
     """Parse raw JSON from the client, returning a dict or an error string.
 
     Returns:
-        Mapping with the declared key/value types.
+        The parsed ``dict[str, Any]`` on success, or a JSON-encoded
+        error string (e.g. ``'{"error": "..."}'``) when the payload is
+        too large or not a valid JSON object.
     """
     encoded = data.encode()
     if len(encoded) > _MAX_WS_MESSAGE_BYTES:
