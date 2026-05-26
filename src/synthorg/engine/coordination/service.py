@@ -222,7 +222,7 @@ class MultiAgentCoordinator:
         mw_chain = self._coordination_chain
 
         try:
-            # Middleware: before_decompose
+            # Middleware hook: before_decompose
             if mw_chain is not None:
                 from synthorg.engine.middleware.coordination_protocol import (  # noqa: PLC0415
                     CoordinationMiddlewareContext,
@@ -236,7 +236,7 @@ class MultiAgentCoordinator:
             # Decompose
             decomp_result = await self._phase_decompose(context, phases)
 
-            # Middleware: after_decompose
+            # Middleware hook: after_decompose
             if mw_chain is not None:
                 mw_ctx = mw_ctx.model_copy(
                     update={
@@ -371,7 +371,7 @@ class MultiAgentCoordinator:
                 phases=phases,
             )
 
-            # Middleware: after_rollup
+            # Middleware hook: after_rollup
             if mw_chain is not None:
                 mw_ctx = mw_ctx.model_copy(
                     update={
@@ -384,7 +384,7 @@ class MultiAgentCoordinator:
                 # Propagate middleware-mutated rollup
                 rollup = mw_ctx.status_rollup
 
-            # Middleware: before_update_parent
+            # Middleware hook: before_update_parent
             if mw_chain is not None:
                 mw_ctx = await mw_chain.run_before_update_parent(
                     mw_ctx,

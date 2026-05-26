@@ -339,7 +339,7 @@ def _compare_signatures(
         )
         added_required_kwonly = new_required_kwonly - old_required_kwonly
 
-        # Gaining *args (new_max = sentinel) is backward-compatible
+        # Gaining variadic *args sets new_max to the sentinel and widens the signature
         max_restricted = new_max not in (
             old_max,
             _VARIADIC_ARG_SENTINEL,

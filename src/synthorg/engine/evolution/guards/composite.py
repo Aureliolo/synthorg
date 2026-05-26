@@ -91,8 +91,8 @@ class CompositeGuard:
 
         # Chain-level pass row: same constant covers per-guard plus
         # composite so dashboards can chart either partition.  The
-        # reason is composite-level ("All guards approved"), not the
-        # last individual guard's reason -- pulling
+        # composite reason "All guards approved" is reported here, not
+        # the last individual guard's reason -- pulling
         # ``last_decision.reason`` would mislabel the chain outcome
         # with one guard's bookkeeping text.  ``proposal_id`` is on
         # every row so concurrent guard evaluations stay correlatable.

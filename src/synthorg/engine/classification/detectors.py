@@ -97,7 +97,7 @@ def _extract_assistant_texts(
     ]
 
 
-# Pattern: "X is true" / "X is not true"
+# Matches assertions such as 'X is true' or 'X is not true'
 _ASSERTION_PATTERN = re.compile(
     r"(?P<subject>[A-Za-z][\w\s]{0,40}?)\s+"
     r"(?P<verb>is|are|was|were|should|must|will|can"

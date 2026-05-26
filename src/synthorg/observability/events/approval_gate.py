@@ -60,7 +60,7 @@ APPROVAL_GATE_CONVERSATIONAL_FAILED: Final[str] = "approval_gate.conversational.
 # terminal-state summary event; the two are complementary
 # (transition log = cross-hop audit, terminal event = "this is the
 # final state" marker). Distinct from the audit-trail security
-# events (SECURITY_APPROVAL_APPROVED / SECURITY_APPROVAL_REJECTED)
+# events SECURITY_APPROVAL_APPROVED and SECURITY_APPROVAL_REJECTED
 # so the state-transition log layer and the audit chain layer stay
 # independent.
 APPROVAL_STATUS_TRANSITIONED: Final[str] = "approval.status_transitioned"
