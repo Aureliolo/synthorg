@@ -28,6 +28,11 @@ def _build_failure(
     procedural_config: ProceduralMemoryConfig,
     **_unused: object,
 ) -> CaptureStrategy:
+    """Registry entry: build the failure-only capture strategy.
+
+    Returns:
+        A ``FailureCaptureStrategy`` that captures lessons from failed runs.
+    """
     del config  # quality threshold lives on success branch only
     logger.debug(CAPTURE_STRATEGY_BUILT, strategy_type="failure")
     return FailureCaptureStrategy(
@@ -43,6 +48,11 @@ def _build_success(
     procedural_config: ProceduralMemoryConfig,
     **_unused: object,
 ) -> CaptureStrategy:
+    """Registry entry: build the success-only capture strategy.
+
+    Returns:
+        A ``SuccessCaptureStrategy`` gated on ``min_quality_score``.
+    """
     logger.debug(CAPTURE_STRATEGY_BUILT, strategy_type="success")
     return SuccessCaptureStrategy(
         proposer=success_proposer,
@@ -58,6 +68,11 @@ def _build_hybrid(
     success_proposer: SuccessMemoryProposer,
     procedural_config: ProceduralMemoryConfig,
 ) -> CaptureStrategy:
+    """Registry entry: build the hybrid (failure + success) capture strategy.
+
+    Returns:
+        A ``HybridCaptureStrategy`` combining the failure and success arms.
+    """
     logger.debug(CAPTURE_STRATEGY_BUILT, strategy_type="hybrid")
     return HybridCaptureStrategy(
         failure_strategy=FailureCaptureStrategy(

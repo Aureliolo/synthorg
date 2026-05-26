@@ -22,7 +22,14 @@ class RiskCheckResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_reason_on_denial(self) -> Self:
-        """Ensure denied results include a reason."""
+        """Ensure denied results include a reason.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if not self.allowed and not self.reason.strip():
             msg = "reason must be non-empty when allowed is False"
             raise ValueError(msg)

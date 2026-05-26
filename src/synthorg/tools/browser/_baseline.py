@@ -37,7 +37,11 @@ class WorkspaceBaselineStore:
     """Resolves baseline paths and writes / reads sidecar metadata."""
 
     def __init__(self, *, workspace: Path) -> None:
-        """Initialise the store rooted at the persistent workspace."""
+        """Initialise the store rooted at the persistent workspace.
+
+        Raises:
+            BrowserDomainError: If the related operation fails.
+        """
         if not workspace.is_absolute():
             msg = f"workspace must be absolute, got {workspace!r}"
             raise BrowserDomainError(msg)
@@ -55,6 +59,9 @@ class WorkspaceBaselineStore:
     def spec_dir(self, *, spec_name: str) -> Path:
         """Return the directory holding baselines for one spec.
 
+        Returns:
+            Result of type ``Path``.
+
         Raises:
             BrowserDomainError: If ``spec_name`` contains path-traversal
                 segments or absolute components.
@@ -68,7 +75,11 @@ class WorkspaceBaselineStore:
         spec_name: str,
         screenshot_name: str,
     ) -> Path:
-        """Return the canonical baseline PNG path."""
+        """Return the canonical baseline PNG path.
+
+        Returns:
+            Result of type ``Path``.
+        """
         self._reject_traversal(screenshot_name)
         return self.spec_dir(spec_name=spec_name) / f"{screenshot_name}.png"
 
@@ -78,7 +89,11 @@ class WorkspaceBaselineStore:
         spec_name: str,
         screenshot_name: str,
     ) -> Path:
-        """Return the path used for a fresh capture (sibling to baseline)."""
+        """Return the path used for a fresh capture (sibling to baseline).
+
+        Returns:
+            Result of type ``Path``.
+        """
         self._reject_traversal(screenshot_name)
         return self.spec_dir(spec_name=spec_name) / f"{screenshot_name}.current.png"
 
@@ -88,12 +103,20 @@ class WorkspaceBaselineStore:
         spec_name: str,
         screenshot_name: str,
     ) -> Path:
-        """Return the path for the diff heatmap."""
+        """Return the path for the diff heatmap.
+
+        Returns:
+            Result of type ``Path``.
+        """
         self._reject_traversal(screenshot_name)
         return self.spec_dir(spec_name=spec_name) / f"{screenshot_name}.diff.png"
 
     def relative(self, absolute_path: Path) -> str:
-        """Return a path expressed relative to the workspace root."""
+        """Return a path expressed relative to the workspace root.
+
+        Returns:
+            Result of type ``str``.
+        """
         return absolute_path.resolve().relative_to(self._workspace).as_posix()
 
     def write_sidecar(
@@ -109,6 +132,12 @@ class WorkspaceBaselineStore:
         The sidecar records image pin, capture time, sha256, and the
         axe-core version pin so future regression debugging has a
         provenance trail.
+
+        Returns:
+            Result of type ``Path``.
+
+        Raises:
+            BrowserDomainError: If the related operation fails.
         """
         self._reject_traversal(screenshot_name)
         meta_path = (
@@ -160,6 +189,12 @@ class WorkspaceBaselineStore:
         Returns the new baseline path. Logs
         ``BROWSER_BASELINE_CREATED`` so operators can audit when
         baselines first land.
+
+        Returns:
+            Result of type ``Path``.
+
+        Raises:
+            BrowserBaselineNotFoundError: If the requested resource cannot be located.
         """
         baseline = self.baseline_path(
             spec_name=spec_name,
@@ -186,7 +221,11 @@ class WorkspaceBaselineStore:
 
     @staticmethod
     def _reject_traversal(name: str) -> None:
-        """Reject names containing ``..`` segments or path separators."""
+        """Reject names containing ``..`` segments or path separators.
+
+        Raises:
+            BrowserDomainError: If the related operation fails.
+        """
         if not name:
             raise BrowserDomainError("baseline name must be non-empty")
         if "/" in name or "\\" in name:

@@ -45,7 +45,11 @@ class BatchedScalingTrigger:
         return NotBlankStr("batched")
 
     async def should_trigger(self) -> bool:
-        """Trigger if the interval has elapsed since last run."""
+        """Trigger if the interval has elapsed since last run.
+
+        Returns:
+            ``True`` when the predicate holds, ``False`` otherwise.
+        """
         async with self._lock:
             if self._in_progress:
                 logger.debug(

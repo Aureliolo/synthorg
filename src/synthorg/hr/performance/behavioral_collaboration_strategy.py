@@ -31,7 +31,11 @@ _MAX_RESPONSE_SECONDS: float = 300.0
 
 
 def _normalize_response_time(seconds: float) -> float:
-    """Convert response time to a 0-10 score (lower = better)."""
+    """Convert response time to a 0-10 score (lower = better).
+
+    Returns:
+        Result of type ``float``.
+    """
     if seconds <= 0.0:
         return _MAX_SCORE
     ratio = max(0.0, 1.0 - seconds / _MAX_RESPONSE_SECONDS)
@@ -66,6 +70,9 @@ class BehavioralTelemetryStrategy:
         to expose a stable, ops-facing readout of the active strategy's
         component weighting. Strategies that do not implement this
         method get an empty weight tuple in the calibration payload.
+
+        Returns:
+            Tuple of ``tuple[str, float]``.
         """
         return tuple(sorted(_DEFAULT_WEIGHTS.items()))
 
@@ -153,7 +160,11 @@ class BehavioralTelemetryStrategy:
     def _avg_delegation_success(
         records: tuple[CollaborationMetricRecord, ...],
     ) -> float | None:
-        """Average delegation success as 0-10 score."""
+        """Average delegation success as 0-10 score.
+
+        Returns:
+            The resulting ``float``, or ``None`` when unavailable.
+        """
         vals = [
             r.delegation_success for r in records if r.delegation_success is not None
         ]
@@ -165,7 +176,11 @@ class BehavioralTelemetryStrategy:
     def _avg_response_latency(
         records: tuple[CollaborationMetricRecord, ...],
     ) -> float | None:
-        """Average response latency as 0-10 score (lower time = higher)."""
+        """Average response latency as 0-10 score (lower time = higher).
+
+        Returns:
+            The resulting ``float``, or ``None`` when unavailable.
+        """
         vals = [
             r.delegation_response_seconds
             for r in records
@@ -180,7 +195,11 @@ class BehavioralTelemetryStrategy:
     def _avg_conflict(
         records: tuple[CollaborationMetricRecord, ...],
     ) -> float | None:
-        """Average conflict constructiveness as 0-10 score."""
+        """Average conflict constructiveness as 0-10 score.
+
+        Returns:
+            The resulting ``float``, or ``None`` when unavailable.
+        """
         vals = [
             r.conflict_constructiveness
             for r in records
@@ -194,7 +213,11 @@ class BehavioralTelemetryStrategy:
     def _avg_meeting(
         records: tuple[CollaborationMetricRecord, ...],
     ) -> float | None:
-        """Average meeting contribution as 0-10 score."""
+        """Average meeting contribution as 0-10 score.
+
+        Returns:
+            The resulting ``float``, or ``None`` when unavailable.
+        """
         vals = [
             r.meeting_contribution
             for r in records
@@ -208,7 +231,11 @@ class BehavioralTelemetryStrategy:
     def _loop_prevention_score(
         records: tuple[CollaborationMetricRecord, ...],
     ) -> float | None:
-        """Loop prevention as 0-10 score (fewer loops = higher)."""
+        """Loop prevention as 0-10 score (fewer loops = higher).
+
+        Returns:
+            The resulting ``float``, or ``None`` when unavailable.
+        """
         if not records:
             return None
         loop_count = sum(1 for r in records if r.loop_triggered)
@@ -219,7 +246,11 @@ class BehavioralTelemetryStrategy:
     def _avg_handoff(
         records: tuple[CollaborationMetricRecord, ...],
     ) -> float | None:
-        """Average handoff completeness as 0-10 score."""
+        """Average handoff completeness as 0-10 score.
+
+        Returns:
+            The resulting ``float``, or ``None`` when unavailable.
+        """
         vals = [
             r.handoff_completeness
             for r in records

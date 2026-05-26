@@ -4,6 +4,7 @@ from collections import Counter
 from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.call_analytics_models import AnalyticsAggregation
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (
     ANALYTICS_AGGREGATION_COMPUTED,
@@ -243,9 +244,8 @@ async def _dispatch_retry_rate_alert(
                 source="budget.call_analytics",
             ),
         )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             ANALYTICS_RETRY_RATE_ALERT,
             error="retry_rate_alert_dispatch_failed",

@@ -246,6 +246,9 @@ class LLMCurated:
         untrusted item-content payload is fenced inside a
         ``<untrusted-artifact>`` block in the user half so a
         malicious ``item.content`` can't hijack the selection.
+
+        Returns:
+            Tuple ``(str, str)``.
         """
         item_descriptions = "\n".join(
             f"[{i}] (source: {item.source_agent_id}) {item.content[:200]}"
@@ -282,7 +285,11 @@ class LLMCurated:
         *,
         max_index: int,
     ) -> list[int]:
-        """Parse comma-separated indices from LLM response."""
+        """Parse comma-separated indices from LLM response.
+
+        Returns:
+            List of ``int``.
+        """
         indices: list[int] = []
         for part in text.split(","):
             stripped = part.strip()

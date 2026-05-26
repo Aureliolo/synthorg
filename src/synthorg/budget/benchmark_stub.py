@@ -53,7 +53,11 @@ _TIER_SCORES: Final[Mapping[str, BenchmarkScore]] = {
 
 
 def _tier_from_model_id(model_id: str) -> str | None:
-    """Map ``example-<tier>-<rev>`` to its tier label."""
+    """Map ``example-<tier>-<rev>`` to its tier label.
+
+    Returns:
+        The resulting ``str``, or ``None`` when unavailable.
+    """
     parts = model_id.split("-")
     if len(parts) < 2:  # noqa: PLR2004
         return None
@@ -77,7 +81,11 @@ class StubBenchmarkScoreProvider:
     """
 
     async def get_score(self, model_id: NotBlankStr) -> BenchmarkScore | None:
-        """Return the stub score for ``model_id``, or ``None`` for unknown."""
+        """Return the stub score for ``model_id``, or ``None`` for unknown.
+
+        Returns:
+            The matching ``BenchmarkScore``, or ``None`` when no match is found.
+        """
         tier = _tier_from_model_id(model_id)
         if tier is None:
             return None
@@ -90,6 +98,9 @@ class StubBenchmarkScoreProvider:
         stub maps each tier to its representative ``example-<tier>-001``
         sample model so callers receive model-id-indexed scores rather
         than bare tier labels.
+
+        Returns:
+            Result of type ``Mapping[NotBlankStr, BenchmarkScore]``.
         """
         return {f"example-{tier}-001": score for tier, score in _TIER_SCORES.items()}
 

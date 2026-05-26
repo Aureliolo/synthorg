@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar runtime ref
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (
     ActionType,
     ToolCategory,
@@ -80,7 +81,11 @@ class WriteLivingDocTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Translate args to a :class:`LivingDocument` body and persist."""
+        """Translate args to a :class:`LivingDocument` body and persist.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         try:
             parsed = WriteLivingDocArgs.model_validate(arguments)
             body = _materialise_body(parsed.body)
@@ -108,9 +113,8 @@ class WriteLivingDocTool(BaseTool):
                 ),
                 is_error=True,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, DOC_WRITE_FAILED, exc, project_id=self._project_id
             )
@@ -143,7 +147,11 @@ class WriteLivingDocTool(BaseTool):
 def _materialise_body(
     blocks: tuple[WriteLivingDocBlockArg, ...],
 ) -> tuple[DocBlock, ...]:
-    """Convert agent-facing block args to typed :data:`DocBlock` instances."""
+    """Convert agent-facing block args to typed :data:`DocBlock` instances.
+
+    Returns:
+        Tuple of ``DocBlock``.
+    """
     return tuple(block.to_block() for block in blocks)
 
 

@@ -108,7 +108,14 @@ class GitDiffArgs(BaseModel):
 
     @model_validator(mode="after")
     def _ref2_requires_ref1(self) -> Self:
-        """Reject ``ref2`` without ``ref1``."""
+        """Reject ``ref2`` without ``ref1``.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.ref2 is not None and self.ref1 is None:
             msg = "ref2 requires ref1: a two-ref diff needs both operands"
             raise ValueError(msg)
@@ -145,7 +152,14 @@ class GitBranchArgs(BaseModel):
 
     @model_validator(mode="after")
     def _name_required_for_mutating_actions(self) -> Self:
-        """Reject create/switch/delete actions without a branch name."""
+        """Reject create/switch/delete actions without a branch name.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.action != "list" and self.name is None:
             msg = (
                 f"action {self.action!r} requires a branch ``name``; "

@@ -11,6 +11,7 @@ from typing import Any, ClassVar, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (
@@ -160,6 +161,9 @@ class DataAggregatorTool(BaseAnalyticsTool):
 
         Returns a ``ToolExecutionResult`` error if validation fails,
         or ``None`` if all parameters are valid.
+
+        Returns:
+            The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
         """
         blocked = [m for m in metrics if not self._is_metric_allowed(m)]
         if blocked:
@@ -330,9 +334,8 @@ class DataAggregatorTool(BaseAnalyticsTool):
                 ),
                 is_error=True,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ANALYTICS_TOOL_QUERY_FAILED,
                 error="provider_error",

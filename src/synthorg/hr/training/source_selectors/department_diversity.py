@@ -154,7 +154,11 @@ class DepartmentDiversitySampling:
         agents: Sequence[AgentIdentity],
         limit: int,
     ) -> tuple[str, ...]:
-        """Rank agents by quality score and return top N IDs."""
+        """Rank agents by quality score and return top N IDs.
+
+        Returns:
+            Tuple of ``str``.
+        """
         if not agents or limit <= 0:
             return ()
 
@@ -176,11 +180,23 @@ class DepartmentDiversitySampling:
         self,
         agents: Sequence[AgentIdentity],
     ) -> list[AgentPerformanceSnapshot]:
-        """Fetch quality snapshots for all agents concurrently."""
+        """Fetch quality snapshots for all agents concurrently.
+
+        Returns:
+            List of ``AgentPerformanceSnapshot``.
+        """
 
         async def _fetch_one(
             agent: AgentIdentity,
         ) -> AgentPerformanceSnapshot:
+            """Fetch one.
+
+            Returns:
+                Result of type ``AgentPerformanceSnapshot``.
+
+            Raises:
+                Exception: Raised when the relevant invariant fails.
+            """
             try:
                 return await self._tracker.get_snapshot(str(agent.id))
             except Exception as exc:

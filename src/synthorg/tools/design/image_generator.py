@@ -11,6 +11,7 @@ from typing import Any, ClassVar, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.design import (
@@ -242,9 +243,8 @@ class ImageGeneratorTool(BaseDesignTool):
                 ),
                 is_error=True,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DESIGN_IMAGE_GENERATION_FAILED,
                 error="provider_error",
@@ -259,6 +259,7 @@ class ImageGeneratorTool(BaseDesignTool):
         try:
             decoded_bytes = base64.b64decode(result.data, validate=True)
         except Exception as decode_exc:
+            reraise_critical(decode_exc)
             logger.warning(
                 DESIGN_IMAGE_GENERATION_FAILED,
                 error="invalid_base64",

@@ -93,6 +93,9 @@ class ExtractedMetrics:
           wrapped in ``MappingProxyType`` so a later mutation of the
           originating dict by the extractor cannot bypass these
           checks or change scorer inputs after validation.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if self.confidence_multiplier < 0.0:
             msg = (
@@ -172,5 +175,9 @@ class MetricExtractor(Protocol):
         ...
 
     async def extract(self, context: EvaluationContext) -> ExtractedMetrics:
-        """Read the relevant context fields and return sub-metric scores."""
+        """Read the relevant context fields and return sub-metric scores.
+
+        Returns:
+            Result of type ``ExtractedMetrics``.
+        """
         ...

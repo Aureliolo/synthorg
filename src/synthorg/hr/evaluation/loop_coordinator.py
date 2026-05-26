@@ -22,6 +22,7 @@ from uuid import uuid4
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.collections import dedupe_preserving_order
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.trajectory.scorer import TrajectoryScorer  # noqa: TC001
 from synthorg.hr.evaluation.config import EvalLoopConfig
@@ -171,6 +172,9 @@ class EvalLoopCoordinator:
 
         Returns:
             Complete cycle report with results.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
         """
         cycle_id = NotBlankStr(str(uuid4()))
         now = datetime.now(UTC)
@@ -237,7 +241,11 @@ class EvalLoopCoordinator:
         *,
         since: datetime,
     ) -> tuple[NotBlankStr, ...]:
-        """Collect unique agent IDs from recent task metrics."""
+        """Collect unique agent IDs from recent task metrics.
+
+        Returns:
+            Tuple of ``NotBlankStr``.
+        """
         records = self._tracker.get_task_metrics(since=since)
         seen: set[str] = set()
         ids: list[NotBlankStr] = []
@@ -251,7 +259,11 @@ class EvalLoopCoordinator:
         self,
         agent_ids: tuple[NotBlankStr, ...],
     ) -> tuple[EvaluationReport, ...]:
-        """Evaluate all agents concurrently via TaskGroup."""
+        """Evaluate all agents concurrently via TaskGroup.
+
+        Returns:
+            Tuple of ``EvaluationReport``.
+        """
         if not agent_ids:
             return ()
 
@@ -273,12 +285,15 @@ class EvalLoopCoordinator:
         self,
         agent_id: NotBlankStr,
     ) -> EvaluationReport | None:
-        """Evaluate a single agent, isolating failures."""
+        """Evaluate a single agent, isolating failures.
+
+        Returns:
+            The resulting ``EvaluationReport``, or ``None`` when unavailable.
+        """
         try:
             return await self._evaluation.evaluate(agent_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, EVAL_LOOP_AGENT_EVAL_FAILED, exc, agent_id=agent_id
             )
@@ -424,6 +439,9 @@ class EvalLoopCoordinator:
         caller logs the WARNING once with ``reason`` + ``extra`` so
         ``_propose_actions`` stays under the 50-line ceiling without
         duplicating log-shape code.
+
+        Returns:
+            Tuple ``(str, NotBlankStr | None, dict[str, str])``.
         """
         if ":" not in pattern:
             return ("malformed_pattern", None, {})
@@ -441,6 +459,9 @@ class EvalLoopCoordinator:
         Each benchmark is isolated: one failure does not cancel
         siblings (per CLAUDE.md TaskGroup convention for independent
         workers).
+
+        Returns:
+            Tuple of ``BenchmarkRunResult``.
         """
         names = self._benchmarks.list_registered()
         if not names:
@@ -450,12 +471,16 @@ class EvalLoopCoordinator:
         semaphore = asyncio.Semaphore(max_concurrent)
 
         async def _run_one(name: str) -> BenchmarkRunResult | None:
+            """Run one.
+
+            Returns:
+                The resulting ``BenchmarkRunResult``, or ``None`` when unavailable.
+            """
             try:
                 async with semaphore:
                     return await self._benchmarks.run_benchmark(name)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger, EVAL_LOOP_BENCHMARK_FAILED, exc, benchmark_name=name
                 )

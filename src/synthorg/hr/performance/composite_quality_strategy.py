@@ -10,6 +10,7 @@ import asyncio
 import math
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import QualityScoreResult
 from synthorg.observability import get_logger
@@ -251,6 +252,12 @@ class CompositeQualityStrategy:
         encounters a non-critical failure, or returns zero confidence.
         ``MemoryError``, ``RecursionError``, and
         ``RetryExhaustedError`` are re-raised.
+
+        Returns:
+            The resulting ``QualityScoreResult``, or ``None`` when unavailable.
+
+        Raises:
+            RetryExhaustedError: If the relevant budget or quota is exhausted.
         """
         if self._llm_strategy is None:
             return None
@@ -262,11 +269,10 @@ class CompositeQualityStrategy:
                 task_result=task_result,
                 acceptance_criteria=acceptance_criteria,
             )
-        except MemoryError, RecursionError:
-            raise
         except RetryExhaustedError:
             raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PERF_LLM_JUDGE_FAILED,
                 agent_id=agent_id,
@@ -291,6 +297,9 @@ class CompositeQualityStrategy:
         When both layers are available, applies weighted combination.
         When only CI is available, uses the CI score directly with
         reduced confidence.
+
+        Returns:
+            Result of type ``QualityScoreResult``.
         """
         if llm_result is not None:
             # Weighted combination.

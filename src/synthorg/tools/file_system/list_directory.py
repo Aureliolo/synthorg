@@ -42,6 +42,9 @@ def _classify_entry(
 
     Returns a formatted string (e.g. ``[DIR]  name/``) or ``None``
     if the entry should be skipped (outside workspace, non-symlink).
+
+    Returns:
+        The resulting ``str``, or ``None`` when unavailable.
     """
     display = str(entry.relative_to(resolved)) if recursive else entry.name
 
@@ -162,7 +165,11 @@ class ListDirectoryTool(BaseFileSystemTool):
         *,
         recursive: bool,
     ) -> ToolExecutionResult | None:
-        """Return an error result if the glob pattern is invalid."""
+        """Return an error result if the glob pattern is invalid.
+
+        Returns:
+            The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
+        """
         if not pattern:
             return None
         if _UNSAFE_GLOB_RE.search(pattern):
@@ -195,7 +202,11 @@ class ListDirectoryTool(BaseFileSystemTool):
         self,
         user_path: str,
     ) -> Path | ToolExecutionResult:
-        """Resolve the path and verify it is an existing directory."""
+        """Resolve the path and verify it is an existing directory.
+
+        Returns:
+            Result of type ``Path | ToolExecutionResult``.
+        """
         try:
             resolved = self.path_validator.validate(user_path)
         except ValueError as exc:
@@ -232,6 +243,9 @@ class ListDirectoryTool(BaseFileSystemTool):
             lines: Classified entry lines from ``_list_sync``.
             raw_capped: Whether the raw filesystem scan hit the
                 ``MAX_ENTRIES`` limit (directory may contain more).
+
+        Returns:
+            Tuple ``(str, dict[str, Any])``.
         """
         total = len(lines)
         dir_count = sum(1 for ln in lines if ln.startswith("[DIR]"))

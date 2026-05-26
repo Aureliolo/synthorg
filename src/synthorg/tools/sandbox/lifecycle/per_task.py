@@ -8,6 +8,7 @@ are clean cuts with no grace period.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_ACQUIRE,
@@ -53,6 +54,9 @@ class PerTaskStrategy:
                 created handle when a concurrent acquire won the race
                 for the same owner, so the losing container is not
                 leaked.
+
+        Returns:
+            Result of type ``ContainerHandle``.
         """
         async with self._lock:
             if owner_id in self._containers:
@@ -94,9 +98,8 @@ class PerTaskStrategy:
         if loser is not None:
             try:
                 await destroy_fn(loser)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,
                     strategy="per-task",
@@ -128,9 +131,8 @@ class PerTaskStrategy:
         )
         try:
             await destroy_fn(handle)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # The handle was already popped above; reinstate it (without
             # clobbering a concurrent re-acquire) so a live container
             # stays tracked and cleanup_all() can retry destruction
@@ -160,9 +162,8 @@ class PerTaskStrategy:
         for handle in handles:
             try:
                 await destroy_fn(handle)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,
                     strategy="per-task",

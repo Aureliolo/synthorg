@@ -51,6 +51,9 @@ class BaseWebTool(BaseTool, ABC):
             network_policy: Network policy for SSRF prevention.
                 ``None`` uses the default (block all private IPs).
             request_timeout: Default request timeout in seconds.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         super().__init__(
             name=name,

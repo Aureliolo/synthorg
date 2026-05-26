@@ -11,6 +11,7 @@ import asyncio
 import builtins
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryQuery
 from synthorg.memory.tool_retriever_helpers import _truncate_entries, merge_results
@@ -67,6 +68,9 @@ class ToolBasedReformulationMixin:
         Duplicates (by entry ID) are deduplicated across rounds,
         keeping the higher-relevance-score version; ``None`` relevance
         is treated as ``0.0``.
+
+        Returns:
+            Tuple of ``MemoryEntry``.
         """
         reformulator = self._reformulator
         sufficiency_checker = self._sufficiency_checker
@@ -116,6 +120,13 @@ class ToolBasedReformulationMixin:
         ``None`` and the loop returns the current cumulative entries
         rather than propagating.  System errors
         (builtins.MemoryError, RecursionError) still propagate.
+
+        Returns:
+            Tuple of ``MemoryEntry``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         max_rounds = self._config.max_reformulation_rounds
         current_query = query_text
@@ -184,6 +195,10 @@ class ToolBasedReformulationMixin:
         continue, or ``None`` when it should terminate with the
         current ``entries`` (sufficiency met, reformulator exhausted,
         or non-system error in any sub-step).
+
+        Returns:
+            The resulting ``tuple[tuple[MemoryEntry, ...], str]``, or ``None`` when
+            unavailable.
         """
         sufficient = await self._check_sufficiency(
             sufficiency_checker,
@@ -254,6 +269,14 @@ class ToolBasedReformulationMixin:
         Returns ``True``/``False`` on success, or ``None`` when the
         check raised a non-system exception (caller should exit the
         loop and return current cumulative entries).
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            CancelledError: If the related operation fails.
         """
         try:
             return await sufficiency_checker.check_sufficiency(query, entries)
@@ -269,6 +292,7 @@ class ToolBasedReformulationMixin:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_SUFFICIENCY_CHECK_FAILED,
                 agent_id=agent_id,
@@ -293,6 +317,14 @@ class ToolBasedReformulationMixin:
         gave up, or ``None`` when it raised a non-system exception
         (caller cannot distinguish these two cases -- both terminate
         the loop).
+
+        Returns:
+            The resulting ``str``, or ``None`` when unavailable.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            CancelledError: If the related operation fails.
         """
         try:
             return await reformulator.reformulate(current_query, entries)
@@ -308,6 +340,7 @@ class ToolBasedReformulationMixin:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_REFORMULATION_FAILED,
                 agent_id=agent_id,
@@ -330,6 +363,14 @@ class ToolBasedReformulationMixin:
 
         Returns the new entries, or ``None`` on non-system failure so
         the loop can degrade gracefully to the accumulated results.
+
+        Returns:
+            The resulting ``tuple[MemoryEntry, ...]``, or ``None`` when unavailable.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            CancelledError: If the related operation fails.
         """
         from synthorg.memory.errors import (  # noqa: PLC0415
             MemoryError as DomainMemoryError,
@@ -364,6 +405,7 @@ class ToolBasedReformulationMixin:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
                 agent_id=agent_id,

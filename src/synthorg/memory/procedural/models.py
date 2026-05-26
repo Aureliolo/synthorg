@@ -99,7 +99,14 @@ class FailureAnalysisPayload(BaseModel):
 
     @model_validator(mode="after")
     def _validate_retry_bounds(self) -> Self:
-        """Ensure retry_count does not exceed max_retries."""
+        """Ensure retry_count does not exceed max_retries.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.retry_count > self.max_retries:
             msg = (
                 f"retry_count ({self.retry_count}) exceeds "
@@ -193,12 +200,23 @@ class ProceduralMemoryProposal(BaseModel):
     def _deduplicate_tags(
         cls, value: tuple[NotBlankStr, ...]
     ) -> tuple[NotBlankStr, ...]:
-        """Deduplicate tags and clamp at the per-record limit."""
+        """Deduplicate tags and clamp at the per-record limit.
+
+        Returns:
+            Tuple of ``NotBlankStr``.
+        """
         return deduplicate_tags(value)[:20]
 
     @model_validator(mode="after")
     def _validate_supersession_consistency(self) -> Self:
-        """Ensure supersedes and superseded_by are not self-referential."""
+        """Ensure supersedes and superseded_by are not self-referential.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.superseded_by is not None and self.superseded_by in self.supersedes:
             msg = f"Cannot both supersede and be superseded by {self.superseded_by}"
             raise ValueError(msg)

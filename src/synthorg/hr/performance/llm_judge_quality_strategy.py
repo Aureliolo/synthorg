@@ -18,6 +18,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # downstream tooling evaluates type hints (DI containers, doc
 # generators).
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import AcceptanceCriterion  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -132,6 +133,9 @@ class LlmJudgeQualityStrategy:
 
         Returns:
             Quality score result with breakdown and confidence.
+
+        Raises:
+            RetryExhaustedError: If the relevant budget or quota is exhausted.
         """
         logger.debug(
             PERF_LLM_JUDGE_STARTED,
@@ -146,11 +150,10 @@ class LlmJudgeQualityStrategy:
                 task_result=task_result,
                 acceptance_criteria=acceptance_criteria,
             )
-        except MemoryError, RecursionError:
-            raise
         except RetryExhaustedError:
             raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PERF_LLM_JUDGE_FAILED,
                 agent_id=agent_id,
@@ -184,7 +187,11 @@ class LlmJudgeQualityStrategy:
         cost: float,
         acceptance_criteria: tuple[AcceptanceCriterion, ...],
     ) -> QualityScoreResult:
-        """Build and log the quality score result."""
+        """Build and log the quality score result.
+
+        Returns:
+            Result of type ``QualityScoreResult``.
+        """
         result = QualityScoreResult(
             score=round(clamped_score, 4),
             strategy_name=NotBlankStr(self.name),
@@ -213,6 +220,9 @@ class LlmJudgeQualityStrategy:
         in the SYSTEM message; the untrusted criteria payload is
         fenced inside the USER message so adversarial criteria text
         cannot hijack the judge's instructions.
+
+        Returns:
+            Tuple ``(str, str)``.
         """
         if acceptance_criteria:
             criteria_lines = [

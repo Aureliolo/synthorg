@@ -59,7 +59,14 @@ class ReportScheduleConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_periods(self) -> Self:
-        """Ensure no duplicate periods."""
+        """Ensure no duplicate periods.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if len(self.periods) != len(set(self.periods)):
             msg = "Duplicate periods in schedule configuration"
             raise ValueError(msg)
@@ -67,7 +74,14 @@ class ReportScheduleConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_templates(self) -> Self:
-        """Ensure no duplicate templates."""
+        """Ensure no duplicate templates.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if len(self.templates) != len(set(self.templates)):
             msg = "Duplicate templates in schedule configuration"
             raise ValueError(msg)

@@ -10,6 +10,7 @@ import asyncio
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.composite.config import (
@@ -100,7 +101,11 @@ class CompositeBackend:
     # -- Routing helpers ----------------------------------------------
 
     def _resolve(self, namespace: str) -> MemoryBackend:
-        """Resolve a namespace to its child backend."""
+        """Resolve a namespace to its child backend.
+
+        Returns:
+            Result of type ``MemoryBackend``.
+        """
         return self._namespace_to_backend.get(
             namespace,
             self._default_backend,
@@ -111,7 +116,11 @@ class CompositeBackend:
         backend: MemoryBackend,
         raw_id: str,
     ) -> NotBlankStr:
-        """Wrap a raw ID with the backend name prefix."""
+        """Wrap a raw ID with the backend name prefix.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+        """
         name = self._backend_to_name[id(backend)]
         return NotBlankStr(f"{name}{_ID_SEP}{raw_id}")
 
@@ -120,6 +129,9 @@ class CompositeBackend:
         prefixed_id: str,
     ) -> tuple[MemoryBackend, str]:
         """Split a prefixed ID into (backend, raw_id).
+
+        Returns:
+            Tuple ``(MemoryBackend, str)``.
 
         Raises:
             MemoryRetrievalError: If the prefix is unknown.
@@ -146,7 +158,11 @@ class CompositeBackend:
         backend: MemoryBackend,
         entry: MemoryEntry,
     ) -> MemoryEntry:
-        """Return *entry* with a prefixed ID."""
+        """Return *entry* with a prefixed ID.
+
+        Returns:
+            Result of type ``MemoryEntry``.
+        """
         return entry.model_copy(
             update={"id": self._prefix_id(backend, entry.id)},
         )
@@ -170,7 +186,11 @@ class CompositeBackend:
         logger.info(MEMORY_BACKEND_DISCONNECTED, backend="composite")
 
     async def health_check(self) -> bool:
-        """All children must be healthy."""
+        """All children must be healthy.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         results: list[bool] = []
         async with asyncio.TaskGroup() as tg:
             for b in self._unique_backends:
@@ -178,6 +198,7 @@ class CompositeBackend:
                 async def _check(
                     backend: MemoryBackend = b,
                 ) -> None:
+                    """Append the backend's health-check outcome to ``results``."""
                     results.append(await backend.health_check())
 
                 tg.create_task(_check())
@@ -250,6 +271,11 @@ class CompositeBackend:
     # -- CRUD ---------------------------------------------------------
 
     def _require_connected(self) -> None:
+        """Require connected.
+
+        Raises:
+            MemoryConnectionError: If the related operation fails.
+        """
         if not self.is_connected:
             msg = "CompositeBackend is not connected"
             logger.warning(
@@ -263,7 +289,11 @@ class CompositeBackend:
         agent_id: NotBlankStr,
         request: MemoryStoreRequest,
     ) -> NotBlankStr:
-        """Route store to the backend for ``request.namespace``."""
+        """Route store to the backend for ``request.namespace``.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+        """
         self._require_connected()
         backend = self._resolve(request.namespace)
         logger.debug(
@@ -280,7 +310,11 @@ class CompositeBackend:
         agent_id: NotBlankStr,
         query: MemoryQuery,
     ) -> tuple[MemoryEntry, ...]:
-        """Fan out to backends matching ``query.namespaces``."""
+        """Fan out to backends matching ``query.namespaces``.
+
+        Returns:
+            Tuple of ``MemoryEntry``.
+        """
         self._require_connected()
         targets = self._resolve_retrieve_targets(query)
         logger.debug(
@@ -304,7 +338,11 @@ class CompositeBackend:
         agent_id: NotBlankStr,
         memory_id: NotBlankStr,
     ) -> MemoryEntry | None:
-        """Parse prefixed ID and delegate to the owning backend."""
+        """Parse prefixed ID and delegate to the owning backend.
+
+        Returns:
+            The matching ``MemoryEntry``, or ``None`` when no match is found.
+        """
         self._require_connected()
         backend, raw_id = self._parse_id(memory_id)
         entry = await backend.get(agent_id, NotBlankStr(raw_id))
@@ -317,7 +355,11 @@ class CompositeBackend:
         agent_id: NotBlankStr,
         memory_id: NotBlankStr,
     ) -> bool:
-        """Parse prefixed ID and delegate to the owning backend."""
+        """Parse prefixed ID and delegate to the owning backend.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         self._require_connected()
         backend, raw_id = self._parse_id(memory_id)
         return await backend.delete(agent_id, NotBlankStr(raw_id))
@@ -328,7 +370,11 @@ class CompositeBackend:
         *,
         category: MemoryCategory | None = None,
     ) -> int:
-        """Sum counts across all unique backends."""
+        """Sum counts across all unique backends.
+
+        Returns:
+            Result of type ``int``.
+        """
         self._require_connected()
         if len(self._unique_backends) == 1:
             return await self._unique_backends[0].count(
@@ -342,6 +388,7 @@ class CompositeBackend:
                 async def _cnt(
                     backend: MemoryBackend = b,
                 ) -> None:
+                    """Append the backend's ``agent_id`` entry count to ``totals``."""
                     totals.append(
                         await backend.count(
                             agent_id,
@@ -358,7 +405,11 @@ class CompositeBackend:
         self,
         query: MemoryQuery,
     ) -> list[MemoryBackend]:
-        """Determine which backends to query for a retrieve call."""
+        """Determine which backends to query for a retrieve call.
+
+        Returns:
+            List of ``MemoryBackend``.
+        """
         if not query.namespaces:
             return list(self._unique_backends)
         seen: dict[int, MemoryBackend] = {}
@@ -373,7 +424,14 @@ class CompositeBackend:
         query: MemoryQuery,
         targets: list[MemoryBackend],
     ) -> list[MemoryEntry]:
-        """Fan out retrieve to *targets* with graceful degradation."""
+        """Fan out retrieve to *targets* with graceful degradation.
+
+        Returns:
+            List of ``MemoryEntry``.
+
+        Raises:
+            MemoryRetrievalError: If the related operation fails.
+        """
         if len(targets) == 1:
             entries = await targets[0].retrieve(agent_id, query)
             return [self._rewrite_entry(targets[0], e) for e in entries]
@@ -385,15 +443,19 @@ class CompositeBackend:
                 async def _fetch(
                     backend: MemoryBackend = b,
                 ) -> None:
+                    """Retrieve from one backend and merge the rewritten entries.
+
+                    Logs and records the error in ``errors`` on failure so one
+                    slow or broken backend cannot abort the whole fan-out.
+                    """
                     try:
                         entries = await backend.retrieve(
                             agent_id,
                             query,
                         )
                         results.extend(self._rewrite_entry(backend, e) for e in entries)
-                    except MemoryError, RecursionError:
-                        raise
                     except Exception as exc:
+                        reraise_critical(exc)
                         name = self._backend_to_name.get(
                             id(backend),
                             "?",

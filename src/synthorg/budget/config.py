@@ -83,11 +83,23 @@ class BudgetAlertConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Apply mirrors.
+
+        Returns:
+            Result of type ``Any``.
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_threshold_ordering(self) -> Self:
-        """Ensure thresholds are strictly ordered."""
+        """Ensure thresholds are strictly ordered.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if not (self.warn_at < self.critical_at < self.hard_stop_at):
             msg = (
                 f"Alert thresholds must be ordered: "
@@ -151,6 +163,11 @@ class AutoDowngradeConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Apply mirrors.
+
+        Returns:
+            Result of type ``Any``.
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     boundary: Literal["task_assignment"] = Field(
@@ -169,6 +186,9 @@ class AutoDowngradeConfig(BaseModel):
         ``"large"`` rather than being kept with surrounding spaces.
         Non-string or malformed entries are passed through unchanged so
         that Pydantic can surface a proper field-level ``ValidationError``.
+
+        Returns:
+            Result of type ``Any``.
         """
         if isinstance(data, dict) and "downgrade_map" in data:
             raw_map = data["downgrade_map"]
@@ -192,7 +212,14 @@ class AutoDowngradeConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_downgrade_map(self) -> Self:
-        """Validate downgrade_map for correctness."""
+        """Validate downgrade_map for correctness.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         sources: list[str] = []
         for source, target in self.downgrade_map:
             if source == target:
@@ -407,6 +434,11 @@ class BudgetConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Apply mirrors.
+
+        Returns:
+            Result of type ``Any``.
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
@@ -416,6 +448,12 @@ class BudgetConfig(BaseModel):
         When ``total_monthly`` is ``0.0``, per-task and per-agent limits
         are not validated against it.  A zero monthly budget means budget
         enforcement is disabled; limits are ignored at runtime.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if self.total_monthly > 0 and self.per_task_limit > self.total_monthly:
             msg = (
@@ -427,7 +465,14 @@ class BudgetConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_per_agent_daily_limit_within_monthly(self) -> Self:
-        """Ensure per_agent_daily_limit does not exceed total_monthly."""
+        """Ensure per_agent_daily_limit does not exceed total_monthly.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.total_monthly > 0 and self.per_agent_daily_limit > self.total_monthly:
             msg = (
                 f"per_agent_daily_limit ({self.per_agent_daily_limit}) "

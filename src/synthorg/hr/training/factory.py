@@ -40,6 +40,13 @@ def _coerce_positive_int(
     :func:`synthorg.core.validation.coerce_positive_int`. On failure emits
     ``HR_TRAINING_CONFIG_INVALID`` with the original exception type before
     re-raising the underlying ``TypeError`` / ``ValueError``.
+
+    Returns:
+        Result of type ``int``.
+
+    Raises:
+        TypeError: If an argument has an unexpected type.
+        ValueError: If an argument fails domain validation.
     """
     try:
         return coerce_positive_int(value, name=field_name, default=default)
@@ -109,6 +116,11 @@ def _build_role_top_performers(
     tracker: PerformanceTracker,
     registry: AgentRegistryService,
 ) -> SourceSelector:
+    """Build role top performers.
+
+    Returns:
+        Result of type ``SourceSelector``.
+    """
     from synthorg.hr.training.source_selectors.role_top_performers import (  # noqa: PLC0415
         RoleTopPerformers,
     )
@@ -131,6 +143,11 @@ def _build_department_diversity(
     tracker: PerformanceTracker,
     registry: AgentRegistryService,
 ) -> SourceSelector:
+    """Build department diversity.
+
+    Returns:
+        Result of type ``SourceSelector``.
+    """
     del config  # discriminator-only branch, no config fields needed
     from synthorg.hr.training.source_selectors.department_diversity import (  # noqa: PLC0415
         DepartmentDiversitySampling,
@@ -164,6 +181,9 @@ def _build_selector(
         available in config: user-curated sources are passed via
         ``TrainingPlan.override_sources`` which the service uses
         directly without routing through a selector.
+
+    Returns:
+        Result of type ``SourceSelector``.
     """
     return _SELECTOR_REGISTRY.build(
         str(config.source_selector_type),
@@ -179,7 +199,11 @@ def _build_extractors(
     memory_backend: MemoryBackend,
     tool_tracker: ToolInvocationTracker,
 ) -> dict[ContentType, ContentExtractor]:
-    """Build extractors for all content types."""
+    """Build extractors for all content types.
+
+    Returns:
+        Mapping from ``ContentType`` to ``ContentExtractor``.
+    """
     from synthorg.hr.training.extractors.procedural import (  # noqa: PLC0415
         ProceduralMemoryExtractor,
     )
@@ -208,6 +232,11 @@ def _build_relevance_curation(
     *,
     provider: CompletionProvider | None,
 ) -> CurationStrategy:
+    """Build relevance curation.
+
+    Returns:
+        Result of type ``CurationStrategy``.
+    """
     del provider  # heuristic curation does not need an LLM
     from synthorg.hr.training.curation.relevance import (  # noqa: PLC0415
         RelevanceScoreCuration,
@@ -226,6 +255,11 @@ def _build_llm_curation(
     *,
     provider: CompletionProvider | None,
 ) -> CurationStrategy:
+    """Build llm curation.
+
+    Returns:
+        Result of type ``CurationStrategy``.
+    """
     from synthorg.hr.training.curation.llm_curated import (  # noqa: PLC0415
         LLMCurated,
     )
@@ -252,7 +286,11 @@ def _build_curation(
     *,
     provider: CompletionProvider | None,
 ) -> CurationStrategy:
-    """Build curation strategy from config."""
+    """Build curation strategy from config.
+
+    Returns:
+        Result of type ``CurationStrategy``.
+    """
     return _CURATION_REGISTRY.build(
         str(config.curation_strategy_type),
         config,
@@ -268,6 +306,9 @@ def _build_guards(
     """Build guard chain from config.
 
     Always includes SanitizationGuard first (mandatory).
+
+    Returns:
+        Tuple of ``TrainingGuard``.
     """
     from synthorg.hr.training.guards.review_gate import (  # noqa: PLC0415
         ReviewGateGuard,

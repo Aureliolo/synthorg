@@ -134,7 +134,11 @@ class SchemaInspectTool(BaseDatabaseTool):
             )
 
     async def _list_tables(self) -> ToolExecutionResult:
-        """List all tables in the database."""
+        """List all tables in the database.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         import urllib.parse  # noqa: PLC0415
 
         encoded = urllib.parse.quote(str(self._config.database_path))
@@ -165,7 +169,11 @@ class SchemaInspectTool(BaseDatabaseTool):
         )
 
     async def _describe_table(self, table_name: str) -> ToolExecutionResult:
-        """Describe columns of a specific table."""
+        """Describe columns of a specific table.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         if not _SAFE_IDENTIFIER_RE.match(table_name):
             logger.warning(
                 DB_SCHEMA_INSPECT_FAILED,

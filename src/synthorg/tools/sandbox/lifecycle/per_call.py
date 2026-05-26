@@ -37,7 +37,11 @@ class PerCallStrategy:
         create_fn: Callable[[], Awaitable[ContainerHandle]],
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],  # noqa: ARG002
     ) -> ContainerHandle:
-        """Create a fresh container (no reuse; nothing to lose)."""
+        """Create a fresh container (no reuse; nothing to lose).
+
+        Returns:
+            Result of type ``ContainerHandle``.
+        """
         handle = await create_fn()
         logger.info(
             SANDBOX_LIFECYCLE_ACQUIRE,

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (
     AutonomyLevel,
     OrgFactCategory,
@@ -86,7 +87,11 @@ class KnowledgeArchitectGuideTool(BaseTool):
         *,
         arguments: dict[str, Any],  # noqa: ARG002
     ) -> ToolExecutionResult:
-        """Return the mechanics guide."""
+        """Return the mechanics guide.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         return ToolExecutionResult(content=_GUIDE_TEXT, is_error=False)
 
 
@@ -113,7 +118,11 @@ class KnowledgeArchitectSearchTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Execute org memory search."""
+        """Execute org memory search.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         try:
             category_str = arguments.get("category")
             categories = None
@@ -132,6 +141,7 @@ class KnowledgeArchitectSearchTool(BaseTool):
             )
             facts = await self._org_backend.query(query)
         except Exception as exc:
+            reraise_critical(exc)
             safe_error = safe_error_description(exc)
             logger.warning(
                 KNOWLEDGE_ARCHITECT_SEARCH_FAILED,
@@ -177,7 +187,11 @@ class KnowledgeArchitectReadTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Read an org memory entry by ID."""
+        """Read an org memory entry by ID.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         entry_id = arguments["entry_id"]
         try:
             query = OrgMemoryQuery(
@@ -190,6 +204,7 @@ class KnowledgeArchitectReadTool(BaseTool):
                 None,
             )
         except Exception as exc:
+            reraise_critical(exc)
             safe_error = safe_error_description(exc)
             logger.warning(
                 KNOWLEDGE_ARCHITECT_READ_FAILED,
@@ -265,6 +280,9 @@ class KnowledgeArchitectWriteTool(BaseTool):
         Enforces FULL autonomy block and SEMI opt-in check at the
         tool boundary.  SUPERVISED and LOCKED gating (plan review +
         audit) is the agent runtime's responsibility.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
         """
         if self._autonomy_level == AutonomyLevel.FULL:
             logger.warning(
@@ -323,6 +341,7 @@ class KnowledgeArchitectWriteTool(BaseTool):
                 author=author,
             )
         except Exception as exc:
+            reraise_critical(exc)
             safe_error = safe_error_description(exc)
             logger.warning(
                 KNOWLEDGE_ARCHITECT_WRITE_FAILED,
@@ -389,6 +408,9 @@ class KnowledgeArchitectDeleteTool(BaseTool):
         Gated by autonomy level: FULL disabled, SEMI opt-in,
         SUPERVISED/LOCKED allowed (upstream approval gate expected).
         Requires ``fact_store`` to perform the actual retraction.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
         """
         if self._autonomy_level == AutonomyLevel.FULL:
             logger.warning(
@@ -435,6 +457,7 @@ class KnowledgeArchitectDeleteTool(BaseTool):
                 author=author,
             )
         except Exception as exc:
+            reraise_critical(exc)
             safe_error = safe_error_description(exc)
             logger.warning(
                 KNOWLEDGE_ARCHITECT_DELETE_FAILED,
@@ -495,6 +518,9 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
         count is surfaced in the human-readable summary.  Raw
         artifact content is always exported; the flag only toggles
         how the summary is presented to the agent.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
         """
         include_raw = bool(arguments.get("include_raw", False))
         if self._wiki_exporter is None:
@@ -505,6 +531,7 @@ class KnowledgeArchitectBrowseWikiTool(BaseTool):
         try:
             result = await self._wiki_exporter.export(self._agent_id)
         except Exception as exc:
+            reraise_critical(exc)
             safe_error = safe_error_description(exc)
             logger.warning(
                 KNOWLEDGE_ARCHITECT_BROWSE_WIKI_FAILED,

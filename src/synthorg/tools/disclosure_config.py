@@ -51,7 +51,14 @@ class ToolDisclosureConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_budget_order(self) -> ToolDisclosureConfig:
-        """Ensure L2 budget is at least as large as L1 budget."""
+        """Ensure L2 budget is at least as large as L1 budget.
+
+        Returns:
+            Result of type ``ToolDisclosureConfig``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.l2_token_budget < self.l1_token_budget:
             msg = (
                 f"l2_token_budget ({self.l2_token_budget}) must be "

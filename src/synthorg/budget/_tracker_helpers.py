@@ -45,7 +45,11 @@ def _validate_time_range(
     start: datetime | None,
     end: datetime | None,
 ) -> None:
-    """Raise ``ValueError`` if *start* >= *end* when both are given."""
+    """Raise ``ValueError`` if *start* >= *end* when both are given.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
+    """
     if start is not None and end is not None and start >= end:
         logger.warning(
             BUDGET_TIME_RANGE_INVALID,
@@ -69,6 +73,9 @@ def _filter_records(  # noqa: PLR0913
     """Filter records by agent, task, project, provider, and/or time range.
 
     Time semantics: ``start <= timestamp < end``.
+
+    Returns:
+        Tuple of ``CostRecord``.
     """
     return tuple(
         r
@@ -95,6 +102,9 @@ def _aggregate(
     same ``currency``.  Mixed currencies raise
     :class:`MixedCurrencyAggregationError` before any summation runs,
     so callers cannot accidentally produce a cost in an undefined unit.
+
+    Returns:
+        Result of type ``_AggregateResult``.
     """
     currency = assert_currencies_match(
         (r.currency for r in records),
@@ -117,7 +127,11 @@ def _aggregate(
 def _build_agent_spendings(
     filtered: Sequence[CostRecord],
 ) -> list[AgentSpending]:
-    """Group filtered records by agent and aggregate each group."""
+    """Group filtered records by agent and aggregate each group.
+
+    Returns:
+        List of ``AgentSpending``.
+    """
     by_agent = group_by_agent(filtered)
     result: list[AgentSpending] = []
     for aid in sorted(by_agent):

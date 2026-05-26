@@ -154,6 +154,9 @@ class SubConstraintEnforcer:
         (``COMMS_EXTERNAL`` action type) and git clone (external fetch).
         Local-only tools like ``HtmlParserTool`` (``CODE_READ``) are
         allowed even under ``NONE``.
+
+        Returns:
+            The resulting ``SubConstraintViolation``, or ``None`` when unavailable.
         """
         if self._constraints.network != NetworkMode.NONE:
             return None
@@ -177,6 +180,9 @@ class SubConstraintEnforcer:
         ``NONE`` blocks all tools in the TERMINAL category.
         ``RESTRICTED_COMMANDS`` and ``FULL`` are enforced by the
         terminal tool's command allow/blocklist, not here.
+
+        Returns:
+            The resulting ``SubConstraintViolation``, or ``None`` when unavailable.
         """
         if (
             self._constraints.terminal == TerminalAccess.NONE
@@ -200,6 +206,9 @@ class SubConstraintEnforcer:
 
         ``LOCAL_ONLY`` blocks clone (external fetch) and push.
         ``READ_AND_BRANCH`` blocks push but allows clone and branching.
+
+        Returns:
+            The resulting ``SubConstraintViolation``, or ``None`` when unavailable.
         """
         git_access = self._constraints.git
 
@@ -246,6 +255,9 @@ class SubConstraintEnforcer:
         Matches against the ``requires_approval`` prefixes.  A match
         returns a violation with ``requires_approval=True``, signaling
         the invoker to escalate rather than deny.
+
+        Returns:
+            The resulting ``SubConstraintViolation``, or ``None`` when unavailable.
         """
         for prefix in self._constraints.requires_approval:
             if action_type.startswith(prefix):

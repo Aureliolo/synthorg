@@ -56,6 +56,9 @@ class HighestRelevanceSelector:
         Entries with a ``None`` relevance score are treated as ``0.0``;
         ties are broken by most-recent ``created_at``. Groups smaller
         than ``group_threshold`` are omitted.
+
+        Returns:
+            Tuple of ``SelectionGroup``.
         """
         if not entries:
             return ()

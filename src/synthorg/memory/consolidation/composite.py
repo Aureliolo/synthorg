@@ -68,7 +68,11 @@ class CompositeConsolidationStrategy:
         *,
         agent_id: NotBlankStr,
     ) -> ConsolidationResult:
-        """Run the selector then aggregate one ``OpResult`` per group."""
+        """Run the selector then aggregate one ``OpResult`` per group.
+
+        Returns:
+            Result of type ``ConsolidationResult``.
+        """
         if not entries:
             return ConsolidationResult()
 
@@ -129,6 +133,9 @@ class CompositeConsolidationStrategy:
         exception type (matching the pre-split sequential semantics);
         every ``except*`` branch logs the sibling count before
         re-raising the first exception.
+
+        Returns:
+            List of ``OpResult``.
         """
         try:
             async with asyncio.TaskGroup() as tg:

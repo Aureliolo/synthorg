@@ -49,11 +49,19 @@ class ToolDisclosureManager(Protocol):
     """
 
     def get_l1_summaries(self) -> tuple[ToolL1Metadata, ...]:
-        """Return L1 metadata for all permitted tools."""
+        """Return L1 metadata for all permitted tools.
+
+        Returns:
+            Tuple of ``ToolL1Metadata``.
+        """
         ...
 
     def get_l2_body(self, tool_name: str) -> ToolL2Body | None:
-        """Return L2 body for a specific tool, or ``None``."""
+        """Return L2 body for a specific tool, or ``None``.
+
+        Returns:
+            The matching ``ToolL2Body``, or ``None`` when no match is found.
+        """
         ...
 
     def get_l3_resource(
@@ -61,7 +69,11 @@ class ToolDisclosureManager(Protocol):
         tool_name: str,
         resource_id: str,
     ) -> ToolL3Resource | None:
-        """Return a specific L3 resource, or ``None``."""
+        """Return a specific L3 resource, or ``None``.
+
+        Returns:
+            The matching ``ToolL3Resource``, or ``None`` when no match is found.
+        """
         ...
 
 
@@ -103,7 +115,11 @@ class ListToolsTool(BaseTool):
         *,
         arguments: dict[str, Any],  # noqa: ARG002
     ) -> ToolExecutionResult:
-        """Return JSON array of L1 metadata."""
+        """Return JSON array of L1 metadata.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         summaries = self._manager.get_l1_summaries()
         payload = [
             {
@@ -145,7 +161,11 @@ class LoadToolTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Return L2 body JSON for the requested tool."""
+        """Return L2 body JSON for the requested tool.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         tool_name: str = arguments["tool_name"]
         l2 = self._manager.get_l2_body(tool_name)
         if l2 is None:
@@ -191,7 +211,11 @@ class LoadToolResourceTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Return L3 resource content."""
+        """Return L3 resource content.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         tool_name: str = arguments["tool_name"]
         resource_id: str = arguments["resource_id"]
         resource = self._manager.get_l3_resource(tool_name, resource_id)
@@ -239,6 +263,14 @@ class DeferredDisclosureManager:
         )
 
     def _require_bound(self) -> ToolDisclosureManager:
+        """Require bound.
+
+        Returns:
+            Result of type ``ToolDisclosureManager``.
+
+        Raises:
+            RuntimeError: If the operation fails at runtime.
+        """
         if self._delegate is None:
             msg = "DeferredDisclosureManager not yet bound"
             logger.error(
@@ -249,11 +281,19 @@ class DeferredDisclosureManager:
         return self._delegate
 
     def get_l1_summaries(self) -> tuple[ToolL1Metadata, ...]:
-        """Delegate to bound manager."""
+        """Delegate to bound manager.
+
+        Returns:
+            Tuple of ``ToolL1Metadata``.
+        """
         return self._require_bound().get_l1_summaries()
 
     def get_l2_body(self, tool_name: str) -> ToolL2Body | None:
-        """Delegate to bound manager."""
+        """Delegate to bound manager.
+
+        Returns:
+            The matching ``ToolL2Body``, or ``None`` when no match is found.
+        """
         return self._require_bound().get_l2_body(tool_name)
 
     def get_l3_resource(
@@ -261,7 +301,11 @@ class DeferredDisclosureManager:
         tool_name: str,
         resource_id: str,
     ) -> ToolL3Resource | None:
-        """Delegate to bound manager."""
+        """Delegate to bound manager.
+
+        Returns:
+            The matching ``ToolL3Resource``, or ``None`` when no match is found.
+        """
         return self._require_bound().get_l3_resource(
             tool_name,
             resource_id,

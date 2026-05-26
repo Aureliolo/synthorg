@@ -63,7 +63,11 @@ class _PlainPrepareMixin:
         self,
         agent_id: NotBlankStr,
     ) -> ConsolidationContext:
-        """Return a trajectory-free per-run context."""
+        """Return a trajectory-free per-run context.
+
+        Returns:
+            Result of type ``ConsolidationContext``.
+        """
         return ConsolidationContext(agent_id=agent_id)
 
 
@@ -90,7 +94,11 @@ class ConcatenationOp(_PlainPrepareMixin):
         *,
         context: ConsolidationContext,
     ) -> OpResult:
-        """Build, store, and delete -- Simple's exact semantics."""
+        """Build, store, and delete -- Simple's exact semantics.
+
+        Returns:
+            Result of type ``OpResult``.
+        """
         summary = self._build_summary(group.category, group.to_remove)
         store_request = MemoryStoreRequest(
             category=group.category,
@@ -112,7 +120,11 @@ class ConcatenationOp(_PlainPrepareMixin):
         category: MemoryCategory,
         entries: tuple[MemoryEntry, ...],
     ) -> str:
-        """Reproduce ``SimpleConsolidationStrategy._build_summary``."""
+        """Reproduce ``SimpleConsolidationStrategy._build_summary``.
+
+        Returns:
+            Result of type ``str``.
+        """
         lines = [f"Consolidated {category.value} memories:"]
         for entry in entries:
             truncated = (
@@ -137,6 +149,9 @@ async def _delete_dual_mode(
     Returns the successfully-deleted ids and (when ``mode`` is given)
     one :class:`ArchivalModeAssignment` per deleted original, matching
     ``DualModeConsolidationStrategy._process_group`` byte-for-byte.
+
+    Returns:
+        Tuple ``(list[NotBlankStr], list[ArchivalModeAssignment])``.
     """
     removed_ids: list[NotBlankStr] = []
     assignments: list[ArchivalModeAssignment] = []
@@ -196,7 +211,11 @@ class DensityRoutingOp(_PlainPrepareMixin):
         *,
         context: ConsolidationContext,
     ) -> OpResult:
-        """Classify -> route -> store -> delete (DualMode semantics)."""
+        """Classify -> route -> store -> delete (DualMode semantics).
+
+        Returns:
+            Result of type ``OpResult``.
+        """
         full_group = (group.kept, *group.to_remove)
         group_mode = self._determine_group_mode(full_group)
 
@@ -235,7 +254,11 @@ class DensityRoutingOp(_PlainPrepareMixin):
         self,
         group: tuple[MemoryEntry, ...],
     ) -> ArchivalMode:
-        """Majority-vote density (strict ``>``; tie -> ABSTRACTIVE)."""
+        """Majority-vote density (strict ``>``; tie -> ABSTRACTIVE).
+
+        Returns:
+            Result of type ``ArchivalMode``.
+        """
         classified = self._classifier.classify_batch(group)
         dense_count = sum(
             1 for _, density in classified if density == ContentDensity.DENSE
@@ -250,7 +273,11 @@ class DensityRoutingOp(_PlainPrepareMixin):
         entries: tuple[MemoryEntry, ...],
         mode: ArchivalMode,
     ) -> str:
-        """Reproduce ``DualModeConsolidationStrategy._build_content``."""
+        """Reproduce ``DualModeConsolidationStrategy._build_content``.
+
+        Returns:
+            Result of type ``str``.
+        """
         if mode == ArchivalMode.EXTRACTIVE:
             parts = [self._extractor.extract(e.content) for e in entries]
         else:
@@ -295,7 +322,11 @@ class ExtractivePreservationOp(_PlainPrepareMixin):
         *,
         context: ConsolidationContext,
     ) -> OpResult:
-        """Extract + store + delete."""
+        """Extract + store + delete.
+
+        Returns:
+            Result of type ``OpResult``.
+        """
         content = _DUAL_MODE_SEPARATOR.join(
             self._extractor.extract(e.content) for e in group.to_remove
         )
@@ -350,7 +381,11 @@ class AbstractiveSummarizationOp(_PlainPrepareMixin):
         *,
         context: ConsolidationContext,
     ) -> OpResult:
-        """Summarise + store + delete."""
+        """Summarise + store + delete.
+
+        Returns:
+            Result of type ``OpResult``.
+        """
         async with asyncio.TaskGroup() as tg:
             tasks = [
                 tg.create_task(

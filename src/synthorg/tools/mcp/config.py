@@ -109,6 +109,12 @@ class MCPServerConfig(BaseModel):
 
         Stdio transport requires ``command``; streamable_http requires
         ``url``.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if self.transport == "stdio" and self.command is None:
             msg = f"Server {self.name!r}: stdio transport requires 'command'"
@@ -130,7 +136,14 @@ class MCPServerConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_tool_filters(self) -> Self:
-        """Ensure enabled_tools and disabled_tools do not overlap."""
+        """Ensure enabled_tools and disabled_tools do not overlap.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.enabled_tools is not None and self.disabled_tools:
             overlap = set(self.enabled_tools) & set(self.disabled_tools)
             if overlap:
@@ -163,7 +176,14 @@ class MCPConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_server_names(self) -> Self:
-        """Ensure server names are unique."""
+        """Ensure server names are unique.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         names = [s.name for s in self.servers]
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)

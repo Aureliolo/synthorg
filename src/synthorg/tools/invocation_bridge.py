@@ -7,6 +7,7 @@ Separates activity-tracking concerns from tool execution logic in
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import TOOL_INVOCATION_RECORD_FAILED
 from synthorg.observability.metrics_hub import (
@@ -68,9 +69,8 @@ async def record_tool_invocation(
                 error_message=(result.content[:2048] if result.is_error else None),
             )
             await tracker.record(record)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TOOL_INVOCATION_RECORD_FAILED,
                 tool_call_id=tool_call.id,
@@ -97,9 +97,8 @@ async def record_tool_invocation(
             outcome=outcome,
             duration_sec=duration_sec,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             TOOL_INVOCATION_RECORD_FAILED,
             tool_call_id=tool_call.id,

@@ -95,7 +95,7 @@ class HttpRequestArgs(BaseModel):
     @field_validator("headers", mode="after")
     @classmethod
     def _validate_headers(cls, value: dict[str, str]) -> dict[str, str]:
-        r"""Validate header shape at the typed boundary.
+        """Validate header shape at the typed boundary.
 
         Two checks run here:
 
@@ -107,6 +107,12 @@ class HttpRequestArgs(BaseModel):
         2. **No ASCII control characters** in either names or values.
            Blocks header smuggling / response-splitting attempts
            (CR/LF/NUL/DEL).
+
+        Returns:
+            Mapping from ``str`` to ``str``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         for name, val in value.items():
             if not _RFC_TOKEN_RE.match(name):

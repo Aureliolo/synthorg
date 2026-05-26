@@ -170,6 +170,12 @@ class ScalingDecision(BaseModel):
         HIRE decisions must have a target_role.
         PRUNE decisions must have a target_agent_id.
         HOLD and NO_OP require neither.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if self.action_type == ScalingActionType.HIRE and self.target_role is None:
             msg = "HIRE decisions must specify target_role"
@@ -233,6 +239,12 @@ class ScalingActionRecord(BaseModel):
 
         - FAILED outcomes must include a reason.
         - EXECUTED/DEFERRED outcomes should carry a result_id.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if self.outcome == ScalingOutcome.FAILED and self.reason is None:
             msg = "FAILED records must include reason"

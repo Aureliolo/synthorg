@@ -6,6 +6,7 @@ to prevent ``ResourceWarning`` on Windows with ``ProactorEventLoop``.
 
 import asyncio  # noqa: TC003 -- used in runtime-visible annotation
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_SUBPROCESS_TRANSPORT_CLOSE_FAILED,
@@ -37,7 +38,8 @@ def close_subprocess_transport(proc: asyncio.subprocess.Process) -> None:
         if transport.is_closing():
             return
         transport.close()
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.debug(
             TOOL_SUBPROCESS_TRANSPORT_CLOSE_FAILED,
         )

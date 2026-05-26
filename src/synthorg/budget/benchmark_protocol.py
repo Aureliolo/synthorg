@@ -57,7 +57,14 @@ class BenchmarkScore(BaseModel):
 
     @model_validator(mode="after")
     def _score_within_confidence_band(self) -> Self:
-        """The point estimate must lie inside its confidence interval."""
+        """The point estimate must lie inside its confidence interval.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if not (self.confidence_lower <= self.score <= self.confidence_upper):
             msg = (
                 f"score ({self.score}) must lie within the confidence band"
@@ -82,9 +89,16 @@ class BenchmarkScoreProvider(Protocol):
         ``None`` signals "no score available for this model"; the
         analyzer must handle this gracefully (skip the role rather
         than emitting an invalid Pareto point).
+
+        Returns:
+            The matching ``BenchmarkScore``, or ``None`` when no match is found.
         """
         ...
 
     async def list_scores(self) -> Mapping[NotBlankStr, BenchmarkScore]:
-        """Return all known model scores keyed by canonical model id."""
+        """Return all known model scores keyed by canonical model id.
+
+        Returns:
+            Result of type ``Mapping[NotBlankStr, BenchmarkScore]``.
+        """
         ...

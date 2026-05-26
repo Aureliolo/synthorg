@@ -59,7 +59,14 @@ class OrgFactAuthor(BaseModel):
 
     @model_validator(mode="after")
     def _validate_author_consistency(self) -> Self:
-        """Ensure human authors have no agent fields and agents have required fields."""
+        """Ensure human authors have no agent fields and agents have required fields.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.is_human:
             if self.agent_id is not None:
                 msg = "Human authors must not have an agent_id"
@@ -249,7 +256,14 @@ class OperationLogEntry(BaseModel):
 
     @model_validator(mode="after")
     def _validate_content_alignment(self) -> Self:
-        """Ensure PUBLISH has content and RETRACT does not."""
+        """Ensure PUBLISH has content and RETRACT does not.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.operation_type == "PUBLISH" and self.content is None:
             msg = "PUBLISH operations must have non-None content"
             logger.warning(
@@ -307,7 +321,14 @@ class OperationLogSnapshot(BaseModel):
 
     @model_validator(mode="after")
     def _validate_created_before_retracted(self) -> Self:
-        """Ensure created_at is not after retracted_at."""
+        """Ensure created_at is not after retracted_at.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.retracted_at is not None and self.created_at > self.retracted_at:
             msg = "created_at must be <= retracted_at"
             logger.warning(

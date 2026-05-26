@@ -51,7 +51,11 @@ class GovernanceMetricExtractor:
         return EvaluationPillar.GOVERNANCE
 
     async def extract(self, context: EvaluationContext) -> ExtractedMetrics:
-        """Read audit / trust / autonomy fields and emit sub-metric scores."""
+        """Read audit / trust / autonomy fields and emit sub-metric scores.
+
+        Returns:
+            Result of type ``ExtractedMetrics``.
+        """
         cfg = context.config.governance
         total_audits = (
             context.audit_allow_count
@@ -120,7 +124,11 @@ class GovernanceMetricExtractor:
 
 
 def _audit_score(ctx: EvaluationContext, total: int) -> float:
-    """Compute audit compliance sub-score with high-risk penalty."""
+    """Compute audit compliance sub-score with high-risk penalty.
+
+    Returns:
+        Result of type ``float``.
+    """
     compliance = ctx.audit_allow_count / total
     high_risk_penalty = ctx.audit_high_risk_count / total
     return min(
@@ -130,7 +138,11 @@ def _audit_score(ctx: EvaluationContext, total: int) -> float:
 
 
 def _trust_score(context: EvaluationContext, trust_level: NotBlankStr) -> float:
-    """Compute trust-level sub-score with demotion penalty."""
+    """Compute trust-level sub-score with demotion penalty.
+
+    Returns:
+        Result of type ``float``.
+    """
     trust_key = str(trust_level).lower()
     base_trust = _TRUST_LEVEL_SCORES.get(trust_key, NEUTRAL_SCORE)
     if trust_key not in _TRUST_LEVEL_SCORES:

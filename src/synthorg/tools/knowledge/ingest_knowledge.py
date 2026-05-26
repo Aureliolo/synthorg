@@ -59,7 +59,15 @@ class IngestKnowledgeTool(BaseTool):
         self._project_id = project_id
 
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
-        """Dispatch an ``ingest_knowledge`` invocation to the service."""
+        """Dispatch an ``ingest_knowledge`` invocation to the service.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
         try:
             parsed = parse_typed("mcp.tool", arguments, IngestKnowledgeArgs)
             source = await self._service.ingest(

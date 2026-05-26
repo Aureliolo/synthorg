@@ -241,6 +241,14 @@ class StragglerGap(BaseModel):
 
     @model_validator(mode="after")
     def _validate_slowest_ge_mean(self) -> Self:
+        """Validate slowest ge mean.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.slowest_duration_seconds < self.mean_duration_seconds:
             msg = (
                 f"slowest_duration_seconds ({self.slowest_duration_seconds}) "

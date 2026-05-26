@@ -26,6 +26,7 @@ import aiodocker
 import structlog.contextvars
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
@@ -236,9 +237,8 @@ class DockerSandbox(
                     created_at=self._clock.now(),
                 ),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SANDBOX_CONTAINER_TRACK_FAILED,
                 container_id=container_id[:12],
@@ -254,9 +254,8 @@ class DockerSandbox(
             return
         try:
             await repo.delete(container_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SANDBOX_CONTAINER_UNTRACK_FAILED,
                 container_id=container_id[:12],
@@ -302,9 +301,8 @@ class DockerSandbox(
             client = aiodocker.Docker()
             try:
                 await client.version()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 await client.close()
                 logger.warning(
                     DOCKER_DAEMON_UNAVAILABLE,
@@ -330,6 +328,9 @@ class DockerSandbox(
         directory so a symlinked project entry cannot resolve to an
         arbitrary host path and mount it into ``/workspace``. Filesystem
         probes run in a worker thread to avoid blocking the event loop.
+
+        Returns:
+            Result of type ``Path``.
 
         Raises:
             SandboxError: ``project_id`` bears path separators, resolves
@@ -429,6 +430,9 @@ class DockerSandbox(
         Both name and patterns are uppercased for case-insensitive
         matching so the denylist catches secrets / loader-injection
         vars regardless of casing.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
         """
         upper = name.upper()
         return any(
@@ -447,6 +451,9 @@ class DockerSandbox(
         secret / loader-injection denylist so a declared dangerous
         variable (e.g. ``LD_PRELOAD``, ``PYTHONPATH``) cannot hijack
         tool execution inside the container.  Dropped keys are logged.
+
+        Returns:
+            Mapping from ``str`` to ``str``.
         """
         screened: dict[str, str] = {}
         dropped: list[str] = []
@@ -553,7 +560,14 @@ class DockerSandbox(
         self,
         env_overrides: Mapping[str, str] | None,
     ) -> list[str]:
-        """Validate env_overrides and return the env list."""
+        """Validate env_overrides and return the env list.
+
+        Returns:
+            List of ``str``.
+
+        Raises:
+            SandboxError: If the related operation fails.
+        """
         if env_overrides:
             conflicting = sorted(
                 set(env_overrides) & _RESERVED_ENV_KEYS,
@@ -581,6 +595,9 @@ class DockerSandbox(
 
         *effective_root* defaults to the workspace root (whole-workspace
         mount) when not supplied.
+
+        Returns:
+            Mapping from ``str`` to ``Any``.
         """
         root = effective_root if effective_root is not None else self._workspace
         bind_path = _to_posix_bind_path(root)
@@ -613,6 +630,9 @@ class DockerSandbox(
 
         Delegates to the ``SandboxRuntimeResolver`` when available,
         otherwise falls back to ``config.runtime``.
+
+        Returns:
+            The matching ``str``, or ``None`` when no match is found.
         """
         if self._runtime_resolver is not None:
             return self._runtime_resolver.resolve_runtime(category)
@@ -624,6 +644,9 @@ class DockerSandbox(
         Enforcement activates when ``allowed_hosts`` is non-empty (or
         ``network_allow_all`` is set) and the default network is not
         ``"none"``.
+
+        Returns:
+            ``True`` when the predicate holds, ``False`` otherwise.
         """
         has_rules = bool(
             self._config.allowed_hosts or self._config.network_allow_all,
@@ -678,6 +701,9 @@ class DockerSandbox(
         ``create_fn`` and emits the per-call lifecycle events).  Degraded
         reuse (a reuse strategy configured but no stable owner) bypasses
         the strategy entirely so no dangling owner entry leaks.
+
+        Returns:
+            Result of type ``ContainerHandle``.
         """
         strategy = self._lifecycle_strategy
         if strategy_owns or not strategy.reuses_container:
@@ -795,6 +821,11 @@ class DockerSandbox(
         docker = await self._ensure_docker()
 
         async def _create() -> ContainerHandle:
+            """Create.
+
+            Returns:
+                Result of type ``ContainerHandle``.
+            """
             return await self._create_keepalive_handle(
                 docker=docker,
                 container_cwd=container_cwd,

@@ -199,6 +199,12 @@ class FineTunePlan(BaseModel):
         surface from accepting Windows paths or ``..`` segments that
         the runner's subprocess / container mount would otherwise
         expose the host filesystem to.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         for field_name in ("source_dir", "output_dir"):
             val = getattr(self, field_name)
@@ -226,6 +232,9 @@ class FineTunePlan(BaseModel):
         round-trip would silently fill any new fields on
         ``FineTuneRequest`` with ``None`` and break the runner's
         invariants.
+
+        Returns:
+            Result of type ``FineTuneRequest``.
         """
         return FineTuneRequest(
             source_dir=self.source_dir,

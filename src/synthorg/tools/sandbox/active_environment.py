@@ -45,7 +45,11 @@ _active: contextvars.ContextVar[ActiveSandboxEnvironment | None] = (
 def active_sandbox_environment(
     environment: ActiveSandboxEnvironment | None,
 ) -> Iterator[None]:
-    """Bind *environment* as the active sandbox environment for the scope."""
+    """Bind *environment* as the active sandbox environment for the scope.
+
+    Yields:
+        Each ``None`` produced by the iterator.
+    """
     token = _active.set(environment)
     try:
         yield
@@ -54,7 +58,11 @@ def active_sandbox_environment(
 
 
 def get_active_sandbox_environment() -> ActiveSandboxEnvironment | None:
-    """Return the active sandbox environment, or ``None`` when unset."""
+    """Return the active sandbox environment, or ``None`` when unset.
+
+    Returns:
+        The matching ``ActiveSandboxEnvironment``, or ``None`` when no match is found.
+    """
     return _active.get()
 
 

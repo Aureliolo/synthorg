@@ -29,7 +29,11 @@ class ResilienceMetricExtractor:
         return EvaluationPillar.RESILIENCE
 
     async def extract(self, context: EvaluationContext) -> ExtractedMetrics:
-        """Read ``context.resilience_metrics`` and emit sub-metric scores."""
+        """Read ``context.resilience_metrics`` and emit sub-metric scores.
+
+        Returns:
+            Result of type ``ExtractedMetrics``.
+        """
         rm = context.resilience_metrics
         if rm is None or rm.total_tasks == 0:
             return ExtractedMetrics(
@@ -72,7 +76,11 @@ def _collect_metrics(
     cfg: ResilienceConfig,
     rm: ResilienceMetrics,
 ) -> tuple[dict[str, float], dict[str, float]]:
-    """Gather enabled resilience sub-metrics with their raw weights."""
+    """Gather enabled resilience sub-metrics with their raw weights.
+
+    Returns:
+        Tuple ``(dict[str, float], dict[str, float])``.
+    """
     scores: dict[str, float] = {}
     weights: dict[str, float] = {}
 

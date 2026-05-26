@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 import structlog.contextvars
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
     DOCKER_CONTAINER_CREATED,
@@ -113,7 +114,13 @@ class DockerSandboxExecMixin:
         def _validate_env(
             self,
             env_overrides: Mapping[str, str] | None,
-        ) -> list[str]: ...
+        ) -> list[str]:
+            """Validate env.
+
+            Returns:
+                List of ``str``.
+            """
+            ...
 
         def _build_container_config(  # noqa: PLR0913
             self,
@@ -127,43 +134,75 @@ class DockerSandboxExecMixin:
             network_mode: str | None = None,
             owner_id: str | None = None,
             image_override: NotBlankStr | None = None,
-        ) -> dict[str, Any]: ...
+        ) -> dict[str, Any]:
+            """Build container config.
 
-        def _needs_sidecar(self) -> bool: ...
+            Returns:
+                Mapping from ``str`` to ``Any``.
+            """
+            ...
+
+        def _needs_sidecar(self) -> bool:
+            """Needs sidecar.
+
+            Returns:
+                ``True`` when the predicate holds, ``False`` otherwise.
+            """
+            ...
 
         async def _create_sidecar(
             self,
             docker: aiodocker.Docker,
-        ) -> str: ...
+        ) -> str:
+            """Create sidecar.
+
+            Returns:
+                Result of type ``str``.
+            """
+            ...
 
         async def _wait_sidecar_healthy(
             self,
             docker: aiodocker.Docker,
             sidecar_id: str,
-        ) -> None: ...
+        ) -> None:
+            """Wait sidecar healthy."""
+            ...
 
         async def _track_container(
             self,
             container_id: str,
             sidecar_id: str | None,
-        ) -> None: ...
+        ) -> None:
+            """Track container."""
+            ...
 
         async def _untrack_container(
             self,
             container_id: str,
-        ) -> None: ...
+        ) -> None:
+            """Untrack container."""
+            ...
 
         async def _remove_container(
             self,
             docker: aiodocker.Docker,
             container_id: str,
-        ) -> bool: ...
+        ) -> bool:
+            """Remove container.
+
+            Returns:
+                ``True`` if the operation succeeds, ``False`` otherwise.
+            """
+            ...
 
         async def _stop_container(
             self,
             docker: aiodocker.Docker,
             container_id: str,
-        ) -> None: ...
+        ) -> None:
+            """Stop container."""
+            ...
 
         @staticmethod
         def _log_execution_outcome(
@@ -172,7 +211,9 @@ class DockerSandboxExecMixin:
             container_id: str,
             returncode: int,
             stderr: str,
-        ) -> None: ...
+        ) -> None:
+            """Log execution outcome."""
+            ...
 
     # ------------------------------------------------------------------
     # Owner-key resolution
@@ -180,16 +221,28 @@ class DockerSandboxExecMixin:
 
     @staticmethod
     def _ephemeral_key() -> str:
-        """A unique per-call owner key (no reuse)."""
+        """A unique per-call owner key (no reuse).
+
+        Returns:
+            Result of type ``str``.
+        """
         return f"per-call:{uuid.uuid4()}"
 
     @staticmethod
     def _valid_owner(key: str) -> bool:
-        """Whether *key* is a safe reuse / Docker-label owner id."""
+        """Whether *key* is a safe reuse / Docker-label owner id.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         return len(key) <= _OWNER_ID_MAX_LEN and _OWNER_ID_RE.match(key) is not None
 
     def _context_owner(self, strategy_kind: str) -> str | None:
-        """Owner id from the structlog correlation context, if any."""
+        """Owner id from the structlog correlation context, if any.
+
+        Returns:
+            The resulting ``str``, or ``None`` when unavailable.
+        """
         ctx = structlog.contextvars.get_contextvars()
         if strategy_kind == STRATEGY_PER_AGENT:
             ctx_key = ctx.get("agent_id")
@@ -201,7 +254,11 @@ class DockerSandboxExecMixin:
 
     @staticmethod
     def _context_project() -> str | None:
-        """Project id from the structlog correlation context, if any."""
+        """Project id from the structlog correlation context, if any.
+
+        Returns:
+            The resulting ``str``, or ``None`` when unavailable.
+        """
         ctx = structlog.contextvars.get_contextvars()
         value = ctx.get("project_id")
         return str(value) if value else None
@@ -225,6 +282,9 @@ class DockerSandboxExecMixin:
         for a run that requires a different image; the new image would
         otherwise be silently ignored. ``None`` (no active environment)
         appends nothing, preserving the prior key shape.
+
+        Returns:
+            Result of type ``str``.
         """
         prefixed = f"{project_id}:{key}" if project_id else key
         if image_override:
@@ -408,6 +468,9 @@ class DockerSandboxExecMixin:
 
         Raises:
             SandboxStartError: If sidecar startup or health-check fails.
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            BaseException: Raised when the relevant invariant fails.
         """
         sidecar_id = await self._create_sidecar(docker)
         await self._track_container(f"_sidecar:{sidecar_id}", None)
@@ -420,6 +483,7 @@ class DockerSandboxExecMixin:
             await self._cleanup_failed_sidecar(docker, sidecar_id)
             raise
         except Exception as exc:
+            reraise_critical(exc)
             await self._cleanup_failed_sidecar(docker, sidecar_id)
             msg = f"Sidecar startup failed: {safe_error_description(exc)}"
             raise SandboxStartError(msg) from exc
@@ -449,9 +513,8 @@ class DockerSandboxExecMixin:
         """
         try:
             container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             if sidecar_id:
                 await self._cleanup_failed_sidecar(docker, sidecar_id)
             error_desc = safe_error_description(exc)
@@ -476,9 +539,8 @@ class DockerSandboxExecMixin:
         container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
         try:
             await container_obj.start()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             sidecar_removed = True
             if sidecar_id:
                 sidecar_removed = await self._remove_container(
@@ -587,6 +649,9 @@ class DockerSandboxExecMixin:
     ) -> Any:
         """Create an exec instance in the running container.
 
+        Returns:
+            Result of type ``Any``.
+
         Raises:
             SandboxStartError: If the exec instance cannot be created.
         """
@@ -602,9 +667,8 @@ class DockerSandboxExecMixin:
                 environment=exec_env,
                 workdir=container_cwd,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             error_desc = safe_error_description(exc)
             logger.warning(
                 DOCKER_EXECUTE_FAILED,
@@ -777,6 +841,7 @@ class DockerSandboxExecMixin:
         try:
             await stream.close()
         except Exception as exc:
+            reraise_critical(exc)
             logger.debug(
                 DOCKER_EXEC_STREAM_CLOSE_FAILED,
                 error_type=type(exc).__name__,
@@ -785,12 +850,15 @@ class DockerSandboxExecMixin:
 
     @staticmethod
     async def _exec_returncode(exec_obj: Any, container_id: str) -> int:
-        """Return the exec exit code, or ``-1`` if it cannot be read."""
+        """Return the exec exit code, or ``-1`` if it cannot be read.
+
+        Returns:
+            Result of type ``int``.
+        """
         try:
             info = await exec_obj.inspect()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DOCKER_EXEC_INSPECT_FAILED,
                 container_id=container_id[:12],
@@ -912,9 +980,8 @@ class DockerSandboxExecMixin:
                     handle.sidecar_id,
                     config=cfg,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     SANDBOX_CONTAINER_LOGS_COLLECT_FAILED,
                     sidecar_id=handle.sidecar_id[:12],
@@ -935,9 +1002,8 @@ class DockerSandboxExecMixin:
                 sidecar_logs=sidecar_logs,
                 execution_time_ms=_ms,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Honour the "never raises ordinary errors" contract: a
             # shipping failure must not propagate into execute()'s
             # finally and skip _teardown_unowned (container leak).

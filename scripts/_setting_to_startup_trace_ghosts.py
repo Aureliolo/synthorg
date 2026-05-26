@@ -21,6 +21,7 @@ that module under the 800-line ceiling. Behaviour is unchanged.
 """
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -636,6 +637,9 @@ def find_factory_gated_ghosts(
 # ── Class-file index (for hardcoded-None matching + Pattern A) ──
 
 
+_TOPLEVEL_CLASS_RE = re.compile(r"(?m)^class\s+\w")
+
+
 def _build_class_index(src_root: Path) -> dict[str, list[Path]]:
     """Build ``{class_name: [file_paths]}`` for every top-level class.
 
@@ -643,12 +647,20 @@ def _build_class_index(src_root: Path) -> dict[str, list[Path]]:
     quadratic cost of resolving each ghost's class file individually.
     Multi-mapping (list of paths) lets the caller refuse to guess
     when a class name is ambiguous.
+
+    Files containing no top-level ``class`` (matched by a fast
+    line-start regex) are skipped without paying the ``ast.parse``
+    cost. Indented ``class`` statements inside functions don't
+    participate in the resolver's "find the class file" lookup
+    anyway, so the regex's top-of-line anchor is a precise filter.
     """
     index: dict[str, list[Path]] = {}
     for path in src_root.rglob("*.py"):
         try:
             text = path.read_text(encoding="utf-8")
         except OSError, UnicodeDecodeError:
+            continue
+        if not _TOPLEVEL_CLASS_RE.search(text):
             continue
         try:
             tree = ast.parse(text, filename=str(path))

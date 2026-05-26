@@ -84,7 +84,14 @@ class FineTuneRequest(BaseModel):
 
     @model_validator(mode="after")
     def _reject_path_traversal(self) -> Self:
-        """Reject parent-directory traversal and Windows paths."""
+        """Reject parent-directory traversal and Windows paths.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         for field_name in ("source_dir", "output_dir"):
             val = getattr(self, field_name)
             if val is None:
@@ -149,7 +156,14 @@ class FineTuneStatus(BaseModel):
 
     @model_validator(mode="after")
     def _validate_stage_invariants(self) -> Self:
-        """Enforce valid (stage, progress, error) combinations."""
+        """Enforce valid (stage, progress, error) combinations.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.stage == FineTuneStage.IDLE:
             if self.progress is not None:
                 msg = "progress must be None when stage is IDLE"
@@ -285,7 +299,14 @@ class FineTuneRun(BaseModel):
 
     @model_validator(mode="after")
     def _validate_run_invariants(self) -> Self:
-        """Enforce stage/error/completed_at consistency."""
+        """Enforce stage/error/completed_at consistency.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         _terminal = frozenset(
             {FineTuneStage.COMPLETE, FineTuneStage.FAILED},
         )
@@ -437,7 +458,14 @@ class FineTuneExecutionConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_docker_requires_image(self) -> Self:
-        """Ensure image is set when backend is docker."""
+        """Ensure image is set when backend is docker.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.backend == "docker" and not self.image:
             msg = "image is required when backend='docker'"
             raise ValueError(msg)

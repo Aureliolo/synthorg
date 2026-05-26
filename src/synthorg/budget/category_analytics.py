@@ -193,7 +193,14 @@ class OrchestrationRatio(BaseModel):
 
     @model_validator(mode="after")
     def _validate_token_consistency(self) -> Self:
-        """Ensure total_tokens >= sum of category tokens."""
+        """Ensure total_tokens >= sum of category tokens.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         category_sum = (
             self.productive_tokens + self.coordination_tokens + self.system_tokens
         )
@@ -213,6 +220,9 @@ def build_category_breakdown(
 
     Records without a ``call_category`` are counted as uncategorized.
     Uses :func:`math.fsum` for accurate floating-point summation.
+
+    Returns:
+        Result of type ``CategoryBreakdown``.
 
     Raises:
         MixedCurrencyAggregationError: If two or more distinct currency
@@ -241,6 +251,11 @@ def build_category_breakdown(
         )
 
     def _round(vals: list[float]) -> float:
+        """Round.
+
+        Returns:
+            Result of type ``float``.
+        """
         return round(math.fsum(vals), BUDGET_ROUNDING_PRECISION)
 
     p = buckets[LLMCallCategory.PRODUCTIVE]
@@ -282,6 +297,9 @@ def compute_orchestration_ratio(
         breakdown: Per-category cost breakdown.
         thresholds: Optional custom alert thresholds.  Defaults to
             ``OrchestrationAlertThresholds()`` (30/50/70%).
+
+    Returns:
+        Result of type ``OrchestrationRatio``.
     """
     if thresholds is None:
         thresholds = OrchestrationAlertThresholds()
@@ -317,7 +335,11 @@ def _ratio_to_alert(
     ratio: float,
     thresholds: OrchestrationAlertThresholds,
 ) -> OrchestrationAlertLevel:
-    """Map a ratio to an alert level using the given thresholds."""
+    """Map a ratio to an alert level using the given thresholds.
+
+    Returns:
+        Result of type ``OrchestrationAlertLevel``.
+    """
     if ratio >= thresholds.critical:
         return OrchestrationAlertLevel.CRITICAL
     if ratio >= thresholds.warn:

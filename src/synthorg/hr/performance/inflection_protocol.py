@@ -44,7 +44,14 @@ class PerformanceInflection(BaseModel):
 
     @model_validator(mode="after")
     def _validate_direction_change(self) -> Self:
-        """Ensure old_direction and new_direction are different."""
+        """Ensure old_direction and new_direction are different.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.old_direction == self.new_direction:
             msg = "old_direction and new_direction must be different"
             raise ValueError(msg)

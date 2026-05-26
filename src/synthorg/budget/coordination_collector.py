@@ -40,6 +40,7 @@ from synthorg.budget.coordination_metrics import (
 )
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.coordination_metrics import (
     COORD_METRICS_ALERT_FIRED,
@@ -192,7 +193,11 @@ class CoordinationMetricsCollector:
         self._clock: Clock = clock or SystemClock()
 
     def _is_enabled(self, metric: CoordinationMetricName) -> bool:
-        """Return True if the metric is in config.collect."""
+        """Return True if the metric is in config.collect.
+
+        Returns:
+            ``True`` when the predicate holds, ``False`` otherwise.
+        """
         return metric in self._config.collect
 
     async def collect(self, inputs: CollectionInputs) -> CoordinationMetrics:
@@ -310,7 +315,11 @@ class CoordinationMetricsCollector:
         agent_durations: tuple[tuple[str, float], ...] | None,
         agent_outputs: tuple[str, ...] | None,
     ) -> CoordinationMetrics:
-        """Compute all enabled metrics for a multi-agent execution."""
+        """Compute all enabled metrics for a multi-agent execution.
+
+        Returns:
+            Result of type ``CoordinationMetrics``.
+        """
         metrics = await self._compute_all_metrics(
             turns=turns,
             error_rate=error_rate,
@@ -345,6 +354,9 @@ class CoordinationMetricsCollector:
         The collectors are awaited in a fixed sequence (``message_overhead``
         consumes the already-computed ``message_density``); the order is
         load-bearing and must not be reshuffled.
+
+        Returns:
+            Result of type ``CoordinationMetrics``.
         """
         efficiency = await self._try_collect_efficiency(turns, error_rate)
         overhead = await self._try_collect_overhead(turns)
@@ -377,7 +389,11 @@ class CoordinationMetricsCollector:
 
     @staticmethod
     def _count_computed(metrics: CoordinationMetrics) -> int:
-        """Number of metrics that were actually computed (non-``None``)."""
+        """Number of metrics that were actually computed (non-``None``).
+
+        Returns:
+            Result of type ``int``.
+        """
         return sum(
             1
             for m in (
@@ -417,9 +433,8 @@ class CoordinationMetricsCollector:
                 metrics=metrics,
             )
             self._metrics_store.record(record)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="record_persist",
@@ -433,7 +448,11 @@ class CoordinationMetricsCollector:
     async def _try_collect_efficiency(
         self, turns_mas: int, error_rate: float
     ) -> CoordinationEfficiency | None:
-        """Collect CoordinationEfficiency (Ec) if enabled and baseline available."""
+        """Collect CoordinationEfficiency (Ec) if enabled and baseline available.
+
+        Returns:
+            The resulting ``CoordinationEfficiency``, or ``None`` when unavailable.
+        """
         if not self._is_enabled(CoordinationMetricName.EFFICIENCY):
             return None
         if self._baseline_store is None:
@@ -453,9 +472,8 @@ class CoordinationMetricsCollector:
                 turns_mas=turns_mas,
                 turns_sas=turns_sas,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="efficiency",
@@ -469,7 +487,11 @@ class CoordinationMetricsCollector:
     async def _try_collect_overhead(
         self, turns_mas: int
     ) -> CoordinationOverhead | None:
-        """Collect CoordinationOverhead (O%) if enabled and baseline available."""
+        """Collect CoordinationOverhead (O%) if enabled and baseline available.
+
+        Returns:
+            The resulting ``CoordinationOverhead``, or ``None`` when unavailable.
+        """
         if not self._is_enabled(CoordinationMetricName.OVERHEAD):
             return None
         if self._baseline_store is None:
@@ -488,9 +510,8 @@ class CoordinationMetricsCollector:
                 turns_mas=turns_mas,
                 turns_sas=turns_sas,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="overhead",
@@ -504,7 +525,11 @@ class CoordinationMetricsCollector:
     async def _try_collect_error_amplification(
         self, error_rate_mas: float
     ) -> ErrorAmplification | None:
-        """Collect ErrorAmplification (Ae) if enabled and baseline available."""
+        """Collect ErrorAmplification (Ae) if enabled and baseline available.
+
+        Returns:
+            The resulting ``ErrorAmplification``, or ``None`` when unavailable.
+        """
         if not self._is_enabled(CoordinationMetricName.ERROR_AMPLIFICATION):
             return None
         if self._baseline_store is None:
@@ -526,9 +551,8 @@ class CoordinationMetricsCollector:
                 error_rate_mas=error_rate_mas,
                 error_rate_sas=error_rate_sas,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="error_amplification",
@@ -542,7 +566,11 @@ class CoordinationMetricsCollector:
     async def _try_collect_message_density(
         self, reasoning_turns: int
     ) -> MessageDensity | None:
-        """Collect MessageDensity (c) if enabled and message bus available."""
+        """Collect MessageDensity (c) if enabled and message bus available.
+
+        Returns:
+            The resulting ``MessageDensity``, or ``None`` when unavailable.
+        """
         if not self._is_enabled(CoordinationMetricName.MESSAGE_DENSITY):
             return None
         if self._message_bus is None:
@@ -567,9 +595,8 @@ class CoordinationMetricsCollector:
                 inter_agent_messages=inter_agent_messages,
                 reasoning_turns=reasoning_turns,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="message_density",
@@ -583,7 +610,11 @@ class CoordinationMetricsCollector:
     async def _try_collect_redundancy(
         self, agent_outputs: tuple[str, ...] | None
     ) -> RedundancyRate | None:
-        """Collect RedundancyRate (R) if enabled and similarity computer available."""
+        """Collect RedundancyRate (R) if enabled and similarity computer available.
+
+        Returns:
+            The resulting ``RedundancyRate``, or ``None`` when unavailable.
+        """
         if not self._is_enabled(CoordinationMetricName.REDUNDANCY):
             return None
         if self._similarity_computer is None:
@@ -602,9 +633,8 @@ class CoordinationMetricsCollector:
                 value=result.value,
                 sample_count=result.sample_count,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="redundancy",
@@ -616,7 +646,11 @@ class CoordinationMetricsCollector:
             return result
 
     async def _try_collect_amdahl(self, team_size: int) -> AmdahlCeiling | None:
-        """Collect AmdahlCeiling if enabled and team_size > 1."""
+        """Collect AmdahlCeiling if enabled and team_size > 1.
+
+        Returns:
+            The resulting ``AmdahlCeiling``, or ``None`` when unavailable.
+        """
         if not self._is_enabled(CoordinationMetricName.AMDAHL_CEILING):
             return None
         if team_size < _MIN_TEAM_SIZE:
@@ -625,9 +659,8 @@ class CoordinationMetricsCollector:
             # Estimate parallelizable fraction from team size: p = (n-1)/n
             p = (team_size - 1) / team_size
             return compute_amdahl_ceiling(parallelizable_fraction=p)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="amdahl_ceiling",
@@ -639,16 +672,19 @@ class CoordinationMetricsCollector:
     async def _try_collect_straggler_gap(
         self, agent_durations: tuple[tuple[str, float], ...] | None
     ) -> StragglerGap | None:
-        """Collect StragglerGap if enabled and agent_durations provided."""
+        """Collect StragglerGap if enabled and agent_durations provided.
+
+        Returns:
+            The resulting ``StragglerGap``, or ``None`` when unavailable.
+        """
         if not self._is_enabled(CoordinationMetricName.STRAGGLER_GAP):
             return None
         if not agent_durations or len(agent_durations) < _MIN_TEAM_SIZE:
             return None
         try:
             return compute_straggler_gap(agent_durations=list(agent_durations))
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="straggler_gap",
@@ -662,7 +698,11 @@ class CoordinationMetricsCollector:
         total_tokens_mas: int,
         agent_durations: tuple[tuple[str, float], ...] | None,
     ) -> TokenSpeedupRatio | None:
-        """Collect TokenSpeedupRatio if enabled and baseline/duration available."""
+        """Collect TokenSpeedupRatio if enabled and baseline/duration available.
+
+        Returns:
+            The resulting ``TokenSpeedupRatio``, or ``None`` when unavailable.
+        """
         if not self._is_enabled(CoordinationMetricName.TOKEN_SPEEDUP_RATIO):
             return None
         if self._baseline_store is None or not agent_durations:
@@ -683,9 +723,8 @@ class CoordinationMetricsCollector:
                 duration_mas=duration_mas,
                 duration_sas=duration_sas,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="token_speedup_ratio",
@@ -699,7 +738,11 @@ class CoordinationMetricsCollector:
         team_size: int,
         message_density: MessageDensity | None,
     ) -> MessageOverhead | None:
-        """Collect MessageOverhead if enabled and message_density was computed."""
+        """Collect MessageOverhead if enabled and message_density was computed.
+
+        Returns:
+            The resulting ``MessageOverhead``, or ``None`` when unavailable.
+        """
         if not self._is_enabled(CoordinationMetricName.MESSAGE_OVERHEAD):
             return None
         if message_density is None:
@@ -709,9 +752,8 @@ class CoordinationMetricsCollector:
                 team_size=team_size,
                 message_count=message_density.inter_agent_messages,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="message_overhead",
@@ -756,6 +798,9 @@ class CoordinationMetricsCollector:
 
         Returns ``None`` when the overhead is below the info threshold
         (no alert is fired in that case).
+
+        Returns:
+            The resulting ``str``, or ``None`` when unavailable.
         """
         thresholds: OrchestrationAlertThresholds = self._config.orchestration_alerts
         if overhead_fraction >= thresholds.critical:
@@ -798,9 +843,8 @@ class CoordinationMetricsCollector:
                     source="budget.coordination_collector",
                 ),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COORD_METRICS_COLLECTION_FAILED,
                 metric="alert_dispatch",

@@ -62,7 +62,11 @@ _CREDENTIAL_RE = re.compile(r"(https?://)[^@/]+@")
 
 
 def _redact_args(args: tuple[str, ...]) -> tuple[str, ...]:
-    """Redact embedded credentials from command args for logging."""
+    """Redact embedded credentials from command args for logging.
+
+    Returns:
+        Tuple of ``str``.
+    """
     return tuple(_CREDENTIAL_RE.sub(r"\1***@", a) for a in args)
 
 
@@ -142,6 +146,9 @@ class SubprocessSandbox:
 
         Uses case-insensitive matching on Windows where env var names
         are case-insensitive.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
         """
         check_name = name.upper() if os.name == "nt" else name
         for pattern in self._config.env_allowlist:
@@ -156,6 +163,9 @@ class SubprocessSandbox:
         Both name and patterns are uppercased for case-insensitive
         matching -- denylist patterns must catch secrets regardless of
         casing.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
         """
         upper = name.upper()
         return any(
@@ -172,6 +182,12 @@ class SubprocessSandbox:
 
         When no entries survive filtering, falls back to known safe
         directories that actually exist on the system.
+
+        Returns:
+            Result of type ``str``.
+
+        Raises:
+            SandboxError: If the related operation fails.
         """
         safe_prefixes = self._get_safe_path_prefixes()
         entries = path_value.split(_PATH_SEP)
@@ -211,6 +227,9 @@ class SubprocessSandbox:
         Rejects null-byte entries, then uses directory-boundary
         matching to prevent prefix spoofing (e.g. ``/usr/bin-malicious``
         does not match ``/usr/bin``).
+
+        Returns:
+            ``True`` when the predicate holds, ``False`` otherwise.
         """
         if "\x00" in entry:
             return False
@@ -231,6 +250,9 @@ class SubprocessSandbox:
         ``SubprocessSandboxConfig`` user configuration.  On Windows,
         ``SYSTEMROOT`` is read from the process environment at call
         time (with a safe default fallback).
+
+        Returns:
+            Tuple of ``str``.
         """
         if os.name == "nt":
             system_root = os.environ.get("SYSTEMROOT", r"C:\WINDOWS")
@@ -252,6 +274,9 @@ class SubprocessSandbox:
         ``Path.is_dir()`` probes the filesystem, so that no
         ``os.environ`` data reaches a filesystem call
         (CodeQL ``py/path-injection``).
+
+        Returns:
+            Tuple of ``str``.
         """
         if os.name == "nt":
             return (
@@ -267,6 +292,9 @@ class SubprocessSandbox:
 
         Combines built-in platform defaults with any extra prefixes
         from ``SubprocessSandboxConfig.extra_safe_path_prefixes``.
+
+        Returns:
+            Tuple of ``str``.
         """
         return self._get_platform_default_dirs() + self._config.extra_safe_path_prefixes
 
@@ -282,6 +310,9 @@ class SubprocessSandbox:
         secret-pattern variable cannot bypass the filter the inherited
         host environment is subject to. Dropped keys are logged; PATH and
         other allowed toolchain vars pass through.
+
+        Returns:
+            Mapping from ``str`` to ``str``.
         """
         screened: dict[str, str] = {}
         dropped: list[str] = []
@@ -404,6 +435,9 @@ class SubprocessSandbox:
         command-spawn failure deep in ``create_subprocess_exec`` (and
         stays diagnosable in parity with the Docker backend).
 
+        Returns:
+            Result of type ``Path``.
+
         Raises:
             SandboxError: ``project_id`` bears path separators, or the
                 project tree does not exist on disk.
@@ -496,6 +530,9 @@ class SubprocessSandbox:
             work_dir: Working directory.
             env: Filtered environment.
 
+        Returns:
+            Result of type ``asyncio.subprocess.Process``.
+
         Raises:
             SandboxStartError: If the subprocess could not be started.
         """
@@ -577,6 +614,9 @@ class SubprocessSandbox:
         process to terminate. If it does not, logs an error and
         returns empty stdout with a diagnostic stderr message that
         reports the actual grace period used.
+
+        Returns:
+            Tuple ``(bytes, bytes)``.
         """
         grace = self._kill_grace_seconds
         try:
@@ -723,7 +763,11 @@ class SubprocessSandbox:
         """No-op -- subprocesses hold no per-owner resources."""
 
     async def health_check(self) -> bool:
-        """Return ``True`` if the workspace directory exists."""
+        """Return ``True`` if the workspace directory exists.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         healthy = self._workspace.is_dir()
         logger.debug(
             SANDBOX_HEALTH_CHECK,
@@ -734,5 +778,9 @@ class SubprocessSandbox:
         return healthy
 
     def get_backend_type(self) -> NotBlankStr:
-        """Return ``'subprocess'``."""
+        """Return ``'subprocess'``.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+        """
         return NotBlankStr("subprocess")

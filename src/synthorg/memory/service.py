@@ -34,6 +34,7 @@ import asyncio
 import json
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
@@ -251,7 +252,15 @@ class MemoryService:
         self._embedder_state_lock = asyncio.Lock()
 
     def _require_checkpoints(self) -> FineTuneCheckpointRepository:
-        """Return the checkpoint repo or raise ``MemoryBackendUnsupportedError``."""
+        """Return the checkpoint repo or raise ``MemoryBackendUnsupportedError``.
+
+        Returns:
+            Result of type ``FineTuneCheckpointRepository``.
+
+        Raises:
+            MemoryBackendUnsupportedError: If the operation is not supported by the
+                active backend.
+        """
         if self._checkpoints is None:
             msg = (
                 "fine-tune checkpoint repository is not wired on the "
@@ -267,7 +276,15 @@ class MemoryService:
         return self._checkpoints
 
     def _require_runs(self) -> FineTuneRunRepository:
-        """Return the run repo or raise ``MemoryBackendUnsupportedError``."""
+        """Return the run repo or raise ``MemoryBackendUnsupportedError``.
+
+        Returns:
+            Result of type ``FineTuneRunRepository``.
+
+        Raises:
+            MemoryBackendUnsupportedError: If the operation is not supported by the
+                active backend.
+        """
         if self._runs is None:
             msg = (
                 "fine-tune run repository is not wired on the active "
@@ -302,6 +319,7 @@ class MemoryService:
 
         Raises:
             MemoryBackendUnsupportedError: When no memory backend is wired.
+            Exception: Raised when the relevant invariant fails.
         """
         if self._memory_backend is None:
             msg = (
@@ -317,9 +335,8 @@ class MemoryService:
             raise MemoryBackendUnsupportedError(msg)
         try:
             deleted = await self._memory_backend.delete(agent_id, memory_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 MEMORY_ENTRY_DELETE_FAILED,
@@ -374,7 +391,11 @@ class MemoryService:
         self,
         checkpoint_id: NotBlankStr,
     ) -> CheckpointRecord | None:
-        """Fetch a single checkpoint by id."""
+        """Fetch a single checkpoint by id.
+
+        Returns:
+            The matching ``CheckpointRecord``, or ``None`` when no match is found.
+        """
         return await self._require_checkpoints().get(checkpoint_id)
 
     async def deploy_checkpoint(
@@ -390,6 +411,9 @@ class MemoryService:
         ``_embedder_state_lock`` so a concurrent
         :meth:`get_active_embedder` cannot observe a partially-updated
         checkpoint / settings pair.
+
+        Returns:
+            Result of type ``CheckpointRecord``.
 
         Raises:
             CheckpointNotFoundError: If the id does not exist.
@@ -446,6 +470,9 @@ class MemoryService:
         Held under ``_embedder_state_lock`` so a concurrent
         :meth:`get_active_embedder` cannot observe a mid-rollback
         settings state.
+
+        Returns:
+            Result of type ``CheckpointRecord``.
 
         Raises:
             CheckpointNotFoundError: If the id does not exist.
@@ -574,32 +601,56 @@ class MemoryService:
         limit: int,
         offset: int,
     ) -> tuple[tuple[FineTuneRun, ...], int]:
-        """Page of fine-tune runs newest-first + total (delegates to admin)."""
+        """Page of fine-tune runs newest-first + total (delegates to admin).
+
+        Returns:
+            Tuple ``(tuple[FineTuneRun, ...], int)``.
+        """
         return await self._ft_admin.list_runs(limit=limit, offset=offset)
 
     # ── Fine-tune lifecycle (delegated) ────────────────────────────
 
     async def start_fine_tune(self, plan: FineTunePlan) -> FineTuneRun:
-        """Start a new fine-tune run from *plan* (delegates to admin)."""
+        """Start a new fine-tune run from *plan* (delegates to admin).
+
+        Returns:
+            Result of type ``FineTuneRun``.
+        """
         return await self._ft_admin.start_fine_tune(plan)
 
     async def resume_fine_tune(self, run_id: NotBlankStr) -> FineTuneRun:
-        """Resume a failed / cancelled run (delegates to admin)."""
+        """Resume a failed / cancelled run (delegates to admin).
+
+        Returns:
+            Result of type ``FineTuneRun``.
+        """
         return await self._ft_admin.resume_fine_tune(run_id)
 
     async def get_fine_tune_status(
         self,
         run_id: NotBlankStr | None = None,
     ) -> FineTuneStatus:
-        """Return the orchestrator status (delegates to admin)."""
+        """Return the orchestrator status (delegates to admin).
+
+        Returns:
+            Result of type ``FineTuneStatus``.
+        """
         return await self._ft_admin.get_fine_tune_status(run_id)
 
     async def cancel_fine_tune(self) -> str | None:
-        """Cancel the active run (delegates to admin)."""
+        """Cancel the active run (delegates to admin).
+
+        Returns:
+            The resulting ``str``, or ``None`` when unavailable.
+        """
         return await self._ft_admin.cancel_fine_tune()
 
     async def run_preflight(self, plan: FineTunePlan) -> PreflightResult:
-        """Validate *plan* against local-env prerequisites (delegates to admin)."""
+        """Validate *plan* against local-env prerequisites (delegates to admin).
+
+        Returns:
+            Result of type ``PreflightResult``.
+        """
         return await self._ft_admin.run_preflight(plan)
 
     async def get_active_embedder(self) -> ActiveEmbedderSnapshot:
@@ -613,6 +664,9 @@ class MemoryService:
         concurrent deploy / rollback cannot interleave between them
         and leave the caller observing ``checkpoint_id`` from one
         state and ``provider`` / ``model`` from another.
+
+        Returns:
+            Result of type ``ActiveEmbedderSnapshot``.
         """
         checkpoints = self._require_checkpoints()
         async with self._embedder_state_lock:
@@ -648,6 +702,13 @@ class MemoryService:
 
         Handlers catch the exception and surface a ``not_supported``
         envelope (see :mod:`synthorg.meta.mcp.handlers.memory`).
+
+        Returns:
+            Result of type ``FineTuneOrchestrator``.
+
+        Raises:
+            MemoryBackendUnsupportedError: If the operation is not supported by the
+                active backend.
         """
         if self._orchestrator is None:
             msg = (
@@ -677,6 +738,9 @@ class MemoryService:
         Rolls back the checkpoint activation + any already-applied
         settings if a subsequent ``set`` call fails, so a failed deploy
         leaves the prior config intact.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
         """
         assert self._settings is not None  # noqa: S101 - guarded by caller
 
@@ -789,6 +853,9 @@ class MemoryService:
           exception (connection / auth / corruption). Rollback leaves
           the key untouched so a transient read error cannot erase a
           pre-existing setting on deploy failure.
+
+        Returns:
+            Tuple ``(str | None, _PriorSettingState)``.
         """
         if self._settings is None:
             return None, "was_unset"
@@ -812,6 +879,7 @@ class MemoryService:
             )
             return None, "was_unset"
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_EMBEDDER_SETTINGS_READ_FAILED,
                 setting=key,
@@ -843,9 +911,8 @@ class MemoryService:
         """
         try:
             await coro
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Emit both the aggregate event (broad dashboards /
             # alerting) AND the step-specific event so alerts can pick
             # up partial-rollback conditions distinctly from the

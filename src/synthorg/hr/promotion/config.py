@@ -86,7 +86,14 @@ class ModelMappingConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_model_map_keys(self) -> Self:
-        """Validate keys and wrap in MappingProxyType for immutability."""
+        """Validate keys and wrap in MappingProxyType for immutability.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         raw_map = self.seniority_model_map
         valid_values = {level.value for level in SeniorityLevel}
         for key in raw_map:

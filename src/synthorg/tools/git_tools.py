@@ -152,6 +152,9 @@ class GitLogTool(_BaseGitTool):
 
         Returns the argument list on success, or an error result if any
         filter value fails the flag-injection check.
+
+        Returns:
+            Result of type ``list[str] | ToolExecutionResult``.
         """
         filter_args: list[str] = []
         for param, flag in (
@@ -337,7 +340,11 @@ class GitBranchTool(_BaseGitTool):
         )
 
     async def _list_branches(self) -> ToolExecutionResult:
-        """List all branches."""
+        """List all branches.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         result = await self._run_git(["branch", "-a"])
         if not result.is_error and not result.content:
             return ToolExecutionResult(content="No branches found")
@@ -348,7 +355,11 @@ class GitBranchTool(_BaseGitTool):
         name: str,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Create a branch, optionally from a start point."""
+        """Create a branch, optionally from a start point.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         args = ["branch", name]
         if start_point := arguments.get("start_point"):
             if err := self._check_git_arg(start_point, param="start_point"):

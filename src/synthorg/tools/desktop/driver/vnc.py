@@ -42,7 +42,11 @@ class VncDesktopDriver:
         return DesktopDriverKind.VNC
 
     def session_config(self) -> DesktopSessionConfig:
-        """Return a VNC-enabled session at the configured geometry."""
+        """Return a VNC-enabled session at the configured geometry.
+
+        Returns:
+            Result of type ``DesktopSessionConfig``.
+        """
         return DesktopSessionConfig(
             display=self._display,
             screen_width=self._screen_width,

@@ -390,7 +390,7 @@ max-complexity = 8
 # DOC201/DOC202/DOC501 still ignored on every top-level package except
 # those already swept. The brace expansion shrinks each docstring wave
 # and Wave 6 deletes the entry entirely.
-"src/synthorg/{a2a,api,approval,backup,budget,client,cli,communication,config,coordination,core,docs_engine,experiments,hr,infrastructure,integrations,knowledge,llm,memory,meta,notifications,observability,ontology,organization,providers,research,security,settings,telemetry,templates,tools,versioning,workers}/**/*.py" = [
+"src/synthorg/{a2a,api,approval,backup,client,cli,communication,config,coordination,core,docs_engine,experiments,infrastructure,integrations,knowledge,llm,meta,notifications,observability,ontology,organization,providers,research,security,settings,telemetry,templates,versioning,workers}/**/*.py" = [
     "DOC201",
     "DOC202",
     "DOC501",

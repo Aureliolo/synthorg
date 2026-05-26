@@ -30,6 +30,7 @@ from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.browser import (
@@ -109,7 +110,11 @@ _BASELINE_LOCKS: Final[dict[tuple[Path, str, str], asyncio.Lock]] = {}
 
 
 def _get_deploy_lock(workspace: Path) -> asyncio.Lock:
-    """Return the workspace-scoped asset-deployment lock."""
+    """Return the workspace-scoped asset-deployment lock.
+
+    Returns:
+        Result of type ``asyncio.Lock``.
+    """
     lock = _DEPLOY_LOCKS.get(workspace)
     if lock is None:
         lock = asyncio.Lock()
@@ -122,7 +127,11 @@ def _get_baseline_lock(
     spec_name: str,
     screenshot_name: str,
 ) -> asyncio.Lock:
-    """Return the per-(spec, screenshot) baseline-adoption lock."""
+    """Return the per-(spec, screenshot) baseline-adoption lock.
+
+    Returns:
+        Result of type ``asyncio.Lock``.
+    """
     key = (workspace, spec_name, screenshot_name)
     lock = _BASELINE_LOCKS.get(key)
     if lock is None:
@@ -170,6 +179,9 @@ class BrowserTool(BaseTool):
                 model defaults (mirroring the module constants) are
                 used; the factory passes a populated value when the
                 ``ConfigResolver`` chain resolves overrides.
+
+        Raises:
+            BrowserDomainError: If the related operation fails.
         """
         super().__init__(
             name="browser",
@@ -201,7 +213,11 @@ class BrowserTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Dispatch on ``mode`` and return a structured result."""
+        """Dispatch on ``mode`` and return a structured result.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         try:
             args = parse_typed("tool.browser", arguments, BrowserToolArgs)
         except PydanticValidationError as exc:
@@ -237,6 +253,7 @@ class BrowserTool(BaseTool):
         try:
             await self._sandbox.release_owner(self._owner_id)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BROWSER_CLOSE_FAILED,
                 owner_id=self._owner_id,
@@ -252,6 +269,14 @@ class BrowserTool(BaseTool):
         self,
         args: BrowserToolArgs,
     ) -> ToolExecutionResult:
+        """Mode navigate.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            BrowserDomainError: If the related operation fails.
+        """
         url = self._resolve_url(args)
         logger.debug(BROWSER_NAVIGATE_START, url=url)
         try:
@@ -276,6 +301,15 @@ class BrowserTool(BaseTool):
         self,
         args: BrowserToolArgs,
     ) -> ToolExecutionResult:
+        """Mode screenshot.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            BrowserArgumentError: If the related operation fails.
+            BrowserDomainError: If the related operation fails.
+        """
         url = self._resolve_url(args)
         if args.screenshot_name is None or args.spec_name is None:
             raise BrowserArgumentError(
@@ -329,6 +363,15 @@ class BrowserTool(BaseTool):
         self,
         args: BrowserToolArgs,
     ) -> ToolExecutionResult:
+        """Mode accessibility scan.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            BrowserDomainError: If the related operation fails.
+            BrowserAccessibilityError: If the related operation fails.
+        """
         url = self._resolve_url(args)
         try:
             payload = await self._run_executor(
@@ -340,6 +383,7 @@ class BrowserTool(BaseTool):
         except BrowserDomainError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BROWSER_EXECUTOR_FAILED,
                 operation="accessibility_scan",
@@ -357,6 +401,14 @@ class BrowserTool(BaseTool):
         self,
         args: BrowserToolArgs,
     ) -> ToolExecutionResult:
+        """Mode diff.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            BrowserArgumentError: If the related operation fails.
+        """
         url = self._resolve_url(args)
         if args.spec_name is None or args.screenshot_name is None:
             raise BrowserArgumentError(
@@ -391,6 +443,15 @@ class BrowserTool(BaseTool):
         self,
         args: BrowserToolArgs,
     ) -> ToolExecutionResult:
+        """Mode spec.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            BrowserArgumentError: If the related operation fails.
+            BrowserDomainError: If the related operation fails.
+        """
         url = self._resolve_url(args)
         if args.spec_name is None or args.screenshot_name is None:
             raise BrowserArgumentError(
@@ -462,6 +523,14 @@ class BrowserTool(BaseTool):
         args: BrowserToolArgs,
         current_path: Path,
     ) -> ScreenshotDiffResult:
+        """Compute diff.
+
+        Returns:
+            Result of type ``ScreenshotDiffResult``.
+
+        Raises:
+            BrowserDiffError: If the related operation fails.
+        """
         assert args.spec_name is not None  # noqa: S101 -- guarded by caller
         assert args.screenshot_name is not None  # noqa: S101 -- guarded by caller
         baseline_path = self._baselines.baseline_path(
@@ -497,6 +566,7 @@ class BrowserTool(BaseTool):
         except BrowserDiffError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BROWSER_DIFF_FAILED,
                 spec=args.spec_name,
@@ -545,6 +615,13 @@ class BrowserTool(BaseTool):
         the full capture→diff window. This method assumes the lock is
         already held so it does not re-acquire (asyncio.Lock is not
         reentrant; re-acquiring would deadlock).
+
+        Returns:
+            Result of type ``ScreenshotDiffResult``.
+
+        Raises:
+            BrowserBaselineNotFoundError: If the requested resource cannot be located.
+            BrowserDiffError: If the related operation fails.
         """
         assert args.spec_name is not None  # noqa: S101 -- guarded by caller
         assert args.screenshot_name is not None  # noqa: S101 -- guarded by caller
@@ -621,7 +698,11 @@ class BrowserTool(BaseTool):
         screenshot_path: str | None,
         axe_container: str,
     ) -> dict[str, Any]:
-        """Assemble the JSON payload sent to the in-container executor."""
+        """Assemble the JSON payload sent to the in-container executor.
+
+        Returns:
+            Mapping from ``str`` to ``Any``.
+        """
         return {
             "operation": operation,
             "url": url,
@@ -645,7 +726,11 @@ class BrowserTool(BaseTool):
         operation: str,
         args: BrowserToolArgs,
     ) -> float:
-        """Outer timeout for sandbox.execute covering inner Playwright budgets."""
+        """Outer timeout for sandbox.execute covering inner Playwright budgets.
+
+        Returns:
+            Result of type ``float``.
+        """
         nav = args.navigation_timeout_seconds or NAVIGATION_TIMEOUT_SECONDS
         budget = self._settings.launch_timeout_seconds + nav
         if operation in {"screenshot", "capture"}:
@@ -662,6 +747,16 @@ class BrowserTool(BaseTool):
         args: BrowserToolArgs,
         screenshot_path: str | None = None,
     ) -> dict[str, Any]:
+        """Run executor.
+
+        Returns:
+            Mapping from ``str`` to ``Any``.
+
+        Raises:
+            BrowserLaunchError: If the related operation fails.
+            _map_executor_error: Raised when the relevant invariant fails.
+            BrowserDomainError: If the related operation fails.
+        """
         executor_container = (
             f"{CONTAINER_WORKSPACE_ROOT}/{_DEPLOY_SUBDIR}/{_EXECUTOR_DEPLOY_NAME}"
         )
@@ -686,6 +781,7 @@ class BrowserTool(BaseTool):
                 owner_id=self._owner_id,
             )
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BROWSER_EXECUTOR_FAILED,
                 operation=operation,
@@ -741,6 +837,11 @@ class BrowserTool(BaseTool):
         return cast("dict[str, Any]", decoded)
 
     async def _run_start_command(self, args: BrowserToolArgs) -> None:
+        """Run start command.
+
+        Raises:
+            BrowserStartCommandError: If the related operation fails.
+        """
         assert args.start_command is not None  # noqa: S101 -- guarded by caller
         logger.debug(
             BROWSER_START_COMMAND_START,
@@ -756,6 +857,7 @@ class BrowserTool(BaseTool):
                 owner_id=self._owner_id,
             )
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BROWSER_START_COMMAND_FAILED,
                 command_present=True,
@@ -791,6 +893,11 @@ class BrowserTool(BaseTool):
         payload: dict[str, Any],
         requested_url: str,
     ) -> NavigationResult:
+        """Build navigation.
+
+        Returns:
+            Result of type ``NavigationResult``.
+        """
         nav_payload = payload.get("navigation") or {}
         return NavigationResult(
             requested_url=requested_url,
@@ -804,6 +911,14 @@ class BrowserTool(BaseTool):
         payload: dict[str, Any],
         host_path: Path,
     ) -> ScreenshotMetadata:
+        """Build screenshot.
+
+        Returns:
+            Result of type ``ScreenshotMetadata``.
+
+        Raises:
+            BrowserScreenshotError: If the related operation fails.
+        """
         ss_payload = payload.get("screenshot") or {}
         if not ss_payload:
             raise BrowserScreenshotError(
@@ -835,6 +950,11 @@ class BrowserTool(BaseTool):
         url: str,
         args: BrowserToolArgs,
     ) -> A11yScanResult:
+        """Build a11y.
+
+        Returns:
+            Result of type ``A11yScanResult``.
+        """
         a11y_payload = payload.get("accessibility") or {}
         if not a11y_payload:
             return A11yScanResult(
@@ -874,6 +994,14 @@ class BrowserTool(BaseTool):
     # ---------------------------------------------------------------
 
     def _resolve_url(self, args: BrowserToolArgs) -> str:
+        """Resolve url.
+
+        Returns:
+            Result of type ``str``.
+
+        Raises:
+            BrowserArgumentError: If the related operation fails.
+        """
         if args.url:
             return args.url
         if args.path:
@@ -887,7 +1015,11 @@ class BrowserTool(BaseTool):
 
     @staticmethod
     def _reject_path_traversal(path: str) -> None:
-        """Reject `..` segments and absolute paths in the workspace-relative path."""
+        """Reject `..` segments and absolute paths in the workspace-relative path.
+
+        Raises:
+            BrowserArgumentError: If the related operation fails.
+        """
         if path.startswith("/"):
             raise BrowserArgumentError(
                 "path must be workspace-relative, not absolute",
@@ -901,10 +1033,16 @@ class BrowserTool(BaseTool):
             )
 
     def _to_container_path(self, host_path: Path) -> str:
+        """To container path.
+
+        Returns:
+            Result of type ``str``.
+        """
         relative = host_path.resolve().relative_to(self._workspace).as_posix()
         return f"{CONTAINER_WORKSPACE_ROOT}/{relative}"
 
     async def _ensure_deployed_assets(self) -> None:
+        """Ensure deployed assets."""
         lock = _get_deploy_lock(self._workspace)
         async with lock:
             target_dir = self._workspace / _DEPLOY_SUBDIR
@@ -929,6 +1067,11 @@ class BrowserTool(BaseTool):
 
     @staticmethod
     def _copy_if_stale(source: Path, target: Path) -> bool:
+        """Copy if stale.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         if not target.exists() or (target.stat().st_mtime < source.stat().st_mtime):
             shutil.copyfile(source, target)
             return True
@@ -941,6 +1084,11 @@ class BrowserTool(BaseTool):
 
 
 def _ok_result(model: BaseModel) -> ToolExecutionResult:
+    """Ok result.
+
+    Returns:
+        Result of type ``ToolExecutionResult``.
+    """
     payload = model.model_dump(mode="json")
     return ToolExecutionResult(
         content=json.dumps(payload),
@@ -953,6 +1101,11 @@ def _error_result(
     error_cls: type[BrowserDomainError],
     exc: Exception,
 ) -> ToolExecutionResult:
+    """Error result.
+
+    Returns:
+        Result of type ``ToolExecutionResult``.
+    """
     msg = safe_error_description(exc)
     return ToolExecutionResult(
         content=msg,
@@ -984,6 +1137,11 @@ def _map_executor_error(
     message: str,
     operation: str,
 ) -> BrowserDomainError:
+    """Map executor error.
+
+    Returns:
+        Result of type ``BrowserDomainError``.
+    """
     cls = _EXECUTOR_ERROR_MAP.get(err_type, BrowserDomainError)
     return cls(
         message,

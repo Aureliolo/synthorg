@@ -10,6 +10,7 @@ import asyncio
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry import StrategyRegistry
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.sandbox import (
@@ -59,6 +60,14 @@ def _build_subprocess_backend(
     # Subprocess backend has no Docker containers to track or reuse;
     # the repo / lifecycle parameters are accepted to keep a uniform
     # registry signature.
+    """Build subprocess backend.
+
+    Returns:
+        Result of type ``SandboxBackend``.
+
+    Raises:
+        Exception: Raised when the relevant invariant fails.
+    """
     del tracked_container_repo, lifecycle_strategy
     try:
         return SubprocessSandbox(
@@ -83,6 +92,14 @@ def _build_docker_backend(
     tracked_container_repo: TrackedContainerRepository | None = None,
     lifecycle_strategy: SandboxLifecycleStrategy | None = None,
 ) -> SandboxBackend:
+    """Build docker backend.
+
+    Returns:
+        Result of type ``SandboxBackend``.
+
+    Raises:
+        Exception: Raised when the relevant invariant fails.
+    """
     try:
         return DockerSandbox(
             config=config.docker,
@@ -274,10 +291,12 @@ async def cleanup_sandbox_backends(
     """
 
     async def _cleanup_one(name: str, backend: SandboxBackend) -> None:
+        """Clean up one backend; broad-except so one failure cannot cancel siblings."""
         logger.debug(SANDBOX_FACTORY_CLEANUP, backend=name)
         try:
             await backend.cleanup()
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SANDBOX_FACTORY_CLEANUP_FAILED,
                 backend=name,

@@ -11,6 +11,7 @@ from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
 from synthorg.communication.async_tasks.models import TaskSpec
 from synthorg.communication.async_tasks.service import AsyncTaskService  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.async_task import (
@@ -58,7 +59,11 @@ class StartAsyncTaskTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Start an async task and return the task ID."""
+        """Start an async task and return the task ID.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         try:
             spec = TaskSpec(
                 title=arguments["title"],
@@ -71,6 +76,7 @@ class StartAsyncTaskTool(BaseTool):
                 task_spec=spec,
             )
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ASYNC_TASK_TOOL_START_FAILED,
                 error_type=type(exc).__name__,
@@ -104,7 +110,11 @@ class CheckAsyncTaskTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Check task status."""
+        """Check task status.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         try:
             status = await self._service.check_async_task(
                 arguments["task_id"],
@@ -144,7 +154,11 @@ class UpdateAsyncTaskTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Update task with new instructions."""
+        """Update task with new instructions.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         try:
             status = await self._service.update_async_task(
                 task_id=arguments["task_id"],
@@ -191,13 +205,18 @@ class CancelAsyncTaskTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Cancel a task."""
+        """Cancel a task.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         try:
             status = await self._service.cancel_async_task(
                 task_id=arguments["task_id"],
                 supervisor_id=self._supervisor_id,
             )
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ASYNC_TASK_TOOL_CANCEL_FAILED,
                 error_type=type(exc).__name__,
@@ -237,7 +256,11 @@ class ListAsyncTasksTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """List async tasks."""
+        """List async tasks.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         task_id = arguments.get(
             "supervisor_task_id",
             self._supervisor_task_id,

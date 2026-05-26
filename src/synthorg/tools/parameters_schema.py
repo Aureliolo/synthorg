@@ -38,6 +38,9 @@ class ToolParametersSchema(RootModel[dict[str, JsonValue]]):
         BaseTool stores the result behind a ``MappingProxyType`` after
         ``deepcopy`` to prevent mutation of internal state; callers
         that need a fresh writable view use this method.
+
+        Returns:
+            Mapping from ``str`` to ``JsonValue``.
         """
         import copy as _copy  # noqa: PLC0415 -- stdlib alias, hot path
 

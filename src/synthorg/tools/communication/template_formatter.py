@@ -10,6 +10,7 @@ from jinja2 import TemplateSyntaxError
 from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
@@ -162,9 +163,8 @@ class TemplateFormatterTool(BaseCommunicationTool):
 
         try:
             rendered = tmpl.render(**variables)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMM_TOOL_TEMPLATE_RENDER_FAILED,
                 error_type=type(exc).__name__,

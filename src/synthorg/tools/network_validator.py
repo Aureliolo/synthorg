@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.collections import dedupe_preserving_order
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import (
@@ -109,7 +110,11 @@ class NetworkPolicy(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _normalize_allowlist(cls, data: Any) -> Any:
-        """Lowercase and deduplicate allowlist entries before construction."""
+        """Lowercase and deduplicate allowlist entries before construction.
+
+        Returns:
+            Result of type ``Any``.
+        """
         if not isinstance(data, dict) or "hostname_allowlist" not in data:
             return data
         raw = data["hostname_allowlist"]
@@ -242,6 +247,9 @@ def _dns_failure(
     the caller has a sanitised exception description (the OSError
     branch of :func:`resolve_dns`); the timeout branch passes neither
     because the cause is the wait, not a backend failure.
+
+    Returns:
+        Result of type ``str``.
     """
     payload: dict[str, object] = {"hostname": hostname, "reason": reason}
     if error_type is not None:
@@ -288,8 +296,7 @@ async def resolve_dns(
             error=safe_error,
         )
     except Exception as exc:
-        if isinstance(exc, MemoryError | RecursionError):
-            raise
+        reraise_critical(exc)
         log_exception_redacted(
             logger,
             WEB_DNS_FAILED,
@@ -372,7 +379,11 @@ def _ok(
     is_https: bool,
     resolved_ips: tuple[str, ...] = (),
 ) -> DnsValidationOk:
-    """Construct a successful validation result."""
+    """Construct a successful validation result.
+
+    Returns:
+        Result of type ``DnsValidationOk``.
+    """
     return DnsValidationOk(
         hostname=hostname,
         port=port,

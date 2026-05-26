@@ -87,6 +87,9 @@ class TrainingPlanService:
         The caller is responsible for constructing the
         :class:`TrainingPlan` (the controller still owns DTO -> model
         translation); this method owns the durable write + audit log.
+
+        Returns:
+            Result of type ``TrainingPlan``.
         """
         await self._plan_repo.save(plan)
         logger.info(
@@ -106,6 +109,9 @@ class TrainingPlanService:
 
         Returns the updated plan so the caller can serialise it onto
         the response without re-fetching.
+
+        Returns:
+            Result of type ``TrainingPlan``.
         """
         updated = plan.model_copy(update=dict(updates))
         await self._plan_repo.save(updated)

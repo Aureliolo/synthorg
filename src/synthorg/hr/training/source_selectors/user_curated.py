@@ -99,6 +99,10 @@ class UserCuratedList:
         self,
         agent_id: NotBlankStr,
     ) -> tuple[NotBlankStr, bool]:
-        """Check whether an agent exists in the registry."""
+        """Check whether an agent exists in the registry.
+
+        Returns:
+            Tuple ``(NotBlankStr, bool)``.
+        """
         identity = await self._registry.get(agent_id)
         return agent_id, identity is not None

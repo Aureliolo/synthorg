@@ -10,6 +10,7 @@ from typing import Any, ClassVar, Final
 
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
@@ -42,21 +43,28 @@ class _TextExtractor(HTMLParser):
         tag: str,
         attrs: list[tuple[str, str | None]],  # noqa: ARG002
     ) -> None:
+        """Handle starttag."""
         if tag in ("script", "style"):
             self._skip_depth += 1
 
     def handle_endtag(self, tag: str) -> None:
+        """Handle endtag."""
         if tag in ("script", "style") and self._skip_depth > 0:
             self._skip_depth -= 1
 
     def handle_data(self, data: str) -> None:
+        """Handle data."""
         if self._skip_depth == 0:
             stripped = data.strip()
             if stripped:
                 self._chunks.append(stripped)
 
     def get_text(self) -> str:
-        """Return extracted text joined by newlines."""
+        """Return extracted text joined by newlines.
+
+        Returns:
+            Result of type ``str``.
+        """
         return "\n".join(self._chunks)
 
 
@@ -70,18 +78,21 @@ class _LinkExtractor(HTMLParser):
         self._current_text_chunks: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """Handle starttag."""
         if tag == "a":
             href = dict(attrs).get("href")
             self._current_href = href or None
             self._current_text_chunks = []
 
     def handle_data(self, data: str) -> None:
+        """Handle data."""
         if self._current_href is not None:
             stripped = data.strip()
             if stripped:
                 self._current_text_chunks.append(stripped)
 
     def handle_endtag(self, tag: str) -> None:
+        """Handle endtag."""
         if tag == "a" and self._current_href is not None:
             text = " ".join(self._current_text_chunks) or self._current_href
             self._links.append((self._current_href, text))
@@ -89,7 +100,11 @@ class _LinkExtractor(HTMLParser):
             self._current_text_chunks = []
 
     def get_links(self) -> list[tuple[str, str]]:
-        """Return extracted (href, text) pairs."""
+        """Return extracted (href, text) pairs.
+
+        Returns:
+            List of ``tuple[str, str]``.
+        """
         return list(self._links)
 
 
@@ -103,6 +118,7 @@ class _MetadataExtractor(HTMLParser):
         self._meta: list[tuple[str, str]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """Handle starttag."""
         if tag == "title":
             self._in_title = True
             self._title_chunks = []
@@ -114,19 +130,29 @@ class _MetadataExtractor(HTMLParser):
                 self._meta.append((name, content))
 
     def handle_data(self, data: str) -> None:
+        """Handle data."""
         if self._in_title:
             self._title_chunks.append(data.strip())
 
     def handle_endtag(self, tag: str) -> None:
+        """Handle endtag."""
         if tag == "title":
             self._in_title = False
 
     def get_title(self) -> str:
-        """Return the page title."""
+        """Return the page title.
+
+        Returns:
+            Result of type ``str``.
+        """
         return " ".join(self._title_chunks)
 
     def get_meta(self) -> list[tuple[str, str]]:
-        """Return extracted (name, content) pairs."""
+        """Return extracted (name, content) pairs.
+
+        Returns:
+            List of ``tuple[str, str]``.
+        """
         return list(self._meta)
 
 
@@ -209,9 +235,8 @@ class HtmlParserTool(BaseWebTool):
                 content = self._extract_links(html_content)
             else:
                 content = self._extract_metadata(html_content)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 WEB_PARSE_FAILED,
                 mode=mode,
@@ -235,7 +260,11 @@ class HtmlParserTool(BaseWebTool):
 
     @staticmethod
     def _extract_text(html: str) -> str:
-        """Extract visible text from HTML."""
+        """Extract visible text from HTML.
+
+        Returns:
+            Result of type ``str``.
+        """
         extractor = _TextExtractor()
         extractor.feed(html)
         extractor.close()
@@ -243,7 +272,11 @@ class HtmlParserTool(BaseWebTool):
 
     @staticmethod
     def _extract_links(html: str) -> str:
-        """Extract links from HTML and format as list."""
+        """Extract links from HTML and format as list.
+
+        Returns:
+            Result of type ``str``.
+        """
         extractor = _LinkExtractor()
         extractor.feed(html)
         extractor.close()
@@ -255,7 +288,11 @@ class HtmlParserTool(BaseWebTool):
 
     @staticmethod
     def _extract_metadata(html: str) -> str:
-        """Extract title and meta tags from HTML."""
+        """Extract title and meta tags from HTML.
+
+        Returns:
+            Result of type ``str``.
+        """
         extractor = _MetadataExtractor()
         extractor.feed(html)
         extractor.close()

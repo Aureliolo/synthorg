@@ -126,7 +126,14 @@ class TrainingGuardDecision(BaseModel):
 
     @model_validator(mode="after")
     def _validate_rejection_reasons_count(self) -> Self:
-        """Ensure rejection_reasons matches rejected_count."""
+        """Ensure rejection_reasons matches rejected_count.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.rejected_count > 0 and not self.rejection_reasons:
             msg = (
                 f"rejection_reasons must be non-empty when "
@@ -235,7 +242,14 @@ class TrainingPlan(BaseModel):
 
     @model_validator(mode="after")
     def _validate_volume_caps(self) -> Self:
-        """Ensure all volume cap values are positive with no duplicate types."""
+        """Ensure all volume cap values are positive with no duplicate types.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         seen: set[ContentType] = set()
         for content_type, cap in self.volume_caps:
             if content_type in seen:
@@ -249,7 +263,14 @@ class TrainingPlan(BaseModel):
 
     @model_validator(mode="after")
     def _validate_content_types_when_active(self) -> Self:
-        """Ensure at least one content type is enabled when not skipping."""
+        """Ensure at least one content type is enabled when not skipping.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if not self.skip_training and not self.enabled_content_types:
             msg = (
                 "At least one content type must be enabled when skip_training is False"
@@ -264,6 +285,12 @@ class TrainingPlan(BaseModel):
         - ``EXECUTED``: ``executed_at`` must be set (terminal success).
         - ``FAILED``: ``executed_at`` must be set (terminal failure).
         - ``PENDING``: ``executed_at`` must be ``None``.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if self.status == TrainingPlanStatus.EXECUTED and self.executed_at is None:
             msg = "executed_at must be set when status is EXECUTED"
@@ -382,7 +409,14 @@ class TrainingResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_timestamps(self) -> Self:
-        """Ensure completed_at >= started_at."""
+        """Ensure completed_at >= started_at.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.completed_at < self.started_at:
             msg = (
                 f"completed_at ({self.completed_at}) must be "
@@ -397,6 +431,12 @@ class TrainingResult(BaseModel):
 
         For every content type represented in any stage, the counts
         must obey ``stored <= after_guards <= after_curation <= extracted``.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         stages = (
             ("extracted", self.items_extracted),

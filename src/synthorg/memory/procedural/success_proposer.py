@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -69,6 +70,9 @@ def _extract_json(text: str) -> dict[str, Any] | None:
 
     Handles plain JSON and markdown-fenced JSON blocks.
     Returns ``None`` on parse failure.
+
+    Returns:
+        The resulting ``dict[str, Any]``, or ``None`` when unavailable.
     """
     stripped = text.strip()
     if not stripped:
@@ -101,6 +105,9 @@ def _build_user_message(execution_result: Any) -> str:
     proposer LLM treats the body as data; the system prompt's
     ``untrusted_content_directive`` gives the model an explicit
     instruction to ignore embedded directives.
+
+    Returns:
+        Result of type ``str``.
     """
     # Collect all unique tools used across all turns
     all_tools = set()
@@ -166,6 +173,9 @@ class SuccessMemoryProposer:
 
         Returns:
             A validated proposal, or ``None`` if skipped.
+
+        Raises:
+            ProviderError: If the related operation fails.
         """
         try:
             messages = [
@@ -186,8 +196,6 @@ class SuccessMemoryProposer:
                     self._config.model,
                     config=self._completion_config,
                 )
-        except MemoryError, RecursionError:
-            raise
         except ProviderError as exc:
             if not exc.is_retryable:
                 raise
@@ -200,6 +208,7 @@ class SuccessMemoryProposer:
             )
             return None
         except Exception as exc:
+            reraise_critical(exc)
             # Drop exc_info + scrub message.
             logger.warning(
                 PROCEDURAL_MEMORY_SKIPPED,
@@ -216,7 +225,11 @@ class SuccessMemoryProposer:
         self,
         content: str | None,
     ) -> ProceduralMemoryProposal | None:
-        """Parse and validate the LLM response into a proposal."""
+        """Parse and validate the LLM response into a proposal.
+
+        Returns:
+            The resulting ``ProceduralMemoryProposal``, or ``None`` when unavailable.
+        """
         if not content or not content.strip():
             logger.debug(
                 PROCEDURAL_MEMORY_SKIPPED,

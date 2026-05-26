@@ -83,6 +83,9 @@ async def resolve_browser_settings(
     must not crash the boot path. On validation failure log a warning
     and return the BrowserSettings defaults so the BrowserTool behaves
     as if no overrides were configured.
+
+    Returns:
+        Result of type ``BrowserSettings``.
     """
     try:
         return BrowserSettings(

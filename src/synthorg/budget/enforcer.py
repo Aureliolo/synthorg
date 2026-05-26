@@ -34,6 +34,7 @@ from synthorg.budget.quota import (
     always_allowed_result,
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import (
     get_logger,
@@ -99,6 +100,9 @@ def _current_trace_ids() -> tuple[str | None, str | None]:
     still emit the warning even when tracing is unconfigured. Both
     ids are returned as hex strings so structured log sinks can route
     them through the existing trace-correlation pipeline.
+
+    Returns:
+        Tuple ``(str | None, str | None)``.
     """
     try:
         from opentelemetry import trace as _otel_trace  # noqa: PLC0415
@@ -204,6 +208,9 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
 
         Returns ``None`` when disabled (``total_monthly <= 0``) or
         when the cost query fails (graceful degradation).
+
+        Returns:
+            The matching ``float``, or ``None`` when no match is found.
         """
         cfg = self._budget_config
         if cfg.total_monthly <= 0:
@@ -213,9 +220,8 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             monthly_cost = await self._cost_tracker.get_total_cost(
                 start=period_start,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, BUDGET_UTILIZATION_ERROR, exc, reason="falling_back_to_none"
             )
@@ -273,9 +279,8 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                 )
         except BudgetExhaustedError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 BUDGET_PREFLIGHT_ERROR,
@@ -404,6 +409,14 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         ``DegradationResult`` when a non-ALERT degradation strategy
         resolves the exhaustion.  Raises ``QuotaExhaustedError`` for
         ALERT or when degradation fails.
+
+        Returns:
+            The resulting ``DegradationResult``, or ``None`` when unavailable.
+
+        Raises:
+            QuotaExhaustedError: If the relevant budget or quota is exhausted.
+            RuntimeError: If the operation fails at runtime.
+            BudgetExhaustedError: If the relevant budget or quota is exhausted.
         """
         quota_result = await self.check_quota(
             provider_name,
@@ -446,9 +459,8 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             )
         except BudgetExhaustedError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Degradation resolution failed for provider {provider_name!r}: {safe_error_description(exc)}"  # noqa: E501
             raise QuotaExhaustedError(
                 msg,
@@ -460,7 +472,11 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         self,
         provider_name: str,
     ) -> DegradationConfig:
-        """Look up degradation config for a provider, defaulting to ALERT."""
+        """Look up degradation config for a provider, defaulting to ALERT.
+
+        Returns:
+            Result of type ``DegradationConfig``.
+        """
         if self._degradation_configs is None:
             return DegradationConfig()
         return self._degradation_configs.get(
@@ -473,7 +489,11 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         cfg: BudgetConfig,
         agent_id: str,
     ) -> None:
-        """Check monthly hard stop and raise if exceeded."""
+        """Check monthly hard stop and raise if exceeded.
+
+        Raises:
+            BudgetExhaustedError: If the relevant budget or quota is exhausted.
+        """
         period_start = billing_period_start(cfg.reset_day)
         monthly_cost = await self._cost_tracker.get_total_cost(
             start=period_start,
@@ -521,7 +541,11 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         cfg: BudgetConfig,
         agent_id: str,
     ) -> None:
-        """Check per-agent daily limit and raise if exceeded."""
+        """Check per-agent daily limit and raise if exceeded.
+
+        Raises:
+            DailyLimitExceededError: If the related operation fails.
+        """
         if cfg.per_agent_daily_limit <= 0:
             return
 
@@ -600,9 +624,8 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                     source="budget.enforcer",
                 ),
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BUDGET_NOTIFICATION_FAILED,
             )
@@ -616,6 +639,9 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         Returns identity unchanged when downgrade is disabled, not
         applicable, or lookup fails.  Returns new ``AgentIdentity``
         with downgraded ``ModelConfig`` otherwise.
+
+        Returns:
+            Result of type ``AgentIdentity``.
         """
         cfg = self._budget_config
         downgrade = cfg.auto_downgrade
@@ -632,9 +658,8 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             monthly_cost = await self._cost_tracker.get_total_cost(
                 start=period_start,
             )
-        except MemoryError, RecursionError:  # builtin MemoryError (OOM)
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 BUDGET_RESOLVE_MODEL_ERROR,
@@ -681,6 +706,9 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             agent_id: Agent identifier.
             project_id: Optional project ID for project budget checks.
             project_budget: Total project budget (0 = disabled).
+
+        Returns:
+            The resulting ``BudgetChecker``, or ``None`` when unavailable.
         """
         cfg = self._budget_config
         task_limit = task.budget_limit
@@ -744,7 +772,11 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         daily_limit: float,
         agent_id: str,
     ) -> tuple[float, float]:
-        """Compute baselines, falling back to ``(0.0, 0.0)`` on error."""
+        """Compute baselines, falling back to ``(0.0, 0.0)`` on error.
+
+        Returns:
+            Tuple ``(float, float)``.
+        """
         try:
             return await self._compute_baselines(
                 cfg,
@@ -752,9 +784,8 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
                 daily_limit,
                 agent_id,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 BUDGET_BASELINE_ERROR,
@@ -771,7 +802,11 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         daily_limit: float,
         agent_id: str,
     ) -> tuple[float, float]:
-        """Compute monthly and daily cost baselines."""
+        """Compute monthly and daily cost baselines.
+
+        Returns:
+            Tuple ``(float, float)``.
+        """
         monthly_baseline = 0.0
         daily_baseline = 0.0
 
@@ -796,15 +831,18 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         *,
         error_event: str = BUDGET_PREFLIGHT_ERROR,
     ) -> float | None:
-        """Query project cost from durable aggregate or in-memory tracker."""
+        """Query project cost from durable aggregate or in-memory tracker.
+
+        Returns:
+            The matching ``float``, or ``None`` when no match is found.
+        """
         if self._project_cost_repo is not None:
             try:
                 aggregate = await self._project_cost_repo.get(
                     project_id,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     error_event,
@@ -827,9 +865,8 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             cost = await self._cost_tracker.get_project_cost(
                 project_id,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 error_event,

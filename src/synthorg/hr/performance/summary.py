@@ -109,6 +109,9 @@ def _primary_trend_direction(
 
     Prefers the ``success_rate`` trend.  Falls back to the first
     trend result, then ``INSUFFICIENT_DATA`` if no trends exist.
+
+    Returns:
+        Result of type ``TrendDirection``.
     """
     for trend in snapshot.trends:
         if trend.metric_name == _SUCCESS_RATE_METRIC:
@@ -119,7 +122,11 @@ def _primary_trend_direction(
 
 
 def _success_rate_to_percent(rate: float | None) -> float | None:
-    """Convert a 0.0-1.0 success rate to a 0.0-100.0 percentage."""
+    """Convert a 0.0-1.0 success rate to a 0.0-100.0 percentage.
+
+    Returns:
+        The resulting ``float``, or ``None`` when unavailable.
+    """
     if rate is None:
         return None
     return round(rate * 100.0, 2)

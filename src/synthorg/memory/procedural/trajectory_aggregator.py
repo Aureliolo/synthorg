@@ -57,7 +57,14 @@ class AggregatedTrajectory(BaseModel):
 
     @model_validator(mode="after")
     def _validate_error_consistency(self) -> Self:
-        """Ensure error_category presence matches outcome."""
+        """Ensure error_category presence matches outcome.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.outcome == "failure" and self.error_category is None:
             msg = "error_category required when outcome is 'failure'"
             raise ValueError(msg)
@@ -102,6 +109,9 @@ def _group_key(trajectory: AggregatedTrajectory) -> str:
 
     Failures group by error_category; successes group by
     tool call sequence.
+
+    Returns:
+        Result of type ``str``.
     """
     if trajectory.outcome == "failure" and trajectory.error_category:
         return f"failure:{trajectory.error_category}"

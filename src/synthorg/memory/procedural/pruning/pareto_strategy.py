@@ -139,7 +139,11 @@ class ParetoPruningStrategy:
         return frontier
 
     def _get_relevance(self, entry: MemoryEntry) -> float:
-        """Get relevance score (0.0 if None)."""
+        """Get relevance score (0.0 if None).
+
+        Returns:
+            Result of type ``float``.
+        """
         return entry.relevance_score or 0.0
 
     def _get_recency_score(
@@ -147,7 +151,11 @@ class ParetoPruningStrategy:
         entry: MemoryEntry,
         all_entries: tuple[MemoryEntry, ...],
     ) -> float:
-        """Compute recency as normalized score (0.0 oldest, 1.0 newest)."""
+        """Compute recency as normalized score (0.0 oldest, 1.0 newest).
+
+        Returns:
+            Result of type ``float``.
+        """
         if not all_entries:
             return 0.0
 

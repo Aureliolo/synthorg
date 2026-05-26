@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Final
 
 import aiodocker
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
@@ -44,12 +45,25 @@ class DockerSandboxLifecycleMixin:
     _lifecycle_strategy: SandboxLifecycleStrategy
 
     async def _ensure_docker(self) -> aiodocker.Docker:  # pragma: no cover
+        """Ensure docker.
+
+        Returns:
+            Result of type ``aiodocker.Docker``.
+
+        Raises:
+            NotImplementedError: If the subclass does not implement this operation.
+        """
         raise NotImplementedError
 
     async def _destroy_handle(
         self,
         handle: ContainerHandle,
     ) -> None:  # pragma: no cover - implemented on the concrete sandbox
+        """Destroy handle.
+
+        Raises:
+            NotImplementedError: If the subclass does not implement this operation.
+        """
         raise NotImplementedError
 
     async def _safe_collect_logs(
@@ -57,10 +71,15 @@ class DockerSandboxLifecycleMixin:
         container_obj: aiodocker.containers.DockerContainer,
         container_id: str,
     ) -> tuple[str, str]:
-        """Collect logs, returning empty strings on failure."""
+        """Collect logs, returning empty strings on failure.
+
+        Returns:
+            Tuple ``(str, str)``.
+        """
         try:
             return await self._collect_logs(container_obj)
         except Exception as exc:
+            reraise_critical(exc)
             # aiodocker exceptions can carry the Docker socket path
             # or registry auth header in str(exc).
             logger.warning(
@@ -138,6 +157,7 @@ class DockerSandboxLifecycleMixin:
                 container_id=container_id[:12],
             )
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DOCKER_CONTAINER_STOP_FAILED,
                 container_id=container_id[:12],
@@ -150,7 +170,11 @@ class DockerSandboxLifecycleMixin:
         docker: aiodocker.Docker,
         container_id: str,
     ) -> bool:
-        """Remove a container, forcing removal if necessary."""
+        """Remove a container, forcing removal if necessary.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         try:
             container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
             await container_obj.delete(force=True)
@@ -159,6 +183,7 @@ class DockerSandboxLifecycleMixin:
                 container_id=container_id[:12],
             )
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DOCKER_CONTAINER_REMOVE_FAILED,
                 container_id=container_id[:12],
@@ -187,9 +212,8 @@ class DockerSandboxLifecycleMixin:
             await self._lifecycle_strategy.cleanup_all(
                 destroy_fn=self._destroy_handle,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DOCKER_CLEANUP,
                 reason="lifecycle_cleanup_all_failed",
@@ -208,6 +232,7 @@ class DockerSandboxLifecycleMixin:
             try:
                 await self._docker.close()
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     DOCKER_CLEANUP,
                     reason="docker_client_close_failed",
@@ -219,11 +244,16 @@ class DockerSandboxLifecycleMixin:
         self._tracked_containers = {}
 
     async def health_check(self) -> bool:
-        """Return ``True`` if the Docker daemon is reachable."""
+        """Return ``True`` if the Docker daemon is reachable.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         try:
             docker = await self._ensure_docker()
             await docker.version()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DOCKER_HEALTH_CHECK,
                 healthy=False,
@@ -239,5 +269,9 @@ class DockerSandboxLifecycleMixin:
             return True
 
     def get_backend_type(self) -> NotBlankStr:
-        """Return ``'docker'``."""
+        """Return ``'docker'``.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+        """
         return NotBlankStr("docker")

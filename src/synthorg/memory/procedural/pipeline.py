@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.loop_protocol import ExecutionResult  # noqa: TC001
@@ -112,7 +113,11 @@ def _format_procedural_content(
 
 
 def _slugify(text: str) -> str:
-    """Convert text to a filesystem-safe slug."""
+    """Convert text to a filesystem-safe slug.
+
+    Returns:
+        Result of type ``str``.
+    """
     return _SLUG_RE.sub("-", text.lower()).strip("-")[:80]
 
 
@@ -181,12 +186,15 @@ async def _try_build_payload(
     agent_id: str,
     task_id: str,
 ) -> FailureAnalysisPayload | None:
-    """Build payload with error handling (never fatal)."""
+    """Build payload with error handling (never fatal).
+
+    Returns:
+        The resulting ``FailureAnalysisPayload``, or ``None`` when unavailable.
+    """
     try:
         payload = _build_payload(execution_result, recovery_result)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PROCEDURAL_MEMORY_ERROR,
             agent_id=agent_id,
@@ -213,7 +221,11 @@ async def _store_and_materialize(
     memory_backend: MemoryBackend,
     config: ProceduralMemoryConfig | None,
 ) -> NotBlankStr | None:
-    """Store procedural memory and optionally materialize SKILL.md."""
+    """Store procedural memory and optionally materialize SKILL.md.
+
+    Returns:
+        The resulting ``NotBlankStr``, or ``None`` when unavailable.
+    """
     content = _format_procedural_content(proposal)
     tags = (NON_INFERABLE_TAG, *proposal.tags)
     request = MemoryStoreRequest(
@@ -227,9 +239,8 @@ async def _store_and_materialize(
     )
     try:
         memory_id = await memory_backend.store(agent_id, request)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PROCEDURAL_MEMORY_STORE_FAILED,
             agent_id=agent_id,
@@ -260,9 +271,8 @@ async def _store_and_materialize(
                 task_id=task_id,
                 path=str(skill_path),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROCEDURAL_MEMORY_SKILL_MD,
                 agent_id=agent_id,
@@ -322,9 +332,8 @@ async def propose_procedural_memory(  # noqa: PLR0913
 
     try:
         proposal = await proposer.propose(payload)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PROCEDURAL_MEMORY_SKIPPED,
             agent_id=agent_id,

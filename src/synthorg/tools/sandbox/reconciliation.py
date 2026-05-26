@@ -32,6 +32,7 @@ without a real Docker daemon.
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
     DOCKER_CONTAINER_REMOVED,
@@ -91,7 +92,11 @@ class DockerClientProtocol(Protocol):
     """
 
     async def list_managed_containers(self) -> Sequence[str]:
-        """List container IDs carrying the ``synthorg.managed`` label."""
+        """List container IDs carrying the ``synthorg.managed`` label.
+
+        Returns:
+            Result of type ``Sequence[str]``.
+        """
         ...
 
     async def stop_container(self, container_id: str) -> None:
@@ -138,6 +143,7 @@ async def reconcile_tracked_containers(
         try:
             await repo.delete(container_id)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DOCKER_CONTAINER_REMOVED,
                 phase="reconcile_db_only_drop",
@@ -152,6 +158,7 @@ async def reconcile_tracked_containers(
         try:
             await docker.stop_container(container_id)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DOCKER_CONTAINER_REMOVED,
                 phase="reconcile_orphan_stop",
@@ -162,6 +169,7 @@ async def reconcile_tracked_containers(
         try:
             await docker.remove_container(container_id)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DOCKER_CONTAINER_REMOVED,
                 phase="reconcile_orphan_remove",

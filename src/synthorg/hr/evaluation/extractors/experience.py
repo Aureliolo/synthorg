@@ -45,7 +45,11 @@ def _avg_rating(
     feedback: tuple[InteractionFeedback, ...],
     field: str,
 ) -> float | None:
-    """Average a feedback rating field, ignoring ``None`` values."""
+    """Average a feedback rating field, ignoring ``None`` values.
+
+    Returns:
+        The resulting ``float``, or ``None`` when unavailable.
+    """
     vals: list[float] = [
         getattr(fb, field) for fb in feedback if getattr(fb, field) is not None
     ]
@@ -65,7 +69,11 @@ class ExperienceMetricExtractor:
         return EvaluationPillar.EXPERIENCE
 
     async def extract(self, context: EvaluationContext) -> ExtractedMetrics:
-        """Read interaction feedback and emit sub-metric scores."""
+        """Read interaction feedback and emit sub-metric scores.
+
+        Returns:
+            Result of type ``ExtractedMetrics``.
+        """
         cfg = context.config.experience
         feedback = context.feedback
 
@@ -131,7 +139,11 @@ def _collect_metrics(
     cfg: ExperienceConfig,
     feedback: tuple[InteractionFeedback, ...],
 ) -> tuple[dict[str, float], dict[str, float]]:
-    """Gather enabled rating sub-metrics with their raw weights."""
+    """Gather enabled rating sub-metrics with their raw weights.
+
+    Returns:
+        Tuple ``(dict[str, float], dict[str, float])``.
+    """
     metric_defs = [
         ("clarity", cfg.clarity_enabled, cfg.clarity_weight),
         ("tone", cfg.tone_enabled, cfg.tone_weight),

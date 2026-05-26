@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
@@ -75,7 +76,11 @@ PromotionNotificationCallback = Callable[
 
 
 def _next_level(level: SeniorityLevel) -> SeniorityLevel | None:
-    """Get the next higher seniority level, or None at top."""
+    """Get the next higher seniority level, or None at top.
+
+    Returns:
+        The resulting ``SeniorityLevel``, or ``None`` when unavailable.
+    """
     members = list(SeniorityLevel)
     idx = members.index(level)
     if idx + 1 >= len(members):
@@ -84,7 +89,11 @@ def _next_level(level: SeniorityLevel) -> SeniorityLevel | None:
 
 
 def _prev_level(level: SeniorityLevel) -> SeniorityLevel | None:
-    """Get the next lower seniority level, or None at bottom."""
+    """Get the next lower seniority level, or None at bottom.
+
+    Returns:
+        The resulting ``SeniorityLevel``, or ``None`` when unavailable.
+    """
     members = list(SeniorityLevel)
     idx = members.index(level)
     if idx <= 0:
@@ -466,7 +475,8 @@ class PromotionService:
                     request.agent_id,
                     snapshot,
                 )
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     PROMOTION_APPLIED,
                     agent_id=request.agent_id,
@@ -496,7 +506,8 @@ class PromotionService:
                     agent_id=request.agent_id,
                     direction=request.direction.value,
                 )
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     PROMOTION_NOTIFICATION_SENT,
                     agent_id=request.agent_id,
@@ -542,6 +553,9 @@ class PromotionService:
         If the request has an approval_id and an approval store is
         configured, verify that the stored approval is actually approved.
         Prevents crafted requests from bypassing human approval gates.
+
+        Raises:
+            PromotionApprovalRequiredError: If the related operation fails.
         """
         if request.approval_id is None or self._approval_store is None:
             return
@@ -567,7 +581,14 @@ class PromotionService:
         evaluation: PromotionEvaluation,
         initiated_by: NotBlankStr,
     ) -> NotBlankStr:
-        """Create an approval item for a promotion requiring human review."""
+        """Create an approval item for a promotion requiring human review.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+
+        Raises:
+            PromotionError: If the related operation fails.
+        """
         # Defense-in-depth: caller already checks, but guard against
         # direct invocation without an approval store.
         if self._approval_store is None:

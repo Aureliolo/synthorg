@@ -92,7 +92,14 @@ class DetectorCategoryConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_variants(self) -> Self:
-        """Ensure variants are non-empty, unique, and scope-compatible."""
+        """Ensure variants are non-empty, unique, and scope-compatible.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if not self.variants:
             msg = "variants must not be empty"
             raise ValueError(msg)
@@ -118,6 +125,9 @@ def _default_detectors() -> dict[ErrorCategory, DetectorCategoryConfig]:
     - Original 4: heuristic variant, SAME_TASK scope
     - Delegation + review: protocol_check variant, TASK_TREE scope
     - Authority breach: behavior_check variant, SAME_TASK scope
+
+    Returns:
+        Mapping from ``ErrorCategory`` to ``DetectorCategoryConfig``.
     """
     return {
         ErrorCategory.LOGICAL_CONTRADICTION: DetectorCategoryConfig(),
@@ -240,7 +250,14 @@ class OrchestrationAlertThresholds(BaseModel):
 
     @model_validator(mode="after")
     def _validate_threshold_ordering(self) -> Self:
-        """Ensure info < warn < critical."""
+        """Ensure info < warn < critical.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if not (self.info < self.warn < self.critical):
             msg = (
                 f"Thresholds must be strictly ordered: "
@@ -294,7 +311,14 @@ class CoordinationMetricsConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_collect(self) -> Self:
-        """Ensure no duplicate metric names in collect."""
+        """Ensure no duplicate metric names in collect.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if len(self.collect) != len(set(self.collect)):
             msg = "collect must not contain duplicates"
             raise ValueError(msg)

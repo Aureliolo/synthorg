@@ -10,6 +10,7 @@ from typing import Any, ClassVar, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.web import (
@@ -132,9 +133,8 @@ class WebSearchTool(BaseWebTool):
 
         try:
             results = await self._provider.search(query, max_results)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 WEB_SEARCH_FAILED,
                 query=query,
@@ -165,9 +165,8 @@ class WebSearchTool(BaseWebTool):
                     if isinstance(item, SearchResult)
                     else SearchResult.model_validate(item, from_attributes=True)
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Drop exc_info + scrub -- the malformed provider
                 # result might still be readable in frame-locals on
                 # the traceback.

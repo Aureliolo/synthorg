@@ -79,7 +79,14 @@ class RetentionConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_categories(self) -> Self:
-        """Ensure each category appears at most once in rules."""
+        """Ensure each category appears at most once in rules.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         categories = [rule.category for rule in self.rules]
         if len(categories) != len(set(categories)):
             seen: set[MemoryCategory] = set()
@@ -158,7 +165,14 @@ class DualModeConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_model_when_enabled(self) -> Self:
-        """Require a summarization model when dual-mode is enabled."""
+        """Require a summarization model when dual-mode is enabled.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.enabled and self.summarization_model is None:
             msg = "summarization_model must be non-blank when dual-mode is enabled"
             logger.warning(
@@ -303,7 +317,14 @@ class WikiExportConfig(BaseModel):
 
     @model_validator(mode="after")
     def _reject_traversal(self) -> Self:
-        """Reject parent-directory traversal in export_root."""
+        """Reject parent-directory traversal in export_root.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         parts = (
             PureWindowsPath(self.export_root).parts
             + PurePosixPath(self.export_root).parts
@@ -384,6 +405,11 @@ class ConsolidationConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Apply mirrors.
+
+        Returns:
+            Result of type ``Any``.
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
 
@@ -475,7 +501,14 @@ class LLMConsolidationConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_entry_vs_total_chars(self) -> Self:
-        """Ensure per-entry cap does not exceed total prompt cap."""
+        """Ensure per-entry cap does not exceed total prompt cap.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.max_entry_input_chars > self.max_total_user_content_chars:
             msg = (
                 f"max_entry_input_chars ({self.max_entry_input_chars}) "

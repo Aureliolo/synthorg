@@ -13,6 +13,7 @@ from types import MappingProxyType
 from uuid import uuid4
 
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.memory.procedural.evolver_config import EvolverConfig  # noqa: TC001
 from synthorg.memory.procedural.evolver_report import EvolverReport
@@ -108,6 +109,9 @@ class AutonomousSkillEvolver:
 
         Returns:
             Report summarizing the cycle results.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
         """
         now = datetime.now(UTC)
         cycle_id = str(uuid4())
@@ -136,9 +140,8 @@ class AutonomousSkillEvolver:
                 now=now,
                 trajectories=trajectories,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.error(
                 SKILL_EVOLVER_CYCLE_FAILED,
                 cycle_id=cycle_id,
@@ -153,7 +156,11 @@ class AutonomousSkillEvolver:
         now: datetime,
         trajectories: tuple[AggregatedTrajectory, ...],
     ) -> EvolverReport:
-        """Internal cycle logic."""
+        """Internal cycle logic.
+
+        Returns:
+            Result of type ``EvolverReport``.
+        """
         patterns = self._aggregator.aggregate(trajectories)
         proposals, conflicts, supersessions, skipped = self._collect_proposals(
             patterns, cycle_id
@@ -180,7 +187,12 @@ class AutonomousSkillEvolver:
         list[SupersessionResult],
         int,
     ]:
-        """Evaluate patterns and build approval proposals."""
+        """Evaluate patterns and build approval proposals.
+
+        Returns:
+            Tuple ``(list[ApprovalItem], list[SupersessionResult],
+            list[SupersessionResult], int)``.
+        """
         proposals: list[ApprovalItem] = []
         conflicts: list[SupersessionResult] = []
         supersessions: list[SupersessionResult] = []
@@ -249,7 +261,11 @@ class AutonomousSkillEvolver:
         supersessions: list[SupersessionResult],
         skipped_low_confidence: int,
     ) -> EvolverReport:
-        """Build the cycle report and log completion."""
+        """Build the cycle report and log completion.
+
+        Returns:
+            Result of type ``EvolverReport``.
+        """
         report = EvolverReport(
             cycle_id=cycle_id,
             window_start=now - window,
@@ -275,7 +291,11 @@ class AutonomousSkillEvolver:
         self,
         pattern: TrajectoryPattern,
     ) -> ProceduralMemoryProposal:
-        """Build a proposal from an identified pattern."""
+        """Build a proposal from an identified pattern.
+
+        Returns:
+            Result of type ``ProceduralMemoryProposal``.
+        """
         return ProceduralMemoryProposal(
             discovery=f"Cross-agent pattern: {pattern.description[:550]}",
             condition=(
@@ -302,7 +322,11 @@ class AutonomousSkillEvolver:
         pattern: TrajectoryPattern,
         cycle_id: str,
     ) -> ApprovalItem:
-        """Build an ApprovalItem for human review."""
+        """Build an ApprovalItem for human review.
+
+        Returns:
+            Result of type ``ApprovalItem``.
+        """
         return ApprovalItem(
             id=f"evolver-{cycle_id}-{uuid4().hex[:8]}",
             action_type="skill_evolver:org_promotion",

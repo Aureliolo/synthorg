@@ -100,7 +100,14 @@ class AssetManagerArgs(BaseModel):
 
     @model_validator(mode="after")
     def _validate_asset_id_required(self) -> Self:
-        """Reject ``get`` / ``delete`` without ``asset_id``."""
+        """Reject ``get`` / ``delete`` without ``asset_id``.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.action in {"get", "delete"} and self.asset_id is None:
             msg = f"asset_id is required when action={self.action!r} (get / delete)"
             raise ValueError(msg)

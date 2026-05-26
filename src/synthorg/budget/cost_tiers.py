@@ -76,6 +76,12 @@ class CostTierDefinition(BaseModel):
         A zero-width range (min == max) with a finite max can never
         match any cost because classification uses ``[min, max)``
         semantics.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if self.price_range_max is not None:
             if self.price_range_max < self.price_range_min:
@@ -116,7 +122,14 @@ class CostTiersConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_ids(self) -> Self:
-        """Ensure tier IDs are unique within user-defined tiers."""
+        """Ensure tier IDs are unique within user-defined tiers.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         seen: set[str] = set()
         dupes: set[str] = set()
         for t in self.tiers:

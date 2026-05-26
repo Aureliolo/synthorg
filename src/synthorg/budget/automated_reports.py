@@ -23,6 +23,7 @@ from synthorg.budget.report_templates import (
     RiskTrendsReport,
     TaskCompletionReport,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.hr.performance.models import TaskMetricRecord  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.reporting import (
@@ -87,7 +88,11 @@ class AutomatedReportService:
         end: datetime,
         top_n: int = _DEFAULT_TOP_N,
     ) -> SpendingReport:
-        """Generate a spending report. Delegates to ``ReportGenerator``."""
+        """Generate a spending report. Delegates to ``ReportGenerator``.
+
+        Returns:
+            Result of type ``SpendingReport``.
+        """
         return await self._report_generator.generate_report(
             start=start,
             end=end,
@@ -103,6 +108,9 @@ class AutomatedReportService:
         """Generate a performance metrics report.
 
         Returns an empty report when no performance tracker is available.
+
+        Returns:
+            Result of type ``PerformanceMetricsReport``.
         """
         now = datetime.now(UTC)
         if self._performance_tracker is None:
@@ -143,6 +151,9 @@ class AutomatedReportService:
         accurate success/failure counts. Falls back to a cost-record
         heuristic where each unique task_id is counted as assigned
         and completed.
+
+        Returns:
+            Result of type ``TaskCompletionReport``.
         """
         now = datetime.now(UTC)
         if self._performance_tracker is not None:
@@ -179,6 +190,9 @@ class AutomatedReportService:
         """Generate a risk trends report.
 
         Returns an empty report when no risk tracker is available.
+
+        Returns:
+            Result of type ``RiskTrendsReport``.
         """
         now = datetime.now(UTC)
         if self._risk_tracker is None:
@@ -202,6 +216,12 @@ class AutomatedReportService:
             period: The report period (daily/weekly/monthly).
             reference_time: Reference time for period computation.
                 Defaults to current UTC time.
+
+        Returns:
+            Result of type ``ComprehensiveReport``.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
         """
         ref = reference_time or datetime.now(UTC)
 
@@ -233,9 +253,8 @@ class AutomatedReportService:
             performance = pf.result()
             task_completion = tc.result()
             risk_trends = rt.result()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 REPORTING_GENERATION_FAILED,
                 period=period.value,
@@ -310,20 +329,32 @@ def compute_period_range(
 
 
 def _daily_range(ref: datetime) -> tuple[datetime, datetime]:
-    """Previous day: 00:00 UTC to 00:00 UTC."""
+    """Previous day: 00:00 UTC to 00:00 UTC.
+
+    Returns:
+        Tuple ``(datetime, datetime)``.
+    """
     today = ref.replace(hour=0, minute=0, second=0, microsecond=0)
     return today - timedelta(days=1), today
 
 
 def _weekly_range(ref: datetime) -> tuple[datetime, datetime]:
-    """Previous week: Monday 00:00 UTC to Monday 00:00 UTC."""
+    """Previous week: Monday 00:00 UTC to Monday 00:00 UTC.
+
+    Returns:
+        Tuple ``(datetime, datetime)``.
+    """
     today = ref.replace(hour=0, minute=0, second=0, microsecond=0)
     current_monday = today - timedelta(days=today.weekday())
     return current_monday - timedelta(weeks=1), current_monday
 
 
 def _monthly_range(ref: datetime) -> tuple[datetime, datetime]:
-    """Previous month: 1st 00:00 UTC to 1st 00:00 UTC."""
+    """Previous month: 1st 00:00 UTC to 1st 00:00 UTC.
+
+    Returns:
+        Tuple ``(datetime, datetime)``.
+    """
     first_of_month = ref.replace(
         day=1,
         hour=0,
@@ -352,7 +383,11 @@ def _build_performance_report(
     risk_records: tuple[RiskRecord, ...],
     now: datetime,
 ) -> PerformanceMetricsReport:
-    """Build performance report from pre-fetched data."""
+    """Build performance report from pre-fetched data.
+
+    Returns:
+        Result of type ``PerformanceMetricsReport``.
+    """
     # Group metrics by agent.
     by_agent: dict[str, list[TaskMetricRecord]] = defaultdict(list)
     for m in metrics:
@@ -402,7 +437,11 @@ def _build_agent_snapshot(
     agent_cost: float,
     agent_risk_values: list[float],
 ) -> AgentPerformanceSummary:
-    """Build a single agent's performance summary."""
+    """Build a single agent's performance summary.
+
+    Returns:
+        Result of type ``AgentPerformanceSummary``.
+    """
     completed = sum(1 for m in metrics if m.is_success)
     scores = [m.quality_score for m in metrics]
     valid = [s for s in scores if s is not None]
@@ -421,7 +460,11 @@ def _build_risk_trends_report(
     records: tuple[RiskRecord, ...],
     now: datetime,
 ) -> RiskTrendsReport:
-    """Build risk trends from pre-fetched records."""
+    """Build risk trends from pre-fetched records.
+
+    Returns:
+        Result of type ``RiskTrendsReport``.
+    """
     total_risk = math.fsum(r.risk_units for r in records)
 
     # Per-agent aggregation using fsum.

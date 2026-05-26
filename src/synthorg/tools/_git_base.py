@@ -104,7 +104,11 @@ _MAX_STDERR_FRAGMENT: Final[int] = 500
 
 
 def _sanitize_command(args: list[str]) -> list[str]:
-    """Redact embedded credentials from git command args for logging."""
+    """Redact embedded credentials from git command args for logging.
+
+    Returns:
+        List of ``str``.
+    """
     return [_CREDENTIAL_RE.sub(r"\1***@", a) for a in args]
 
 
@@ -115,6 +119,9 @@ def _sanitize_stderr(raw: str) -> str:
     returns) are collapsed into single spaces to prevent log injection
     and LLM prompt injection via stderr content.  Embedded credentials
     (``https://user:token@host``) are redacted before truncation.
+
+    Returns:
+        Result of type ``str``.
     """
     sanitized = _CONTROL_CHAR_RE.sub(" ", raw).strip()
     return _CREDENTIAL_RE.sub(r"\1***@", sanitized)[:_MAX_STDERR_FRAGMENT]
@@ -281,6 +288,9 @@ class _BaseGitTool(BaseTool, ABC):
         (so the tool uses *cwd*-based repo detection), and removes
         obvious secret env vars as defense-in-depth.  For full
         environment filtering, use a ``SandboxBackend``.
+
+        Returns:
+            Mapping from ``str`` to ``str``.
         """
         env = {**os.environ, **_GIT_HARDENING_OVERRIDES}
         for key in _GIT_DISCOVERY_VARS:
@@ -297,6 +307,9 @@ class _BaseGitTool(BaseTool, ABC):
 
         Used by the sandbox code path -- the sandbox handles base env
         filtering, and these overrides are applied on top.
+
+        Returns:
+            Mapping from ``str`` to ``str``.
         """
         return dict(_GIT_HARDENING_OVERRIDES)
 
@@ -549,7 +562,14 @@ class _BaseGitTool(BaseTool, ABC):
         work_dir: Path,
         deadline: float,
     ) -> ToolExecutionResult:
-        """Execute git through the sandbox backend."""
+        """Execute git through the sandbox backend.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            RuntimeError: If the operation fails at runtime.
+        """
         if self._sandbox is None:  # pragma: no cover -- guarded by caller
             msg = "_run_git_sandboxed called without sandbox"
             raise RuntimeError(msg)
@@ -588,7 +608,11 @@ class _BaseGitTool(BaseTool, ABC):
         work_dir: Path,
         deadline: float,
     ) -> ToolExecutionResult:
-        """Execute git via direct subprocess (no sandbox)."""
+        """Execute git via direct subprocess (no sandbox).
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         env = self._build_git_env()
 
         proc_or_err = await self._start_git_process(

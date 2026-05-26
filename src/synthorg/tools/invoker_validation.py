@@ -15,6 +15,7 @@ from pydantic import ValidationError as PydanticValidationError
 from referencing import Registry as JsonSchemaRegistry
 from referencing.exceptions import NoSuchResource
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -39,7 +40,11 @@ logger = get_logger(__name__)
 
 
 def _no_remote_retrieve(uri: str) -> Never:
-    """Block remote ``$ref`` resolution to prevent SSRF."""
+    """Block remote ``$ref`` resolution to prevent SSRF.
+
+    Raises:
+        NoSuchResource: Raised when the relevant invariant fails.
+    """
     raise NoSuchResource(uri)
 
 
@@ -49,7 +54,11 @@ SAFE_REGISTRY: JsonSchemaRegistry = JsonSchemaRegistry(  # type: ignore[call-arg
 
 
 def _format_pydantic_error(err: object) -> str:
-    """Render a single Pydantic ``errors()`` entry as ``loc: msg``."""
+    """Render a single Pydantic ``errors()`` entry as ``loc: msg``.
+
+    Returns:
+        Result of type ``str``.
+    """
     if not isinstance(err, dict):
         return "<arguments>: invalid"
     loc_raw = err.get("loc", ())
@@ -101,6 +110,13 @@ class ToolInvokerValidationMixin:
         so coercions / defaults / ``AfterValidator`` results propagate
         to the tool body (per the typed-args contract); returns a
         ``ToolResult`` on failure.
+
+        Returns:
+            Result of type ``ToolResult | dict[str, object]``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         try:
             validated = args_model.model_validate(dict(tool_call.arguments))
@@ -130,6 +146,7 @@ class ToolInvokerValidationMixin:
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             return self._unexpected_validation_result(
                 tool_call, safe_error_description(exc) or type(exc).__name__
             )
@@ -139,7 +156,15 @@ class ToolInvokerValidationMixin:
         tool: BaseTool,
         tool_call: ToolCall,
     ) -> ToolResult | None:
-        """Validate ``tool_call.arguments`` against the legacy JSON Schema."""
+        """Validate ``tool_call.arguments`` against the legacy JSON Schema.
+
+        Returns:
+            The resulting ``ToolResult``, or ``None`` when unavailable.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
         schema = tool.parameters_schema
         if schema is None:
             return None
@@ -163,6 +188,7 @@ class ToolInvokerValidationMixin:
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             return self._unexpected_validation_result(
                 tool_call, safe_error_description(exc) or type(exc).__name__
             )
@@ -173,7 +199,11 @@ class ToolInvokerValidationMixin:
         tool_call: ToolCall,
         error_msg: str,
     ) -> ToolResult:
-        """Build an error result for an invalid tool schema."""
+        """Build an error result for an invalid tool schema.
+
+        Returns:
+            Result of type ``ToolResult``.
+        """
         logger.error(
             TOOL_INVOKE_SCHEMA_ERROR,
             tool_call_id=tool_call.id,
@@ -193,7 +223,11 @@ class ToolInvokerValidationMixin:
         tool_call: ToolCall,
         error_msg: str,
     ) -> ToolResult:
-        """Build an error result for failed parameter validation."""
+        """Build an error result for failed parameter validation.
+
+        Returns:
+            Result of type ``ToolResult``.
+        """
         logger.warning(
             TOOL_INVOKE_PARAMETER_ERROR,
             tool_call_id=tool_call.id,
@@ -215,7 +249,11 @@ class ToolInvokerValidationMixin:
         tool_call: ToolCall,
         error_msg: str,
     ) -> ToolResult:
-        """Build an error result for unexpected validation failures."""
+        """Build an error result for unexpected validation failures.
+
+        Returns:
+            Result of type ``ToolResult``.
+        """
         logger.warning(
             TOOL_INVOKE_VALIDATION_UNEXPECTED,
             tool_call_id=tool_call.id,
@@ -238,6 +276,13 @@ class ToolInvokerValidationMixin:
 
         Returns the copied dict on success, or a ``ToolResult`` on
         failure.  Non-recoverable errors propagate after logging.
+
+        Returns:
+            Result of type ``dict[str, object] | ToolResult``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         try:
             return copy.deepcopy(tool_call.arguments)
@@ -251,6 +296,7 @@ class ToolInvokerValidationMixin:
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             error_msg = safe_error_description(exc) or type(exc).__name__
             logger.warning(
                 TOOL_INVOKE_DEEPCOPY_ERROR,

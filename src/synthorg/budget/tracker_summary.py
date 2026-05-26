@@ -29,6 +29,7 @@ from synthorg.budget.spending_summary import (
     SpendingSummary,
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_CATEGORY_BREAKDOWN_QUERIED,
@@ -63,6 +64,12 @@ class CostTrackerSummaryMixin:
 
         Overridden by the concrete class; declared here only to satisfy
         mypy's attribute check against the mixin.
+
+        Returns:
+            Tuple of ``CostRecord``.
+
+        Raises:
+            NotImplementedError: If the subclass does not implement this operation.
         """
         raise NotImplementedError
 
@@ -80,6 +87,9 @@ class CostTrackerSummaryMixin:
         :meth:`build_summary_from_records` directly with the pre-fetched
         records to avoid a second tracker read that could race against
         a concurrent ``record()``.
+
+        Returns:
+            Result of type ``SpendingSummary``.
         """
         self._log_retention_window(start)
         snapshot = await self._snapshot()
@@ -106,6 +116,9 @@ class CostTrackerSummaryMixin:
         that hands the tracker's live backing list cannot let
         ``_filter_records`` and the downstream aggregations observe
         concurrent ``record()`` appends mid-build.
+
+        Returns:
+            Result of type ``SpendingSummary``.
         """
         from synthorg.budget._tracker_helpers import (  # noqa: PLC0415
             _aggregate,
@@ -174,7 +187,11 @@ class CostTrackerSummaryMixin:
         start: datetime | None = None,
         end: datetime | None = None,
     ) -> CategoryBreakdown:
-        """Build a per-category cost breakdown."""
+        """Build a per-category cost breakdown.
+
+        Returns:
+            Result of type ``CategoryBreakdown``.
+        """
         from synthorg.budget._tracker_helpers import (  # noqa: PLC0415
             _filter_records,
             _validate_time_range,
@@ -207,7 +224,11 @@ class CostTrackerSummaryMixin:
         end: datetime | None = None,
         thresholds: OrchestrationAlertThresholds | None = None,
     ) -> OrchestrationRatio:
-        """Compute the orchestration overhead ratio."""
+        """Compute the orchestration overhead ratio.
+
+        Returns:
+            Result of type ``OrchestrationRatio``.
+        """
         breakdown = await self.get_category_breakdown(
             agent_id=agent_id,
             task_id=task_id,
@@ -239,7 +260,11 @@ class CostTrackerSummaryMixin:
         self,
         agent_spendings: list[AgentSpending],
     ) -> list[DepartmentSpending]:
-        """Aggregate per-department spending from agent spendings."""
+        """Aggregate per-department spending from agent spendings.
+
+        Returns:
+            List of ``DepartmentSpending``.
+        """
         dept_map: dict[str, list[AgentSpending]] = defaultdict(list)
         for agent_spend in agent_spendings:
             dept = self._resolve_department(agent_spend.agent_id)
@@ -271,7 +296,11 @@ class CostTrackerSummaryMixin:
         self,
         total_cost: float,
     ) -> tuple[float, float, BudgetAlertLevel]:
-        """Compute budget monthly, used percentage, and alert level."""
+        """Compute budget monthly, used percentage, and alert level.
+
+        Returns:
+            Tuple ``(float, float, BudgetAlertLevel)``.
+        """
         budget_monthly = (
             self._budget_config.total_monthly if self._budget_config else 0.0
         )
@@ -287,7 +316,11 @@ class CostTrackerSummaryMixin:
         return budget_monthly, used_pct, alert
 
     def _compute_alert_level(self, used_pct: float) -> BudgetAlertLevel:
-        """Determine alert level from the rounded budget percentage."""
+        """Determine alert level from the rounded budget percentage.
+
+        Returns:
+            Result of type ``BudgetAlertLevel``.
+        """
         if self._budget_config is None or self._budget_config.total_monthly <= 0:
             return BudgetAlertLevel.NORMAL
 
@@ -302,14 +335,17 @@ class CostTrackerSummaryMixin:
         return BudgetAlertLevel.NORMAL
 
     def _resolve_department(self, agent_id: str) -> str | None:
-        """Resolve agent to department, logging resolver errors."""
+        """Resolve agent to department, logging resolver errors.
+
+        Returns:
+            The matching ``str``, or ``None`` when no match is found.
+        """
         if self._department_resolver is None:
             return None
         try:
             return self._department_resolver(agent_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BUDGET_DEPARTMENT_RESOLVE_FAILED,
                 agent_id=agent_id,

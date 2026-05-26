@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.budget.quota import QuotaSnapshot, QuotaWindow
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.quota import (
     QUOTA_ALERT_COOLDOWN_ACTIVE,
@@ -117,9 +118,8 @@ class QuotaPoller:
         logger.debug(QUOTA_POLL_STARTED)
         try:
             snapshots = await self._tracker.get_all_snapshots()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(logger, QUOTA_POLL_FAILED, exc)
             return
 
@@ -132,16 +132,19 @@ class QuotaPoller:
     # ── Private helpers ──────────────────────────────────────────────
 
     async def _poll_loop(self) -> None:
-        """Background task: poll repeatedly until cancelled."""
+        """Background task: poll repeatedly until cancelled.
+
+        Raises:
+            CancelledError: If the related operation fails.
+        """
         # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
             try:
                 await self.poll_once()
             except asyncio.CancelledError:
                 raise
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(logger, QUOTA_POLL_FAILED, exc)
             await self._clock.sleep(self._config.poll_interval_seconds)
 
@@ -191,9 +194,8 @@ class QuotaPoller:
                     level=level,
                     usage_pct=usage_pct,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger, QUOTA_POLL_FAILED, exc, reason="quota_alert_dispatch_failed"
                 )

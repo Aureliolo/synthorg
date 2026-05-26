@@ -34,6 +34,9 @@ def _median(values: list[float]) -> float:
 
     Caller must sort the list before calling this function.
     Returns 0.0 for an empty list (sentinel for no-slope cases).
+
+    Returns:
+        Result of type ``float``.
     """
     n = len(values)
     if n == 0:

@@ -10,5 +10,8 @@ def _is_error_response(text: str) -> bool:
     prefixed with :data:`ERROR_PREFIX` (the single source of truth), so
     a direct ``startswith`` check is both sufficient and cheaper than
     iterating a redundant tuple of specific prefixes.
+
+    Returns:
+        ``True`` when the predicate holds, ``False`` otherwise.
     """
     return text.startswith(ERROR_PREFIX)

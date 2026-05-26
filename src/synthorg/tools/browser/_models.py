@@ -81,7 +81,14 @@ class A11yScanResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_passed_matches_violations(self) -> Self:
-        """Enforce passed and aggregate invariants."""
+        """Enforce passed and aggregate invariants.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.passed != (len(self.violations) == 0):
             msg = (
                 f"passed must equal (violations is empty); got "
@@ -200,7 +207,14 @@ class ScreenshotDiffResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_passed_matches_score(self) -> Self:
-        """Enforce passed_tolerance equals ssim_score >= tolerance."""
+        """Enforce passed_tolerance equals ssim_score >= tolerance.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         expected = self.ssim_score >= self.tolerance
         if self.passed_tolerance != expected:
             msg = (
@@ -244,7 +258,14 @@ class SpecResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_aggregate_pass(self) -> Self:
-        """Enforce passed_all_checks reflects both nested results."""
+        """Enforce passed_all_checks reflects both nested results.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         expected = self.diff.passed_tolerance and self.accessibility.passed
         if self.passed_all_checks != expected:
             msg = (

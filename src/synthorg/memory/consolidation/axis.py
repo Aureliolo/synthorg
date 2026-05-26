@@ -125,6 +125,9 @@ class ConsolidationOp(Protocol):
         trajectory entries exactly once per run (byte-identical with
         the pre-split LLM monolith, which fetched before its group
         loop -- not per group).
+
+        Returns:
+            Result of type ``ConsolidationContext``.
         """
         ...
 

@@ -10,6 +10,7 @@ import builtins
 import json
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.consolidation.models import ConsolidationResult
 from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
@@ -107,6 +108,15 @@ class TwoTierCompressionStrategy:
         async def _compress_one(
             entry: MemoryEntry,
         ) -> tuple[str, str] | None:
+            """Compress one.
+
+            Returns:
+                The resulting ``tuple[str, str]``, or ``None`` when unavailable.
+
+            Raises:
+                MemoryError: If the related operation fails.
+                RecursionError: If the related operation fails.
+            """
             try:
                 prompt, output, feedback, trace = self._parse_detailed_content(
                     entry.content
@@ -162,6 +172,7 @@ class TwoTierCompressionStrategy:
             except builtins.MemoryError, RecursionError:
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     TWO_TIER_COMPRESSION_FAILED,
                     agent_id=agent_id,
@@ -208,13 +219,22 @@ class TwoTierCompressionStrategy:
         self,
         agent_id: str,
     ) -> tuple[MemoryEntry, ...]:
-        """Fetch recent entries for compression context."""
+        """Fetch recent entries for compression context.
+
+        Returns:
+            Tuple of ``MemoryEntry``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
         try:
             query = MemoryQuery(limit=_MAX_CONTEXT_ENTRIES)
             return await self._backend.retrieve(agent_id, query)
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TWO_TIER_COMPRESSION_FAILED,
                 agent_id=agent_id,

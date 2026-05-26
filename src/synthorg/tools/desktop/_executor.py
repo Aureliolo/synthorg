@@ -49,6 +49,8 @@ import time
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
+from synthorg.core.critical_errors import reraise_critical
+
 _SANDBOX_ROOT: Final[str] = "/workspace"
 _SESSION_STATE_PATH: Final[str] = "/workspace/.synthorg/desktop/session.json"
 
@@ -74,6 +76,12 @@ def _validated_sandbox_path(raw: str, *, field: str) -> Path:
 
     Used at every filesystem-touching site so the user-controlled
     ``DESKTOP_TOOL_ARGS_JSON`` payload cannot escape the workspace.
+
+    Returns:
+        Result of type ``Path``.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
     """
     if not raw:
         raise ValueError(f"{field} must be a non-empty path")
@@ -110,6 +118,12 @@ def _validated_display(raw: object) -> str:
     Xvfb / x11vnc command lines. Constraining it to the canonical
     ``:N`` / ``:N.S`` form (allowlist, not denylist) blocks any
     argument-injection vector before the value reaches a subprocess.
+
+    Returns:
+        Result of type ``str``.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
     """
     display = str(raw or _DEFAULT_DISPLAY)
     if not _DISPLAY_PATTERN.fullmatch(display):
@@ -118,14 +132,22 @@ def _validated_display(raw: object) -> str:
 
 
 def _display_env(display: str) -> dict[str, str]:
-    """Return an environment with DISPLAY pinned to *display*."""
+    """Return an environment with DISPLAY pinned to *display*.
+
+    Returns:
+        Mapping from ``str`` to ``str``.
+    """
     env = dict(os.environ)
     env["DISPLAY"] = display
     return env
 
 
 def _display_up(display: str) -> bool:
-    """Return True when an X server answers on *display*."""
+    """Return True when an X server answers on *display*.
+
+    Returns:
+        ``True`` if the operation succeeds, ``False`` otherwise.
+    """
     try:
         completed = subprocess.run(  # noqa: S603
             ["xdpyinfo", "-display", display],  # noqa: S607
@@ -139,7 +161,11 @@ def _display_up(display: str) -> bool:
 
 
 def _start_session(session: dict[str, Any]) -> None:
-    """Bring up Xvfb (and optional x11vnc) idempotently for the session."""
+    """Bring up Xvfb (and optional x11vnc) idempotently for the session.
+
+    Raises:
+        RuntimeError: If the operation fails at runtime.
+    """
     display = _validated_display(session.get("display"))
     width = int(session.get("screen_width") or _DEFAULT_SCREEN_WIDTH)
     height = int(session.get("screen_height") or _DEFAULT_SCREEN_HEIGHT)
@@ -209,7 +235,11 @@ def _write_session_state(*, display: str, pid: int) -> None:
 
 
 def _read_session_pid() -> int | None:
-    """Return the recorded launched-app pid, or None when unset."""
+    """Return the recorded launched-app pid, or None when unset.
+
+    Returns:
+        The resulting ``int``, or ``None`` when unavailable.
+    """
     path = Path(_SESSION_STATE_PATH)
     if not path.exists():
         return None
@@ -222,7 +252,11 @@ def _read_session_pid() -> int | None:
 
 
 def _pid_alive(pid: int) -> bool:
-    """Return True when *pid* names a live process."""
+    """Return True when *pid* names a live process.
+
+    Returns:
+        ``True`` if the operation succeeds, ``False`` otherwise.
+    """
     try:
         os.kill(pid, 0)
     except OSError:
@@ -231,7 +265,11 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _app_running() -> bool:
-    """Return True when a launched GUI application is still alive."""
+    """Return True when a launched GUI application is still alive.
+
+    Returns:
+        ``True`` if the operation succeeds, ``False`` otherwise.
+    """
     pid = _read_session_pid()
     return pid is not None and _pid_alive(pid)
 
@@ -248,7 +286,11 @@ _INPUT_OPERATIONS: Final[frozenset[str]] = frozenset(
 
 
 def _run_xdotool(args: list[str], env: dict[str, str]) -> None:
-    """Run an xdotool command, raising on a non-zero exit."""
+    """Run an xdotool command, raising on a non-zero exit.
+
+    Raises:
+        RuntimeError: If the operation fails at runtime.
+    """
     completed = subprocess.run(  # noqa: S603
         ["xdotool", *args],  # noqa: S607
         capture_output=True,
@@ -261,6 +303,15 @@ def _run_xdotool(args: list[str], env: dict[str, str]) -> None:
 
 
 def _launch(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    """Launch.
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
+        RuntimeError: If the operation fails at runtime.
+    """
     command = payload.get("app_command")
     if not command:
         raise ValueError("app_command required for launch")
@@ -308,7 +359,11 @@ def _launch(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
 
 
 def _has_window(env: dict[str, str]) -> bool:
-    """Return True when at least one mapped top-level window exists."""
+    """Return True when at least one mapped top-level window exists.
+
+    Returns:
+        ``True`` when the predicate holds, ``False`` otherwise.
+    """
     completed = subprocess.run(
         ["xdotool", "search", "--onlyvisible", "--name", ""],  # noqa: S607
         capture_output=True,
@@ -320,6 +375,11 @@ def _has_window(env: dict[str, str]) -> bool:
 
 
 def _click(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    """Click.
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+    """
     x = int(payload["x"])
     y = int(payload["y"])
     button = int(payload.get("button") or 1)
@@ -330,18 +390,33 @@ def _click(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
 
 
 def _type(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    """Type.
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+    """
     text = str(payload.get("text") or "")
     _run_xdotool(["type", "--clearmodifiers", "--", text], env)
     return {"action": "type", "detail": f"{len(text)} chars"}
 
 
 def _key(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    """Key.
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+    """
     keys = str(payload["keys"])
     _run_xdotool(["key", "--clearmodifiers", keys], env)
     return {"action": "key", "detail": keys}
 
 
 def _scroll(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    """Scroll.
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+    """
     direction = str(payload.get("direction") or "down")
     amount = int(payload.get("amount") or 1)
     button = _SCROLL_BUTTON_UP if direction == "up" else _SCROLL_BUTTON_DOWN
@@ -350,7 +425,11 @@ def _scroll(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
 
 
 def _png_dimensions(data: bytes) -> tuple[int, int]:
-    """Parse width/height from a PNG IHDR header."""
+    """Parse width/height from a PNG IHDR header.
+
+    Returns:
+        Tuple ``(int, int)``.
+    """
     width = int.from_bytes(
         data[_PNG_IHDR_WIDTH_OFFSET : _PNG_IHDR_WIDTH_OFFSET + _UINT32_BYTES],
         "big",
@@ -363,6 +442,14 @@ def _png_dimensions(data: bytes) -> tuple[int, int]:
 
 
 def _screenshot(payload: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    """Screenshot.
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+
+    Raises:
+        RuntimeError: If the operation fails at runtime.
+    """
     out = _validated_sandbox_path(payload["screenshot_path"], field="screenshot_path")
     out.parent.mkdir(parents=True, exist_ok=True)
     completed = subprocess.run(  # noqa: S603
@@ -396,6 +483,14 @@ _DISPATCH = {
 
 
 def _dispatch(payload: dict[str, Any]) -> dict[str, Any]:
+    """Dispatch.
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
+    """
     session = payload.get("session") or {}
     _start_session(session)
     display = _validated_display(session.get("display"))
@@ -414,6 +509,11 @@ def _dispatch(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
+    """Main.
+
+    Returns:
+        Result of type ``int``.
+    """
     raw = os.environ.get("DESKTOP_TOOL_ARGS_JSON")
     if not raw:
         sys.stdout.write(
@@ -441,9 +541,8 @@ def main() -> int:
         return 2
     try:
         result = _dispatch(payload)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # Redact the raw message: str(exc) can carry filesystem paths,
         # env vars, or window content. Emit only the class name plus a
         # static generic message so the host has a stable shape.

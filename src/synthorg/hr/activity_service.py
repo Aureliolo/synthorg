@@ -19,6 +19,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.hr.activity import ActivityEvent, merge_activity_timeline
 from synthorg.observability import (
@@ -74,6 +75,12 @@ def _collect_result[ResultT](
     exceptions via ``.result()`` directly: it preserves the
     ``source=...`` label that would otherwise be dropped by the
     caller-facing exception.
+
+    Returns:
+        Result of type ``ResultT``.
+
+    Raises:
+        Exception: Raised when the relevant invariant fails.
     """
     try:
         return task.result()
@@ -277,9 +284,8 @@ class ActivityFeedService:
                     since=since,
                     limit=_LIFECYCLE_CAP,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     HR_ACTIVITY_SOURCE_FETCH_FAILED,
                     source="lifecycle_repo",
@@ -295,9 +301,8 @@ class ActivityFeedService:
                 since=since,
                 until=now,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
                 source="performance_tracker",
@@ -368,14 +373,17 @@ class ActivityFeedService:
         since: datetime,
         now: datetime,
     ) -> tuple[CostRecord, ...]:
-        """Best-effort no-agent cost fetch."""
+        """Best-effort no-agent cost fetch.
+
+        Returns:
+            Tuple of ``CostRecord``.
+        """
         if self._cost_tracker is None:
             return ()
         try:
             return await self._cost_tracker.get_records(start=since, end=now)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
                 source="cost_tracker",
@@ -391,7 +399,11 @@ class ActivityFeedService:
         since: datetime,
         now: datetime,
     ) -> tuple[ToolInvocationRecord, ...]:
-        """Best-effort no-agent tool fetch."""
+        """Best-effort no-agent tool fetch.
+
+        Returns:
+            Tuple of ``ToolInvocationRecord``.
+        """
         if self._tool_invocation_tracker is None:
             return ()
         try:
@@ -399,9 +411,8 @@ class ActivityFeedService:
                 start=since,
                 end=now,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
                 source="tool_invocation_tracker",
@@ -413,7 +424,11 @@ class ActivityFeedService:
             return ()
 
     def _validate_pagination(self, *, offset: int, limit: int) -> None:
-        """Validate offset and limit, logging before each raise."""
+        """Validate offset and limit, logging before each raise.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if offset < 0:
             logger.warning(
                 HR_ACTIVITY_INVALID_REQUEST,
@@ -432,7 +447,11 @@ class ActivityFeedService:
             raise ValueError(msg)
 
     def _validate_window(self, *, window_hours: int) -> None:
-        """Validate window_hours; logged before raise."""
+        """Validate window_hours; logged before raise.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if window_hours < 1 or window_hours > _MAX_WINDOW_HOURS:
             logger.warning(
                 HR_ACTIVITY_INVALID_REQUEST,
@@ -459,6 +478,9 @@ class ActivityFeedService:
         Service-layer error paths must log at WARNING with context
         before raising so bad MCP requests are visible in the audit
         trail (per CLAUDE.md ``## Logging``).
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if offset < 0:
             logger.warning(
@@ -504,12 +526,16 @@ class ActivityFeedService:
         reads should not become unavailable just because budget
         config is temporarily unreadable -- but the failure is logged
         so operators can triage it.
+
+        Returns:
+            Result of type ``str``.
         """
         if self._config_resolver is None:
             return DEFAULT_CURRENCY
         try:
             budget = await self._config_resolver.get_budget_config()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
                 source="config_resolver.budget",
@@ -525,7 +551,14 @@ class ActivityFeedService:
         since: datetime,
         now: datetime,
     ) -> tuple:  # type: ignore[type-arg]  # AgentLifecycleEvent is TYPE_CHECKING-only
-        """Required lifecycle fetch; re-raise with structured context."""
+        """Required lifecycle fetch; re-raise with structured context.
+
+        Returns:
+            Result of type ``tuple``.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
+        """
         try:
             return await self._lifecycle_repo.list_events(
                 agent_id=agent_id,
@@ -561,6 +594,12 @@ class ActivityFeedService:
         is also synchronous. Wrapping it in a helper mirrors the
         structure of the other sources so error handling stays
         uniform.
+
+        Returns:
+            Result of type ``tuple``.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
         """
         try:
             return self._performance_tracker.get_task_metrics(
@@ -592,6 +631,9 @@ class ActivityFeedService:
         cannot cancel the sibling fetches running in the same
         ``TaskGroup`` (CLAUDE.md async convention for independent
         best-effort workers).
+
+        Returns:
+            Tuple of ``CostRecord``.
         """
         if self._cost_tracker is None:
             return ()
@@ -601,9 +643,8 @@ class ActivityFeedService:
                 start=since,
                 end=now,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Log so operators can distinguish "no records" from
             # "fetch failed"; the caller still gets an empty tuple
             # so the merge proceeds with the remaining sources.
@@ -628,6 +669,9 @@ class ActivityFeedService:
 
         Same resilience pattern as :meth:`_fetch_costs`: a single
         tracker failure must not abort the whole activity merge.
+
+        Returns:
+            Tuple of ``ToolInvocationRecord``.
         """
         if self._tool_invocation_tracker is None:
             return ()
@@ -637,9 +681,8 @@ class ActivityFeedService:
                 start=since,
                 end=now,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 HR_ACTIVITY_SOURCE_FETCH_FAILED,
                 source="tool_invocation_tracker",
@@ -662,21 +705,28 @@ class ActivityFeedService:
         Both fetches are independent best-effort workers -- neither
         direction's failure should abort the sibling. Wraps each task
         body per the CLAUDE.md async convention.
+
+        Returns:
+            Tuple ``(tuple[DelegationRecord, ...], tuple[DelegationRecord, ...])``.
         """
         store = self._delegation_store
         if store is None:
             return (), ()
 
         async def _safe_delegator() -> tuple[DelegationRecord, ...]:
+            """Safe delegator.
+
+            Returns:
+                Tuple of ``DelegationRecord``.
+            """
             try:
                 return await store.get_records_as_delegator(
                     agent_id,
                     start=since,
                     end=now,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     HR_ACTIVITY_SOURCE_FETCH_FAILED,
                     source="delegation_store.delegator",
@@ -689,15 +739,19 @@ class ActivityFeedService:
                 return ()
 
         async def _safe_delegatee() -> tuple[DelegationRecord, ...]:
+            """Safe delegatee.
+
+            Returns:
+                Tuple of ``DelegationRecord``.
+            """
             try:
                 return await store.get_records_as_delegatee(
                     agent_id,
                     start=since,
                     end=now,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     HR_ACTIVITY_SOURCE_FETCH_FAILED,
                     source="delegation_store.delegatee",

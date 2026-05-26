@@ -141,6 +141,9 @@ def _coerce_confidence(raw_metadata: dict[str, Any]) -> float:
     absent (newly stored entries always write it), or 0.5 when the
     value is present but non-numeric (corrupt data gets a conservative
     mid-range default rather than maximum confidence).
+
+    Returns:
+        Result of type ``float``.
     """
     raw = raw_metadata.get(f"{_PREFIX}confidence", 1.0)
     try:
@@ -168,6 +171,9 @@ def _coerce_source(raw_metadata: dict[str, Any]) -> str | None:
     """Extract and sanitize the source field from Mem0 metadata.
 
     Returns ``None`` if the value is missing, non-string, or blank.
+
+    Returns:
+        The resulting ``str``, or ``None`` when unavailable.
     """
     raw = raw_metadata.get(f"{_PREFIX}source")
     if raw is None:
@@ -190,6 +196,9 @@ def _normalize_tags(
     """Extract and normalize tags from Mem0 metadata.
 
     Handles string, list, tuple, and unexpected types gracefully.
+
+    Returns:
+        Tuple of ``NotBlankStr``.
     """
     raw_tags = raw_metadata.get(f"{_PREFIX}tags", ())
     if isinstance(raw_tags, str):
@@ -273,6 +282,9 @@ def _resolve_created_at(
     Uses the earliest available candidate to avoid violating
     ``MemoryEntry`` invariants (``updated_at >= created_at``,
     ``expires_at >= created_at``).
+
+    Returns:
+        Result of type ``AwareDatetime``.
     """
     candidates: list[datetime] = []
     if updated_at is not None:
@@ -308,6 +320,9 @@ def _extract_namespace(
 
     Returns ``"default"`` when the key is absent (backward compat
     with entries stored before the namespace field was added).
+
+    Returns:
+        Result of type ``NotBlankStr``.
     """
     if not raw_metadata or not isinstance(raw_metadata, dict):
         return NotBlankStr("default")
@@ -331,6 +346,9 @@ def mem0_result_to_entry(
 
     Returns:
         Domain ``MemoryEntry``.
+
+    Raises:
+        MemoryRetrievalError: If the related operation fails.
     """
     raw_id = raw.get("id")
     if raw_id is None or not str(raw_id).strip():
@@ -444,12 +462,20 @@ def query_to_mem0_getall_args(
 
 
 def _is_expired(entry: MemoryEntry, now: datetime) -> bool:
-    """Return True if *entry* has expired."""
+    """Return True if *entry* has expired.
+
+    Returns:
+        ``True`` when the predicate holds, ``False`` otherwise.
+    """
     return entry.expires_at is not None and entry.expires_at <= now
 
 
 def _matches_metadata(entry: MemoryEntry, query: MemoryQuery) -> bool:
-    """Check namespace, category, and tag filters."""
+    """Check namespace, category, and tag filters.
+
+    Returns:
+        ``True`` if the operation succeeds, ``False`` otherwise.
+    """
     if query.namespaces and entry.namespace not in query.namespaces:
         return False
     if query.categories and entry.category not in query.categories:
@@ -464,7 +490,11 @@ def _matches_filters(
     query: MemoryQuery,
     now: datetime,
 ) -> bool:
-    """Return True if *entry* passes all query filters."""
+    """Return True if *entry* passes all query filters.
+
+    Returns:
+        ``True`` if the operation succeeds, ``False`` otherwise.
+    """
     if _is_expired(entry, now):
         return False
     if not _matches_metadata(entry, query):
@@ -575,6 +605,9 @@ def extract_category(raw: dict[str, Any]) -> MemoryCategory:
 
     Returns ``MemoryCategory.WORKING`` if the category is missing
     or unrecognised.
+
+    Returns:
+        Result of type ``MemoryCategory``.
     """
     metadata = raw.get("metadata", {})
     if not metadata or not isinstance(metadata, dict):
@@ -665,6 +698,9 @@ def resolve_publisher(item: dict[str, Any]) -> str:
     """Extract publisher from a shared memory, defaulting to namespace.
 
     Logs at DEBUG when publisher metadata is missing.
+
+    Returns:
+        Result of type ``str``.
     """
     publisher = extract_publisher(item)
     if publisher is None:
@@ -682,6 +718,9 @@ def extract_publisher(raw: dict[str, Any]) -> NotBlankStr | None:
 
     Returns ``None`` if the publisher key is missing, non-dict
     metadata, or the value is blank after coercion and stripping.
+
+    Returns:
+        The resulting ``NotBlankStr``, or ``None`` when unavailable.
     """
     metadata = raw.get("metadata", {})
     if not metadata or not isinstance(metadata, dict):

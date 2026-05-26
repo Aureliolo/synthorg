@@ -132,6 +132,11 @@ class CooldownGuard:
 
     @staticmethod
     def _make_key(decision: ScalingDecision) -> str:
+        """Make key.
+
+        Returns:
+            Result of type ``str``.
+        """
         if decision.target_agent_id is not None:
             target = f"agent:{decision.target_agent_id}"
         elif decision.target_role is not None:

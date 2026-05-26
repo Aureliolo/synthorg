@@ -16,6 +16,7 @@ injection system into the standard tool dispatch pipeline
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.self_editing import SelfEditingMemoryStrategy
 from synthorg.memory.tool_retriever import ToolBasedInjectionStrategy
 from synthorg.memory.tools._shared import _is_error_response
@@ -140,7 +141,11 @@ def _build_augmented_registry(
     strategy: ToolBasedInjectionStrategy,
     agent_id: NotBlankStr,
 ) -> ToolRegistry:
-    """Construct a new registry with memory tools appended."""
+    """Construct a new registry with memory tools appended.
+
+    Returns:
+        Result of type ``ToolRegistry``.
+    """
     from synthorg.tools.registry import (  # noqa: PLC0415
         ToolRegistry as _ToolRegistry,
     )
@@ -158,7 +163,11 @@ def _build_self_editing_registry(
     strategy: SelfEditingMemoryStrategy,
     agent_id: NotBlankStr,
 ) -> ToolRegistry:
-    """Construct a new registry with self-editing tools appended."""
+    """Construct a new registry with self-editing tools appended.
+
+    Returns:
+        Result of type ``ToolRegistry``.
+    """
     from synthorg.tools.registry import (  # noqa: PLC0415
         ToolRegistry as _ToolRegistry,
     )
@@ -193,15 +202,17 @@ def registry_with_memory_tools(
     Returns:
         Augmented registry with memory tools, or original if not
         applicable.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
     """
     if isinstance(strategy, SelfEditingMemoryStrategy):
         try:
             augmented = _build_self_editing_registry(tool_registry, strategy, agent_id)
-        except MemoryError, RecursionError:
-            raise
         except ValueError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TOOL_MEMORY_AUGMENTATION_FAILED,
                 source="registry_augmentation",
@@ -226,11 +237,10 @@ def registry_with_memory_tools(
             strategy,
             agent_id,
         )
-    except MemoryError, RecursionError:
-        raise
     except ValueError:
         raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             TOOL_MEMORY_AUGMENTATION_FAILED,
             source="registry_augmentation",

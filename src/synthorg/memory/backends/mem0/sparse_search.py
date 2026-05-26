@@ -15,6 +15,7 @@ import builtins
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.errors import (
     MemoryRetrievalError,
@@ -204,6 +205,10 @@ def scored_points_to_entries(
 
     Returns:
         Tuple of memory entries with relevance scores set.
+
+    Raises:
+        MemoryError: If the related operation fails.
+        RecursionError: If the related operation fails.
     """
     entries: list[MemoryEntry] = []
     skipped = 0
@@ -218,7 +223,8 @@ def scored_points_to_entries(
                 reason="system error during point conversion",
             )
             raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             skipped += 1
             logger.warning(
                 MEMORY_SPARSE_SEARCH_FAILED,
@@ -280,7 +286,11 @@ def _parse_created_at(
     payload: dict[str, Any],
     point_id_str: str,
 ) -> datetime:
-    """Parse created_at from payload with fallback to epoch sentinel."""
+    """Parse created_at from payload with fallback to epoch sentinel.
+
+    Returns:
+        Result of type ``datetime``.
+    """
     _epoch = datetime(1970, 1, 1, tzinfo=UTC)
     created_str = payload.get("created_at")
     if not created_str or not isinstance(created_str, str):
@@ -310,6 +320,9 @@ def _parse_created_at(
 
 def _point_to_entry(point: Any, agent_id: NotBlankStr) -> MemoryEntry:
     """Convert a single Qdrant point to a MemoryEntry.
+
+    Returns:
+        Result of type ``MemoryEntry``.
 
     Raises:
         ValueError: If the point has no usable content.
@@ -376,6 +389,11 @@ async def async_init_sparse_field(
     Args:
         qdrant_client: ``QdrantClient`` instance.
         collection_name: Target Qdrant collection.
+
+    Raises:
+        MemoryError: If the related operation fails.
+        RecursionError: If the related operation fails.
+        Exception: Raised when the relevant invariant fails.
     """
     try:
         await asyncio.to_thread(
@@ -412,6 +430,10 @@ async def async_try_sparse_upsert(  # noqa: PLR0913
         agent_id: Owning agent identifier (for logging).
         memory_id: Memory entry ID.
         content: Text content to encode.
+
+    Raises:
+        MemoryError: If the related operation fails.
+        RecursionError: If the related operation fails.
     """
     try:
         sparse_vec = encoder.encode(content)
@@ -431,6 +453,7 @@ async def async_try_sparse_upsert(  # noqa: PLR0913
         )
         raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             MEMORY_SPARSE_UPSERT_FAILED,
             agent_id=agent_id,
@@ -464,6 +487,8 @@ async def async_retrieve_sparse(
 
     Raises:
         MemoryRetrievalError: If the sparse search fails.
+        MemoryError: If the related operation fails.
+        RecursionError: If the related operation fails.
     """
     if query.text is None:
         return ()
@@ -494,6 +519,7 @@ async def async_retrieve_sparse(
         )
         raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             MEMORY_ENTRY_RETRIEVAL_FAILED,
             agent_id=agent_id,

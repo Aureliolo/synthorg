@@ -42,6 +42,9 @@ def _default_sandbox_image() -> str:
     (which honours the canonical DB > env > YAML > default chain via
     ``env_var_override="SYNTHORG_SANDBOX_IMAGE"``). Tests outside the
     lifecycle path get the documented fallback constant.
+
+    Returns:
+        Result of type ``str``.
     """
     return get_resolved_sandbox_image()
 
@@ -50,6 +53,9 @@ def _default_sidecar_image() -> str:
     """Resolve the default sidecar image from the resolution cache.
 
     Same resolution path as :func:`_default_sandbox_image`.
+
+    Returns:
+        Result of type ``str``.
     """
     return get_resolved_sidecar_image()
 
@@ -220,6 +226,12 @@ class DockerSandboxConfig(BaseModel):
         """Validate that memory_limit uses a supported format.
 
         Accepts an integer with an optional ``k``/``m``/``g`` suffix.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         limit = normalize_ascii_lowercase(self.memory_limit)
         if not limit:
@@ -250,6 +262,12 @@ class DockerSandboxConfig(BaseModel):
         during container creation.  Accepts a positive integer with an
         optional ``k``/``m``/``g`` suffix (case-insensitive); rejects
         leading zeros, negatives, zero, and unknown suffixes.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         for field_name, value in (
             ("tmpfs_size", self.tmpfs_size),
@@ -270,7 +288,14 @@ class DockerSandboxConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_network_overrides(self) -> Self:
-        """Ensure network override values are valid network modes."""
+        """Ensure network override values are valid network modes.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         for category, mode in self.network_overrides.items():
             if mode not in _VALID_NETWORK_MODES:
                 msg = (
@@ -294,6 +319,12 @@ class DockerSandboxConfig(BaseModel):
         Runs as a before-validator so the frozen model is constructed
         with the final merged ``allowed_hosts`` -- no post-construction
         mutation needed.
+
+        Returns:
+            Result of type ``Any``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if not isinstance(data, dict):
             return data
@@ -329,6 +360,12 @@ class DockerSandboxConfig(BaseModel):
 
         Runs after ``_validate_network_presets`` so preset-merged
         hosts are included in the mutual exclusion check.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if self.network_allow_all and self.allowed_hosts:
             msg = (
@@ -364,6 +401,12 @@ class DockerSandboxConfig(BaseModel):
         Only IPv4 addresses and hostnames are supported; IPv6
         addresses are not supported by the sidecar transparent
         proxy.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         for entry in self.allowed_hosts:
             parts = entry.split(":")
@@ -420,6 +463,12 @@ class DockerSandboxConfig(BaseModel):
 
         Checks both the top-level ``network`` field and any
         ``network_overrides`` entries.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if not self.allowed_hosts:
             return self

@@ -69,7 +69,14 @@ class _SpendingTotals(BaseModel):
 
     @model_validator(mode="after")
     def _validate_currency_presence(self) -> Self:
-        """Require ``currency`` whenever at least one record aggregated."""
+        """Require ``currency`` whenever at least one record aggregated.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.record_count > 0 and self.currency is None:
             msg = (
                 f"currency is required when record_count > 0 "
@@ -92,7 +99,14 @@ class PeriodSpending(_SpendingTotals):
 
     @model_validator(mode="after")
     def _validate_period_ordering(self) -> Self:
-        """Ensure start is strictly before end."""
+        """Ensure start is strictly before end.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.start >= self.end:
             msg = (
                 f"Period start ({self.start.isoformat()}) "
@@ -167,7 +181,14 @@ class SpendingSummary(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_agent_ids(self) -> Self:
-        """Ensure no duplicate agent_id values in by_agent."""
+        """Ensure no duplicate agent_id values in by_agent.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         ids = [a.agent_id for a in self.by_agent]
         if len(ids) != len(set(ids)):
             dupes = sorted(i for i, c in Counter(ids).items() if c > 1)
@@ -177,7 +198,14 @@ class SpendingSummary(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_department_names(self) -> Self:
-        """Ensure no duplicate department_name values in by_department."""
+        """Ensure no duplicate department_name values in by_department.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         names = [d.department_name for d in self.by_department]
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)

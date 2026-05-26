@@ -36,6 +36,9 @@ def _decision_key(decision: ScalingDecision) -> str:
     Targeted decisions (PRUNE) key on target_agent_id. Non-targeted
     decisions (HIRE) key on the role/department/skills tuple so
     duplicate hire proposals collapse to the highest-priority one.
+
+    Returns:
+        Result of type ``str``.
     """
     if decision.target_agent_id is not None:
         return f"target:{decision.target_agent_id}"
@@ -79,7 +82,11 @@ class ConflictResolver:
         self._priority = MappingProxyType(copy.deepcopy(priority))
 
     def _priority_for(self, decision: ScalingDecision) -> int:
-        """Return the priority rank for a decision's strategy."""
+        """Return the priority rank for a decision's strategy.
+
+        Returns:
+            Result of type ``int``.
+        """
         return self._priority.get(decision.source_strategy.value, _LOWEST_PRIORITY)
 
     async def filter(

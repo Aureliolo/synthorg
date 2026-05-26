@@ -87,6 +87,9 @@ def _build_browser_tools(
     When *settings* is omitted the tool falls back to the model
     defaults that mirror the module constants (used by tests and by
     deployments that wire the tool without ConfigResolver yet).
+
+    Returns:
+        Tuple of ``BaseTool``.
     """
     if sandbox is None:
         return ()
@@ -109,6 +112,9 @@ def _build_desktop_tools(
 
     When *settings* is omitted the tool falls back to the model defaults
     that mirror the module constants (the deterministic ``xvfb`` driver).
+
+    Returns:
+        Tuple of ``BaseTool``.
     """
     if sandbox is None:
         return ()
@@ -121,7 +127,11 @@ def _build_file_system_tools(
     *,
     workspace: Path,
 ) -> tuple[BaseTool, ...]:
-    """Instantiate the five built-in file-system tools."""
+    """Instantiate the five built-in file-system tools.
+
+    Returns:
+        Tuple of ``BaseTool``.
+    """
     return (
         ReadFileTool(workspace_root=workspace),
         WriteFileTool(workspace_root=workspace),
@@ -137,7 +147,11 @@ def _build_git_tools(
     git_clone_policy: GitCloneNetworkPolicy | None,
     sandbox: SandboxBackend | None,
 ) -> tuple[BaseTool, ...]:
-    """Instantiate the six built-in git tools."""
+    """Instantiate the six built-in git tools.
+
+    Returns:
+        Tuple of ``BaseTool``.
+    """
     return (
         GitStatusTool(workspace=workspace, sandbox=sandbox),
         GitLogTool(workspace=workspace, sandbox=sandbox),
@@ -167,6 +181,9 @@ def _build_web_tools(
     ``request_timeout`` is operator-tunable; resolve via
     ``ConfigResolver.get_float("tools", "web_request_timeout_seconds")``
     at the call site or read from ``WebToolsConfig.request_timeout``.
+
+    Returns:
+        Tuple of ``BaseTool``.
     """
     from synthorg.tools.web.web_search import WebSearchTool  # noqa: PLC0415
 
@@ -192,7 +209,11 @@ def _build_database_tools(
     *,
     config: DatabaseConfig,
 ) -> tuple[BaseTool, ...]:
-    """Instantiate the built-in database tools for each configured connection."""
+    """Instantiate the built-in database tools for each configured connection.
+
+    Returns:
+        Tuple of ``BaseTool``.
+    """
     from synthorg.tools.database import SchemaInspectTool, SqlQueryTool  # noqa: PLC0415
 
     if not config.connections:
@@ -218,7 +239,11 @@ def _build_terminal_tools(
     sandbox: SandboxBackend | None = None,
     config: TerminalConfig | None = None,
 ) -> tuple[BaseTool, ...]:
-    """Instantiate the built-in terminal tools."""
+    """Instantiate the built-in terminal tools.
+
+    Returns:
+        Tuple of ``BaseTool``.
+    """
     from synthorg.tools.terminal.shell_command import ShellCommandTool  # noqa: PLC0415
 
     return (ShellCommandTool(sandbox=sandbox, config=config),)
@@ -232,6 +257,9 @@ def _build_design_tools(
     """Instantiate the built-in design tools.
 
     Returns an empty tuple when *config* is ``None``.
+
+    Returns:
+        Tuple of ``BaseTool``.
     """
     if config is None:
         return ()
@@ -258,6 +286,9 @@ def _build_communication_tools(
     """Instantiate the built-in communication tools.
 
     Returns an empty tuple when *config* is ``None``.
+
+    Returns:
+        Tuple of ``BaseTool``.
     """
     if config is None:
         return ()
@@ -284,6 +315,9 @@ def _build_async_task_tools(
     """Instantiate the five async task steering tools.
 
     Returns an empty tuple when *service* is ``None``.
+
+    Returns:
+        Tuple of ``BaseTool``.
 
     Raises:
         ValueError: When *service* is provided but either
@@ -332,6 +366,9 @@ def _build_code_execution_tools(
     """Instantiate the built-in code execution tools.
 
     Returns an empty tuple when *sandbox* is ``None``.
+
+    Returns:
+        Tuple of ``BaseTool``.
     """
     if sandbox is None:
         return ()
@@ -341,7 +378,11 @@ def _build_code_execution_tools(
 
 
 def _build_other_tools() -> tuple[BaseTool, ...]:
-    """Instantiate reference tools that have no dependencies."""
+    """Instantiate reference tools that have no dependencies.
+
+    Returns:
+        Tuple of ``BaseTool``.
+    """
     from synthorg.tools.examples.echo import EchoTool  # noqa: PLC0415
 
     return (EchoTool(),)
@@ -356,6 +397,9 @@ def _build_analytics_tools(
     """Instantiate the built-in analytics tools.
 
     Returns an empty tuple when *config* is ``None``.
+
+    Returns:
+        Tuple of ``BaseTool``.
     """
     if config is None:
         return ()
@@ -394,6 +438,9 @@ def _build_knowledge_architect_tools(  # noqa: PLR0913
     themselves (FULL blocks, SEMI requires opt-in, SUPERVISED/LOCKED
     rely on upstream plan-review). The MCP boundary additionally wraps
     write/delete with ``admin_tool`` for human-operator gating.
+
+    Returns:
+        Tuple of ``BaseTool``.
     """
     if org_backend is None or fact_store is None or wiki_exporter is None:
         return ()

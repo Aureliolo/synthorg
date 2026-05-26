@@ -25,6 +25,12 @@ def _validate_iso_8601_date(value: str) -> str:
     free-form values like ``"next friday"`` fail at the typed boundary.
     Returns ``value`` unchanged on success; the analytics handler keeps
     its ``str`` signature unchanged.
+
+    Returns:
+        Result of type ``str``.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
     """
     try:
         date.fromisoformat(value)
@@ -88,6 +94,14 @@ class DataAggregatorArgs(BaseModel):
 
     @model_validator(mode="after")
     def _custom_period_requires_dates(self) -> Self:
+        """Custom period requires dates.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.period == "custom" and (
             self.start_date is None or self.end_date is None
         ):

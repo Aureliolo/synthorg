@@ -9,6 +9,7 @@ from typing import Any, ClassVar, Final
 
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.design import (
@@ -144,9 +145,8 @@ class DiagramGeneratorTool(BaseDesignTool):
                 markup = self._generate_mermaid(diagram_type, description, title)
             else:
                 markup = self._generate_graphviz(diagram_type, description, title)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DESIGN_DIAGRAM_GENERATION_FAILED,
                 error="internal_error",

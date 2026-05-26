@@ -9,6 +9,7 @@ import asyncio
 import secrets
 from typing import TYPE_CHECKING, Any, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -45,6 +46,14 @@ class DockerSandboxSidecarMixin:
 
     @staticmethod
     def _parse_memory_limit(limit: str) -> int:  # pragma: no cover - see concrete
+        """Parse memory limit.
+
+        Returns:
+            Result of type ``int``.
+
+        Raises:
+            NotImplementedError: If the subclass does not implement this operation.
+        """
         raise NotImplementedError
 
     async def _create_sidecar(
@@ -109,6 +118,7 @@ class DockerSandboxSidecarMixin:
         try:
             container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to create sidecar container: {safe_error_description(exc)}"
             log_exception_redacted(
                 logger, DOCKER_EXECUTE_FAILED, exc, command="sidecar"

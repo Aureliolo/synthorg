@@ -8,6 +8,7 @@ iteratively improve retrieval quality.
 import builtins
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
     MEMORY_REFORMULATION_FAILED,
@@ -89,12 +90,20 @@ class SufficiencyChecker(Protocol):
 
 
 def _sanitize_for_xml_block(text: str) -> str:
-    """Escape content that could break XML-tagged prompt boundaries."""
+    """Escape content that could break XML-tagged prompt boundaries.
+
+    Returns:
+        Result of type ``str``.
+    """
     return text.replace("</retrieved_memories>", "&lt;/retrieved_memories&gt;")
 
 
 def _format_results_summary(entries: tuple[MemoryEntry, ...]) -> str:
-    """Format up to 10 entries for LLM prompts, truncating at 200 chars."""
+    """Format up to 10 entries for LLM prompts, truncating at 200 chars.
+
+    Returns:
+        Result of type ``str``.
+    """
     if not entries:
         return "(no results)"
     _max_len = 200
@@ -140,6 +149,10 @@ class LLMQueryReformulator:
 
         Returns:
             Rewritten query, or ``None`` on failure or empty response.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         try:
             prompt = _REFORMULATE_PROMPT.format(
@@ -151,6 +164,7 @@ class LLMQueryReformulator:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_REFORMULATION_FAILED,
                 original_query=original_query,
@@ -198,6 +212,10 @@ class LLMSufficiencyChecker:
 
         Returns:
             ``True`` if sufficient or on error, ``False`` otherwise.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         try:
             prompt = _SUFFICIENCY_PROMPT.format(
@@ -215,6 +233,7 @@ class LLMSufficiencyChecker:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_SUFFICIENCY_CHECK_FAILED,
                 query=query,

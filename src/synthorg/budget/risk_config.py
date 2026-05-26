@@ -27,7 +27,14 @@ class RiskBudgetAlertConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_ordering(self) -> Self:
-        """Ensure warn_at < critical_at (strictly ordered)."""
+        """Ensure warn_at < critical_at (strictly ordered).
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.warn_at >= self.critical_at:
             msg = (
                 f"warn_at ({self.warn_at}) must be strictly less than "
@@ -63,7 +70,14 @@ class RiskBudgetConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_limits(self) -> Self:
-        """Ensure limit hierarchy: per_task <= per_agent_daily <= total_daily."""
+        """Ensure limit hierarchy: per_task <= per_agent_daily <= total_daily.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if (
             self.per_agent_daily_risk_limit > 0
             and self.per_task_risk_limit > self.per_agent_daily_risk_limit

@@ -55,6 +55,11 @@ class PinnedDnsBackend(httpcore.AsyncNetworkBackend):
         local_address: str | None = None,
         socket_options: Iterable[SOCKET_OPTION] | None = None,
     ) -> httpcore.AsyncNetworkStream:
+        """Connect tcp.
+
+        Returns:
+            Result of type ``httpcore.AsyncNetworkStream``.
+        """
         target = self._ip if host.lower() == self._hostname else host
         return await self._inner.connect_tcp(
             target,
@@ -70,6 +75,11 @@ class PinnedDnsBackend(httpcore.AsyncNetworkBackend):
         timeout: float | None = None,  # noqa: ASYNC109 -- AsyncNetworkBackend interface
         socket_options: Iterable[SOCKET_OPTION] | None = None,
     ) -> httpcore.AsyncNetworkStream:
+        """Connect unix socket.
+
+        Returns:
+            Result of type ``httpcore.AsyncNetworkStream``.
+        """
         return await self._inner.connect_unix_socket(
             path,
             timeout=timeout,
@@ -77,6 +87,7 @@ class PinnedDnsBackend(httpcore.AsyncNetworkBackend):
         )
 
     async def sleep(self, seconds: float) -> None:
+        """Delegate the cooperative sleep to the wrapped backend."""
         await self._inner.sleep(seconds)
 
 
@@ -99,6 +110,14 @@ class PinnedDnsTransport(httpx.AsyncBaseTransport):
         )
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        """Handle async request.
+
+        Returns:
+            Result of type ``httpx.Response``.
+
+        Raises:
+            TypeError: If an argument has an unexpected type.
+        """
         if not isinstance(request.stream, httpx.AsyncByteStream):
             msg = "Pinned-DNS transport requires an async byte stream"
             raise TypeError(msg)
@@ -125,6 +144,7 @@ class PinnedDnsTransport(httpx.AsyncBaseTransport):
         )
 
     async def aclose(self) -> None:
+        """Close the underlying hostname-pinned connection pool."""
         await self._pool.aclose()
 
 
@@ -139,6 +159,7 @@ class PinnedDnsResponseStream(httpx.AsyncByteStream):
             yield part
 
     async def aclose(self) -> None:
+        """Close the wrapped stream if it exposes an ``aclose`` coroutine."""
         aclose = getattr(self._inner, "aclose", None)
         if aclose is not None:
             await aclose()

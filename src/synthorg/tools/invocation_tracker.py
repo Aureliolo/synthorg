@@ -136,7 +136,11 @@ def _validate_time_range(
     start: datetime | None,
     end: datetime | None,
 ) -> None:
-    """Raise ``ValueError`` if *start* >= *end* when both are given."""
+    """Raise ``ValueError`` if *start* >= *end* when both are given.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
+    """
     if start is not None and end is not None and start >= end:
         logger.warning(
             TOOL_INVOCATION_TIME_RANGE_INVALID,

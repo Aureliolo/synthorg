@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from synthorg.budget.billing import daily_period_start
 from synthorg.budget.errors import RiskBudgetExhaustedError
 from synthorg.budget.risk_check import RiskCheckResult
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.risk_budget import (
     RISK_BUDGET_DAILY_LIMIT_EXCEEDED,
@@ -46,6 +47,9 @@ class BudgetEnforcerRiskMixin:
 
         Pre-flight checks are best-effort under concurrency (TOCTOU).
         See class docstring.
+
+        Returns:
+            Result of type ``RiskCheckResult``.
 
         Raises:
             RiskBudgetExhaustedError: When a risk limit is exceeded
@@ -99,11 +103,10 @@ class BudgetEnforcerRiskMixin:
                     agent_id,
                     task_id,
                 )
-        except MemoryError, RecursionError:
-            raise
         except RiskBudgetExhaustedError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 RISK_BUDGET_ENFORCEMENT_CHECK,
@@ -126,7 +129,11 @@ class BudgetEnforcerRiskMixin:
         agent_id: str,
         task_id: str,
     ) -> None:
-        """Check a single risk limit and raise if exceeded."""
+        """Check a single risk limit and raise if exceeded.
+
+        Raises:
+            RiskBudgetExhaustedError: If the relevant budget or quota is exhausted.
+        """
         if limit <= 0:
             return
         total = current + projected
@@ -154,7 +161,11 @@ class BudgetEnforcerRiskMixin:
         task_id: str,
         action_type: str,
     ) -> RiskRecord | None:
-        """Score and record a risk entry for the given action."""
+        """Score and record a risk entry for the given action.
+
+        Returns:
+            The resulting ``RiskRecord``, or ``None`` when unavailable.
+        """
         from synthorg.budget.risk_record import (  # noqa: PLC0415
             RiskRecord as _RiskRecord,
         )
@@ -178,9 +189,8 @@ class BudgetEnforcerRiskMixin:
                 timestamp=datetime.now(UTC),
             )
             await self._risk_tracker.record(record)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 RISK_BUDGET_RECORD_FAILED,

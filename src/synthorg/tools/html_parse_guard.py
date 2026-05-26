@@ -14,6 +14,7 @@ from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
@@ -179,7 +180,11 @@ class HTMLSanitizeResult(BaseModel):
 
 
 def _passthrough_result(content: str) -> HTMLSanitizeResult:
-    """Return an unchanged result for non-HTML or disabled guard."""
+    """Return an unchanged result for non-HTML or disabled guard.
+
+    Returns:
+        Result of type ``HTMLSanitizeResult``.
+    """
     return HTMLSanitizeResult(
         cleaned=content,
         gap_detected=False,
@@ -226,8 +231,6 @@ class HTMLParseGuard:
 
         try:
             return self._sanitize_html(raw)
-        except MemoryError, RecursionError:
-            raise
         except XXEDetectedError:
             # XXE rejection was already logged via
             # ``TOOL_HTML_PARSE_XXE_DETECTED`` inside the pre-scan; do
@@ -240,6 +243,7 @@ class HTMLParseGuard:
                 stripped_element_count=0,
             )
         except Exception as exc:
+            reraise_critical(exc)
             # Parse failure on untrusted HTML: scrub the exception
             # description and drop ``exc_info`` so the raw payload (or
             # any credentials it carried) is not serialized via the
@@ -260,7 +264,11 @@ class HTMLParseGuard:
             )
 
     def _sanitize_html(self, raw: str) -> HTMLSanitizeResult:
-        """Parse and sanitize HTML content using lxml."""
+        """Parse and sanitize HTML content using lxml.
+
+        Returns:
+            Result of type ``HTMLSanitizeResult``.
+        """
         doc = _parse_html_safely(raw)
         # Capture original text before stripping (single parse).
         original_text = doc.text_content().strip()  # type: ignore[attr-defined]
@@ -287,7 +295,11 @@ class HTMLParseGuard:
 
     @staticmethod
     def _strip_event_handlers(doc: Any) -> int:
-        """Strip event handler attributes from all elements."""
+        """Strip event handler attributes from all elements.
+
+        Returns:
+            Result of type ``int``.
+        """
         stripped = 0
         for element in doc.iter():
             if not hasattr(element, "tag") or not isinstance(element.tag, str):
@@ -303,6 +315,9 @@ class HTMLParseGuard:
         """Strip scripts, styles, comments, and hidden elements.
 
         Returns the count of stripped elements.
+
+        Returns:
+            Result of type ``int``.
         """
         from lxml import etree  # noqa: PLC0415
 
@@ -328,7 +343,11 @@ class HTMLParseGuard:
 
     @staticmethod
     def _strip_hidden_elements(doc: Any) -> int:
-        """Strip elements hidden via attributes or CSS."""
+        """Strip elements hidden via attributes or CSS.
+
+        Returns:
+            Result of type ``int``.
+        """
         elements_to_drop: list[object] = []
         for element in doc.iter():
             if not hasattr(element, "tag") or not isinstance(element.tag, str):
@@ -353,7 +372,11 @@ class HTMLParseGuard:
 
     @staticmethod
     def _compute_gap_ratio(original: str, cleaned: str) -> float:
-        """Compute the ratio of hidden content to total content."""
+        """Compute the ratio of hidden content to total content.
+
+        Returns:
+            Result of type ``float``.
+        """
         original_len = len(original) or 1
         hidden_len = max(0, original_len - len(cleaned))
         return min(hidden_len / original_len, 1.0)
@@ -440,6 +463,9 @@ def _build_safe_parser() -> Any:
     DTDs or external entities by default, so our pre-parse DOCTYPE /
     ENTITY rejection in :func:`_parse_html_safely` carries the
     defence here rather than a parser flag.
+
+    Returns:
+        Result of type ``Any``.
     """
     from lxml import html as lxml_html  # noqa: PLC0415
 

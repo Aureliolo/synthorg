@@ -17,7 +17,11 @@ logger = get_logger(__name__)
 
 
 def _format_entries(entries: tuple[MemoryEntry, ...]) -> str:
-    """Format memory entries as human-readable text."""
+    """Format memory entries as human-readable text.
+
+    Returns:
+        Result of type ``str``.
+    """
     if not entries:
         return "No memories found."
     parts: list[str] = []
@@ -115,6 +119,11 @@ def merge_results(
     """
 
     def _rel(entry: MemoryEntry) -> float:
+        """Rel.
+
+        Returns:
+            Result of type ``float``.
+        """
         return entry.relevance_score if entry.relevance_score is not None else 0.0
 
     merged: dict[str, MemoryEntry] = {}
@@ -150,6 +159,9 @@ def _truncate_entries(
     when later rounds add unseen results; the tool contract promises
     ``limit`` entries, so truncate on return regardless of how many
     rounds ran.
+
+    Returns:
+        Tuple of ``MemoryEntry``.
     """
     if limit < 1 or len(entries) <= limit:
         return entries

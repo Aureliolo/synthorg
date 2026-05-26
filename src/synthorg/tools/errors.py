@@ -58,7 +58,11 @@ class ToolError(DomainError):
         super().__init__(message)
 
     def __str__(self) -> str:
-        """Format error with optional context metadata."""
+        """Format error with optional context metadata.
+
+        Returns:
+            Result of type ``str``.
+        """
         if self.context:
             ctx = ", ".join(f"{k}={v!r}" for k, v in self.context.items())
             return f"{self.message} ({ctx})"

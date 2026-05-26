@@ -155,7 +155,14 @@ class ToolPatternExtractor:
         start: datetime,
         end: datetime,
     ) -> tuple[NotBlankStr, tuple[ToolInvocationRecord, ...]]:
-        """Fetch invocation records for a single agent with error logging."""
+        """Fetch invocation records for a single agent with error logging.
+
+        Returns:
+            Tuple ``(NotBlankStr, tuple[ToolInvocationRecord, ...])``.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
+        """
         try:
             records = await self._tracker.get_records(
                 agent_id=str(agent_id),

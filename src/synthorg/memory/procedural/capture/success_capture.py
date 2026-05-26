@@ -6,6 +6,7 @@ a configurable quality threshold derived from the proposer's confidence.
 
 from typing import Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.loop_protocol import (
@@ -129,9 +130,8 @@ class SuccessCaptureStrategy:
                 quality=quality_score,
                 confidence=proposal.confidence,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROCEDURAL_CAPTURE_STORE_FAILED,
                 error_type=type(exc).__name__,
@@ -143,7 +143,11 @@ class SuccessCaptureStrategy:
 
     @staticmethod
     def _format_content(proposal: object) -> str:
-        """Format a proposal into three-tier progressive disclosure text."""
+        """Format a proposal into three-tier progressive disclosure text.
+
+        Returns:
+            Result of type ``str``.
+        """
         discovery = getattr(proposal, "discovery", "")
         condition = getattr(proposal, "condition", "")
         action = getattr(proposal, "action", "")

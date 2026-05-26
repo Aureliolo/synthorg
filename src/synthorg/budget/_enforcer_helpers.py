@@ -50,7 +50,11 @@ def _apply_downgrade(
     used_pct: float,
     threshold: int,
 ) -> AgentIdentity:
-    """Attempt model downgrade, returning identity unchanged on skip."""
+    """Attempt model downgrade, returning identity unchanged on skip.
+
+    Returns:
+        Result of type ``AgentIdentity``.
+    """
     current_model_id = identity.model.model_id
     agent_id_str = str(identity.id)
 
@@ -120,7 +124,11 @@ def _find_downgrade_target(
     source_alias: str,
     downgrade_map: tuple[tuple[str, str], ...],
 ) -> str | None:
-    """Find the target alias for a source in the downgrade map."""
+    """Find the target alias for a source in the downgrade map.
+
+    Returns:
+        The matching ``str``, or ``None`` when no match is found.
+    """
     for src, tgt in downgrade_map:
         if src == source_alias:
             return tgt
@@ -139,6 +147,9 @@ def _build_downgraded_model_config(
     (``"large"``, ``"medium"``, ``"small"``); preserves the current
     ``model_tier`` otherwise (avoids silent tier erasure when
     downgrading to a non-tier alias like ``"local-small"``).
+
+    Returns:
+        Result of type ``ModelConfig``.
     """
     update: dict[str, object] = {
         "provider": target.provider_name,
@@ -230,7 +241,11 @@ def _compute_thresholds(
     cfg: BudgetConfig,
     monthly_budget: float,
 ) -> _AlertThresholds:
-    """Pre-compute warn, critical, and hard_stop limits."""
+    """Pre-compute warn, critical, and hard_stop limits.
+
+    Returns:
+        Result of type ``_AlertThresholds``.
+    """
     if monthly_budget <= 0:
         return _AlertThresholds(0.0, 0.0, 0.0)
     return _AlertThresholds(
@@ -304,6 +319,11 @@ def _build_checker_closure(  # noqa: PLR0913
     last_alert: list[BudgetAlertLevel] = [BudgetAlertLevel.NORMAL]
 
     def _check(ctx: AgentContext) -> bool:
+        """Check.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         running_cost = ctx.accumulated_cost.cost
         if hard_ceiling > 0 and running_cost >= hard_ceiling:
             _raise_hard_ceiling(
@@ -351,7 +371,11 @@ def _raise_hard_ceiling(  # noqa: PLR0913 -- error carries every payload field
     task_id: str | None,
     forecast_id: UUID | None,
 ) -> None:
-    """Emit the ceiling-exceeded log + raise the typed error."""
+    """Emit the ceiling-exceeded log + raise the typed error.
+
+    Raises:
+        RunHardCeilingExceededError: If the related operation fails.
+    """
     logger.error(
         BUDGET_HARD_CEILING_EXCEEDED,
         agent_id=agent_id,
@@ -380,7 +404,11 @@ def _check_task_limit(
     task_limit: float,
     agent_id: str,
 ) -> bool:
-    """Return True if task budget limit is exhausted."""
+    """Return True if task budget limit is exhausted.
+
+    Returns:
+        ``True`` if the operation succeeds, ``False`` otherwise.
+    """
     if task_limit > 0 and running_cost >= task_limit:
         logger.warning(
             BUDGET_TASK_LIMIT_HIT,
@@ -400,7 +428,11 @@ def _check_monthly_limit(  # noqa: PLR0913
     last_alert: list[BudgetAlertLevel],
     agent_id: str,
 ) -> bool:
-    """Return True if monthly hard stop is hit; emit alerts."""
+    """Return True if monthly hard stop is hit; emit alerts.
+
+    Returns:
+        ``True`` if the operation succeeds, ``False`` otherwise.
+    """
     if monthly_budget <= 0:
         return False
     total_monthly = round(
@@ -441,7 +473,11 @@ def _check_daily_limit(
     daily_baseline: float,
     agent_id: str,
 ) -> bool:
-    """Return True if daily limit is exhausted."""
+    """Return True if daily limit is exhausted.
+
+    Returns:
+        ``True`` if the operation succeeds, ``False`` otherwise.
+    """
     if daily_limit <= 0:
         return False
     total_daily = round(
@@ -466,7 +502,11 @@ def _check_project_limit(
     agent_id: str,
     project_id: str | None = None,
 ) -> bool:
-    """Return True if project budget is exhausted."""
+    """Return True if project budget is exhausted.
+
+    Returns:
+        ``True`` if the operation succeeds, ``False`` otherwise.
+    """
     if project_budget <= 0:
         return False
     total_project = round(

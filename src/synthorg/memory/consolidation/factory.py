@@ -65,7 +65,14 @@ class ConsolidationDeps:
 
 
 def _require[T](value: T | None, name: str, strategy: str) -> T:
-    """Return *value* or raise if it is ``None``."""
+    """Return *value* or raise if it is ``None``.
+
+    Returns:
+        Result of type ``T``.
+
+    Raises:
+        MemoryConfigError: If the related operation fails.
+    """
     if value is None:
         msg = (
             f"consolidation strategy {strategy!r} requires "
@@ -76,6 +83,12 @@ def _require[T](value: T | None, name: str, strategy: str) -> T:
 
 
 def _build_simple(deps: ConsolidationDeps) -> CompositeConsolidationStrategy:
+    """Build the SIMPLE strategy: highest-relevance selection + concatenation.
+
+    Returns:
+        A composite strategy that concatenates the top-relevance group
+        without LLM synthesis.
+    """
     return CompositeConsolidationStrategy(
         selector=HighestRelevanceSelector(group_threshold=deps.group_threshold),
         op=ConcatenationOp(backend=deps.backend),
@@ -83,6 +96,12 @@ def _build_simple(deps: ConsolidationDeps) -> CompositeConsolidationStrategy:
 
 
 def _build_dual_mode(deps: ConsolidationDeps) -> CompositeConsolidationStrategy:
+    """Build the DUAL_MODE strategy: density-routed extract-or-summarise.
+
+    Returns:
+        A composite strategy that routes each group to extraction or
+        summarisation based on information density.
+    """
     classifier = _require(deps.classifier, "classifier", "dual_mode")
     extractor = _require(deps.extractor, "extractor", "dual_mode")
     summarizer = _require(deps.summarizer, "summarizer", "dual_mode")
@@ -98,6 +117,12 @@ def _build_dual_mode(deps: ConsolidationDeps) -> CompositeConsolidationStrategy:
 
 
 def _build_llm(deps: ConsolidationDeps) -> CompositeConsolidationStrategy:
+    """Build the LLM strategy: highest-relevance selection + LLM synthesis.
+
+    Returns:
+        A composite strategy that synthesises each selected group with
+        the configured provider/model, running groups in parallel.
+    """
     provider = _require(deps.provider, "provider", "llm")
     model = _require(deps.model, "model", "llm")
     return CompositeConsolidationStrategy(

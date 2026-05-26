@@ -96,6 +96,9 @@ class HybridPromptRetrievalBackend:
         Persistence-backed repositories do not expose a per-store
         ``is_connected`` probe (and should not -- the pool is health-
         checked by the main backend).
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
         """
         return self._connected
 
@@ -110,7 +113,11 @@ class HybridPromptRetrievalBackend:
         return NotBlankStr("hybrid_prompt_retrieval")
 
     def _require_connected(self) -> None:
-        """Raise if not connected."""
+        """Raise if not connected.
+
+        Raises:
+            OrgMemoryConnectionError: If the related operation fails.
+        """
         if not self._connected:
             msg = "Not connected -- call connect() first"
             logger.warning(ORG_MEMORY_NOT_CONNECTED, backend="hybrid_prompt_retrieval")
@@ -133,6 +140,9 @@ class HybridPromptRetrievalBackend:
         Returns:
             Core policy facts with category ``CORE_POLICY`` (full or
             sliced view).
+
+        Raises:
+            OrgMemoryQueryError: If the related operation fails.
         """
         self._require_connected()
         now = datetime.now(UTC)
@@ -168,7 +178,14 @@ class HybridPromptRetrievalBackend:
         return page
 
     async def count_policies(self) -> int:
-        """Return the unfiltered count of core policy facts."""
+        """Return the unfiltered count of core policy facts.
+
+        Returns:
+            Result of type ``int``.
+
+        Raises:
+            OrgMemoryQueryError: If the related operation fails.
+        """
         self._require_connected()
         try:
             dynamic = await self._store.list_by_category(OrgFactCategory.CORE_POLICY)

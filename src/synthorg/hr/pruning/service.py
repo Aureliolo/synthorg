@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
@@ -156,6 +157,9 @@ class PruningService:
         Idempotent + concurrent-safe per ``docs/reference/lifecycle-sync.md``:
         serialises on ``self._lifecycle_lock`` so concurrent callers
         cannot double-spawn the run loop.
+
+        Raises:
+            PruningUnrestartableError: If the related operation fails.
         """
         async with self._lifecycle_lock:
             if self._stop_failed:
@@ -189,6 +193,10 @@ class PruningService:
         timeout the service is also marked unrestartable so a fresh
         ``start()`` does not stack a second loop on top of the orphan
         task that may still own pruning state.
+
+        Raises:
+            TimeoutError: If the operation does not complete in time.
+            CancelledError: If the related operation fails.
         """
         async with self._lifecycle_lock:
             self._stop_event.set()
@@ -225,9 +233,8 @@ class PruningService:
                 if not task.done():
                     raise
                 # Loop already finished; drained successfully.
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     HR_PRUNING_POLICY_ERROR,
                     error_type=type(exc).__name__,
@@ -307,7 +314,11 @@ class PruningService:
         now: datetime,
         errors: list[NotBlankStr],
     ) -> list[tuple[AgentIdentity, PruningEvaluation]]:
-        """Evaluate all agents against policies, collecting errors."""
+        """Evaluate all agents against policies, collecting errors.
+
+        Returns:
+            List of ``tuple[AgentIdentity, PruningEvaluation]``.
+        """
         eligible: list[tuple[AgentIdentity, PruningEvaluation]] = []
         for agent in agents:
             try:
@@ -322,9 +333,8 @@ class PruningService:
                         agent_id=str(agent.id),
                         policy=str(evaluation.policy_name),
                     )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # The ``errors`` list lands on
                 # ``PruningJobRun.errors`` and is later
                 # logged/persisted, so we must scrub the same way
@@ -353,6 +363,9 @@ class PruningService:
 
         Returns the first eligible evaluation, or the last
         ineligible one.
+
+        Returns:
+            Result of type ``PruningEvaluation``.
         """
         snapshot = await self._tracker.get_snapshot(agent_id, now=now)
 
@@ -384,7 +397,11 @@ class PruningService:
         now: datetime,
         errors: list[NotBlankStr],
     ) -> int:
-        """Submit approval requests for eligible agents."""
+        """Submit approval requests for eligible agents.
+
+        Returns:
+            Result of type ``int``.
+        """
         pending = await self._approval_store.list_items(
             action_type=_ACTION_TYPE,
             status=ApprovalStatus.PENDING,
@@ -404,9 +421,8 @@ class PruningService:
                 )
                 if submitted:
                     created += 1
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Same scrub as the eligibility loop -- the
                 # ``errors`` list crosses the persistence boundary
                 # via ``PruningJobRun.errors``.
@@ -510,7 +526,11 @@ class PruningService:
         expires_at: datetime,
         request_id: NotBlankStr,
     ) -> ApprovalItem:
-        """Build an approval item for a pruning candidate."""
+        """Build an approval item for a pruning candidate.
+
+        Returns:
+            Result of type ``ApprovalItem``.
+        """
         return ApprovalItem(
             id=approval_id,
             action_type=NotBlankStr(_ACTION_TYPE),
@@ -568,6 +588,9 @@ class PruningService:
         id is already processed or currently in-flight in another
         cycle.  The claim must be released via ``_release_claim``
         regardless of handler outcome.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
         """
         async with self._processing_lock:
             if approval_id in self._processed_approval_ids:
@@ -646,7 +669,11 @@ class PruningService:
         item: ApprovalItem,
         agent: AgentIdentity,
     ) -> OffboardingRecord | None:
-        """Delegate to OffboardingService. Returns result or None."""
+        """Delegate to OffboardingService. Returns result or None.
+
+        Returns:
+            The resulting ``OffboardingRecord``, or ``None`` when unavailable.
+        """
         agent_id = str(agent.id)
         firing_request = FiringRequest(
             agent_id=NotBlankStr(agent_id),
@@ -664,9 +691,8 @@ class PruningService:
             return await self._offboarding_service.offboard(
                 firing_request,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Drop ``logger.exception`` here -- the
             # ``FiringRequest`` carries agent identity / reason and
             # frame-locals on the traceback could leak that to
@@ -731,9 +757,8 @@ class PruningService:
         if callback is not None:
             try:
                 await callback(record)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # No traceback on the notification callback path --
                 # frame-locals could carry the ``record`` body the
                 # callback was about to deliver.
@@ -782,6 +807,9 @@ class PruningService:
         Honors ``self._stop_event`` so the canonical ``stop()`` drain
         wakes the loop cooperatively. ``self._wake_event`` continues
         to interrupt the sleep for ad-hoc ``wake()`` triggers.
+
+        Raises:
+            CancelledError: If the related operation fails.
         """
         # lint-allow: long-running-loop-kill-switch -- _stop_event drives shutdown.
         while not self._stop_event.is_set():
@@ -799,11 +827,10 @@ class PruningService:
                 return
             try:
                 await self.run_pruning_cycle()
-            except MemoryError, RecursionError:
-                raise
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Drop ``logger.exception`` -- the scheduler-loop
                 # traceback can carry FiringRequest fields and
                 # policy state in frame-locals, both of which

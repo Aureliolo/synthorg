@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import (
     FineTuneStage,
@@ -240,17 +241,24 @@ class FineTuneOrchestrator:
                     MEMORY_FINE_TUNE_CANCELLED,
                     note="cancel timed out waiting for task",
                 )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:  # noqa: S110
-                pass  # Task failed/cancelled -- already logged by _on_task_done
+            except Exception as exc:
+                reraise_critical(exc)
+                # Task failed/cancelled -- already logged by _on_task_done
 
     async def recover_interrupted(self) -> int:
-        """Mark interrupted runs as FAILED on startup."""
+        """Mark interrupted runs as FAILED on startup.
+
+        Returns:
+            Result of type ``int``.
+        """
         return await self._run_repo.mark_interrupted()
 
     async def get_status(self) -> FineTuneStatus:
-        """Get current pipeline status."""
+        """Get current pipeline status.
+
+        Returns:
+            Result of type ``FineTuneStatus``.
+        """
         if self._current_run is not None:
             return FineTuneStatus(
                 run_id=self._current_run.id,
@@ -306,9 +314,8 @@ class FineTuneOrchestrator:
                     self._current_run or run,
                     "cancelled by user",
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Update in-memory state even if DB fails. Mirror
                 # ``_mark_failed`` so the snapshot has the same terminal
                 # shape (progress cleared, timestamps stamped) instead
@@ -340,18 +347,13 @@ class FineTuneOrchestrator:
                 "memory.fine_tune.failed",
                 self._current_run or run,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             safe_error = safe_error_description(exc)
             try:
                 await self._mark_failed(self._current_run or run, safe_error)
-            except MemoryError, RecursionError:
-                # Catastrophic interpreter state from the persistence
-                # layer must propagate; do not absorb into the FAILED
-                # fallback path.
-                raise
             except Exception as persist_exc:
+                reraise_critical(persist_exc)
                 # Persisting the FAILED state can itself fail (DB outage,
                 # disk full, etc.). Log the persistence failure with full
                 # context, then synthesise the same fully-terminal state
@@ -403,7 +405,11 @@ class FineTuneOrchestrator:
         self,
         run: FineTuneRun,
     ) -> FineTuneRun:
-        """Run all stages, skipping completed ones (resume)."""
+        """Run all stages, skipping completed ones (resume).
+
+        Returns:
+            Result of type ``FineTuneRun``.
+        """
         cfg = run.config
         out_dir = f"{cfg.output_dir}/runs/{run.id}"
         completed = set(run.stages_completed)
@@ -527,7 +533,11 @@ class FineTuneOrchestrator:
         run: FineTuneRun,
         stage: FineTuneStage,
     ) -> FineTuneRun:
-        """Mark a stage as entered."""
+        """Mark a stage as entered.
+
+        Returns:
+            Result of type ``FineTuneRun``.
+        """
         now = datetime.now(UTC)
         run = run.model_copy(
             update={
@@ -554,7 +564,11 @@ class FineTuneOrchestrator:
         run: FineTuneRun,
         stage_name: str,
     ) -> FineTuneRun:
-        """Record a stage as completed."""
+        """Record a stage as completed.
+
+        Returns:
+            Result of type ``FineTuneRun``.
+        """
         now = datetime.now(UTC)
         run = run.model_copy(
             update={
@@ -600,6 +614,9 @@ class FineTuneOrchestrator:
         The callback is safe to call from worker threads: it schedules
         state mutations back onto the event loop via
         ``call_soon_threadsafe``.
+
+        Returns:
+            Result of type ``Any``.
         """
         run_id = run.id
         last_emit = 0.0
@@ -637,6 +654,7 @@ class FineTuneOrchestrator:
             )
 
         def _cb(progress: float) -> None:
+            """Throttled progress callback: emit at most once per interval."""
             nonlocal last_emit
             now = clock.monotonic()
             if now - last_emit < _PROGRESS_THROTTLE_SEC:
@@ -686,9 +704,8 @@ class FineTuneOrchestrator:
                 payload,
                 channels=["system"],
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_FINE_TUNE_WS_EMIT_FAILED,
                 event_type=event_type,
@@ -714,14 +731,22 @@ class FineTuneOrchestrator:
 
 
 def _dir_size(path: Path) -> int:
-    """Compute total size in bytes of a directory."""
+    """Compute total size in bytes of a directory.
+
+    Returns:
+        Result of type ``int``.
+    """
     if not path.is_dir():
         return path.stat().st_size if path.exists() else 0
     return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
 
 
 def _build_config(request: FineTuneRequest) -> FineTuneRunConfig:
-    """Build a frozen config snapshot from a request."""
+    """Build a frozen config snapshot from a request.
+
+    Returns:
+        Result of type ``FineTuneRunConfig``.
+    """
     overrides = {
         k: v
         for k, v in request.model_dump(

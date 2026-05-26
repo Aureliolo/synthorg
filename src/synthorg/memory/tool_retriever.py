@@ -11,6 +11,7 @@ import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.errors import MemoryError as DomainMemoryError
 from synthorg.memory.tool_retriever_helpers import (
@@ -288,7 +289,11 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
         arguments: dict[str, Any],
         agent_id: str,
     ) -> str:
-        """Handle a search_memory tool call."""
+        """Handle a search_memory tool call.
+
+        Returns:
+            Result of type ``str``.
+        """
         query_text, limit, categories, rejected_categories = _parse_search_args(
             arguments,
             self._config.max_memories,
@@ -336,6 +341,14 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
         Returns the entries on success, or a user-facing error string
         on ``DomainMemoryError`` / unexpected ``Exception``.  System
         errors (``MemoryError``, ``RecursionError``) propagate.
+
+        Returns:
+            Result of type ``tuple[MemoryEntry, ...] | str``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            CancelledError: If the related operation fails.
         """
         try:
             return await self._retrieve_with_reformulation(
@@ -367,6 +380,7 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
             )
             return SEARCH_UNAVAILABLE
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 MEMORY_RETRIEVAL_DEGRADED,
@@ -381,7 +395,16 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
         arguments: dict[str, Any],
         agent_id: str,
     ) -> str:
-        """Handle a recall_memory tool call."""
+        """Handle a recall_memory tool call.
+
+        Returns:
+            Result of type ``str``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            CancelledError: If the related operation fails.
+        """
         memory_id_raw = arguments.get("memory_id", "")
         # Reject non-string shapes up-front rather than calling
         # ``str(...)`` on arbitrary objects -- an LLM-hallucinated
@@ -429,6 +452,7 @@ class ToolBasedInjectionStrategy(ToolBasedReformulationMixin):
             )
             return RECALL_UNAVAILABLE
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 MEMORY_RETRIEVAL_DEGRADED,

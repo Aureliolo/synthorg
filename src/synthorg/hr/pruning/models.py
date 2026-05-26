@@ -55,7 +55,14 @@ class PruningEvaluation(BaseModel):
 
     @model_validator(mode="after")
     def _validate_eligible_reasons(self) -> Self:
-        """Eligible evaluations must have at least one reason."""
+        """Eligible evaluations must have at least one reason.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.eligible and not self.reasons:
             msg = "eligible evaluations must have at least one reason"
             raise ValueError(msg)
@@ -108,6 +115,12 @@ class PruningRequest(BaseModel):
         - PENDING/EXPIRED must have decided_at and decided_by as None.
         - APPROVED/REJECTED require decided_at and decided_by.
         - decided_at must be >= created_at when present.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         decided_statuses = {
             ApprovalStatus.APPROVED,
@@ -170,7 +183,14 @@ class PruningRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_temporal_order(self) -> Self:
-        """Ensure completed_at >= created_at."""
+        """Ensure completed_at >= created_at.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.completed_at < self.created_at:
             msg = (
                 f"completed_at ({self.completed_at}) must be >= "
@@ -211,7 +231,14 @@ class PruningJobRun(BaseModel):
 
     @model_validator(mode="after")
     def _validate_count_relationships(self) -> Self:
-        """Ensure count relationships are logically consistent."""
+        """Ensure count relationships are logically consistent.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.agents_eligible > self.agents_evaluated:
             msg = (
                 f"agents_eligible ({self.agents_eligible}) cannot exceed "

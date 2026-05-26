@@ -6,6 +6,7 @@ procedural memories from task failures (when recovery_result is not None).
 
 import asyncio
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.loop_protocol import ExecutionResult  # noqa: TC001
 from synthorg.engine.recovery import RecoveryResult  # noqa: TC001
@@ -69,6 +70,9 @@ class FailureCaptureStrategy:
 
         Returns:
             Memory entry ID if a memory was captured, None otherwise.
+
+        Raises:
+            CancelledError: If the related operation fails.
         """
         if recovery_result is None:
             return None
@@ -83,11 +87,10 @@ class FailureCaptureStrategy:
                 memory_backend=memory_backend,
                 config=self._config,
             )
-        except MemoryError, RecursionError:
-            raise
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROCEDURAL_CAPTURE_STORE_FAILED,
                 agent_id=str(agent_id),

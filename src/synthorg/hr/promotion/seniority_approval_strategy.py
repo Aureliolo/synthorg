@@ -73,7 +73,11 @@ class SeniorityApprovalStrategy:
         self,
         evaluation: PromotionEvaluation,
     ) -> PromotionApprovalDecision:
-        """Decide approval for promotions."""
+        """Decide approval for promotions.
+
+        Returns:
+            Result of type ``PromotionApprovalDecision``.
+        """
         target = evaluation.target_level
         threshold = self._config.human_approval_from_level
 
@@ -100,7 +104,11 @@ class SeniorityApprovalStrategy:
         self,
         evaluation: PromotionEvaluation,
     ) -> PromotionApprovalDecision:
-        """Decide approval for demotions."""
+        """Decide approval for demotions.
+
+        Returns:
+            Result of type ``PromotionApprovalDecision``.
+        """
         # Cost-saving demotions auto-apply
         if self._config.auto_demote_cost_saving:
             return PromotionApprovalDecision(

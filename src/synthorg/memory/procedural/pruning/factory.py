@@ -20,14 +20,29 @@ logger = get_logger(__name__)
 
 
 def _build_ttl(config: PruningConfig) -> PruningStrategy:
+    """Registry entry: build the TTL (age-based) pruning strategy.
+
+    Returns:
+        A ``TtlPruningStrategy`` that evicts entries older than ``max_age_days``.
+    """
     return TtlPruningStrategy(max_age_days=config.max_age_days)
 
 
 def _build_pareto(config: PruningConfig) -> PruningStrategy:
+    """Registry entry: build the Pareto (count-capped) pruning strategy.
+
+    Returns:
+        A ``ParetoPruningStrategy`` that caps retained entries at ``max_entries``.
+    """
     return ParetoPruningStrategy(max_entries=config.max_entries)
 
 
 def _build_hybrid(config: PruningConfig) -> PruningStrategy:
+    """Registry entry: build the hybrid (TTL + Pareto) pruning strategy.
+
+    Returns:
+        A ``HybridPruningStrategy`` combining the age and count caps.
+    """
     return HybridPruningStrategy(
         ttl_strategy=TtlPruningStrategy(max_age_days=config.max_age_days),
         pareto_strategy=ParetoPruningStrategy(max_entries=config.max_entries),

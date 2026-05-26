@@ -69,7 +69,14 @@ class SchemaInspectArgs(BaseModel):
 
     @model_validator(mode="after")
     def _validate_action_table_name(self) -> Self:
-        """Reject malformed action / table_name combinations."""
+        """Reject malformed action / table_name combinations.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.action == "describe_table" and self.table_name is None:
             msg = "table_name is required when action='describe_table'"
             raise ValueError(msg)

@@ -114,6 +114,9 @@ class ReadFileTool(BaseFileSystemTool):
         guard is the defensive backstop for direct callers that
         bypass the invoker (tests, internal utilities) and pass an
         unvalidated dict.
+
+        Returns:
+            The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
         """
         if start_line is not None and end_line is not None and start_line > end_line:
             return ToolExecutionResult(
@@ -160,7 +163,11 @@ class ReadFileTool(BaseFileSystemTool):
         size_bytes: int,
         oversized: bool,
     ) -> ToolExecutionResult:
-        """Execute the read and build the result."""
+        """Execute the read and build the result.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         max_bytes = MAX_FILE_SIZE_BYTES if oversized else None
         try:
             content = await asyncio.to_thread(

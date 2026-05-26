@@ -10,6 +10,7 @@ from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType, ScalingStrategyName
 from synthorg.hr.scaling.models import ScalingContext, ScalingDecision, ScalingSignal
@@ -83,6 +84,11 @@ class PerformancePruningStrategy:
 
         Returns:
             PRUNE decisions for eligible agents.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            CancelledError: If the related operation fails.
         """
         snapshots: Mapping[str, AgentPerformanceSnapshot] = (
             context.performance_snapshots
@@ -151,7 +157,8 @@ class PerformancePruningStrategy:
                 agents_processed += 1
             except MemoryError, RecursionError, asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 agents_error += 1
                 logger.error(
                     HR_SCALING_STRATEGY_EVALUATED,

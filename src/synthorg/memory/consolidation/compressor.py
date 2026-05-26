@@ -170,6 +170,9 @@ class LLMExperienceCompressor:
                 before spending an LLM call), or if the LLM response
                 is malformed.
             Exception: On LLM call failure (not silently swallowed).
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            TypeError: If an argument has an unexpected type.
         """
         if not source_artifact_ids:
             msg = (

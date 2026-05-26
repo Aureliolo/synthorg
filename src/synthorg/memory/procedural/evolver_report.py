@@ -78,7 +78,14 @@ class EvolverReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_window_order(self) -> Self:
-        """Ensure window_end >= window_start."""
+        """Ensure window_end >= window_start.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.window_end < self.window_start:
             msg = (
                 f"window_end ({self.window_end}) must be >= "

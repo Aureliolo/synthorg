@@ -18,6 +18,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # module top -- not under ``TYPE_CHECKING`` -- keeps the name in module
 # globals.
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -65,9 +66,14 @@ _SYSTEM_PROMPT = (
 
 
 def _extract_json(text: str) -> dict[str, Any] | None:
-    """Extract a JSON object from LLM response text via the shared helper."""
+    """Extract a JSON object from LLM response text via the shared helper.
+
+    Returns:
+        The resulting ``dict[str, Any]``, or ``None`` when unavailable.
+    """
 
     def _log_parse_failure(detail: str) -> None:
+        """Log parse failure."""
         logger.debug(
             PROCEDURAL_MEMORY_SKIPPED,
             reason="json_parse_error",
@@ -85,6 +91,9 @@ def _build_user_message(payload: FailureAnalysisPayload) -> str:
     appropriate ``TAG_*`` fence so the proposer LLM treats them as
     data. The matching ``untrusted_content_directive`` is appended
     to ``_SYSTEM_PROMPT``.
+
+    Returns:
+        Result of type ``str``.
     """
     tools = ", ".join(payload.tool_calls_made) if payload.tool_calls_made else "none"
     task_block = (
@@ -164,6 +173,9 @@ class ProceduralMemoryProposer:
 
         Returns:
             A validated proposal, or ``None`` if skipped.
+
+        Raises:
+            ProviderError: If the related operation fails.
         """
         try:
             messages = [
@@ -184,8 +196,6 @@ class ProceduralMemoryProposer:
                     self._config.model,
                     config=self._completion_config,
                 )
-        except MemoryError, RecursionError:
-            raise
         except ProviderError as exc:
             if not exc.is_retryable:
                 raise
@@ -198,6 +208,7 @@ class ProceduralMemoryProposer:
             )
             return None
         except Exception as exc:
+            reraise_critical(exc)
             # Drop exc_info + scrub the message -- provider
             # exceptions can carry the API key in str(exc).
             logger.warning(
@@ -216,7 +227,11 @@ class ProceduralMemoryProposer:
         content: str | None,
         task_id: str,
     ) -> ProceduralMemoryProposal | None:
-        """Parse and validate the LLM response into a proposal."""
+        """Parse and validate the LLM response into a proposal.
+
+        Returns:
+            The resulting ``ProceduralMemoryProposal``, or ``None`` when unavailable.
+        """
         if not content or not content.strip():
             logger.debug(
                 PROCEDURAL_MEMORY_SKIPPED,

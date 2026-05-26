@@ -46,6 +46,7 @@ def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int
         IsADirectoryError: If the target is a directory.
         PermissionError: If the process lacks write permission.
         OSError: For other OS-level I/O failures.
+        BaseException: Raised when the relevant invariant fails.
     """
     created = not resolved.exists()
     if create_dirs:
@@ -103,7 +104,11 @@ class WriteFileTool(BaseFileSystemTool):
         user_path: str,
         content: str,
     ) -> ToolExecutionResult | None:
-        """Return an error if content exceeds the size limit."""
+        """Return an error if content exceeds the size limit.
+
+        Returns:
+            The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
+        """
         content_size = len(content.encode("utf-8"))
         if content_size > MAX_WRITE_SIZE_BYTES:
             logger.warning(
@@ -127,7 +132,11 @@ class WriteFileTool(BaseFileSystemTool):
         *,
         create_dirs: bool,
     ) -> Path | ToolExecutionResult:
-        """Resolve and validate the write target path."""
+        """Resolve and validate the write target path.
+
+        Returns:
+            Result of type ``Path | ToolExecutionResult``.
+        """
         try:
             if create_dirs:
                 resolved = self.path_validator.validate(user_path)
@@ -157,7 +166,11 @@ class WriteFileTool(BaseFileSystemTool):
         *,
         create_dirs: bool,
     ) -> ToolExecutionResult:
-        """Execute the write and build the result."""
+        """Execute the write and build the result.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         try:
             bytes_written, created = await asyncio.to_thread(
                 _write_sync,

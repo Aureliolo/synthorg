@@ -10,6 +10,7 @@ import json
 from typing import Final
 
 from synthorg.budget.call_category import LLMCallCategory
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -65,7 +66,11 @@ def _build_cache_key(
     query_text: str,
     candidate_ids: tuple[str, ...],
 ) -> str:
-    """Build a deterministic cache key from query + candidate IDs."""
+    """Build a deterministic cache key from query + candidate IDs.
+
+    Returns:
+        Result of type ``str``.
+    """
     raw = query_text + "|" + ",".join(sorted(candidate_ids))
     return hashlib.sha256(raw.encode()).hexdigest()
 
@@ -119,6 +124,10 @@ class LLMQuerySpecificReranker:
         Returns:
             Candidates in re-ordered sequence with original scores
             preserved.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         if len(candidates) <= 1:
             return candidates
@@ -144,6 +153,7 @@ class LLMQuerySpecificReranker:
             except builtins.MemoryError, RecursionError:
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     MEMORY_RERANK_CACHE_MISS,
                     error_type=type(exc).__name__,
@@ -168,6 +178,7 @@ class LLMQuerySpecificReranker:
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             # Reranking is optional post-fusion enhancement -- degrade
             # to the pre-rerank order on any provider failure
             # (including ``RetryExhaustedError``) rather than aborting
@@ -191,6 +202,7 @@ class LLMQuerySpecificReranker:
                 except builtins.MemoryError, RecursionError:
                     raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         MEMORY_RERANK_CACHE_MISS,
                         error_type=type(exc).__name__,
@@ -209,7 +221,11 @@ class LLMQuerySpecificReranker:
         query: RetrievalQuery,
         candidates: tuple[RetrievalCandidate, ...],
     ) -> tuple[RetrievalCandidate, ...]:
-        """Call LLM for re-ranking decision."""
+        """Call LLM for re-ranking decision.
+
+        Returns:
+            Tuple of ``RetrievalCandidate``.
+        """
         candidate_lines = []
         for i, c in enumerate(candidates):
             content_preview = c.entry.content[:_MAX_CANDIDATE_CONTENT_CHARS]

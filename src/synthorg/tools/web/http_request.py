@@ -238,6 +238,9 @@ class HttpRequestTool(BaseWebTool):
         Returns ``(raw_bytes, status_code, headers)``.  Reading one
         extra byte lets the caller detect truncation without
         buffering the entire body.
+
+        Returns:
+            Tuple ``(bytes, int, httpx.Headers)``.
         """
         # Read limit + 1 to detect truncation.
         budget = self._max_response_bytes + 1
@@ -278,6 +281,9 @@ class HttpRequestTool(BaseWebTool):
 
         Returns a **(url, headers)** tuple.  The headers dict is
         copied before mutation to avoid mutating the caller's input.
+
+        Returns:
+            Tuple ``(str, dict[str, str])``.
         """
         from urllib.parse import urlparse  # noqa: PLC0415
 

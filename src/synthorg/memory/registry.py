@@ -42,7 +42,11 @@ class MemoryBackendRegistry:
     _KIND = "memory_backend"
 
     def __init__(self, factories: Mapping[str, _MemoryFactory]) -> None:
-        """Freeze *factories* and emit a registry-built event."""
+        """Freeze *factories* and emit a registry-built event.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if not factories:
             msg = "MemoryBackendRegistry requires at least one factory"
             raise ValueError(msg)
@@ -78,6 +82,7 @@ class MemoryBackendRegistry:
 
         Raises:
             StrategyFactoryNotFoundError: If *name* is not registered.
+            Exception: Raised when the relevant invariant fails.
         """
         factory = self._factories.get(name)
         if factory is None:
@@ -119,15 +124,27 @@ class MemoryBackendRegistry:
         return backend
 
     def names(self) -> tuple[str, ...]:
-        """Sorted tuple of registered backend names."""
+        """Sorted tuple of registered backend names.
+
+        Returns:
+            Tuple of ``str``.
+        """
         return tuple(sorted(self._factories))
 
     def __contains__(self, name: object) -> bool:
-        """Return ``True`` iff *name* is a registered string discriminator."""
+        """Return ``True`` iff *name* is a registered string discriminator.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         if not isinstance(name, str):
             return False
         return name in self._factories
 
     def __len__(self) -> int:
-        """Number of registered backends."""
+        """Number of registered backends.
+
+        Returns:
+            Result of type ``int``.
+        """
         return len(self._factories)

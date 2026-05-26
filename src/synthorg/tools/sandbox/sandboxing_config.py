@@ -37,7 +37,14 @@ class SandboxingConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_override_backends(self) -> Self:
-        """Ensure override values are valid backend names."""
+        """Ensure override values are valid backend names.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         for category, backend in self.overrides.items():
             if backend not in _VALID_BACKENDS:
                 msg = (
