@@ -420,14 +420,18 @@ repos:
         stages: [pre-push]
 
       - id: lychee
-        name: lychee (Markdown link-checker)
+        name: lychee (Markdown link-checker, internal links)
         entry: lychee
-        args: ["--config", "lychee.toml", "--no-progress"]
+        args: ["--config", "lychee.toml", "--no-progress", "--offline"]
         language: system
         # Top-level README, every CLAUDE.md tier, and every Markdown
-        # under docs/. The CI workflow .github/workflows/lychee.yml
-        # mirrors this glob set; the local hook is pre-push only
-        # because the network probes take 8-15s.
+        # under docs/. The CI gate .github/workflows/lychee.yml mirrors
+        # this glob set. ``--offline`` validates internal links only
+        # (relative + file://) and skips network probes, so the hook is
+        # near-instant and a third-party host can never block a push.
+        # External links are checked weekly by
+        # .github/workflows/lychee-external.yml (files a tracking issue,
+        # never blocks). Pre-push stage matches the other prose gates.
         files: ^(README|CLAUDE|cli/CLAUDE|web/CLAUDE)\.md$|^docs/.*\.md$
         pass_filenames: true
         stages: [pre-push]

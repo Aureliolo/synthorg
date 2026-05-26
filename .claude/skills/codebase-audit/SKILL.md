@@ -3777,7 +3777,7 @@ These concerns have a planned hook, linter, or external-tool replacement, but th
 | long-functions | Ruff `C901` / `PLR0915` + eslint `max-lines-per-function` (TODO: enable) |
 | long-files | Ruff + eslint `max-lines` (TODO: enable) |
 | future-annotations-leak | Ruff `FA100` / `FA102` (TODO: enable) |
-| docs-links-refs | `lychee` in CI (TODO: wire) |
+| docs-links-refs | `lychee` in CI: internal-links gate (offline) + weekly external-links workflow |
 
 ---
 
