@@ -7,7 +7,7 @@ import type {
 import type { OrgRole } from '@/api/types/enums'
 import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
-export function buildUser(overrides: Partial<UserResponse> = {}): UserResponse {
+function buildUser(overrides: Partial<UserResponse> = {}): UserResponse {
   return {
     id: 'user-default',
     username: 'default',

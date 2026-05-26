@@ -49,10 +49,3 @@ export async function listSessions(
   )
   return unwrap(response)
 }
-
-export async function revokeSession(sessionId: string): Promise<void> {
-  const response = await apiClient.delete<ApiResponse<null>>(
-    `/auth/sessions/${encodeURIComponent(sessionId)}`,
-  )
-  unwrapVoid(response)
-}

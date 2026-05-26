@@ -164,17 +164,3 @@ export const useSetupWizardStore = create<SetupWizardState>()(
     persistOptions,
   ),
 )
-
-/**
- * Test-teardown hook: clear the localStorage key and any pending
- * Zustand persist debounce so the wizard store does not leak state
- * across test cases or push the dashboard async-leak ceiling above
- * its CI cap.  Idempotent.
- */
-export function cancelPendingPersist(): void {
-  try {
-    useSetupWizardStore.persist.clearStorage()
-  } catch {
-    // No localStorage in some test envs; safe to ignore.
-  }
-}

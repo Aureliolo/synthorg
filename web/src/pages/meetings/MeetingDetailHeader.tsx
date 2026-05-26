@@ -3,7 +3,7 @@ import { ArrowLeft, Clock, Hash } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { StatPill } from '@/components/ui/stat-pill'
-import { formatDate, formatLabel, formatTokenCount } from '@/utils/format'
+import { formatDateTime, formatLabel, formatTokenCount } from '@/utils/format'
 import {
   formatMeetingDuration,
   getMeetingStatusColor,
@@ -73,13 +73,13 @@ export function MeetingDetailHeader({ meeting, className }: MeetingDetailHeaderP
         {startedAt && (
           <span className="flex items-center gap-1">
             <Clock className="size-3.5" aria-hidden="true" />
-            Started: {formatDate(startedAt)}
+            Started: {formatDateTime(startedAt)}
           </span>
         )}
         {endedAt && (
           <span className="flex items-center gap-1">
             <Clock className="size-3.5" aria-hidden="true" />
-            Ended: {formatDate(endedAt)}
+            Ended: {formatDateTime(endedAt)}
           </span>
         )}
         <span className="flex items-center gap-1">

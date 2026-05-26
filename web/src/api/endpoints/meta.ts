@@ -8,16 +8,14 @@
 import type {
   ConversationalProposeRequest,
   ProposeResult,
-  ProposedApprovalSummary as GeneratedProposedApprovalSummary,
 } from '../types'
 import type { ApiResponse } from '../types/http'
 import { apiClient, unwrap } from '../client'
 
-// Re-export the generated DTOs so call sites that previously imported
-// the hand-maintained interfaces keep working without changing every
+// Re-export the generated DTO so call sites that previously imported
+// the hand-maintained interface keep working without changing every
 // site at once; the source of truth is the generated openapi.gen.ts.
 export type ConversationalProposeResponse = ProposeResult
-export type ProposedApprovalSummary = GeneratedProposedApprovalSummary
 
 // -- Types -------------------------------------------------------------------
 

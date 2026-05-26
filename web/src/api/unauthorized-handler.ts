@@ -53,7 +53,3 @@ export function notifyUnauthorized(): void {
     }
   }
 }
-
-export function _resetUnauthorizedHandlerForTests(): void {
-  subscribers.clear()
-}

@@ -66,7 +66,7 @@ describe('ApprovalTimeline', () => {
       decided_at: '2026-03-27T12:00:00Z',
     })
     render(<ApprovalTimeline approval={approval} />)
-    // formatDate produces locale strings; check that timestamps appear within listitems
+    // formatDateTime produces locale strings; check that timestamps appear within listitems
     const items = screen.getAllByRole('listitem')
     // Check that timestamps appear by verifying the list items contain date content
     // The timestamps are formatted by the component -- just verify the listitems have text beyond the step label

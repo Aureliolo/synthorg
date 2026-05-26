@@ -18,7 +18,7 @@ const log = createLogger('retry-after')
 export const MAX_RATE_LIMIT_RETRIES = 2
 
 /** Upper bound on Retry-After wait per retry so a hostile backend can't hang the UI. */
-export const MAX_RETRY_AFTER_MS = 5_000
+const MAX_RETRY_AFTER_MS = 5_000
 
 /** Sentinel returned by {@link parseRetryAfterMs} when we must NOT auto-retry. */
 export const DO_NOT_RETRY = -1

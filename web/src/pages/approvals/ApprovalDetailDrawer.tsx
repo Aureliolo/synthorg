@@ -15,7 +15,7 @@ import {
   getRiskLevelLabel,
   formatUrgency,
 } from '@/utils/approvals'
-import { formatDate } from '@/utils/format'
+import { formatDateTime } from '@/utils/format'
 import { useToastStore } from '@/stores/toast'
 import type { ApprovalResponse, ApproveRequest, RejectRequest } from '@/api/types/approvals'
 
@@ -320,7 +320,7 @@ export function ApprovalDetailDrawer({
                 <MetaField icon={Tag} label="Action Type" value={approval.action_type} />
                 <MetaField icon={Shield} label="Risk Level" value={getRiskLevelLabel(approval.risk_level)} />
                 <MetaField icon={User} label="Requested By" value={approval.requested_by} />
-                <MetaField icon={Calendar} label="Created" value={formatDate(approval.created_at)} />
+                <MetaField icon={Calendar} label="Created" value={formatDateTime(approval.created_at)} />
                 {approval.expires_at && (
                   <MetaField icon={Calendar} label="Expires" value={formatUrgency(approval.seconds_remaining)} />
                 )}
@@ -328,7 +328,7 @@ export function ApprovalDetailDrawer({
                   <MetaField icon={User} label="Decided By" value={approval.decided_by} />
                 )}
                 {approval.decided_at && (
-                  <MetaField icon={Calendar} label="Decided At" value={formatDate(approval.decided_at)} />
+                  <MetaField icon={Calendar} label="Decided At" value={formatDateTime(approval.decided_at)} />
                 )}
                 {confidenceLabel && (
                   <MetaField icon={Shield} label="Confidence" value={confidenceLabel} />

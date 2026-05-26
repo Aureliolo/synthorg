@@ -15,11 +15,6 @@ export type {
 } from './dtos.gen'
 
 export type { BucketSize, TrendMetric, TrendPeriod } from './enum-values.gen'
-export {
-  BUCKET_SIZE_VALUES,
-  TREND_METRIC_VALUES,
-  TREND_PERIOD_VALUES,
-} from './enum-values.gen'
 
 /**
  * Legacy display-oriented activity item derived from the wire

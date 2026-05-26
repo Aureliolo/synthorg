@@ -27,7 +27,7 @@ function invalid(...errors: string[]): StepValidationResult {
   return { valid: false, errors }
 }
 
-export const COMPANY_TEMPLATE_GATE_ERROR = 'Apply the template to continue'
+const COMPANY_TEMPLATE_GATE_ERROR = 'Apply the template to continue'
 
 // ── Step 1: Template ─────────────────────────────────────────
 

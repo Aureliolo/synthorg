@@ -10,7 +10,7 @@ import { successFor } from './helpers'
  * Build a happy-path ``WebhookReceipt`` row for stories and tests.
  * Mirrors the backend Pydantic model field-for-field.
  */
-export function buildWebhookReceipt(
+function buildWebhookReceipt(
   overrides: Partial<WebhookReceipt> = {},
 ): WebhookReceipt {
   return {

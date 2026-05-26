@@ -7,7 +7,7 @@ import type {
 import type { MeetingResponse } from '@/api/types/meetings'
 import { apiError, emptyPage, paginatedFor, successFor } from './helpers'
 
-export function buildMeeting(
+function buildMeeting(
   overrides: Partial<MeetingResponse> = {},
 ): MeetingResponse {
   return {

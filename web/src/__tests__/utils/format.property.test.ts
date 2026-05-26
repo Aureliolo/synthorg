@@ -1,6 +1,6 @@
 import fc from 'fast-check'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import { formatCurrency, formatUptime, formatLabel, formatDate } from '@/utils/format'
+import { formatCurrency, formatUptime, formatLabel, formatDateTime } from '@/utils/format'
 
 describe('format property tests', () => {
   it('formatCurrency with USD always contains $', () => {
@@ -60,12 +60,12 @@ describe('format property tests', () => {
     )
   })
 
-  it('formatDate returns -- for any falsy input', () => {
+  it('formatDateTime returns -- for any falsy input', () => {
     fc.assert(
       fc.property(
         fc.constantFrom(null, undefined, ''),
         (input) => {
-          expect(formatDate(input as string | null | undefined)).toBe('--')
+          expect(formatDateTime(input as string | null | undefined)).toBe('--')
         },
       ),
     )

@@ -23,7 +23,7 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 import { buildAgent } from './agents'
 
-export function buildDepartment(
+function buildDepartment(
   overrides: Partial<Department> = {},
 ): Department {
   return {
@@ -48,7 +48,7 @@ export function buildDepartment(
   }
 }
 
-export function buildCompanyConfig(
+function buildCompanyConfig(
   overrides: Partial<CompanyConfig> = {},
 ): CompanyConfig {
   return {
@@ -76,7 +76,7 @@ function buildDepartmentHealth(name: string): DepartmentHealth {
   }
 }
 
-export function buildTeam(overrides: Partial<TeamConfig> = {}): TeamConfig {
+function buildTeam(overrides: Partial<TeamConfig> = {}): TeamConfig {
   return {
     name: 'default-team',
     lead: 'agent-default',

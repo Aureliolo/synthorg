@@ -4,7 +4,7 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import type { SettingEntry } from '@/api/types/settings'
 
 /** Page size used by every settings list call in this store. */
-export const SETTINGS_PAGE_LIMIT = 200
+const SETTINGS_PAGE_LIMIT = 200
 
 /** Walk every page of the settings list endpoint into a single array. */
 export function fetchAllSettingsEntries(): Promise<SettingEntry[]> {

@@ -342,5 +342,3 @@ function FormField({ label, error, required, children }: { label: string; error?
     </div>
   )
 }
-
-export { INPUT_CLASSES, TEXTAREA_CLASSES }

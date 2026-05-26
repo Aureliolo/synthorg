@@ -6,7 +6,6 @@ import {
   isNumber,
   isObject,
   isOptionalString,
-  isRecord,
   isString,
   parseOrNull,
 } from '@/utils/type-guards'
@@ -32,14 +31,6 @@ describe('type-guards', () => {
       expect(isObject(1)).toBe(false)
       expect(isObject(true)).toBe(false)
       expect(isObject(undefined)).toBe(false)
-    })
-  })
-
-  describe('isRecord (alias of isObject)', () => {
-    it('matches isObject behaviour', () => {
-      expect(isRecord({ a: 1 })).toBe(true)
-      expect(isRecord(null)).toBe(false)
-      expect(isRecord([])).toBe(false)
     })
   })
 

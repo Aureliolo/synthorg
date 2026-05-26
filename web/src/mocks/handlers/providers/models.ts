@@ -17,7 +17,7 @@ import { buildProvider } from './crud'
  * that just verify pullModel resolves. Streaming-specific tests
  * should override per-case via ``server.use(...)``.
  */
-export function buildPullStream(): ReadableStream<Uint8Array> {
+function buildPullStream(): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
   return new ReadableStream<Uint8Array>({
     start(controller) {

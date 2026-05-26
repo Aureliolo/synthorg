@@ -28,14 +28,6 @@ export type {
   WorkflowValueType,
 } from './enum-values.gen'
 
-export {
-  WORKFLOW_EDGE_TYPE_VALUES,
-  WORKFLOW_EXECUTION_STATUS_VALUES,
-  WORKFLOW_NODE_EXECUTION_STATUS_VALUES,
-  WORKFLOW_NODE_TYPE_VALUES,
-  WORKFLOW_VALUE_TYPE_VALUES,
-} from './enum-values.gen'
-
 import type {
   EdgeChange as WireEdgeChange,
   NodeChange as WireNodeChange,
@@ -46,16 +38,9 @@ import {
 } from './enum-values.gen'
 import type {
   WorkflowEdgeType,
-  WorkflowNodeExecutionStatus,
   WorkflowNodeType,
 } from './enum-values.gen'
 import type { WorkflowNodeType as WireWorkflowNodeType } from './enum-values.gen'
-
-/** Legacy aliases for the older import paths used by the workflow canvas
- *  components and tests (the dashboard had its own VALUES tuples; these
- *  re-export the generated names under the older identifiers). */
-export const WORKFLOW_NODE_TYPES = WORKFLOW_NODE_TYPE_VALUES
-export const WORKFLOW_EDGE_TYPES = WORKFLOW_EDGE_TYPE_VALUES
 
 export function isWorkflowNodeType(value: unknown): value is WorkflowNodeType {
   return (
@@ -90,14 +75,6 @@ export interface WorkflowEdgeData {
   readonly target_node_id: string
   readonly type: WorkflowEdgeType
   readonly label: string | null
-}
-
-export interface WorkflowNodeExecution {
-  readonly node_id: string
-  readonly node_type: WireWorkflowNodeType
-  readonly status: WorkflowNodeExecutionStatus
-  readonly task_id: string | null
-  readonly skipped_reason: string | null
 }
 
 /** Generic version snapshot envelope matching backend VersionSnapshot[T]. */

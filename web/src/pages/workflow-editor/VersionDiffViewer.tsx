@@ -42,7 +42,7 @@ export interface MetadataChangeRowProps {
   change: MetadataChange
 }
 
-export function MetadataChangeRow({ change }: MetadataChangeRowProps) {
+function MetadataChangeRow({ change }: MetadataChangeRowProps) {
   return (
     <div className="rounded-md bg-card p-card text-sm">
       <span className="font-medium text-foreground">{change.field}</span>
@@ -57,7 +57,7 @@ export interface NodeChangeRowProps {
   change: NodeChangeType
 }
 
-export function NodeChangeRow({ change }: NodeChangeRowProps) {
+function NodeChangeRow({ change }: NodeChangeRowProps) {
   const Icon = NODE_CHANGE_ICONS[change.change_type] ?? Settings
   const color = NODE_CHANGE_COLORS[change.change_type] ?? 'text-muted'
   const label = change.change_type.replace(/_/g, ' ')
@@ -75,7 +75,7 @@ export interface EdgeChangeRowProps {
   change: EdgeChangeType
 }
 
-export function EdgeChangeRow({ change }: EdgeChangeRowProps) {
+function EdgeChangeRow({ change }: EdgeChangeRowProps) {
   const color = EDGE_CHANGE_COLORS[change.change_type] ?? 'text-muted'
   const label = change.change_type.replace(/_/g, ' ')
 

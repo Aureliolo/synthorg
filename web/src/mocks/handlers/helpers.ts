@@ -72,44 +72,6 @@ export function apiError(
   }
 }
 
-/**
- * Build a uniform validation-error envelope for MSW handlers.
- *
- * Centralises the "missing or invalid required field" copy so mock
- * handlers don't drift from each other (some used "Missing required
- * fields", others "Field 'name' is required", others "Fields 'a' and
- * 'b' are required" -- the inconsistency leaked into test
- * expectations and could mask real backend divergence). Pass the
- * required field names; the helper formats them into a stable
- * "Validation error: a, b are required." sentence.
- */
-export function buildValidationError(
-  fields: readonly string[],
-  overrides?: Partial<ErrorDetail>,
-): ApiResponse<never> {
-  if (fields.length === 0) {
-    return apiError('Validation error: required field is missing.', {
-      // REQUEST_VALIDATION_ERROR (2001) sits in the validation band;
-      // the prior DUPLICATE_RECORD (4001, conflict band) was a
-      // category/code mismatch that would have failed the backend's
-      // band-prefix invariant.
-      error_code: ErrorCode.REQUEST_VALIDATION_ERROR,
-      error_category: ErrorCategory.VALIDATION,
-      title: 'Validation error',
-      ...overrides,
-    })
-  }
-  const formatted = fields.length === 1
-    ? `${fields[0]} is required`
-    : `${fields.slice(0, -1).join(', ')} and ${fields[fields.length - 1]} are required`
-  return apiError(`Validation error: ${formatted}.`, {
-    error_code: ErrorCode.REQUEST_VALIDATION_ERROR,
-    error_category: ErrorCategory.VALIDATION,
-    title: 'Validation error',
-    ...overrides,
-  })
-}
-
 /** Build a failed paginated envelope (data=null, pagination=null). */
 export function apiPaginatedError(
   error: string,

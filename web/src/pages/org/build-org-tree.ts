@@ -18,7 +18,7 @@ import { resolveRuntimeStatus } from './status-mapping'
  * (``Quality Assurance`` -> ``QUALITY ASSURANCE``) so the upstream
  * CSS transform produces a real heading.
  */
-export function humanizeDepartmentName(raw: string): string {
+function humanizeDepartmentName(raw: string): string {
   if (!raw) return raw
   return raw
     .split('_')
@@ -105,7 +105,7 @@ export interface TeamGroupData {
 // ── Dept admin node dimensions ──────────────────────────────
 
 export const DEPT_ADMIN_WIDTH = 200
-export const DEPT_ADMIN_HEIGHT = 70
+const DEPT_ADMIN_HEIGHT = 70
 
 // ── Seniority ordering ──────────────────────────────────────
 

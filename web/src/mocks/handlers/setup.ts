@@ -21,7 +21,7 @@ import type {
 } from '@/api/types/setup'
 import { apiSuccess, paginatedEnvelopeFor, successFor } from './helpers'
 
-export function buildAgentSummary(
+function buildAgentSummary(
   overrides: Partial<SetupAgentSummary> = {},
 ): SetupAgentSummary {
   return {

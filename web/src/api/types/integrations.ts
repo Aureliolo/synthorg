@@ -21,7 +21,7 @@ import type { ConnectionType } from './enum-values.gen'
  * field on any type so a future webhook-emitting type only needs adding to
  * this list.
  */
-export const WEBHOOK_RECEIPT_CONNECTION_TYPES = [
+const WEBHOOK_RECEIPT_CONNECTION_TYPES = [
   'github',
   'slack',
   'generic_http',
@@ -37,12 +37,6 @@ export function connectionTypeUsesWebhookReceipts(
 /** Inline string unions on Connection / Connection responses. The
  *  values are not surfaced as named enum schemas by Pydantic, so the
  *  unions stay hand-maintained until the backend promotes them. */
-export type ConnectionAuthMethod =
-  | 'api_key'
-  | 'oauth2'
-  | 'basic_auth'
-  | 'bearer_token'
-  | 'custom'
 
 export type ConnectionHealthStatus =
   | 'healthy'

@@ -6,7 +6,7 @@ import type {
 import type { RateLimitsConfig } from '@/api/types'
 import { successFor } from '../helpers'
 
-export function buildRateLimitsConfig(
+function buildRateLimitsConfig(
   overrides: Partial<RateLimitsConfig> = {},
 ): RateLimitsConfig {
   return {

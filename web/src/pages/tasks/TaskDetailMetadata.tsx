@@ -6,7 +6,7 @@ import { useTasksStore } from '@/stores/tasks'
 import type { Priority } from '@/api/types/enums'
 import type { DashboardTask } from '@/api/types/tasks'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import { formatCurrency, formatDate } from '@/utils/format'
+import { formatCurrency, formatDateTime } from '@/utils/format'
 import { getPriorityLabel, getTaskTypeLabel } from '@/utils/tasks'
 
 const PRIORITIES: readonly Priority[] = ['critical', 'high', 'medium', 'low']
@@ -97,11 +97,11 @@ export function TaskDetailMetadata({ task }: TaskDetailMetadataProps) {
         </div>
         <div>
           <span className="block text-[10px] text-text-muted">Created</span>
-          <span className="font-mono text-xs text-foreground">{formatDate(task.created_at)}</span>
+          <span className="font-mono text-xs text-foreground">{formatDateTime(task.created_at)}</span>
         </div>
         <div>
           <span className="block text-[10px] text-text-muted">Updated</span>
-          <span className="font-mono text-xs text-foreground">{formatDate(task.updated_at)}</span>
+          <span className="font-mono text-xs text-foreground">{formatDateTime(task.updated_at)}</span>
         </div>
         {task.cost != null && (
           <div>

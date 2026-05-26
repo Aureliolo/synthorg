@@ -100,16 +100,3 @@ export function useCapabilities(): {
 
   return { capabilities, loading, error }
 }
-
-/**
- * Test-only helper to clear the module-level cache between tests.
- *
- * The hook uses a module-scoped ``_cache`` so multiple consumers
- * share a single network round-trip; that cache leaks across
- * tests in the same Vitest worker. Tests that need a clean state
- * call this in a ``beforeEach``.
- */
-export function _resetCapabilitiesCacheForTesting(): void {
-  _cache = null
-  _inflight = null
-}

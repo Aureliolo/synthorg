@@ -1,7 +1,6 @@
 import type {
   AgentActivityEvent,
   AgentPerformanceSummary,
-  CareerEvent,
   DashboardAgentConfig,
 } from '@/api/types/agents'
 import type { DepartmentHealth } from '@/api/types/analytics'
@@ -260,17 +259,6 @@ export function makeActivityEvent(overrides?: Partial<AgentActivityEvent>): Agen
     timestamp: '2026-03-25T12:00:00Z',
     description: 'Completed task task-1',
     related_ids: {},
-    ...overrides,
-  }
-}
-
-export function makeCareerEvent(overrides?: Partial<CareerEvent>): CareerEvent {
-  return {
-    event_type: 'hired',
-    timestamp: '2026-03-01T00:00:00Z',
-    description: 'Hired as Developer',
-    initiated_by: 'system',
-    metadata: {},
     ...overrides,
   }
 }

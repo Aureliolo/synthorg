@@ -16,7 +16,7 @@ export interface VersionCardProps {
   onRestore: (version: number) => void
 }
 
-export function VersionCard({ v, currentVersion, saving, onCompare, onRestore }: VersionCardProps) {
+function VersionCard({ v, currentVersion, saving, onCompare, onRestore }: VersionCardProps) {
   const isCurrent = v.version === currentVersion
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-border p-card">

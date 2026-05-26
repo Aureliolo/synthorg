@@ -10,7 +10,7 @@ import type { ApprovalRiskLevel } from '@/api/types/enums'
 import type { ApprovalResponse } from '@/api/types/approvals'
 import { apiError, emptyPage, paginatedFor, successFor } from './helpers'
 
-export function buildApproval(
+function buildApproval(
   overrides: Partial<ApprovalResponse> = {},
 ): ApprovalResponse {
   return {

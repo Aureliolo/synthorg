@@ -231,43 +231,7 @@ const _wsEventPayloadMapKeyExhaustiveness = null as unknown as _WsEventPayloadMa
 void _wsEventPayloadMapKeyCheck
 void _wsEventPayloadMapKeyExhaustiveness
 
-/**
- * Generic typed-event view: ``WsTypedEvent<'task.created'>`` carries
- * the full {@link WsTaskCreatedPayload}. Use this for handlers that
- * opt into payload narrowing.
- */
-export interface WsTypedEvent<T extends WsEventType = WsEventType> {
-  version?: number
-  event_type: T
-  channel: WsChannel
-  timestamp: string
-  payload: WsEventPayloadMap[T]
-}
-
-/** Convenience alias matching the helper used in {@link WsEventPayloadMap}. */
-export type WsEventOf<T extends WsEventType> = WsTypedEvent<T>
-
 /** Filters for WebSocket channel subscriptions. */
 export type WsSubscriptionFilters = Readonly<Record<string, string>>
-
-export interface WsSubscribeMessage {
-  action: 'subscribe'
-  readonly channels: readonly WsChannel[]
-  filters?: WsSubscriptionFilters
-}
-
-export interface WsUnsubscribeMessage {
-  action: 'unsubscribe'
-  readonly channels: readonly WsChannel[]
-}
-
-export interface WsAckMessage {
-  action: 'subscribed' | 'unsubscribed'
-  readonly channels: readonly WsChannel[]
-}
-
-export interface WsErrorMessage {
-  error: string
-}
 
 export type WsEventHandler = (event: WsEvent) => void

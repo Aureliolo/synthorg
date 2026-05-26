@@ -23,18 +23,6 @@ import type { NotificationsState } from './notifications/types'
 export type { EnqueueParams, NotificationsState } from './notifications/types'
 export { cancelPendingPersist }
 
-// ``sanitizeWsString`` and ``MAX_STRING_LEN`` live in
-// ``@/utils/ws-sanitize`` so benchmark + unit-test imports can pull
-// them in without dragging this store's side effects (toast queue,
-// persistence subscription, ``localStorage`` hydration) into the
-// import graph. We re-export here so existing call sites that
-// import from ``@/stores/notifications`` keep working unchanged.
-export {
-  MAX_WS_STRING_LEN as MAX_STRING_LEN,
-  sanitizeWsEnum,
-  sanitizeWsString,
-} from '@/utils/ws-sanitize'
-
 export const useNotificationsStore = create<NotificationsState>()(
   (set, get) => {
     const initialItems = hydrateItems()

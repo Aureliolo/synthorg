@@ -13,7 +13,7 @@ import {
   voidSuccess,
 } from './helpers'
 
-export function buildProject(overrides: Partial<Project> = {}): Project {
+function buildProject(overrides: Partial<Project> = {}): Project {
   return {
     id: 'project-default',
     name: 'Default Project',
@@ -27,57 +27,6 @@ export function buildProject(overrides: Partial<Project> = {}): Project {
     ...overrides,
   }
 }
-
-// ── Storybook-facing named export (preserve existing stories). ──
-const mockProjects: Project[] = [
-  buildProject({
-    id: 'proj-abc123',
-    name: 'Engine Rewrite',
-    description: 'Rewrite the coordination engine for v2',
-    team: ['agent-eng-001', 'agent-eng-002', 'agent-qa-001'],
-    lead: 'agent-eng-001',
-    task_ids: ['task-001', 'task-002', 'task-003'],
-    deadline: '2026-06-01T00:00:00Z',
-    budget: 1500,
-    status: 'active',
-  }),
-  buildProject({
-    id: 'proj-def456',
-    name: 'Documentation Sprint',
-    description: 'Update all user-facing documentation',
-    team: ['agent-eng-003'],
-    lead: 'agent-eng-003',
-    task_ids: ['task-004'],
-    deadline: null,
-    budget: 200,
-    status: 'planning',
-  }),
-]
-export const projectsList = [
-  http.get('/api/v1/projects', () =>
-    HttpResponse.json(
-      paginatedFor<typeof listProjects>({
-        data: mockProjects,
-        limit: 50,
-        nextCursor: null,
-        hasMore: false,
-        pagination: {
-          limit: 50,
-          next_cursor: null,
-          has_more: false,
-        },
-      }),
-    ),
-  ),
-  http.get('/api/v1/projects/:id', ({ params }) => {
-    const project = mockProjects.find((p) => p.id === params.id)
-    if (!project) {
-      return HttpResponse.json(apiError('Project not found'), { status: 404 })
-    }
-    return HttpResponse.json(successFor<typeof getProject>(project))
-  }),
-  http.delete('/api/v1/projects/:id', () => HttpResponse.json(voidSuccess())),
-]
 
 // ── Default test handlers: empty list, generic single-project lookups. ──
 export const projectsHandlers = [

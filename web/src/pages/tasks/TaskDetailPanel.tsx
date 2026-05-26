@@ -11,7 +11,7 @@ import { Avatar } from '@/components/ui/avatar'
 import { springDefault, overlayBackdrop, tweenExitFast } from '@/lib/motion'
 import { getTaskStatusLabel, getTaskTypeLabel, getAvailableTransitions, getPriorityLabel } from '@/utils/tasks'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import { formatDate, formatCurrency } from '@/utils/format'
+import { formatDateTime, formatCurrency } from '@/utils/format'
 import { useToastStore } from '@/stores/toast'
 import type { Priority, TaskStatus } from '@/api/types/enums'
 import type { CancelTaskRequest, DashboardTask, TransitionTaskRequest, UpdateTaskRequest } from '@/api/types/tasks'
@@ -204,10 +204,10 @@ export function TaskDetailPanel({
               <div className="grid grid-cols-2 gap-grid-gap rounded-lg border border-border p-card">
                 <MetaField icon={Tag} label="Type" value={getTaskTypeLabel(task.type)} />
                 <MetaField icon={Layers} label="Complexity" value={task.estimated_complexity} />
-                <MetaField icon={Calendar} label="Created" value={formatDate(task.created_at)} />
-                <MetaField icon={Calendar} label="Updated" value={formatDate(task.updated_at)} />
+                <MetaField icon={Calendar} label="Created" value={formatDateTime(task.created_at)} />
+                <MetaField icon={Calendar} label="Updated" value={formatDateTime(task.updated_at)} />
                 {task.deadline && (
-                  <MetaField icon={Calendar} label="Deadline" value={formatDate(task.deadline)} />
+                  <MetaField icon={Calendar} label="Deadline" value={formatDateTime(task.deadline)} />
                 )}
                 {task.cost != null && (
                   <MetaField icon={Tag} label="Cost" value={formatCurrency(task.cost, DEFAULT_CURRENCY)} />

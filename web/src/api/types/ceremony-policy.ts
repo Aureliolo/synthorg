@@ -7,7 +7,6 @@ export type {
 } from './dtos.gen'
 
 export type { CeremonyStrategyType } from './enum-values.gen'
-export { CEREMONY_STRATEGY_TYPE_VALUES } from './enum-values.gen'
 
 import type { CeremonyStrategyType } from './enum-values.gen'
 

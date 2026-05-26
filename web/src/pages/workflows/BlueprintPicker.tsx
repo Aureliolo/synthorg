@@ -21,7 +21,7 @@ export interface BlueprintCardProps {
   onSelect: (name: string | null) => void
 }
 
-export function BlueprintCard({ blueprint, isSelected, onSelect }: BlueprintCardProps) {
+function BlueprintCard({ blueprint, isSelected, onSelect }: BlueprintCardProps) {
   return (
     <motion.button
       type="button"

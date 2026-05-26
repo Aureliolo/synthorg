@@ -86,7 +86,7 @@ function sanitizeMetadataObject(
  * objects / arrays walked, everything else (functions, symbols,
  * ``undefined``, ``Date`` / ``Map`` / ``Set``) dropped to ``null``.
  * Recursion past ``METADATA_MAX_DEPTH`` collapses to ``null``. */
-export function sanitizeMetadataValue(value: unknown, depth: number): unknown {
+function sanitizeMetadataValue(value: unknown, depth: number): unknown {
   if (depth > METADATA_MAX_DEPTH) return null
   if (value === null) return null
   const scalarHandler = SCALAR_METADATA_HANDLERS[typeof value]
@@ -100,7 +100,7 @@ export function sanitizeMetadataValue(value: unknown, depth: number): unknown {
 
 /** Sanitize the whole ``metadata`` bag; non-objects collapse to
  * ``{}`` so the consumer always sees a safe record. */
-export function sanitizeMetadata(value: unknown): Record<string, unknown> {
+function sanitizeMetadata(value: unknown): Record<string, unknown> {
   if (!isPlainObject(value)) return {}
   const result = sanitizeMetadataValue(value, 0)
   return isPlainObject(result) ? result : {}
@@ -297,7 +297,7 @@ function sanitizeOptional(
   return cleaned && cleaned.length > 0 ? cleaned : undefined
 }
 
-export function sanitizeIds(ids: readonly string[]): string[] {
+function sanitizeIds(ids: readonly string[]): string[] {
   return ids
     .map((id) => sanitizeWsString(id, 128) ?? '')
     .filter((id) => id.length > 0)

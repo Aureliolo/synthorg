@@ -99,7 +99,7 @@ function isEvidencePackageCollections(v: Record<string, unknown>): boolean {
  * ``{signatures: [null]}`` would pass ``isApprovalShape`` and blow
  * up inside the sanitizer's ``map`` / ``Object.entries`` calls.
  */
-export function isEvidencePackageShape(value: unknown): boolean {
+function isEvidencePackageShape(value: unknown): boolean {
   if (value === null) return true
   if (typeof value !== 'object' || Array.isArray(value)) return false
   const v = value as Record<string, unknown>
@@ -265,7 +265,7 @@ function sanitizeEvidenceStrings(pkg: EvidencePackage) {
  * and must be scrubbed before reaching the store. Returns ``null``
  * unchanged (an approval without structured evidence).
  */
-export function sanitizeEvidencePackage(
+function sanitizeEvidencePackage(
   pkg: EvidencePackage | null,
 ): EvidencePackage | null {
   if (pkg === null) return null

@@ -4,8 +4,6 @@ import type { CeremonyStrategyType, VelocityCalcType } from '@/api/types/ceremon
 import type { TaskStatus } from '@/api/types/enums'
 import type { SettingNamespace } from '@/api/types/settings'
 
-export const APP_NAME = 'SynthOrg'
-
 export const WS_RECONNECT_BASE_DELAY = 1000
 export const WS_RECONNECT_MAX_DELAY = 30000
 export const WS_MAX_RECONNECT_ATTEMPTS = 20
@@ -28,15 +26,6 @@ export const WS_RECONNECT_JITTER_MAX = 1.2
  * enforced server-side and is intentionally tighter than this inbound cap.
  */
 export const WS_MAX_MESSAGE_SIZE = 32_768
-/**
- * Max OUTBOUND control-message size (client -> server: subscribe /
- * unsubscribe / auth / ping). Mirrors the server's
- * `_MAX_WS_MESSAGE_BYTES` in `src/synthorg/api/controllers/ws.py`.
- * Tighter than the inbound cap because the client never legitimately
- * sends large payloads on this socket; the server hard-closes anything
- * over this size as a DoS guard.
- */
-export const WS_MAX_OUTBOUND_MESSAGE_SIZE = 4_096
 /** Heartbeat interval. 20s sits comfortably under the typical 60s proxy idle close. */
 export const WS_HEARTBEAT_INTERVAL_MS = 20_000
 /**
@@ -226,20 +215,6 @@ export const SETTING_DEPENDENCIES: Readonly<Record<string, readonly string[]>> =
   'backup/enabled': ['backup/schedule_hours', 'backup/retention_days', 'backup/path'],
   'security/post_tool_scanning_enabled': ['security/output_scan_policy_type'],
 }
-
-/** Reverse lookup: dependent setting -> controller setting it depends on. */
-const _dependedBy: Record<string, string> = {}
-for (const [controller, deps] of Object.entries(SETTING_DEPENDENCIES)) {
-  for (const dep of deps) {
-    if (_dependedBy[dep] && _dependedBy[dep] !== controller) {
-      throw new Error(
-        `Duplicate dependency mapping for "${dep}": "${_dependedBy[dep]}" and "${controller}"`,
-      )
-    }
-    _dependedBy[dep] = controller
-  }
-}
-export const SETTING_DEPENDED_BY: Readonly<Record<string, string>> = _dependedBy
 
 /** Polling interval for settings page (ms). */
 export const SETTINGS_POLL_INTERVAL = 60_000

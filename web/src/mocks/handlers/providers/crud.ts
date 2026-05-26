@@ -76,12 +76,6 @@ export function buildLocalPreset(
   }
 }
 
-/**
- * @deprecated Prefer ``buildCloudPreset`` / ``buildLocalPreset`` to
- * make the preset kind explicit at the call site.
- */
-export const buildProviderPreset = buildLocalPreset
-
 export function buildProvider(
   overrides: Partial<ProviderConfig> = {},
 ): ProviderConfig {

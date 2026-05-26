@@ -12,7 +12,7 @@ import { apiError, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-11T12:00:00Z'
 
-export function buildConnection(
+function buildConnection(
   overrides: Partial<Connection> = {},
 ): Connection {
   return {
@@ -149,12 +149,6 @@ export const connectionsList = [
         value: 'revealed-secret-value',
       }),
     ),
-  ),
-]
-
-export const emptyConnectionsList = [
-  http.get('/api/v1/connections', () =>
-    HttpResponse.json(successFor<typeof listConnections>([])),
   ),
 ]
 

@@ -91,7 +91,7 @@ export function matchesSetting(entry: SettingEntry, query: string): boolean {
  * Returns true when the controller setting's effective value is not
  * "true" or "1". Dirty (unsaved) values take precedence over persisted entries.
  */
-export function isControllerDisabled(
+function isControllerDisabled(
   controllerKey: string,
   entries: SettingEntry[],
   dirtyValues: ReadonlyMap<string, string>,

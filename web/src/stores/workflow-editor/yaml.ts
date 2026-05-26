@@ -36,7 +36,7 @@ interface EdgeMeta {
   branch: string | undefined
 }
 
-export function mapPersistedEdge(edgeType: string): EdgeMeta {
+function mapPersistedEdge(edgeType: string): EdgeMeta {
   const isTrue = edgeType === 'conditional_true'
   const isFalse = edgeType === 'conditional_false'
   if (isTrue || isFalse) {

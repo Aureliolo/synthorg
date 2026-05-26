@@ -9,7 +9,7 @@ import { apiSuccess, paginatedFor } from './helpers'
  * Build a happy-path ``WorkflowExecution`` row for stories and tests.
  * Mirrors the backend Pydantic model field-for-field.
  */
-export function buildWorkflowExecution(
+function buildWorkflowExecution(
   overrides: Partial<WorkflowExecution> = {},
 ): WorkflowExecution {
   return {

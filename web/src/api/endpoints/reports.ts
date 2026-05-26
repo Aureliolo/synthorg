@@ -1,7 +1,7 @@
 import { apiClient, unwrap, unwrapPaginated } from '../client'
 import type { ApiResponse, PaginatedResponse } from '../types/http'
 
-export const REPORT_PERIOD_VALUES = ['daily', 'weekly', 'monthly'] as const satisfies readonly string[]
+const REPORT_PERIOD_VALUES = ['daily', 'weekly', 'monthly'] as const satisfies readonly string[]
 export type ReportPeriod = (typeof REPORT_PERIOD_VALUES)[number]
 
 const REPORT_PERIOD_SET: ReadonlySet<string> = new Set(REPORT_PERIOD_VALUES)

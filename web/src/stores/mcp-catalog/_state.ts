@@ -13,10 +13,6 @@
 let _searchDebounceHandle: ReturnType<typeof setTimeout> | null = null
 let _searchGeneration = 0
 
-export function getSearchDebounceHandle(): ReturnType<typeof setTimeout> | null {
-  return _searchDebounceHandle
-}
-
 export function setSearchDebounceHandle(
   handle: ReturnType<typeof setTimeout> | null,
 ): void {

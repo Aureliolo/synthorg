@@ -15,7 +15,7 @@ const mockAuthResponse: AuthResponse = {
   must_change_password: false,
 }
 
-export function buildAuthUser(
+function buildAuthUser(
   overrides: Partial<UserInfoResponse> = {},
 ): UserInfoResponse {
   return {

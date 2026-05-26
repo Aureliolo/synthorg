@@ -23,7 +23,7 @@ const idleStatus: FineTuneStatus = {
   error: null,
 }
 
-export function buildCheckpoint(
+function buildCheckpoint(
   overrides: Partial<CheckpointRecord> = {},
 ): CheckpointRecord {
   return {
