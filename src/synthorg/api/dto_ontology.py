@@ -94,7 +94,14 @@ class UpdateEntityRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_not_empty(self) -> Self:
-        """Ensure at least one field is being updated."""
+        """Ensure at least one field is being updated.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if not any(
             [
                 self.definition is not None,

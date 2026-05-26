@@ -27,6 +27,7 @@ from synthorg.client.report.detailed import DetailedReport
 from synthorg.client.report.summary import SummaryReport
 from synthorg.client.runner import SimulationRunner
 from synthorg.client.store import SimulationRecord
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -65,7 +66,11 @@ class SimulationStatusResponse(BaseModel):
 
 
 def _to_response(record: SimulationRecord) -> SimulationStatusResponse:
-    """Convert a store record into the API response shape."""
+    """Convert a store record into the API response shape.
+
+    Returns:
+        ``SimulationStatusResponse`` instance.
+    """
     return SimulationStatusResponse(
         simulation_id=record.simulation_id,
         status=record.status,
@@ -168,9 +173,8 @@ async def _rollback_register_if_absent(
             await spawned_task
         except asyncio.CancelledError:
             pass
-        except MemoryError, RecursionError:
-            raise
         except Exception as drain_exc:
+            reraise_critical(drain_exc)
             logger.warning(
                 SIMULATION_RUN_FAILED,
                 simulation_id=simulation_id,
@@ -186,7 +190,11 @@ async def _run_in_background(
     app_state: AppState,
     record: SimulationRecord,
 ) -> None:
-    """Execute a simulation run and update the store with results."""
+    """Execute a simulation run and update the store with results.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
+    """
     sim_state = app_state.client_simulation_state
     if sim_state.intake_engine is None:
         await _mark_failed(
@@ -293,7 +301,11 @@ class SimulationController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[SimulationStatusResponse]:
-        """List all known simulation runs."""
+        """List all known simulation runs.
+
+        Returns:
+            Result matching the declared return annotation.
+        """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
         records = await sim_state.simulation_store.list_all()
@@ -312,7 +324,14 @@ class SimulationController(Controller):
         state: State,
         simulation_id: PathId,
     ) -> ApiResponse[SimulationStatusResponse]:
-        """Return a single simulation run record."""
+        """Return a single simulation run record.
+
+        Returns:
+            ``ApiResponse[SimulationStatusResponse]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
         try:
@@ -340,6 +359,16 @@ class SimulationController(Controller):
 
         The run executes asynchronously; poll ``GET /simulations/{id}``
         to observe progress and final metrics.
+
+        Returns:
+            ``ApiResponse[SimulationStatusResponse]`` instance.
+
+        Raises:
+            ConflictError: Raised on the corresponding failure path.
+            MemoryError: Raised on the corresponding failure path.
+            RecursionError: Raised on the corresponding failure path.
+            BaseException: Raised on the corresponding failure path.
+            CancelledError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
@@ -366,6 +395,11 @@ class SimulationController(Controller):
             raise ConflictError(msg)
 
         async def runner_task() -> None:
+            """Run runner task.
+
+            Raises:
+                CancelledError: Raised on the corresponding failure path.
+            """
             try:
                 await _run_in_background(app_state=app_state, record=record)
             except asyncio.CancelledError:
@@ -477,6 +511,9 @@ class SimulationController(Controller):
         Raises:
             NotFoundError: If the simulation id is not known.
             ConflictError: If the run is already in a terminal state.
+
+        Returns:
+            ``ApiResponse[SimulationStatusResponse]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
@@ -516,6 +553,9 @@ class SimulationController(Controller):
         Raises:
             NotFoundError: If the simulation id is not known.
             ConflictError: If ``fmt`` is not a supported format.
+
+        Returns:
+            ``ApiResponse[dict[str, Any]]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state

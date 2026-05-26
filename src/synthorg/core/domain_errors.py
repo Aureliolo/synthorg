@@ -17,7 +17,6 @@ from typing import ClassVar
 
 from synthorg.core.error_taxonomy import (
     CODE_CATEGORY_PREFIX,
-    NOT_FOUND_BAND,
     ErrorCategory,
     ErrorCode,
 )
@@ -56,9 +55,11 @@ class DomainError(Exception):
         ``cls.error_code`` or ``cls.error_category`` post-definition
         (e.g. from a test fixture or dynamic patching) silently
         bypasses this check; treat the ClassVars as immutable in
-        production code.  ``resource_not_found`` deliberately mutates
-        the *instance* attribute, which is a different namespace from
-        the class-level ClassVar this validator inspects.
+        production code.
+
+        Raises:
+            TypeError: When the first digit of ``error_code`` does
+                not match the declared ``error_category``.
         """
         super().__init_subclass__(**kwargs)
         prefix = cls.error_code.value // 1000
@@ -76,12 +77,51 @@ class DomainError(Exception):
 
 
 class NotFoundError(DomainError):
-    """Raised when a requested resource does not exist (404)."""
+    """Raised when a requested resource does not exist (404).
+
+    Subclasses below override ``error_code`` so API clients can
+    discriminate which resource type was missing without parsing the
+    message.  Choose the most specific subclass at the raise site;
+    fall back to :class:`ResourceNotFoundError` only when no
+    dedicated code exists for the resource yet.
+    """
 
     default_message: ClassVar[str] = "Resource not found"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
     error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
     status_code: ClassVar[int] = 404
+
+
+class ResourceNotFoundError(NotFoundError):
+    """Fallback 404 for resources without a dedicated typed subclass.
+
+    Used as the default ``error_class`` for
+    :func:`synthorg.api.responses.require_resource_or_404` and as the
+    raise target for controllers whose resource type has no
+    layer-specific NotFound subclass (e.g. cost forecasts, messages).
+    Resources WITH a typed NotFound class should raise that class
+    directly (``TaskNotFoundError`` from ``synthorg.engine.errors``,
+    ``ConnectionNotFoundError`` from ``synthorg.integrations.errors``,
+    ``WorkflowDefinitionNotFoundError`` from
+    ``synthorg.engine.workflow.service``, etc.) so the wire
+    ``error_code`` discriminates the missing resource.
+    """
+
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+
+
+class MemoryEntryNotFoundError(NotFoundError):
+    """Raised when an agent memory entry lookup fails (404)."""
+
+    default_message: ClassVar[str] = "Memory entry not found"
+    error_code: ClassVar[ErrorCode] = ErrorCode.MEMORY_ENTRY_NOT_FOUND
+
+
+class AbTestNotFoundError(NotFoundError):
+    """Raised when an A/B-test proposal record lookup fails (404)."""
+
+    default_message: ClassVar[str] = "A/B test not found"
+    error_code: ClassVar[ErrorCode] = ErrorCode.AB_TEST_NOT_FOUND
 
 
 class ConflictError(DomainError):
@@ -399,51 +439,3 @@ class ConcurrencyLimitExceededError(PerOperationRateLimitError):
 
     default_message: ClassVar[str] = "Concurrency limit exceeded"
     error_code: ClassVar[ErrorCode] = ErrorCode.CONCURRENCY_LIMIT_EXCEEDED
-
-
-# ── Factories ─────────────────────────────────────────────────────
-
-
-def resource_not_found(
-    resource_type: str,
-    identifier: str,
-    *,
-    code: ErrorCode = ErrorCode.RESOURCE_NOT_FOUND,
-) -> NotFoundError:
-    """Build a :class:`NotFoundError` with a structured message + code.
-
-    Callers should prefer the domain-specific ``ErrorCode`` (e.g.
-    ``ErrorCode.TASK_NOT_FOUND``) so API clients can discriminate which
-    resource was missing without parsing the message.  The fallback
-    ``RESOURCE_NOT_FOUND`` covers resources that don't yet have a
-    dedicated code.
-
-    Args:
-        resource_type: Human-readable type (``"task"``, ``"agent"``).
-        identifier: The missing identifier value.
-        code: Specific error code for the resource (defaults to the
-            generic ``RESOURCE_NOT_FOUND``).  Must be a 3xxx
-            NOT_FOUND-category code; passing a code outside that range
-            would emit a 404 response carrying a non-NOT_FOUND machine
-            code, breaking the taxonomy contract for clients.
-
-    Returns:
-        A :class:`NotFoundError` whose message is
-        ``"{resource_type} {identifier!r} not found"`` and whose
-        ``error_code`` is ``code``.
-
-    Raises:
-        ValueError: If ``code`` is not a 3xxx NOT_FOUND-category code.
-    """
-    if code.value // 1000 != NOT_FOUND_BAND:
-        msg = (
-            "resource_not_found requires a NOT_FOUND (3xxx) ErrorCode; "
-            f"got {code.name} ({code.value})"
-        )
-        raise ValueError(msg)
-    error = NotFoundError(f"{resource_type} {identifier!r} not found")
-    # ``error_code`` is a ClassVar on the base class; the factory assigns
-    # an instance attribute so this particular raise reports the
-    # resource-specific code while reusing the shared class.
-    error.error_code = code  # type: ignore[misc]
-    return error

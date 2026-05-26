@@ -229,12 +229,21 @@ class CodeChange(BaseModel):
 
     @model_validator(mode="after")
     def _validate_content_for_operation(self) -> Self:
-        """Ensure content fields match the operation type."""
+        """Ensure content fields match the operation type.
+
+        Returns:
+            ``Self`` instance.
+        """
         _CODE_CHANGE_VALIDATORS[self.operation](self)
         return self
 
 
 def _validate_create(change: CodeChange) -> None:
+    """Validate create.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
+    """
     if change.old_content:
         msg = "create operations must have empty old_content"
         raise ValueError(msg)
@@ -244,6 +253,11 @@ def _validate_create(change: CodeChange) -> None:
 
 
 def _validate_modify(change: CodeChange) -> None:
+    """Validate modify.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
+    """
     if not change.old_content:
         msg = "modify operations must have non-empty old_content"
         raise ValueError(msg)
@@ -256,6 +270,11 @@ def _validate_modify(change: CodeChange) -> None:
 
 
 def _validate_delete(change: CodeChange) -> None:
+    """Validate delete.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
+    """
     if not change.old_content:
         msg = "delete operations must have non-empty old_content"
         raise ValueError(msg)
@@ -351,7 +370,14 @@ class ImprovementProposal(BaseModel):
 
     @model_validator(mode="after")
     def _validate_decision_consistency(self) -> Self:
-        """Ensure decided_at/decided_by/decision_reason are all-or-nothing."""
+        """Ensure decided_at/decided_by/decision_reason are all-or-nothing.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         decided = (self.decided_at, self.decided_by, self.decision_reason)
         if any(decided) and not all(decided):
             msg = (
@@ -371,7 +397,14 @@ class ImprovementProposal(BaseModel):
 
     @model_validator(mode="after")
     def _validate_changes_match_altitude(self) -> Self:
-        """Ensure only the declared altitude carries changes."""
+        """Ensure only the declared altitude carries changes.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         other_code = self.code_changes
         tools = self.tool_changes
         if self.altitude == ProposalAltitude.CONFIG_TUNING and (
@@ -424,7 +457,11 @@ class ImprovementProposal(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def change_count(self) -> int:
-        """Total number of changes across all altitudes."""
+        """Total number of changes across all altitudes.
+
+        Returns:
+            Resulting integer.
+        """
         return (
             len(self.config_changes)
             + len(self.architecture_changes)
@@ -485,7 +522,14 @@ class GuardResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_rejection_has_reason(self) -> Self:
-        """Rejected verdicts must include a reason."""
+        """Rejected verdicts must include a reason.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.verdict == GuardVerdict.REJECTED and not self.reason:
             msg = "rejected guard verdicts must include a reason"
             raise ValueError(msg)
@@ -520,7 +564,14 @@ class RolloutResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_regressed_has_verdict(self) -> Self:
-        """Regressed outcomes must include a regression verdict."""
+        """Regressed outcomes must include a regression verdict.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.outcome == RolloutOutcome.REGRESSED and not self.regression_verdict:
             msg = "regressed outcomes must include regression_verdict"
             raise ValueError(msg)
@@ -559,7 +610,14 @@ class ImprovementCycleResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_completion_ordering(self) -> Self:
-        """Ensure completed_at is not earlier than started_at."""
+        """Ensure completed_at is not earlier than started_at.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.completed_at < self.started_at:
             msg = (
                 f"completed_at ({self.completed_at}) must be at or after "
@@ -571,7 +629,11 @@ class ImprovementCycleResult(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def proposals_count(self) -> int:
-        """Number of proposals produced by the cycle."""
+        """Number of proposals produced by the cycle.
+
+        Returns:
+            Resulting integer.
+        """
         return len(self.proposals)
 
 
@@ -599,7 +661,14 @@ class ApplyResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_failure_has_message(self) -> Self:
-        """Failed applies must include an error message."""
+        """Failed applies must include an error message.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if not self.success and not self.error_message:
             msg = "failed apply results must include an error_message"
             raise ValueError(msg)
@@ -632,7 +701,14 @@ class CIValidationResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_passed_consistent(self) -> Self:
-        """Passed must exactly match the conjunction of sub-checks."""
+        """Passed must exactly match the conjunction of sub-checks.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         all_ok = self.lint_passed and self.typecheck_passed and self.tests_passed
         if self.passed != all_ok:
             msg = "passed must equal the conjunction of all sub-checks"
@@ -699,7 +775,14 @@ class RegressionResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_breach_has_details(self) -> Self:
-        """Threshold breaches must include metric details."""
+        """Threshold breaches must include metric details.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.verdict == RegressionVerdict.THRESHOLD_BREACH:
             if not self.breached_metric:
                 msg = "threshold breaches must identify the breached metric"

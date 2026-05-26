@@ -77,7 +77,11 @@ class ApprovalGateGuard:
 
     @property
     def name(self) -> NotBlankStr:
-        """Guard name."""
+        """Guard name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("approval_gate")
 
     async def evaluate(
@@ -94,6 +98,10 @@ class ApprovalGateGuard:
             (newly created, or already present from a replay);
             REJECTED when no store is configured or the write fails
             with a non-duplicate error.
+
+        Raises:
+            MemoryError: Raised on the corresponding failure path.
+            RecursionError: Raised on the corresponding failure path.
         """
         risk = _ALTITUDE_RISK.get(
             proposal.altitude,

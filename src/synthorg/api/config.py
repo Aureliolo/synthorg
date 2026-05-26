@@ -69,6 +69,12 @@ class CorsConfig(BaseModel):
 
         Browsers reject ``Access-Control-Allow-Origin: *`` combined
         with ``Access-Control-Allow-Credentials: true``.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if self.allow_credentials and "*" in self.allowed_origins:
             msg = (
@@ -212,6 +218,12 @@ class RateLimitConfig(BaseModel):
         deployments (office NAT, corporate gateway) would silently
         regress to the floor cap.  Require operators to size the
         floor above both user-gated caps.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if self.floor_max_requests < self.auth_max_requests:
             msg = (
@@ -234,12 +246,24 @@ class RateLimitConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Apply the mirrors.
+
+        Returns:
+            ``Any`` instance.
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="before")
     @classmethod
     def _reject_legacy_max_requests(cls, data: Any) -> Any:
-        """Reject the removed ``max_requests`` field with guidance."""
+        """Reject the removed ``max_requests`` field with guidance.
+
+        Returns:
+            ``Any`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if isinstance(data, dict) and "max_requests" in data:
             msg = (
                 "'max_requests' was replaced by 'unauth_max_requests' "
@@ -382,4 +406,9 @@ class ApiConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Apply the mirrors.
+
+        Returns:
+            ``Any`` instance.
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)

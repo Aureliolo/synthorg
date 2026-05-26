@@ -18,6 +18,7 @@ from synthorg.api.controllers.setup_agents import (
     validate_agents_value,
 )
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     NotFoundError,
     ProviderTierCoverageInsufficientError,
@@ -72,7 +73,11 @@ def validate_agent_index(
     agent_index: int,
     agents: list[dict[str, Any]],
 ) -> None:
-    """Raise ``NotFoundError`` if *agent_index* is out of range."""
+    """Raise ``NotFoundError`` if *agent_index* is out of range.
+
+    Raises:
+        NotFoundError: Raised on the corresponding failure path.
+    """
     if agent_index < 0 or agent_index >= len(agents):
         if not agents:
             msg = f"Agent index {agent_index} out of range (no agents configured)"
@@ -100,6 +105,9 @@ async def post_setup_reinit(app_state: AppState) -> None:
 
     Args:
         app_state: Application state containing services.
+
+    Raises:
+        Exception: Raised on the corresponding failure path.
     """
     if not app_state.has_config_resolver:
         return
@@ -112,9 +120,8 @@ async def post_setup_reinit(app_state: AppState) -> None:
                 provider_configs,
             )
             app_state.swap_provider_registry(new_registry)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             SETUP_PROVIDER_RELOAD_FAILED,
             error_type=type(exc).__name__,
@@ -133,9 +140,8 @@ async def post_setup_reinit(app_state: AppState) -> None:
                 config_resolver=app_state.config_resolver,
                 agent_registry=app_state.agent_registry,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SETUP_AGENT_BOOTSTRAP_FAILED,
                 error_type=type(exc).__name__,
@@ -162,6 +168,11 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
     as incomplete. A half-configured runtime reporting itself as complete is
     worse than a clear error the operator can retry after fixing the
     underlying provider configuration.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
+        RuntimeServicesBuildError: Raised on the corresponding failure path.
     """
     from synthorg.engine.errors import (  # noqa: PLC0415
         RuntimeServicesBuildError,
@@ -179,7 +190,7 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
         # another rebuild. The entry-adapter rebuild below then threads
         # the live forecast_gate through.
         if app_state.has_persistence and app_state.cost_forecaster is None:
-            from synthorg.api.app import (  # noqa: PLC0415
+            from synthorg.api._app_wiring import (  # noqa: PLC0415
                 _try_wire_cost_dial,
             )
 
@@ -228,13 +239,19 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
 async def check_needs_admin(
     persistence: PersistenceBackend,
 ) -> bool:
-    """Return True if no CEO-role user exists (fail-open on error)."""
+    """Return True if no CEO-role user exists.
+
+    Fail-open on non-critical lookup errors; interpreter-critical
+    errors propagate via ``reraise_critical``.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+    """
     count: int | None = None
     try:
         count = await persistence.users.count_by_role(HumanRole.CEO)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             context="admin_count",
@@ -248,7 +265,15 @@ async def check_needs_admin(
 async def check_needs_setup(
     settings_svc: SettingsService,
 ) -> bool:
-    """Return True if setup is still needed (fail-open on error)."""
+    """Return True if setup is still needed (fail-open on error).
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
+    """
     try:
         entry = await settings_svc.get_entry(
             "api",
@@ -280,6 +305,11 @@ async def check_has_agents(
 
     Returns:
         True if user-created agents exist.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
+        Exception: Raised on the corresponding failure path.
     """
     try:
         entry = await settings_svc.get_entry("company", "agents")
@@ -353,7 +383,11 @@ async def auto_create_template_agents(
     app_state: AppState,
     settings_svc: SettingsService,
 ) -> tuple[SetupAgentSummary, ...]:
-    """Expand template agents, match models, persist, and return summaries."""
+    """Expand template agents, match models, persist, and return summaries.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     from synthorg.templates.model_matcher import ModelMatcherConfig  # noqa: PLC0415
     from synthorg.templates.preset_service import (  # noqa: PLC0415
         fetch_custom_presets_map,
@@ -362,20 +396,23 @@ async def auto_create_template_agents(
     async def _resolve_matcher_config() -> ModelMatcherConfig | None:
         """Resolve matcher config; degrade to None on resolution failure.
 
-        Bridge-config resolution failures (missing setting, validation
-        error, persistence flake) AND projection failures
-        (``from_bridge_config`` raising on a tampered field) must both
-        keep the template bootstrap alive. Mirrors the fail-open
-        pattern used by ``post_setup_reinit``.
+        Non-critical bridge-config resolution failures (missing
+        setting, validation error, persistence flake) AND projection
+        failures (``from_bridge_config`` raising on a tampered field)
+        must both keep the template bootstrap alive; interpreter-
+        critical errors propagate via ``reraise_critical``. Mirrors the
+        fail-open pattern used by ``post_setup_reinit``.
+
+        Returns:
+            The ``ModelMatcherConfig`` value when present, ``None`` otherwise.
         """
         if not app_state.has_config_resolver:
             return None
         try:
             bridge_cfg = await app_state.config_resolver.get_engine_bridge_config()
             return ModelMatcherConfig.from_bridge_config(bridge_cfg)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SETUP_STATUS_SETTINGS_UNAVAILABLE,
                 context="matcher_config",
@@ -419,7 +456,12 @@ async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
     """Extract model IDs from provider configs for embedding selection.
 
     Best-effort: returns an empty tuple if config resolver is not
-    available or provider configs cannot be read.
+    available or provider configs cannot be read for a non-critical
+    reason; interpreter-critical errors propagate via
+    ``reraise_critical``.
+
+    Returns:
+        Tuple of the declared element types.
     """
     if not app_state.has_config_resolver:
         return ()
@@ -429,9 +471,8 @@ async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
             str(model.id) for pc in configs.values() for model in pc.models
         ]
         return tuple(ids)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             SETUP_MODEL_ID_COLLECTION_ERROR,
             check="collect_model_ids",
@@ -506,9 +547,8 @@ async def auto_select_embedder(
             "embedder_dims",
             str(ranking.output_dims),
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         reason = "failed to persist embedder settings"
         logger.warning(
             MEMORY_EMBEDDER_AUTO_SELECT_FAILED,

@@ -22,6 +22,7 @@ implication.
 
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -84,9 +85,8 @@ class SsrfViolationService:
         """
         try:
             await self._repo.save(violation)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SECURITY_SSRF_VIOLATION_RECORDED,
                 violation_id=violation.id,
@@ -121,9 +121,8 @@ class SsrfViolationService:
         """
         try:
             return await self._repo.get(violation_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Single-violation fetch failures get their own event so
             # endpoint-specific alerting can distinguish them from
             # list-level failures (``API_SSRF_VIOLATION_LISTED``).
@@ -160,9 +159,8 @@ class SsrfViolationService:
         """
         try:
             rows = await self._repo.list_violations(status=status, limit=limit)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_SSRF_VIOLATION_LISTED,
                 status_filter=status.value if status is not None else None,
@@ -212,6 +210,10 @@ class SsrfViolationService:
             ValueError: If *status* is :data:`SsrfViolationStatus.PENDING`.
             QueryError: Repository write failure (logged at WARNING
                 before propagating).
+            MemoryError: Propagated unchanged from the critical-error
+                cleanup branch.
+            RecursionError: Propagated unchanged from the critical-error
+                cleanup branch.
         """
         # Branch the resolution event on the new status so the audit
         # chain carries a distinct verb (allowed vs denied) rather than

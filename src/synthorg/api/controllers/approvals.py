@@ -41,6 +41,7 @@ from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.actor_context import require_actor
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.auth.models import AuthenticatedUser
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
     UnauthorizedError,
@@ -84,6 +85,9 @@ def _urgency_thresholds_fallback(reason: str) -> tuple[float, float]:
 
     Idempotent: only the first transition into the fallback state
     emits a log line, so a flapping settings backend doesn't spam.
+
+    Returns:
+        Tuple of the declared element types.
     """
     global _urgency_threshold_fallback_logged  # noqa: PLW0603
     if not _urgency_threshold_fallback_logged:
@@ -109,6 +113,9 @@ def _validate_urgency_thresholds(
     mark everything as ``CRITICAL``).  Invalid values are treated
     identically to a backend outage so the fallback log fires and
     recovery is still possible.
+
+    Returns:
+        Tuple of the declared element types.
     """
     global _urgency_threshold_fallback_logged  # noqa: PLW0603
     if (
@@ -139,6 +146,12 @@ async def _resolve_urgency_thresholds(app_state: AppState) -> tuple[float, float
     Falls back to the registry defaults (3600s critical / 14400s high)
     if the settings backend is unavailable.  Per-process log-once so a
     flapping settings backend does not spam the logs.
+
+    Returns:
+        Tuple of the declared element types.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     if not app_state.has_config_resolver:
         return _urgency_thresholds_fallback(
@@ -153,9 +166,8 @@ async def _resolve_urgency_thresholds(app_state: AppState) -> tuple[float, float
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         return _urgency_thresholds_fallback(
             "failed to resolve approval urgency thresholds;"
             f" using fallback ({type(exc).__name__})"
@@ -297,9 +309,8 @@ def _publish_approval_event(
             event.model_dump_json(),
             channels=[CHANNEL_APPROVALS],
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APPROVAL_PUBLISH_FAILED,
             approval_id=item.id,

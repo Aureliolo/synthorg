@@ -37,7 +37,11 @@ class CallableOrgRoster:
         self._source = source
 
     async def list_agent_ids(self) -> tuple[NotBlankStr, ...]:
-        """Call the injected source and return its result."""
+        """Call the injected source and return its result.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return await self._source()
 
 
@@ -50,5 +54,9 @@ class NoOpOrgRoster:
     """
 
     async def list_agent_ids(self) -> tuple[NotBlankStr, ...]:
-        """Return an empty tuple."""
+        """Return an empty tuple.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return ()

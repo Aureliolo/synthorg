@@ -14,6 +14,7 @@ chain.
 from typing import TYPE_CHECKING
 
 from synthorg.core.auth.models import User  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -67,7 +68,11 @@ class UserService:
         self._refresh_tokens = refresh_tokens
 
     async def get(self, user_id: NotBlankStr) -> User | None:
-        """Fetch a user by id, or ``None`` when no row matches."""
+        """Fetch a user by id, or ``None`` when no row matches.
+
+        Returns:
+            The ``User`` value when present, ``None`` otherwise.
+        """
         return await self._repo.get(user_id)
 
     async def list_users(
@@ -81,6 +86,9 @@ class UserService:
         unauth'd caller cannot materialise an unbounded tuple of users.
         Callers paginating over large user bases should use
         :meth:`list_users_page` instead, which exposes a stable cursor.
+
+        Returns:
+            Tuple of the declared element types.
         """
         users = await self._repo.list_items(limit=limit)
         logger.debug(API_USER_LISTED, count=len(users))
@@ -123,9 +131,8 @@ class UserService:
                 after_id=after_id,
                 limit=limit + 1,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # All persistence error paths must log at WARNING with
             # context before re-raising; the repository already logs
             # the SQL error, but the service-level event lets us slice
@@ -149,7 +156,11 @@ class UserService:
         return page, has_more
 
     async def create(self, user: User) -> User:
-        """Persist a freshly-constructed user."""
+        """Persist a freshly-constructed user.
+
+        Returns:
+            ``User`` instance.
+        """
         await self._repo.save(user)
         logger.info(
             SECURITY_USER_CREATED,
@@ -170,6 +181,9 @@ class UserService:
         ``intent`` distinguishes updates in the audit log (role change,
         org-role grant, org-role revoke); extra ``audit_fields`` are
         forwarded into the ``SECURITY_USER_UPDATED`` event verbatim.
+
+        Returns:
+            ``User`` instance.
         """
         await self._repo.save(user)
         logger.info(
@@ -205,6 +219,9 @@ class UserService:
         deleted user.
 
         Returns ``True`` when a user row was removed.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
         """
         revoked_refresh_tokens = 0
         if self._refresh_tokens is not None:
@@ -212,9 +229,8 @@ class UserService:
                 revoked_refresh_tokens = await self._refresh_tokens.revoke_by_user(
                     user_id
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Distinct event from SECURITY_USER_DELETED so a
                 # forensic reader cannot mistake the aborted delete
                 # for a successful one.

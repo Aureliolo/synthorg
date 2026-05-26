@@ -21,6 +21,7 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     AgentIdentityRollbackError,
     ImmutableFieldMismatchError,
@@ -54,6 +55,9 @@ def _snapshot_owner_matches(snapshot: SnapshotT, agent_id: str) -> bool:
     Defence in depth at the list-time filter: the snapshot payload
     encodes its owner's identity id; cross-wired/corrupted rows could
     otherwise leak one agent's history under another agent's URL.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     return str(snapshot.snapshot.id) == agent_id
 
@@ -72,7 +76,11 @@ class AgentIdentityVersionController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[SnapshotT]:
-        """List version history for an agent identity."""
+        """List version history for an agent identity.
+
+        Returns:
+            ``PaginatedResponse[SnapshotT]`` instance.
+        """
         secret = state.app_state.cursor_secret
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         versions, total = await state.app_state.agent_version_service.list_versions(
@@ -139,7 +147,14 @@ class AgentIdentityVersionController(Controller):
             ),
         ],
     ) -> ApiResponse[AgentIdentityDiff]:
-        """Compute diff between two agent identity versions."""
+        """Compute diff between two agent identity versions.
+
+        Returns:
+            ``ApiResponse[AgentIdentityDiff]`` instance.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
+        """
         if from_version >= to_version:
             error = (
                 "from_version and to_version must differ"
@@ -190,7 +205,15 @@ class AgentIdentityVersionController(Controller):
             ),
         ],
     ) -> ApiResponse[SnapshotT]:
-        """Get a specific agent identity version snapshot."""
+        """Get a specific agent identity version snapshot.
+
+        Returns:
+            ``ApiResponse[SnapshotT]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+            ValidationError: Raised on the corresponding failure path.
+        """
         version = await state.app_state.agent_version_service.get_version(
             agent_id,
             version_num,
@@ -249,6 +272,9 @@ class AgentIdentityVersionController(Controller):
                 ``IMMUTABLE_FIELD_MISMATCH``).
             AgentIdentityRollbackError: Unexpected server fault during
                 rollback (HTTP 500, ``AGENT_IDENTITY_ROLLBACK_FAILED``).
+
+        Returns:
+            ``ApiResponse[AgentIdentity]`` instance.
         """
         target = await state.app_state.agent_version_service.get_for_rollback(
             agent_id,
@@ -289,9 +315,8 @@ class AgentIdentityVersionController(Controller):
             )
             msg = "Cannot rollback: immutable field mismatch"
             raise ImmutableFieldMismatchError(msg) from exc
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 AGENT_IDENTITY_ROLLBACK_FAILED,
                 agent_id=agent_id,

@@ -162,7 +162,11 @@ class MCPCatalogController(Controller):
         limit: CursorLimit = DEFAULT_LIMIT,
         cursor: CursorParam = None,
     ) -> PaginatedResponse[CatalogEntry]:
-        """List all curated MCP server entries (cursor-paginated)."""
+        """List all curated MCP server entries (cursor-paginated).
+
+        Returns:
+            ``PaginatedResponse[CatalogEntry]`` instance.
+        """
         app_state: AppState = state.app_state
         entries = await app_state.mcp_catalog_service.browse()
         page, meta = paginate_cursor(
@@ -191,7 +195,11 @@ class MCPCatalogController(Controller):
         limit: CursorLimit = DEFAULT_LIMIT,
         cursor: CursorParam = None,
     ) -> PaginatedResponse[CatalogEntry]:
-        """Search catalog by name, description, or tags (cursor-paginated)."""
+        """Search catalog by name, description, or tags (cursor-paginated).
+
+        Returns:
+            ``PaginatedResponse[CatalogEntry]`` instance.
+        """
         app_state: AppState = state.app_state
         entries = await app_state.mcp_catalog_service.search(q)
         page, meta = paginate_cursor(
@@ -220,6 +228,9 @@ class MCPCatalogController(Controller):
         previous controller-level translation collapsed the type
         into the generic ``NotFoundError`` and lost the discriminating
         envelope.
+
+        Returns:
+            ``ApiResponse[CatalogEntry]`` instance.
         """
         app_state: AppState = state.app_state
         entry = await app_state.mcp_catalog_service.get_entry(entry_id)
@@ -242,6 +253,9 @@ class MCPCatalogController(Controller):
         installed-state badge across refreshes -- the install API was
         write-only, so a successful install would persist server-side
         but appear "uninstalled" again on the next page load.
+
+        Returns:
+            ``PaginatedResponse[InstalledEntry]`` instance.
         """
         app_state: AppState = state.app_state
         installations_repo = app_state.mcp_installations_repo
@@ -305,6 +319,12 @@ class MCPCatalogController(Controller):
         required) matches the entry's ``required_connection_type``,
         and persists the row so the MCP bridge picks it up on next
         reload. Re-installing an existing entry is idempotent.
+
+        Returns:
+            ``ApiResponse[InstallEntryResponse]`` instance.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
         """
         entry_id = data.catalog_entry_id
         connection_name = data.connection_name
@@ -367,6 +387,9 @@ class MCPCatalogController(Controller):
 
         Missing entries are a silent no-op so the endpoint is
         idempotent and callers can always treat 200 as success.
+
+        Returns:
+            ``ApiResponse[None]`` instance.
         """
         app_state: AppState = state.app_state
         service = app_state.mcp_catalog_service

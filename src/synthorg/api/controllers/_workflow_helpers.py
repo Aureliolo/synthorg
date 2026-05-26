@@ -24,6 +24,9 @@ def audit_actor_from_context() -> ProviderAuditActor:
             the request scope (middleware misconfiguration). Background
             paths that legitimately have no user should reference
             :data:`BACKGROUND_AUDIT_ACTOR` instead of calling this.
+
+    Returns:
+        ``ProviderAuditActor`` instance.
     """
     from synthorg.api.dto_provider_capabilities import (  # noqa: PLC0415
         ProviderAuditActor,
@@ -34,6 +37,11 @@ def audit_actor_from_context() -> ProviderAuditActor:
 
 
 def _build_background_actor() -> ProviderAuditActor:
+    """Build the background actor.
+
+    Returns:
+        ``ProviderAuditActor`` instance.
+    """
     from synthorg.api.dto_provider_capabilities import (  # noqa: PLC0415
         ProviderAuditActor,
     )

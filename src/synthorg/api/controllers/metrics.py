@@ -5,6 +5,7 @@ from litestar.datastructures import State  # noqa: TC002
 from prometheus_client import generate_latest
 
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.metrics import (
     METRICS_SCRAPE_COMPLETED,
@@ -50,9 +51,8 @@ class MetricsController(Controller):
         try:
             await collector.refresh(app_state)
             body = generate_latest(collector.registry)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 reason="refresh or generate_latest failed",

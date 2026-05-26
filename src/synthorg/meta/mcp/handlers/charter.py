@@ -10,12 +10,13 @@ guardrail here.
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import CharterStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.meta.charter.models import InterviewTurnArgs
-from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
+from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -59,13 +60,22 @@ _TY_POS_INT = "positive int"
 
 
 def _actor_id(actor: AgentIdentity | None) -> NotBlankStr:
-    """Resolve the acting identity, falling back to a stable MCP owner."""
+    """Resolve the acting identity, falling back to a stable MCP owner.
+
+    Returns:
+        ``NotBlankStr`` instance.
+    """
     if actor is None:
         return _MCP_OWNER_FALLBACK
     return NotBlankStr(str(actor.id))
 
 
 def _require_charter_service(app_state: Any) -> Any:
+    """Return the charter service or raise when unavailable.
+
+    Raises:
+        ServiceUnavailableError: Raised on the corresponding failure path.
+    """
     svc = getattr(app_state, "charter_service", None)
     if svc is None or not app_state.has_charter_service:
         msg = "charter interview service is not wired in this deployment"
@@ -74,6 +84,11 @@ def _require_charter_service(app_state: Any) -> Any:
 
 
 def _require_charter_dispatcher(app_state: Any) -> Any:
+    """Return the charter dispatcher or raise when unavailable.
+
+    Raises:
+        ServiceUnavailableError: Raised on the corresponding failure path.
+    """
     if not app_state.has_charter_dispatcher:
         msg = "charter approval dispatcher is not wired in this deployment"
         raise ServiceUnavailableError(msg)
@@ -81,33 +96,48 @@ def _require_charter_dispatcher(app_state: Any) -> Any:
 
 
 def _opt_nonblank(arguments: dict[str, Any], key: str) -> NotBlankStr | None:
+    """Return opt nonblank.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(key)
     if raw is None or (isinstance(raw, str) and not raw.strip()):
         return None
     if not isinstance(raw, str):
-        raise invalid_argument(key, "string or null")
+        raise ArgumentValidationError(key, "string or null")
     return NotBlankStr(raw)
 
 
 def _parse_status(arguments: dict[str, Any]) -> CharterStatus | None:
+    """Return parse status.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(_ARG_STATUS)
     if raw is None or raw == "":
         return None
     if not isinstance(raw, str):
-        raise invalid_argument(_ARG_STATUS, _TY_STATUS)
+        raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS)
     try:
         return CharterStatus(raw)
     except ValueError as exc:
-        raise invalid_argument(_ARG_STATUS, _TY_STATUS) from exc
+        raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS) from exc
 
 
 def _parse_int(arguments: dict[str, Any], key: str, *, default: int, floor: int) -> int:
+    """Return parse int.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(key)
     if raw in (None, ""):
         return default
     if not isinstance(raw, int) or isinstance(raw, bool) or raw < floor:
         ty = _TY_POS_INT if floor > 0 else _TY_NONNEG_INT
-        raise invalid_argument(key, ty)
+        raise ArgumentValidationError(key, ty)
     return raw
 
 
@@ -117,6 +147,7 @@ async def _charter_interview(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return charter interview."""
     try:
         svc = _require_charter_service(app_state)
         message = require_arg(arguments, _ARG_MESSAGE, str)
@@ -133,9 +164,8 @@ async def _charter_interview(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_INTERVIEW, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_INTERVIEW, exc)
         return err(exc)
 
@@ -146,6 +176,7 @@ async def _charter_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return charter list."""
     try:
         svc = _require_charter_service(app_state)
         status = _parse_status(arguments)
@@ -165,9 +196,8 @@ async def _charter_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_LIST, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_LIST, exc)
         return err(exc)
 
@@ -178,6 +208,7 @@ async def _charter_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return charter get."""
     try:
         svc = _require_charter_service(app_state)
         charter_id = NotBlankStr(require_arg(arguments, _ARG_CHARTER_ID, str))
@@ -187,9 +218,8 @@ async def _charter_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_GET, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_GET, exc)
         return err(exc)
 
@@ -200,6 +230,7 @@ async def _charter_cancel(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return charter cancel."""
     try:
         # MCP cancel is admin-gated at the registry; the local
         # guardrail re-check (mandated for every admin tool) is what
@@ -219,9 +250,8 @@ async def _charter_cancel(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_CANCEL, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_CANCEL, exc)
         return err(exc)
 
@@ -232,6 +262,7 @@ async def _charter_approve(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return charter approve."""
     try:
         require_admin_guardrails(arguments, actor)
         dispatcher = _require_charter_dispatcher(app_state)
@@ -242,9 +273,8 @@ async def _charter_approve(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_APPROVE, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_APPROVE, exc)
         return err(exc)
 

@@ -48,6 +48,9 @@ def build_baseline_snapshot() -> OrgSignalSnapshot:
     Used when no live snapshot provider is wired: the gap (carried in the
     rule's ``signal_context``) is the actionable signal for an authoring
     decision, so org-wide metrics can be neutral.
+
+    Returns:
+        ``OrgSignalSnapshot`` instance.
     """
     return OrgSignalSnapshot(
         performance=OrgPerformanceSummary(
@@ -92,7 +95,11 @@ class CodeModificationOverflowHandler:
         self._snapshot_provider = snapshot_provider
 
     async def handle(self, gap: CapabilityGap) -> tuple[ImprovementProposal, ...]:
-        """Frame the gap as a rule and delegate to the code-mod strategy."""
+        """Frame the gap as a rule and delegate to the code-mod strategy.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         snapshot = (
             await self._snapshot_provider()
             if self._snapshot_provider is not None

@@ -48,6 +48,9 @@ def get_auth_token_bytes() -> int:
     Returns the registered default until the lifecycle hook calls
     :func:`set_auth_token_bytes`.  Test harnesses that bypass the
     hook see the default value.
+
+    Returns:
+        Resulting integer.
     """
     return _token_bytes
 

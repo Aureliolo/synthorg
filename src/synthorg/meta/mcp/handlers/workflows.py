@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import (
     SubworkflowIOError,
@@ -40,7 +41,6 @@ from synthorg.engine.workflow.version_service import (
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
-    invalid_argument,
 )
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -120,12 +120,18 @@ def _require_int(
     (where the service requires ``revision >= 1``) get the more
     accurate ``invalid_argument`` envelope here instead of bouncing off
     a deeper validation layer.
+
+    Returns:
+        Resulting integer.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
     """
     raw = arguments.get(key)
     if not isinstance(raw, int) or isinstance(raw, bool):
-        raise invalid_argument(key, _TY_INT)
+        raise ArgumentValidationError(key, _TY_INT)
     if positive and raw < 1:
-        raise invalid_argument(key, _TY_INT)
+        raise ArgumentValidationError(key, _TY_INT)
     return raw
 
 
@@ -137,6 +143,9 @@ def _subworkflow_service(app_state: Any) -> SubworkflowService | None:
     ``ServiceUnavailableError`` when the slot is empty -- ``getattr``
     only catches ``AttributeError`` and would otherwise let the
     property's exception escape past the ``capability_gap`` fallback.
+
+    Returns:
+        The ``SubworkflowService`` value when present, ``None`` otherwise.
     """
     if not getattr(app_state, "has_subworkflow_service", False):
         return None
@@ -148,6 +157,9 @@ def _version_service(app_state: Any) -> WorkflowVersionService | None:
 
     See :func:`_subworkflow_service` for the rationale -- the same
     ``has_<service>`` predicate guards the call site.
+
+    Returns:
+        The ``WorkflowVersionService`` value when present, ``None`` otherwise.
     """
     if not getattr(app_state, "has_workflow_version_service", False):
         return None
@@ -162,6 +174,12 @@ def _service(app_state: Any) -> WorkflowService:
     Callers that have not wired the service on ``AppState`` get a loud
     runtime error instead of a silent per-call construction that would
     bypass the facade.
+
+    Returns:
+        ``WorkflowService`` instance.
+
+    Raises:
+        RuntimeError: Raised on the corresponding failure path.
     """
     cached: WorkflowService | None = getattr(app_state, "workflow_service", None)
     if cached is None:
@@ -190,6 +208,11 @@ async def _workflows_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_workflows_list`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_workflows_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -203,9 +226,8 @@ async def _workflows_list(
         # paginator will hand back without over-fetching.
         items = await _service(app_state).list_definitions(limit=limit + offset)
         page, meta = paginate_sequence(items, offset=offset, limit=limit)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -218,6 +240,11 @@ async def _workflows_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_workflows_get`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_workflows_get"
     try:
         def_id = require_non_blank(arguments, _ARG_DEF_ID)
@@ -226,9 +253,8 @@ async def _workflows_get(
         return err(exc)
     try:
         defn = await _service(app_state).get_definition(def_id)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if defn is None:
@@ -247,6 +273,11 @@ async def _workflows_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Handle the ``synthorg_workflows_create`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_workflows_create"
     try:
         definition_dict = require_arg(arguments, "definition", dict)
@@ -273,9 +304,8 @@ async def _workflows_create(
     except WorkflowDefinitionExistsError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="already_exists")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -288,6 +318,11 @@ async def _workflows_update(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Handle the ``synthorg_workflows_update`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_workflows_update"
     try:
         definition_dict = require_arg(arguments, "definition", dict)
@@ -317,9 +352,8 @@ async def _workflows_update(
     except WorkflowDefinitionRevisionMismatchError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -332,6 +366,11 @@ async def _workflows_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Handle the ``synthorg_workflows_delete`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_workflows_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -343,9 +382,8 @@ async def _workflows_delete(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if not deleted:
@@ -372,6 +410,11 @@ async def _workflows_validate(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_workflows_validate`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_workflows_validate"
     try:
         definition_dict = require_arg(arguments, "definition", dict)
@@ -391,9 +434,8 @@ async def _workflows_validate(
 
     try:
         result = await _service(app_state).validate_definition(definition)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -409,6 +451,14 @@ async def _subworkflows_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_subworkflows_list`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     tool = "synthorg_subworkflows_list"
     service = _subworkflow_service(app_state)
     if service is None:
@@ -418,7 +468,7 @@ async def _subworkflows_list(
         arg_query = "query"
         query_raw = arguments.get(arg_query)
         if query_raw is not None and not isinstance(query_raw, str):
-            raise invalid_argument(arg_query, _TY_NON_BLANK)
+            raise ArgumentValidationError(arg_query, _TY_NON_BLANK)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -428,9 +478,8 @@ async def _subworkflows_list(
             limit=limit,
             query=query_raw,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
@@ -444,6 +493,14 @@ async def _subworkflows_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_subworkflows_get`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     tool = "synthorg_subworkflows_get"
     service = _subworkflow_service(app_state)
     if service is None:
@@ -454,7 +511,7 @@ async def _subworkflows_get(
         if version_raw is not None and (
             not isinstance(version_raw, str) or not version_raw.strip()
         ):
-            raise invalid_argument(_ARG_VERSION, _TY_NON_BLANK)
+            raise ArgumentValidationError(_ARG_VERSION, _TY_NON_BLANK)
         version = NotBlankStr(version_raw.strip()) if version_raw is not None else None
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -464,9 +521,8 @@ async def _subworkflows_get(
     except SubworkflowNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -479,6 +535,11 @@ async def _subworkflows_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Handle the ``synthorg_subworkflows_create`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_subworkflows_create"
     service = _subworkflow_service(app_state)
     if service is None:
@@ -505,9 +566,8 @@ async def _subworkflows_create(
     except SubworkflowIOError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="invalid_argument")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -520,6 +580,11 @@ async def _subworkflows_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Handle the ``synthorg_subworkflows_delete`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_subworkflows_delete"
     # Run the destructive-op guardrails first so the standard
     # parametrised destructive-op test sweep (which does not seed
@@ -553,9 +618,8 @@ async def _subworkflows_delete(
     except SubworkflowNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -589,6 +653,11 @@ async def _workflow_versions_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_workflow_versions_list`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_workflow_versions_list"
     service = _version_service(app_state)
     if service is None:
@@ -605,9 +674,8 @@ async def _workflow_versions_list(
             offset=offset,
             limit=limit,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
@@ -621,6 +689,11 @@ async def _workflow_versions_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_workflow_versions_get`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_workflow_versions_get"
     service = _version_service(app_state)
     if service is None:
@@ -633,9 +706,8 @@ async def _workflow_versions_get(
         return err(exc)
     try:
         snapshot = await service.get_version(NotBlankStr(def_id), revision)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if snapshot is None:

@@ -186,10 +186,14 @@ class ErrorCode(IntEnum):
     RESEARCH_UNAVAILABLE = 8029
 
 
-# Error-code band for the NOT_FOUND category (3xxx).  ``resource_not_found``
-# (in :mod:`synthorg.core.domain_errors`) rejects non-NOT_FOUND codes so a
-# 404 response cannot accidentally carry an auth / validation / conflict
-# code.
+# Error-code band for the NOT_FOUND category (3xxx).  Per-domain
+# ``NotFoundError`` subclasses in :mod:`synthorg.core.domain_errors`,
+# :mod:`synthorg.engine.errors`, :mod:`synthorg.integrations.errors`, and
+# :mod:`synthorg.engine.workflow.service` declare their ``error_code``
+# from this band so a 404 response cannot accidentally carry an auth,
+# validation, or conflict code.  Retained as a public constant for the
+# ``CODE_CATEGORY_PREFIX`` cross-check and for downstream tooling that
+# wants to iterate the 3xxx codes.
 NOT_FOUND_BAND: Final[int] = 3
 
 # Maps the first digit of an ``ErrorCode`` value to its expected category.

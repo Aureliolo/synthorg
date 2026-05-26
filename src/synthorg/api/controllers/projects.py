@@ -35,7 +35,11 @@ _DEFAULT_LIMIT: Final[int] = 50
 
 
 def _service(state: State) -> ProjectService:
-    """Build the per-request :class:`ProjectService` instance."""
+    """Build the per-request :class:`ProjectService` instance.
+
+    Returns:
+        ``ProjectService`` instance.
+    """
     return ProjectService(repo=state.app_state.persistence.projects)
 
 

@@ -11,6 +11,7 @@ pushed the parent module past budget.
 import copy
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.errors import (
     SubworkflowDepthExceededError,
     WorkflowDefinitionInvalidError,
@@ -24,7 +25,6 @@ from synthorg.engine.workflow.execution_service import (
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
-    invalid_argument,
 )
 from synthorg.meta.mcp.handlers.common import (
     capability_gap,
@@ -71,6 +71,7 @@ def _execution_service(app_state: Any) -> WorkflowExecutionService | None:
     # on ``getattr(..., default)`` -- which only catches
     # ``AttributeError`` and would otherwise let the property's exception
     # short-circuit the handler before it could return ``capability_gap``.
+    """Return execution service."""
     if not getattr(app_state, "has_workflow_execution_service", False):
         return None
     return app_state.workflow_execution_service  # type: ignore[no-any-return]
@@ -84,6 +85,12 @@ def _parse_start_args(
     Extracted so :func:`workflow_executions_start` itself stays under the
     50-line ceiling -- the original inline parsing pushed it slightly
     over.
+
+    Returns:
+        Tuple of the declared element types.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
     """
     arg_project = "project"
     arg_context = "context"
@@ -96,13 +103,13 @@ def _parse_start_args(
     if project_raw is None:
         project_raw = "default"
     if not isinstance(project_raw, str):
-        raise invalid_argument(arg_project, _TY_NON_BLANK)
+        raise ArgumentValidationError(arg_project, _TY_NON_BLANK)
     project = project_raw.strip()
     if not project:
-        raise invalid_argument(arg_project, _TY_NON_BLANK)
+        raise ArgumentValidationError(arg_project, _TY_NON_BLANK)
     context_raw = arguments.get(arg_context, {})
     if not isinstance(context_raw, dict):
-        raise invalid_argument(arg_context, ty_object)
+        raise ArgumentValidationError(arg_context, ty_object)
     # Deep-copy ``context`` at the handler boundary so downstream code
     # cannot mutate caller-owned request state in place. The MCP
     # transport hands us a parsed JSON dict; without this copy any
@@ -117,7 +124,11 @@ async def workflow_executions_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List executions for a workflow definition."""
+    """List executions for a workflow definition.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_workflow_executions_list"
     service = _execution_service(app_state)
     if service is None:
@@ -134,9 +145,8 @@ async def workflow_executions_list(
         # triggered from MCP.
         executions = await service.list_executions(def_id, limit=limit + offset)
         page, meta = paginate_sequence(executions, offset=offset, limit=limit)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -149,7 +159,11 @@ async def workflow_executions_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single workflow execution by id."""
+    """Fetch a single workflow execution by id.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_workflow_executions_get"
     service = _execution_service(app_state)
     if service is None:
@@ -161,9 +175,8 @@ async def workflow_executions_get(
         return err(exc)
     try:
         execution = await service.get_execution(execution_id)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if execution is None:
@@ -182,7 +195,11 @@ async def workflow_executions_start(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Activate a workflow definition (alias: start an execution)."""
+    """Activate a workflow definition (alias: start an execution).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_workflow_executions_start"
     service = _execution_service(app_state)
     if service is None:
@@ -209,9 +226,8 @@ async def workflow_executions_start(
     except WorkflowExecutionError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -224,7 +240,11 @@ async def workflow_executions_cancel(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Cancel a running workflow execution (destructive)."""
+    """Cancel a running workflow execution (destructive).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_workflow_executions_cancel"
     # Run the destructive-op triple BEFORE argument parsing so anonymous
     # or unconfirmed callers see the guardrail violation first (the
@@ -259,9 +279,8 @@ async def workflow_executions_cancel(
     except WorkflowExecutionAlreadyTerminalError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)

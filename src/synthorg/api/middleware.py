@@ -25,6 +25,7 @@ from litestar.types import ASGIApp, Message, Receive, Scope, Send  # noqa: TC002
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.correlation import (
     bind_correlation_id,
@@ -60,7 +61,11 @@ logger = get_logger(__name__)
 
 
 def _is_healthcheck_path(path: str) -> bool:
-    """Return True for paths whose request-log pair should be skipped."""
+    """Return True for paths whose request-log pair should be skipped.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+    """
     return path.endswith(_HEALTHCHECK_PATH_SUFFIXES)
 
 
@@ -301,6 +306,9 @@ def _resolve_route_template(scope: Scope) -> str:
     ``sorted(handler.paths)[0]`` for older router versions. Returns
     :data:`_UNMATCHED_ROUTE` when no handler was reached (404,
     method-not-allowed, exceptions raised pre-routing).
+
+    Returns:
+        Resulting string.
     """
     template_hint = scope.get("path_template")
     if isinstance(template_hint, str) and template_hint:
@@ -325,8 +333,10 @@ def _record_request_metric(
 ) -> None:
     """Push api_request_duration to the collector stored in AppState.
 
-    Silent no-op when AppState or its collector is unavailable; any
-    recording failure logs at WARNING but does not propagate.
+    Silent no-op when AppState or its collector is unavailable. A
+    non-critical recording failure logs at WARNING and is dropped;
+    interpreter-critical errors (``MemoryError`` / ``RecursionError``)
+    propagate via ``reraise_critical``.
     """
     state: Any = scope.get("state")
     if state is None:
@@ -341,9 +351,8 @@ def _record_request_metric(
         return
     try:
         collector = app_state.prometheus_collector
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         # Log the lookup failure so operators notice a metrics-
         # pipeline regression rather than seeing silent drop-offs.
         logger.warning(
@@ -359,9 +368,8 @@ def _record_request_metric(
             status_code=status_code,
             duration_sec=duration_sec,
         )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             METRICS_RECORD_FAILED,
             component="api_request_duration",
@@ -414,6 +422,7 @@ class RequestLoggingMiddleware:
         original_send = send
 
         async def capture_send(message: Any) -> None:
+            """Run capture send."""
             nonlocal status_code
             if (
                 isinstance(message, dict)
@@ -439,9 +448,8 @@ class RequestLoggingMiddleware:
             span.set_attribute("synthorg.correlation_id", correlation_id)
             try:
                 await self.app(scope, receive, capture_send)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # OTel's ``record_exception`` would serialise the full
                 # traceback (including frame locals) into the span,
                 # bypassing the structlog secret-log redaction the

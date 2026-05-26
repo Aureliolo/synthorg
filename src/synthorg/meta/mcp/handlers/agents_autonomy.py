@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import AgentNotFoundError
 from synthorg.meta.mcp.errors import ArgumentValidationError
@@ -40,7 +41,11 @@ async def autonomy_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Read the agent's effective autonomy level."""
+    """Read the agent's effective autonomy level.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_autonomy_get"
     try:
         agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
@@ -49,9 +54,8 @@ async def autonomy_get(
         return err(exc)
     try:
         identity = await app_state.agent_registry.get(NotBlankStr(agent_id))
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if identity is None:
@@ -77,6 +81,9 @@ def _parse_autonomy_update_args(
 
     Extracted so the handler stays small enough to keep the agents.py
     file under its line budget.
+
+    Returns:
+        Tuple of the declared element types.
     """
     arg_reason = "reason"
     agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
@@ -92,7 +99,11 @@ async def autonomy_update(
     actor: AgentIdentity | None = None,
     # lint-allow: mcp-admin-guardrail -- routes through approval queue, no mutation
 ) -> str:
-    """Request an autonomy level change (routes through approval queue)."""
+    """Request an autonomy level change (routes through approval queue).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_autonomy_update"
     try:
         agent_id, level_raw, reason = _parse_autonomy_update_args(arguments)
@@ -133,9 +144,8 @@ async def autonomy_update(
     except AgentNotFoundError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -148,7 +158,11 @@ async def collaboration_get_score(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return the agent's current collaboration score."""
+    """Return the agent's current collaboration score.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_collaboration_get_score"
     try:
         agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
@@ -159,9 +173,8 @@ async def collaboration_get_score(
         score = await app_state.performance_tracker.get_collaboration_score(
             NotBlankStr(agent_id),
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -182,7 +195,11 @@ async def collaboration_get_calibration(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return the curated calibration readout for the agent's score."""
+    """Return the curated calibration readout for the agent's score.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_collaboration_get_calibration"
     try:
         agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
@@ -193,9 +210,8 @@ async def collaboration_get_calibration(
         calibration = await app_state.performance_tracker.get_collaboration_calibration(
             NotBlankStr(agent_id),
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)

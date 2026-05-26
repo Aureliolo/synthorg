@@ -14,11 +14,7 @@ from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.core.actor_context import require_actor
-from synthorg.core.domain_errors import (
-    ServiceUnavailableError,
-    resource_not_found,
-)
-from synthorg.core.error_taxonomy import ErrorCode
+from synthorg.core.domain_errors import AbTestNotFoundError, ServiceUnavailableError
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
@@ -63,6 +59,9 @@ def _settings_service_from_state(state: State) -> Any:
 
     Centralises the ``has_settings_service`` guard used by every
     ``load_self_improvement_config`` call site in this controller.
+
+    Returns:
+        ``Any`` instance.
     """
     app_state = state.app_state
     return app_state.settings_service if app_state.has_settings_service else None
@@ -239,21 +238,21 @@ class MetaController(Controller):
     ) -> ApiResponse[dict[str, Any]]:
         """Get detailed A/B test status for a specific proposal.
 
+        Always raises until the A/B test registry lands; the typed
+        404 envelope is what callers receive.
+
         Args:
             proposal_id: UUID of the proposal under A/B test.
 
-        Returns:
-            A/B test detail including group metrics and verdict.
+        Raises:
+            AbTestNotFoundError: Every proposal id currently lacks a
+                durable A/B record; the endpoint surfaces a typed 404.
         """
         # A/B test registry not yet implemented -- every proposal id
         # currently lacks a durable A/B record.  See get /ab-tests
         # above for the scoped follow-up note.
-        resource_type = "ab_test"
-        raise resource_not_found(
-            resource_type,
-            proposal_id,
-            code=ErrorCode.AB_TEST_NOT_FOUND,
-        )
+        msg = f"ab_test {proposal_id!r} not found"
+        raise AbTestNotFoundError(msg)
 
     @get("/proposals")
     async def list_proposals(
@@ -359,6 +358,9 @@ class MetaController(Controller):
 
         Returns:
             Chat response with answer, sources, and confidence.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state = state.app_state
         chat_backend = (
@@ -432,6 +434,12 @@ class MetaController(Controller):
         (``meta.chief_of_staff.propose_enabled`` is False, no LLM
         provider is registered, or persistence / the work pipeline is
         unavailable so an approved item could never execute).
+
+        Returns:
+            ``ApiResponse[ProposeResult]`` instance.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state = state.app_state
         proposer = (

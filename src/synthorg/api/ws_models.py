@@ -31,6 +31,9 @@ def _get_payload_adapter() -> TypeAdapter[object]:
 
     Lazy-initialised to avoid a circular import: ``ws_payloads.py``
     imports :class:`WsEventType` from this module.
+
+    Returns:
+        ``TypeAdapter[object]`` instance.
     """
     global _PAYLOAD_ADAPTER  # noqa: PLW0603 -- module-level cache by design
     if _PAYLOAD_ADAPTER is None:
@@ -180,6 +183,7 @@ class WsEvent(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_payload(self) -> Self:
+        """Return deep copy payload."""
         object.__setattr__(self, "payload", copy.deepcopy(self.payload))
         return self
 
@@ -200,6 +204,12 @@ class WsEvent(BaseModel):
         required field, wrong type, extra field) raises
         :class:`pydantic.ValidationError` so the bad event never
         reaches a subscriber.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         nested = self.payload.get("event_type")
         if nested is not None and nested != self.event_type.value:

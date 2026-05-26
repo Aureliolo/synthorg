@@ -100,7 +100,11 @@ class HttpGitHubClient:
 
     @property
     def _client(self) -> httpx.AsyncClient:
-        """Lazily create the httpx client on first use."""
+        """Lazily create the httpx client on first use.
+
+        Returns:
+            ``httpx.AsyncClient`` instance.
+        """
         if self.__client is None:
             self.__client = httpx.AsyncClient(
                 base_url=self._api_base_url,
@@ -120,7 +124,11 @@ class HttpGitHubClient:
             self.__client = None
 
     async def __aenter__(self) -> Self:
-        """Support ``async with`` usage."""
+        """Support ``async with`` usage.
+
+        Returns:
+            ``Self`` instance.
+        """
         return self
 
     async def __aexit__(self, *exc: object) -> None:
@@ -255,7 +263,11 @@ class HttpGitHubClient:
     # -- Private helpers ---------------------------------------------------
 
     async def _get_branch_sha(self, branch: str) -> str:
-        """Get the HEAD commit SHA of a branch."""
+        """Get the HEAD commit SHA of a branch.
+
+        Returns:
+            Resulting string.
+        """
         resp = await self._client.get(
             f"/repos/{self._repo}/git/ref/heads/{branch}",
         )
@@ -268,7 +280,11 @@ class HttpGitHubClient:
         branch: str,
         path: str,
     ) -> str:
-        """Get the blob SHA of a file on a branch."""
+        """Get the blob SHA of a file on a branch.
+
+        Returns:
+            Resulting string.
+        """
         resp = await self._client.get(
             f"/repos/{self._repo}/contents/{path}",
             params={"ref": branch},

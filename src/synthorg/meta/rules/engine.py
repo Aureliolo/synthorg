@@ -6,6 +6,7 @@ matched rules sorted by severity (critical first).
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.models import (
     OrgSignalSnapshot,
     RuleMatch,
@@ -42,12 +43,20 @@ class RuleEngine:
 
     @property
     def rule_count(self) -> int:
-        """Number of registered rules."""
+        """Number of registered rules.
+
+        Returns:
+            Resulting integer.
+        """
         return len(self._rules)
 
     @property
     def rule_names(self) -> tuple[str, ...]:
-        """Names of all registered rules."""
+        """Names of all registered rules.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return tuple(r.name for r in self._rules)
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> tuple[RuleMatch, ...]:
@@ -78,9 +87,8 @@ class RuleEngine:
                         description=match.description,
                     )
                     matches.append(match)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger, META_RULE_EVALUATION_FAILED, exc, rule=rule.name
                 )

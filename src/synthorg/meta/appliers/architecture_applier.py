@@ -9,6 +9,7 @@ read-only view of those registries, so operators can preview whether
 
 from typing import Any, Final, Protocol, runtime_checkable
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.appliers._validation import validate_payload_keys
 from synthorg.meta.models import (
     ApplyResult,
@@ -16,7 +17,11 @@ from synthorg.meta.models import (
     ImprovementProposal,
     ProposalAltitude,
 )
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
     META_APPLY_FAILED,
@@ -164,11 +169,19 @@ class _PendingChanges:
     # -- In-use queries -----------------------------------------
 
     def has_department_refs(self, dept: str) -> bool:
-        """Return True when any *still-live* create_role points at ``dept``."""
+        """Return True when any *still-live* create_role points at ``dept``.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return bool(self.pending_department_refs.get(dept))
 
     def has_role_refs(self, role: str) -> bool:
-        """Return True when any *still-live* create_department heads at ``role``."""
+        """Return True when any *still-live* create_department heads at ``role``.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return bool(self.pending_role_refs.get(role))
 
 
@@ -205,7 +218,11 @@ class ArchitectureApplier:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This applier handles architecture proposals."""
+        """This applier handles architecture proposals.
+
+        Returns:
+            ``ProposalAltitude`` instance.
+        """
         return ProposalAltitude.ARCHITECTURE
 
     async def apply(
@@ -244,9 +261,8 @@ class ArchitectureApplier:
                 note="registry mutation not yet implemented",
             )
             return ApplyResult(success=True, changes_applied=count)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 META_APPLY_FAILED,
@@ -307,21 +323,21 @@ class ArchitectureApplier:
                 errors.extend(
                     _validate_change(change, context=context, pending=pending)
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
+                detail = (
+                    f"context raised {type(exc).__name__}: "
+                    f"{safe_error_description(exc)[:200]}"
+                )
                 logger.warning(
                     META_DRY_RUN_FAILED,
                     altitude="architecture",
                     proposal_id=str(proposal.id),
                     change_operation=change.operation,
                     change_target=change.target_name,
-                    reason=(f"context raised {type(exc).__name__}: {str(exc)[:200]}"),
+                    reason=detail,
                 )
-                errors.append(
-                    f"{change.operation}({change.target_name!r}): "
-                    f"context raised {type(exc).__name__}: {str(exc)[:200]}"
-                )
+                errors.append(f"{change.operation}({change.target_name!r}): {detail}")
 
         if errors:
             return self._fail(proposal, error_message="; ".join(errors))
@@ -343,7 +359,11 @@ class ArchitectureApplier:
         *,
         error_message: str,
     ) -> ApplyResult:
-        """Build a failure ``ApplyResult`` and log the dry_run failure."""
+        """Build a failure ``ApplyResult`` and log the dry_run failure.
+
+        Returns:
+            ``ApplyResult`` instance.
+        """
         logger.warning(
             META_DRY_RUN_FAILED,
             altitude="architecture",
@@ -363,7 +383,11 @@ def _validate_change(
     context: ArchitectureApplierContext,
     pending: _PendingChanges,
 ) -> list[str]:
-    """Validate a single ``ArchitectureChange``."""
+    """Validate a single ``ArchitectureChange``.
+
+    Returns:
+        List of the declared element type.
+    """
     if change.operation not in _SUPPORTED_OPS:
         return [
             f"Unknown operation {change.operation!r}; "
@@ -393,6 +417,11 @@ def _validate_create_role(
     context: ArchitectureApplierContext,
     pending: _PendingChanges,
 ) -> list[str]:
+    """Validate create role.
+
+    Returns:
+        ``list[str]`` instance.
+    """
     errors: list[str] = []
     name = change.target_name
     if name in pending.new_roles:
@@ -438,6 +467,9 @@ def _validate_role_description(description: Any) -> list[str]:
     blank strings here instead of treating them as "not provided".
     ``validate_payload_keys`` checks that the key is present; this
     helper ensures the value is a usable non-blank bounded string.
+
+    Returns:
+        List of the declared element type.
     """
     if description is None:
         return ["create_role: 'description' must not be None"]
@@ -459,7 +491,11 @@ def _validate_role_department(
     context: ArchitectureApplierContext,
     pending: _PendingChanges,
 ) -> list[str]:
-    """Validate the ``department`` reference for a new role."""
+    """Validate the ``department`` reference for a new role.
+
+    Returns:
+        List of the declared element type.
+    """
     if dept is None:
         return []
     if not isinstance(dept, str):
@@ -474,7 +510,11 @@ def _validate_role_department(
 
 
 def _validate_skill_list(skills: list[Any] | tuple[Any, ...]) -> list[str]:
-    """Validate each entry in ``required_skills`` (type, length, count)."""
+    """Validate each entry in ``required_skills`` (type, length, count).
+
+    Returns:
+        List of the declared element type.
+    """
     errors: list[str] = []
     if len(skills) > _MAX_SKILLS_PER_ROLE:
         errors.append(
@@ -495,7 +535,11 @@ def _validate_skill_list(skills: list[Any] | tuple[Any, ...]) -> list[str]:
 
 
 def _validate_authority_level(value: Any) -> list[str]:
-    """Validate the optional ``authority_level`` free-text field."""
+    """Validate the optional ``authority_level`` free-text field.
+
+    Returns:
+        List of the declared element type.
+    """
     if value is None:
         return []
     if not isinstance(value, str):
@@ -511,7 +555,11 @@ def _validate_authority_level(value: Any) -> list[str]:
 
 
 def _validate_tool_access(value: Any) -> list[str]:
-    """Validate the optional ``tool_access`` list of tool identifiers."""
+    """Validate the optional ``tool_access`` list of tool identifiers.
+
+    Returns:
+        List of the declared element type.
+    """
     if value is None:
         return []
     if not isinstance(value, list | tuple):
@@ -536,7 +584,11 @@ def _validate_tool_access(value: Any) -> list[str]:
 
 
 def _validate_dept_policies(value: Any) -> list[str]:
-    """Validate the optional ``policies`` list for a new department."""
+    """Validate the optional ``policies`` list for a new department.
+
+    Returns:
+        List of the declared element type.
+    """
     if value is None:
         return []
     if not isinstance(value, list | tuple):
@@ -561,7 +613,11 @@ def _validate_dept_policies(value: Any) -> list[str]:
 
 
 def _validate_dept_head(value: Any) -> list[str]:
-    """Validate the optional ``head`` reference on a new department."""
+    """Validate the optional ``head`` reference on a new department.
+
+    Returns:
+        List of the declared element type.
+    """
     if value is None:
         return []
     if not isinstance(value, str):
@@ -579,6 +635,11 @@ def _validate_create_department(
     context: ArchitectureApplierContext,
     pending: _PendingChanges,
 ) -> list[str]:
+    """Validate create department.
+
+    Returns:
+        ``list[str]`` instance.
+    """
     errors: list[str] = []
     name = change.target_name
     if name in pending.new_departments:
@@ -622,6 +683,11 @@ def _validate_modify_workflow(
     *,
     context: ArchitectureApplierContext,
 ) -> list[str]:
+    """Validate modify workflow.
+
+    Returns:
+        ``list[str]`` instance.
+    """
     errors: list[str] = []
     if not context.has_workflow(change.target_name):
         errors.append(
@@ -640,6 +706,11 @@ def _validate_remove_role(
     context: ArchitectureApplierContext,
     pending: _PendingChanges,
 ) -> list[str]:
+    """Validate remove role.
+
+    Returns:
+        ``list[str]`` instance.
+    """
     errors: list[str] = []
     name = change.target_name
     if change.payload:
@@ -668,6 +739,11 @@ def _validate_remove_department(
     context: ArchitectureApplierContext,
     pending: _PendingChanges,
 ) -> list[str]:
+    """Validate remove department.
+
+    Returns:
+        ``list[str]`` instance.
+    """
     errors: list[str] = []
     name = change.target_name
     if change.payload:

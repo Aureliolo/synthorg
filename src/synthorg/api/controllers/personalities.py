@@ -32,7 +32,11 @@ _DEFAULT_LIMIT: Final[int] = 50
 
 
 def _to_summary(entry: PresetEntry) -> PresetSummaryResponse:
-    """Convert a PresetEntry to a list summary response."""
+    """Convert a PresetEntry to a list summary response.
+
+    Returns:
+        ``PresetSummaryResponse`` instance.
+    """
     return PresetSummaryResponse(
         name=entry.name,
         description=entry.description,
@@ -42,7 +46,11 @@ def _to_summary(entry: PresetEntry) -> PresetSummaryResponse:
 
 
 def _to_detail(entry: PresetEntry) -> PresetDetailResponse:
-    """Convert a PresetEntry to a full detail response."""
+    """Convert a PresetEntry to a full detail response.
+
+    Returns:
+        ``PresetDetailResponse`` instance.
+    """
     cfg = entry.config
     return PresetDetailResponse(
         name=entry.name,
@@ -55,7 +63,11 @@ def _to_detail(entry: PresetEntry) -> PresetDetailResponse:
 
 
 def _get_service(state: State) -> PersonalityPresetService:
-    """Construct a PersonalityPresetService from app state."""
+    """Construct a PersonalityPresetService from app state.
+
+    Returns:
+        ``PersonalityPresetService`` instance.
+    """
     repo = state.app_state.persistence.custom_presets
     return PersonalityPresetService(repository=repo)
 
@@ -76,7 +88,11 @@ class PersonalityPresetController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[PresetSummaryResponse]:
-        """List all personality presets (builtin + custom)."""
+        """List all personality presets (builtin + custom).
+
+        Returns:
+            ``PaginatedResponse[PresetSummaryResponse]`` instance.
+        """
         service = _get_service(state)
         entries = await service.list_all()
         summaries = tuple(_to_summary(e) for e in entries)
@@ -97,7 +113,11 @@ class PersonalityPresetController(Controller):
         state: State,
         name: PathName,
     ) -> ApiResponse[PresetDetailResponse]:
-        """Get full details of a personality preset."""
+        """Get full details of a personality preset.
+
+        Returns:
+            ``ApiResponse[PresetDetailResponse]`` instance.
+        """
         service = _get_service(state)
         entry = await service.get(name)
         return ApiResponse[PresetDetailResponse](data=_to_detail(entry))
@@ -107,7 +127,11 @@ class PersonalityPresetController(Controller):
         guards=[require_read_access],
     )
     async def get_schema(self) -> ApiResponse[dict[str, Any]]:
-        """Return the PersonalityConfig JSON schema."""
+        """Return the PersonalityConfig JSON schema.
+
+        Returns:
+            ``ApiResponse[dict[str, Any]]`` instance.
+        """
         schema = PersonalityPresetService.get_schema()
         return ApiResponse[dict[str, Any]](data=schema)
 
@@ -124,7 +148,11 @@ class PersonalityPresetController(Controller):
         state: State,
         data: CreatePresetRequest,
     ) -> ApiResponse[PresetDetailResponse]:
-        """Create a custom personality preset."""
+        """Create a custom personality preset.
+
+        Returns:
+            ``ApiResponse[PresetDetailResponse]`` instance.
+        """
         service = _get_service(state)
         entry = await service.create(data.name, data.to_config_dict())
         return ApiResponse[PresetDetailResponse](data=_to_detail(entry))
@@ -142,7 +170,11 @@ class PersonalityPresetController(Controller):
         name: PathName,
         data: UpdatePresetRequest,
     ) -> ApiResponse[PresetDetailResponse]:
-        """Update an existing custom personality preset."""
+        """Update an existing custom personality preset.
+
+        Returns:
+            ``ApiResponse[PresetDetailResponse]`` instance.
+        """
         service = _get_service(state)
         entry = await service.update(name, data.to_config_dict())
         return ApiResponse[PresetDetailResponse](data=_to_detail(entry))
@@ -160,7 +192,11 @@ class PersonalityPresetController(Controller):
         state: State,
         name: PathName,
     ) -> ApiResponse[None]:
-        """Delete a custom personality preset."""
+        """Delete a custom personality preset.
+
+        Returns:
+            ``ApiResponse[None]`` instance.
+        """
         service = _get_service(state)
         await service.delete(name)
         return ApiResponse[None](data=None)

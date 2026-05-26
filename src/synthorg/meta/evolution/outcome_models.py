@@ -42,6 +42,11 @@ class EvolutionOutcomeRecord(BaseModel):
 
     @model_validator(mode="after")
     def _recorded_at_not_before_proposed(self) -> Self:
+        """Return recorded at not before proposed.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.recorded_at < self.proposed_at:
             msg = (
                 "recorded_at must be greater than or equal to proposed_at; "

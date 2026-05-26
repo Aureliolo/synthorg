@@ -77,6 +77,9 @@ def _make_parameters(
 
     Returns:
         JSON Schema dict.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     resolved = properties or {}
     if required:

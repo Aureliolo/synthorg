@@ -43,7 +43,11 @@ def _build_settings_dispatcher(  # noqa: PLR0913 -- one optional arg per subscri
     backup_service: BackupService | None = None,
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None,
 ) -> SettingsChangeDispatcher | None:
-    """Create settings change dispatcher if bus and settings are available."""
+    """Create settings change dispatcher if bus and settings are available.
+
+    Returns:
+        The ``SettingsChangeDispatcher`` value when present, ``None`` otherwise.
+    """
     if message_bus is None or settings_service is None:
         return None
     provider_sub = ProviderSettingsSubscriber(

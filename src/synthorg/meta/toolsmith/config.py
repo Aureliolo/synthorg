@@ -92,7 +92,14 @@ class ToolsmithConfig(BaseModel):
 
     @model_validator(mode="after")
     def _enabled_requires_allowlist(self) -> Self:
-        """Enable+empty-allowlist is silently deny-all; reject it explicitly."""
+        """Enable+empty-allowlist is silently deny-all; reject it explicitly.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.enabled and not self.allowed_capabilities:
             msg = (
                 "ToolsmithConfig.enabled=True requires a non-empty "

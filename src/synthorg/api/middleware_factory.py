@@ -48,6 +48,9 @@ def _parse_trusted_networks(
     Accepts both single IPs (``10.0.0.5``) and CIDR blocks
     (``10.0.0.0/8``, ``::1/128``). Invalid entries are dropped with a
     warning so a typo cannot silently permit every proxy.
+
+    Returns:
+        Tuple of the declared element types.
     """
     networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
     addresses: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
@@ -76,7 +79,11 @@ def _ip_is_trusted(
     networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...],
     addresses: tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, ...],
 ) -> bool:
-    """Return True when ``ip_str`` matches a trusted IP or CIDR."""
+    """Return True when ``ip_str`` matches a trusted IP or CIDR.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+    """
     try:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
@@ -116,6 +123,7 @@ def _build_unauth_identifier(
     ) -> str:
         # Only trust X-Forwarded-For when the immediate peer is a
         # known proxy. Otherwise any client can spoof the header.
+        """Return extract forwarded ip."""
         peer_ip = get_remote_address(request)
         if not _ip_is_trusted(peer_ip, networks, addresses):
             return peer_ip
@@ -170,6 +178,9 @@ def _throttle_when_anonymous(
     Returns ``True`` when the request should count against the
     anonymous bucket, ``False`` when the per-user (auth) tier should
     handle it instead.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     return request.scope.get("user") is None
 
@@ -182,6 +193,9 @@ def _throttle_when_authenticated(
     Mirror of :func:`_throttle_when_anonymous`.  Ensures anonymous
     traffic on auth-excluded paths is counted by the anonymous tier
     only, not double-counted under its fallback IP identifier.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     return request.scope.get("user") is not None
 
@@ -193,7 +207,11 @@ def _build_auth_exclude_paths(
     *,
     a2a_enabled: bool = False,
 ) -> tuple[str, ...]:
-    """Compute auth middleware exclude paths with fail-safe defaults."""
+    """Compute auth middleware exclude paths with fail-safe defaults.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     setup_status_path = f"^{prefix}/setup/status$"
     metrics_path = f"^{prefix}/metrics$"
     # Logout must always bypass auth so clients can recover from
@@ -286,7 +304,11 @@ def _build_rate_limits(
     ws_path: str,
     unauth_identifier: Callable[[Request[Any, Any, Any]], str],
 ) -> tuple[LitestarRateLimitConfig, LitestarRateLimitConfig, LitestarRateLimitConfig]:
-    """Build the three rate-limit tiers (IP floor, unauth, auth)."""
+    """Build the three rate-limit tiers (IP floor, unauth, auth).
+
+    Returns:
+        Tuple of the declared element types.
+    """
     rl = api_config.rate_limit
     rl_exclude = list(rl.exclude_paths)
     if ws_path not in rl_exclude:
@@ -322,7 +344,11 @@ def _build_auth_and_csrf(
     ws_path: str,
     a2a_enabled: bool,
 ) -> tuple[Middleware, Middleware]:
-    """Build the auth and CSRF middleware classes."""
+    """Build the auth and CSRF middleware classes.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     exclude_paths = _build_auth_exclude_paths(
         api_config.auth,
         prefix,
@@ -386,6 +412,9 @@ def _build_middleware(
     When ``trusted_proxies`` is configured, IP-based tiers read
     ``X-Forwarded-For`` to extract the real client IP. Without it,
     all clients behind a proxy share one IP-based rate limit bucket.
+
+    Returns:
+        List of the declared element type.
     """
     prefix = api_config.api_prefix
     ws_path = f"^{prefix}/ws$"

@@ -59,7 +59,14 @@ class AnonymizedOutcomeEvent(BaseModel):
     @field_validator("timestamp")
     @classmethod
     def _validate_timestamp_format(cls, v: str) -> str:
-        """Enforce valid ISO 8601 date (YYYY-MM-DD) with calendar check."""
+        """Enforce valid ISO 8601 date (YYYY-MM-DD) with calendar check.
+
+        Returns:
+            Resulting string.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if not _ISO_DATE_RE.match(v):
             msg = f"timestamp must be ISO date (YYYY-MM-DD), got '{v}'"
             raise ValueError(msg)
@@ -82,7 +89,14 @@ class AnonymizedOutcomeEvent(BaseModel):
 
     @model_validator(mode="after")
     def _validate_event_type_fields(self) -> Self:
-        """Enforce proposal_decision XOR rollout_result field presence."""
+        """Enforce proposal_decision XOR rollout_result field presence.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.event_type == "proposal_decision":
             if self.decision is None:
                 msg = "proposal_decision events require decision"

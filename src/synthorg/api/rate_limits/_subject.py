@@ -92,7 +92,11 @@ def extract_subject_key(
 
 
 def _peer_ip(connection: ASGIConnection[Any, Any, Any, Any]) -> str | None:
-    """Return the immediate peer IP from the ASGI scope."""
+    """Return the immediate peer IP from the ASGI scope.
+
+    Returns:
+        The ``str`` value when present, ``None`` otherwise.
+    """
     client = connection.scope.get("client")
     if isinstance(client, (tuple, list)) and client:
         return str(client[0])
@@ -117,6 +121,9 @@ def client_ip(connection: ASGIConnection[Any, Any, Any, Any]) -> str:
 
     ``"unknown"`` is returned when the connection has no client
     metadata at all (rare, typically test fixtures).
+
+    Returns:
+        Resulting string.
     """
     trusted = connection.scope.get(SCOPE_KEY_TRUSTED_IP)
     if isinstance(trusted, str) and trusted:
@@ -152,6 +159,9 @@ def parse_trusted_networks(raw: frozenset[str]) -> TrustedNetworks:
     entries are skipped (logged by config validation at ingest time,
     not here) so a typo in one proxy CIDR does not disable the whole
     trusted-proxy set.
+
+    Returns:
+        ``TrustedNetworks`` instance.
     """
     parsed: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
     for entry in raw:
@@ -172,6 +182,9 @@ def _trusted_networks(
     ``STATE_KEY_TRUSTED_NETWORKS``.  Falls back to parsing on the fly
     if the cache is not present (test fixtures that bypass full app
     startup) so the guard remains correct even with a minimal state.
+
+    Returns:
+        ``TrustedNetworks`` instance.
     """
     cached: TrustedNetworks | None = getattr(
         connection.app.state,
@@ -192,7 +205,11 @@ def _ip_in_networks(
     ip_str: str,
     networks: tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...],
 ) -> bool:
-    """Return True when ``ip_str`` is inside any of ``networks``."""
+    """Return True when ``ip_str`` is inside any of ``networks``.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+    """
     if not networks:
         return False
     try:

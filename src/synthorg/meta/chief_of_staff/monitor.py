@@ -10,6 +10,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, ClassVar, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
@@ -91,6 +92,9 @@ class OrgInflectionMonitor:
         Idempotent + concurrent-safe per the canonical lifecycle
         pattern: serialises on ``self._lifecycle_lock`` so concurrent
         callers cannot both observe ``_task is None`` and double-spawn.
+
+        Raises:
+            InflectionMonitorLifecycleError: Raised on the corresponding failure path.
         """
         async with self._lifecycle_lock:
             if self._stop_failed:
@@ -125,6 +129,9 @@ class OrgInflectionMonitor:
         Holds ``self._lifecycle_lock`` so a concurrent ``start()``
         cannot recreate the task mid-stop. Drain is shielded with a
         hard deadline; on timeout the monitor is marked unrestartable.
+
+        Raises:
+            TimeoutError: Raised on the corresponding failure path.
         """
         async with self._lifecycle_lock:
             self._stop_event.set()
@@ -160,9 +167,8 @@ class OrgInflectionMonitor:
                 # Loop was already cancelled before observing
                 # ``_stop_event``; treat as drained successfully.
                 pass
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     COS_INFLECTION_CHECK_FAILED,
                     error_type=type(exc).__name__,
@@ -189,6 +195,9 @@ class OrgInflectionMonitor:
         of plain ``asyncio.sleep`` so cancellation cooperatively wakes
         the loop and the canonical drain timeout has a chance to
         complete the shutdown promptly.
+
+        Raises:
+            CancelledError: Raised on the corresponding failure path.
         """
         # lint-allow: long-running-loop-kill-switch -- _stop_event drives shutdown.
         while not self._stop_event.is_set():
@@ -196,9 +205,8 @@ class OrgInflectionMonitor:
                 await self._tick()
             except asyncio.CancelledError:
                 raise
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     COS_INFLECTION_CHECK_FAILED,
                     error_type=type(exc).__name__,
@@ -241,11 +249,11 @@ class OrgInflectionMonitor:
         """Emit an inflection to all sinks in parallel."""
 
         async def _emit(sink: OrgInflectionSink) -> None:
+            """Run emit."""
             try:
                 await sink.on_inflection(inflection)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     COS_INFLECTION_CHECK_FAILED,
                     sink=type(sink).__name__,

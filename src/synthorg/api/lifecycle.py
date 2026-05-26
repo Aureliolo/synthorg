@@ -12,6 +12,7 @@ from synthorg.api.auth.secret import resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
 from synthorg.api.auth.system_user import ensure_system_user
 from synthorg.backup.models import BackupTrigger
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -391,9 +392,8 @@ async def _rebind_connection_catalog(
         await app_state.connection_catalog.rebind_repository(
             persistent_connections,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_exception_redacted(
             logger,
             API_APP_STARTUP,
@@ -537,9 +537,8 @@ async def _safe_startup(  # noqa: PLR0913
                         note="Lockout store initialized",
                         backend=type(lockout_store).__name__,
                     )
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     log_exception_redacted(
                         logger,
                         API_APP_STARTUP,
@@ -556,9 +555,8 @@ async def _safe_startup(  # noqa: PLR0913
                         note="Refresh-token store initialized",
                         backend=type(refresh_store).__name__,
                     )
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     log_exception_redacted(
                         logger,
                         API_APP_STARTUP,
@@ -720,9 +718,8 @@ async def _safe_startup(  # noqa: PLR0913
                     await backup_service.create_backup(
                         BackupTrigger.STARTUP,
                     )
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         API_APP_STARTUP,
                         note="Startup backup failed (non-fatal)",
@@ -860,9 +857,8 @@ async def _safe_shutdown(  # noqa: PLR0913
                 await backup_service.create_backup(
                     BackupTrigger.SHUTDOWN,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_APP_SHUTDOWN,
                     note="Shutdown backup failed (non-fatal)",
@@ -949,8 +945,8 @@ async def _maybe_start_health_prober(
 ) -> ProviderHealthProber | None:
     """Start the health prober if provider tracking is available.
 
-    Non-fatal: logs and returns None on failure so the application
-    continues serving requests without health probing.
+    Non-fatal for non-critical errors (criticals propagate via
+    ``reraise_critical``); logs + returns None so serving continues.
 
     Args:
         app_state: Application state.  Requires
@@ -959,7 +955,7 @@ async def _maybe_start_health_prober(
 
     Returns:
         The started prober instance, or None if preconditions are
-        not met or startup fails.
+        not met or a non-critical startup error occurs.
     """
     if not (app_state.has_provider_health_tracker and app_state.has_config_resolver):
         logger.debug(
@@ -979,9 +975,8 @@ async def _maybe_start_health_prober(
             discovery_policy_loader=policy_loader,
         )
         await prober.start()
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             note="Health prober startup failed (non-fatal)",

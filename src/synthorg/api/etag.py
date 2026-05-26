@@ -106,6 +106,9 @@ def compute_etag(body: bytes) -> str:
     RFC 9110. Weak comparison is appropriate for ``If-None-Match``
     (a weak ETag still proves semantic equivalence even if the
     serialised bytes differ).
+
+    Returns:
+        Resulting string.
     """
     digest = hashlib.sha256(body).hexdigest()[:32]
     return f'W/"{digest}"'
@@ -121,6 +124,9 @@ def _split_entity_tags(value: str) -> list[str]:
     the 304 path. This walker tracks whether we are inside a
     quoted-string and only treats commas at the top level as
     separators, matching ``1#entity-tag = entity-tag *( OWS "," OWS entity-tag )``.
+
+    Returns:
+        List of the declared element type.
     """
     tags: list[str] = []
     buf: list[str] = []
@@ -167,6 +173,9 @@ def match_etag(if_none_match: str | None, etag: str) -> bool:
     Comma splitting goes through :func:`_split_entity_tags` so a
     quoted-string body that contains a literal comma is preserved
     inside its tag rather than splitting it across two pseudo-tags.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     if if_none_match is None:
         return False
@@ -189,17 +198,28 @@ def _matches_path_prefix(path: str, prefix: str) -> bool:
     entry, leaking ETag/cache treatment to unrelated routes. Require
     either an exact match or a ``/`` boundary so only the intended
     routes qualify.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     return path == prefix or path.startswith(f"{prefix}/")
 
 
 def _is_etag_path(path: str) -> bool:
-    """Return ``True`` when ``path`` is in the allowlist."""
+    """Return ``True`` when ``path`` is in the allowlist.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+    """
     return any(_matches_path_prefix(path, prefix) for prefix in _ETAG_PATH_PREFIXES)
 
 
 def _is_public_cache_path(path: str) -> bool:
-    """Return ``True`` when ``path`` should advertise ``public`` cache."""
+    """Return ``True`` when ``path`` should advertise ``public`` cache.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+    """
     return any(_matches_path_prefix(path, prefix) for prefix in _PUBLIC_CACHE_PREFIXES)
 
 
@@ -212,6 +232,9 @@ def _read_if_none_match(headers: list[tuple[bytes, bytes]]) -> str | None:
     matching tag carried by a later occurrence loses the 304 path.
     Build a comma-joined merged value so :func:`match_etag` walks all
     of them.
+
+    Returns:
+        The ``str`` value when present, ``None`` otherwise.
     """
     # Bytes-typed ASGI header lowering is exempt from
     # ``compare_ci`` (str-only); see normalization.py.
@@ -259,6 +282,7 @@ class ETagMiddleware:
         state = _CaptureState()
 
         async def _capturing_send(message: dict[str, object]) -> None:
+            """Run capturing send."""
             msg_type = message.get("type")
             if msg_type == "http.response.start":
                 state.captured_start = dict(message)
@@ -307,6 +331,9 @@ def _apply_cache_control(
     ``private``/``public`` policy and clients would not revalidate.
     Shared by :func:`_emit_response` (buffered, also adds an ETag) and
     the streaming pass-through branch (no ETag, cache policy only).
+
+    Returns:
+        List of the declared element type.
     """
     cache_default = (
         _DEFAULT_PUBLIC_CACHE if _is_public_cache_path(path) else _DEFAULT_PRIVATE_CACHE

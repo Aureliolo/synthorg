@@ -72,6 +72,7 @@ from synthorg.api.rate_limits import (
 )
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
     DomainError,
@@ -136,6 +137,9 @@ class ProviderController(Controller):
         Returns the discriminated-union type alias so Litestar/Pydantic
         emit the ``kind`` discriminator on the wire and frontend
         consumers receive properly tagged objects.
+
+        Returns:
+            ``ApiResponse[tuple[ProviderPreset, ...]]`` instance.
         """
         return ApiResponse(data=list_presets())
 
@@ -161,6 +165,9 @@ class ProviderController(Controller):
         an ``asyncio.TaskGroup`` body that catches ``Exception`` and
         records the error message, so one slow / unreachable preset
         cannot starve another.
+
+        Returns:
+            ``ApiResponse[ProbeLocalResponse]`` instance.
         """
         probable = list_probable_presets()
         results: dict[str, ProbePresetResponse] = {}
@@ -180,9 +187,8 @@ class ProviderController(Controller):
                     model_count=result.model_count,
                     candidates_tried=result.candidates_tried,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 errors[preset.name] = safe_error_description(exc)
                 logger.warning(
                     PROVIDER_PROBE_LOCAL_PRESET_FAILED,
@@ -216,7 +222,11 @@ class ProviderController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = DEFAULT_LIMIT,
     ) -> PaginatedResponse[ProviderResponse]:
-        """List all configured providers (secrets stripped), paginated by name."""
+        """List all configured providers (secrets stripped), paginated by name.
+
+        Returns:
+            ``PaginatedResponse[ProviderResponse]`` instance.
+        """
         app_state: AppState = state.app_state
         providers = await app_state.config_resolver.get_provider_configs()
         # Paginate the sorted name list FIRST, then build DTOs only
@@ -250,6 +260,9 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the provider is not found.
+
+        Returns:
+            ``ApiResponse[ProviderResponse]`` instance.
         """
         app_state: AppState = state.app_state
         providers = await app_state.config_resolver.get_provider_configs()
@@ -284,6 +297,9 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the provider is not found.
+
+        Returns:
+            ``PaginatedResponse[ProviderModelResponse]`` instance.
         """
         app_state: AppState = state.app_state
         providers = await app_state.config_resolver.get_provider_configs()
@@ -361,6 +377,9 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the provider is not found.
+
+        Returns:
+            ``ApiResponse[ProviderHealthSummary]`` instance.
         """
         app_state: AppState = state.app_state
         providers = await app_state.config_resolver.get_provider_configs()
@@ -806,6 +825,9 @@ class ProviderController(Controller):
 
         Returns:
             SSE stream of pull progress events.
+
+        Raises:
+            CancelledError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
         svc = app_state.provider_management
@@ -820,6 +842,11 @@ class ProviderController(Controller):
             # documented payload shape so clients can discriminate
             # in-stream errors from connection failures.  The same
             # applies to ``except ProviderValidationError`` below.
+            """Return event stream.
+
+            Raises:
+                CancelledError: Raised on the corresponding failure path.
+            """
             try:
                 async for event in svc.pull_model(name, data.model_name):
                     if event.done and event.error:
@@ -846,9 +873,8 @@ class ProviderController(Controller):
                 }
             except asyncio.CancelledError:
                 raise
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_SSE_PULL_MODEL_FAILED,
                     provider=name,
@@ -894,6 +920,11 @@ class ProviderController(Controller):
             state: Application state.
             name: Provider name.
             model_id: Model identifier (may contain colons).
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+            ValidationError: Raised on the corresponding failure path.
+            DomainError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
@@ -978,6 +1009,7 @@ class ProviderController(Controller):
         Raises:
             NotFoundError: If the provider or model does not exist.
             ValidationError: If the launch parameters are unsupported.
+            DomainError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
@@ -1114,6 +1146,7 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the provider does not exist.
+            ValidationError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()
@@ -1333,6 +1366,9 @@ class ProviderController(Controller):
         Args:
             state: Application state.
             preset_name: Preset whose override to delete.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
         actor = audit_actor_from_context()

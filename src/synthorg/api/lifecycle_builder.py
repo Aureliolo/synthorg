@@ -33,6 +33,7 @@ from synthorg.api.lifecycle_helpers.ticket_cleanup import (
     _ticket_cleanup_loop,
 )
 from synthorg.api.webhook_cleanup import _webhook_receipt_cleanup_loop
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -394,9 +395,8 @@ def _build_lifecycle(  # noqa: PLR0913
                     API_SERVICE_AUTO_WIRED,
                     service="agent_registry_versioning",
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_SERVICE_AUTO_WIRE_FAILED,
                     service="agent_registry_versioning",
@@ -413,9 +413,8 @@ def _build_lifecycle(  # noqa: PLR0913
                 )
 
                 app_state.set_prometheus_collector(PrometheusCollector())
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_APP_STARTUP,
                     phase="prometheus_collector_init",
@@ -434,9 +433,8 @@ def _build_lifecycle(  # noqa: PLR0913
             )
 
             wire_observability_callbacks(app_state)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
                 phase="observability_callback_wiring",
@@ -468,9 +466,8 @@ def _build_lifecycle(  # noqa: PLR0913
                     API_SERVICE_AUTO_WIRED,
                     service="oauth_state_service",
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_SERVICE_AUTO_WIRE_FAILED,
                     service="oauth_state_service",
@@ -505,9 +502,8 @@ def _build_lifecycle(  # noqa: PLR0913
                     API_SERVICE_AUTO_WIRED,
                     service="training_plan_service",
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_SERVICE_AUTO_WIRE_FAILED,
                     service="training_plan_service",
@@ -543,9 +539,8 @@ def _build_lifecycle(  # noqa: PLR0913
                     API_SERVICE_AUTO_WIRED,
                     service="workflow_rollback_service",
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_SERVICE_AUTO_WIRE_FAILED,
                     service="workflow_rollback_service",
@@ -581,9 +576,8 @@ def _build_lifecycle(  # noqa: PLR0913
                     API_SERVICE_AUTO_WIRED,
                     service="workflow_version_service",
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_SERVICE_AUTO_WIRE_FAILED,
                     service="workflow_version_service",
@@ -611,9 +605,8 @@ def _build_lifecycle(  # noqa: PLR0913
                     API_SERVICE_AUTO_WIRED,
                     service="agent_version_service",
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_SERVICE_AUTO_WIRE_FAILED,
                     service="agent_version_service",
@@ -640,9 +633,8 @@ def _build_lifecycle(  # noqa: PLR0913
                     _build_settings_dispatcher,
                     approval_timeout_scheduler,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # On-startup auto-wire pulls operator settings (incl.
                 # secret-bearing config). Avoid logger.exception here
                 # so traceback frame-locals never serialize raw
@@ -671,9 +663,8 @@ def _build_lifecycle(  # noqa: PLR0913
         if persistence is not None:
             try:
                 await _wire_workflow_observer(task_engine, persistence, app_state)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     API_APP_STARTUP,
@@ -703,9 +694,8 @@ def _build_lifecycle(  # noqa: PLR0913
         # boot, matching the other persistence-bound auto-wires.
         try:
             await _wire_approval_gate(persistence, app_state)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # In provider-present mode the engine WILL run agents and
             # park them; if the shared gate is unset the runtime builds
             # its own private gate from _approval_store, splitting park
@@ -787,9 +777,8 @@ def _build_lifecycle(  # noqa: PLR0913
                         await _mem.disconnect()
                         raise
                     _training_memory_backend = _mem
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_APP_STARTUP,
                     phase="training_service_auto_wire",
@@ -813,10 +802,8 @@ def _build_lifecycle(  # noqa: PLR0913
                 await _ticket_cleanup_task
             except asyncio.CancelledError:
                 pass
-            except MemoryError, RecursionError:
-                raise
-            except Exception:  # noqa: S110 -- already logged via done-callback
-                pass
+            except Exception as exc:
+                reraise_critical(exc)
         await _apply_bridge_config(app_state, effective_config)
         await _apply_security_timeout_interval(app_state, approval_timeout_scheduler)
 
@@ -844,10 +831,8 @@ def _build_lifecycle(  # noqa: PLR0913
                 await _audit_retention_task
             except asyncio.CancelledError:
                 pass
-            except MemoryError, RecursionError:
-                raise
-            except Exception:  # noqa: S110 -- already logged via done-callback
-                pass
+            except Exception as exc:
+                reraise_critical(exc)
         _audit_retention_task = asyncio.create_task(
             _audit_retention_loop(app_state),
             name="audit-retention",
@@ -863,10 +848,8 @@ def _build_lifecycle(  # noqa: PLR0913
                 await _webhook_cleanup_task
             except asyncio.CancelledError:
                 pass
-            except MemoryError, RecursionError:
-                raise
-            except Exception:  # noqa: S110 -- already logged via done-callback
-                pass
+            except Exception as exc:
+                reraise_critical(exc)
         _webhook_cleanup_task = asyncio.create_task(
             _webhook_receipt_cleanup_loop(app_state),
             name="webhook-receipt-cleanup",
@@ -888,9 +871,8 @@ def _build_lifecycle(  # noqa: PLR0913
         if app_state.webhook_event_bridge is not None:
             try:
                 await app_state.webhook_event_bridge.start()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_APP_STARTUP,
                     phase="webhook_event_bridge_start",
@@ -901,9 +883,8 @@ def _build_lifecycle(  # noqa: PLR0913
         if app_state.health_prober_service is not None:
             try:
                 await app_state.health_prober_service.start()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_APP_STARTUP,
                     phase="health_prober_service_start",
@@ -914,9 +895,8 @@ def _build_lifecycle(  # noqa: PLR0913
         if app_state.oauth_token_manager is not None:
             try:
                 await app_state.oauth_token_manager.start()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_APP_STARTUP,
                     phase="oauth_token_manager_start",
@@ -927,9 +907,8 @@ def _build_lifecycle(  # noqa: PLR0913
         if app_state.escalation_sweeper is not None:
             try:
                 await app_state.escalation_sweeper.start()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_APP_STARTUP,
                     phase="escalation_sweeper_start",
@@ -940,9 +919,8 @@ def _build_lifecycle(  # noqa: PLR0913
         if app_state.escalation_notify_subscriber is not None:
             try:
                 await app_state.escalation_notify_subscriber.start()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_APP_STARTUP,
                     phase="escalation_notify_subscriber_start",
@@ -964,9 +942,8 @@ def _build_lifecycle(  # noqa: PLR0913
                     idle_ttl_seconds=idle_ttl,
                     janitor_interval_seconds=janitor_interval,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_APP_STARTUP,
                     phase="event_stream_hub_start",
@@ -1113,9 +1090,8 @@ def _build_lifecycle(  # noqa: PLR0913
             )
 
             await _rate_limit_shared_state.set_coordinator_factory(None)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_APP_SHUTDOWN,
                 phase="rate_limit_coordinator_stop",
@@ -1153,9 +1129,8 @@ def _build_lifecycle(  # noqa: PLR0913
             a2a_client_obj = app_state._a2a_client  # noqa: SLF001
             if a2a_client_obj is not None and hasattr(a2a_client_obj, "aclose"):
                 await a2a_client_obj.aclose()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_APP_SHUTDOWN,
                 phase="a2a_client_close",

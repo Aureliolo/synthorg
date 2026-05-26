@@ -35,7 +35,14 @@ class TunnelController(Controller):
         self,
         state: State,
     ) -> ApiResponse[dict[str, str]]:
-        """Start the ngrok tunnel and return the public URL."""
+        """Start the ngrok tunnel and return the public URL.
+
+        Returns:
+            ``ApiResponse[dict[str, str]]`` instance.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
+        """
         tunnel = state["app_state"].tunnel_provider
         try:
             url = await tunnel.start()
@@ -67,7 +74,14 @@ class TunnelController(Controller):
         self,
         state: State,
     ) -> ApiResponse[None]:
-        """Stop the ngrok tunnel."""
+        """Stop the ngrok tunnel.
+
+        Returns:
+            ``ApiResponse[None]`` instance.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
+        """
         tunnel = state["app_state"].tunnel_provider
         try:
             await tunnel.stop()
@@ -98,6 +112,9 @@ class TunnelController(Controller):
         ``has_auth_token`` lets the dashboard surface a free-tier
         notice and a link to configure NGROK_AUTHTOKEN before the
         operator hits the limits.
+
+        Returns:
+            The configured value when present, ``None`` otherwise.
         """
         tunnel = state["app_state"].tunnel_provider
         url = await tunnel.get_url()

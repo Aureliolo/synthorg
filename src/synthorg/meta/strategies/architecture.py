@@ -44,7 +44,11 @@ class ArchitectureProposalStrategy:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This strategy produces architecture proposals."""
+        """This strategy produces architecture proposals.
+
+        Returns:
+            ``ProposalAltitude`` instance.
+        """
         return ProposalAltitude.ARCHITECTURE
 
     async def propose(
@@ -85,7 +89,11 @@ class ArchitectureProposalStrategy:
         rule_match: RuleMatch,
         snapshot: OrgSignalSnapshot,
     ) -> ImprovementProposal | None:
-        """Build a proposal from a rule match."""
+        """Build a proposal from a rule match.
+
+        Returns:
+            The ``ImprovementProposal`` value when present, ``None`` otherwise.
+        """
         _ = snapshot
         name = rule_match.rule_name
 
@@ -99,6 +107,7 @@ class ArchitectureProposalStrategy:
         self,
         ctx: dict[str, JsonValue],
     ) -> ImprovementProposal:
+        """Return propose team restructure."""
         return ImprovementProposal(
             id=uuid4(),
             altitude=ProposalAltitude.ARCHITECTURE,
@@ -145,6 +154,7 @@ class ArchitectureProposalStrategy:
         self,
         ctx: dict[str, JsonValue],
     ) -> ImprovementProposal:
+        """Return propose specialist role."""
         return ImprovementProposal(
             id=uuid4(),
             altitude=ProposalAltitude.ARCHITECTURE,

@@ -77,7 +77,11 @@ class CanarySubsetRollout:
 
     @property
     def name(self) -> NotBlankStr:
-        """Strategy name."""
+        """Strategy name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("canary")
 
     async def execute(
@@ -87,7 +91,11 @@ class CanarySubsetRollout:
         applier: ProposalApplier,
         detector: RegressionDetector,
     ) -> RolloutResult:
-        """Execute canary rollout with a real observation loop."""
+        """Execute canary rollout with a real observation loop.
+
+        Returns:
+            ``RolloutResult`` instance.
+        """
         agent_ids = await self._roster.list_agent_ids()
         canary_ids = _select_canary(
             agent_ids=agent_ids,
@@ -133,7 +141,11 @@ class CanarySubsetRollout:
         baseline: OrgSignalSnapshot,
         detector: RegressionDetector,
     ) -> RolloutResult:
-        """Poll the detector until the canary observation window closes."""
+        """Poll the detector until the canary observation window closes.
+
+        Returns:
+            ``RolloutResult`` instance.
+        """
         return await observe_until_verdict(
             proposal=proposal,
             baseline=baseline,
@@ -157,6 +169,9 @@ def _select_canary(
     Agents whose ``sha256(agent_id:proposal_id)`` bucket falls below
     ``fraction`` join the canary. Pure function, identical inputs
     produce identical splits across runs.
+
+    Returns:
+        Tuple of the declared element types.
     """
     canary: list[NotBlankStr] = []
     for agent_id in agent_ids:

@@ -60,6 +60,12 @@ def _validate_iso_8601_aware_datetime(value: str) -> str:
     success; handlers continue to receive the raw string and pass it to
     :func:`parse_time_window` for the final tz-aware parse + ordering
     check.
+
+    Returns:
+        Resulting string.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     try:
         parsed = datetime.fromisoformat(value)
@@ -145,6 +151,12 @@ class AdminGuardrailFields(_ArgsBase):
         mixin preserves that semantics. ``False`` is rejected by
         ``Literal[True]`` itself; this validator covers the truthy-
         coercion path.
+
+        Returns:
+            ``Any`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if not isinstance(value, bool):
             # ruff noqa: TRY004 -- ValueError is what Pydantic converts

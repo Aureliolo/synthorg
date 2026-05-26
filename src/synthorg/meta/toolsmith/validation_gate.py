@@ -17,6 +17,7 @@ when the brief passes and ``require_golden_delta`` is set.
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.toolsmith.config import ToolsmithConfig  # noqa: TC001
 from synthorg.meta.toolsmith.errors import ToolsmithError
@@ -67,6 +68,9 @@ def _synthesize_probe(parameters_schema: dict[str, Any]) -> dict[str, Any]:
     container shapes) is intentionally out of scope: the probe is a
     best-effort smoke test and a probe that misses a bound merely fails
     the brief gracefully via ``_BRIEF_FAIL_SCORE`` rather than crashing.
+
+    Returns:
+        Mapping with the declared key/value types.
     """
     properties = parameters_schema.get("properties")
     required = parameters_schema.get("required") or ()
@@ -88,6 +92,9 @@ def _probe_value_for(prop: object) -> Any:
 
     ``const`` / ``default`` / ``enum`` pin an exact valid value when
     present; otherwise fall back to a type-based placeholder.
+
+    Returns:
+        ``Any`` instance.
     """
     if not isinstance(prop, dict):
         return "probe"
@@ -126,7 +133,11 @@ class SandboxBriefRunner:
         self._timeout_seconds = timeout_seconds
 
     async def run(self, blueprint: ToolBlueprint) -> tuple[bool, int]:
-        """Execute the acceptance probe; return ``(passed, score)``."""
+        """Execute the acceptance probe; return ``(passed, score)``.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         import json as _json  # noqa: PLC0415
 
         handler = make_dynamic_tool_handler(
@@ -140,9 +151,8 @@ class SandboxBriefRunner:
         # propagate out of the gate. System-critical errors still escape.
         try:
             raw = await handler(app_state=None, arguments=probe)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TOOLSMITH_BRIEF_PARSE_FAILED,
                 tool_name=blueprint.name,
@@ -196,7 +206,14 @@ class BenchmarkToolValidationGate:
         self._scorecard_provider = scorecard_provider
 
     async def validate(self, blueprint: ToolBlueprint) -> ToolValidationResult:
-        """Run both validation stages and return the gate decision."""
+        """Run both validation stages and return the gate decision.
+
+        Returns:
+            ``ToolValidationResult`` instance.
+
+        Raises:
+            ToolValidationConfigError: Raised on the corresponding failure path.
+        """
         logger.info(TOOLSMITH_VALIDATION_STARTED, tool_name=blueprint.name)
         brief_passed, brief_score = await self._brief_runner.run(blueprint)
         validation_cfg = self._config.validation

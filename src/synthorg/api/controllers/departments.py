@@ -34,6 +34,7 @@ from synthorg.api.ws_models import WsEventType
 from synthorg.config.schema import AgentConfig  # noqa: TC001
 from synthorg.core.company import Department  # noqa: TC001
 from synthorg.core.concurrency import CASRetryHandler
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     NotFoundError,
     ServiceUnavailableError,
@@ -123,9 +124,8 @@ async def _load_dept_policies_json(
             "dept_ceremony_policies",
         )
         parsed = json.loads(entry.value)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.ceremony_policy.load",
@@ -186,9 +186,8 @@ async def _get_dept_ceremony_override(
             # Validate structure before returning to catch corrupt data
             try:
                 CeremonyPolicyConfig.model_validate(val)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     API_REQUEST_ERROR,
                     endpoint="departments.ceremony_policy.get",
@@ -237,6 +236,9 @@ async def _resolve_dept_policy_cas_attempts(app_state: AppState) -> int:
     application has no resolver wired or the lookup fails. A
     transient settings outage must not collapse the retry budget to
     zero, so the fallback equals the registered default.
+
+    Returns:
+        Resulting integer.
     """
     if not getattr(app_state, "has_config_resolver", False):
         return _DEPT_POLICY_CAS_FALLBACK_ATTEMPTS
@@ -245,9 +247,8 @@ async def _resolve_dept_policy_cas_attempts(app_state: AppState) -> int:
             "coordination",
             "department_policy_cas_retry_attempts",
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.ceremony_policy.cas_retry_resolve",
@@ -270,6 +271,9 @@ async def _load_dept_policies_versioned(
     Raises:
         ServiceUnavailableError: If the settings service is unavailable
             or the persisted JSON is corrupt.
+
+    Returns:
+        Tuple of the declared element types.
     """
     if not app_state.has_settings_service:
         msg = "Settings service not available"
@@ -280,9 +284,8 @@ async def _load_dept_policies_versioned(
             "coordination",
             "dept_ceremony_policies",
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.ceremony_policy.load_versioned",
@@ -355,6 +358,7 @@ async def _mutate_dept_policies_with_retry(
     max_attempts = await _resolve_dept_policy_cas_attempts(app_state)
 
     async def read() -> tuple[dict[str, Any], str]:
+        """Return read."""
         policies, expected = await _load_dept_policies_versioned(app_state)
         policies[department_name] = (
             None if new_value is None else copy.deepcopy(new_value)
@@ -362,6 +366,7 @@ async def _mutate_dept_policies_with_retry(
         return policies, expected
 
     async def write(policies: dict[str, Any], expected: str) -> None:
+        """Run write."""
         await _save_dept_policies_with_cas(
             app_state,
             policies,
@@ -734,9 +739,8 @@ class DepartmentController(Controller):
         # Validate policy data via Pydantic
         try:
             validated = CeremonyPolicyConfig.model_validate(data)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             msg = "Invalid ceremony policy data"
             logger.warning(
                 API_REQUEST_ERROR,

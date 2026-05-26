@@ -84,7 +84,11 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         max_requests: int,
         window_seconds: int,
     ) -> RateLimitOutcome:
-        """Record one hit on ``key`` against the ``max_requests`` budget."""
+        """Record one hit on ``key`` against the ``max_requests`` budget.
+
+        Returns:
+            ``RateLimitOutcome`` instance.
+        """
         self._validate_window_config(
             key=key,
             max_requests=max_requests,
@@ -114,7 +118,11 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         max_requests: int,
         window_seconds: int,
     ) -> None:
-        """Reject non-positive limits with a structured warning."""
+        """Reject non-positive limits with a structured warning.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if max_requests > 0 and window_seconds > 0:
             return
         msg = (
@@ -153,6 +161,9 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         allow/deny decision counts only events inside the *current*
         call's window, leaving older-but-still-relevant events in the
         deque for any larger-window acquire on the same key.
+
+        Returns:
+            ``RateLimitOutcome`` instance.
         """
         # Track the largest observed window per key (also used by GC).
         bucket.window_seconds = max(bucket.window_seconds, window_seconds)
@@ -212,6 +223,9 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         redundant concurrent sweeps. Increments on every acquire
         (allowed AND denied) so a key under sustained deny pressure
         still triggers periodic cold-bucket sweeps.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
         """
         async with self._meta_lock:
             self._acquires_since_gc += 1
@@ -244,6 +258,9 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         every successful ``_get_lock`` with a
         :meth:`_release_lock_ref` (see ``finally`` block in
         :meth:`acquire`).
+
+        Returns:
+            ``asyncio.Lock`` instance.
         """
         async with self._meta_lock:
             lock = self._locks.get(key)
@@ -278,6 +295,11 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         a cancelled ``acquire`` that created the lock before the bucket
         was materialised) so they do not leak memory across the
         process lifetime.
+
+        Raises:
+            CancelledError: Raised on the corresponding failure path.
+            MemoryError: Raised on the corresponding failure path.
+            RecursionError: Raised on the corresponding failure path.
         """
         async with self._meta_lock:
             try:
@@ -317,6 +339,9 @@ class InMemorySlidingWindowStore(SlidingWindowStore):
         ``window_seconds`` is the largest observed window for the
         bucket; doubling it gives the cooldown horizon. Empty buckets
         are always considered cold.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
         """
         horizon = max(bucket.window_seconds * 2, _MIN_GC_HORIZON_SECONDS)
         cutoff = now - float(horizon)

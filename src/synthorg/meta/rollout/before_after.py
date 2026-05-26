@@ -11,6 +11,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     ImprovementProposal,
@@ -43,6 +44,9 @@ async def _default_snapshot_builder() -> OrgSignalSnapshot:
     current data and produce misleading regression verdicts. Raising
     here surfaces the misconfiguration the moment a rollout tries to
     observe, rather than reporting false SUCCESS / REGRESSED.
+
+    Raises:
+        RuntimeError: Raised on the corresponding failure path.
     """
     msg = (
         "snapshot_builder is not wired: rollouts cannot observe without "
@@ -82,7 +86,11 @@ class BeforeAfterRollout:
 
     @property
     def name(self) -> NotBlankStr:
-        """Strategy name."""
+        """Strategy name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("before_after")
 
     async def execute(
@@ -92,7 +100,11 @@ class BeforeAfterRollout:
         applier: ProposalApplier,
         detector: RegressionDetector,
     ) -> RolloutResult:
-        """Execute the before/after rollout with a real observation loop."""
+        """Execute the before/after rollout with a real observation loop.
+
+        Returns:
+            ``RolloutResult`` instance.
+        """
         logger.info(
             META_ROLLOUT_STARTED,
             strategy="before_after",
@@ -103,9 +115,8 @@ class BeforeAfterRollout:
 
         try:
             baseline = await self._snapshot_builder()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 META_ROLLOUT_FAILED,
                 strategy="before_after",
@@ -142,9 +153,8 @@ class BeforeAfterRollout:
                 baseline=baseline,
                 detector=detector,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 META_ROLLOUT_FAILED,
                 strategy="before_after",
@@ -167,7 +177,11 @@ class BeforeAfterRollout:
         baseline: OrgSignalSnapshot,
         detector: RegressionDetector,
     ) -> RolloutResult:
-        """Poll the detector until the observation window closes."""
+        """Poll the detector until the observation window closes.
+
+        Returns:
+            ``RolloutResult`` instance.
+        """
         return await observe_until_verdict(
             proposal=proposal,
             baseline=baseline,

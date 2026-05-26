@@ -19,6 +19,11 @@ from litestar.openapi.plugins import ScalarRenderPlugin
 from pydantic import ValidationError
 
 from synthorg import __version__
+from synthorg.api._app_wiring import (
+    _try_wire_cockpit,
+    _try_wire_cost_dial,
+    _wire_environment_service,
+)
 from synthorg.api.app_builders import (
     _bootstrap_app_logging,
     _build_configured_autonomy_change_strategy,
@@ -90,6 +95,7 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
 from synthorg.config.schema import RootConfig
 from synthorg.core.clock import SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.error_taxonomy import set_error_docs_base_url
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
@@ -124,9 +130,6 @@ from synthorg.persistence.config_factory import (
     build_postgres_persistence_config_from_url,
     build_sqlite_persistence_config,
     normalize_ssl_mode_value,
-)
-from synthorg.persistence.cost_forecast_protocol import (
-    CostForecastRepository,  # noqa: TC001 -- runtime annotation in helper
 )
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
@@ -233,164 +236,6 @@ def _resolve_budget_int(key: str) -> int:
     requires a restart -- the consumer is a fixed-length ring buffer).
     """
     return resolve_init_int(SettingNamespace.BUDGET, key)
-
-
-def _wire_cost_dial_services(app_state: AppState) -> None:
-    """Wire the cost-dial services onto AppState behind a persistence guard.
-
-    Builds the BudgetConfig, StubBenchmarkScoreProvider, the per-backend
-    CostForecastRepository, the CostForecaster, and the ParetoAnalyzer
-    then hot-swaps them onto AppState through the lock-protected
-    ``swap_*`` methods so an in-flight controller read cannot race the
-    boot wiring.
-    """
-    from synthorg.budget.benchmark_stub import (  # noqa: PLC0415
-        StubBenchmarkScoreProvider,
-    )
-    from synthorg.budget.config import BudgetConfig  # noqa: PLC0415
-    from synthorg.budget.forecaster import CostForecaster  # noqa: PLC0415
-    from synthorg.budget.pareto import ParetoAnalyzer  # noqa: PLC0415
-    from synthorg.persistence.sqlite.cost_forecast_repo import (  # noqa: PLC0415
-        SQLiteCostForecastRepository,
-    )
-
-    budget_config = BudgetConfig()
-    benchmark_provider = StubBenchmarkScoreProvider()
-    backend_name = app_state.persistence.backend_name
-    if backend_name == "sqlite":
-        forecast_repo: CostForecastRepository = SQLiteCostForecastRepository(
-            app_state.persistence.get_db(),
-            write_context=app_state.persistence.write_context,
-            currency_getter=lambda: budget_config.currency,
-        )
-    else:
-        from synthorg.persistence.postgres.cost_forecast_repo import (  # noqa: PLC0415
-            PostgresCostForecastRepository,
-        )
-
-        forecast_repo = PostgresCostForecastRepository(
-            app_state.persistence.get_db(),
-            currency_getter=lambda: budget_config.currency,
-        )
-    forecaster = CostForecaster(budget_config=budget_config)
-    analyzer = ParetoAnalyzer(
-        benchmark_provider=benchmark_provider,
-        budget_config=budget_config,
-    )
-    app_state.swap_budget_config(budget_config)
-    app_state.swap_benchmark_provider(benchmark_provider)
-    app_state.swap_cost_forecast_repo(forecast_repo)
-    app_state.swap_cost_forecaster(forecaster)
-    app_state.swap_pareto_analyzer(analyzer)
-
-
-def _try_wire_cost_dial(app_state: AppState) -> None:
-    """Wire the cost-dial services best-effort; never poison startup."""
-    if not app_state.has_persistence or app_state.cost_forecaster is not None:
-        return
-    try:
-        _wire_cost_dial_services(app_state)
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            API_APP_STARTUP,
-            service="cost_dial",
-            note="cost-dial wiring failed; controllers will 503",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-
-
-def _wire_cockpit_services(app_state: AppState) -> None:
-    """Construct the mission-control cockpit services from live state.
-
-    Builds the live-activity ``CockpitService``, the flight-recorder
-    query/seek service, and the steering directive, then installs them
-    on ``AppState`` for the cockpit controllers and MCP tools. Requires
-    a connected persistence backend (for the frame store) plus a task
-    engine and interrupt store.
-    """
-    interrupt_store = app_state.interrupt_store
-    if (
-        not app_state.has_persistence
-        or not app_state.has_task_engine
-        or interrupt_store is None
-    ):
-        return
-    from synthorg.engine.cockpit import CockpitService  # noqa: PLC0415
-    from synthorg.engine.flight_recording import (  # noqa: PLC0415
-        FlightRecorderService,
-    )
-    from synthorg.engine.intervention import build_steering_directive  # noqa: PLC0415
-
-    frames = app_state.persistence.flight_recorder_frames
-    app_state.set_cockpit_services(
-        cockpit_service=CockpitService(
-            app_state.task_engine,
-            frames,
-            clock=app_state.clock,
-        ),
-        flight_recorder_service=FlightRecorderService(frames),
-        steering_directive=build_steering_directive(
-            interrupt_store,
-            clock=app_state.clock,
-        ),
-    )
-
-
-def _try_wire_cockpit(app_state: AppState) -> None:
-    """Wire the cockpit services best-effort; never poison startup."""
-    if not app_state.has_persistence or app_state.has_cockpit_service:
-        return
-    try:
-        _wire_cockpit_services(app_state)
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            API_APP_STARTUP,
-            service="cockpit",
-            note="cockpit wiring failed; controllers will 503",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-
-
-def _wire_environment_service(app_state: AppState) -> None:
-    """Wire the per-project reproducible-environment substrate.
-
-    The declaration strategy is config-selected (manifest default); the
-    service provisions the committed declaration into each project tree
-    so the sandbox builds from the same declaration a fresh clone gets.
-    Persistence-less boots skip wiring -- the service is optional and
-    gated on ``has_environment_service`` downstream.
-    """
-    if not app_state.has_persistence or app_state.environment_service is not None:
-        return
-    from synthorg.engine.workspace.environment import (  # noqa: PLC0415
-        EnvironmentConfig,
-        EnvironmentDeps,
-        GitWorkspaceCommitter,
-        build_environment_strategy,
-    )
-    from synthorg.engine.workspace.environment.service import (  # noqa: PLC0415
-        EnvironmentService,
-    )
-
-    environment_config = EnvironmentConfig()
-    app_state.set_environment_service(
-        EnvironmentService(
-            repo=app_state.persistence.project_environments,
-            strategy=build_environment_strategy(
-                environment_config,
-                EnvironmentDeps(clock=app_state.clock),
-            ),
-            config=environment_config,
-            committer=GitWorkspaceCommitter(),
-            clock=app_state.clock,
-        ),
-    )
 
 
 def _build_dynamic_tool_repo(
@@ -638,9 +483,8 @@ def create_app(  # noqa: PLR0913
                     ),
                 )
                 persistence = create_backend(pg_persistence_config)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     API_APP_STARTUP,
@@ -674,9 +518,8 @@ def create_app(  # noqa: PLR0913
                 persistence = create_backend(
                     build_sqlite_persistence_config(path=db_path),
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     API_APP_STARTUP,
@@ -1134,9 +977,8 @@ def create_app(  # noqa: PLR0913
                     timeout_seconds=a2a_client_timeout,
                 )
                 a2a_pending = (A2AGatewayController,)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
                 note="A2A gateway auto-wire failed (non-fatal)",
@@ -1353,9 +1195,8 @@ def create_app(  # noqa: PLR0913
                 app_state,
                 workspace_root=app_state.agent_workspace_root,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 API_APP_STARTUP,
@@ -1592,9 +1433,8 @@ def create_app(  # noqa: PLR0913
                 build_research_tool_factory(service=service, clock=app_state.clock)
             )
             _research_engine_installed = True
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.info(
                 API_APP_STARTUP,
                 service="research_engine",
@@ -1622,9 +1462,8 @@ def create_app(  # noqa: PLR0913
         try:
             await wire_real_brownfield_entry(app_state)
             _brownfield_intake_installed = True
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.info(
                 API_APP_STARTUP,
                 service="brownfield_intake",
@@ -1874,9 +1713,8 @@ def create_app(  # noqa: PLR0913
                     budget_currency=lambda: resolved_budget.currency,
                 )
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Any other failure (settings load, repo construction,
             # strategy build, ...) must not poison startup; the
             # controllers will keep 503ing until the operator fixes
@@ -1917,9 +1755,8 @@ def create_app(  # noqa: PLR0913
                 cost_tracker=cost_tracker,
                 workspace_root=app_state.agent_workspace_root,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
                 service="toolsmith",
@@ -1942,9 +1779,8 @@ def create_app(  # noqa: PLR0913
 
         try:
             install_dynamic_tool_layer(runtime.dynamic_registry)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
                 service="toolsmith",

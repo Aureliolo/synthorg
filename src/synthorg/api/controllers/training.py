@@ -22,6 +22,7 @@ from synthorg.api.path_params import PathId, PathName  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     NotFoundError,
     TrainingPlanNotModifiableError,
@@ -50,7 +51,14 @@ async def _resolve_agent(
     app_state: AppState,
     agent_name: PathName,
 ) -> AgentIdentity:
-    """Resolve agent name to identity, raising NotFoundError."""
+    """Resolve agent name to identity, raising NotFoundError.
+
+    Returns:
+        ``AgentIdentity`` instance.
+
+    Raises:
+        NotFoundError: Raised on the corresponding failure path.
+    """
     identity = await app_state.agent_registry.get_by_name(agent_name)
     if identity is None:
         logger.warning(
@@ -66,7 +74,11 @@ async def _resolve_agent(
 def _parse_content_types(
     raw: tuple[ContentType, ...] | None,
 ) -> frozenset[ContentType]:
-    """Convert validated content types, defaulting to all when empty."""
+    """Convert validated content types, defaulting to all when empty.
+
+    Returns:
+        Set of the declared element type.
+    """
     if not raw:
         return frozenset(ContentType)
     return frozenset(raw)
@@ -101,7 +113,14 @@ def _parse_custom_caps(
 def _coerce_override_sources(
     raw: tuple[str, ...],
 ) -> tuple[NotBlankStr, ...]:
-    """Validate override_sources as non-blank identifier strings."""
+    """Validate override_sources as non-blank identifier strings.
+
+    Returns:
+        Tuple of the declared element types.
+
+    Raises:
+        ValidationError: Raised on the corresponding failure path.
+    """
     coerced: list[NotBlankStr] = []
     for raw_id in raw:
         stripped = raw_id.strip()
@@ -122,6 +141,9 @@ def _result_to_response(result: TrainingResult) -> TrainingResultResponse:
 
     Maps ``ContentType`` enums to string values in the count tuples
     and ``TrainingApprovalHandle`` instances to serializable tuples.
+
+    Returns:
+        ``TrainingResultResponse`` instance.
     """
     return TrainingResultResponse(
         id=result.id,
@@ -247,6 +269,13 @@ class TrainingController(Controller):
             NotFoundError: If no pending plan exists for the agent.
             ServiceUnavailableError: If the training service is not
                 yet wired into ``AppState`` for this deployment.
+            Exception: Non-critical execution failures are recorded via
+                ``record_failure`` then re-raised; interpreter-critical
+                errors propagate immediately, before the failure is
+                recorded.
+
+        Returns:
+            ``ApiResponse[TrainingResultResponse]`` instance.
         """
         app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_name)
@@ -270,9 +299,8 @@ class TrainingController(Controller):
         plan_service = app_state.training_plan_service
         try:
             result = await service.execute(plan)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # ``record_failure`` flips the plan to FAILED, persists it,
             # and swallows any best-effort save error after WARNing
             # so the original pipeline exception below still bubbles
@@ -315,6 +343,9 @@ class TrainingController(Controller):
 
         Raises:
             NotFoundError: If no result is stored for the agent.
+
+        Returns:
+            ``ApiResponse[TrainingResultResponse]`` instance.
         """
         app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_name)
@@ -357,6 +388,9 @@ class TrainingController(Controller):
 
         Raises:
             NotFoundError: If no plan has been created for the agent.
+
+        Returns:
+            ``ApiResponse[TrainingPlanResponse]`` instance.
         """
         app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_name)
@@ -396,6 +430,9 @@ class TrainingController(Controller):
             NotFoundError: If no pending plan exists for the agent.
             ServiceUnavailableError: If the training service is not
                 yet wired into ``AppState`` for this deployment.
+
+        Returns:
+            ``ApiResponse[TrainingResultResponse]`` instance.
         """
         app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_name)
@@ -453,6 +490,7 @@ class TrainingController(Controller):
             NotFoundError: If the plan or agent cannot be resolved.
             ValidationError: If the request contains invalid caps
                 or override source ids.
+            TrainingPlanNotModifiableError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
         identity = await _resolve_agent(app_state, agent_name)
@@ -514,7 +552,11 @@ class TrainingController(Controller):
 
 
 def _plan_to_response(plan: TrainingPlan) -> TrainingPlanResponse:
-    """Convert a TrainingPlan to a response DTO."""
+    """Convert a TrainingPlan to a response DTO.
+
+    Returns:
+        ``TrainingPlanResponse`` instance.
+    """
     return TrainingPlanResponse(
         id=plan.id,
         new_agent_id=plan.new_agent_id,

@@ -83,7 +83,14 @@ class CapabilityGap(BaseModel):
 
     @model_validator(mode="after")
     def _ordering(self) -> Self:
-        """Enforce ``first_seen <= last_seen``."""
+        """Enforce ``first_seen <= last_seen``.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.first_seen > self.last_seen:
             msg = "first_seen must be <= last_seen"
             raise ValueError(msg)
@@ -119,7 +126,14 @@ class ToolValidationResult(BaseModel):
 
     @model_validator(mode="after")
     def _consistency(self) -> Self:
-        """Enforce margin arithmetic and the pass predicate."""
+        """Enforce margin arithmetic and the pass predicate.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         expected_margin = self.candidate_score - self.baseline_score
         if self.margin != expected_margin:
             msg = (
@@ -199,6 +213,12 @@ class ToolBlueprint(BaseModel):
         capability tag. A drift here would mean routing and governance see
         different identifiers for the same tool, which the LayeredHandlerMap
         cannot reconcile.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if not _TOOL_NAME_RE.match(self.name):
             msg = f"name must match 'synthorg_{{domain}}_{{action}}': {self.name!r}"
@@ -225,6 +245,12 @@ class ToolBlueprint(BaseModel):
 
         A materialisable ``args_model`` needs named properties; a schema
         without them cannot round-trip through ``pydantic.create_model``.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if self.parameters_schema.get("type") != "object":
             msg = "parameters_schema must declare 'type': 'object'"
@@ -247,6 +273,12 @@ class ToolBlueprint(BaseModel):
         consumer could observe a "validated" blueprint with no proof the
         gate ever ran. The applier writes the record at the same instant
         as ``validated_at``, so the two are inseparable across lifecycle.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         # Every post-PENDING state is gate-graduated, so validated_at and
         # the validation record are required throughout. A RETIRED tool
@@ -276,7 +308,11 @@ class ToolBlueprint(BaseModel):
         return self
 
     def _assert_monotonic(self) -> None:
-        """Enforce created <= validated <= activated <= retired ordering."""
+        """Enforce created <= validated <= activated <= retired ordering.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         ordered: list[tuple[str, datetime | None]] = [
             ("created_at", self.created_at),
             ("validated_at", self.validated_at),

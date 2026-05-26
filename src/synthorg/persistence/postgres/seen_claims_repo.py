@@ -125,7 +125,7 @@ class PostgresSeenClaimsRepository:
 
         Raises:
             QueryError: If the database query fails.
-        """
+        """  # noqa: DOC501 -- inner psycopg.Error re-raise is caught by the outer handler and surfaces as QueryError
         cutoff = normalize_utc(now)
         try:
             async with self._pool.connection() as conn, conn.cursor() as cur:

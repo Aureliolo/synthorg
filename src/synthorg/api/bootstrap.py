@@ -16,6 +16,7 @@ from synthorg.core.agent import (
     PersonalityConfig,
     ToolPermissions,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.role import Authority
 from synthorg.hr.errors import AgentAlreadyRegisteredError
 from synthorg.observability import get_logger
@@ -37,6 +38,9 @@ def _build_model_config(config: AgentConfig) -> ModelConfig:
 
     Raises:
         ValueError: When the agent config has no model section.
+
+    Returns:
+        ``ModelConfig`` instance.
     """
     if config.model:
         return ModelConfig(**config.model)
@@ -105,9 +109,8 @@ async def bootstrap_agents(
     for config in agent_configs:
         try:
             identity = _identity_from_config(config)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SETUP_AGENT_BOOTSTRAP_SKIPPED,
                 agent_name=config.name,
@@ -125,9 +128,8 @@ async def bootstrap_agents(
                 agent_id=str(identity.id),
                 reason="already_registered",
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SETUP_AGENT_BOOTSTRAP_SKIPPED,
                 agent_name=config.name,

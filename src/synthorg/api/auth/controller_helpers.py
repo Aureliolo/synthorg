@@ -25,6 +25,7 @@ from synthorg.api.auth.token_size import get_auth_token_bytes
 from synthorg.core.auth.config import AuthConfig
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.auth.session import Session
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_AUTH_CONFIG_FALLBACK,
@@ -63,6 +64,9 @@ async def make_session_cookies(  # noqa: PLR0913
     cookie when ``jwt_refresh_enabled`` is ``True``.  When
     refresh is enabled the token is also persisted to the
     refresh store for single-use validation.
+
+    Returns:
+        List of the declared element type.
     """
     cookies: list[Any] = [
         make_session_cookie(token, expires_in, config),
@@ -98,9 +102,8 @@ async def make_session_cookies(  # noqa: PLR0913
                         SECURITY_AUTH_FAILED,
                         reason="refresh_store_not_available",
                     )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     SECURITY_AUTH_FAILED,
                     reason="refresh_token_persist_failed",
@@ -131,6 +134,9 @@ def require_password_changed(
     Paths ending with ``/auth/change-password`` or ``/auth/me``
     are exempt so the user can actually change the password or
     inspect their own profile.
+
+    Raises:
+        PermissionDeniedException: Raised on the corresponding failure path.
     """
     path = str(connection.url.path)
     if any(path.endswith(s) for s in _PWD_CHANGE_EXEMPT_SUFFIXES):
@@ -200,9 +206,8 @@ async def create_session_record(
             session_id=session_id,
             user_id=user.id,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_SESSION_CREATE_FAILED,
             reason="Session creation failed (non-fatal)",
@@ -214,7 +219,11 @@ async def create_session_record(
 
 
 def extract_jti(request: Request[Any, Any, Any]) -> str | None:
-    """Extract the JWT ``jti`` claim from cookie or header."""
+    """Extract the JWT ``jti`` claim from cookie or header.
+
+    Returns:
+        The ``str`` value when present, ``None`` otherwise.
+    """
     app_state = request.app.state["app_state"]
     auth_config = get_auth_config(app_state)
 
@@ -261,6 +270,9 @@ def get_auth_config(app_state: AppState) -> AuthConfig:
     never goes unnoticed.  Caller treats the default as fully valid;
     the log line is the operator signal that custom auth tuning did
     not apply.
+
+    Returns:
+        ``AuthConfig`` instance.
     """
     try:
         cfg: AuthConfig = app_state.config.api.auth

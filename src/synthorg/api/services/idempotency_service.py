@@ -180,6 +180,9 @@ class IdempotencyService:
         for an attempt that never actually published. Capped at
         :data:`_MAX_LEADER_FAILED_RETRIES` to bound the worst-case
         churn under sustained leader failures.
+
+        Returns:
+            ``IdempotencyResult`` instance.
         """
         retries_after_leader_failure = 0
         # lint-allow: long-running-loop-kill-switch -- per-request retry-wait.
@@ -217,6 +220,14 @@ class IdempotencyService:
         ``FAILED``; any other value is the canonical callback result.
         ``timed_out`` is ``True`` when the in-flight poll exhausted
         its budget without observing a final state.
+
+        Returns:
+            Tuple of the declared element types.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+            MemoryError: Raised on the corresponding failure path.
+            RecursionError: Raised on the corresponding failure path.
         """
         now = datetime.now(UTC)
         claim = await self._repo.claim(
@@ -319,6 +330,10 @@ class IdempotencyService:
         always ``None``). Conflating leader-failure and timeout into
         a single ``None`` would 409 every retry after a failed
         leader, defeating redelivery semantics.
+
+        Returns:
+            ``tuple[_PollOutcome, Any | None]``; always a tuple, with
+            the second element (cached body) possibly ``None``.
         """
         deadline = self._clock.monotonic() + _IN_FLIGHT_POLL_TIMEOUT_SECONDS
         backoff = _IN_FLIGHT_POLL_INITIAL_BACKOFF_SECONDS
@@ -373,6 +388,9 @@ class IdempotencyService:
         repository's ``complete`` enforces token equality so a stale
         worker that finished after the lease rotated cannot overwrite
         the new lease's row.
+
+        Returns:
+            Resulting string.
         """
         body = json.dumps(result, sort_keys=True)
         digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
@@ -404,6 +422,13 @@ class IdempotencyService:
         key: NotBlankStr,
         claim_token: NotBlankStr,
     ) -> None:
+        """Best-effort transition of the claimed row to FAILED.
+
+        The original callback exception is what the caller propagates;
+        a failure to record the FAILED state here is logged at WARNING
+        and swallowed so the row's ``expires_at`` drives eventual
+        cleanup instead of masking the caller's error.
+        """
         try:
             committed = await self._repo.fail(
                 scope=scope,
@@ -434,7 +459,11 @@ class IdempotencyService:
             )
 
     async def cleanup_expired(self) -> int:
-        """Reap expired rows. Caller schedules the periodic invocation."""
+        """Reap expired rows. Caller schedules the periodic invocation.
+
+        Returns:
+            Resulting integer.
+        """
         removed = await self._repo.cleanup_expired(datetime.now(UTC))
         if removed:
             logger.info(IDEMPOTENCY_CLEANUP, removed=removed)

@@ -390,6 +390,8 @@ async def get_existing_agents(
     Raises:
         ValidationError: If the stored value is not valid JSON or
             not a JSON array.
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
     """
     try:
         entry = await settings_svc.get_entry("company", "agents")
@@ -482,6 +484,9 @@ def validate_agents_value(raw: str, *, strict: bool) -> bool:
 
     Returns:
         True if the value is a non-empty JSON list.
+
+    Raises:
+        ValidationError: Raised on the corresponding failure path.
     """
     try:
         parsed = json.loads(raw)
@@ -510,14 +515,22 @@ def validate_agents_value(raw: str, *, strict: bool) -> bool:
 
 
 def normalize_description(raw: str | None) -> str | None:
-    """Strip whitespace from description, treating blank as None."""
+    """Strip whitespace from description, treating blank as None.
+
+    Returns:
+        The ``str`` value when present, ``None`` otherwise.
+    """
     return normalize_optional_string(raw)
 
 
 def departments_to_json(
     departments: Sequence[TemplateDepartmentConfig],
 ) -> str:
-    """Convert template departments to a JSON string."""
+    """Convert template departments to a JSON string.
+
+    Returns:
+        Resulting string.
+    """
     if not departments:
         return ""
     dept_list = [
@@ -529,14 +542,22 @@ def departments_to_json(
 def agents_to_summaries(
     agents: list[dict[str, Any]],
 ) -> tuple[SetupAgentSummary, ...]:
-    """Convert agent config dicts to summary DTOs."""
+    """Convert agent config dicts to summary DTOs.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     return tuple(agent_dict_to_summary(a) for a in agents)
 
 
 def agent_dict_to_summary(
     agent: dict[str, Any],
 ) -> SetupAgentSummary:
-    """Convert a single agent config dict to a summary DTO."""
+    """Convert a single agent config dict to a summary DTO.
+
+    Returns:
+        ``SetupAgentSummary`` instance.
+    """
     from synthorg.api.controllers.setup_models import (  # noqa: PLC0415
         SetupAgentSummary,
     )

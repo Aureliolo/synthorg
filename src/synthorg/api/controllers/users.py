@@ -57,6 +57,9 @@ def _service(state: State) -> UserService:
     ``ON DELETE CASCADE`` on ``user_id`` when the user row goes
     away -- the explicit revocation runs first so tokens stop
     minting access tokens immediately.
+
+    Returns:
+        ``UserService`` instance.
     """
     persistence = state.app_state.persistence
     return UserService(
@@ -118,7 +121,11 @@ class UserResponse(BaseModel):
 
 
 def _to_response(user: User) -> UserResponse:
-    """Map a ``User`` domain model to the public ``UserResponse`` DTO."""
+    """Map a ``User`` domain model to the public ``UserResponse`` DTO.
+
+    Returns:
+        ``UserResponse`` instance.
+    """
     return UserResponse(
         id=user.id,
         username=user.username,
@@ -135,7 +142,11 @@ def _to_response(user: User) -> UserResponse:
 
 
 def _validate_assignable_role(role: HumanRole) -> None:
-    """Reject roles that cannot be assigned via the API."""
+    """Reject roles that cannot be assigned via the API.
+
+    Raises:
+        ValidationError: Raised on the corresponding failure path.
+    """
     if role in _FORBIDDEN_ROLES:
         msg = f"Cannot assign role: {role.value}"
         logger.warning(API_VALIDATION_FAILED, reason=msg)
@@ -154,6 +165,9 @@ async def _get_user_or_404(
     (``"read"`` / ``"update_user_role"`` / ``"delete_user"`` /
     ``"grant_org_role"`` / ``"revoke_org_role"``) so the not-found
     emissions are not all stamped as ``"read"``.
+
+    Returns:
+        ``User`` instance.
     """
     return require_resource_or_404(
         await service.get(NotBlankStr(user_id)),
@@ -202,6 +216,8 @@ class UserController(Controller):
                 is too short.
             ConflictError: If username is taken or a second CEO is
                 requested.
+            QueryError: Raised on the corresponding failure path.
+            ConstraintViolationError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
 
@@ -353,6 +369,8 @@ class UserController(Controller):
             ConflictError: If the target user is the system user,
                 changing the only CEO's role, or assigning a
                 second CEO.
+            QueryError: Raised on the corresponding failure path.
+            ConstraintViolationError: Raised on the corresponding failure path.
         """
         service = _service(state)
 
@@ -424,6 +442,8 @@ class UserController(Controller):
             NotFoundError: If the user is not found.
             ConflictError: If attempting to delete your own account,
                 the system user, or the CEO.
+            QueryError: Raised on the corresponding failure path.
+            ConstraintViolationError: Raised on the corresponding failure path.
         """
         service = _service(state)
         auth_user: AuthenticatedUser = request.scope["user"]
@@ -506,6 +526,8 @@ class UserController(Controller):
             NotFoundError: If the user is not found.
             ConflictError: If the user already has the role.
             ValidationError: If department_admin without departments.
+            ConstraintViolationError: Raised on the corresponding failure path.
+            QueryError: Raised on the corresponding failure path.
         """
         service = _service(state)
         user = await _get_user_or_404(service, user_id, operation="grant_org_role")
@@ -609,6 +631,8 @@ class UserController(Controller):
             NotFoundError: If the user is not found.
             ValidationError: If the role value is invalid.
             ConflictError: If revoking the last owner.
+            ConstraintViolationError: Raised on the corresponding failure path.
+            QueryError: Raised on the corresponding failure path.
         """
         service = _service(state)
         try:

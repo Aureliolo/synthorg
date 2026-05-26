@@ -37,6 +37,7 @@ from synthorg.communication.event_stream.types import StreamEvent  # noqa: TC001
 from synthorg.core.auth.config import AUTH_REVALIDATE_INTERVAL_SECONDS
 from synthorg.core.auth.models import AuthenticatedUser
 from synthorg.core.clock import SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     NotFoundError,
     UnauthorizedError,
@@ -75,6 +76,12 @@ async def _resolve_sse_keepalive_seconds(app_state: AppState | None) -> float:
     harness, anonymous boot path).  Resolver outages collapse to the
     same fallback so a transient settings outage cannot break the
     keepalive cadence on a long-lived stream.
+
+    Returns:
+        Resulting numeric value.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     if app_state is None or not getattr(app_state, "has_config_resolver", False):
         return _SSE_KEEPALIVE_FALLBACK_SECONDS
@@ -82,9 +89,8 @@ async def _resolve_sse_keepalive_seconds(app_state: AppState | None) -> float:
         return await app_state.config_resolver.get_float("api", "sse_keepalive_seconds")
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             EVENT_STREAM_PROJECTION_FAILED,
             note="failed to resolve api.sse_keepalive_seconds; using fallback",
@@ -124,6 +130,9 @@ def _build_revalidation_limiter(
     from ``api.auth_revalidate_window_seconds`` /
     ``api.auth_revalidate_max_failures`` (resolved into ``AppState``
     at startup), shared with the WS loop.
+
+    Returns:
+        ``_SlidingWindowRateLimiter`` instance.
     """
     if app_state is not None:
         window = float(app_state.auth_revalidate_window_seconds)
@@ -166,6 +175,9 @@ async def _user_revocation_reason(
     sliding-window limiter (``api.auth_revalidate_window_seconds`` /
     ``api.auth_revalidate_max_failures``) before tearing down the
     stream.
+
+    Returns:
+        Tuple of ``(reason, ok)``, where ``reason`` may be ``None``.
     """
     try:
         db_user = await app_state.persistence.users.get(user_id)
@@ -238,6 +250,11 @@ class InterruptResponse(BaseModel):
 
 
 def _require_hub(app_state: AppState) -> EventStreamHub:
+    """Return the hub or raise when unavailable.
+
+    Raises:
+        NotFoundError: Raised on the corresponding failure path.
+    """
     hub = app_state.event_stream_hub
     if hub is None:
         msg = "Event stream not configured"
@@ -246,6 +263,11 @@ def _require_hub(app_state: AppState) -> EventStreamHub:
 
 
 def _require_interrupt_store(app_state: AppState) -> InterruptStore:
+    """Return the interrupt store or raise when unavailable.
+
+    Raises:
+        NotFoundError: Raised on the corresponding failure path.
+    """
     store = app_state.interrupt_store
     if store is None:
         msg = "Interrupt store not configured"
@@ -254,6 +276,11 @@ def _require_interrupt_store(app_state: AppState) -> InterruptStore:
 
 
 def _require_auth(request: Request[Any, Any, Any]) -> AuthenticatedUser:
+    """Return the auth or raise when unavailable.
+
+    Raises:
+        UnauthorizedError: Raised on the corresponding failure path.
+    """
     auth_user = request.scope.get("user")
     if not isinstance(auth_user, AuthenticatedUser):
         msg = "Authentication required"
@@ -346,12 +373,14 @@ async def _serialise_stream_event(
     Extracted from :func:`_sse_event_stream` so the loop body stays
     under the McCabe / branch / statement ceilings. Failures are
     logged at WARNING and skipped; the parent loop should ``continue``.
+
+    Returns:
+        The ``dict[str, str]`` value when present, ``None`` otherwise.
     """
     try:
         data = _json.dumps(event.model_dump(mode="json"))
-    except MemoryError, RecursionError:
-        raise
     except Exception as serialize_exc:
+        reraise_critical(serialize_exc)
         logger.warning(
             EVENT_STREAM_PROJECTION_FAILED,
             session_id=session_id,
@@ -381,6 +410,9 @@ async def _run_revalidation_tick(
     backend interleaving one success cannot hold a stale-auth stream
     open. A genuine revocation (deleted / demoted / session revoked)
     tears down immediately. Returns ``None`` when the loop continues.
+
+    Returns:
+        The ``dict[str, str]`` value when present, ``None`` otherwise.
     """
     reason, ok = await _user_revocation_reason(
         app_state,
@@ -420,6 +452,10 @@ async def _sse_event_stream(
     stream. Transient persistence errors are absorbed by a shared
     sliding-window limiter (``api.auth_revalidate_window_seconds`` /
     ``api.auth_revalidate_max_failures``) before escalating.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
+        Exception: Raised on the corresponding failure path.
     """
     # Track the disconnect reason by exit path so the
     # ``synthorg_client_disconnects_total`` metric reflects the real

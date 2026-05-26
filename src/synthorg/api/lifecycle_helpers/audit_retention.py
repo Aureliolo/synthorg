@@ -12,6 +12,7 @@ import asyncio
 import math
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_AUDIT_RETENTION
 from synthorg.settings.enums import SettingNamespace
@@ -35,6 +36,12 @@ async def _resolve_audit_retention_loop_enabled(app_state: AppState) -> bool:
     resolver is unavailable or the read fails -- leaving expired audit
     rows around is a compliance risk, so the loop stays active on a
     broken settings backend rather than silently disabling itself.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     fallback = registered_default_bool(
         SettingNamespace.SECURITY.value, "audit_retention_loop_enabled"
@@ -47,9 +54,8 @@ async def _resolve_audit_retention_loop_enabled(app_state: AppState) -> bool:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_AUDIT_RETENTION,
             error_type=type(exc).__name__,
@@ -71,6 +77,12 @@ async def _resolve_audit_retention_days(app_state: AppState) -> int:
     explicitly opting out via ``security.audit_retention_days=0``;
     a negative resolver value is invalid (not a synonym for the
     opt-out) and reverts to the fallback.
+
+    Returns:
+        Resulting integer.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     fallback = registered_default_int(
         SettingNamespace.SECURITY.value, "audit_retention_days"
@@ -83,9 +95,8 @@ async def _resolve_audit_retention_days(app_state: AppState) -> int:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_AUDIT_RETENTION,
             error_type=type(exc).__name__,
@@ -112,6 +123,12 @@ async def _resolve_audit_retention_tick_seconds(app_state: AppState) -> float:
     non-finite / non-positive. Skipping the validation would let a
     tampered setting feed ``asyncio.sleep(-1)`` (tight loop) or
     ``asyncio.sleep(nan)`` (loop crash) into the purge worker.
+
+    Returns:
+        Resulting numeric value.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     fallback = registered_default_float(
         SettingNamespace.SECURITY.value, "audit_retention_tick_seconds"
@@ -124,9 +141,8 @@ async def _resolve_audit_retention_tick_seconds(app_state: AppState) -> float:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_AUDIT_RETENTION,
             error_type=type(exc).__name__,
@@ -162,9 +178,8 @@ async def _audit_retention_tick(app_state: AppState) -> None:
     cutoff = app_state.clock.now() - timedelta(days=days)
     try:
         deleted = await app_state.persistence.audit_entries.purge_before(cutoff)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_AUDIT_RETENTION,
             note="audit retention purge failed",

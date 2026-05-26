@@ -88,7 +88,11 @@ class CapabilitiesController(Controller):
         self,
         state: State,
     ) -> ApiResponse[CapabilitiesResponse]:
-        """Build the capabilities snapshot from the live app state."""
+        """Build the capabilities snapshot from the live app state.
+
+        Returns:
+            ``ApiResponse[CapabilitiesResponse]`` instance.
+        """
         app_state: AppState = state.app_state
         # Read directly from the live runtime-wiring signals so each
         # flag reflects what's actually plumbed, not what the config

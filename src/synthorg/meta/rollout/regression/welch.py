@@ -138,6 +138,9 @@ def _regularized_incomplete_beta(a: float, b: float, x: float) -> float:
     Returns ``0.0`` at ``x <= 0`` and ``1.0`` at ``x >= 1``. The
     log-gamma normalisation keeps the computation numerically stable
     for the degrees-of-freedom values encountered by Welch's t-test.
+
+    Returns:
+        Resulting numeric value.
     """
     if x <= 0.0:
         return 0.0
@@ -165,6 +168,12 @@ def _betacf(a: float, b: float, x: float) -> float:
     of ``_BETACF_EPS``; raises ``RuntimeError`` if the fraction fails
     to converge (indicates pathological input, not a normal failure
     mode).
+
+    Returns:
+        Resulting numeric value.
+
+    Raises:
+        RuntimeError: Raised on the corresponding failure path.
     """
     qab = a + b
     qap = a + 1.0

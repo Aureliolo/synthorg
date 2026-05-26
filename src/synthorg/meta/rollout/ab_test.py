@@ -70,6 +70,7 @@ class _NullGroupAggregator:
         since: datetime,
         until: datetime,
     ) -> GroupSamples:
+        """Return aggregate for agents."""
         _ = agent_ids, since, until
         return GroupSamples()
 
@@ -138,7 +139,11 @@ class ABTestRollout:
 
     @property
     def name(self) -> NotBlankStr:
-        """Strategy name."""
+        """Strategy name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("ab_test")
 
     async def execute(
@@ -148,7 +153,11 @@ class ABTestRollout:
         applier: ProposalApplier,
         detector: RegressionDetector,
     ) -> RolloutResult:
-        """Execute A/B test rollout."""
+        """Execute A/B test rollout.
+
+        Returns:
+            ``RolloutResult`` instance.
+        """
         _ = detector  # A/B uses comparator rather than RegressionDetector.
         logger.info(
             META_ROLLOUT_STARTED,
@@ -216,6 +225,9 @@ class ABTestRollout:
         comparator. Kept as a thin helper so ``_observe_and_compare``
         stays under the 50-line budget and the aggregation shape lives
         in exactly one place.
+
+        Returns:
+            ``ABTestComparison`` instance.
         """
         async with asyncio.TaskGroup() as tg:
             control_task = tg.create_task(
@@ -252,7 +264,11 @@ class ABTestRollout:
         elapsed: float,
         comparison: ABTestComparison,
     ) -> RolloutResult:
-        """Return the REGRESSED result for a mid-window treatment drop."""
+        """Return the REGRESSED result for a mid-window treatment drop.
+
+        Returns:
+            ``RolloutResult`` instance.
+        """
         outcome, verdict = _map_verdict(comparison.verdict)
         logger.warning(
             META_ROLLOUT_FAILED,
@@ -274,7 +290,11 @@ class ABTestRollout:
         elapsed: float,
         last_comparison: ABTestComparison | None,
     ) -> RolloutResult:
-        """Map the terminal comparison into a ``RolloutResult``."""
+        """Map the terminal comparison into a ``RolloutResult``.
+
+        Returns:
+            ``RolloutResult`` instance.
+        """
         logger.info(
             META_ROLLOUT_OBSERVATION_COMPLETED,
             strategy="ab_test",
@@ -309,7 +329,14 @@ class ABTestRollout:
         proposal: ImprovementProposal,
         assignment: GroupAssignment,
     ) -> RolloutResult:
-        """Run the observation loop and return the verdict."""
+        """Run the observation loop and return the verdict.
+
+        Returns:
+            ``RolloutResult`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         logger.info(
             META_ABTEST_OBSERVATION_STARTED,
             proposal_id=str(proposal.id),
@@ -372,6 +399,9 @@ class ABTestRollout:
         Uses SHA-256 hash of ``agent_id:proposal_id`` to assign
         each agent. The hash is stable across runs for the same
         inputs, producing reproducible group splits.
+
+        Returns:
+            ``GroupAssignment`` instance.
         """
         control: list[NotBlankStr] = []
         treatment: list[NotBlankStr] = []
@@ -404,6 +434,9 @@ def _samples_to_metrics(
     group. The aggregator drops agents missing metrics, so reporting
     the assigned count would overstate the effective sample size and
     let Welch think it had more data than it does.
+
+    Returns:
+        ``GroupMetrics`` instance.
     """
     return GroupMetrics(
         group=group,
@@ -417,7 +450,11 @@ def _samples_to_metrics(
 def _map_verdict(
     verdict: ABTestVerdict,
 ) -> tuple[RolloutOutcome, RegressionVerdict | None]:
-    """Map ABTestVerdict to RolloutOutcome + RegressionVerdict."""
+    """Map ABTestVerdict to RolloutOutcome + RegressionVerdict.
+
+    Returns:
+        The configured value when present, ``None`` otherwise.
+    """
     if verdict == ABTestVerdict.TREATMENT_WINS:
         return RolloutOutcome.SUCCESS, RegressionVerdict.NO_REGRESSION
     if verdict in (

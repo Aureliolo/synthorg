@@ -98,7 +98,11 @@ class ApplyTemplatePackResponse(BaseModel):
 
 
 def _pack_info_to_response(info: PackInfo) -> PackInfoResponse:
-    """Convert a :class:`PackInfo` to a response DTO."""
+    """Convert a :class:`PackInfo` to a response DTO.
+
+    Returns:
+        ``PackInfoResponse`` instance.
+    """
     return PackInfoResponse(
         name=info.name,
         display_name=info.display_name,
@@ -164,7 +168,11 @@ async def _read_setting_list(
 def _serialize_departments(
     pack_depts: Sequence[TemplateDepartmentConfig],
 ) -> list[dict[str, Any]]:
-    """Serialize pack departments preserving all fields."""
+    """Serialize pack departments preserving all fields.
+
+    Returns:
+        List of the declared element type.
+    """
     result: list[dict[str, Any]] = []
     for dept in pack_depts:
         entry: dict[str, Any] = {
@@ -184,7 +192,11 @@ def _deduplicate_departments(
     pack_depts: Sequence[TemplateDepartmentConfig],
     current_depts: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Return pack departments that don't conflict with existing ones."""
+    """Return pack departments that don't conflict with existing ones.
+
+    Returns:
+        List of the declared element type.
+    """
     existing_names = {str(d.get("name", "")).lower() for d in current_depts}
     if not pack_depts:
         return []
@@ -203,7 +215,11 @@ def _deduplicate_agents(
     pack_agents: list[dict[str, Any]],
     current_agents: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Return pack agents not already present (by name)."""
+    """Return pack agents not already present (by name).
+
+    Returns:
+        List of the declared element type.
+    """
     existing = {str(a.get("name", "")).lower() for a in current_agents}
     return [a for a in pack_agents if str(a.get("name", "")).lower() not in existing]
 
@@ -223,6 +239,7 @@ async def _apply_pack_to_settings(
 
     Raises:
         NotFoundError: If the pack is not found.
+        ConflictError: Raised on the corresponding failure path.
     """
     try:
         loaded = await asyncio.to_thread(load_pack, data.pack_name)
@@ -350,6 +367,9 @@ class TemplatePackController(Controller):
 
         Raises:
             NotFoundError: If the requested pack does not exist.
+            ConflictError: Raised on the corresponding failure path.
+            DomainError: Raised on the corresponding failure path.
+            Exception: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
         logger.info(

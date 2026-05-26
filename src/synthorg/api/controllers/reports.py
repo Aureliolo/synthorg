@@ -74,7 +74,11 @@ class ReportResponse(BaseModel):
 def _to_report_response(
     report: ComprehensiveReport,
 ) -> ReportResponse:
-    """Convert a comprehensive report to its API response DTO."""
+    """Convert a comprehensive report to its API response DTO.
+
+    Returns:
+        ``ReportResponse`` instance.
+    """
     return ReportResponse(
         period=report.period,
         start=report.start,
@@ -90,7 +94,14 @@ def _to_report_response(
 def _get_report_service(
     state: State,
 ) -> AutomatedReportService:
-    """Resolve the report service from app state."""
+    """Resolve the report service from app state.
+
+    Returns:
+        ``AutomatedReportService`` instance.
+
+    Raises:
+        ServiceUnavailableError: Raised on the corresponding failure path.
+    """
     app_state: AppState = state.app_state
     service = app_state.report_service if app_state.has_report_service else None
     if service is None:
@@ -125,7 +136,11 @@ class ReportsController(Controller):
         state: State,
         data: GenerateReportRequest,
     ) -> ApiResponse[ReportResponse]:
-        """Generate a comprehensive report on demand."""
+        """Generate a comprehensive report on demand.
+
+        Returns:
+            ``ApiResponse[ReportResponse]`` instance.
+        """
         service = _get_report_service(state)
         # Service owns lifecycle logging (STARTED + COMPLETED events).
         report = await service.generate_comprehensive_report(
@@ -144,7 +159,11 @@ class ReportsController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[str]:
-        """List available report periods (cursor-paginated for shape parity)."""
+        """List available report periods (cursor-paginated for shape parity).
+
+        Returns:
+            ``PaginatedResponse[str]`` instance.
+        """
         entries = tuple(p.value for p in ReportPeriod)
         page, meta = paginate_cursor(
             entries,

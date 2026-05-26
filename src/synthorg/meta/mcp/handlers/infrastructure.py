@@ -16,7 +16,6 @@ from synthorg.communication.mcp_errors import CapabilityNotSupportedError
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
-    invalid_argument,
 )
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -65,6 +64,9 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
 
     Emits :data:`MCP_HANDLER_CAPABILITY_GAP` at INFO so capability
     telemetry is not classified as an invoke failure.
+
+    Returns:
+        Resulting string.
     """
     logger.info(
         MCP_HANDLER_CAPABILITY_GAP,
@@ -75,15 +77,26 @@ def _map_capability(tool: str, exc: CapabilityNotSupportedError) -> str:
 
 
 def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
-    """Extract a required non-blank string or raise ``ArgumentValidationError``."""
+    """Extract a required non-blank string or raise ``ArgumentValidationError``.
+
+    Returns:
+        ``NotBlankStr`` instance.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     value = get_optional_str(arguments, key)
     if value is None:
-        raise invalid_argument(key, _TY_STRING)
+        raise ArgumentValidationError(key, _TY_STRING)
     return value
 
 
 def _get_dict(arguments: dict[str, Any], key: str) -> dict[str, str] | None:
-    """Extract an optional ``dict[str, str]`` argument; ``None`` when absent."""
+    """Extract an optional ``dict[str, str]`` argument; ``None`` when absent.
+
+    Returns:
+        The ``dict[str, str]`` value when present, ``None`` otherwise.
+    """
     raw = arguments.get(key)
     if raw in (None, ""):
         return None
@@ -91,12 +104,19 @@ def _get_dict(arguments: dict[str, Any], key: str) -> dict[str, str] | None:
 
 
 def _require_uuid(arguments: dict[str, Any], key: str) -> str:
-    """Extract a required UUID-shaped string or raise ``ArgumentValidationError``."""
+    """Extract a required UUID-shaped string or raise ``ArgumentValidationError``.
+
+    Returns:
+        Resulting string.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     value = require_arg(arguments, key, str)
     try:
         UUID(value)
     except ValueError as exc:
-        raise invalid_argument(key, _TY_UUID) from exc
+        raise ArgumentValidationError(key, _TY_UUID) from exc
     return value
 
 
@@ -109,7 +129,11 @@ async def _health_check(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return lightweight health status for the AppState subsystems."""
+    """Return lightweight health status for the AppState subsystems.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_health_check"
     try:
         data = {
@@ -138,7 +162,11 @@ async def _settings_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List runtime settings via the settings-read facade."""
+    """List runtime settings via the settings-read facade.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_settings_list"
     try:
         result = await app_state.settings_read_service.list_settings()
@@ -159,7 +187,11 @@ async def _settings_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single setting by key."""
+    """Fetch a single setting by key.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_settings_get"
     try:
         key = _require_str(arguments, "key")
@@ -181,7 +213,11 @@ async def _settings_update(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Update or create a setting value (admin op; enforces guardrails)."""
+    """Update or create a setting value (admin op; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_settings_update"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -220,7 +256,11 @@ async def _settings_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Delete a setting key (destructive; enforces guardrails)."""
+    """Delete a setting key (destructive; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_settings_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -261,7 +301,11 @@ async def _providers_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List registered LLM providers."""
+    """List registered LLM providers.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_providers_list"
     try:
         providers = await app_state.provider_read_service.list_providers()
@@ -282,7 +326,11 @@ async def _providers_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single provider registration by ID."""
+    """Fetch a single provider registration by ID.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_providers_get"
     try:
         provider_id = _require_str(arguments, "provider_id")
@@ -309,7 +357,11 @@ async def _providers_get_health(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return provider-health roll-up (availability, latency, error rate)."""
+    """Return provider-health roll-up (availability, latency, error rate).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_providers_get_health"
     try:
         provider_id = get_optional_str(arguments, "provider_id")
@@ -331,7 +383,11 @@ async def _providers_test_connection(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Perform an on-demand connectivity probe against a provider (admin op)."""
+    """Perform an on-demand connectivity probe against a provider (admin op).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_providers_test_connection"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -364,6 +420,9 @@ def _to_jsonable(value: Any) -> Any:
     Pydantic models are dumped via ``model_dump``; other values pass
     through.  Keeps handlers thin when the underlying primitive
     returns a non-uniform shape.
+
+    Returns:
+        ``Any`` instance.
     """
     dump_fn = getattr(value, "model_dump", None)
     if callable(dump_fn):
@@ -380,7 +439,11 @@ async def _backup_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List persistence backups recorded by the backup service."""
+    """List persistence backups recorded by the backup service.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_backup_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -406,7 +469,11 @@ async def _backup_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single backup record by ID."""
+    """Fetch a single backup record by ID.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_backup_get"
     try:
         backup_id = _require_str(arguments, "backup_id")
@@ -430,7 +497,14 @@ async def _backup_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Trigger a new backup run (admin op; records a new manifest)."""
+    """Trigger a new backup run (admin op; records a new manifest).
+
+    Returns:
+        Resulting string.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     tool = "synthorg_backup_create"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -438,7 +512,7 @@ async def _backup_create(
         try:
             trigger = BackupTrigger(trigger_raw)
         except ValueError as exc:
-            raise invalid_argument(_ARG_TRIGGER, _TY_BACKUP_TRIGGER) from exc
+            raise ArgumentValidationError(_ARG_TRIGGER, _TY_BACKUP_TRIGGER) from exc
         manifest = await app_state.backup_facade_service.create_backup(
             trigger=trigger,
         )
@@ -469,7 +543,11 @@ async def _backup_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Delete a backup manifest (destructive; enforces guardrails)."""
+    """Delete a backup manifest (destructive; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_backup_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -507,7 +585,11 @@ async def _backup_restore(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Restore persistence state from a backup (destructive; enforces guardrails)."""
+    """Restore persistence state from a backup (destructive; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_backup_restore"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -548,7 +630,11 @@ async def _audit_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return recent audit log entries (paginated)."""
+    """Return recent audit log entries (paginated).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_audit_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -574,7 +660,11 @@ async def _events_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return recent events from the event-stream hub."""
+    """Return recent events from the event-stream hub.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_events_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -603,7 +693,11 @@ async def _users_list(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List registered API users."""
+    """List registered API users.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_users_list"
     try:
         users = await app_state.user_facade_service.list_users()
@@ -624,7 +718,11 @@ async def _users_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single API user by ID."""
+    """Fetch a single API user by ID.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_users_get"
     try:
         user_id = _require_str(arguments, "user_id")
@@ -651,7 +749,11 @@ async def _users_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Create a new API user (admin op; enforces guardrails)."""
+    """Create a new API user (admin op; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_users_create"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -691,7 +793,11 @@ async def _users_update(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Update an existing API user (admin op; partial patch)."""
+    """Update an existing API user (admin op; partial patch).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_users_update"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -731,7 +837,11 @@ async def _users_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Delete an API user (destructive; enforces guardrails)."""
+    """Delete an API user (destructive; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_users_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -772,7 +882,11 @@ async def _projects_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List projects (paginated)."""
+    """List projects (paginated).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_projects_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -796,7 +910,11 @@ async def _projects_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single project by ID."""
+    """Fetch a single project by ID.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_projects_get"
     try:
         project_id = _require_uuid(arguments, "project_id")
@@ -821,7 +939,11 @@ async def _projects_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Create a new project (non-destructive write)."""
+    """Create a new project (non-destructive write).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_projects_create"
     try:
         name = _require_str(arguments, "name")
@@ -848,7 +970,11 @@ async def _projects_update(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Update an existing project (partial patch)."""
+    """Update an existing project (partial patch).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_projects_update"
     try:
         project_id = _require_uuid(arguments, "project_id")
@@ -882,7 +1008,11 @@ async def _projects_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Delete a project (destructive; enforces guardrails)."""
+    """Delete a project (destructive; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_projects_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -923,7 +1053,11 @@ async def _requests_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List operator request-ledger entries (paginated)."""
+    """List operator request-ledger entries (paginated).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_requests_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -947,7 +1081,11 @@ async def _requests_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single operator request by ID."""
+    """Fetch a single operator request by ID.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_requests_get"
     try:
         request_id = _require_uuid(arguments, "request_id")
@@ -972,7 +1110,11 @@ async def _requests_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Record a new operator request (non-destructive write)."""
+    """Record a new operator request (non-destructive write).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_requests_create"
     try:
         title = _require_str(arguments, "title")
@@ -1000,7 +1142,11 @@ async def _setup_get_status(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return current setup-wizard state."""
+    """Return current setup-wizard state.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_setup_get_status"
     try:
         status = await app_state.setup_facade_service.get_status()
@@ -1019,7 +1165,11 @@ async def _setup_initialize(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Dispatch an initialisation step (admin op; delegates to setup controller)."""
+    """Dispatch an initialisation step (admin op; delegates to setup controller).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_setup_initialize"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -1055,7 +1205,11 @@ async def _simulations_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List simulation scenarios loaded at start-up."""
+    """List simulation scenarios loaded at start-up.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_simulations_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -1079,7 +1233,11 @@ async def _simulations_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single simulation scenario by ID."""
+    """Fetch a single simulation scenario by ID.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_simulations_get"
     try:
         sim_id = _require_str(arguments, "simulation_id")
@@ -1104,7 +1262,11 @@ async def _simulations_create(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Capability gap: simulation scenarios are config-driven."""
+    """Capability gap: simulation scenarios are config-driven.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_simulations_create"
     try:
         await app_state.simulation_facade_service.create_simulation()
@@ -1128,7 +1290,11 @@ async def _template_packs_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List installed template packs."""
+    """List installed template packs.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_template_packs_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -1152,7 +1318,11 @@ async def _template_packs_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single template-pack record by ID."""
+    """Fetch a single template-pack record by ID.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_template_packs_get"
     try:
         pack_id = _require_uuid(arguments, "pack_id")
@@ -1177,7 +1347,11 @@ async def _template_packs_install(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Install a new template pack (admin op; enforces guardrails)."""
+    """Install a new template pack (admin op; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_template_packs_install"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -1215,7 +1389,11 @@ async def _template_packs_uninstall(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Uninstall a template pack (destructive; enforces guardrails)."""
+    """Uninstall a template pack (destructive; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_template_packs_uninstall"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -1256,7 +1434,11 @@ async def _integration_health_get_all(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return health roll-ups for every integration."""
+    """Return health roll-ups for every integration.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_integration_health_get_all"
     try:
         snapshot = await app_state.integration_health_facade_service.get_all()
@@ -1275,7 +1457,11 @@ async def _integration_health_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return the health roll-up for a single integration."""
+    """Return the health roll-up for a single integration.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_integration_health_get"
     try:
         integration_id = _require_str(arguments, "integration_id")

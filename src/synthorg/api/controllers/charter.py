@@ -96,7 +96,14 @@ class CharterController(Controller):
     guards = [require_read_access]  # noqa: RUF012
 
     def _service(self, state: State) -> CharterInterviewService:
-        """Return the charter interview service or raise 503."""
+        """Return the charter interview service or raise 503.
+
+        Returns:
+            ``CharterInterviewService`` instance.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         if not app_state.has_charter_service:
             logger.warning(
@@ -132,6 +139,9 @@ class CharterController(Controller):
 
         Returns 200 with either the next elicitation question (the
         conversation stays open) or the drafted charter for review.
+
+        Returns:
+            ``ApiResponse[InterviewTurnResult]`` instance.
         """
         service = self._service(state)
         actor = require_actor()
@@ -163,6 +173,9 @@ class CharterController(Controller):
         an opaque ``cursor`` string + ``limit``, the response carries
         ``data`` plus ``PaginationMeta`` (``next_cursor`` / ``has_more``)
         so callers walk the catalogue without offset arithmetic.
+
+        Returns:
+            ``PaginatedResponse[ProjectCharter]`` instance.
         """
         service = self._service(state)
         actor = require_actor()
@@ -199,7 +212,11 @@ class CharterController(Controller):
         charter_id: PathId,
         state: State,
     ) -> ApiResponse[ProjectCharter]:
-        """Fetch a single charter by id (creator-only)."""
+        """Fetch a single charter by id (creator-only).
+
+        Returns:
+            ``ApiResponse[ProjectCharter]`` instance.
+        """
         service = self._service(state)
         actor = require_actor()
         charter = await service.get(
@@ -221,7 +238,11 @@ class CharterController(Controller):
         data: CharterEditRequest,
         state: State,
     ) -> ApiResponse[ProjectCharter]:
-        """Apply an in-place edit to a DRAFTED charter."""
+        """Apply an in-place edit to a DRAFTED charter.
+
+        Returns:
+            ``ApiResponse[ProjectCharter]`` instance.
+        """
         service = self._service(state)
         actor = require_actor()
         updated = await service.edit_charter(
@@ -257,7 +278,14 @@ class CharterController(Controller):
         data: _DecisionRequest,
         state: State,
     ) -> ApiResponse[CharterApprovalResult]:
-        """Approve a charter and dispatch its project run to the spine."""
+        """Approve a charter and dispatch its project run to the spine.
+
+        Returns:
+            ``ApiResponse[CharterApprovalResult]`` instance.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
+        """
         del data
         app_state = state.app_state
         if not app_state.has_charter_dispatcher:
@@ -293,7 +321,11 @@ class CharterController(Controller):
         data: _DecisionRequest,
         state: State,
     ) -> ApiResponse[ProjectCharter]:
-        """Cancel a DRAFTED charter (terminal)."""
+        """Cancel a DRAFTED charter (terminal).
+
+        Returns:
+            ``ApiResponse[ProjectCharter]`` instance.
+        """
         del data
         service = self._service(state)
         actor = require_actor()

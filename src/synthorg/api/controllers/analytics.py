@@ -31,6 +31,7 @@ from synthorg.budget.trends import (
     resolve_bucket_size,
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import TaskStatus
 from synthorg.observability import get_logger, safe_error_description
@@ -214,9 +215,8 @@ async def _resolve_budget_context(
             start=period_start,
             end=end,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="analytics.budget_context",
@@ -298,9 +298,8 @@ async def _resolve_agent_counts(
         return active, idle
     try:
         employed = await app_state.agent_registry.list_active()
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="analytics.resolve_agent_counts",
@@ -530,6 +529,9 @@ class AnalyticsController(Controller):
 
         Returns:
             Overview metrics envelope.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
         """
         from synthorg.persistence.task_protocol import TaskFilterSpec  # noqa: PLC0415
 

@@ -61,6 +61,7 @@ class _MetaMcp3FacadesMixin:
     def _require_service[T](  # pragma: no cover
         self, service: T | None, name: str
     ) -> T:
+        """Return the service or raise when unavailable."""
         raise NotImplementedError
 
     def _attach_service(
@@ -70,6 +71,7 @@ class _MetaMcp3FacadesMixin:
         service: Any,
         name: str,
     ) -> None:
+        """Handle attach service."""
         self._set_once(slot, service, name)
         logger.info(
             API_STATE_SERVICE_ATTACHED,
@@ -94,12 +96,20 @@ class _MetaMcp3FacadesMixin:
 
     @property
     def has_workflow_service(self) -> bool:
-        """Whether the workflow definition service has been attached."""
+        """Whether the workflow definition service has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._workflow_service is not None
 
     @property
     def workflow_service(self) -> WorkflowService:
-        """Return the attached :class:`WorkflowService`."""
+        """Return the attached :class:`WorkflowService`.
+
+        Returns:
+            ``WorkflowService`` instance.
+        """
         return self._require_service(
             self._workflow_service,
             "workflow_service",
@@ -117,12 +127,20 @@ class _MetaMcp3FacadesMixin:
 
     @property
     def has_workflow_execution_service(self) -> bool:
-        """Whether the workflow execution service has been attached."""
+        """Whether the workflow execution service has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._workflow_execution_service is not None
 
     @property
     def workflow_execution_service(self) -> WorkflowExecutionService:
-        """Return the attached :class:`WorkflowExecutionService`."""
+        """Return the attached :class:`WorkflowExecutionService`.
+
+        Returns:
+            ``WorkflowExecutionService`` instance.
+        """
         return self._require_service(
             self._workflow_execution_service,
             "workflow_execution_service",
@@ -143,12 +161,20 @@ class _MetaMcp3FacadesMixin:
 
     @property
     def has_workflow_version_service(self) -> bool:
-        """Whether the workflow version service has been attached."""
+        """Whether the workflow version service has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._workflow_version_service is not None
 
     @property
     def workflow_version_service(self) -> WorkflowVersionService:
-        """Return the attached :class:`WorkflowVersionService`."""
+        """Return the attached :class:`WorkflowVersionService`.
+
+        Returns:
+            ``WorkflowVersionService`` instance.
+        """
         return self._require_service(
             self._workflow_version_service,
             "workflow_version_service",
@@ -169,12 +195,20 @@ class _MetaMcp3FacadesMixin:
 
     @property
     def has_subworkflow_service(self) -> bool:
-        """Whether the subworkflow service has been attached."""
+        """Whether the subworkflow service has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._subworkflow_service is not None
 
     @property
     def subworkflow_service(self) -> SubworkflowService:
-        """Return the attached :class:`SubworkflowService`."""
+        """Return the attached :class:`SubworkflowService`.
+
+        Returns:
+            ``SubworkflowService`` instance.
+        """
         return self._require_service(
             self._subworkflow_service,
             "subworkflow_service",
@@ -192,12 +226,20 @@ class _MetaMcp3FacadesMixin:
 
     @property
     def has_self_improvement_service(self) -> bool:
-        """Whether the self-improvement service has been attached."""
+        """Whether the self-improvement service has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._self_improvement_service is not None
 
     @property
     def self_improvement_service(self) -> SelfImprovementService:
-        """Return the attached :class:`SelfImprovementService`."""
+        """Return the attached :class:`SelfImprovementService`.
+
+        Returns:
+            ``SelfImprovementService`` instance.
+        """
         return self._require_service(
             self._self_improvement_service,
             "self_improvement_service",
@@ -218,12 +260,20 @@ class _MetaMcp3FacadesMixin:
 
     @property
     def has_chief_of_staff_chat(self) -> bool:
-        """Whether the Chief of Staff chat backend has been attached."""
+        """Whether the Chief of Staff chat backend has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._chief_of_staff_chat is not None
 
     @property
     def chief_of_staff_chat(self) -> ChiefOfStaffChat:
-        """Return the attached :class:`ChiefOfStaffChat`."""
+        """Return the attached :class:`ChiefOfStaffChat`.
+
+        Returns:
+            ``ChiefOfStaffChat`` instance.
+        """
         return self._require_service(
             self._chief_of_staff_chat,
             "chief_of_staff_chat",
@@ -241,12 +291,20 @@ class _MetaMcp3FacadesMixin:
 
     @property
     def has_chief_of_staff_proposer(self) -> bool:
-        """Whether the clarify-and-propose backend has been attached."""
+        """Whether the clarify-and-propose backend has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._chief_of_staff_proposer is not None
 
     @property
     def chief_of_staff_proposer(self) -> ChiefOfStaffProposer:
-        """Return the attached :class:`ChiefOfStaffProposer`."""
+        """Return the attached :class:`ChiefOfStaffProposer`.
+
+        Returns:
+            ``ChiefOfStaffProposer`` instance.
+        """
         return self._require_service(
             self._chief_of_staff_proposer,
             "chief_of_staff_proposer",
@@ -264,12 +322,20 @@ class _MetaMcp3FacadesMixin:
 
     @property
     def has_charter_service(self) -> bool:
-        """Whether the charter-interview backend has been attached."""
+        """Whether the charter-interview backend has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._charter_service is not None
 
     @property
     def charter_service(self) -> CharterInterviewService:
-        """Return the attached :class:`CharterInterviewService`."""
+        """Return the attached :class:`CharterInterviewService`.
+
+        Returns:
+            ``CharterInterviewService`` instance.
+        """
         return self._require_service(
             self._charter_service,
             "charter_service",
@@ -287,12 +353,20 @@ class _MetaMcp3FacadesMixin:
 
     @property
     def has_charter_dispatcher(self) -> bool:
-        """Whether the charter approval dispatcher has been attached."""
+        """Whether the charter approval dispatcher has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._charter_dispatcher is not None
 
     @property
     def charter_dispatcher(self) -> CharterDispatcher:
-        """Return the attached :class:`CharterDispatcher`."""
+        """Return the attached :class:`CharterDispatcher`.
+
+        Returns:
+            ``CharterDispatcher`` instance.
+        """
         return self._require_service(
             self._charter_dispatcher,
             "charter_dispatcher",
@@ -310,14 +384,22 @@ class _MetaMcp3FacadesMixin:
 
     @property
     def has_conversational_proposal_repo(self) -> bool:
-        """Whether the conversational proposal repo has been attached."""
+        """Whether the conversational proposal repo has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._conversational_proposal_repo is not None
 
     @property
     def conversational_proposal_repo(
         self,
     ) -> ConversationalProposalRepository:
-        """Return the attached ``ConversationalProposalRepository``."""
+        """Return the attached ``ConversationalProposalRepository``.
+
+        Returns:
+            ``ConversationalProposalRepository`` instance.
+        """
         return self._require_service(
             self._conversational_proposal_repo,
             "conversational_proposal_repo",

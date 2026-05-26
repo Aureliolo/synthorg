@@ -47,7 +47,11 @@ class CeremonyPolicyController(Controller):
         self,
         state: State,
     ) -> ApiResponse[dict[str, Any]]:
-        """Return the project-level ceremony policy from settings."""
+        """Return the project-level ceremony policy from settings.
+
+        Returns:
+            ``ApiResponse[dict[str, Any]]`` instance.
+        """
         app_state: AppState = state.app_state
         policy = await _fetch_project_policy(app_state)
         logger.debug(
@@ -68,7 +72,11 @@ class CeremonyPolicyController(Controller):
             ),
         ] = None,
     ) -> ApiResponse[ResolvedCeremonyPolicyResponse]:
-        """Return the fully resolved ceremony policy with field origins."""
+        """Return the fully resolved ceremony policy with field origins.
+
+        Returns:
+            Result matching the declared return annotation.
+        """
         app_state: AppState = state.app_state
         project = await _fetch_project_policy(app_state)
         dept_policy = None
@@ -90,7 +98,11 @@ class CeremonyPolicyController(Controller):
         self,
         state: State,
     ) -> ApiResponse[ActiveCeremonyStrategyResponse]:
-        """Return the currently locked strategy for the active sprint."""
+        """Return the currently locked strategy for the active sprint.
+
+        Returns:
+            Result matching the declared return annotation.
+        """
         app_state: AppState = state.app_state
         scheduler = app_state.ceremony_scheduler
         response = ActiveCeremonyStrategyResponse()

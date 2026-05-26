@@ -4,6 +4,7 @@ Receives webhook events from external services, verifies
 signatures, and publishes to the message bus.
 """
 
+import asyncio
 import hashlib
 import json
 from typing import TYPE_CHECKING, Annotated, Any, Final
@@ -29,6 +30,7 @@ from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
     PathName,
 )
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ConflictError,
     NotFoundError,
@@ -82,7 +84,14 @@ __all__ = [
 
 
 async def _get_connection_or_404(state: State, connection_name: str) -> Any:
-    """Look up the named connection or raise 404 with a logged reason."""
+    """Look up the named connection or raise 404 with a logged reason.
+
+    Returns:
+        ``Any`` instance.
+
+    Raises:
+        NotFoundError: Raised on the corresponding failure path.
+    """
     catalog = state["app_state"].connection_catalog
     conn = await catalog.get(connection_name)
     if conn is None:
@@ -114,6 +123,12 @@ async def _enforce_max_payload(
 
     Raises :class:`ValidationError` with a structured WARNING when
     the cap is exceeded; returns the assembled body otherwise.
+
+    Returns:
+        Resulting byte string.
+
+    Raises:
+        ValidationError: Raised on the corresponding failure path.
     """
     content_length_header = request.headers.get(
         "content-length",
@@ -169,7 +184,11 @@ async def _verify_signature(
     body: bytes,
     headers: dict[str, str],
 ) -> None:
-    """Verify the webhook signature, raising 401 on missing secret or mismatch."""
+    """Verify the webhook signature, raising 401 on missing secret or mismatch.
+
+    Raises:
+        UnauthorizedError: Raised on the corresponding failure path.
+    """
     verifier = get_verifier(connection_type)
     credentials = await catalog.get_credentials(connection_name)
     signing_secret = credentials.get(
@@ -207,7 +226,14 @@ def _parse_timestamp(
     *,
     connection_name: str,
 ) -> float | None:
-    """Defensive ``x-timestamp`` parse; ``None`` when absent."""
+    """Defensive ``x-timestamp`` parse; ``None`` when absent.
+
+    Returns:
+        The ``float`` value when present, ``None`` otherwise.
+
+    Raises:
+        ValidationError: Raised on the corresponding failure path.
+    """
     timestamp_str = headers.get("x-timestamp", "")
     if not timestamp_str:
         return None
@@ -241,6 +267,9 @@ async def _check_replay_or_freshness(
     enforces in the no-nonce branch must apply here too -- otherwise
     an attacker can sidestep the limit by passing a freshness-only
     nonce and let the durable path try to hash an unbounded string.
+
+    Raises:
+        ConflictError: Raised on the corresponding failure path.
     """
     if nonce is not None and len(nonce) > MAX_NONCE_CHARS:
         logger.warning(
@@ -289,6 +318,9 @@ async def _publish_webhook_event_and_log(
     body). Surfacing the source on the success log lets operators
     distinguish well-behaved providers from those without nonces and
     spot redelivery patterns.
+
+    Returns:
+        Mapping with the declared key/value types.
     """
     await publish_webhook_event(
         bus=bus,
@@ -320,6 +352,13 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
 
     Returns the cached/fresh response body. Raises 409 on contention
     that the polling window could not resolve.
+
+    Returns:
+        Mapping with the declared key/value types.
+
+    Raises:
+        ConflictError: Raised on the corresponding failure path.
+        TypeError: Raised on the corresponding failure path.
     """
     from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
@@ -338,6 +377,7 @@ async def _publish_with_durable_idempotency(  # noqa: PLR0913
     )
 
     async def _publish_and_accept() -> dict[str, object]:
+        """Return publish and accept."""
         return await _publish_webhook_event_and_log(
             bus=bus,
             connection_name=connection_name,
@@ -408,6 +448,9 @@ def _load_payload_from_receipt(receipt: WebhookReceipt) -> dict[str, object]:
     ``{"raw": ""}`` rather than being short-circuited to ``{}``, so
     retries preserve the same envelope shape ``receive_webhook``
     produced on the original delivery.
+
+    Returns:
+        Mapping with the declared key/value types.
     """
     try:
         raw_payload = json.loads(receipt.payload_json)
@@ -438,6 +481,9 @@ async def _transition_webhook_receipt_status(  # noqa: PLR0913
     never accepted; a missing row (or a lost CAS race) raises
     ``NotFoundError`` so the caller can surface 404 instead of
     pretending the transition happened.
+
+    Raises:
+        NotFoundError: Raised on the corresponding failure path.
     """
     from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
@@ -490,6 +536,9 @@ def _assert_receipt_retryable(receipt: WebhookReceipt) -> None:
     successful delivery) or a ``retrying`` row (would race against
     an in-flight attempt). Reject up front before any persistence
     write or bus publish.
+
+    Raises:
+        ConflictError: Raised on the corresponding failure path.
     """
     if receipt.status == _RECEIPT_STATUS_FAILED:
         return
@@ -520,6 +569,14 @@ async def _retry_publish_and_transition(
     Returns the publish-response dict augmented with ``receipt_id``,
     matching the contract of the un-wrapped previous implementation so
     cached idempotency results stay compatible with prior dashboards.
+
+    Returns:
+        Mapping with the declared key/value types.
+
+    Raises:
+        asyncio.CancelledError: Re-raised after marking the receipt
+            failed, so a cancelled retry never sticks in ``retrying``.
+        Exception: Raised on the corresponding failure path.
     """
     from datetime import UTC, datetime  # noqa: PLC0415
 
@@ -540,9 +597,22 @@ async def _retry_publish_and_transition(
             payload=payload,
             dedup_source="manual_retry",
         )
-    except MemoryError, RecursionError:
+    except asyncio.CancelledError as exc:
+        # CancelledError is a BaseException, so the broad ``except
+        # Exception`` below never sees it. Without this branch a
+        # cancelled retry leaves the receipt stuck in ``retrying``;
+        # mark it failed, then propagate the cancellation.
+        await _transition_webhook_receipt_status(
+            persistence,
+            receipt,
+            new_status=_RECEIPT_STATUS_FAILED,
+            previous=_RECEIPT_STATUS_RETRYING,
+            processed_at=datetime.now(UTC),
+            error=safe_error_description(exc),
+        )
         raise
     except Exception as exc:
+        reraise_critical(exc)
         log_exception_redacted(
             logger,
             WEBHOOK_REJECTED,
@@ -604,6 +674,15 @@ class WebhooksController(Controller):
         structured errors (404 on unknown connection, 401 on missing
         or failed signature, 400 on malformed timestamp, 409 on
         replay).
+
+        Returns:
+            ``ApiResponse[dict[str, object]]`` instance.
+
+        Raises:
+            NotFoundError: If the named connection does not exist.
+            UnauthorizedError: If the signature is missing or invalid.
+            ConflictError: If replay or freshness validation fails.
+            ValidationError: Raised on the corresponding failure path.
         """
         catalog = state["app_state"].connection_catalog
         conn = await _get_connection_or_404(state, connection_name)
@@ -723,7 +802,11 @@ class WebhooksController(Controller):
             QueryParameter(ge=1, le=500, description="Max results"),
         ] = 100,  # lint-allow: magic-numbers -- pre-2.22 default preserved
     ) -> ApiResponse[tuple[WebhookReceipt, ...]]:
-        """List recent webhook receipts for a connection."""
+        """List recent webhook receipts for a connection.
+
+        Returns:
+            ``ApiResponse[tuple[WebhookReceipt, ...]]`` instance.
+        """
         service = await _get_activity_service(state)
         receipts = await service.list_activity(
             connection_name=connection_name,
@@ -761,6 +844,14 @@ class WebhooksController(Controller):
         (``_load_payload_from_receipt``, ``_assert_receipt_retryable``,
         ``_transition_webhook_receipt_status``) so this orchestrator
         stays under the repository's 50-line function cap.
+
+        Returns:
+            ``ApiResponse[dict[str, object]]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+            ConflictError: Raised on the corresponding failure path.
+            TypeError: Raised on the corresponding failure path.
         """
         from synthorg.core.types import NotBlankStr  # noqa: PLC0415
 
@@ -783,6 +874,7 @@ class WebhooksController(Controller):
             # duplicate/manual retry must resolve through the same
             # claim's cached result rather than getting a 409 from a
             # pre-claim retryability check against the now-mutated row.
+            """Return do retry."""
             _assert_receipt_retryable(receipt)
             payload = _load_payload_from_receipt(receipt)
             return await _retry_publish_and_transition(

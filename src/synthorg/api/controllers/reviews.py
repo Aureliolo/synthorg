@@ -22,8 +22,8 @@ from synthorg.core.domain_errors import (
     ConflictError,
     ServiceUnavailableError,
 )
-from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.errors import TaskNotFoundError
 from synthorg.engine.review.models import (
     PipelineResult,
     ReviewStageResult,
@@ -66,7 +66,11 @@ def _find_stage(
     pipeline_stages: tuple[Any, ...],
     stage_name: str,
 ) -> Any | None:
-    """Return the stage instance matching ``stage_name`` if present."""
+    """Return the stage instance matching ``stage_name`` if present.
+
+    Returns:
+        The ``Any`` value when present, ``None`` otherwise.
+    """
     for stage in pipeline_stages:
         if getattr(stage, "name", None) == stage_name:
             return stage
@@ -93,6 +97,12 @@ class ReviewController(Controller):
         breakdown. Falls back to ``NotFoundError`` if the task
         cannot be resolved and ``ServiceUnavailableError`` if no
         pipeline is configured.
+
+        Returns:
+            ``ApiResponse[PipelineResult]`` instance.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
@@ -125,7 +135,7 @@ class ReviewController(Controller):
             log_event=REVIEW_TASK_LOOKUP_FAILED,
             operation="read",
             extra_log_kwargs={"task_id": task_id},
-            code=ErrorCode.TASK_NOT_FOUND,
+            error_class=TaskNotFoundError,
         )
         result = await pipeline.run(task)
         return ApiResponse(data=result)
@@ -158,6 +168,9 @@ class ReviewController(Controller):
             ConflictError: If the stage name is unknown for the
                 configured pipeline.
             ServiceUnavailableError: If no pipeline is configured.
+
+        Returns:
+            ``ApiResponse[StageDecisionResult]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
@@ -186,7 +199,7 @@ class ReviewController(Controller):
             log_event=REVIEW_TASK_LOOKUP_FAILED,
             operation="decide",
             extra_log_kwargs={"task_id": task_id},
-            code=ErrorCode.TASK_NOT_FOUND,
+            error_class=TaskNotFoundError,
         )
         stage = _find_stage(pipeline.stages, stage_name)
         if stage is None:

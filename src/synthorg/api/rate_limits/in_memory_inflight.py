@@ -20,6 +20,7 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Final
 
 from synthorg.api.rate_limits.inflight_protocol import InflightStore
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConcurrencyLimitExceededError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -72,7 +73,14 @@ class InMemoryInflightStore(InflightStore):
         *,
         max_inflight: int,
     ) -> AbstractAsyncContextManager[None]:
-        """Return an async context manager that holds one permit."""
+        """Return an async context manager that holds one permit.
+
+        Returns:
+            ``AbstractAsyncContextManager[None]`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if max_inflight <= 0:
             msg = "max_inflight must be positive"
             # Validation error at decorator/config time, not runtime -- use
@@ -169,9 +177,8 @@ class InMemoryInflightStore(InflightStore):
             # propagate; everything else is logged and swallowed.
             try:
                 await self._release_lock_ref(key)
-            except MemoryError, RecursionError:
-                raise
             except Exception as ref_exc:
+                reraise_critical(ref_exc)
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="inflight_lock_ref_release_failed",
@@ -209,9 +216,8 @@ class InMemoryInflightStore(InflightStore):
             # exception (if any) from the release body.
             try:
                 await self._release_lock_ref(key)
-            except MemoryError, RecursionError:
-                raise
             except Exception as ref_exc:
+                reraise_critical(ref_exc)
                 logger.warning(
                     API_REQUEST_ERROR,
                     error_type="inflight_lock_ref_release_failed",
@@ -244,6 +250,9 @@ class InMemoryInflightStore(InflightStore):
         return and the caller's ``async with``. The caller MUST pair
         every successful ``_get_lock`` with a
         :meth:`_release_lock_ref`.
+
+        Returns:
+            ``asyncio.Lock`` instance.
         """
         async with self._meta_lock:
             lock = self._locks.get(key)
@@ -281,6 +290,11 @@ class InMemoryInflightStore(InflightStore):
         two points (the GC sees ``locked()=False`` because the
         ``async with`` has not started, but a ``ref > 0`` indicates
         the bucket is in use).
+
+        Raises:
+            CancelledError: Raised on the corresponding failure path.
+            MemoryError: Raised on the corresponding failure path.
+            RecursionError: Raised on the corresponding failure path.
         """
         async with self._meta_lock:
             try:

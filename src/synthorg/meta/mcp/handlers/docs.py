@@ -9,6 +9,7 @@ write handler is admin-gated at the registry layer (``docs:write`` uses
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import DocType
 from synthorg.core.types import NotBlankStr
@@ -23,7 +24,7 @@ from synthorg.docs_engine.errors import (
     DocNotFoundError,
     DocValidationError,
 )
-from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
+from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -78,6 +79,11 @@ _TY_OPT_STR = "string or null"
 
 
 def _require_docs_service(app_state: Any) -> Any:
+    """Return the docs service or raise when unavailable.
+
+    Raises:
+        ServiceUnavailableError: Raised on the corresponding failure path.
+    """
     svc = getattr(app_state, "docs_service", None)
     if svc is None:
         msg = "docs service is not wired on app_state in this deployment"
@@ -86,37 +92,52 @@ def _require_docs_service(app_state: Any) -> Any:
 
 
 def _parse_doc_type(arguments: dict[str, Any], key: str) -> DocType:
+    """Return parse doc type.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = require_arg(arguments, key, str)
     try:
         return DocType(raw)
     except ValueError as exc:
-        raise invalid_argument(key, _TY_DOC_TYPE) from exc
+        raise ArgumentValidationError(key, _TY_DOC_TYPE) from exc
 
 
 def _parse_opt_doc_type(arguments: dict[str, Any], key: str) -> DocType | None:
+    """Return parse opt doc type.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(key)
     if raw is None or raw == "":
         return None
     if not isinstance(raw, str):
-        raise invalid_argument(key, _TY_DOC_TYPE)
+        raise ArgumentValidationError(key, _TY_DOC_TYPE)
     try:
         return DocType(raw)
     except ValueError as exc:
-        raise invalid_argument(key, _TY_DOC_TYPE) from exc
+        raise ArgumentValidationError(key, _TY_DOC_TYPE) from exc
 
 
 def _parse_str_tuple(arguments: dict[str, Any], key: str) -> tuple[NotBlankStr, ...]:
+    """Return parse str tuple.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(key, ())
     if isinstance(raw, str):
-        raise invalid_argument(key, _TY_STR_SEQ)
+        raise ArgumentValidationError(key, _TY_STR_SEQ)
     try:
         items: Sequence[Any] = tuple(raw)
     except TypeError as exc:
-        raise invalid_argument(key, _TY_STR_SEQ) from exc
+        raise ArgumentValidationError(key, _TY_STR_SEQ) from exc
     out: list[NotBlankStr] = []
     for item in items:
         if not isinstance(item, str) or not item.strip():
-            raise invalid_argument(key, _TY_STR_SEQ)
+            raise ArgumentValidationError(key, _TY_STR_SEQ)
         out.append(NotBlankStr(item))
     return tuple(out)
 
@@ -124,17 +145,22 @@ def _parse_str_tuple(arguments: dict[str, Any], key: str) -> tuple[NotBlankStr, 
 def _parse_block_list(
     arguments: dict[str, Any],
 ) -> tuple[WriteLivingDocBlockArg, ...]:
+    """Return parse block list.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(_ARG_BODY)
     if not isinstance(raw, (list, tuple)) or len(raw) == 0:
-        raise invalid_argument(_ARG_BODY, _TY_BLOCK_LIST)
+        raise ArgumentValidationError(_ARG_BODY, _TY_BLOCK_LIST)
     parsed: list[WriteLivingDocBlockArg] = []
     for block in raw:
         if not isinstance(block, dict):
-            raise invalid_argument(_ARG_BODY, _TY_BLOCK_LIST)
+            raise ArgumentValidationError(_ARG_BODY, _TY_BLOCK_LIST)
         try:
             parsed.append(parse_block_arg(block))
         except ValueError as exc:
-            raise invalid_argument(_ARG_BODY, _TY_BLOCK_LIST) from exc
+            raise ArgumentValidationError(_ARG_BODY, _TY_BLOCK_LIST) from exc
     return tuple(parsed)
 
 
@@ -144,11 +170,16 @@ def _parse_positive_int(
     *,
     default: int,
 ) -> int:
+    """Return parse positive int.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(key)
     if raw in (None, ""):
         return default
     if not isinstance(raw, int) or isinstance(raw, bool) or raw < 1:
-        raise invalid_argument(key, _TY_POS_INT)
+        raise ArgumentValidationError(key, _TY_POS_INT)
     return raw
 
 
@@ -158,11 +189,16 @@ def _parse_nonneg_int(
     *,
     default: int,
 ) -> int:
+    """Return parse nonneg int.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(key)
     if raw in (None, ""):
         return default
     if not isinstance(raw, int) or isinstance(raw, bool) or raw < 0:
-        raise invalid_argument(key, _TY_NONNEG_INT)
+        raise ArgumentValidationError(key, _TY_NONNEG_INT)
     return raw
 
 
@@ -173,13 +209,19 @@ def _parse_opt_nonblank_str(
     """Return a ``NotBlankStr`` for *key*, or ``None`` for null / blank.
 
     A present-but-non-string value is a caller bug, so it raises
-    ``invalid_argument`` rather than being silently coerced to ``None``.
+    ``ArgumentValidationError`` rather than being silently coerced to ``None``.
+
+    Returns:
+        The ``NotBlankStr`` value when present, ``None`` otherwise.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
     """
     raw = arguments.get(key)
     if raw is None:
         return None
     if not isinstance(raw, str):
-        raise invalid_argument(key, _TY_OPT_STR)
+        raise ArgumentValidationError(key, _TY_OPT_STR)
     if not raw.strip():
         return None
     return NotBlankStr(raw)
@@ -188,19 +230,24 @@ def _parse_opt_nonblank_str(
 def _parse_doc_type_filter(
     arguments: dict[str, Any],
 ) -> frozenset[DocType] | None:
+    """Return parse doc type filter.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(_ARG_DOC_TYPES)
     if raw is None:
         return None
     if not isinstance(raw, (list, tuple)) or len(raw) == 0:
-        raise invalid_argument(_ARG_DOC_TYPES, _TY_DOC_TYPE)
+        raise ArgumentValidationError(_ARG_DOC_TYPES, _TY_DOC_TYPE)
     parsed: list[DocType] = []
     for value in raw:
         if not isinstance(value, str):
-            raise invalid_argument(_ARG_DOC_TYPES, _TY_DOC_TYPE)
+            raise ArgumentValidationError(_ARG_DOC_TYPES, _TY_DOC_TYPE)
         try:
             parsed.append(DocType(value))
         except ValueError as exc:
-            raise invalid_argument(_ARG_DOC_TYPES, _TY_DOC_TYPE) from exc
+            raise ArgumentValidationError(_ARG_DOC_TYPES, _TY_DOC_TYPE) from exc
     return frozenset(parsed)
 
 
@@ -210,6 +257,7 @@ async def _docs_write(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return docs write."""
     try:
         require_admin_guardrails(arguments, actor)
         svc = _require_docs_service(app_state)
@@ -240,9 +288,8 @@ async def _docs_write(
     except (DocCommitError, DocIndexError, DocValidationError) as exc:
         log_handler_invoke_failed(_TOOL_DOCS_WRITE, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_DOCS_WRITE, exc)
         return err(exc)
 
@@ -253,6 +300,7 @@ async def _docs_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return docs get."""
     try:
         svc = _require_docs_service(app_state)
         project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
@@ -271,9 +319,8 @@ async def _docs_get(
     except DocNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_DOCS_GET, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_DOCS_GET, exc)
         return err(exc)
 
@@ -284,6 +331,7 @@ async def _docs_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return docs list."""
     try:
         svc = _require_docs_service(app_state)
         project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
@@ -305,9 +353,8 @@ async def _docs_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_DOCS_LIST, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_DOCS_LIST, exc)
         return err(exc)
 
@@ -318,6 +365,7 @@ async def _docs_search(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return docs search."""
     try:
         svc = _require_docs_service(app_state)
         project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
@@ -337,9 +385,8 @@ async def _docs_search(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_DOCS_SEARCH, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_DOCS_SEARCH, exc)
         return err(exc)
 
@@ -350,6 +397,7 @@ async def _docs_history(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return docs history."""
     try:
         svc = _require_docs_service(app_state)
         project_id = NotBlankStr(require_arg(arguments, _ARG_PROJECT_ID, str))
@@ -370,9 +418,8 @@ async def _docs_history(
     except DocNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_DOCS_HISTORY, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_DOCS_HISTORY, exc)
         return err(exc)
 

@@ -45,7 +45,11 @@ class RoleVersionController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> Response[PaginatedResponse[SnapshotT]]:
-        """List version history for a specific role definition."""
+        """List version history for a specific role definition.
+
+        Returns:
+            ``Response[PaginatedResponse[SnapshotT]]`` instance.
+        """
         secret = state.app_state.cursor_secret
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         repo = state.app_state.persistence.role_versions
@@ -89,7 +93,14 @@ class RoleVersionController(Controller):
             ),
         ],
     ) -> Response[ApiResponse[SnapshotT]]:
-        """Get a specific role version snapshot."""
+        """Get a specific role version snapshot.
+
+        Returns:
+            ``Response[ApiResponse[SnapshotT]]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         repo = state.app_state.persistence.role_versions
         version = await repo.get_version(role_name, version_num)
         if version is None:

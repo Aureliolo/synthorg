@@ -36,6 +36,9 @@ def aggregate_patterns(
     Returns:
         Aggregated patterns sorted by deployment count (descending),
         then by total events (descending).
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     if min_deployments < 1:
         msg = f"min_deployments must be >= 1, got {min_deployments}"
@@ -90,7 +93,11 @@ def aggregate_patterns(
 def _compute_approval_rate(
     decisions: list[AnonymizedOutcomeEvent],
 ) -> float:
-    """Compute approval rate from decision events."""
+    """Compute approval rate from decision events.
+
+    Returns:
+        Resulting numeric value.
+    """
     if not decisions:
         return 0.0
     approved = sum(1 for d in decisions if d.decision == "approved")
@@ -100,7 +107,11 @@ def _compute_approval_rate(
 def _compute_success_rate(
     rollouts: list[AnonymizedOutcomeEvent],
 ) -> float:
-    """Compute rollout success rate."""
+    """Compute rollout success rate.
+
+    Returns:
+        Resulting numeric value.
+    """
     if not rollouts:
         return 0.0
     successes = sum(1 for r in rollouts if r.rollout_outcome == "success")
@@ -110,7 +121,11 @@ def _compute_success_rate(
 def _compute_avg_confidence(
     decisions: list[AnonymizedOutcomeEvent],
 ) -> float:
-    """Compute average confidence from decision events."""
+    """Compute average confidence from decision events.
+
+    Returns:
+        Resulting numeric value.
+    """
     confidences = [d.confidence for d in decisions if d.confidence is not None]
     if not confidences:
         return 0.0
@@ -120,7 +135,11 @@ def _compute_avg_confidence(
 def _compute_avg_observation_hours(
     rollouts: list[AnonymizedOutcomeEvent],
 ) -> float | None:
-    """Compute average observation hours from rollout events."""
+    """Compute average observation hours from rollout events.
+
+    Returns:
+        The ``float`` value when present, ``None`` otherwise.
+    """
     hours = [r.observation_hours for r in rollouts if r.observation_hours is not None]
     if not hours:
         return None
@@ -130,7 +149,11 @@ def _compute_avg_observation_hours(
 def _compute_industry_breakdown(
     events: list[AnonymizedOutcomeEvent],
 ) -> tuple[tuple[NotBlankStr, int], ...]:
-    """Compute industry tag distribution, sorted by count descending."""
+    """Compute industry tag distribution, sorted by count descending.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     counter: Counter[str] = Counter()
     for event in events:
         if event.industry_tag is not None:

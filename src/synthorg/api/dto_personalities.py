@@ -93,7 +93,11 @@ class CreatePresetRequest(_PresetFieldsBase):
     name: NotBlankStr = Field(max_length=100)
 
     def to_config_dict(self) -> dict[str, Any]:
-        """Convert to a dict suitable for PersonalityConfig validation."""
+        """Convert to a dict suitable for PersonalityConfig validation.
+
+        Returns:
+            Mapping matching the ``dict[str, Any]`` annotation.
+        """
         return self.model_dump(exclude={"name"})
 
 
@@ -103,5 +107,9 @@ class UpdatePresetRequest(_PresetFieldsBase):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     def to_config_dict(self) -> dict[str, Any]:
-        """Convert to a dict suitable for PersonalityConfig validation."""
+        """Convert to a dict suitable for PersonalityConfig validation.
+
+        Returns:
+            Mapping matching the ``dict[str, Any]`` annotation.
+        """
         return self.model_dump()

@@ -263,6 +263,9 @@ async def _resolve_jwt_user(
     System users (CLI tokens) skip ``pwd_sig`` validation because
     their random password hash is never known to any caller.
     The JWT signature alone authenticates these tokens.
+
+    Returns:
+        The ``AuthenticatedUser`` value when present, ``None`` otherwise.
     """
     user_id = claims.sub
     db_user = await app_state.persistence.users.get(user_id)
@@ -388,7 +391,11 @@ async def _resolve_api_key_user(
     app_state: AppState,
     path: str,
 ) -> AuthenticatedUser | None:
-    """Validate an API key (revocation, expiry) and resolve its owner."""
+    """Validate an API key (revocation, expiry) and resolve its owner.
+
+    Returns:
+        The ``AuthenticatedUser`` value when present, ``None`` otherwise.
+    """
     if api_key.revoked:
         logger.warning(
             SECURITY_AUTH_FAILED,

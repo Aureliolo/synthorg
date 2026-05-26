@@ -30,7 +30,7 @@ from datetime import UTC, datetime
 from typing import Any, Final
 
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.mcp.errors import invalid_argument
+from synthorg.meta.mcp.errors import ArgumentValidationError
 
 _ARG_OFFSET = "offset"
 _ARG_LIMIT = "limit"
@@ -72,12 +72,12 @@ def require_arg[T](arguments: dict[str, Any], key: str, ty: type[T]) -> T:
         ArgumentValidationError: If missing, ``None``, or wrongly typed.
     """
     if key not in arguments or arguments[key] is None:
-        raise invalid_argument(key, ty.__name__)
+        raise ArgumentValidationError(key, ty.__name__)
     value = arguments[key]
     if ty is int and isinstance(value, bool):
-        raise invalid_argument(key, "int")
+        raise ArgumentValidationError(key, "int")
     if not isinstance(value, ty):
-        raise invalid_argument(key, ty.__name__)
+        raise ArgumentValidationError(key, ty.__name__)
     return value
 
 
@@ -101,7 +101,7 @@ def require_non_blank(arguments: dict[str, Any], key: str) -> str:
     """
     raw = arguments.get(key)
     if not isinstance(raw, str) or not raw.strip():
-        raise invalid_argument(key, _TY_NON_BLANK)
+        raise ArgumentValidationError(key, _TY_NON_BLANK)
     return raw.strip()
 
 
@@ -127,7 +127,7 @@ def require_non_blank_value(value: Any, arg_name: str) -> str:
             blank after stripping.
     """
     if not isinstance(value, str) or not value.strip():
-        raise invalid_argument(arg_name, _TY_NON_BLANK)
+        raise ArgumentValidationError(arg_name, _TY_NON_BLANK)
     return value.strip()
 
 
@@ -164,7 +164,7 @@ def get_optional_str(
     if raw in (None, ""):
         return None
     if not isinstance(raw, str) or not raw.strip():
-        raise invalid_argument(key, _TY_NON_BLANK)
+        raise ArgumentValidationError(key, _TY_NON_BLANK)
     return NotBlankStr(raw)
 
 
@@ -209,12 +209,12 @@ def require_dict(
     expected = _TY_DICT_OF_STR if value_type is str else _TY_DICT_OBJ
     raw = arguments.get(key)
     if not isinstance(raw, dict):
-        raise invalid_argument(key, expected)
+        raise ArgumentValidationError(key, expected)
     for k, v in raw.items():
         if not isinstance(k, str):
-            raise invalid_argument(key, expected)
+            raise ArgumentValidationError(key, expected)
         if value_type is not None and not isinstance(v, value_type):
-            raise invalid_argument(key, expected)
+            raise ArgumentValidationError(key, expected)
     if deep_copy:
         return copy.deepcopy(raw)
     return dict(raw)
@@ -245,10 +245,10 @@ def parse_str_sequence(
     if raw in (None, ""):
         return None
     if not isinstance(raw, (list, tuple)):
-        raise invalid_argument(key, _TY_STR_SEQ)
+        raise ArgumentValidationError(key, _TY_STR_SEQ)
     for item in raw:
         if not isinstance(item, str) or not item.strip():
-            raise invalid_argument(key, _TY_STR_SEQ)
+            raise ArgumentValidationError(key, _TY_STR_SEQ)
     return tuple(NotBlankStr(item) for item in raw)
 
 
@@ -258,6 +258,9 @@ def _now_utc() -> datetime:
     Wrapper around ``datetime.now(UTC)`` so tests can patch this single
     seam (the stdlib ``datetime`` class is immutable and cannot be
     patched directly).
+
+    Returns:
+        ``datetime`` instance.
     """
     return datetime.now(UTC)
 
@@ -267,15 +270,21 @@ def _parse_iso_datetime(raw: Any, arg_name: str) -> datetime:
 
     Shared by :func:`parse_time_window` for both ``since`` and ``until``
     so the parsing-and-tzinfo-check pair lives in one place.
+
+    Returns:
+        ``datetime`` instance.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
     """
     if not isinstance(raw, str) or not raw.strip():
-        raise invalid_argument(arg_name, _TY_ISO_DT)
+        raise ArgumentValidationError(arg_name, _TY_ISO_DT)
     try:
         parsed = datetime.fromisoformat(raw)
     except ValueError as exc:
-        raise invalid_argument(arg_name, _TY_ISO_DT) from exc
+        raise ArgumentValidationError(arg_name, _TY_ISO_DT) from exc
     if parsed.tzinfo is None:
-        raise invalid_argument(arg_name, _TY_TZ_AWARE)
+        raise ArgumentValidationError(arg_name, _TY_TZ_AWARE)
     return parsed
 
 
@@ -308,12 +317,12 @@ def parse_time_window(
     raw_until = arguments.get(_ARG_UNTIL)
     if raw_until in (None, ""):
         if until_required:
-            raise invalid_argument(_ARG_UNTIL, _TY_ISO_DT)
+            raise ArgumentValidationError(_ARG_UNTIL, _TY_ISO_DT)
         until = _now_utc()
     else:
         until = _parse_iso_datetime(raw_until, _ARG_UNTIL)
     if since >= until:
-        raise invalid_argument(_ARG_SINCE, _TY_WINDOW_ORDER)
+        raise ArgumentValidationError(_ARG_SINCE, _TY_WINDOW_ORDER)
     return since, until
 
 
@@ -384,21 +393,27 @@ def _coerce_bounded_int(
     The ``default`` is validated through the same gate so a caller
     passing ``default=0`` or ``default=True`` cannot smuggle an invalid
     value past the check when ``raw`` is missing.
+
+    Returns:
+        Resulting integer.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
     """
     if raw is None or raw == "":
         if isinstance(default, bool) or not isinstance(default, int):
-            raise invalid_argument(arg_name, expected)
+            raise ArgumentValidationError(arg_name, expected)
         if default < lower:
-            raise invalid_argument(arg_name, expected)
+            raise ArgumentValidationError(arg_name, expected)
         return default
     if isinstance(raw, bool):
-        raise invalid_argument(arg_name, expected)
+        raise ArgumentValidationError(arg_name, expected)
     try:
         value = int(raw)
     except (TypeError, ValueError) as exc:
-        raise invalid_argument(arg_name, expected) from exc
+        raise ArgumentValidationError(arg_name, expected) from exc
     if value < lower:
-        raise invalid_argument(arg_name, expected)
+        raise ArgumentValidationError(arg_name, expected)
     return value
 
 
@@ -412,6 +427,9 @@ def actor_id(actor: Any) -> str | None:
     audit attribution surface is not allowed to record blank
     identifiers. Centralised so every handler emits the same identifier
     shape into audit events and service calls.
+
+    Returns:
+        The ``str`` value when present, ``None`` otherwise.
     """
     if actor is None:
         return None
@@ -447,7 +465,7 @@ def require_actor_id(actor: Any) -> str:
     """
     identifier = actor_id(actor)
     if identifier is None:
-        raise invalid_argument(_ARG_ACTOR, _TY_AGENT)
+        raise ArgumentValidationError(_ARG_ACTOR, _TY_AGENT)
     return identifier
 
 

@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_PROVIDER_USAGE_ENRICHMENT_FAILED
 
@@ -14,7 +15,11 @@ logger = get_logger(__name__)
 
 
 def sse_error(msg: str) -> dict[str, object]:
-    """Build a PullProgressEvent-shaped error dict for SSE."""
+    """Build a PullProgressEvent-shaped error dict for SSE.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
     return {
         "status": msg,
         "progress_percent": None,
@@ -30,7 +35,11 @@ async def enrich_with_usage(
     app_state: AppState,
     name: str,
 ) -> ProviderHealthSummary:
-    """Enrich a health summary with token/cost data from CostTracker."""
+    """Enrich a health summary with token/cost data from CostTracker.
+
+    Returns:
+        ``ProviderHealthSummary`` instance.
+    """
     if not app_state.has_cost_tracker:
         return summary
     try:
@@ -46,9 +55,8 @@ async def enrich_with_usage(
                 "total_cost_24h": usage.total_cost,
             },
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_PROVIDER_USAGE_ENRICHMENT_FAILED,
             provider=name,

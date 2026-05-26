@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.meta.rules.service import CustomRulesService
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.errors import SelfImprovementTriggerError
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
@@ -75,6 +76,9 @@ def _custom_rules_service(app_state: Any) -> CustomRulesService:
     working on ``AppState`` instances constructed before the
     ``custom_rules_service`` slot was added; new bootstraps should
     wire the service up front to skip the fallback log entirely.
+
+    Returns:
+        ``CustomRulesService`` instance.
     """
     cached = getattr(app_state, "custom_rules_service", None)
     if cached is not None:
@@ -96,14 +100,18 @@ async def _meta_get_config(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_meta_get_config`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_meta_get_config"
     if not getattr(app_state, "has_self_improvement_service", False):
         return capability_gap(tool, _WHY_SELF_IMPROVEMENT)
     try:
         config_dump = app_state.self_improvement_service.get_config()
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -116,6 +124,11 @@ async def _meta_list_rules(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_meta_list_rules`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_meta_list_rules"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -130,9 +143,8 @@ async def _meta_list_rules(
         serialized = [
             CustomRuleResponse.from_definition(r).model_dump(mode="json") for r in page
         ]
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     pagination = PaginationMeta(total=total, offset=offset, limit=limit)
@@ -146,6 +158,11 @@ async def _meta_list_mcp_tools(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_meta_list_mcp_tools`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_meta_list_mcp_tools"
     try:
         # Deferred import breaks the handlers->server->handlers import
@@ -169,6 +186,11 @@ async def _meta_get_mcp_server_config(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_meta_get_mcp_server_config`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_meta_get_mcp_server_config"
     try:
         from synthorg.meta.mcp.server import get_server_config  # noqa: PLC0415
@@ -188,6 +210,11 @@ async def _meta_trigger_cycle(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Handle the ``synthorg_meta_trigger_cycle`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_meta_trigger_cycle"
     # Guardrail runs first so an unauthenticated caller never learns
     # whether the self-improvement service is installed: the wire
@@ -205,9 +232,8 @@ async def _meta_trigger_cycle(
     except SelfImprovementTriggerError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="unavailable")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     actor_str = actor_id(resolved_actor) or "mcp"

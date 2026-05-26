@@ -46,7 +46,11 @@ class EvaluationConfigVersionController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> Response[PaginatedResponse[SnapshotT]]:
-        """List version history for evaluation configuration."""
+        """List version history for evaluation configuration.
+
+        Returns:
+            ``Response[PaginatedResponse[SnapshotT]]`` instance.
+        """
         secret = state.app_state.cursor_secret
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         repo = state.app_state.persistence.evaluation_config_versions
@@ -89,7 +93,14 @@ class EvaluationConfigVersionController(Controller):
             ),
         ],
     ) -> Response[ApiResponse[SnapshotT]]:
-        """Get a specific evaluation config version snapshot."""
+        """Get a specific evaluation config version snapshot.
+
+        Returns:
+            ``Response[ApiResponse[SnapshotT]]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         repo = state.app_state.persistence.evaluation_config_versions
         version = await repo.get_version(_ENTITY_ID, version_num)
         if version is None:

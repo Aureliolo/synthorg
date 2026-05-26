@@ -52,7 +52,11 @@ class ExperimentsController(Controller):
         state: State,
         experiment: PathId,
     ) -> ApiResponse[tuple[ExperimentVariant, ...]]:
-        """List every registered variant for an experiment."""
+        """List every registered variant for an experiment.
+
+        Returns:
+            Result matching the declared return annotation.
+        """
         app_state: AppState = state.app_state
         variants = await app_state.experiment_service.list_variants(
             NotBlankStr(experiment),
@@ -73,7 +77,11 @@ class ExperimentsController(Controller):
         experiment: PathId,
         data: RegisterExperimentVariantRequest,
     ) -> ApiResponse[ExperimentVariant]:
-        """Register or replace a variant on an experiment."""
+        """Register or replace a variant on an experiment.
+
+        Returns:
+            ``ApiResponse[ExperimentVariant]`` instance.
+        """
         app_state: AppState = state.app_state
         record = await app_state.experiment_service.register_variant(
             experiment=NotBlankStr(experiment),
@@ -101,6 +109,9 @@ class ExperimentsController(Controller):
         On first call for ``(experiment, subject_id)`` the service
         computes the assignment and persists it; subsequent calls
         return the recorded assignment unchanged.
+
+        Returns:
+            ``ApiResponse[ExperimentAssignment]`` instance.
         """
         app_state: AppState = state.app_state
         assignment = await app_state.experiment_service.assign(
@@ -123,6 +134,9 @@ class ExperimentsController(Controller):
         :mod:`synthorg.api.cursor`); the cursor decodes to an internal
         offset so callers cannot forge a token that skips to an
         arbitrary page.
+
+        Returns:
+            ``PaginatedResponse[ExperimentAssignment]`` instance.
         """
         app_state: AppState = state.app_state
         offset = decode_cursor(cursor, secret=app_state.cursor_secret) if cursor else 0

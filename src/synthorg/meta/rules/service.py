@@ -69,6 +69,9 @@ class CustomRulesService:
         Raises:
             ValueError: If ``offset`` is negative, or ``limit`` is
                 provided and non-positive.
+
+        Returns:
+            Tuple of the declared element types.
         """
         if offset < 0:
             msg = f"offset must be >= 0, got {offset}"
@@ -86,11 +89,19 @@ class CustomRulesService:
         return tuple(all_rules[offset:end]), total
 
     async def get(self, rule_id: NotBlankStr) -> CustomRuleDefinition | None:
-        """Return a single rule by id, or ``None`` when missing."""
+        """Return a single rule by id, or ``None`` when missing.
+
+        Returns:
+            The ``CustomRuleDefinition`` value when present, ``None`` otherwise.
+        """
         return await self._repo.get(rule_id)
 
     async def create(self, definition: CustomRuleDefinition) -> CustomRuleDefinition:
-        """Persist a new rule and emit an audit log."""
+        """Persist a new rule and emit an audit log.
+
+        Returns:
+            ``CustomRuleDefinition`` instance.
+        """
         await self._repo.save(definition)
         logger.info(
             META_CUSTOM_RULE_CREATED,
@@ -117,6 +128,9 @@ class CustomRulesService:
         Raises:
             CustomRuleNotFoundError: If the target id does not exist.
             ValueError: If *updates* tries to set an immutable field.
+
+        Returns:
+            ``CustomRuleDefinition`` instance.
         """
         forbidden = _IMMUTABLE_RULE_FIELDS.intersection(updates)
         if forbidden:
@@ -180,6 +194,9 @@ class CustomRulesService:
 
         Raises:
             CustomRuleNotFoundError: If no rule with *rule_id* exists.
+
+        Returns:
+            ``CustomRuleDefinition`` instance.
         """
         existing = await self._repo.get(rule_id)
         if existing is None:

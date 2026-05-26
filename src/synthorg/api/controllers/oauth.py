@@ -88,6 +88,12 @@ class OAuthController(Controller):
         """Initiate an OAuth authorization code flow.
 
         Returns the authorization URL for the user to visit.
+
+        Returns:
+            ``ApiResponse[dict[str, str]]`` instance.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
         """
         # ``ConnectionNotFoundError`` propagates to the central
         # handler with its class-level 404 + ``CONNECTION_NOT_FOUND``
@@ -179,6 +185,12 @@ class OAuthController(Controller):
         external OAuth provider cannot carry a session cookie,
         but the state token is validated inside the handler and
         acts as CSRF protection.
+
+        Returns:
+            ``ApiResponse[dict[str, Any]]`` instance.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
         """
         from synthorg.integrations.oauth.callback_handler import (  # noqa: PLC0415
             handle_oauth_callback,
@@ -221,7 +233,11 @@ class OAuthController(Controller):
         state: State,
         connection_name: PathName,
     ) -> ApiResponse[dict[str, Any]]:
-        """Check the OAuth token status for a connection."""
+        """Check the OAuth token status for a connection.
+
+        Returns:
+            ``ApiResponse[dict[str, Any]]`` instance.
+        """
         # ``ConnectionNotFoundError`` propagates with its class-level
         # 404 + ``CONNECTION_NOT_FOUND`` envelope.
         catalog = state["app_state"].connection_catalog

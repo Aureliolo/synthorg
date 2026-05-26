@@ -40,6 +40,9 @@ def _check_time_window_ordering(since: str | None, until: str | None) -> None:
     values (already validated as timezone-aware ISO 8601).  Returns
     ``None`` on success; callers should ``return self`` after invoking
     this helper from their ``model_validator(mode="after")``.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     if since is None or until is None:
         return
@@ -150,7 +153,11 @@ class MetricsGetHistoryArgs(_ArgsBase):
 
     @model_validator(mode="after")
     def _since_before_until(self) -> Self:
-        """Reject reversed time windows (``since > until``)."""
+        """Reject reversed time windows (``since > until``).
+
+        Returns:
+            ``Self`` instance.
+        """
         _check_time_window_ordering(self.since, self.until)
         return self
 
@@ -198,7 +205,11 @@ class CoordinationMetricsListArgs(PaginationFields):
 
     @model_validator(mode="after")
     def _since_before_until(self) -> Self:
-        """Reject reversed time windows (``since > until``)."""
+        """Reject reversed time windows (``since > until``).
+
+        Returns:
+            ``Self`` instance.
+        """
         _check_time_window_ordering(self.since, self.until)
         return self
 

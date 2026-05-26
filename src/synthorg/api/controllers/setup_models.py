@@ -222,7 +222,11 @@ class SetupCompanyResponse(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def agent_count(self) -> int:
-        """Number of agents auto-created from template."""
+        """Number of agents auto-created from template.
+
+        Returns:
+            Resulting integer.
+        """
         return len(self.agents)
 
 
@@ -273,7 +277,11 @@ class SetupAgentRequest(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _validate_preset_exists(cls, values: Any) -> Any:
-        """Normalize and validate the personality preset before construction."""
+        """Normalize and validate the personality preset before construction.
+
+        Returns:
+            ``Any`` instance.
+        """
         if not isinstance(values, dict):
             return values
         raw = values.get("personality_preset", "pragmatic_builder")
@@ -345,7 +353,11 @@ class UpdateAgentPersonalityRequest(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _validate_preset_exists(cls, values: Any) -> Any:
-        """Normalize and validate the personality preset."""
+        """Normalize and validate the personality preset.
+
+        Returns:
+            ``Any`` instance.
+        """
         if not isinstance(values, dict):
             return values
         raw = values.get("personality_preset")
@@ -429,6 +441,14 @@ class SetupCompleteResponse(BaseModel):
 
     @model_validator(mode="after")
     def _validate_embedder_state_consistency(self) -> SetupCompleteResponse:
+        """Validate embedder state consistency.
+
+        Returns:
+            ``SetupCompleteResponse`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.embedder_selected and self.embedder_failure_reason is not None:
             msg = "embedder_failure_reason must be None when embedder_selected=True"
             raise ValueError(msg)

@@ -11,6 +11,7 @@ re-entering Litestar lifespan does not churn long-lived clients.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.notifications.factory import build_notification_dispatcher
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -45,6 +46,10 @@ async def _validate_approval_urgency_invariant(app_state: AppState) -> None:
     Resolver failures (settings backend down) are logged and the
     invariant check is skipped -- other bridge-config paths handle the
     outage independently and the built-in defaults stay safe.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
+        ValueError: Raised on the corresponding failure path.
     """
     try:
         critical = await app_state.config_resolver.get_float(
@@ -55,9 +60,8 @@ async def _validate_approval_urgency_invariant(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             error_type=type(exc).__name__,
@@ -94,6 +98,9 @@ async def _apply_sandbox_image_cache(app_state: AppState) -> None:
     falls through to the documented constant; whitespace-only resolver
     results are normalised to ``None`` in the caller (the setter also
     normalises, but stripping here makes the intent explicit).
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     from synthorg.tools.sandbox._image_resolution import (  # noqa: PLC0415
         set_resolved_sandbox_image,
@@ -110,9 +117,8 @@ async def _apply_sandbox_image_cache(app_state: AppState) -> None:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             setter(None)
             logger.warning(
                 API_APP_STARTUP,
@@ -138,15 +144,17 @@ async def _apply_notification_dispatcher_config(
     a rebuild with ``bridge_config=None`` (built-in default timeouts) so
     the live dispatcher still picks up the ``config_resolver`` and the
     runtime kill-switch stays operational.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     notif_bridge: NotificationsBridgeConfig | None
     try:
         notif_bridge = await app_state.config_resolver.get_notifications_bridge_config()
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             setting="notifications.bridge_config",
@@ -166,9 +174,8 @@ async def _apply_notification_dispatcher_config(
         return
     try:
         await old_dispatcher.aclose()
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             event_context="old_notification_dispatcher_aclose",
@@ -195,6 +202,9 @@ async def _apply_bridge_snapshot[T](
     No-op when no resolver is wired (dev/test rigs that bypass
     ``create_app``); ``getter`` is only invoked after that guard so
     binding it to ``app_state.config_resolver`` stays safe.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     if not app_state.has_config_resolver:
         return
@@ -202,9 +212,8 @@ async def _apply_bridge_snapshot[T](
         snapshot = await getter()
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_BRIDGE_CONFIG_RESOLVE_FAILED,
             bridge=bridge,
@@ -286,7 +295,11 @@ async def _apply_memory_bridge_config_snapshot(app_state: AppState) -> None:
 
 
 async def _apply_ws_ticket_settings(app_state: AppState) -> None:
-    """Apply the ticket-store pending-per-user limit from settings."""
+    """Apply the ticket-store pending-per-user limit from settings.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
+    """
     try:
         app_state.ticket_store.set_max_pending_per_user(
             await app_state.config_resolver.get_int(
@@ -296,9 +309,8 @@ async def _apply_ws_ticket_settings(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             setting="api.ws_ticket_max_pending_per_user",
@@ -308,7 +320,11 @@ async def _apply_ws_ticket_settings(app_state: AppState) -> None:
 
 
 async def _apply_ws_auth_timeout(app_state: AppState) -> None:
-    """Apply the WebSocket auth-timeout seconds from settings."""
+    """Apply the WebSocket auth-timeout seconds from settings.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
+    """
     try:
         app_state.set_ws_auth_timeout_seconds(
             await app_state.config_resolver.get_float(
@@ -318,9 +334,8 @@ async def _apply_ws_auth_timeout(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             setting="api.ws_auth_timeout_seconds",
@@ -337,6 +352,9 @@ async def _apply_ws_dos_settings(app_state: AppState) -> None:
     the other two from being applied. Each falls back to its built-in
     default on failure with a structured warning so ops can see which
     knob failed.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     for setting_key, setter_name in (
         ("ws_frame_timeout_seconds", "set_ws_frame_timeout_seconds"),
@@ -351,9 +369,8 @@ async def _apply_ws_dos_settings(app_state: AppState) -> None:
             getattr(app_state, setter_name)(value)
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
                 setting=setting_key,
@@ -369,6 +386,9 @@ async def _apply_auth_token_bytes(app_state: AppState) -> None:
     so a prior successful resolve that left the cache at a non-default
     value can't persist past this branch -- the operator-facing log
     must match process state.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     from synthorg.api.auth.token_size import (  # noqa: PLC0415
         _DEFAULT_AUTH_TOKEN_BYTES,
@@ -384,9 +404,8 @@ async def _apply_auth_token_bytes(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         set_auth_token_bytes(_DEFAULT_AUTH_TOKEN_BYTES)
         logger.warning(
             API_APP_STARTUP,
@@ -404,6 +423,9 @@ async def _apply_timeout_enforcement(app_state: AppState) -> None:
     misconfigured deployment whose resolver had already returned
     ``False`` on a prior request can't keep enforcement off after
     this branch fires.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     from synthorg.engine.timeout_enforcement import (  # noqa: PLC0415
         set_timeout_enforcement_enabled,
@@ -418,9 +440,8 @@ async def _apply_timeout_enforcement(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         set_timeout_enforcement_enabled(value=True)
         logger.warning(
             API_APP_STARTUP,
@@ -453,7 +474,11 @@ def _wire_resolver_dependents(app_state: AppState) -> None:
 
 
 async def _apply_audit_chain_signing_timeout(app_state: AppState) -> None:
-    """Apply the audit-chain signing timeout to every live sink."""
+    """Apply the audit-chain signing timeout to every live sink.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
+    """
     try:
         signing_timeout = await app_state.config_resolver.get_float(
             SettingNamespace.OBSERVABILITY.value,
@@ -461,9 +486,8 @@ async def _apply_audit_chain_signing_timeout(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             setting="observability.audit_chain_signing_timeout_seconds",
@@ -484,9 +508,8 @@ async def _apply_audit_chain_signing_timeout(app_state: AppState) -> None:
             continue
         try:
             handler.set_signing_timeout_seconds(signing_timeout)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_APP_STARTUP,
                 setting="observability.audit_chain_signing_timeout_seconds",
@@ -544,6 +567,9 @@ async def _apply_security_timeout_interval(
     fail-safe-on-outage rule from the kill-switch idiom applies in
     spirit: leaving the scheduler running with the bootstrap default
     is safer than stopping it on a settings-backend hiccup.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     if scheduler is None or not app_state.has_config_resolver:
         return
@@ -558,9 +584,8 @@ async def _apply_security_timeout_interval(
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             setting="security.timeout_check_interval_seconds",

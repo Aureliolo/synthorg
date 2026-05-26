@@ -56,6 +56,9 @@ class PrincipleOverridePromptMutator:
         Raises:
             RollbackMutationDeniedError: If the underlying write fails
                 or the inputs are not non-blank strings.
+            MemoryError: Raised on the corresponding failure path.
+            RecursionError: Raised on the corresponding failure path.
+            CancelledError: Raised on the corresponding failure path.
         """
         # ``NotBlankStr`` is a Pydantic ``Annotated`` type: constructing
         # it directly does not run the AfterValidator, so we check for

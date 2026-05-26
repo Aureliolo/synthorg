@@ -21,8 +21,9 @@ from uuid import UUID
 
 from pydantic import TypeAdapter, ValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
+from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -63,9 +64,13 @@ _TY_POSITIVE_INT_CAP = f"positive int <= {_MAX_SAMPLE_COUNT}"
 
 
 def _reject_oversized_sample_count(value: int) -> None:
-    """Raise ``ArgumentValidationError`` when ``value`` exceeds the cap."""
+    """Raise ``ArgumentValidationError`` when ``value`` exceeds the cap.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     if value > _MAX_SAMPLE_COUNT:
-        raise invalid_argument(_ARG_SAMPLE_COUNT, _TY_POSITIVE_INT_CAP)
+        raise ArgumentValidationError(_ARG_SAMPLE_COUNT, _TY_POSITIVE_INT_CAP)
 
 
 _ARG_TEMPLATE = "template"
@@ -84,10 +89,17 @@ def _parse_required_str_sequence(
     arguments: dict[str, Any],
     key: str,
 ) -> tuple[str, ...]:
-    """Parse a required ``Sequence[str]`` argument."""
+    """Parse a required ``Sequence[str]`` argument.
+
+    Returns:
+        Tuple of the declared element types.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     result = parse_str_sequence(arguments, key)
     if result is None or len(result) == 0:
-        raise invalid_argument(key, _TY_STR_SEQ)
+        raise ArgumentValidationError(key, _TY_STR_SEQ)
     return result
 
 
@@ -97,19 +109,24 @@ def _parse_positive_int(
     *,
     default: int,
 ) -> int:
+    """Return parse positive int.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(key)
     if raw in (None, ""):
         return default
     if isinstance(raw, bool):
-        raise invalid_argument(key, _TY_POS_INT)
+        raise ArgumentValidationError(key, _TY_POS_INT)
     if not isinstance(raw, (int, str)):
-        raise invalid_argument(key, _TY_POS_INT)
+        raise ArgumentValidationError(key, _TY_POS_INT)
     try:
         value = int(raw)
     except (TypeError, ValueError) as exc:
-        raise invalid_argument(key, _TY_POS_INT) from exc
+        raise ArgumentValidationError(key, _TY_POS_INT) from exc
     if value < 1:
-        raise invalid_argument(key, _TY_POS_INT)
+        raise ArgumentValidationError(key, _TY_POS_INT)
     return value
 
 
@@ -117,25 +134,35 @@ def _parse_str_dict(
     arguments: dict[str, Any],
     key: str,
 ) -> dict[str, str] | None:
+    """Return parse str dict.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(key)
     if raw in (None, ""):
         return None
     if not isinstance(raw, dict):
-        raise invalid_argument(key, "mapping of str -> str")
+        raise ArgumentValidationError(key, "mapping of str -> str")
     out: dict[str, str] = {}
     for k, v in raw.items():
         if not isinstance(k, str) or not isinstance(v, str):
-            raise invalid_argument(key, "mapping of str -> str")
+            raise ArgumentValidationError(key, "mapping of str -> str")
         out[k] = v
     return out
 
 
 def _parse_report_id(arguments: dict[str, Any]) -> UUID:
+    """Return parse report id.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = require_arg(arguments, _ARG_REPORT_ID, str)
     try:
         return UUID(raw)
     except ValueError as exc:
-        raise invalid_argument(_ARG_REPORT_ID, _TY_REPORT_ID) from exc
+        raise ArgumentValidationError(_ARG_REPORT_ID, _TY_REPORT_ID) from exc
 
 
 # ── Analytics handlers ────────────────────────────────────────────────
@@ -147,6 +174,7 @@ async def _analytics_overview(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return analytics overview."""
     try:
         since, until = parse_time_window(arguments, until_required=False)
         result = await app_state.analytics_service.get_overview(
@@ -162,6 +190,7 @@ async def _analytics_overview(
         log_handler_argument_invalid("synthorg_analytics_get_overview", exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_analytics_get_overview", exc)
         return err(exc)
 
@@ -172,6 +201,7 @@ async def _analytics_trends(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return analytics trends."""
     try:
         since, until = parse_time_window(arguments)
         metric_names = parse_str_sequence(arguments, _ARG_METRIC_NAMES)
@@ -189,6 +219,7 @@ async def _analytics_trends(
         log_handler_argument_invalid("synthorg_analytics_get_trends", exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_analytics_get_trends", exc)
         return err(exc)
 
@@ -199,6 +230,7 @@ async def _analytics_forecast(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return analytics forecast."""
     try:
         since, until = parse_time_window(arguments)
         horizon_days = _parse_positive_int(
@@ -220,6 +252,7 @@ async def _analytics_forecast(
         log_handler_argument_invalid("synthorg_analytics_get_forecast", exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_analytics_get_forecast", exc)
         return err(exc)
 
@@ -230,6 +263,7 @@ async def _metrics_current(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return metrics current."""
     try:
         since, until = parse_time_window(arguments, until_required=False)
         metric_names = parse_str_sequence(arguments, _ARG_METRIC_NAMES)
@@ -247,6 +281,7 @@ async def _metrics_current(
         log_handler_argument_invalid("synthorg_metrics_get_current", exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_metrics_get_current", exc)
         return err(exc)
 
@@ -257,6 +292,7 @@ async def _metrics_history(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return metrics history."""
     try:
         since, until = parse_time_window(arguments)
         metric_names = _parse_required_str_sequence(arguments, _ARG_METRIC_NAMES)
@@ -284,6 +320,7 @@ async def _metrics_history(
         log_handler_argument_invalid("synthorg_metrics_get_history", exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_metrics_get_history", exc)
         return err(exc)
 
@@ -297,6 +334,7 @@ async def _reports_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return reports list."""
     try:
         offset, limit = coerce_pagination(arguments)
         reports, total = await app_state.reports_service.list_reports(
@@ -319,6 +357,7 @@ async def _reports_list(
         log_handler_argument_invalid("synthorg_reports_list", exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_reports_list", exc)
         return err(exc)
 
@@ -329,6 +368,7 @@ async def _reports_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return reports get."""
     try:
         report_id = _parse_report_id(arguments)
         report = await app_state.reports_service.get_report(report_id)
@@ -355,6 +395,7 @@ async def _reports_get(
         log_handler_argument_invalid("synthorg_reports_get", exc)
         return err(exc)
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_reports_get", exc)
         return err(exc)
 
@@ -365,12 +406,17 @@ async def _reports_generate(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return reports generate.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     try:
         template_raw = require_arg(arguments, _ARG_TEMPLATE, str)
         try:
             template = _NOT_BLANK_STR_ADAPTER.validate_python(template_raw)
         except ValidationError as exc:
-            raise invalid_argument(_ARG_TEMPLATE, _TY_NON_BLANK) from exc
+            raise ArgumentValidationError(_ARG_TEMPLATE, _TY_NON_BLANK) from exc
         options = _parse_str_dict(arguments, _ARG_OPTIONS)
         report = await app_state.reports_service.generate_report(
             template=template,
@@ -389,6 +435,7 @@ async def _reports_generate(
         log_handler_invoke_failed("synthorg_reports_generate", exc)
         return err(exc, domain_code="invalid_argument")
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed("synthorg_reports_generate", exc)
         return err(exc)
 

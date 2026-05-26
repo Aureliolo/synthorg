@@ -128,12 +128,20 @@ class WsTicketStore:
 
     @property
     def ttl_seconds(self) -> float:
-        """Configured ticket lifetime."""
+        """Configured ticket lifetime.
+
+        Returns:
+            Resulting numeric value.
+        """
         return self._ttl
 
     @property
     def max_pending_per_user(self) -> int:
-        """Current per-user pending-ticket cap."""
+        """Current per-user pending-ticket cap.
+
+        Returns:
+            Resulting integer.
+        """
         return self._max_pending
 
     def set_max_pending_per_user(self, value: int) -> None:
@@ -141,6 +149,9 @@ class WsTicketStore:
 
         Called from the API startup hook after the settings resolver
         produces the current value for ``api.ws_ticket_max_pending_per_user``.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if value < 1:
             msg = f"max_pending_per_user must be at least 1, got {value}"
@@ -155,6 +166,9 @@ class WsTicketStore:
 
         Returns:
             URL-safe random token string.
+
+        Raises:
+            TicketLimitExceededError: Raised on the corresponding failure path.
         """
         with self._lock:
             now = self._clock.monotonic()

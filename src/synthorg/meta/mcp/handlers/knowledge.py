@@ -7,10 +7,10 @@ chunk text is wrapped via ``wrap_untrusted`` because corpus content may
 carry injected instructions.
 """
 
-import builtins
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import SourceType
 from synthorg.core.types import NotBlankStr
@@ -20,7 +20,7 @@ from synthorg.knowledge.constants import (
     KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
 )
 from synthorg.knowledge.errors import KnowledgeSourceNotFoundError
-from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
+from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -67,6 +67,11 @@ _TY_OPT_STR = "string or null"
 
 
 def _require_service(app_state: Any) -> Any:
+    """Return the service or raise when unavailable.
+
+    Raises:
+        ServiceUnavailableError: Raised on the corresponding failure path.
+    """
     svc = getattr(app_state, "knowledge_service", None)
     if svc is None:
         msg = "knowledge service is not wired on app_state in this deployment"
@@ -75,49 +80,78 @@ def _require_service(app_state: Any) -> Any:
 
 
 def _opt_project_id(arguments: dict[str, Any]) -> NotBlankStr | None:
+    """Return opt project id.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(_ARG_PROJECT_ID)
     if raw is None:
         return None
     if not isinstance(raw, str) or not raw.strip():
-        raise invalid_argument(_ARG_PROJECT_ID, _TY_OPT_STR)
+        raise ArgumentValidationError(_ARG_PROJECT_ID, _TY_OPT_STR)
     return NotBlankStr(raw)
 
 
 def _source_type(arguments: dict[str, Any]) -> SourceType:
+    """Return source type.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = require_arg(arguments, _ARG_SOURCE_TYPE, str)
     try:
         return SourceType(raw)
     except ValueError as exc:
-        raise invalid_argument(_ARG_SOURCE_TYPE, _TY_SOURCE_TYPE) from exc
+        raise ArgumentValidationError(_ARG_SOURCE_TYPE, _TY_SOURCE_TYPE) from exc
 
 
 def _positive_int(arguments: dict[str, Any], key: str, *, default: int) -> int:
+    """Return positive int.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(key)
     if raw in (None, ""):
         return default
     if not isinstance(raw, int) or isinstance(raw, bool) or raw < 1:
-        raise invalid_argument(key, _TY_POS_INT)
+        raise ArgumentValidationError(key, _TY_POS_INT)
     return raw
 
 
 def _nonneg_int(arguments: dict[str, Any], key: str, *, default: int) -> int:
+    """Return nonneg int.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(key)
     if raw in (None, ""):
         return default
     if not isinstance(raw, int) or isinstance(raw, bool) or raw < 0:
-        raise invalid_argument(key, _TY_NONNEG_INT)
+        raise ArgumentValidationError(key, _TY_NONNEG_INT)
     return raw
 
 
 def _flag(arguments: dict[str, Any], key: str) -> bool:
+    """Return flag.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(key, False)
     if not isinstance(raw, bool):
-        raise invalid_argument(key, _TY_BOOL)
+        raise ArgumentValidationError(key, _TY_BOOL)
     return raw
 
 
 def _hit_dict(hit: KnowledgeHit) -> dict[str, Any]:
-    """Serialise a hit, wrapping the untrusted chunk text."""
+    """Serialise a hit, wrapping the untrusted chunk text.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
     return {
         "chunk_text": wrap_untrusted(TAG_MEMORY_ENTRY, hit.chunk_text),
         "relevance_score": hit.relevance_score,
@@ -131,6 +165,7 @@ async def _knowledge_search(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return knowledge search."""
     try:
         svc = _require_service(app_state)
         project_id = _opt_project_id(arguments)
@@ -144,9 +179,8 @@ async def _knowledge_search(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_SEARCH, exc)
         return err(exc)
-    except builtins.MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_SEARCH, exc)
         return err(exc)
 
@@ -157,6 +191,7 @@ async def _knowledge_ingest(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return knowledge ingest."""
     try:
         require_admin_guardrails(arguments, actor)
         svc = _require_service(app_state)
@@ -175,9 +210,8 @@ async def _knowledge_ingest(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_INGEST, exc)
         return err(exc)
-    except builtins.MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_INGEST, exc)
         return err(exc)
 
@@ -188,6 +222,7 @@ async def _knowledge_reindex(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return knowledge reindex."""
     try:
         require_admin_guardrails(arguments, actor)
         svc = _require_service(app_state)
@@ -201,9 +236,8 @@ async def _knowledge_reindex(
     except KnowledgeSourceNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_REINDEX, exc)
         return err(exc)
-    except builtins.MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_REINDEX, exc)
         return err(exc)
 
@@ -214,6 +248,7 @@ async def _knowledge_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return knowledge list."""
     try:
         svc = _require_service(app_state)
         project_id = _opt_project_id(arguments)
@@ -235,9 +270,8 @@ async def _knowledge_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_LIST, exc)
         return err(exc)
-    except builtins.MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_LIST, exc)
         return err(exc)
 
@@ -248,6 +282,7 @@ async def _knowledge_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return knowledge get."""
     try:
         svc = _require_service(app_state)
         source_id = NotBlankStr(require_arg(arguments, _ARG_SOURCE_ID, str))
@@ -260,9 +295,8 @@ async def _knowledge_get(
     except KnowledgeSourceNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_GET, exc)
         return err(exc)
-    except builtins.MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_GET, exc)
         return err(exc)
 
@@ -273,6 +307,7 @@ async def _knowledge_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return knowledge delete."""
     try:
         require_admin_guardrails(arguments, actor)
         svc = _require_service(app_state)
@@ -286,9 +321,8 @@ async def _knowledge_delete(
     except KnowledgeSourceNotFoundError as exc:
         log_handler_invoke_failed(_TOOL_DELETE, exc)
         return err(exc)
-    except builtins.MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_DELETE, exc)
         return err(exc)
 

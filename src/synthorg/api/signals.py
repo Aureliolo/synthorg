@@ -109,7 +109,11 @@ def _make_handler(
     sig: signal.Signals,
     app_state: AppState,
 ) -> Callable[[], None]:
-    """Bind ``sig`` + ``app_state`` into a zero-arg handler closure."""
+    """Bind ``sig`` + ``app_state`` into a zero-arg handler closure.
+
+    Returns:
+        ``Callable[[], None]`` instance.
+    """
 
     def handler() -> None:
         _on_signal(sig, app_state)

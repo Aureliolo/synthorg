@@ -128,7 +128,11 @@ class CharterDraft(BaseModel):
 
     @model_validator(mode="after")
     def _validate_binding(self) -> Self:
-        """Enforce the existing-vs-new project XOR."""
+        """Enforce the existing-vs-new project XOR.
+
+        Returns:
+            ``Self`` instance.
+        """
         _validate_project_binding(self.project_id, self.proposed_project_name)
         return self
 
@@ -157,7 +161,14 @@ class InterviewDecision(BaseModel):
 
     @model_validator(mode="after")
     def _validate_exclusive_branch(self) -> Self:
-        """Enforce the elicit-XOR-draft invariant."""
+        """Enforce the elicit-XOR-draft invariant.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.needs_more:
             if self.next_question is None:
                 msg = "next_question is required when needs_more is True"
@@ -231,13 +242,24 @@ class ProjectCharter(BaseModel):
 
     @model_validator(mode="after")
     def _validate_binding(self) -> Self:
-        """Enforce the existing-vs-new project XOR."""
+        """Enforce the existing-vs-new project XOR.
+
+        Returns:
+            ``Self`` instance.
+        """
         _validate_project_binding(self.project_id, self.proposed_project_name)
         return self
 
     @model_validator(mode="after")
     def _validate_approval_coupling(self) -> Self:
-        """Approval provenance is populated iff the charter is APPROVED."""
+        """Approval provenance is populated iff the charter is APPROVED.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         approved = self.status is CharterStatus.APPROVED
         provenance = (
             self.approved_at,
@@ -324,7 +346,14 @@ class InterviewTurnResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_status_payload(self) -> Self:
-        """Enforce branch invariants between ``status`` and payload."""
+        """Enforce branch invariants between ``status`` and payload.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.status == "needs_more":
             if self.next_question is None:
                 msg = "next_question is required when status is 'needs_more'"

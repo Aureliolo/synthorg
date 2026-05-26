@@ -912,12 +912,12 @@ class SQLiteDecisionRepository:
         produce garbage data.
 
         Returns:
-            Result of type ``DecisionRecord``.
+            The reconstructed ``DecisionRecord``.
 
         Raises:
             QueryError: If row deserialization or validation fails.
             KeyError: If a required dictionary key is missing.
-        """
+        """  # noqa: DOC501 -- TypeError is caught locally and surfaces as QueryError
         try:
             try:
                 # Explicit reads for every required column.  Any

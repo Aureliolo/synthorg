@@ -56,6 +56,12 @@ class FineTuneExecutionConfig(_ArgsBase):
         :class:`synthorg.memory.fine_tune_plan.FineTuneExecutionConfig`
         so the wire boundary catches the bad shape at parse time
         instead of relying on the handler-side re-validation.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if self.backend == "docker" and self.image is None:
             msg = "image is required when backend='docker'"

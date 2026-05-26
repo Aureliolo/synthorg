@@ -246,7 +246,11 @@ def _validate_team_model(team_dict: dict[str, Any]) -> Team:
 
 
 def _team_to_response(team_dict: dict[str, Any]) -> TeamResponse:
-    """Convert a team dict to a TeamResponse."""
+    """Convert a team dict to a TeamResponse.
+
+    Returns:
+        ``TeamResponse`` instance.
+    """
     return TeamResponse(
         name=team_dict["name"],
         lead=team_dict["lead"],

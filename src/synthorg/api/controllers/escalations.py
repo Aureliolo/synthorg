@@ -90,7 +90,11 @@ class CancelEscalationRequest(BaseModel):
 
 
 def _to_response(escalation: Escalation) -> EscalationResponse:
-    """Wrap an :class:`Escalation` in the API response envelope."""
+    """Wrap an :class:`Escalation` in the API response envelope.
+
+    Returns:
+        ``EscalationResponse`` instance.
+    """
     return EscalationResponse(
         escalation=escalation,
         conflict_id=escalation.conflict.id,
@@ -108,6 +112,9 @@ def _operator_id() -> str:
     derivation so persisted escalation decisions are unchanged. An
     unbound context surfaces as :class:`ActorContextMissingError`
     (500): the middleware binds before any controller runs.
+
+    Returns:
+        Resulting string.
     """
     actor = require_actor()
     return f"human:{actor.actor_id}"
@@ -140,7 +147,14 @@ class EscalationsController(Controller):
             ),
         ] = EscalationStatus.PENDING,
     ) -> PaginatedResponse[EscalationResponse]:
-        """Page over escalations filtered by ``status`` (default PENDING)."""
+        """Page over escalations filtered by ``status`` (default PENDING).
+
+        Returns:
+            ``PaginatedResponse[EscalationResponse]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         store = app_state.escalation_store
         if store is None:
@@ -181,7 +195,14 @@ class EscalationsController(Controller):
         state: State,
         escalation_id: PathId,
     ) -> ApiResponse[EscalationResponse]:
-        """Return a single escalation by ID."""
+        """Return a single escalation by ID.
+
+        Returns:
+            ``ApiResponse[EscalationResponse]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         store = app_state.escalation_store
         if store is None:
@@ -228,6 +249,9 @@ class EscalationsController(Controller):
                 or cancelled.
             ValidationError: the decision shape is not accepted by
                 the server's configured decision strategy.
+
+        Returns:
+            ``ApiResponse[EscalationResponse]`` instance.
         """
         app_state: AppState = state.app_state
         store = app_state.escalation_store
@@ -347,6 +371,13 @@ class EscalationsController(Controller):
         The awaiting resolver coroutine wakes with a ``CancelledError``
         and returns an ``ESCALATED_TO_HUMAN`` resolution marked as
         cancelled.
+
+        Returns:
+            ``ApiResponse[EscalationResponse]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+            ConflictError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
         store = app_state.escalation_store

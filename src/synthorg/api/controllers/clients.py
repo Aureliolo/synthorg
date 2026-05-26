@@ -1,5 +1,6 @@
 """Client simulation CRUD endpoints at /clients."""
 
+import hashlib
 from datetime import UTC, datetime
 from typing import Any, Final
 
@@ -19,6 +20,7 @@ from synthorg.client.ai_client import AIClient
 from synthorg.client.feedback.scored import ScoredFeedback
 from synthorg.client.generators.procedural import ProceduralGenerator
 from synthorg.client.models import ClientProfile
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError, NotFoundError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -121,7 +123,11 @@ def _score_from_feedback(
     *,
     accepted: bool,
 ) -> float:
-    """Derive a single 0.0-1.0 score from a feedback record."""
+    """Derive a single 0.0-1.0 score from a feedback record.
+
+    Returns:
+        Resulting numeric value.
+    """
     if scores:
         values = tuple(scores.values())
         if values:
@@ -136,20 +142,23 @@ async def _resolve_client_bridge_config(app_state: AppState) -> ClientBridgeConf
 
     * the resolver is not yet wired (early bootstrap before the
       settings service comes up); and
-    * the resolver is wired but the call raises (transient settings
-      outage, malformed stored value, etc.).
+    * the resolver is wired but the call raises a non-critical error
+      (transient settings outage, malformed stored value, etc.);
+      interpreter-critical errors propagate via ``reraise_critical``.
 
     The defaults reproduce historical behaviour, so client CRUD stays
     available rather than 500-ing when only the operator-tunable
     overrides happen to be unreachable.
+
+    Returns:
+        ``ClientBridgeConfig`` instance.
     """
     if not app_state.has_config_resolver:
         return ClientBridgeConfig()
     try:
         return await app_state.config_resolver.get_client_bridge_config()
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_BRIDGE_CONFIG_RESOLVE_FAILED,
             bridge="client",
@@ -169,11 +178,24 @@ def _build_default_client(
     back to ``ClientBridgeConfig()`` whose defaults match the
     historical hardcoded values (passing_score=0.5,
     strictness_multiplier=2.0, strictness_floor=0.1).
+
+    Returns:
+        ``AIClient`` instance.
     """
     cfg = config if config is not None else ClientBridgeConfig()
     return AIClient(
         profile=profile,
-        generator=ProceduralGenerator(seed=abs(hash(profile.client_id)) & 0xFFFF),
+        generator=ProceduralGenerator(
+            # Python's built-in ``hash`` is salted per process, so a
+            # client's simulation would drift across restarts. A stable
+            # digest keeps the seed deterministic for a given client_id.
+            seed=int.from_bytes(
+                hashlib.blake2s(
+                    profile.client_id.encode("utf-8"), digest_size=8
+                ).digest(),
+                byteorder="big",
+            ),
+        ),
         feedback=ScoredFeedback(
             client_id=profile.client_id,
             passing_score=cfg.scored_feedback_passing_score,
@@ -217,7 +239,11 @@ class ClientController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[ClientProfile]:
-        """List all configured clients (paginated)."""
+        """List all configured clients (paginated).
+
+        Returns:
+            ``PaginatedResponse[ClientProfile]`` instance.
+        """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
         profiles = await sim_state.pool.list_profiles()
@@ -239,6 +265,9 @@ class ClientController(Controller):
 
         Raises:
             NotFoundError: If the client is not known.
+
+        Returns:
+            ``ApiResponse[ClientProfile]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
@@ -272,6 +301,9 @@ class ClientController(Controller):
 
         Raises:
             ConflictError: If the client id already exists.
+
+        Returns:
+            ``ApiResponse[ClientProfile]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
@@ -309,6 +341,9 @@ class ClientController(Controller):
 
         Raises:
             NotFoundError: If the client is not known.
+
+        Returns:
+            ``ApiResponse[ClientProfile]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
@@ -379,6 +414,9 @@ class ClientController(Controller):
 
         Raises:
             NotFoundError: If the client is not known.
+
+        Returns:
+            ``ApiResponse[SatisfactionHistory]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
@@ -422,7 +460,11 @@ class ClientController(Controller):
 
 
 def _as_aware(value: datetime) -> datetime:
-    """Ensure a datetime is tz-aware for the API response model."""
+    """Ensure a datetime is tz-aware for the API response model.
+
+    Returns:
+        ``datetime`` instance.
+    """
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value

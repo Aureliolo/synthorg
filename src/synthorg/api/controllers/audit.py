@@ -24,6 +24,7 @@ from synthorg.api.pagination import (
     paginate_cursor,
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ValidationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -54,6 +55,12 @@ async def _resolve_audit_cap(state: State) -> int:
     A settings outage or malformed value must not fail the endpoint;
     the fallback constant keeps the DB-side ``LIMIT`` bounded. Warnings
     are log-once per run of failures (cleared on recovery).
+
+    Returns:
+        Resulting integer.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     global _audit_cap_fallback_logged  # noqa: PLW0603
     app_state = state.app_state
@@ -65,9 +72,8 @@ async def _resolve_audit_cap(state: State) -> int:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         if not _audit_cap_fallback_logged:
             logger.warning(
                 API_VALIDATION_FAILED,
@@ -236,7 +242,11 @@ class AuditController(Controller):
         since: datetime | None,
         until: datetime | None,
     ) -> None:
-        """Validate timezone and ordering of timestamp filters."""
+        """Validate timezone and ordering of timestamp filters.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
+        """
         if (since is not None and since.tzinfo is None) or (
             until is not None and until.tzinfo is None
         ):
@@ -278,6 +288,12 @@ class AuditController(Controller):
         Standard filters (agent_id, tool_name, etc.) are applied as
         post-filters on the JSONB result set so all filters remain
         AND-combined.
+
+        Returns:
+            ``PaginatedResponse[AuditEntry]`` instance.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
         """
         app_state = state.app_state
         repo = app_state.persistence.audit_entries
@@ -380,7 +396,11 @@ def _apply_standard_filters(
     action_type: str | None,
     verdict: str | None,
 ) -> tuple[AuditEntry, ...]:
-    """Post-filter JSONB results by standard audit criteria."""
+    """Post-filter JSONB results by standard audit criteria.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     if all(f is None for f in (agent_id, tool_name, action_type, verdict)):
         return entries
     result: list[AuditEntry] = []

@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceConnectionError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
@@ -49,19 +50,24 @@ class IntegrationsBundle:
 
 
 def _wire_mcp_catalog() -> CatalogService | None:
-    """Wire the bundled MCP catalog service (stateless)."""
+    """Wire the bundled MCP catalog service (stateless).
+
+    Returns:
+        The ``CatalogService`` value when present, ``None`` otherwise.
+    """
     try:
         from synthorg.integrations.mcp_catalog.service import (  # noqa: PLC0415
             CatalogService,
         )
 
         service = CatalogService()
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
-            error="MCP catalog auto-wire failed (non-fatal)",
+            note="MCP catalog auto-wire failed (non-fatal)",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
     else:
@@ -72,7 +78,11 @@ def _wire_mcp_catalog() -> CatalogService | None:
 def _wire_mcp_installations_repo(
     persistence: PersistenceBackend | None,
 ) -> McpInstallationRepository | None:
-    """Wire the MCP installations repo if persistence is already connected."""
+    """Wire the MCP installations repo if persistence is already connected.
+
+    Returns:
+        The ``McpInstallationRepository`` value when present, ``None`` otherwise.
+    """
     try:
         if persistence is not None and getattr(persistence, "is_connected", False):
             repo = persistence.mcp_installations
@@ -99,12 +109,13 @@ def _wire_mcp_installations_repo(
             service="mcp_installations_repo",
             backend="deferred_until_persistence_connected",
         )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
-            error="MCP installations repo auto-wire failed (non-fatal)",
+            note="MCP installations repo auto-wire failed (non-fatal)",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
     return None
 
@@ -115,6 +126,9 @@ def _wire_tunnel_provider(auth_token_env: str) -> TunnelProvider | None:
     Best-effort: a missing adapter module or constructor failure must
     not abort app startup. The dashboard's tunnel toggle simply
     degrades to "unavailable" when this returns ``None``.
+
+    Returns:
+        The ``TunnelProvider`` value when present, ``None`` otherwise.
     """
     try:
         from synthorg.integrations.tunnel.ngrok_adapter import (  # noqa: PLC0415
@@ -122,9 +136,8 @@ def _wire_tunnel_provider(auth_token_env: str) -> TunnelProvider | None:
         )
 
         provider = NgrokAdapter(auth_token_env=auth_token_env)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             service="tunnel_provider",
@@ -156,6 +169,9 @@ def _resolve_secret_db_path(
         boot_db_path: ``SYNTHORG_DB_PATH`` resolved exactly once at the
             app boot site and injected here so this module never
             re-reads the env var.
+
+    Returns:
+        The ``str`` value when present, ``None`` otherwise.
     """
     postgres_mode = bool(db_url)
     if resolved_db_path is not None:
@@ -187,6 +203,7 @@ def _wire_rate_limit_coordinator_factory(
     _default_rpm = api_config.rate_limit.max_rpm_default
 
     def _make_coordinator(name: str) -> SharedRateLimitCoordinator:
+        """Return make coordinator."""
         max_rpm = _default_rpm
         try:
             conn = _catalog.get_cached(name)
@@ -196,9 +213,8 @@ def _wire_rate_limit_coordinator_factory(
                 and conn.rate_limiter.max_requests_per_minute > 0
             ):
                 max_rpm = conn.rate_limiter.max_requests_per_minute
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_SERVICE_AUTO_WIRED,
                 service="rate_limit_coordinator_factory",
@@ -236,6 +252,9 @@ def auto_wire_integrations(  # noqa: PLR0913
     Best-effort: each stage logs and swallows non-fatal errors so the
     app still boots with integrations disabled when a dependency is
     missing.
+
+    Returns:
+        ``IntegrationsBundle`` instance.
     """
     bundle = IntegrationsBundle(
         mcp_catalog_service=_wire_mcp_catalog(),
@@ -358,12 +377,13 @@ def auto_wire_integrations(  # noqa: PLR0913
                 connection_catalog=bundle.connection_catalog,
                 api_config=api_config,
             )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
-            error="Integration services auto-wire failed (non-fatal)",
+            note="Integration services auto-wire failed (non-fatal)",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
     return bundle

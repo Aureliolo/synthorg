@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, cast
 from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
@@ -36,7 +37,11 @@ __all__ = ["MCPToolInvoker", "ToolHandler"]
 
 
 def _format_pydantic_error(err: object) -> str:
-    """Render a single Pydantic ``errors()`` entry as ``loc: msg``."""
+    """Render a single Pydantic ``errors()`` entry as ``loc: msg``.
+
+    Returns:
+        Resulting string.
+    """
     if not isinstance(err, dict):
         return "<arguments>: invalid"
     loc_raw = err.get("loc", ())
@@ -254,9 +259,8 @@ class MCPToolInvoker:
                 arguments=handler_arguments,
                 actor=actor,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             error_type = type(exc).__name__
             # safe_error_description avoids leaking secrets that
             # str(exc) would expose (httpx POST bodies, Fernet

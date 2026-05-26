@@ -76,6 +76,7 @@ from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 from synthorg.approval.protocol import (  # noqa: TC001  isort: skip
     ApprovalStoreProtocol,
 )
+from synthorg.core.critical_errors import reraise_critical
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -97,17 +98,29 @@ _MAX_TURNS_QUERY_LIMIT: int = 1000
 
 
 def _new_id() -> NotBlankStr:
-    """Return a fresh opaque identifier."""
+    """Return a fresh opaque identifier.
+
+    Returns:
+        ``NotBlankStr`` instance.
+    """
     return NotBlankStr(str(uuid.uuid4()))
 
 
 def _render_history(turns: tuple[ConversationTurn, ...]) -> str:
-    """Render chronological turns into a prompt-ready transcript."""
+    """Render chronological turns into a prompt-ready transcript.
+
+    Returns:
+        Resulting string.
+    """
     return "\n".join(f"{turn.role.value.upper()}: {turn.content}" for turn in turns)
 
 
 def _summarise_proposals(proposals: tuple[ProposedWork, ...]) -> str:
-    """One-line-per-item assistant summary of parked proposals."""
+    """One-line-per-item assistant summary of parked proposals.
+
+    Returns:
+        Resulting string.
+    """
     lines = [f"- {p.title}" for p in proposals]
     return "I've queued the following work for your approval:\n" + "\n".join(lines)
 
@@ -175,6 +188,9 @@ class ChiefOfStaffProposer:
         dict lookup; a tight race on first guard-init merely wastes
         a Lock() instance (the loser drops its instance after
         observing the populated guard).
+
+        Returns:
+            ``asyncio.Lock`` instance.
         """
         if self._conversation_locks_guard is None:
             self._conversation_locks_guard = asyncio.Lock()
@@ -244,6 +260,12 @@ class ChiefOfStaffProposer:
         against a now-terminal conversation (``_park_proposal`` runs
         before the ``transition_if`` no-ops, so proposals are saved
         even though the status transition fails).
+
+        Returns:
+            ``ProposeResult`` instance.
+
+        Raises:
+            ConversationClosedError: Raised on the corresponding failure path.
         """
         current = await self._conversation_repo.get(conversation.id)
         if current is None or current.status is not ConversationStatus.ACTIVE:
@@ -295,7 +317,15 @@ class ChiefOfStaffProposer:
     async def _resolve_conversation(
         self, args: ProposeArgs, now: datetime
     ) -> Conversation:
-        """Load an existing conversation or open a fresh one."""
+        """Load an existing conversation or open a fresh one.
+
+        Returns:
+            ``Conversation`` instance.
+
+        Raises:
+            ConversationNotFoundError: Raised on the corresponding failure path.
+            ConversationClosedError: Raised on the corresponding failure path.
+        """
         if args.conversation_id is None:
             conversation = Conversation(
                 id=_new_id(),
@@ -329,6 +359,9 @@ class ChiefOfStaffProposer:
         The append-only store yields newest-first; v1 1:1 threads are
         short, so reversing the bounded result in memory is the
         chronological order the prompt needs.
+
+        Returns:
+            Tuple of the declared element types.
         """
         newest_first = await self._turn_repo.query(
             ConversationTurnFilterSpec(conversation_id=conversation_id),
@@ -339,7 +372,16 @@ class ChiefOfStaffProposer:
     async def _run_decision(
         self, history: tuple[ConversationTurn, ...]
     ) -> ProposeDecision:
-        """Call the model and parse its structured clarify/propose output."""
+        """Call the model and parse its structured clarify/propose output.
+
+        Returns:
+            ``ProposeDecision`` instance.
+
+        Raises:
+            Exception: Provider call failed.
+            ConversationalProposeResponseInvalidError: Provider
+                response failed validation.
+        """
         prompt = CONVERSATIONAL_PROPOSE_PROMPT.format(
             conversation_history=wrap_untrusted(
                 TAG_TASK_DATA, _render_history(history)
@@ -363,9 +405,8 @@ class ChiefOfStaffProposer:
                     self._config.propose_model,
                     config=completion_config,
                 )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(logger, COS_PROPOSE_FAILED, exc)
             raise
         raw = (response.content or "").strip()
@@ -395,7 +436,11 @@ class ChiefOfStaffProposer:
         sequence: int,
         now: datetime,
     ) -> ProposeResult:
-        """Persist the assistant question; conversation stays ACTIVE."""
+        """Persist the assistant question; conversation stays ACTIVE.
+
+        Returns:
+            ``ProposeResult`` instance.
+        """
         question = decision.clarifying_question
         # ProposeDecision's validator guarantees this is set on the
         # clarification branch; assert for the type-checker only.
@@ -437,6 +482,14 @@ class ChiefOfStaffProposer:
         with no assistant summary turn, no conversation transition,
         and no proposal_id for the retry to dedupe against -- a
         client retry would then double-park those items.
+
+        Returns:
+            ``ProposeResult`` instance.
+
+        Raises:
+            Exception: Provider call failed.
+            ConversationalProposeResponseInvalidError: Provider
+                response failed validation.
         """
         # Pre-validate every proposal's project BEFORE any park lands
         # so an invalid model output raises without committing any
@@ -464,9 +517,8 @@ class ChiefOfStaffProposer:
                         conversation, args, proposed, project, now
                     )
                 )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             for parked in summaries:
                 await self._unwind_parked_proposal(
                     conversation_id=conversation.id,
@@ -529,7 +581,11 @@ class ChiefOfStaffProposer:
         project: NotBlankStr,
         now: datetime,
     ) -> WorkItem:
-        """Compose the pipeline-spine envelope for one proposal."""
+        """Compose the pipeline-spine envelope for one proposal.
+
+        Returns:
+            ``WorkItem`` instance.
+        """
         return WorkItem(
             origin_adapter_id=_ORIGIN_ADAPTER_ID,
             source=WorkSource.CONVERSATIONAL,
@@ -555,7 +611,11 @@ class ChiefOfStaffProposer:
         proposed: ProposedWork,
         now: datetime,
     ) -> ApprovalItem:
-        """Compose the parked approval-queue item for one proposal."""
+        """Compose the parked approval-queue item for one proposal.
+
+        Returns:
+            ``ApprovalItem`` instance.
+        """
         return ApprovalItem(
             id=approval_id,
             action_type=_ACTION_TYPE,
@@ -594,6 +654,12 @@ class ChiefOfStaffProposer:
         needs to unwind fully-successful parks. The cleanup is
         best-effort -- the original exception is preserved even if
         the proposal delete itself fails.
+
+        Returns:
+            ``ProposedApprovalSummary`` instance.
+
+        Raises:
+            Exception: Raised on the corresponding failure path.
         """
         approval_id = _new_id()
         proposal_id = _new_id()
@@ -619,14 +685,12 @@ class ChiefOfStaffProposer:
                     now=now,
                 )
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             try:
                 await self._proposal_repo.delete(proposal_id)
-            except MemoryError, RecursionError:
-                raise
             except Exception as cleanup_exc:
+                reraise_critical(cleanup_exc)
                 logger.warning(
                     COS_PROPOSE_FAILED,
                     detail="park_proposal_cleanup_failed",
@@ -661,9 +725,8 @@ class ChiefOfStaffProposer:
         """
         try:
             await self._approval_store.delete(approval_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COS_PROPOSE_FAILED,
                 detail="unwind_approval_failed",
@@ -674,9 +737,8 @@ class ChiefOfStaffProposer:
             )
         try:
             await self._proposal_repo.delete(proposal_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COS_PROPOSE_FAILED,
                 detail="unwind_proposal_failed",
@@ -692,7 +754,11 @@ class ChiefOfStaffProposer:
         sequence: int,
         now: datetime,
     ) -> ProposeResult:
-        """Force-close a conversation that will not converge."""
+        """Force-close a conversation that will not converge.
+
+        Returns:
+            ``ProposeResult`` instance.
+        """
         await self._turn_repo.append(
             ConversationTurn(
                 id=_new_id(),

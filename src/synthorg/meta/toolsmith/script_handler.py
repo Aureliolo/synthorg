@@ -17,6 +17,7 @@ Authored-script contract:
 import json
 from typing import TYPE_CHECKING, Any, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.mcp.handlers.common import err, ok
 from synthorg.meta.toolsmith.errors import ToolsmithError
 from synthorg.observability import get_logger, safe_error_description
@@ -64,14 +65,19 @@ class _DynamicToolHandler:
         arguments: dict[str, Any],
         actor: AgentIdentity | None = None,
     ) -> str:
-        """Run the authored script and return an MCP envelope."""
+        """Run the authored script and return an MCP envelope.
+
+        Returns:
+            JSON-encoded MCP envelope string (``ok`` on success or
+            ``err`` with ``domain_code="dynamic_tool_failed"`` when
+            the authored tool raised).
+        """
         del app_state, actor
         name = self._blueprint.name
         try:
             payload = await self._run(arguments)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TOOLSMITH_TOOL_INVOKE_FAILED,
                 tool_name=name,
@@ -88,7 +94,14 @@ class _DynamicToolHandler:
         return ok(data=payload)
 
     async def _run(self, arguments: dict[str, Any]) -> Any:
-        """Execute the script in the sandbox and parse its JSON stdout."""
+        """Execute the script in the sandbox and parse its JSON stdout.
+
+        Returns:
+            ``Any`` instance.
+
+        Raises:
+            DynamicToolScriptError: Raised on the corresponding failure path.
+        """
         args_json = json.dumps(arguments, sort_keys=True)
         result = await self._sandbox.execute(
             command="python",

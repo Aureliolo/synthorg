@@ -59,6 +59,12 @@ class AutonomyLevelRequest(BaseModel):
         Mirrors ``AutonomyUpdate`` so an under-length reason is a 4xx
         at the request boundary rather than a late failure in registry
         construction.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if len(self.reason.strip()) < _MIN_REASON_LENGTH:
             msg = (

@@ -39,7 +39,14 @@ _DEFAULT_LIST_LIMIT: Final[int] = 50
 
 
 def _docs_service(state: State) -> DocsService:
-    """Resolve the docs service from app state, surfacing 503 if absent."""
+    """Resolve the docs service from app state, surfacing 503 if absent.
+
+    Returns:
+        ``DocsService`` instance.
+
+    Raises:
+        ServiceUnavailableError: Raised on the corresponding failure path.
+    """
     svc: DocsService | None = state.app_state.docs_service
     if svc is None:
         msg = "Living-documentation engine is not wired in this deployment"
@@ -86,6 +93,11 @@ SearchLimit = Annotated[
 
 
 def _parse_doc_type(value: NotBlankStr | None) -> DocType | None:
+    """Return parse doc type.
+
+    Raises:
+        ValidationError: Raised on the corresponding failure path.
+    """
     if value is None:
         return None
     try:
@@ -112,7 +124,11 @@ class ProjectDocsController(Controller):
         doc_type: DocTypeFilter = None,
         tag: TagFilter = None,
     ) -> PaginatedResponse[DocSummary]:
-        """List docs for a project (recency-first)."""
+        """List docs for a project (recency-first).
+
+        Returns:
+            ``PaginatedResponse[DocSummary]`` instance.
+        """
         parsed = _parse_doc_type(doc_type)
         summaries = await _docs_service(state).list_docs(
             project_id=NotBlankStr(project_id),
@@ -136,7 +152,11 @@ class ProjectDocsController(Controller):
         q: SearchQuery,
         limit: SearchLimit = DOCS_SEARCH_DEFAULT_LIMIT,
     ) -> Response[ApiResponse[tuple[DocSearchHit, ...]]]:
-        """Semantic search across a project's indexed docs."""
+        """Semantic search across a project's indexed docs.
+
+        Returns:
+            Result matching the declared return annotation.
+        """
         hits = await _docs_service(state).search(
             project_id=NotBlankStr(project_id),
             query=q,
@@ -158,6 +178,9 @@ class ProjectDocsController(Controller):
 
         ``DocNotFoundError`` propagates to the global RFC 9457 handler,
         which maps it to 404 with the ``LIVING_DOC_NOT_FOUND`` code.
+
+        Returns:
+            ``Response[ApiResponse[LivingDocument]]`` instance.
         """
         doc = await _docs_service(state).read_doc(
             project_id=NotBlankStr(project_id),
@@ -175,7 +198,11 @@ class ProjectDocsController(Controller):
         project_id: PathId,
         slug: PathId,
     ) -> Response[ApiResponse[tuple[DocVersion, ...]]]:
-        """Return the git commit history for one doc."""
+        """Return the git commit history for one doc.
+
+        Returns:
+            Result matching the declared return annotation.
+        """
         versions = await _docs_service(state).history(
             project_id=NotBlankStr(project_id),
             slug=NotBlankStr(slug),

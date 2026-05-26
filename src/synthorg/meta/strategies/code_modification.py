@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_CONFIG_VALUE,
@@ -111,7 +112,11 @@ class CodeModificationStrategy:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This strategy produces code modification proposals."""
+        """This strategy produces code modification proposals.
+
+        Returns:
+            ``ProposalAltitude`` instance.
+        """
         return ProposalAltitude.CODE_MODIFICATION
 
     async def propose(
@@ -167,6 +172,9 @@ class CodeModificationStrategy:
         Returns:
             A code modification proposal, or None if generation
             failed or changes are out of scope.
+
+        Raises:
+            ProviderError: Raised on the corresponding failure path.
         """
         prompt = self._build_user_prompt(rule_match, snapshot)
         logger.info(
@@ -188,9 +196,8 @@ class CodeModificationStrategy:
                 error=safe_error_description(exc),
             )
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 META_CODE_GEN_FAILED,
                 rule=rule_match.rule_name,

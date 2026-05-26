@@ -56,7 +56,7 @@ Clients should dispatch on `error_code` (most specific) and fall back to `error_
 
 ## Not Found (3xxx)
 
-The NotFound hierarchy is driven by a single `NotFoundError` class with domain-specific `ErrorCode` members. Callers use :func:`synthorg.core.domain_errors.resource_not_found` to pick the right code without constructing an error subclass by hand.
+The NotFound hierarchy is rooted at `NotFoundError`. Each resource has a dedicated subclass that pins the right `ErrorCode` as a `ClassVar` (for example `TaskNotFoundError` in `synthorg.engine.errors`, `ConnectionNotFoundError` in `synthorg.integrations.errors`, and `ResourceNotFoundError` in `synthorg.core.domain_errors` as the 3000 fallback). Controllers raise the subclass directly, or via `require_resource_or_404(..., error_class=...)`, so the wire `error_code` is fixed by the class rather than a runtime argument.
 
 | Code | Name | Resource |
 |------|------|----------|

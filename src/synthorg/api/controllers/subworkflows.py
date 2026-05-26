@@ -100,7 +100,11 @@ class CreateSubworkflowRequest(BaseModel):
 
 
 def _registry(state: State) -> SubworkflowRegistry:
-    """Build a :class:`SubworkflowRegistry` from the app state."""
+    """Build a :class:`SubworkflowRegistry` from the app state.
+
+    Returns:
+        ``SubworkflowRegistry`` instance.
+    """
     return SubworkflowRegistry(state.app_state.persistence.subworkflows)
 
 
@@ -225,6 +229,9 @@ class SubworkflowController(Controller):
         page via ``collect_all`` first (a truncated set would break the
         cursor walk and under-report matches), then slices the
         requested cursor page for the response.
+
+        Returns:
+            Result matching the declared return annotation.
         """
         registry = _registry(state)
         # This endpoint applies its own opaque-cursor pagination over
@@ -256,7 +263,11 @@ class SubworkflowController(Controller):
         limit: CursorLimit = DEFAULT_LIMIT,
         cursor: CursorParam = None,
     ) -> Response[PaginatedResponse[str]]:
-        """List every semver for a subworkflow, newest first (cursor-paginated)."""
+        """List every semver for a subworkflow, newest first (cursor-paginated).
+
+        Returns:
+            ``Response[PaginatedResponse[str]]`` instance.
+        """
         registry = _registry(state)
         versions = await registry.list_versions(subworkflow_id)
         page, meta = paginate_cursor(
@@ -291,6 +302,9 @@ class SubworkflowController(Controller):
         Raises ``SubworkflowNotFoundError`` (404) when the version
         cannot be resolved; the domain-error handler maps it to an
         RFC 9457 response automatically.
+
+        Returns:
+            Result matching the declared return annotation.
         """
         registry = _registry(state)
         definition = await registry.get(subworkflow_id, version)
@@ -324,6 +338,9 @@ class SubworkflowController(Controller):
         repository page via ``collect_all`` first (a truncated set
         would break the cursor walk and under-report references), then
         slices the requested cursor page for the response.
+
+        Returns:
+            Result matching the declared return annotation.
         """
         registry = _registry(state)
         # This endpoint applies its own opaque-cursor pagination over
@@ -354,7 +371,14 @@ class SubworkflowController(Controller):
         state: State,
         data: CreateSubworkflowRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
-        """Publish a new subworkflow version to the registry."""
+        """Publish a new subworkflow version to the registry.
+
+        Returns:
+            Result matching the declared return annotation.
+
+        Raises:
+            WorkflowDefinitionValidationError: Raised on the corresponding failure path.
+        """
         creator = get_authenticated_user_id()
         now = datetime.now(UTC)
         subworkflow_id = data.subworkflow_id or f"sub-{uuid4().hex[:12]}"
@@ -412,6 +436,9 @@ class SubworkflowController(Controller):
 
         Returns 409 when any parent workflow still pins the version;
         404 when the coordinate does not exist.
+
+        Returns:
+            ``Response[ApiResponse[None]]`` instance.
         """
         registry = _registry(state)
         await registry.delete(subworkflow_id, version)

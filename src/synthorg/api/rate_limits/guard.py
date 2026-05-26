@@ -46,6 +46,9 @@ def _read_live_config(state: Any) -> PerOpRateLimitConfig | None:
     minimal state without an ``AppState``.  Returns ``None`` when
     neither source has a config (treated as a wiring error at the
     call site).
+
+    Returns:
+        The ``PerOpRateLimitConfig`` value when present, ``None`` otherwise.
     """
     app_state = getattr(state, "app_state", None)
     if app_state is not None and getattr(
@@ -80,6 +83,12 @@ def _resolve_wiring(
     closed with a 503 so misconfigured deployments do not ship
     without protection.  503 + no ``Retry-After`` tells clients this
     is a server-side issue (not a per-user throttle).
+
+    Returns:
+        Tuple of the declared element types.
+
+    Raises:
+        ServiceUnavailableError: Raised on the corresponding failure path.
     """
     store: SlidingWindowStore | None = getattr(state, STATE_KEY_STORE, None)
     if store is None or config is None:
@@ -114,6 +123,9 @@ def _raise_denied(
     Always raises -- annotated ``NoReturn`` so mypy narrows the
     calling guard's control flow and tests cannot accidentally treat
     this helper as having a successful return path.
+
+    Raises:
+        PerOperationRateLimitError: Raised on the corresponding failure path.
     """
     # Round up so a fractional 0.5s delay surfaces as at least 1s
     # and clients never retry before the bucket actually reopens.
@@ -168,6 +180,9 @@ def per_op_rate_limit(
 
     Raises:
         PerOperationRateLimitError: When the request exceeds the bucket.
+        ValueError: When ``operation`` is blank, ``max_requests`` /
+            ``window_seconds`` is non-positive, or ``key`` is not one
+            of the valid policies.
     """
     # Strip the operation name for the same reason as
     # ``per_op_concurrency``: a whitespace typo
@@ -232,6 +247,7 @@ def per_op_rate_limit(
         connection: ASGIConnection[Any, Any, Any, Any],
         _handler: BaseRouteHandler,
     ) -> None:
+        """Run guard."""
         state = connection.app.state
         # Snapshot the live config once at request start: the
         # settings subscriber may swap the config concurrently, and

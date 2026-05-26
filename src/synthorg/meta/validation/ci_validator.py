@@ -118,7 +118,11 @@ class LocalCIValidator:
         changed_files: tuple[str, ...],
         errors: list[str],
     ) -> bool:
-        """Run ruff check on changed files."""
+        """Run ruff check on changed files.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         py_files = _existing_py_files(project_root, changed_files)
         if not py_files:
             return True
@@ -136,7 +140,11 @@ class LocalCIValidator:
         changed_files: tuple[str, ...],
         errors: list[str],
     ) -> bool:
-        """Run mypy on changed files."""
+        """Run mypy on changed files.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         py_files = _existing_py_files(project_root, changed_files)
         if not py_files:
             return True
@@ -154,7 +162,11 @@ class LocalCIValidator:
         changed_files: tuple[str, ...],
         errors: list[str],
     ) -> bool:
-        """Run pytest on test files related to changed source files."""
+        """Run pytest on test files related to changed source files.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         # Discover test files: for each src file, look for a
         # corresponding test file in the tests/ directory.
         test_files = _discover_test_files(project_root, changed_files)
@@ -206,6 +218,9 @@ class LocalCIValidator:
 
         Returns:
             True if the subprocess exited with code 0.
+
+        Raises:
+            CancelledError: Raised on the corresponding failure path.
         """
         proc: asyncio.subprocess.Process | None = None
         try:

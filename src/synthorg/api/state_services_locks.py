@@ -65,6 +65,9 @@ def _reject_non_int(value: object, *, field: str) -> None:
     ``ConfigResolver.get_int``; non-int values would otherwise raise
     ``TypeError`` at the bounds comparison without a structured log,
     leaving operators without a clear signal which knob was bad.
+
+    Raises:
+        TypeError: Raised on the corresponding failure path.
     """
     # ``isinstance(value, int)`` accepts ``bool`` (since ``bool`` is a
     # subclass of ``int`` in Python); explicitly reject it so flags
@@ -132,6 +135,9 @@ class _RequestLockAuthMixin:
         evicted Lock). The cap defends against an authenticated client
         that scopes unique ids and never advances them to a terminal
         state, which would otherwise grow the dict without bound.
+
+        Returns:
+            ``asyncio.Lock`` instance.
         """
         lock = self._request_locks.get(request_id)
         if lock is not None:
@@ -176,6 +182,9 @@ class _RequestLockAuthMixin:
         Pairs with :meth:`_release_request_lock_ref`. Both operations
         execute under ``self._request_locks_guard`` so a concurrent
         eviction sweep observes the refcount bump and skips the entry.
+
+        Returns:
+            ``asyncio.Lock`` instance.
         """
         with self._request_locks_guard:
             lock = self._request_locks.get(request_id)
@@ -266,6 +275,9 @@ class _RequestLockAuthMixin:
         need a different value at runtime may call it -- so the effective
         value is whichever ``set_ws_auth_timeout_seconds`` call ran most
         recently.
+
+        Returns:
+            Resulting numeric value.
         """
         return self._ws_auth_timeout_seconds
 
@@ -282,6 +294,10 @@ class _RequestLockAuthMixin:
         ``ApiBridgeConfig.ws_auth_timeout_seconds`` Pydantic field;
         the shared ``WS_AUTH_TIMEOUT_{MIN,MAX}_SECONDS`` constants
         keep the two sites aligned (DRY).
+
+        Raises:
+            TypeError: Raised on the corresponding failure path.
+            ValueError: Raised on the corresponding failure path.
         """
         import math  # noqa: PLC0415
 
@@ -336,11 +352,19 @@ class _RequestLockAuthMixin:
         construction (read_only_post_init), so the value can be staged
         in tests via ``set_ws_frame_timeout_seconds`` without spinning
         the lifecycle.
+
+        Returns:
+            Resulting integer.
         """
         return self._ws_frame_timeout_seconds
 
     def set_ws_frame_timeout_seconds(self, value: int) -> None:
-        """Validate + cache the per-frame WebSocket idle timeout."""
+        """Validate + cache the per-frame WebSocket idle timeout.
+
+        Raises:
+            TypeError: If ``value`` is not an ``int`` (via ``_reject_non_int``).
+            ValueError: Raised on the corresponding failure path.
+        """
         _reject_non_int(value, field="ws_frame_timeout_seconds")
         if not (
             _WS_FRAME_TIMEOUT_MIN_SECONDS <= value <= _WS_FRAME_TIMEOUT_MAX_SECONDS
@@ -363,11 +387,20 @@ class _RequestLockAuthMixin:
 
     @property
     def auth_revalidate_window_seconds(self) -> int:
-        """Sliding-window length for WS+SSE revalidation failures."""
+        """Sliding-window length for WS+SSE revalidation failures.
+
+        Returns:
+            Resulting integer.
+        """
         return self._auth_revalidate_window_seconds
 
     def set_auth_revalidate_window_seconds(self, value: int) -> None:
-        """Validate + cache the revalidation sliding-window length."""
+        """Validate + cache the revalidation sliding-window length.
+
+        Raises:
+            TypeError: If ``value`` is not an ``int`` (via ``_reject_non_int``).
+            ValueError: Raised on the corresponding failure path.
+        """
         _reject_non_int(value, field="auth_revalidate_window_seconds")
         if not (
             _AUTH_REVALIDATE_WINDOW_MIN_SECONDS
@@ -393,11 +426,20 @@ class _RequestLockAuthMixin:
 
     @property
     def auth_revalidate_max_failures(self) -> int:
-        """Max WS+SSE revalidation failures admitted in the window."""
+        """Max WS+SSE revalidation failures admitted in the window.
+
+        Returns:
+            Resulting integer.
+        """
         return self._auth_revalidate_max_failures
 
     def set_auth_revalidate_max_failures(self, value: int) -> None:
-        """Validate + cache the revalidation max-failures cap."""
+        """Validate + cache the revalidation max-failures cap.
+
+        Raises:
+            TypeError: If ``value`` is not an ``int`` (via ``_reject_non_int``).
+            ValueError: Raised on the corresponding failure path.
+        """
         _reject_non_int(value, field="auth_revalidate_max_failures")
         if not (
             _AUTH_REVALIDATE_MAX_FAILURES_MIN
@@ -422,12 +464,20 @@ class _RequestLockAuthMixin:
 
     @property
     def has_session_store(self) -> bool:
-        """Check whether the session store is configured."""
+        """Check whether the session store is configured.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._session_store is not None
 
     @property
     def session_store(self) -> SessionStore:
-        """Return the JWT session store."""
+        """Return the JWT session store.
+
+        Returns:
+            ``SessionStore`` instance.
+        """
         return self._require_service(
             self._session_store,
             "session_store",
@@ -439,12 +489,20 @@ class _RequestLockAuthMixin:
 
     @property
     def has_lockout_store(self) -> bool:
-        """Check whether the lockout store is configured."""
+        """Check whether the lockout store is configured.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._lockout_store is not None
 
     @property
     def lockout_store(self) -> LockoutStore:
-        """Return the account lockout store."""
+        """Return the account lockout store.
+
+        Returns:
+            ``LockoutStore`` instance.
+        """
         return self._require_service(
             self._lockout_store,
             "lockout_store",
@@ -456,12 +514,20 @@ class _RequestLockAuthMixin:
 
     @property
     def has_refresh_store(self) -> bool:
-        """Check whether the refresh-token store is configured."""
+        """Check whether the refresh-token store is configured.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._refresh_store is not None
 
     @property
     def refresh_store(self) -> RefreshStore:
-        """Return the refresh-token store."""
+        """Return the refresh-token store.
+
+        Returns:
+            ``RefreshStore`` instance.
+        """
         return self._require_service(
             self._refresh_store,
             "refresh_store",
@@ -473,7 +539,11 @@ class _RequestLockAuthMixin:
 
     @property
     def user_presence(self) -> UserPresence:
-        """Return the user presence tracker (always available)."""
+        """Return the user presence tracker (always available).
+
+        Returns:
+            ``UserPresence`` instance.
+        """
         return self._user_presence
 
     def set_auth_service(self, service: AuthService) -> None:

@@ -8,6 +8,7 @@ the safe-default path rather than raising.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.signal_models import OrgErrorSummary
 from synthorg.observability import get_logger, log_exception_redacted
@@ -42,7 +43,11 @@ class ErrorSignalAggregator:
 
     @property
     def domain(self) -> NotBlankStr:
-        """Signal domain name."""
+        """Signal domain name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("errors")
 
     async def aggregate(
@@ -70,9 +75,8 @@ class ErrorSignalAggregator:
                 domain="errors",
                 total_findings=summary.total_findings,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain="errors"
             )

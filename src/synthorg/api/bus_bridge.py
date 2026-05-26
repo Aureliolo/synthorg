@@ -15,6 +15,7 @@ from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.errors import CommunicationError
 from synthorg.communication.message import Message  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -135,6 +136,12 @@ class MessageBusBridge:
         A transient settings outage or malformed value must not crash
         the polling loop. Warnings are log-once per run of failures
         (cleared on recovery) so a prolonged outage cannot flood logs.
+
+        Returns:
+            Resulting numeric value.
+
+        Raises:
+            CancelledError: Raised on the corresponding failure path.
         """
         if self._config_resolver is None:
             return _POLL_TIMEOUT
@@ -145,9 +152,8 @@ class MessageBusBridge:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             if not self._poll_timeout_fallback_logged:
                 # No exc_info on a settings-resolver fallback path.
                 # ConfigResolver fetches can carry connection strings
@@ -172,6 +178,12 @@ class MessageBusBridge:
         Same guard and log-once-per-failure-run semantics as
         :meth:`_get_poll_timeout`.  Resolved at stop() entry so a
         runtime change applies to the next shutdown.
+
+        Returns:
+            Resulting numeric value.
+
+        Raises:
+            CancelledError: Raised on the corresponding failure path.
         """
         if self._config_resolver is None:
             return _STOP_DRAIN_TIMEOUT_SECONDS
@@ -182,9 +194,8 @@ class MessageBusBridge:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             if not self._drain_timeout_fallback_logged:
                 # No exc_info on settings-resolver fallback.
                 logger.warning(
@@ -205,6 +216,12 @@ class MessageBusBridge:
 
         Same guard and log-once-per-failure-run semantics as
         :meth:`_get_poll_timeout`.
+
+        Returns:
+            Resulting integer.
+
+        Raises:
+            CancelledError: Raised on the corresponding failure path.
         """
         if self._config_resolver is None:
             return _MAX_CONSECUTIVE_ERRORS
@@ -215,9 +232,8 @@ class MessageBusBridge:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             if not self._max_errors_fallback_logged:
                 # No exc_info on settings-resolver fallback.
                 logger.warning(
@@ -316,9 +332,8 @@ class MessageBusBridge:
                                 channel=channel_name,
                             ),
                         )
-                    except MemoryError, RecursionError:
-                        raise
-                    except Exception:
+                    except Exception as exc:
+                        reraise_critical(exc)
                         # Best-effort unsubscribe -- if the bus backend
                         # itself is broken, the subscribe rollback may
                         # also fail. Only drop the channel from
@@ -441,6 +456,11 @@ class MessageBusBridge:
         Holds ``_lifecycle_lock`` so ``stop()`` cannot race a
         partially-constructed ``start()`` (e.g. ``_running=True`` but
         some channels still mid-subscribe).
+
+        Raises:
+            TimeoutError: When the drain exceeds the configured
+                shutdown deadline; the bridge marks itself
+                unrestartable before propagating.
         """
         async with self._lifecycle_lock:
             if not self._running:
@@ -465,6 +485,7 @@ class MessageBusBridge:
                 # ``_lifecycle_lock``. Same pattern as
                 # ``MeetingScheduler.stop()``.
                 async def _drain() -> list[BaseException | None]:
+                    """Return drain."""
                     return await asyncio.gather(
                         *self._tasks,
                         return_exceptions=True,
@@ -542,6 +563,12 @@ class MessageBusBridge:
         silently pausing event forwarding on a settings hiccup would
         starve every connected client. Same log-once-until-recovery
         pattern as :meth:`_get_poll_timeout`.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+
+        Raises:
+            CancelledError: Raised on the corresponding failure path.
         """
         if self._config_resolver is None:
             return True
@@ -552,9 +579,8 @@ class MessageBusBridge:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             if not self._enabled_fallback_logged:
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
@@ -664,9 +690,8 @@ class MessageBusBridge:
                     error=safe_error_description(exc),
                 )
                 await asyncio.sleep(poll_timeout)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger, API_BRIDGE_CHANNEL_DEAD, exc, channel=channel_name
                 )
@@ -674,7 +699,11 @@ class MessageBusBridge:
 
     @staticmethod
     def _to_ws_event(message: Message, channel_name: str) -> WsEvent:
-        """Convert an internal ``Message`` to a ``WsEvent``."""
+        """Convert an internal ``Message`` to a ``WsEvent``.
+
+        Returns:
+            ``WsEvent`` instance.
+        """
         payload: dict[str, Any] = {
             "message_id": str(message.id),
             "sender": message.sender,

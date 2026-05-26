@@ -44,16 +44,19 @@ class OrgAgentMutationsMixin:
     async def _read_setting_versioned(  # pragma: no cover - see concrete
         self, namespace: str, key: str
     ) -> tuple[str, str]:
+        """Read a setting value together with its concurrency version token."""
         raise NotImplementedError
 
     async def _read_departments(  # pragma: no cover - see concrete
         self,
     ) -> tuple[Any, ...]:
+        """Read the company's departments."""
         raise NotImplementedError
 
     async def _read_agents(  # pragma: no cover - see concrete
         self,
     ) -> tuple[AgentConfig, ...]:
+        """Read the company's agents."""
         raise NotImplementedError
 
     async def _write_agents(  # pragma: no cover - see concrete
@@ -62,21 +65,25 @@ class OrgAgentMutationsMixin:
         *,
         expected_updated_at: str | None = None,
     ) -> None:
+        """Persist the agent roster under optimistic-concurrency control."""
         raise NotImplementedError
 
     async def _snapshot_company(  # pragma: no cover - see concrete
         self, saved_by: str
     ) -> None:
+        """Record a company snapshot attributed to the saver."""
         raise NotImplementedError
 
     def _find_department(  # pragma: no cover - see concrete
         self, departments: tuple[Any, ...], name: str
     ) -> Any | None:
+        """Find a department by name within the given tuple."""
         raise NotImplementedError
 
     def _find_agent(  # pragma: no cover - see concrete
         self, agents: tuple[AgentConfig, ...], name: str
     ) -> AgentConfig | None:
+        """Find an agent by name within the given tuple."""
         raise NotImplementedError
 
     def _validate_permutation(  # pragma: no cover - see concrete
@@ -85,6 +92,7 @@ class OrgAgentMutationsMixin:
         requested_names: tuple[str, ...],
         entity: str,
     ) -> None:
+        """Validate that requested names are a permutation of current names."""
         raise NotImplementedError
 
     async def create_agent(
@@ -93,10 +101,24 @@ class OrgAgentMutationsMixin:
         *,
         saved_by: str = "api",
     ) -> AgentConfig:
-        """Create a new agent in the org config."""
+        """Create a new agent in the org config.
+
+        Returns:
+            ``AgentConfig`` instance.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
+            ConflictError: Raised on the corresponding failure path.
+        """
         captured: dict[str, AgentConfig] = {}
 
         async def read() -> tuple[tuple[AgentConfig, ...], str]:
+            """Return read.
+
+            Raises:
+                ConflictError: Raised on the corresponding failure path.
+                ValidationError: Raised on the corresponding failure path.
+            """
             _, version = await self._read_setting_versioned("company", "agents")
             departments = await self._read_departments()
             if not self._find_department(departments, data.department):
@@ -162,7 +184,15 @@ class OrgAgentMutationsMixin:
         data: UpdateAgentOrgRequest,
         agents: tuple[AgentConfig, ...],
     ) -> dict[str, Any]:
-        """Validate agent update and collect field changes."""
+        """Validate agent update and collect field changes.
+
+        Returns:
+            Mapping with the declared key/value types.
+
+        Raises:
+            ConflictError: Raised on the corresponding failure path.
+            ValidationError: Raised on the corresponding failure path.
+        """
         updates: dict[str, Any] = {}
         fields_set = data.model_fields_set
 
@@ -212,11 +242,23 @@ class OrgAgentMutationsMixin:
         if_match: str | None = None,
         saved_by: str = "api",
     ) -> AgentConfig:
-        """Update an existing agent."""
+        """Update an existing agent.
+
+        Returns:
+            ``AgentConfig`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         captured: dict[str, AgentConfig] = {}
         captured_updates: dict[str, Any] = {}
 
         async def read() -> tuple[tuple[AgentConfig, ...], str]:
+            """Return read.
+
+            Raises:
+                NotFoundError: Raised on the corresponding failure path.
+            """
             _, version = await self._read_setting_versioned("company", "agents")
             agents = await self._read_agents()
             existing = self._find_agent(agents, name)
@@ -263,10 +305,21 @@ class OrgAgentMutationsMixin:
         return committed_agent
 
     async def delete_agent(self, name: str, *, saved_by: str = "api") -> None:
-        """Delete an agent from the org config."""
+        """Delete an agent from the org config.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+            ConflictError: Raised on the corresponding failure path.
+        """
         captured: dict[str, AgentConfig] = {}
 
         async def read() -> tuple[tuple[AgentConfig, ...], str]:
+            """Return read.
+
+            Raises:
+                ConflictError: Raised on the corresponding failure path.
+                NotFoundError: Raised on the corresponding failure path.
+            """
             _, version = await self._read_setting_versioned("company", "agents")
             agents = await self._read_agents()
             existing = self._find_agent(agents, name)
@@ -315,10 +368,22 @@ class OrgAgentMutationsMixin:
         *,
         saved_by: str = "api",
     ) -> tuple[AgentConfig, ...]:
-        """Reorder agents within a department."""
+        """Reorder agents within a department.
+
+        Returns:
+            Tuple of the declared element types.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         captured: dict[str, tuple[AgentConfig, ...]] = {}
 
         async def read() -> tuple[tuple[AgentConfig, ...], str]:
+            """Return read.
+
+            Raises:
+                NotFoundError: Raised on the corresponding failure path.
+            """
             _, version = await self._read_setting_versioned("company", "agents")
             departments = await self._read_departments()
             if not self._find_department(departments, dept_name):

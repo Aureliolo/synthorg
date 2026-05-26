@@ -102,6 +102,7 @@ from synthorg.api.guards import require_ceo, require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ValidationError
 from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.observability import get_logger, safe_error_description
@@ -142,6 +143,9 @@ async def _validate_completion_prereqs(
         ValidationError: If company is missing, no provider is
             configured, or a persisted agent references a now-absent
             provider / model.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     has_company = await _check_has_company(settings_svc, strict=True)
     if not has_company:
@@ -187,10 +191,13 @@ async def _run_embedder_auto_select(
     """Best-effort embedder auto-selection. Returns failure reason or None.
 
     Extracted from ``complete_setup`` for the same line-budget reason
-    as :func:`_validate_completion_prereqs`. Unexpected exceptions are
+    as :func:`_validate_completion_prereqs`. Non-critical exceptions are
     logged at WARNING and folded into the failure reason rather than
     re-raised, so the completion flow continues to the reinit step
     (which is the gate that actually blocks completion on failure).
+
+    Returns:
+        The ``str`` value when present, ``None`` otherwise.
     """
     provider_names = app_state.provider_registry.list_providers()
     provider_preset_name = provider_names[0] if provider_names else None
@@ -203,9 +210,8 @@ async def _run_embedder_auto_select(
             provider_preset_name=provider_preset_name,
             has_gpu=has_gpu,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             SETUP_COMPLETE_CHECK_ERROR,
             check="auto_select_embedder",
@@ -218,14 +224,16 @@ async def _run_embedder_auto_select(
 async def _read_has_gpu_setting(settings_svc: SettingsService) -> bool | None:
     """Return the operator-owned ``api/setup_has_gpu`` boolean.
 
-    Returns ``None`` on read failure (logged at WARNING with exception
-    type + scrubbed description) or if the value is unparseable.
+    Returns ``None`` on non-critical read failure (logged at WARNING with
+    exception type + scrubbed description) or if the value is unparseable.
+
+    Returns:
+        The ``bool`` value when present, ``None`` otherwise.
     """
     try:
         entry = await settings_svc.get("api", "setup_has_gpu")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             SETUP_COMPLETE_CHECK_ERROR,
             check="read_has_gpu",

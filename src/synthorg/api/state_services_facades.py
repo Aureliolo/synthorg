@@ -227,12 +227,20 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
 
     @property
     def has_signals_service(self) -> bool:
-        """Whether the signals facade is attached."""
+        """Whether the signals facade is attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._signals_service is not None
 
     @property
     def signals_service(self) -> SignalsService:
-        """The signals facade; raises ``ServiceUnavailableError`` when unset."""
+        """The signals facade; raises ``ServiceUnavailableError`` when unset.
+
+        Returns:
+            ``SignalsService`` instance.
+        """
         return self._require_service(self._signals_service, "SignalsService")
 
     def set_signals_service(self, service: SignalsService) -> None:
@@ -241,12 +249,20 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
 
     @property
     def has_analytics_service(self) -> bool:
-        """Whether the analytics facade is attached."""
+        """Whether the analytics facade is attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._analytics_service is not None
 
     @property
     def analytics_service(self) -> AnalyticsService:
-        """The analytics facade; raises ``ServiceUnavailableError`` when unset."""
+        """The analytics facade; raises ``ServiceUnavailableError`` when unset.
+
+        Returns:
+            ``AnalyticsService`` instance.
+        """
         return self._require_service(self._analytics_service, "AnalyticsService")
 
     def set_analytics_service(self, service: AnalyticsService) -> None:
@@ -255,12 +271,20 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
 
     @property
     def has_reports_service(self) -> bool:
-        """Whether the reports facade is attached."""
+        """Whether the reports facade is attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._reports_service is not None
 
     @property
     def reports_service(self) -> ReportsService:
-        """The reports facade; raises ``ServiceUnavailableError`` when unset."""
+        """The reports facade; raises ``ServiceUnavailableError`` when unset.
+
+        Returns:
+            ``ReportsService`` instance.
+        """
         return self._require_service(self._reports_service, "ReportsService")
 
     def set_reports_service(self, service: ReportsService) -> None:
@@ -271,12 +295,20 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
 
     @property
     def has_message_service(self) -> bool:
-        """Whether the message facade is attached."""
+        """Whether the message facade is attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._message_service is not None
 
     @property
     def message_service(self) -> MessageService:
-        """The message facade; raises ``ServiceUnavailableError`` when unset."""
+        """The message facade; raises ``ServiceUnavailableError`` when unset.
+
+        Returns:
+            ``MessageService`` instance.
+        """
         return self._require_service(self._message_service, "MessageService")
 
     def set_message_service(self, service: MessageService) -> None:
@@ -285,12 +317,20 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
 
     @property
     def has_meeting_service(self) -> bool:
-        """Whether the meeting facade is attached."""
+        """Whether the meeting facade is attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._meeting_service is not None
 
     @property
     def meeting_service(self) -> MeetingService:
-        """The meeting facade; raises ``ServiceUnavailableError`` when unset."""
+        """The meeting facade; raises ``ServiceUnavailableError`` when unset.
+
+        Returns:
+            ``MeetingService`` instance.
+        """
         return self._require_service(self._meeting_service, "MeetingService")
 
     def set_meeting_service(self, service: MeetingService) -> None:
@@ -299,12 +339,20 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
 
     @property
     def has_connection_service(self) -> bool:
-        """Whether the connection facade is attached."""
+        """Whether the connection facade is attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._connection_service is not None
 
     @property
     def connection_service(self) -> ConnectionService:
-        """The connection facade; raises ``ServiceUnavailableError`` when unset."""
+        """The connection facade; raises ``ServiceUnavailableError`` when unset.
+
+        Returns:
+            ``ConnectionService`` instance.
+        """
         return self._require_service(self._connection_service, "ConnectionService")
 
     def set_connection_service(self, service: ConnectionService) -> None:
@@ -313,12 +361,20 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
 
     @property
     def has_webhook_service(self) -> bool:
-        """Whether the webhook facade is attached."""
+        """Whether the webhook facade is attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._webhook_service is not None
 
     @property
     def webhook_service(self) -> WebhookService:
-        """The webhook facade; raises ``ServiceUnavailableError`` when unset."""
+        """The webhook facade; raises ``ServiceUnavailableError`` when unset.
+
+        Returns:
+            ``WebhookService`` instance.
+        """
         return self._require_service(self._webhook_service, "WebhookService")
 
     def set_webhook_service(self, service: WebhookService) -> None:
@@ -327,12 +383,20 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
 
     @property
     def has_tunnel_service(self) -> bool:
-        """Whether the tunnel facade is attached."""
+        """Whether the tunnel facade is attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._tunnel_service is not None
 
     @property
     def tunnel_service(self) -> TunnelService:
-        """The tunnel facade; raises ``ServiceUnavailableError`` when unset."""
+        """The tunnel facade; raises ``ServiceUnavailableError`` when unset.
+
+        Returns:
+            ``TunnelService`` instance.
+        """
         return self._require_service(self._tunnel_service, "TunnelService")
 
     def set_tunnel_service(self, service: TunnelService) -> None:
@@ -358,6 +422,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: SettingsReadService,
     ) -> None:
+        """Install the settings read service on the application state."""
         self._set_once("_settings_read_service", service, "SettingsReadService")
 
     @property
@@ -375,6 +440,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: ProviderReadService,
     ) -> None:
+        """Install the provider read service on the application state."""
         self._set_once("_provider_read_service", service, "ProviderReadService")
 
     @property
@@ -392,6 +458,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: BackupFacadeService,
     ) -> None:
+        """Install the backup facade service on the application state."""
         self._set_once("_backup_facade_service", service, "BackupFacadeService")
 
     @property
@@ -403,6 +470,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         return self._require_service(self._user_facade_service, "UserFacadeService")
 
     def set_user_facade_service(self, service: UserFacadeService) -> None:
+        """Install the user facade service on the application state."""
         self._set_once("_user_facade_service", service, "UserFacadeService")
 
     @property
@@ -420,6 +488,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: ProjectFacadeService,
     ) -> None:
+        """Install the project facade service on the application state."""
         self._set_once("_project_facade_service", service, "ProjectFacadeService")
 
     @property
@@ -437,6 +506,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: RequestsFacadeService,
     ) -> None:
+        """Install the requests facade service on the application state."""
         self._set_once("_requests_facade_service", service, "RequestsFacadeService")
 
     @property
@@ -451,6 +521,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: SetupFacadeService,
     ) -> None:
+        """Install the setup facade service on the application state."""
         self._set_once("_setup_facade_service", service, "SetupFacadeService")
 
     @property
@@ -468,6 +539,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: SimulationFacadeService,
     ) -> None:
+        """Install the simulation facade service on the application state."""
         self._set_once(
             "_simulation_facade_service",
             service,
@@ -489,6 +561,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: TemplatePackFacadeService,
     ) -> None:
+        """Install the template pack facade service on the application state."""
         self._set_once(
             "_template_pack_facade_service",
             service,
@@ -504,6 +577,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         return self._require_service(self._audit_read_service, "AuditReadService")
 
     def set_audit_read_service(self, service: AuditReadService) -> None:
+        """Install the audit read service on the application state."""
         self._set_once("_audit_read_service", service, "AuditReadService")
 
     @property
@@ -515,6 +589,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         return self._require_service(self._events_read_service, "EventsReadService")
 
     def set_events_read_service(self, service: EventsReadService) -> None:
+        """Install the events read service on the application state."""
         self._set_once("_events_read_service", service, "EventsReadService")
 
     @property
@@ -534,6 +609,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: IntegrationHealthFacadeService,
     ) -> None:
+        """Install the integration health facade service on the application state."""
         self._set_once(
             "_integration_health_facade_service",
             service,
@@ -557,6 +633,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: CompanyReadService,
     ) -> None:
+        """Install the company read service on the application state."""
         self._set_once("_company_read_service", service, "CompanyReadService")
 
     @property
@@ -568,6 +645,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         return self._require_service(self._department_service, "DepartmentService")
 
     def set_department_service(self, service: DepartmentService) -> None:
+        """Install the department service on the application state."""
         self._set_once("_department_service", service, "DepartmentService")
 
     @property
@@ -579,6 +657,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         return self._require_service(self._team_service, "TeamService")
 
     def set_team_service(self, service: TeamService) -> None:
+        """Install the team service on the application state."""
         self._set_once("_team_service", service, "TeamService")
 
     @property
@@ -596,6 +675,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: RoleVersionService,
     ) -> None:
+        """Install the role version service on the application state."""
         self._set_once("_role_version_service", service, "RoleVersionService")
 
     # ── Integration facades ───────────────────────────────────────
@@ -615,6 +695,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: MCPCatalogFacadeService,
     ) -> None:
+        """Install the mcp catalog facade service on the application state."""
         self._set_once(
             "_mcp_catalog_facade_service",
             service,
@@ -636,6 +717,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: OAuthFacadeService,
     ) -> None:
+        """Install the oauth facade service on the application state."""
         self._set_once("_oauth_facade_service", service, "OAuthFacadeService")
 
     @property
@@ -653,6 +735,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: ClientFacadeService,
     ) -> None:
+        """Install the client facade service on the application state."""
         self._set_once("_client_facade_service", service, "ClientFacadeService")
 
     @property
@@ -670,6 +753,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: ArtifactFacadeService,
     ) -> None:
+        """Install the artifact facade service on the application state."""
         self._set_once(
             "_artifact_facade_service",
             service,
@@ -691,6 +775,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: OntologyFacadeService,
     ) -> None:
+        """Install the ontology facade service on the application state."""
         self._set_once(
             "_ontology_facade_service",
             service,
@@ -714,6 +799,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: QualityFacadeService,
     ) -> None:
+        """Install the quality facade service on the application state."""
         self._set_once(
             "_quality_facade_service",
             service,
@@ -735,6 +821,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: ReviewFacadeService,
     ) -> None:
+        """Install the review facade service on the application state."""
         self._set_once(
             "_review_facade_service",
             service,
@@ -756,6 +843,7 @@ class _FacadesMixin(_MetaMcp3FacadesMixin, _MetaMcp4FacadesMixin):
         self,
         service: EvaluationVersionService,
     ) -> None:
+        """Install the evaluation version service on the application state."""
         self._set_once(
             "_evaluation_version_service",
             service,

@@ -196,7 +196,14 @@ class OrgErrorSummary(BaseModel):
 
     @model_validator(mode="after")
     def _validate_severe_category_exists(self) -> Self:
-        """Ensure most_severe_category references an actual category."""
+        """Ensure most_severe_category references an actual category.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.most_severe_category:
             names = {c.category for c in self.categories}
             if self.most_severe_category not in names:

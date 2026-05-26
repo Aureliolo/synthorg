@@ -25,6 +25,7 @@ from synthorg.communication.meeting.agent_caller import (
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.scheduler import MeetingScheduler
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.workflow.ceremony_scheduler import CeremonyScheduler
 from synthorg.observability import (
@@ -392,9 +393,8 @@ def _register_distributed_dispatcher(
         # must not retain an observer that would publish to an
         # unstarted queue on the in-process fallback path.
         engine.register_observer(dispatcher.on_task_state_changed)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             note="Failed to register distributed dispatcher",
@@ -936,9 +936,8 @@ async def auto_wire_ontology(
         await service.bootstrap()
         if ontology_config.entities.entries:
             await service.bootstrap_from_config(ontology_config.entities)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             ONTOLOGY_AUTO_WIRE_FAILED,
             error_type=type(exc).__name__,

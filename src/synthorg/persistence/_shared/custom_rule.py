@@ -88,7 +88,7 @@ def row_to_custom_rule(row: dict[str, Any]) -> CustomRuleDefinition:
             (data corruption is deterministic; retrying re-reads the
             same bad row). The original exception is logged via
             ``safe_error_description``.
-    """
+    """  # noqa: DOC501 -- TypeError is caught locally and remapped to MalformedRowError
     try:
         raw_altitudes = row["target_altitudes"]
         decoded_altitudes: object

@@ -63,7 +63,11 @@ class AnalyticsService:
         since: datetime,
         until: datetime | None = None,
     ) -> AnalyticsOverview:
-        """Produce an org overview for the window."""
+        """Produce an org overview for the window.
+
+        Returns:
+            ``AnalyticsOverview`` instance.
+        """
         snapshot = await self._signals.get_org_snapshot(since=since, until=until)
         return AnalyticsOverview(
             avg_quality_score=snapshot.performance.avg_quality_score,
@@ -85,6 +89,12 @@ class AnalyticsService:
 
         The underlying ``OrgPerformanceSummary`` already carries trend
         directions per metric; this method filters / projects them.
+
+        Returns:
+            ``AnalyticsTrends`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if since >= until:
             msg = "since must be earlier than until"
@@ -119,7 +129,14 @@ class AnalyticsService:
         until: datetime,
         horizon_days: int = _DEFAULT_HORIZON_DAYS,
     ) -> AnalyticsForecast:
-        """Return a simple linear forecast derived from the budget window."""
+        """Return a simple linear forecast derived from the budget window.
+
+        Returns:
+            ``AnalyticsForecast`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if horizon_days < 1:
             msg = f"horizon_days must be >= 1, got {horizon_days}"
             raise ValueError(msg)
@@ -146,7 +163,11 @@ class AnalyticsService:
         until: datetime | None = None,
         metric_names: Sequence[str] | None = None,
     ) -> MetricsSnapshot:
-        """Return the flat current-value metrics map for the window."""
+        """Return the flat current-value metrics map for the window.
+
+        Returns:
+            ``MetricsSnapshot`` instance.
+        """
         snapshot = await self._signals.get_org_snapshot(since=since, until=until)
         raw: dict[str, float] = {
             "performance.avg_quality_score": snapshot.performance.avg_quality_score,
@@ -195,6 +216,12 @@ class AnalyticsService:
         pipeline) -- acceptable for small ``sample_count`` values.
         Callers that need finer-grained history belong in a durable
         metrics store that can back a future implementation.
+
+        Returns:
+            ``MetricsHistory`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if sample_count < 1:
             msg = f"sample_count must be >= 1, got {sample_count}"
@@ -217,6 +244,7 @@ class AnalyticsService:
             window_start: datetime,
             window_end: datetime,
         ) -> MetricsSnapshot:
+            """Return sample."""
             return await self.get_current_metrics(
                 since=window_start,
                 until=window_end,

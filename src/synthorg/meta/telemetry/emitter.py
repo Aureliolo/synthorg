@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Final, Self
 import httpx
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.meta.telemetry.anonymizer import anonymize_decision, anonymize_rollout
@@ -153,6 +154,9 @@ class HttpAnalyticsEmitter:
         Note: reads ``_buffer`` without the lock for simplicity.
         Only intended for testing and diagnostics -- not for
         production control flow decisions.
+
+        Returns:
+            Resulting integer.
         """
         return len(self._buffer)
 
@@ -176,9 +180,8 @@ class HttpAnalyticsEmitter:
                 builtin_rule_names=self._builtin_rule_names,
             )
             await self._enqueue(event)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 XDEPLOY_EVENT_EMIT_FAILED,
                 event_type="proposal_decision",
@@ -207,9 +210,8 @@ class HttpAnalyticsEmitter:
                 builtin_rule_names=self._builtin_rule_names,
             )
             await self._enqueue(event)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 XDEPLOY_EVENT_EMIT_FAILED,
                 event_type="rollout_result",
@@ -231,6 +233,9 @@ class HttpAnalyticsEmitter:
         concurrent ``aclose`` cannot close ``self._client`` while a
         POST is mid-flight; ``aclose`` acquires the same lock around
         its ``self._client.aclose()`` call.
+
+        Raises:
+            CancelledError: Raised on the corresponding failure path.
         """
         async with self._lock:
             if not self._buffer:
@@ -279,6 +284,9 @@ class HttpAnalyticsEmitter:
         the first non-CancelledError exception, finish the close
         sequence, and re-raise at the end so shutdown is observable
         without leaking the client.
+
+        Raises:
+            CancelledError: Raised on the corresponding failure path.
         """
         async with self._lifecycle_lock:
             self._closed = True
@@ -289,17 +297,15 @@ class HttpAnalyticsEmitter:
                     await self._flush_task
                 except asyncio.CancelledError:
                     pass  # expected: we just cancelled it
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     deferred_exc = exc
             try:
                 await self.flush()
             except asyncio.CancelledError:
                 raise
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 if deferred_exc is None:
                     deferred_exc = exc
             # Hold ``_send_lock`` over ``_client.aclose()`` so any
@@ -315,7 +321,11 @@ class HttpAnalyticsEmitter:
                 raise deferred_exc
 
     async def __aenter__(self) -> Self:
-        """Enter the async context manager."""
+        """Enter the async context manager.
+
+        Returns:
+            ``Self`` instance.
+        """
         return self
 
     async def __aexit__(
@@ -408,6 +418,10 @@ class HttpAnalyticsEmitter:
         Drops the batch on 4xx (terminal client error).  Treats 3xx
         redirects as failures because the POST may not have been
         stored on the redirect target.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+            _TransientPostError: Raised on the corresponding failure path.
         """
         if self._analytics_config.collector_url is None:
             msg = "collector_url is required when analytics is enabled"
@@ -425,6 +439,9 @@ class HttpAnalyticsEmitter:
             transient -- programming errors (TypeError, AttributeError,
             etc.) propagate so real bugs surface instead of being
             retried as transient network failures.
+
+            Raises:
+                _TransientPostError: Raised on the corresponding failure path.
             """
             try:
                 response = await self._client.post(
@@ -475,7 +492,11 @@ class HttpAnalyticsEmitter:
 
 
 def _safe_response_text(response: httpx.Response) -> str:
-    """Safely extract response body text for logging."""
+    """Safely extract response body text for logging.
+
+    Returns:
+        Resulting string.
+    """
     try:
         text = response.text
     except Exception:

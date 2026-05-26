@@ -111,7 +111,11 @@ class CalibrationSummaryResponse(BaseModel):
     @computed_field(description="Number of calibration records")  # type: ignore[prop-decorator]
     @property
     def record_count(self) -> int:
-        """Number of calibration records."""
+        """Number of calibration records.
+
+        Returns:
+            Resulting integer.
+        """
         return len(self.records)
 
 
@@ -136,6 +140,9 @@ class CollaborationController(Controller):
         Raises:
             ServiceUnavailableError: If the override store is not
                 configured.
+
+        Returns:
+            ``CollaborationOverrideStore`` instance.
         """
         app_state: AppState = state.app_state
         tracker = app_state.performance_tracker
@@ -245,6 +252,7 @@ class CollaborationController(Controller):
         Raises:
             ServiceUnavailableError: If the override store is not
                 configured or user identity cannot be determined.
+            UnauthorizedError: Raised on the corresponding failure path.
         """
         store = self._require_override_store(state)
 

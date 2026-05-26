@@ -65,7 +65,11 @@ _DEFAULT_LIMIT: Final[int] = 50
 
 
 def _entity_to_response(entity: EntityDefinition) -> EntityResponse:
-    """Convert an EntityDefinition to an EntityResponse."""
+    """Convert an EntityDefinition to an EntityResponse.
+
+    Returns:
+        ``EntityResponse`` instance.
+    """
     return EntityResponse(
         name=entity.name,
         tier=entity.tier,
@@ -98,7 +102,11 @@ def _entity_to_response(entity: EntityDefinition) -> EntityResponse:
 def _drift_report_to_response(
     report: DriftReport,
 ) -> DriftReportResponse:
-    """Convert a DriftReport to a DriftReportResponse."""
+    """Convert a DriftReport to a DriftReportResponse.
+
+    Returns:
+        ``DriftReportResponse`` instance.
+    """
     from synthorg.api.dto_ontology import DriftAgentResponse  # noqa: PLC0415
 
     return DriftReportResponse(
@@ -137,7 +145,14 @@ class OntologyController(Controller):
             QueryParameter(description="Filter to entity definitions in this tier."),
         ] = None,
     ) -> PaginatedResponse[EntityResponse]:
-        """List all entity definitions, filterable by tier."""
+        """List all entity definitions, filterable by tier.
+
+        Returns:
+            ``PaginatedResponse[EntityResponse]`` instance.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         svc = app_state.ontology_service
 
@@ -171,7 +186,14 @@ class OntologyController(Controller):
         state: State,
         name: PathName,
     ) -> ApiResponse[EntityResponse]:
-        """Get a single entity definition by name."""
+        """Get a single entity definition by name.
+
+        Returns:
+            ``ApiResponse[EntityResponse]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         try:
             entity = await app_state.ontology_service.get(name)
@@ -198,7 +220,14 @@ class OntologyController(Controller):
         state: State,
         data: CreateEntityRequest,
     ) -> ApiResponse[EntityResponse]:
-        """Create a new USER-tier entity definition."""
+        """Create a new USER-tier entity definition.
+
+        Returns:
+            ``ApiResponse[EntityResponse]`` instance.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         now = datetime.now(UTC)
 
@@ -256,7 +285,15 @@ class OntologyController(Controller):
         name: PathName,
         data: UpdateEntityRequest,
     ) -> ApiResponse[EntityResponse]:
-        """Update an entity definition."""
+        """Update an entity definition.
+
+        Returns:
+            ``ApiResponse[EntityResponse]`` instance.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
+            NotFoundError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         svc = app_state.ontology_service
 
@@ -331,7 +368,12 @@ class OntologyController(Controller):
         state: State,
         name: PathName,
     ) -> None:
-        """Delete a USER-tier entity definition."""
+        """Delete a USER-tier entity definition.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
+            NotFoundError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         svc = app_state.ontology_service
 
@@ -364,7 +406,14 @@ class OntologyController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[EntityVersionResponse]:
-        """List all versions of an entity definition."""
+        """List all versions of an entity definition.
+
+        Returns:
+            ``PaginatedResponse[EntityVersionResponse]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         svc = app_state.ontology_service
 
@@ -419,7 +468,14 @@ class OntologyController(Controller):
             PathParameter(description="Entity definition version to fetch."),
         ],
     ) -> ApiResponse[EntityVersionResponse]:
-        """Get a specific version snapshot."""
+        """Get a specific version snapshot.
+
+        Returns:
+            ``ApiResponse[EntityVersionResponse]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         svc = app_state.ontology_service
 
@@ -444,7 +500,11 @@ class OntologyController(Controller):
         self,
         state: State,
     ) -> ApiResponse[dict[str, int]]:
-        """Get current version manifest for all entities."""
+        """Get current version manifest for all entities.
+
+        Returns:
+            ``ApiResponse[dict[str, int]]`` instance.
+        """
         app_state: AppState = state.app_state
         manifest = await app_state.ontology_service.get_version_manifest()
         return ApiResponse(data=manifest)
@@ -458,7 +518,11 @@ class OntologyController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[DriftReportResponse]:
-        """Get latest drift reports for all entities."""
+        """Get latest drift reports for all entities.
+
+        Returns:
+            ``PaginatedResponse[DriftReportResponse]`` instance.
+        """
         app_state: AppState = state.app_state
         store = app_state.drift_report_store
         if store is None:
@@ -491,7 +555,11 @@ class OntologyController(Controller):
         state: State,
         entity_name: PathName,
     ) -> ApiResponse[tuple[DriftReportResponse, ...]]:
-        """Get drift reports for a specific entity."""
+        """Get drift reports for a specific entity.
+
+        Returns:
+            Result matching the declared return annotation.
+        """
         app_state: AppState = state.app_state
         store = app_state.drift_report_store
         if store is None:
@@ -512,7 +580,11 @@ class OntologyController(Controller):
         self,
         state: State,
     ) -> ApiResponse[dict[str, str]]:
-        """Trigger on-demand drift check for all entities."""
+        """Trigger on-demand drift check for all entities.
+
+        Returns:
+            ``ApiResponse[dict[str, str]]`` instance.
+        """
         app_state: AppState = state.app_state
         drift_service = app_state.drift_detection_service
         if drift_service is None:
@@ -544,7 +616,11 @@ class OntologyController(Controller):
         self,
         state: State,
     ) -> ApiResponse[dict[str, int]]:
-        """Re-run auto-derivation from decorated models."""
+        """Re-run auto-derivation from decorated models.
+
+        Returns:
+            ``ApiResponse[dict[str, int]]`` instance.
+        """
         app_state: AppState = state.app_state
         count = await app_state.ontology_service.bootstrap()
         return ApiResponse(data={"derived_count": count})
@@ -563,7 +639,11 @@ class OntologyController(Controller):
         self,
         state: State,
     ) -> ApiResponse[dict[str, int | str]]:
-        """Force re-sync all entity definitions to OrgMemory."""
+        """Force re-sync all entity definitions to OrgMemory.
+
+        Returns:
+            ``ApiResponse[dict[str, int | str]]`` instance.
+        """
         app_state: AppState = state.app_state
         sync_service = app_state.ontology_sync_service
         if sync_service is None:

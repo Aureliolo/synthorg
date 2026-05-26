@@ -13,6 +13,7 @@ from synthorg.budget.currency import DEFAULT_CURRENCY
 # so they must resolve at runtime when downstream tooling evaluates
 # type hints (DI containers, doc generators).
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_CONFIG_VALUE,
@@ -231,6 +232,9 @@ class ChiefOfStaffChat:
 
         Returns:
             Wrapped ChatResponse.
+
+        Raises:
+            Exception: Raised on the corresponding failure path.
         """
         messages = [ChatMessage(role=MessageRole.USER, content=prompt)]
         config = CompletionConfig(
@@ -249,9 +253,8 @@ class ChiefOfStaffChat:
                     self._config.chat_model,
                     config=config,
                 )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(logger, COS_CHAT_FAILED, exc)
             raise
         answer = (response.content or "").strip()
@@ -274,7 +277,11 @@ class ChiefOfStaffChat:
 
 
 def _format_snapshot(snapshot: OrgSignalSnapshot) -> str:
-    """Format a snapshot into a readable summary string."""
+    """Format a snapshot into a readable summary string.
+
+    Returns:
+        Resulting string.
+    """
     perf = snapshot.performance
     budget = snapshot.budget
     coord = snapshot.coordination
@@ -295,5 +302,9 @@ def _format_snapshot(snapshot: OrgSignalSnapshot) -> str:
 
 
 def _format_signal_context(ctx: dict[str, object]) -> str:
-    """Format a signal context dict into readable lines."""
+    """Format a signal context dict into readable lines.
+
+    Returns:
+        Resulting string.
+    """
     return "\n".join(f"{k}: {v}" for k, v in ctx.items())

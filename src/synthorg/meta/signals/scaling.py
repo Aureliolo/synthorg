@@ -52,7 +52,11 @@ class ScalingSignalAggregator:
 
     @property
     def domain(self) -> NotBlankStr:
-        """Signal domain name."""
+        """Signal domain name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("scaling")
 
     async def aggregate(
@@ -81,6 +85,8 @@ class ScalingSignalAggregator:
             RecursionError: Re-raised without logging -- fatal.
             asyncio.CancelledError: Re-raised without logging so task
                 cancellation propagates as normal control flow.
+            CancelledError: Raised on the corresponding failure path.
+            Exception: Raised on the corresponding failure path.
         """
         try:
             decisions = self._service.get_recent_decisions()
@@ -162,7 +168,11 @@ def _build_summary(
     decision: ScalingDecision,
     outcome: ScalingOutcome | None,
 ) -> ScalingDecisionSummary:
-    """Project a decision + optional action outcome into a summary row."""
+    """Project a decision + optional action outcome into a summary row.
+
+    Returns:
+        ``ScalingDecisionSummary`` instance.
+    """
     outcome_str = (
         NotBlankStr(outcome.value) if outcome is not None else _PENDING_OUTCOME
     )

@@ -95,6 +95,12 @@ class JwtClaims(BaseModel):
         Across an auth boundary that drifts token lifetimes silently,
         which is exactly the class of cross-environment bug a typed
         contract is supposed to prevent.
+
+        Returns:
+            ``object`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if isinstance(value, datetime):
             if value.tzinfo is None or value.utcoffset() is None:
@@ -116,6 +122,12 @@ class JwtClaims(BaseModel):
         always invalid; PyJWT will accept it on the decode side as
         long as ``exp`` lies in the future, so we enforce the
         invariant here.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if self.iat >= self.exp:
             msg = f"iat ({self.iat}) must be strictly less than exp ({self.exp})"
@@ -135,6 +147,12 @@ class JwtClaims(BaseModel):
         per-role iss/aud and ``pwd_sig`` validation only protects
         against the well-formed shapes; this validator makes the
         well-formedness itself a model invariant.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         user_fields = (
             self.username,
