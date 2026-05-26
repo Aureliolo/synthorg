@@ -9,4 +9,3 @@ export type {
 } from './dtos.gen'
 
 export type { ReadinessOutcome, TelemetryStatus } from './enum-values.gen'
-export { READINESS_OUTCOME_VALUES, TELEMETRY_STATUS_VALUES } from './enum-values.gen'

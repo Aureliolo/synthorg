@@ -16,7 +16,7 @@ import {
   voidSuccess,
 } from './helpers'
 
-export function buildMcpCatalogEntry(
+function buildMcpCatalogEntry(
   overrides: Partial<McpCatalogEntry> = {},
 ): McpCatalogEntry {
   return {

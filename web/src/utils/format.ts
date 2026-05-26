@@ -121,13 +121,6 @@ export function formatDateTime(
 }
 
 /**
- * Alias of {@link formatDateTime} kept for the existing call sites that
- * import `formatDate`. New code should prefer `formatDateTime` for
- * clarity or `formatDateOnly` when no time is needed.
- */
-export const formatDate = formatDateTime
-
-/**
  * Format a date as a date-only string (e.g. "Jan 15, 2025").
  *
  * Accepts an ISO string, a `Date`, or a millisecond timestamp.

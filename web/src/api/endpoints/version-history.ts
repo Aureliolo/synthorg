@@ -102,7 +102,7 @@ export function createVersionHistoryClient<T>(
  * versions, budget-config versions, evaluation-config versions,
  * company versions today).
  */
-export function createReadOnlyVersionHistoryClient<T>(
+function createReadOnlyVersionHistoryClient<T>(
   basePath: string,
 ): ReadOnlyVersionHistoryClient<T> {
   return {
@@ -136,16 +136,6 @@ export function createReadOnlyVersionHistoryClient<T>(
 }
 
 // ── Domain-specific clients ───────────────────────────────────────────
-
-/**
- * Build the role-versions client for ``roleName``.  Read-only on
- * the backend today.
- */
-export function createRoleVersionsClient(roleName: string) {
-  return createReadOnlyVersionHistoryClient<Record<string, unknown>>(
-    `/roles/${encodeURIComponent(roleName)}`,
-  )
-}
 
 /**
  * Singleton budget-config versions client.  Read-only.

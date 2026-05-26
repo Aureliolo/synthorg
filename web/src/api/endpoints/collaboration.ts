@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapVoid } from '../client'
+import { apiClient, unwrap } from '../client'
 import type {
   CalibrationSummaryResponse,
   CollaborationScoreResult,
@@ -33,11 +33,6 @@ export async function setOverride(
     data,
   )
   return unwrap(response)
-}
-
-export async function clearOverride(agentId: string): Promise<void> {
-  const response = await apiClient.delete<ApiResponse<null>>(`${basePath(agentId)}/override`)
-  unwrapVoid(response)
 }
 
 export async function getCalibration(agentId: string): Promise<CalibrationSummaryResponse> {

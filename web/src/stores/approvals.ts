@@ -14,7 +14,7 @@ import { createWsHandler } from './approvals/ws-handler'
 import type { ApprovalsState } from './approvals/types'
 
 export type { ApprovalsState } from './approvals/types'
-export { _resetPendingTransitions, _resetDetailRequestSeq }
+export { _resetPendingTransitions }
 
 export const useApprovalsStore = create<ApprovalsState>()((set, get) => ({
   approvals: [],

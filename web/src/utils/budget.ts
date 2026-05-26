@@ -64,7 +64,7 @@ export type BudgetMetricCardData = Readonly<Omit<MetricCardProps, 'className'>>
 // ── Constants ──────────────────────────────────────────────
 
 /** Color palette for cost breakdown visualizations, using CSS custom properties. */
-export const DONUT_COLORS: readonly string[] = [
+const DONUT_COLORS: readonly string[] = [
   'var(--so-accent)',
   'var(--so-success)',
   'var(--so-warning)',

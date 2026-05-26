@@ -44,42 +44,6 @@ export interface TeamConfig {
   readonly members: readonly string[]
 }
 
-export interface DepartmentReportingLine {
-  readonly subordinate: string
-  readonly supervisor: string
-  readonly subordinate_id?: string | null
-  readonly supervisor_id?: string | null
-}
-
-/**
- * Request-specific team payload nested inside ``UpdateDepartmentRequest``.
- * The backend caps ``teams`` at {@link UPDATE_DEPARTMENT_MAX_TEAMS}
- * entries; validate length at the form/store boundary before issuing
- * the request rather than surfacing a server 422.
- */
-export interface UpdateDepartmentTeam {
-  name: string
-  lead: string
-  readonly members?: readonly string[]
-}
-
-/**
- * Matches ``UpdateDepartmentRequest.teams`` ``max_length=64`` bound in
- * ``synthorg.api.dto_org``. Exported so forms/stores validate before
- * sending rather than surfacing a server 422.
- */
-export const UPDATE_DEPARTMENT_MAX_TEAMS = 64
-
-/**
- * Optional pair of (provider, model id) used by agent mutation DTOs.
- * Either both fields are present as non-empty strings, or both are
- * omitted: the backend validator rejects partial pairs with 422.
- * Expressed as a discriminated union so the TypeScript compiler flags
- * half-filled requests at the call site.
- */
-export type AgentModelSelector =
-  | { model_provider: string; model_id: string }
-  | { model_provider?: undefined; model_id?: undefined }
 
 /**
  * Frontend aggregation of company + agents + departments used by the

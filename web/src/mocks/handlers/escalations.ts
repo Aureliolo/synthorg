@@ -8,7 +8,7 @@ import type {
 import type { Escalation, EscalationResponse } from '@/api/types/escalations'
 import { emptyPage, paginatedFor, successFor } from './helpers'
 
-export function buildEscalation(
+function buildEscalation(
   overrides: Partial<Escalation> = {},
 ): Escalation {
   return {

@@ -158,4 +158,4 @@ export function _reset() {
 export { registerCommands }
 
 // Exported for testing
-export { setOpen as _setOpen, commandGroups as _commandGroups, updateCommandsSnapshot as _updateCommandsSnapshot }
+export { setOpen as _setOpen }

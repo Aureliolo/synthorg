@@ -14,7 +14,7 @@ import { emptyPage, paginatedFor, successFor, voidSuccess } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'
 
-export function buildEntity(
+function buildEntity(
   overrides: Partial<EntityResponse> = {},
 ): EntityResponse {
   return {

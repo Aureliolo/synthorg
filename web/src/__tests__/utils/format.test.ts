@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, vi } from 'vitest'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
 import {
-  formatDate,
   formatDateOnly,
   formatDateTime,
   formatDayLabel,
@@ -43,12 +42,6 @@ describe('formatDateTime', () => {
     const en = formatDateTime('2025-01-15T10:30:00Z', 'en-US')
     const de = formatDateTime('2025-01-15T10:30:00Z', 'de-DE')
     expect(en).not.toBe(de)
-  })
-})
-
-describe('formatDate (alias)', () => {
-  it('is the same function as formatDateTime', () => {
-    expect(formatDate).toBe(formatDateTime)
   })
 })
 

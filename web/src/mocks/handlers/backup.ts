@@ -5,10 +5,10 @@ import type {
   listBackups,
   restoreBackup,
 } from '@/api/endpoints/backup'
-import type { BackupInfo, BackupManifest } from '@/api/types/backup'
+import type { BackupManifest } from '@/api/types/backup'
 import { successFor, voidSuccess } from './helpers'
 
-export function buildManifest(overrides: Partial<BackupManifest> = {}): BackupManifest {
+function buildManifest(overrides: Partial<BackupManifest> = {}): BackupManifest {
   return {
     backup_id: 'backup-default',
     synthorg_version: '0.6.4',
@@ -17,20 +17,6 @@ export function buildManifest(overrides: Partial<BackupManifest> = {}): BackupMa
     components: ['persistence'],
     size_bytes: 0,
     checksum: 'sha256:0',
-    ...overrides,
-  }
-}
-
-export function buildBackupInfo(
-  overrides: Partial<BackupInfo> = {},
-): BackupInfo {
-  return {
-    backup_id: 'backup-default',
-    timestamp: '2026-04-19T00:00:00Z',
-    trigger: 'manual',
-    components: ['persistence'],
-    size_bytes: 0,
-    compressed: false,
     ...overrides,
   }
 }

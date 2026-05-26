@@ -29,18 +29,11 @@ export type {
 } from './enum-values.gen'
 
 export {
-  CHANNEL_TYPE_VALUES,
   MESSAGE_PRIORITY_VALUES,
   MESSAGE_TYPE_VALUES,
 } from './enum-values.gen'
 
 export type AttachmentType = 'artifact' | 'file' | 'link'
-
-export const ATTACHMENT_TYPE_VALUES = [
-  'artifact',
-  'file',
-  'link',
-] as const satisfies readonly AttachmentType[]
 
 export interface Attachment {
   type: AttachmentType

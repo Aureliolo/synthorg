@@ -9,7 +9,7 @@ import type {
 } from '@/api/endpoints/providers'
 import { successFor } from '../helpers'
 
-export const DEFAULT_DISCOVERY_POLICY = {
+const DEFAULT_DISCOVERY_POLICY = {
   host_port_allowlist: [],
   block_private_ips: true,
   entry_count: 0,

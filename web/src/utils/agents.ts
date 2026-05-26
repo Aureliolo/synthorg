@@ -92,7 +92,7 @@ export function filterAgents(
  * Higher value = more senior. Exported so other modules (e.g. the setup
  * wizard's MiniOrgChart) don't duplicate the ranking locally.
  */
-export const SENIORITY_RANK: Readonly<Record<SeniorityLevel, number>> = {
+const SENIORITY_RANK: Readonly<Record<SeniorityLevel, number>> = {
   junior: 0, mid: 1, senior: 2, lead: 3, principal: 4, director: 5, vp: 6, c_suite: 7,
 }
 

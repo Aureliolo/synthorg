@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { getCareerEventColor } from '@/utils/agents'
-import { formatDate, formatLabel } from '@/utils/format'
+import { formatDateTime, formatLabel } from '@/utils/format'
 import { cn } from '@/lib/utils'
 import type { CareerEvent } from '@/api/types/agents'
 
@@ -47,7 +47,7 @@ function CareerTimelineEventImpl({ event, isLast }: CareerTimelineEventProps) {
             dateTime={event.timestamp}
             className="text-micro font-mono text-muted-foreground"
           >
-            {formatDate(event.timestamp)}
+            {formatDateTime(event.timestamp)}
           </time>
         </div>
         {event.description && (

@@ -31,7 +31,6 @@ export type {
 } from './dtos.gen'
 
 export type { AuthType, ProviderHealthStatus } from './enum-values.gen'
-export { AUTH_TYPE_VALUES, PROVIDER_HEALTH_STATUS_VALUES } from './enum-values.gen'
 
 import type {
   CloudPreset as WireCloudPreset,

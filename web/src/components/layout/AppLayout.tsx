@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { ROUTES } from '@/router/routes'
 import { titleForPath } from '@/router/route-titles'
+import { RouteBoundary } from '@/router/RouteBoundary'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
 import { useGlobalNotifications } from '@/hooks/useGlobalNotifications'
@@ -36,7 +37,6 @@ import {
 import { AnimatedPresence } from '@/components/ui/animated-presence'
 import { CommandCheatsheet } from '@/components/ui/command-cheatsheet'
 import { CommandPalette } from '@/components/ui/command-palette'
-import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { MobileUnsupportedOverlay } from '@/components/ui/mobile-unsupported'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import { ToastContainer } from '@/components/ui/toast'
@@ -269,13 +269,13 @@ export default function AppLayout() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar overlayOpen={sidebarOverlayOpen} onOverlayClose={closeSidebarOverlay} />
         <main className="flex-1 overflow-y-auto p-card">
-          <ErrorBoundary level="page" onReset={() => { void navigate(ROUTES.DASHBOARD) }}>
+          <RouteBoundary key={location.pathname}>
             <Suspense fallback={<PageLoadingFallback />}>
               <AnimatedPresence routeKey={location.pathname}>
                 <Outlet />
               </AnimatedPresence>
             </Suspense>
-          </ErrorBoundary>
+          </RouteBoundary>
         </main>
       </div>
       <NotificationDrawer

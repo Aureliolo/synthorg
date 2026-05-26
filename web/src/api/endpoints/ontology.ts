@@ -109,10 +109,6 @@ export async function updateEntity(
   return unwrap(response)
 }
 
-export async function deleteEntity(name: string): Promise<void> {
-  await apiClient.delete(`/ontology/entities/${encodeURIComponent(name)}`)
-}
-
 export async function listEntityVersions(
   name: string,
   params?: { cursor?: string | null; limit?: number },

@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 import { getApprovalStatusColor, getApprovalStatusLabel } from '@/utils/approvals'
-import { formatDate } from '@/utils/format'
+import { formatDateTime } from '@/utils/format'
 import type { ApprovalResponse } from '@/api/types/approvals'
 
 export interface ApprovalTimelineProps {
@@ -76,7 +76,7 @@ export function ApprovalTimeline({ approval, className }: ApprovalTimelineProps)
             {/* Timestamp */}
             {step.timestamp && (
               <span className="mt-0.5 font-mono text-[9px] text-muted-foreground">
-                {formatDate(step.timestamp)}
+                {formatDateTime(step.timestamp)}
               </span>
             )}
             {/* Outcome badge */}

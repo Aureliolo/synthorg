@@ -39,7 +39,6 @@ export type * from './dtos.gen'
 export * from './enum-values.gen'
 export * from './enums'
 export type { ApiResponse, PaginatedResponse, PaginationMeta, PaginationParams } from './http'
-export { ErrorCategory, ErrorCode } from './errors'
 export type { ErrorDetail } from './errors'
 export * from './websocket'
 

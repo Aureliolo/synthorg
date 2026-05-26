@@ -44,13 +44,8 @@ function recordNotification(): void {
 // Public API
 // ---------------------------------------------------------------------------
 
-export function isSupported(): boolean {
+function isSupported(): boolean {
   return 'Notification' in window
-}
-
-export function getPermission(): NotificationPermission {
-  if (!isSupported()) return 'denied'
-  return Notification.permission
 }
 
 export async function requestPermission(): Promise<NotificationPermission> {

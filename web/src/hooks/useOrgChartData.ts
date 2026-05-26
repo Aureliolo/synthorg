@@ -35,16 +35,6 @@ export interface UseOrgChartDataReturn {
   wsSetupError: string | null
 }
 
-export interface UseOrgChartDataOptions {
-  viewMode?: ViewMode
-  /**
-   * Department group IDs that are currently collapsed.  Child agents
-   * of collapsed depts are filtered out BEFORE the dagre layout pass
-   * so the dept box's computed height shrinks to header-only -- no
-   * wasted space below the header where agents would have been.
-   */
-  collapsedDeptIds?: ReadonlySet<string>
-}
 
 function buildCommunicationEdges(
   links: CommunicationLink[],

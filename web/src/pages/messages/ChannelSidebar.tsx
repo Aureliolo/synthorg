@@ -32,41 +32,6 @@ function isChannelActive(
   return channelsWithMessages.has(channel.name)
 }
 
-interface ChannelGroupSectionProps {
-  type: ChannelType
-  items: Channel[]
-  activeChannel: string | null
-  unreadCounts: Record<string, number>
-  onSelectChannel: (name: string) => void
-}
-
-function ChannelGroupSection({
-  type,
-  items,
-  activeChannel,
-  unreadCounts,
-  onSelectChannel,
-}: ChannelGroupSectionProps) {
-  return (
-    <div>
-      <div className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        {getChannelTypeLabel(type)}
-      </div>
-      <div className="flex flex-col gap-0.5">
-        {items.map((ch) => (
-          <ChannelListItem
-            key={ch.name}
-            channel={ch}
-            active={ch.name === activeChannel}
-            unreadCount={unreadCounts[ch.name] ?? 0}
-            onSelect={onSelectChannel}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
 interface ChannelSidebarProps {
   channels: Channel[]
   activeChannel: string | null
@@ -273,8 +238,3 @@ export function ChannelSidebar(props: ChannelSidebarProps) {
     </>
   )
 }
-
-// Re-exported only to silence "unused" lint after refactor; the
-// inline desktop branch above renders ChannelGroupSection's output
-// shape directly through ChannelListBody.
-export { ChannelGroupSection }

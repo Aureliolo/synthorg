@@ -10,7 +10,7 @@ export interface ActivityFilterParams extends PaginationParams {
 }
 
 /** Map a REST ActivityEvent to the display-oriented ActivityItem shape. */
-export function mapActivityEventToItem(event: ActivityEvent): ActivityItem {
+function mapActivityEventToItem(event: ActivityEvent): ActivityItem {
   const relatedIds = event.related_ids ?? {}
   const agentId = relatedIds.agent_id ?? 'System'
   const taskId = relatedIds.task_id ?? null

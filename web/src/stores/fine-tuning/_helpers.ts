@@ -13,10 +13,6 @@ export const VALID_STAGE_VALUES = [
   'failed',
 ] as const satisfies readonly FineTuneStage[]
 
-export const VALID_STAGES: ReadonlySet<string> = new Set<FineTuneStage>(
-  VALID_STAGE_VALUES,
-)
-
 export const NO_ERRORS: FineTuningErrors = {
   status: null,
   checkpoints: null,

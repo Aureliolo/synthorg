@@ -60,9 +60,6 @@ export function isBoolean(value: unknown): value is boolean {
   return typeof value === 'boolean'
 }
 
-/** Narrow to a non-null object record (alias kept for readability at call sites). */
-export const isRecord = isObject
-
 /**
  * Validate a value against a guard and return it narrowed; ``null``
  * otherwise. Use as a single-line replacement for unsafe ``as`` casts:

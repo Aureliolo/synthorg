@@ -24,7 +24,7 @@ const VENDOR_CHUNKS: Record<string, readonly string[]> = {
   'vendor-editor': ['@codemirror/commands', '@codemirror/lang-json', '@codemirror/lang-yaml', '@codemirror/language', '@codemirror/state', '@codemirror/view'],
   'vendor-motion': ['motion'],
   'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
-  'vendor-state': ['zustand', '@tanstack/react-query', 'axios'],
+  'vendor-state': ['zustand', 'axios'],
 } as const
 
 function manualChunks(id: string): string | undefined {

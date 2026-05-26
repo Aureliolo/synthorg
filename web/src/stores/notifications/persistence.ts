@@ -33,7 +33,7 @@ const VALID_ROUTES: ReadonlySet<string> = new Set([
 // is wired through cancelPendingPersist() from test-setup.tsx.
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 
-export function pruneStale(
+function pruneStale(
   items: readonly NotificationItem[],
 ): readonly NotificationItem[] {
   const cutoff = Date.now() - STALE_THRESHOLD_MS

@@ -43,7 +43,7 @@ function buildParetoFrontier(): ParetoFrontier {
   }
 }
 
-export function buildBudgetConfig(
+function buildBudgetConfig(
   overrides: Partial<BudgetConfig> = {},
 ): BudgetConfig {
   return {

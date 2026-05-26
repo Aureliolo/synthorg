@@ -1,7 +1,7 @@
 import { Drawer } from '@/components/ui/drawer'
 import { Avatar } from '@/components/ui/avatar'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
-import { formatDate, formatCurrency } from '@/utils/format'
+import { formatDateTime, formatCurrency } from '@/utils/format'
 import { MessageTypeBadge } from './MessageTypeBadge'
 import { AttachmentList } from './AttachmentList'
 import {
@@ -74,7 +74,7 @@ function MessageDetailContent({ message }: MessageDetailContentProps) {
         <h3 className="mb-2 text-micro font-semibold uppercase tracking-wider text-muted-foreground">Details</h3>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
           <MetadataRow label="Channel" value={message.channel} mono />
-          <MetadataRow label="Timestamp" value={formatDate(message.timestamp)} mono />
+          <MetadataRow label="Timestamp" value={formatDateTime(message.timestamp)} mono />
           {message.metadata.task_id && (
             <MetadataRow label="Task ID" value={message.metadata.task_id} mono />
           )}

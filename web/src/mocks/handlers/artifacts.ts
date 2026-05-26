@@ -5,17 +5,15 @@ import type {
   listArtifacts,
 } from '@/api/endpoints/artifacts'
 import type { Artifact } from '@/api/types/artifacts'
-import type { PaginatedResponse, PaginationMeta } from '@/api/types/http'
 import {
   apiError,
-  apiSuccess,
   emptyPage,
   paginatedFor,
   successFor,
   voidSuccess,
 } from './helpers'
 
-export function buildArtifact(overrides: Partial<Artifact> = {}): Artifact {
+function buildArtifact(overrides: Partial<Artifact> = {}): Artifact {
   return {
     id: 'artifact-default',
     type: 'code',
@@ -30,72 +28,6 @@ export function buildArtifact(overrides: Partial<Artifact> = {}): Artifact {
     ...overrides,
   }
 }
-
-// ── Storybook-facing named export: populated paginated list. ──
-const mockArtifacts: Artifact[] = [
-  {
-    id: 'artifact-abc123',
-    type: 'code',
-    path: 'src/engine/coordinator.py',
-    task_id: 'task-001',
-    created_by: 'agent-eng-001',
-    description: 'Coordinator implementation',
-    project_id: 'proj-001',
-    content_type: 'text/plain',
-    size_bytes: 4096,
-    created_at: '2026-03-30T10:00:00Z',
-  },
-  {
-    id: 'artifact-def456',
-    type: 'tests',
-    path: 'tests/test_coordinator.py',
-    task_id: 'task-001',
-    created_by: 'agent-qa-001',
-    description: 'Coordinator tests',
-    project_id: 'proj-001',
-    content_type: 'text/plain',
-    size_bytes: 2048,
-    created_at: '2026-03-30T11:00:00Z',
-  },
-  {
-    id: 'artifact-ghi789',
-    type: 'documentation',
-    path: 'docs/coordinator.md',
-    task_id: 'task-002',
-    created_by: 'agent-eng-001',
-    description: 'Coordinator documentation',
-    project_id: null,
-    content_type: 'text/markdown',
-    size_bytes: 1024,
-    created_at: '2026-03-30T12:00:00Z',
-  },
-]
-
-const pagination: PaginationMeta = {
-  limit: 50,
-  next_cursor: null,
-  has_more: false,
-}
-
-export const artifactsList = [
-  http.get('/api/v1/artifacts', () => {
-    const body: PaginatedResponse<Artifact> = {
-      data: mockArtifacts,
-      error: null,
-      error_detail: null,
-      success: true,
-      pagination,
-    }
-    return HttpResponse.json(body)
-  }),
-  http.get('/api/v1/artifacts/:id', ({ params }) => {
-    const artifact = mockArtifacts.find((a) => a.id === params.id)
-    if (!artifact) {
-      return HttpResponse.json(apiError('Artifact not found'), { status: 404 })
-    }
-    return HttpResponse.json(apiSuccess(artifact))
-  }),
-]
 
 // ── Default test handlers: empty list and generic single-item lookups. ──
 export const artifactsHandlers = [

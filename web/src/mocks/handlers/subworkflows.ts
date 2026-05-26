@@ -18,7 +18,7 @@ import { apiError, emptyPage, paginatedFor, successFor, voidSuccess } from './he
  * handlers return fixtures that still surface the boundary field that
  * distinguishes them from top-level workflows.
  */
-export function buildSubworkflow(
+function buildSubworkflow(
   overrides: Partial<WorkflowDefinition> = {},
 ): WorkflowDefinition {
   // Spread overrides first, then force is_subworkflow=true so the returned

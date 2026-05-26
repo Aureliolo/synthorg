@@ -11,25 +11,11 @@ import type {
   DocVersion,
   LivingDocument,
 } from '@/api/types'
-import type { PaginationMeta } from '@/api/types/http'
 import {
-  apiSuccess,
   emptyPage,
   paginatedFor,
   successFor,
 } from './helpers'
-
-function buildSummary(overrides: Partial<DocSummary> = {}): DocSummary {
-  return {
-    project_id: 'proj-default',
-    slug: 'doc-default',
-    title: 'Default doc',
-    doc_type: 'status_report',
-    tags: [],
-    updated_at: '2026-05-20T00:00:00Z',
-    ...overrides,
-  }
-}
 
 function buildDoc(overrides: Partial<LivingDocument> = {}): LivingDocument {
   return {
@@ -57,52 +43,6 @@ function buildDoc(overrides: Partial<LivingDocument> = {}): LivingDocument {
     ...overrides,
   }
 }
-
-const pagination: PaginationMeta = {
-  limit: 50,
-  next_cursor: null,
-  has_more: false,
-}
-
-// Storybook-facing populated list.
-export const projectDocsList = [
-  http.get('/api/v1/projects/:projectId/docs', ({ params }) => {
-    const projectId = String(params.projectId)
-    const summaries: DocSummary[] = [
-      buildSummary({
-        project_id: projectId,
-        slug: 'q2-status',
-        title: 'Q2 status report',
-        doc_type: 'status_report',
-        tags: ['checkout', 'q2'],
-      }),
-      buildSummary({
-        project_id: projectId,
-        slug: 'product-prd',
-        title: 'Product PRD',
-        doc_type: 'deliverable',
-        tags: ['product'],
-      }),
-    ]
-    return HttpResponse.json({
-      data: summaries,
-      error: null,
-      error_detail: null,
-      success: true,
-      pagination,
-    })
-  }),
-  http.get('/api/v1/projects/:projectId/docs/:slug', ({ params }) =>
-    HttpResponse.json(
-      apiSuccess(
-        buildDoc({
-          slug: String(params.slug),
-          title: `Doc ${String(params.slug)}`,
-        }),
-      ),
-    ),
-  ),
-]
 
 // Default test handlers: empty list + happy-path singletons.
 export const projectDocsHandlers = [

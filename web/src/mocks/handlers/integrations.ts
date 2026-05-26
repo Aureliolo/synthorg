@@ -17,10 +17,7 @@ import { mcpCatalogHandlers } from './mcp-catalog'
 import { oauthHandlers } from './oauth'
 import { tunnelHandlers } from './tunnel'
 
-export { connectionsList, emptyConnectionsList } from './connections'
-export { integrationHealthList } from './integration-health'
-export { mcpCatalogHandlers } from './mcp-catalog'
-export { oauthHandlers } from './oauth'
+export { connectionsList } from './connections'
 export { tunnelHandlers } from './tunnel'
 
 /** Spread of every integrations-domain Storybook handler set. */

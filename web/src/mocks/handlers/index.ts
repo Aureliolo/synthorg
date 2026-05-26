@@ -8,27 +8,10 @@
  * - `defaultHandlers` below aggregates every default handler into a
  *   single flat array consumed by `src/test-setup.tsx` to boot the
  *   vitest server with exhaustive coverage.
- * - Storybook-facing named exports (`setupStatusComplete`,
- *   `authLoginSuccess`, `projectsList`, `integrationsHandlers`, etc.)
- *   are preserved for existing stories. New stories should prefer the
- *   per-domain `<domain>Handlers` arrays where practical.
- *
- * Usage in stories (pick whichever matches the story's intent):
- *
- *   // Preferred for new stories: per-domain default array covering
- *   // every endpoint in that module.
- *   import { setupHandlers } from '@/mocks/handlers'
- *   export const MyStory: Story = {
- *     parameters: { msw: { handlers: setupHandlers } },
- *   }
- *
- *   // Legacy: targeted named exports for existing stories that want
- *   // a specific scenario (e.g. `setupStatusComplete` vs
- *   // `setupStatusNeedsAdmin`). Backward compatible.
- *   import { setupStatusComplete } from '@/mocks/handlers'
- *   export const MyStory: Story = {
- *     parameters: { msw: { handlers: [...setupStatusComplete] } },
- *   }
+ * - A story that wants a whole domain's defaults imports the per-domain
+ *   array straight from its source file (e.g.
+ *   `import { setupHandlers } from '@/mocks/handlers/setup'`); a story
+ *   that wants a specific scenario imports the named export below.
  *
  * Usage in tests:
  *
@@ -48,9 +31,7 @@ export {
   apiError,
   apiPaginatedError,
   apiSuccess,
-  buildValidationError,
   emptyPage,
-  paginatedEnvelopeFor,
   paginatedFor,
   successFor,
   voidSuccess,
@@ -162,111 +143,13 @@ export const defaultHandlers = [
   ...workflowsHandlers,
 ]
 
-// ── Per-domain default handler arrays (re-exported for ad-hoc use). ──
-
-export {
-  activitiesHandlers,
-  agentsHandlers,
-  analyticsHandlers,
-  approvalsHandlers,
-  artifactsHandlers,
-  auditHandlers,
-  authHandlers,
-  backupHandlers,
-  budgetHandlers,
-  capabilitiesHandlers,
-  charterHandlers,
-  ceremonyPolicyHandlers,
-  clientsHandlers,
-  cockpitHandlers,
-  collaborationHandlers,
-  companyHandlers,
-  connectionsHandlers,
-  coordinationHandlers,
-  customRulesHandlers,
-  escalationsHandlers,
-  fineTuningHandlers,
-  healthHandlers,
-  integrationHealthHandlers,
-  knowledgeHandlers,
-  mcpCatalogDefaultHandlers,
-  meetingsHandlers,
-  messagesHandlers,
-  metaHandlers,
-  oauthDefaultHandlers,
-  ontologyHandlers,
-  personalitiesHandlers,
-  projectDocsHandlers,
-  projectsHandlers,
-  providersHandlers,
-  qualityHandlers,
-  scalingHandlers,
-  settingsHandlers,
-  setupHandlers,
-  subworkflowsHandlers,
-  tasksHandlers,
-  templatePacksHandlers,
-  trainingHandlers,
-  tunnelDefaultHandlers,
-  usersHandlers,
-  webhooksHandlers,
-  workflowExecutionsHandlers,
-  workflowsHandlers,
-}
-
-// ── Storybook-facing named exports (preserved for existing stories). ──
+// ── Named scenario exports consumed by Storybook stories. ──
 
 export { setupStatusComplete, setupStatusNeedsAdmin } from './setup'
 export { authLoginSuccess, authSetupSuccess } from './auth'
-export { artifactsList } from './artifacts'
-export { projectsList } from './projects'
-export { templatePacksList } from './template-packs'
-export {
-  connectionsList,
-  emptyConnectionsList,
-  integrationHealthList,
-  integrationsHandlers,
-  mcpCatalogHandlers,
-  oauthHandlers,
-  tunnelHandlers,
-} from './integrations'
 
-// ── Entity builders (exported for per-test use when constructing overrides). ──
+// ── Entity builders consumed by store unit tests. ──
 
-export { buildAgent } from './agents'
-export { buildApproval } from './approvals'
-export { buildArtifact } from './artifacts'
-export { buildAuthUser } from './auth'
-export { buildManifest as buildBackupManifest, buildBackupInfo } from './backup'
-export { buildBudgetConfig } from './budget'
-export { buildCeremonyPolicy } from './ceremony-policy'
 export { buildCharter } from './charter'
-export {
-  buildProfile as buildClientProfile,
-  buildRequirement as buildClientRequirement,
-  buildRequest as buildClientRequest,
-  buildSimulation as buildClientSimulation,
-} from './clients'
-export { buildCompanyConfig, buildDepartment, buildTeam } from './company'
-export { buildConnection } from './connections'
-export { buildCheckpoint } from './fine-tuning'
 export { buildCustomRule } from './custom-rules'
-export { buildEscalation } from './escalations'
-export { buildMcpCatalogEntry } from './mcp-catalog'
-export { buildMeeting } from './meetings'
-export { buildMessage, buildChannel } from './messages'
-export { buildEntity } from './ontology'
-export { buildProject } from './projects'
-export {
-  buildCloudPreset,
-  buildLocalPreset,
-  buildProvider,
-  buildProviderPreset,
-} from './providers'
-export { buildSettingEntry } from './settings'
-export { buildAgentSummary as buildSetupAgentSummary } from './setup'
-export { buildSubworkflow } from './subworkflows'
-export { buildTask } from './tasks'
-export { buildPlan as buildTrainingPlan, buildResult as buildTrainingResult } from './training'
-export { buildUser } from './users'
-export { buildWorkflow } from './workflows'
+export { buildCloudPreset, buildLocalPreset } from './providers'

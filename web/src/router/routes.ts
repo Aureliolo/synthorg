@@ -67,10 +67,3 @@ export const ROUTES = {
   SIMULATION_DASHBOARD: '/clients/simulations',
   REVIEW_PIPELINE_VIEW: '/clients/reviews/:taskId',
 } as const
-
-/** Routes accessible without authentication. */
-export const PUBLIC_ROUTES: readonly string[] = [
-  ROUTES.LOGIN,
-  ROUTES.SETUP,
-  ROUTES.SETUP_STEP,
-]

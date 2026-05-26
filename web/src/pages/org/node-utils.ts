@@ -29,7 +29,7 @@ function makeStringFieldGuard<T>(
   }
 }
 
-export const isAgentNodeData = makeStringFieldGuard<AgentNodeData>([
+const isAgentNodeData = makeStringFieldGuard<AgentNodeData>([
   'agentId',
   'name',
   'role',
@@ -38,12 +38,12 @@ export const isAgentNodeData = makeStringFieldGuard<AgentNodeData>([
   'runtimeStatus',
 ])
 
-export const isDepartmentGroupData = makeStringFieldGuard<DepartmentGroupData>([
+const isDepartmentGroupData = makeStringFieldGuard<DepartmentGroupData>([
   'departmentName',
   'displayName',
 ])
 
-export const isOwnerNodeData = makeStringFieldGuard<OwnerNodeData>([
+const isOwnerNodeData = makeStringFieldGuard<OwnerNodeData>([
   'ownerId',
   'displayName',
   'role',

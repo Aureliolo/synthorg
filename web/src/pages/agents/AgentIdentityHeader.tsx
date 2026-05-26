@@ -2,7 +2,7 @@ import { Avatar } from '@/components/ui/avatar'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { StatPill } from '@/components/ui/stat-pill'
 import { toRuntimeStatus } from '@/utils/agents'
-import { formatLabel, formatDate } from '@/utils/format'
+import { formatLabel, formatDateTime } from '@/utils/format'
 import { cn } from '@/lib/utils'
 import type { AgentConfig } from '@/api/types/agents'
 
@@ -41,7 +41,7 @@ export function AgentIdentityHeader({ agent, className }: AgentIdentityHeaderPro
               dateTime={agent.hiring_date}
               className="text-micro font-mono text-muted-foreground"
             >
-              Hired {formatDate(agent.hiring_date)}
+              Hired {formatDateTime(agent.hiring_date)}
             </time>
           )}
         </div>

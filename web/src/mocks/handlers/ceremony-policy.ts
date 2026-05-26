@@ -17,12 +17,6 @@ const defaultPolicy: CeremonyPolicyConfig = {
   transition_threshold: 0.8,
 }
 
-export function buildCeremonyPolicy(
-  overrides: Partial<CeremonyPolicyConfig> = {},
-): CeremonyPolicyConfig {
-  return { ...defaultPolicy, ...overrides }
-}
-
 export const ceremonyPolicyHandlers = [
   http.get('/api/v1/ceremony-policy', () =>
     HttpResponse.json(successFor<typeof getCeremonyPolicy>(defaultPolicy)),

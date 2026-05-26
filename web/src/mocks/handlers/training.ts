@@ -13,7 +13,7 @@ import { successFor } from './helpers'
 
 const NOW = '2026-04-19T00:00:00Z'
 
-export function buildPlan(
+function buildPlan(
   overrides: Partial<TrainingPlanResponse> = {},
 ): TrainingPlanResponse {
   return {
@@ -34,7 +34,7 @@ export function buildPlan(
   }
 }
 
-export function buildResult(
+function buildResult(
   overrides: Partial<TrainingResultResponse> = {},
 ): TrainingResultResponse {
   return {

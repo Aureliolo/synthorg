@@ -167,7 +167,7 @@ function unwrapParens(str: string): string {
  *
  * Returns null if the string cannot be parsed.
  */
-export function parseConditionString(str: string): ConditionExpression | null {
+function parseConditionString(str: string): ConditionExpression | null {
   const trimmed = str.trim()
   if (!trimmed) return null
 
@@ -198,32 +198,6 @@ export function parseConditionString(str: string): ConditionExpression | null {
 
   // No logical operator found -- try single comparison
   return parseSingleComparison(unwrapped)
-}
-
-/**
- * Flatten a condition expression into a flat list of comparisons
- * plus the logical operator joining them. Returns null if the expression
- * contains nested groups (mixed AND/OR), which the flat builder cannot
- * represent.
- */
-export function flattenExpression(
-  expr: ConditionExpression,
-): { comparisons: ConditionComparison[]; logicalOperator: LogicalOperator } | null {
-  if (expr.kind === 'comparison') {
-    return { comparisons: [expr], logicalOperator: 'AND' }
-  }
-
-  // NOT groups cannot be represented in the flat builder
-  if (expr.logicalOperator === 'NOT') return null
-
-  // Only flatten if all children are comparisons (no nested groups)
-  const comparisons: ConditionComparison[] = []
-  for (const child of expr.conditions) {
-    if (child.kind !== 'comparison') return null
-    comparisons.push(child)
-  }
-
-  return { comparisons, logicalOperator: expr.logicalOperator }
 }
 
 /** Extended builder state including negate and sub-groups. */

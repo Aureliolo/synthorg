@@ -20,15 +20,8 @@ export type {
 } from './enum-values.gen'
 
 export {
-  ACTIVITY_EVENT_TYPE_VALUES,
   LIFECYCLE_EVENT_TYPE_VALUES as CAREER_EVENT_TYPE_VALUES,
-  STRATEGIC_OUTPUT_MODE_VALUES,
-  TREND_DIRECTION_VALUES,
 } from './enum-values.gen'
-
-/** Frontend alias derived from the wire type so the union stays in
- *  lockstep with the generated ``AgentConfig.tier`` field. */
-export type AgentTier = NonNullable<WireAgentConfig['tier']>
 
 /**
  * AgentConfig with optional dashboard / WS extras layered on top of

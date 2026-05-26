@@ -9,11 +9,6 @@ import { StrategyPicker } from './StrategyPicker'
 import { StrategyConfigPanel } from './StrategyConfigPanel'
 import { PolicyFieldsPanel } from './PolicyFieldsPanel'
 
-export interface CeremonyOverride {
-  name: string
-  policy: CeremonyPolicyConfig | null
-}
-
 export interface CeremonyListPanelProps {
   /** Per-ceremony overrides keyed by ceremony name. */
   overrides: Readonly<Record<string, CeremonyPolicyConfig | null>>
