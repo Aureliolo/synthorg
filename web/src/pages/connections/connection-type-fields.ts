@@ -289,45 +289,47 @@ const DATABASE_SERVER_FIELDS = new Set(['host', 'port', 'username', 'password'])
  * value so that host/port/username/password are required for
  * non-SQLite dialects (PostgreSQL, MySQL) but optional for SQLite.
  */
+function resolveRequired(spec: ConnectionFieldSpec, dialect?: string): boolean {
+  if (spec.required) return true
+  // host/port/username/password are required for non-SQLite dialects.
+  return DATABASE_SERVER_FIELDS.has(spec.key) && dialect !== undefined && dialect.toLowerCase() !== 'sqlite'
+}
+
+function validateUrlValue(spec: ConnectionFieldSpec, value: string): string | null {
+  if (!value.trim()) return null
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return `${spec.label} must be an http(s) URL`
+    }
+  } catch {
+    return `${spec.label} must be a valid URL`
+  }
+  return null
+}
+
+function validateSelectValue(spec: ConnectionFieldSpec, value: string): string | null {
+  const trimmed = value.trim()
+  if (trimmed && spec.options && !spec.options.includes(trimmed)) {
+    return `${spec.label} must be one of: ${spec.options.join(', ')}`
+  }
+  return null
+}
+
+function validateNumberValue(spec: ConnectionFieldSpec, value: string): string | null {
+  if (value.trim() && !Number.isFinite(Number(value))) return `${spec.label} must be a number`
+  return null
+}
+
 export function validateConnectionField(
   spec: ConnectionFieldSpec,
   value: string,
   dialect?: string,
 ): string | null {
-  let effectiveRequired = spec.required
-  if (
-    !effectiveRequired &&
-    DATABASE_SERVER_FIELDS.has(spec.key) &&
-    dialect !== undefined &&
-    dialect.toLowerCase() !== 'sqlite'
-  ) {
-    effectiveRequired = true
-  }
-  if (effectiveRequired && !value.trim()) {
-    return `${spec.label} is required`
-  }
-  if (spec.type === 'url' && value.trim()) {
-    try {
-      const url = new URL(value)
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-        return `${spec.label} must be an http(s) URL`
-      }
-    } catch {
-      return `${spec.label} must be a valid URL`
-    }
-  }
-  if (spec.type === 'select') {
-    const trimmed = value.trim()
-    if (trimmed && spec.options && !spec.options.includes(trimmed)) {
-      return `${spec.label} must be one of: ${spec.options.join(', ')}`
-    }
-  }
-  if (spec.type === 'number' && value.trim()) {
-    const n = Number(value)
-    if (!Number.isFinite(n)) {
-      return `${spec.label} must be a number`
-    }
-  }
+  if (resolveRequired(spec, dialect) && !value.trim()) return `${spec.label} is required`
+  if (spec.type === 'url') return validateUrlValue(spec, value)
+  if (spec.type === 'select') return validateSelectValue(spec, value)
+  if (spec.type === 'number') return validateNumberValue(spec, value)
   return null
 }
 

@@ -22,6 +22,89 @@ export interface ConnectionCardProps {
   className?: string
 }
 
+function ConnectionCardActions({
+  connection,
+  checking,
+  onRunHealthCheck,
+  onEdit,
+  onDelete,
+}: Pick<ConnectionCardProps, 'connection' | 'checking' | 'onRunHealthCheck' | 'onEdit' | 'onDelete'>) {
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        aria-label={`Run health check for ${connection.name}`}
+        onClick={onRunHealthCheck}
+        disabled={checking}
+      >
+        <RefreshCw className={cn('size-4', checking && 'animate-spin')} aria-hidden />
+      </Button>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        aria-label={`More actions for ${connection.name}`}
+        onClick={onEdit}
+      >
+        <MoreVertical className="size-4" aria-hidden />
+      </Button>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        aria-label={`Delete ${connection.name}`}
+        onClick={onDelete}
+        className="text-danger hover:bg-danger/10 hover:text-danger"
+      >
+        <Trash2 className="size-4" aria-hidden />
+      </Button>
+    </div>
+  )
+}
+
+function ConnectionCardMeta({
+  connection,
+  report,
+  lastChecked,
+}: {
+  connection: Connection
+  report: HealthReport | null
+  lastChecked: string | null
+}) {
+  return (
+    <div className="mt-3 flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <TypeBadge type={connection.connection_type} />
+        <span className="text-xs text-text-muted">{connection.auth_method.replaceAll('_', ' ')}</span>
+      </div>
+      {connection.base_url && (
+        <span className="truncate font-mono text-xs text-text-muted">{connection.base_url}</span>
+      )}
+      <div className="flex items-center gap-2 text-xs text-text-muted">
+        <span>Checked {formatTimestamp(lastChecked)}</span>
+        {report?.latency_ms != null && (
+          <>
+            <span>·</span>
+            <span>{Math.round(report.latency_ms)} ms</span>
+          </>
+        )}
+      </div>
+      {report?.error_detail && <p className="line-clamp-2 text-xs text-danger">{report.error_detail}</p>}
+      {/* Cross-link into the receipt inspector pre-selected on this
+          connection (receipts are scoped per-connection there). */}
+      <Link
+        to={`/webhooks/receipts?connection=${encodeURIComponent(connection.name)}`}
+        className="inline-flex items-center gap-1.5 pt-1 text-xs text-accent hover:underline"
+      >
+        <Inbox className="size-3.5" aria-hidden />
+        View webhook receipts
+      </Link>
+    </div>
+  )
+}
+
 export function ConnectionCard({
   connection,
   report,
@@ -46,90 +129,21 @@ export function ConnectionCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <Plug className="size-4 shrink-0 text-text-secondary" aria-hidden />
-          <span className="truncate font-mono text-sm text-foreground">
-            {connection.name}
-          </span>
+          <span className="truncate font-mono text-sm text-foreground">{connection.name}</span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <ConnectionHealthBadge status={effectiveStatus} label pulse={checking} />
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label={`Run health check for ${connection.name}`}
-              onClick={onRunHealthCheck}
-              disabled={checking}
-            >
-              <RefreshCw
-                className={cn('size-4', checking && 'animate-spin')}
-                aria-hidden
-              />
-            </Button>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label={`More actions for ${connection.name}`}
-              onClick={onEdit}
-            >
-              <MoreVertical className="size-4" aria-hidden />
-            </Button>
-            {/* Delete consolidated into the top-right action group
-                so all per-connection actions live in one row, matching
-                the placement convention used elsewhere instead of the
-                previous split top-right + bottom-right layout. */}
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label={`Delete ${connection.name}`}
-              onClick={onDelete}
-              className="text-danger hover:bg-danger/10 hover:text-danger"
-            >
-              <Trash2 className="size-4" aria-hidden />
-            </Button>
-          </div>
+          <ConnectionCardActions
+            connection={connection}
+            checking={checking}
+            onRunHealthCheck={onRunHealthCheck}
+            onEdit={onEdit}
+            onDelete={onDelete}
+          />
         </div>
       </div>
 
-      <div className="mt-3 flex flex-col gap-1.5">
-        <div className="flex items-center gap-2">
-          <TypeBadge type={connection.connection_type} />
-          <span className="text-xs text-text-muted">
-            {connection.auth_method.replaceAll('_', ' ')}
-          </span>
-        </div>
-        {connection.base_url && (
-          <span className="truncate font-mono text-xs text-text-muted">
-            {connection.base_url}
-          </span>
-        )}
-        <div className="flex items-center gap-2 text-xs text-text-muted">
-          <span>Checked {formatTimestamp(lastChecked)}</span>
-          {report?.latency_ms != null && (
-            <>
-              <span>·</span>
-              <span>{Math.round(report.latency_ms)} ms</span>
-            </>
-          )}
-        </div>
-        {report?.error_detail && (
-          <p className="line-clamp-2 text-xs text-danger">{report.error_detail}</p>
-        )}
-        {/* Cross-link into the receipt inspector pre-selected on this
-            connection. Webhook receipts are scoped per-connection in
-            the inspector, so jumping straight there saves a manual
-            dropdown selection. */}
-        <Link
-          to={`/webhooks/receipts?connection=${encodeURIComponent(connection.name)}`}
-          className="inline-flex items-center gap-1.5 pt-1 text-xs text-accent hover:underline"
-        >
-          <Inbox className="size-3.5" aria-hidden />
-          View webhook receipts
-        </Link>
-      </div>
-
+      <ConnectionCardMeta connection={connection} report={report} lastChecked={lastChecked} />
     </div>
   )
 }
