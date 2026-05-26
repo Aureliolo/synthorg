@@ -26,7 +26,7 @@ def _ensure_cockpit_wired(test_client: TestClient[Any]) -> None:
     """
     app_state = test_client.app.state.app_state
     if not app_state.has_cockpit_service:
-        from synthorg.api.app import _wire_cockpit_services
+        from synthorg.api._app_wiring import _wire_cockpit_services
 
         _wire_cockpit_services(app_state)
 

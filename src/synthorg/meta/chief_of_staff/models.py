@@ -89,7 +89,14 @@ class OutcomeStats(BaseModel):
 
     @model_validator(mode="after")
     def _validate_counts_sum(self) -> Self:
-        """Ensure approved + rejected equals total."""
+        """Ensure approved + rejected equals total.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.approved_count + self.rejected_count != self.total_proposals:
             msg = (
                 f"approved_count ({self.approved_count}) + "
@@ -102,7 +109,11 @@ class OutcomeStats(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def approval_rate(self) -> float:
-        """Fraction of proposals that were approved."""
+        """Fraction of proposals that were approved.
+
+        Returns:
+            Resulting numeric value.
+        """
         return self.approved_count / self.total_proposals
 
 
@@ -145,6 +156,9 @@ class OrgInflection(BaseModel):
 
         Uses symmetric relative change to handle zero baselines
         without producing infinity.
+
+        Returns:
+            Resulting numeric value.
         """
         if self.old_value == 0.0 and self.new_value == 0.0:
             return 0.0
@@ -334,7 +348,14 @@ class ProposeDecision(BaseModel):
 
     @model_validator(mode="after")
     def _validate_exclusive_branch(self) -> Self:
-        """Enforce the clarify-XOR-propose invariant."""
+        """Enforce the clarify-XOR-propose invariant.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.needs_clarification:
             if self.clarifying_question is None:
                 msg = "clarifying_question is required when needs_clarification is True"
@@ -461,6 +482,12 @@ class ProposeResult(BaseModel):
         work, no follow-up question to ask). Catches caller mistakes
         at construction instead of letting an ambiguous payload reach
         the API response.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if self.status == "needs_clarification":
             if self.clarifying_question is None:

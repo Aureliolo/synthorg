@@ -16,6 +16,7 @@ import asyncio
 from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
 from synthorg.core.clock import SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -84,6 +85,12 @@ async def _resolve_webhook_receipt_cleanup_enabled(app_state: AppState) -> bool:
     ``_resolver_throttle.cleanup_enabled_failed`` so a prolonged
     settings hiccup logs one warning per failure run instead of one per
     loop tick.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     if not app_state.has_config_resolver:
         return True
@@ -93,9 +100,8 @@ async def _resolve_webhook_receipt_cleanup_enabled(app_state: AppState) -> bool:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         if not _resolver_throttle.cleanup_enabled_failed:
             logger.warning(
                 PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
@@ -125,6 +131,12 @@ async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
     hiccup that triggers this fallback will silently re-enable it for
     the remainder of the loop's lifetime.  Surfacing the error makes
     that override discoverable in alerting.
+
+    Returns:
+        Resulting integer.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     fallback = registered_default_int(
         SettingNamespace.INTEGRATIONS.value, "webhook_receipt_retention_days"
@@ -138,9 +150,8 @@ async def _resolve_webhook_receipt_retention(app_state: AppState) -> int:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # ``logger.exception`` would attach a traceback that could leak
         # secret-bearing frame state into structured logs; use
         # ``logger.error`` with ``safe_error_description`` instead.
@@ -176,6 +187,12 @@ async def _cleanup_connection_receipts(
     ``MemoryError`` / ``RecursionError`` / ``CancelledError`` propagate
     so the parent loop crashes / cancels rather than masking a fatal
     state.
+
+    Returns:
+        ``_CleanupOutcome`` instance.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     override = conn.webhook_receipt_retention_days
     effective = override if override is not None else default_days
@@ -191,9 +208,8 @@ async def _cleanup_connection_receipts(
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
             connection_name=str(conn.name),
@@ -250,6 +266,9 @@ async def _webhook_receipt_cleanup_tick(app_state: AppState) -> None:
     deployments), the SQLite write lock would serialise parallel sweeps
     anyway, and sequential keeps the failure-isolation contract simple
     for tests (see ``test_tick_failure_in_one_connection_does_not_abort_others``).
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     if not app_state.has_persistence:
         return
@@ -266,9 +285,8 @@ async def _webhook_receipt_cleanup_tick(app_state: AppState) -> None:
         connections = tuple(collected)
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,
             message="Failed to list connections for webhook receipt sweep",
@@ -311,6 +329,12 @@ async def _resolve_webhook_receipt_cleanup_tick_seconds(app_state: AppState) -> 
 
     Repeated outages are throttled via
     ``_resolver_throttle.cleanup_tick_failed``.
+
+    Returns:
+        Resulting numeric value.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     fallback = registered_default_float(
         SettingNamespace.INTEGRATIONS.value,
@@ -325,9 +349,8 @@ async def _resolve_webhook_receipt_cleanup_tick_seconds(app_state: AppState) -> 
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         if not _resolver_throttle.cleanup_tick_failed:
             logger.warning(
                 PERSISTENCE_WEBHOOK_RECEIPT_CLEANUP_FAILED,

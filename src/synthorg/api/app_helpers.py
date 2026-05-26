@@ -29,6 +29,7 @@ from synthorg.api.channels import (
 )
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.agent_engine import (  # noqa: TC001
     PersonalityTrimNotifier,
     PersonalityTrimPayload,
@@ -66,6 +67,7 @@ def _make_expire_callback(
     """
 
     def _on_expire(item: ApprovalItem) -> None:
+        """Handle the expire event."""
         event = WsEvent(
             event_type=WsEventType.APPROVAL_EXPIRED,
             channel=CHANNEL_APPROVALS,
@@ -82,9 +84,8 @@ def _make_expire_callback(
                 event.model_dump_json(),
                 channels=[CHANNEL_APPROVALS],
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_APPROVAL_PUBLISH_FAILED,
                 approval_id=item.id,
@@ -104,6 +105,12 @@ def _resolve_artifact_dir_env() -> str:
     consists only of whitespace. Rejects relative or traversal paths
     at the env boundary so artifacts cannot end up in the process
     working directory or outside the mounted volume.
+
+    Returns:
+        Resulting string.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     artifact_dir_str = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
     if not artifact_dir_str:
@@ -140,6 +147,12 @@ def resolve_agent_workspace_root_env() -> Path | None:
     ``SYNTHORG_ARTIFACT_DIR`` (explicit), then ``SYNTHORG_DB_PATH``
     parent (sqlite volume), then ``/data`` when only
     ``SYNTHORG_DATABASE_URL`` is set (postgres compose volume).
+
+    Returns:
+        The ``Path`` value when present, ``None`` otherwise.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     artifact_dir = os.environ.get("SYNTHORG_ARTIFACT_DIR", "").strip()
     if artifact_dir:
@@ -164,7 +177,11 @@ def resolve_agent_workspace_root_env() -> Path | None:
 def _make_meeting_publisher(
     channels_plugin: ChannelsPlugin,
 ) -> Callable[[str, dict[str, Any]], None]:
-    """Create a sync callback that publishes meeting events to WS."""
+    """Create a sync callback that publishes meeting events to WS.
+
+    Returns:
+        ``Callable[[str, dict[str, Any]], None]`` instance.
+    """
 
     def _on_meeting_event(
         event_name: str,
@@ -174,6 +191,7 @@ def _make_meeting_publisher(
         # ``event_name`` raises ``ValueError`` from the enum lookup and
         # must never abort the meeting-path caller. Failures are logged
         # at WARNING and swallowed.
+        """Handle the meeting event event."""
         try:
             event = WsEvent(
                 event_type=WsEventType(event_name),
@@ -185,9 +203,8 @@ def _make_meeting_publisher(
                 event.model_dump_json(),
                 channels=[CHANNEL_MEETINGS],
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_WS_SEND_FAILED,
                 note="Failed to publish meeting WebSocket event",
@@ -207,9 +224,13 @@ def make_personality_trim_notifier(
     The returned callback matches the ``PersonalityTrimNotifier`` contract
     and is intended for passing to ``AgentEngine`` via the
     ``personality_trim_notifier`` constructor parameter.
+
+    Returns:
+        ``PersonalityTrimNotifier`` instance.
     """
 
     async def _on_personality_trimmed(payload: PersonalityTrimPayload) -> None:
+        """Handle the personality trimmed event."""
         event = WsEvent(
             event_type=WsEventType.PERSONALITY_TRIMMED,
             channel=CHANNEL_AGENTS,
@@ -222,9 +243,8 @@ def make_personality_trim_notifier(
                 event.model_dump_json(),
                 channels=[CHANNEL_AGENTS],
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROMPT_PERSONALITY_NOTIFY_FAILED,
                 reason="failed to publish personality.trimmed WebSocket event",

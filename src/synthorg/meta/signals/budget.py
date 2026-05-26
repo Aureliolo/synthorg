@@ -6,6 +6,7 @@ with spend patterns, category breakdowns, and forecasts.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import OrgBudgetSummary
 from synthorg.observability import get_logger, log_exception_redacted
@@ -51,7 +52,11 @@ class BudgetSignalAggregator:
 
     @property
     def domain(self) -> NotBlankStr:
-        """Signal domain name."""
+        """Signal domain name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("budget")
 
     async def aggregate(
@@ -78,9 +83,8 @@ class BudgetSignalAggregator:
                 META_SIGNAL_AGGREGATION_COMPLETED,
                 domain="budget",
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain="budget"
             )

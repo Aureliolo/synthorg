@@ -79,6 +79,9 @@ def _reject_sensitive_context_keys(context: dict[str, Any]) -> None:
     runs before the actual log emission so the bad call is fail-fast at
     the point of misuse, not deferred to a downstream observability
     pipeline.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     suspect = sorted(
         key

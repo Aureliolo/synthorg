@@ -12,6 +12,7 @@ Endpoints:
 """
 
 from datetime import UTC, datetime
+from typing import NoReturn
 from uuid import UUID
 
 from litestar import Controller, get, post
@@ -29,8 +30,8 @@ from synthorg.budget.pareto import (  # noqa: TC001 -- runtime return annotation
 )
 from synthorg.core.domain_errors import (
     ConflictError,
+    ResourceNotFoundError,
     ServiceUnavailableError,
-    resource_not_found,
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime by Pydantic
 from synthorg.observability import get_logger
@@ -112,14 +113,26 @@ class RaiseCeilingRequest(BaseModel):
     )
 
 
-def _raise_not_found(forecast_id: str, *, suffix: str = "") -> None:
-    """Raise NotFoundError with the canonical resource shape."""
+def _raise_not_found(forecast_id: str, *, suffix: str = "") -> NoReturn:
+    """Raise ResourceNotFoundError with the canonical resource shape.
+
+    Raises:
+        ResourceNotFoundError: Raised on the corresponding failure path.
+    """
     resource = "cost forecast" if not suffix else f"cost forecast {suffix}"
-    raise resource_not_found(resource, forecast_id)
+    msg = f"{resource} {forecast_id!r} not found"
+    raise ResourceNotFoundError(msg)
 
 
 def _require_repo(state: State) -> CostForecastRepository:
-    """Return the cost forecast repo or raise 503."""
+    """Return the cost forecast repo or raise 503.
+
+    Returns:
+        ``CostForecastRepository`` instance.
+
+    Raises:
+        ServiceUnavailableError: Raised on the corresponding failure path.
+    """
     app_state: AppState = state.app_state
     repo = app_state.cost_forecast_repo
     if repo is None:
@@ -141,7 +154,14 @@ class ForecastBudgetController(Controller):
         data: ForecastRequest,
         state: State,
     ) -> Forecast:
-        """Generate a fresh pending forecast for a brief."""
+        """Generate a fresh pending forecast for a brief.
+
+        Returns:
+            ``Forecast`` instance.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         forecaster = app_state.cost_forecaster
         repo = app_state.cost_forecast_repo
@@ -178,12 +198,15 @@ class ForecastBudgetController(Controller):
         forecast_id: PathId,
         state: State,
     ) -> Forecast:
-        """Retrieve a stored forecast by id."""
+        """Retrieve a stored forecast by id.
+
+        Returns:
+            ``Forecast`` instance.
+        """
         repo = _require_repo(state)
         forecast = await repo.get(UUID(forecast_id))
         if forecast is None:
             _raise_not_found(forecast_id)
-            raise AssertionError  # unreachable; _raise_not_found always raises
         return forecast
 
     @post("/forecasts/{forecast_id:str}/approve", guards=[require_write_access])
@@ -193,7 +216,11 @@ class ForecastBudgetController(Controller):
         data: ForecastApproveRequest,
         state: State,
     ) -> Forecast:
-        """Approve a pending forecast; releases the work pipeline."""
+        """Approve a pending forecast; releases the work pipeline.
+
+        Returns:
+            ``Forecast`` instance.
+        """
         repo = _require_repo(state)
         target = UUID(forecast_id)
         transitioned = await repo.transition_if(
@@ -208,7 +235,6 @@ class ForecastBudgetController(Controller):
         forecast = await repo.get(target)
         if forecast is None:  # pragma: no cover
             _raise_not_found(forecast_id)
-            raise AssertionError
         logger.info(
             BUDGET_FORECAST_APPROVED,
             forecast_id=forecast_id,
@@ -224,7 +250,11 @@ class ForecastBudgetController(Controller):
         data: ForecastRejectRequest,
         state: State,
     ) -> Forecast:
-        """Reject a pending forecast; terminates the work item."""
+        """Reject a pending forecast; terminates the work item.
+
+        Returns:
+            ``Forecast`` instance.
+        """
         repo = _require_repo(state)
         target = UUID(forecast_id)
         transitioned = await repo.transition_if(
@@ -238,7 +268,6 @@ class ForecastBudgetController(Controller):
         forecast = await repo.get(target)
         if forecast is None:  # pragma: no cover
             _raise_not_found(forecast_id)
-            raise AssertionError
         logger.info(
             BUDGET_FORECAST_REJECTED,
             forecast_id=forecast_id,
@@ -253,7 +282,16 @@ class ForecastBudgetController(Controller):
         data: RaiseCeilingRequest,
         state: State,
     ) -> Forecast:
-        """Raise a parked run's hard ceiling so the engine can resume."""
+        """Raise a parked run's hard ceiling so the engine can resume.
+
+        Returns:
+            ``Forecast`` instance.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
+            RunHardCeilingTooLowError: Raised on the corresponding failure path.
+            ConflictError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         budget = app_state.budget_config
         if budget is None:
@@ -275,7 +313,6 @@ class ForecastBudgetController(Controller):
         forecast = await repo.get(target)
         if forecast is None:
             _raise_not_found(forecast_id)
-            raise AssertionError
         if forecast.halt_context is None:
             msg = (
                 f"Forecast {forecast_id} is not in a halted state; there is"
@@ -300,7 +337,14 @@ class ForecastBudgetController(Controller):
 
     @get("/pareto")
     async def get_pareto(self, state: State) -> ParetoFrontier:
-        """Return the current cost / quality frontier."""
+        """Return the current cost / quality frontier.
+
+        Returns:
+            ``ParetoFrontier`` instance.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         analyzer = app_state.pareto_analyzer
         if analyzer is None:

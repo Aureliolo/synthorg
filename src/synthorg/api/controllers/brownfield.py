@@ -84,6 +84,9 @@ async def import_codebase_impl(
 
     Public to the package for testability (direct calls in unit tests),
     not for external callers.
+
+    Returns:
+        ``ApiResponse[ImportCodebaseAck]`` instance.
     """
     submission = CodebaseImportSubmission(
         project_id=data.project_id,
@@ -140,6 +143,9 @@ class BrownfieldController(Controller):
         store, then drives an ANALYSIS work item through the pipeline
         spine. Returns ``202 Accepted`` immediately; the run completes
         asynchronously.
+
+        Returns:
+            ``ApiResponse[ImportCodebaseAck]`` instance.
         """
         return await import_codebase_impl(state.app_state, data)
 

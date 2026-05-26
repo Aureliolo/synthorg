@@ -21,7 +21,6 @@ from synthorg.api.path_params import (  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.core.domain_errors import ConflictError, NotFoundError, ValidationError
-from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.types import (
     NotBlankStr,  # noqa: TC001 -- Pydantic field type at runtime
 )
@@ -119,6 +118,7 @@ class CreateConnectionRequest(BaseModel):
         # ``"github"`` cannot become two distinct identities.  The
         # ``NotBlankStr`` annotation already rejects whitespace-only
         # input; this just normalises the surrounding spaces.
+        """Return strip name."""
         return v.strip()
 
 
@@ -159,6 +159,11 @@ class UpdateConnectionRequest(BaseModel):
         # The default (omission) skips validation, so this only fires on an
         # explicit JSON ``null``; the supported states are omit / true /
         # false, and a null body is a client error, not a no-op.
+        """Return reject null sensitive.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if v is None:
             msg = "sensitive must be true or false, not null"
             raise ValueError(msg)
@@ -213,7 +218,11 @@ class ConnectionsController(Controller):
         state: State,
         name: PathName,
     ) -> ApiResponse[Connection]:
-        """Get a single connection by name."""
+        """Get a single connection by name.
+
+        Returns:
+            ``ApiResponse[Connection]`` instance.
+        """
         catalog = state["app_state"].connection_catalog
         conn = require_resource_or_404(
             await catalog.get(name),
@@ -222,7 +231,7 @@ class ConnectionsController(Controller):
             log_event=API_RESOURCE_NOT_FOUND,
             operation="read",
             extra_log_kwargs={"connection": name},
-            code=ErrorCode.CONNECTION_NOT_FOUND,
+            error_class=ConnectionNotFoundError,
         )
         return ApiResponse(data=conn)
 
@@ -246,6 +255,13 @@ class ConnectionsController(Controller):
         unknown fields and shape mismatches surface as a structured 4xx
         response automatically.  The handler body therefore only owns
         the persistence-layer dispatch and the domain-error mapping.
+
+        Returns:
+            ``ApiResponse[Connection]`` instance.
+
+        Raises:
+            ConflictError: Raised on the corresponding failure path.
+            ValidationError: Raised on the corresponding failure path.
         """
         # Defensively deepcopy ``credentials`` / ``metadata`` at the API
         # boundary so the catalog can never observe (or be mutated by)
@@ -326,6 +342,12 @@ class ConnectionsController(Controller):
         :class:`UpdateConnectionRequest` before this handler executes;
         unknown fields and shape mismatches surface as a structured 4xx
         response automatically.
+
+        Returns:
+            ``ApiResponse[Connection]`` instance.
+
+        Raises:
+            ConnectionNotFoundError: Raised on the corresponding failure path.
         """
         # ``model_fields_set`` distinguishes "field omitted" from "field
         # explicitly set to ``None``" so a PATCH that drops ``base_url``
@@ -405,7 +427,14 @@ class ConnectionsController(Controller):
         state: State,
         name: PathName,
     ) -> ApiResponse[None]:
-        """Delete a connection and its secrets."""
+        """Delete a connection and its secrets.
+
+        Returns:
+            ``ApiResponse[None]`` instance.
+
+        Raises:
+            ConnectionNotFoundError: Raised on the corresponding failure path.
+        """
         catalog = state["app_state"].connection_catalog
         try:
             await catalog.delete(name)
@@ -436,7 +465,14 @@ class ConnectionsController(Controller):
         state: State,
         name: PathName,
     ) -> ApiResponse[HealthReport]:
-        """Run an on-demand health check for a connection."""
+        """Run an on-demand health check for a connection.
+
+        Returns:
+            ``ApiResponse[HealthReport]`` instance.
+
+        Raises:
+            ConnectionNotFoundError: Raised on the corresponding failure path.
+        """
         from synthorg.integrations.health.service import (  # noqa: PLC0415
             check_connection_health,
         )
@@ -485,6 +521,12 @@ class ConnectionsController(Controller):
         Apps page can surface a specific ``client_secret`` without
         exposing the rest of the credential blob. The reveal is
         audit-logged (field name only, never the value).
+
+        Returns:
+            ``ApiResponse[dict[str, str]]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
         """
         catalog = state["app_state"].connection_catalog
         try:

@@ -33,7 +33,12 @@ def _validate_default_type(
     declared_type: WorkflowValueType,
     default: object,
 ) -> None:
-    """Reject defaults that are not compatible with the declared type."""
+    """Reject defaults that are not compatible with the declared type.
+
+    Raises:
+        TypeError: Raised on the corresponding failure path.
+        ValueError: Raised on the corresponding failure path.
+    """
     try:
         json.dumps(default, allow_nan=False)
     except TypeError as exc:
@@ -98,6 +103,12 @@ class WorkflowIODeclarationRequest(BaseModel):
 
         Also validates that non-None defaults are type-compatible with
         the declared ``type`` and JSON-serializable.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if self.required and self.default is not None:
             msg = (
@@ -163,6 +174,14 @@ class CreateWorkflowDefinitionRequest(BaseModel):
     @field_validator("version")
     @classmethod
     def _validate_semver(cls, v: str) -> str:
+        """Validate semver.
+
+        Returns:
+            Resulting string.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if not _SEMVER_RE.match(v):
             msg = f"Invalid semver: {v!r} (expected MAJOR.MINOR.PATCH)"
             raise ValueError(msg)
@@ -209,6 +228,14 @@ class UpdateWorkflowDefinitionRequest(BaseModel):
     @field_validator("version")
     @classmethod
     def _validate_semver(cls, v: str | None) -> str | None:
+        """Validate semver.
+
+        Returns:
+            The ``str`` when present, otherwise ``None``.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if v is not None and not _SEMVER_RE.match(v):
             msg = f"Invalid semver: {v!r} (expected MAJOR.MINOR.PATCH)"
             raise ValueError(msg)

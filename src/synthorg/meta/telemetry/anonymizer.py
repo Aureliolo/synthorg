@@ -46,6 +46,9 @@ def anonymize_decision(
 
     Returns:
         Anonymized event with ``event_type="proposal_decision"``.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     if analytics_config.deployment_id_salt is None:
         msg = "deployment_id_salt is required for anonymization"
@@ -94,6 +97,9 @@ def anonymize_rollout(
 
     Returns:
         Anonymized event with ``event_type="rollout_result"``.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     if analytics_config.deployment_id_salt is None:
         msg = "deployment_id_salt is required for anonymization"

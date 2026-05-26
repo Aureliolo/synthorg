@@ -22,9 +22,10 @@ GuardrailCode = Literal["missing_confirm", "missing_reason", "missing_actor"]
 class ArgumentValidationError(ValidationError):
     """Raised when a required handler argument is missing or wrongly typed.
 
-    Call sites use the module-level factory ``invalid_argument(name, expected)``
-    rather than instantiating this class directly; the factory keeps the
-    raise statement free of string literals so ruff's ``EM101`` rule passes.
+    Call sites instantiate this class directly:
+    ``raise ArgumentValidationError(name, expected)``.  The constructor
+    builds the message internally so ruff's ``EM101`` rule passes
+    without an intermediate factory.
 
     Attributes:
         argument: Name of the offending argument.
@@ -77,20 +78,3 @@ class GuardrailViolationError(ForbiddenError):
         """
         super().__init__(message)
         self.violation = violation
-
-
-def invalid_argument(name: str, expected: str) -> ArgumentValidationError:
-    """Build an ``ArgumentValidationError`` for a bad/missing argument.
-
-    Factory function so ``raise invalid_argument(...)`` keeps the raise
-    statement free of string literals (ruff ``EM101``).
-    """
-    return ArgumentValidationError(name, expected)
-
-
-def guardrail_violation(
-    violation: GuardrailCode,
-    message: str,
-) -> GuardrailViolationError:
-    """Build a ``GuardrailViolationError`` with a stable violation code."""
-    return GuardrailViolationError(violation, message)

@@ -34,7 +34,11 @@ class DiscoveryPolicyResponse(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def entry_count(self) -> int:
-        """Number of entries in the allowlist."""
+        """Number of entries in the allowlist.
+
+        Returns:
+            Resulting integer.
+        """
         return len(self.host_port_allowlist)
 
 
@@ -75,6 +79,11 @@ class AddAllowlistEntryRequest(BaseModel):
     @field_validator("host_port")
     @classmethod
     def _check_port_range(cls, v: str) -> str:
+        """Check port range.
+
+        Returns:
+            Resulting string.
+        """
         return _validate_host_port(v)
 
 
@@ -95,4 +104,9 @@ class RemoveAllowlistEntryRequest(BaseModel):
     @field_validator("host_port")
     @classmethod
     def _check_port_range(cls, v: str) -> str:
+        """Check port range.
+
+        Returns:
+            Resulting string.
+        """
         return _validate_host_port(v)

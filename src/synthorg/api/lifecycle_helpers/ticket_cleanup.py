@@ -14,6 +14,7 @@ import asyncio
 import inspect
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import (
     API_APP_STARTUP,
@@ -47,6 +48,12 @@ async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
     resolver failure is logged and the registered default for
     ``api.ticket_cleanup_interval_seconds`` is returned, so the fallback
     tracks the registry rather than duplicating the literal here.
+
+    Returns:
+        Resulting numeric value.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     fallback = registered_default_float(
         SettingNamespace.API.value, "ticket_cleanup_interval_seconds"
@@ -59,9 +66,8 @@ async def _resolve_ticket_cleanup_interval(app_state: AppState) -> float:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_WS_TICKET_CLEANUP,
             error_type=type(exc).__name__,
@@ -80,6 +86,12 @@ async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
     operator's intent in either direction; the registered default
     ("keep cleaning") wins because stale tickets and sessions accumulate
     forever otherwise.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     fallback = registered_default_bool(
         SettingNamespace.API.value, "lifecycle_cleanup_enabled"
@@ -92,9 +104,8 @@ async def _resolve_lifecycle_cleanup_enabled(app_state: AppState) -> bool:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_WS_TICKET_CLEANUP,
             error_type=type(exc).__name__,
@@ -131,9 +142,8 @@ async def _run_cleanup_step(
         # rest.
         if inspect.isawaitable(result):
             await result
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             event,
             failure_context=failure_message,
@@ -149,6 +159,12 @@ async def _resolve_oauth_idempotency_retention(app_state: AppState) -> float:
     unavailable or the read fails. A settings-backend outage must not
     stop the OAuth state cleanup loop; the table would otherwise grow
     unbounded as consumed-but-stale rows accumulate.
+
+    Returns:
+        Resulting numeric value.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     fallback = registered_default_float(
         SettingNamespace.INTEGRATIONS.value,
@@ -163,9 +179,8 @@ async def _resolve_oauth_idempotency_retention(app_state: AppState) -> float:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PERSISTENCE_OAUTH_STATE_CLEANUP,
             setting="integrations.oauth_idempotency_retention_seconds",
@@ -217,9 +232,8 @@ async def _run_cleanup_tick(app_state: AppState) -> None:
             oauth_removed = await app_state.persistence.oauth_states.cleanup_expired(
                 oauth_retention_seconds,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PERSISTENCE_OAUTH_STATE_CLEANUP,
                 error_type=type(exc).__name__,
@@ -247,6 +261,12 @@ async def _resolve_event_stream_janitor_settings(
     unavailable or either read fails. The fallback keeps the janitor
     enabled rather than disabling pruning on a broken settings backend
     -- leaking subscriber state silently is the worse failure mode.
+
+    Returns:
+        Tuple of the declared element types.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     fallback_idle = registered_default_float(
         SettingNamespace.COMMUNICATION.value,
@@ -269,9 +289,8 @@ async def _resolve_event_stream_janitor_settings(
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             error_type=type(exc).__name__,

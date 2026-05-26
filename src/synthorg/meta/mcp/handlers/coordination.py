@@ -19,11 +19,11 @@ from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
-    invalid_argument,
 )
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -78,6 +78,11 @@ async def _coordination_get_task_metrics(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_coordination_get_task_metrics`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_coordination_get_task_metrics"
     try:
         task_id = require_non_blank(arguments, "task_id")
@@ -90,9 +95,8 @@ async def _coordination_get_task_metrics(
         record = await app_state.coordination_service.get_task_metrics(
             NotBlankStr(task_id),
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if record is None:
@@ -111,6 +115,11 @@ async def _coordination_metrics_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_coordination_metrics_list`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_coordination_metrics_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -124,9 +133,8 @@ async def _coordination_metrics_list(
             offset=offset,
             limit=limit,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
@@ -143,6 +151,11 @@ async def _scaling_list_decisions(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_scaling_list_decisions`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_scaling_list_decisions"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -156,9 +169,8 @@ async def _scaling_list_decisions(
             offset=offset,
             limit=limit,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
@@ -172,6 +184,11 @@ async def _scaling_get_decision(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_scaling_get_decision`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_scaling_get_decision"
     try:
         decision_id = require_non_blank(arguments, "decision_id")
@@ -184,9 +201,8 @@ async def _scaling_get_decision(
         decision = await app_state.scaling_decision_service.get_decision(
             NotBlankStr(decision_id),
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     if decision is None:
@@ -203,14 +219,18 @@ async def _scaling_get_config(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_scaling_get_config`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_scaling_get_config"
     if not getattr(app_state, "has_scaling_decision_service", False):
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
         config = await app_state.scaling_decision_service.get_config()
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -223,10 +243,15 @@ async def _scaling_trigger(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_scaling_trigger`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_scaling_trigger"
     raw_ids = arguments.get("agent_ids")
     if raw_ids is None or not isinstance(raw_ids, (list, tuple)):
-        bad = invalid_argument("agent_ids", "list of non-blank strings")
+        bad = ArgumentValidationError("agent_ids", "list of non-blank strings")
         log_handler_argument_invalid(tool, bad)
         return err(bad)
     try:
@@ -237,16 +262,15 @@ async def _scaling_trigger(
         log_handler_argument_invalid(tool, exc)
         return err(exc)
     if not agent_ids:
-        empty = invalid_argument("agent_ids", "non-empty list")
+        empty = ArgumentValidationError("agent_ids", "non-empty list")
         log_handler_argument_invalid(tool, empty)
         return err(empty)
     if not getattr(app_state, "has_scaling_decision_service", False):
         return capability_gap(tool, _WHY_SCALING_NOT_WIRED)
     try:
         decisions = await app_state.scaling_decision_service.trigger(agent_ids)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -262,14 +286,18 @@ async def _ceremony_policy_get(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_ceremony_policy_get`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_ceremony_policy_get"
     if not getattr(app_state, "has_ceremony_policy_service", False):
         return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
     try:
         policy = await app_state.ceremony_policy_service.get_policy()
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -282,6 +310,11 @@ async def _ceremony_policy_get_resolved(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_ceremony_policy_get_resolved`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_ceremony_policy_get_resolved"
     if not getattr(app_state, "has_ceremony_policy_service", False):
         return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
@@ -293,11 +326,11 @@ async def _ceremony_policy_get_resolved(
         # silently mapped a malformed request to the "no filter"
         # path.
         if department_raw is None:
-            exc = invalid_argument("department", _TY_NON_BLANK)
+            exc = ArgumentValidationError("department", _TY_NON_BLANK)
             log_handler_argument_invalid(tool, exc)
             return err(exc)
         if not isinstance(department_raw, str) or not department_raw.strip():
-            exc = invalid_argument("department", _TY_NON_BLANK)
+            exc = ArgumentValidationError("department", _TY_NON_BLANK)
             log_handler_argument_invalid(tool, exc)
             return err(exc)
         department = NotBlankStr(department_raw.strip())
@@ -305,9 +338,8 @@ async def _ceremony_policy_get_resolved(
         resolved = await app_state.ceremony_policy_service.get_resolved_policy(
             department=department,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -320,14 +352,18 @@ async def _ceremony_policy_get_active_strategy(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_ceremony_policy_get_active_strategy`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_ceremony_policy_get_active_strategy"
     if not getattr(app_state, "has_ceremony_policy_service", False):
         return capability_gap(tool, _WHY_CEREMONY_NOT_WIRED)
     try:
         active = await app_state.ceremony_policy_service.get_active_strategy()
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)

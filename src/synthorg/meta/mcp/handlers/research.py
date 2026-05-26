@@ -5,13 +5,13 @@ Delegates to :class:`ResearchService` via ``app_state.research_service``.
 read the run record. All three are standard (non-admin) operations.
 """
 
-import builtins
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ValidationError
 
 from synthorg.core.clock import SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.domains._research_args import (
@@ -19,7 +19,7 @@ from synthorg.meta.mcp.domains._research_args import (
     ResearchListArgs,
     ResearchRunArgs,
 )
-from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
+from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -53,15 +53,27 @@ def _typed_args[ArgsT: BaseModel](
     arguments: dict[str, Any],
     model: type[ArgsT],
 ) -> ArgsT:
-    """Validate a raw MCP argument dict into its typed args model."""
+    """Validate a raw MCP argument dict into its typed args model.
+
+    Returns:
+        ``ArgsT`` instance.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     try:
         return model.model_validate(arguments)
     except ValidationError as exc:
         expected = f"valid {model.__name__}"
-        raise invalid_argument(_ARG_ARGUMENTS, expected) from exc
+        raise ArgumentValidationError(_ARG_ARGUMENTS, expected) from exc
 
 
 def _require_service(app_state: Any) -> Any:
+    """Return the service or raise when unavailable.
+
+    Raises:
+        ServiceUnavailableError: Raised on the corresponding failure path.
+    """
     svc = getattr(app_state, "research_service", None)
     if svc is None:
         msg = "research service is not wired on app_state in this deployment"
@@ -70,6 +82,7 @@ def _require_service(app_state: Any) -> Any:
 
 
 def _created_by(actor: AgentIdentity | None) -> NotBlankStr:
+    """Return created by."""
     return NotBlankStr(str(actor.id)) if actor is not None else _OPERATOR
 
 
@@ -78,6 +91,9 @@ def _now(app_state: Any) -> Any:
 
     Falls back to a fresh ``SystemClock`` when the seam is absent so the
     handler stays usable against minimal app-state stubs.
+
+    Returns:
+        ``Any`` instance.
     """
     clock = getattr(app_state, "clock", None)
     return (clock or SystemClock()).now()
@@ -89,6 +105,7 @@ async def _research_run(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return research run."""
     try:
         svc = _require_service(app_state)
         args = _typed_args(arguments, ResearchRunArgs)
@@ -105,9 +122,8 @@ async def _research_run(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_RUN, exc)
         return err(exc)
-    except builtins.MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_RUN, exc)
         return err(exc)
 
@@ -118,6 +134,7 @@ async def _research_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return research get."""
     try:
         svc = _require_service(app_state)
         args = _typed_args(arguments, ResearchGetArgs)
@@ -132,9 +149,8 @@ async def _research_get(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_GET, exc)
         return err(exc)
-    except builtins.MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_GET, exc)
         return err(exc)
 
@@ -145,6 +161,7 @@ async def _research_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return research list."""
     try:
         svc = _require_service(app_state)
         args = _typed_args(arguments, ResearchListArgs)
@@ -162,9 +179,8 @@ async def _research_list(
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(_TOOL_LIST, exc)
         return err(exc)
-    except builtins.MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(_TOOL_LIST, exc)
         return err(exc)
 

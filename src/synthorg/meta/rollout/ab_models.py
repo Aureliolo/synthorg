@@ -61,7 +61,14 @@ class GroupAssignment(BaseModel):
 
     @model_validator(mode="after")
     def _validate_disjoint_groups(self) -> Self:
-        """Control and treatment groups must not overlap."""
+        """Control and treatment groups must not overlap.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         overlap = set(self.control_agent_ids) & set(
             self.treatment_agent_ids,
         )
@@ -104,13 +111,21 @@ class GroupMetrics(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def observation_count(self) -> int:
-        """Number of metric samples collected (tuples are aligned)."""
+        """Number of metric samples collected (tuples are aligned).
+
+        Returns:
+            Resulting integer.
+        """
         return len(self.quality_samples)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def avg_quality_score(self) -> float:
-        """Mean of ``quality_samples``; ``0.0`` when empty."""
+        """Mean of ``quality_samples``; ``0.0`` when empty.
+
+        Returns:
+            Resulting numeric value.
+        """
         if not self.quality_samples:
             return 0.0
         return math.fsum(self.quality_samples) / len(self.quality_samples)
@@ -118,7 +133,11 @@ class GroupMetrics(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def avg_success_rate(self) -> float:
-        """Mean of ``success_samples``; ``0.0`` when empty."""
+        """Mean of ``success_samples``; ``0.0`` when empty.
+
+        Returns:
+            Resulting numeric value.
+        """
         if not self.success_samples:
             return 0.0
         return math.fsum(self.success_samples) / len(self.success_samples)
@@ -126,12 +145,23 @@ class GroupMetrics(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def total_spend(self) -> float:
-        """Sum of ``spend_samples``; ``0.0`` when empty."""
+        """Sum of ``spend_samples``; ``0.0`` when empty.
+
+        Returns:
+            Resulting numeric value.
+        """
         return math.fsum(self.spend_samples)
 
     @model_validator(mode="after")
     def _validate_sample_alignment(self) -> Self:
-        """Sample tuples must be the same length."""
+        """Sample tuples must be the same length.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         n = len(self.quality_samples)
         if not (len(self.success_samples) == n and len(self.spend_samples) == n):
             msg = (
@@ -151,6 +181,12 @@ class GroupMetrics(BaseModel):
         means the producer double-counted and would inflate Welch's
         effective sample size. The ``agent_count == 0`` case is
         subsumed: any positive observation_count fails this check.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if self.observation_count > self.agent_count:
             msg = (
@@ -162,7 +198,14 @@ class GroupMetrics(BaseModel):
 
     @model_validator(mode="after")
     def _validate_sample_bounds(self) -> Self:
-        """Quality and success samples must live in their valid ranges."""
+        """Quality and success samples must live in their valid ranges.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         for q in self.quality_samples:
             if not 0.0 <= q <= _MAX_QUALITY:
                 msg = f"quality_samples must be in [0, 10]; got {q}"
@@ -207,7 +250,14 @@ class ABTestComparison(BaseModel):
 
     @model_validator(mode="after")
     def _validate_regression_has_metrics(self) -> Self:
-        """Treatment regressions must identify which metrics regressed."""
+        """Treatment regressions must identify which metrics regressed.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if (
             self.verdict == ABTestVerdict.TREATMENT_REGRESSED
             and not self.regressed_metrics
@@ -218,7 +268,14 @@ class ABTestComparison(BaseModel):
 
     @model_validator(mode="after")
     def _validate_winner_has_stats(self) -> Self:
-        """Winner verdicts must include effect_size and p_value."""
+        """Winner verdicts must include effect_size and p_value.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.verdict in (
             ABTestVerdict.TREATMENT_WINS,
             ABTestVerdict.CONTROL_WINS,
@@ -229,7 +286,14 @@ class ABTestComparison(BaseModel):
 
     @model_validator(mode="after")
     def _validate_statistic_bounds(self) -> Self:
-        """Statistical fields must be in valid ranges."""
+        """Statistical fields must be in valid ranges.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.p_value is not None and not 0.0 <= self.p_value <= 1.0:
             msg = "p_value must be in [0.0, 1.0]"
             raise ValueError(msg)

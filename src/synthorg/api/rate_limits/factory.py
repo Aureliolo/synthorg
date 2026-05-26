@@ -14,6 +14,11 @@ logger = get_logger(__name__)
 
 
 def _build_memory(_config: PerOpRateLimitConfig) -> SlidingWindowStore:
+    """Build the memory.
+
+    Returns:
+        ``SlidingWindowStore`` instance.
+    """
     return InMemorySlidingWindowStore()
 
 

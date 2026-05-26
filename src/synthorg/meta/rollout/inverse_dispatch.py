@@ -10,6 +10,7 @@ prompt, architecture, and code services.
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.meta import (
@@ -105,15 +106,20 @@ class RevertConfigHandler:
         ``RecursionError`` propagate unchanged so catastrophic system
         errors are never swallowed by the rollback executor's generic
         ``except Exception`` branch.
+
+        Returns:
+            Resulting integer.
+
+        Raises:
+            Exception: Raised on the corresponding failure path.
         """
         try:
             await self._mutator.set(
                 path=str(operation.target),
                 value=operation.previous_value,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 META_ROLLBACK_OPERATION_FAILED,
@@ -136,7 +142,15 @@ class RestorePromptHandler:
         self._mutator = mutator
 
     async def revert(self, operation: RollbackOperation) -> int:
-        """Reinstall the previous prompt principle."""
+        """Reinstall the previous prompt principle.
+
+        Returns:
+            Resulting integer.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+            Exception: Raised on the corresponding failure path.
+        """
         text = operation.previous_value
         if not isinstance(text, str):
             logger.warning(
@@ -156,9 +170,8 @@ class RestorePromptHandler:
                 scope=str(operation.target),
                 text=text,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 META_ROLLBACK_OPERATION_FAILED,
@@ -181,15 +194,21 @@ class RevertArchitectureHandler:
         self._mutator = mutator
 
     async def revert(self, operation: RollbackOperation) -> int:
-        """Restore the structural entity to its previous value."""
+        """Restore the structural entity to its previous value.
+
+        Returns:
+            Resulting integer.
+
+        Raises:
+            Exception: Raised on the corresponding failure path.
+        """
         try:
             await self._mutator.restore(
                 target=str(operation.target),
                 previous_value=operation.previous_value,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 META_ROLLBACK_OPERATION_FAILED,
@@ -212,7 +231,15 @@ class RevertCodeHandler:
         self._mutator = mutator
 
     async def revert(self, operation: RollbackOperation) -> int:
-        """Write ``previous_value`` back to the file at ``target``."""
+        """Write ``previous_value`` back to the file at ``target``.
+
+        Returns:
+            Resulting integer.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+            Exception: Raised on the corresponding failure path.
+        """
         content = operation.previous_value
         if not isinstance(content, str):
             logger.warning(
@@ -232,9 +259,8 @@ class RevertCodeHandler:
                 path=str(operation.target),
                 content=content,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 META_ROLLBACK_OPERATION_FAILED,
@@ -260,7 +286,11 @@ def default_rollback_handlers(
     architecture: ArchitectureMutator,
     code: CodeMutator,
 ) -> Mapping[NotBlankStr, RollbackHandler]:
-    """Build the default handler mapping keyed by ``operation_type``."""
+    """Build the default handler mapping keyed by ``operation_type``.
+
+    Returns:
+        ``Mapping[NotBlankStr, RollbackHandler]`` instance.
+    """
     return MappingProxyType(
         {
             NotBlankStr("revert_config"): RevertConfigHandler(mutator=config),

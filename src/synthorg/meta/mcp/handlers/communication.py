@@ -29,7 +29,6 @@ from synthorg.integrations.webhooks.models import WebhookDefinition
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
-    invalid_argument,
 )
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -94,15 +93,26 @@ _TY_CONNECTION_TYPE = "ConnectionType string"
 
 
 def _require_str(arguments: dict[str, Any], key: str) -> NotBlankStr:
-    """Extract a required non-blank string or raise ``ArgumentValidationError``."""
+    """Extract a required non-blank string or raise ``ArgumentValidationError``.
+
+    Returns:
+        ``NotBlankStr`` instance.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     value = get_optional_str(arguments, key)
     if value is None:
-        raise invalid_argument(key, _TY_STRING)
+        raise ArgumentValidationError(key, _TY_STRING)
     return value
 
 
 def _get_dict(arguments: dict[str, Any], key: str) -> dict[str, str] | None:
-    """Extract an optional ``dict[str, str]`` argument; ``None`` when absent."""
+    """Extract an optional ``dict[str, str]`` argument; ``None`` when absent.
+
+    Returns:
+        The ``dict[str, str]`` value when present, ``None`` otherwise.
+    """
     raw = arguments.get(key)
     if raw in (None, ""):
         return None
@@ -110,21 +120,32 @@ def _get_dict(arguments: dict[str, Any], key: str) -> dict[str, str] | None:
 
 
 def _parse_message(arguments: dict[str, Any]) -> Message:
-    """Decode the ``message`` argument into a validated :class:`Message`."""
+    """Decode the ``message`` argument into a validated :class:`Message`.
+
+    Returns:
+        ``Message`` instance.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(_ARG_MESSAGE)
     if not isinstance(raw, dict):
-        raise invalid_argument(_ARG_MESSAGE, _TY_MESSAGE_OBJ)
+        raise ArgumentValidationError(_ARG_MESSAGE, _TY_MESSAGE_OBJ)
     try:
         return Message.model_validate(raw)
     except ValidationError as exc:
-        raise invalid_argument(_ARG_MESSAGE, _TY_MESSAGE_OBJ) from exc
+        raise ArgumentValidationError(_ARG_MESSAGE, _TY_MESSAGE_OBJ) from exc
 
 
 def _map_capability_not_supported(
     tool: str,
     exc: CapabilityNotSupportedError,
 ) -> str:
-    """Translate facade-side capability gap into a typed envelope."""
+    """Translate facade-side capability gap into a typed envelope.
+
+    Returns:
+        Resulting string.
+    """
     logger.info(
         MCP_HANDLER_CAPABILITY_GAP,
         tool_name=tool,
@@ -142,7 +163,11 @@ async def _messages_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List messages on a channel (paginated)."""
+    """List messages on a channel (paginated).
+
+    Returns:
+        Resulting string.
+    """
     try:
         channel = get_optional_str(arguments, _ARG_CHANNEL)
         offset, limit = coerce_pagination(arguments)
@@ -167,7 +192,11 @@ async def _messages_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single message by channel + message ID."""
+    """Fetch a single message by channel + message ID.
+
+    Returns:
+        Resulting string.
+    """
     try:
         channel = _require_str(arguments, _ARG_CHANNEL)
         message_id = _require_str(arguments, _ARG_MESSAGE_ID)
@@ -195,7 +224,11 @@ async def _messages_send(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Publish a new message on a channel (non-destructive write)."""
+    """Publish a new message on a channel (non-destructive write).
+
+    Returns:
+        Resulting string.
+    """
     try:
         message = _parse_message(arguments)
         await app_state.message_service.send_message(
@@ -223,6 +256,9 @@ async def _messages_delete(
     removed (``removed=True``); not-found responses are returned as a
     successful envelope with ``removed=False`` and no audit emission
     so the audit trail stays semantically clean.
+
+    Returns:
+        Resulting string.
     """
     tool = "synthorg_messages_delete"
     try:
@@ -261,15 +297,20 @@ async def _messages_delete(
 
 
 def _parse_meeting_status(arguments: dict[str, Any]) -> MeetingStatus | None:
+    """Return parse meeting status.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(_ARG_STATUS)
     if raw in (None, ""):
         return None
     if not isinstance(raw, str):
-        raise invalid_argument(_ARG_STATUS, _TY_STATUS)
+        raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS)
     try:
         return MeetingStatus(raw)
     except ValueError as exc:
-        raise invalid_argument(_ARG_STATUS, _TY_STATUS) from exc
+        raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS) from exc
 
 
 async def _meetings_list(
@@ -278,7 +319,11 @@ async def _meetings_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List meeting records (paginated, optionally filtered)."""
+    """List meeting records (paginated, optionally filtered).
+
+    Returns:
+        Resulting string.
+    """
     try:
         status = _parse_meeting_status(arguments)
         meeting_type = get_optional_str(arguments, _ARG_MEETING_TYPE)
@@ -305,7 +350,11 @@ async def _meetings_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single meeting record by ID."""
+    """Fetch a single meeting record by ID.
+
+    Returns:
+        Resulting string.
+    """
     try:
         meeting_id = _require_str(arguments, _ARG_MEETING_ID)
         record = await app_state.meeting_service.get_meeting(meeting_id)
@@ -329,7 +378,11 @@ async def _meetings_create(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Capability gap: meetings are produced by the engine, not ad-hoc created."""
+    """Capability gap: meetings are produced by the engine, not ad-hoc created.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_meetings_create"
     try:
         await app_state.meeting_service.create_meeting()
@@ -347,7 +400,11 @@ async def _meetings_update(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Capability gap: meeting records are updated by the engine only."""
+    """Capability gap: meeting records are updated by the engine only.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_meetings_update"
     try:
         await app_state.meeting_service.update_meeting()
@@ -365,7 +422,11 @@ async def _meetings_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Delete a single meeting record by id."""
+    """Delete a single meeting record by id.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_meetings_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -403,11 +464,13 @@ async def _meetings_delete(
 
 
 def _parse_connection_type(arguments: dict[str, Any]) -> ConnectionType:
+    """Return parse connection type."""
     raw = require_arg(arguments, _ARG_CONNECTION_TYPE, str)
     try:
         return ConnectionType(raw)
     except ValueError as exc:
-        raise invalid_argument(_ARG_CONNECTION_TYPE, _TY_CONNECTION_TYPE) from exc
+        err = ArgumentValidationError(_ARG_CONNECTION_TYPE, _TY_CONNECTION_TYPE)
+        raise err from exc
 
 
 async def _connections_list(
@@ -416,7 +479,11 @@ async def _connections_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List external-system connections (paginated)."""
+    """List external-system connections (paginated).
+
+    Returns:
+        Resulting string.
+    """
     try:
         offset, limit = coerce_pagination(arguments)
         connections, total = await app_state.connection_service.list_connections(
@@ -439,7 +506,11 @@ async def _connections_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single connection by name."""
+    """Fetch a single connection by name.
+
+    Returns:
+        Resulting string.
+    """
     try:
         name = _require_str(arguments, _ARG_NAME)
         connection = await app_state.connection_service.get_connection(name)
@@ -463,7 +534,11 @@ async def _connections_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Create a new external connection (admin op; enforces guardrails)."""
+    """Create a new external connection (admin op; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_connections_create"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -508,7 +583,11 @@ async def _connections_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Delete a connection (destructive; enforces guardrails)."""
+    """Delete a connection (destructive; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_connections_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -544,7 +623,11 @@ async def _connections_check_health(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Run an on-demand health probe against a connection."""
+    """Run an on-demand health probe against a connection.
+
+    Returns:
+        Resulting string.
+    """
     try:
         name = _require_str(arguments, _ARG_NAME)
         connection = await app_state.connection_service.check_health(name=name)
@@ -570,16 +653,21 @@ def _parse_webhook_definition(
     *,
     require_id: bool,
 ) -> WebhookDefinition:
+    """Return parse webhook definition.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(_ARG_DEFINITION)
     if not isinstance(raw, dict):
-        raise invalid_argument(_ARG_DEFINITION, _TY_WEBHOOK_OBJ)
+        raise ArgumentValidationError(_ARG_DEFINITION, _TY_WEBHOOK_OBJ)
     payload = dict(raw)
     if not require_id and "id" not in payload:
         payload["id"] = str(uuid4())
     try:
         return WebhookDefinition.model_validate(payload)
     except ValidationError as exc:
-        raise invalid_argument(_ARG_DEFINITION, _TY_WEBHOOK_OBJ) from exc
+        raise ArgumentValidationError(_ARG_DEFINITION, _TY_WEBHOOK_OBJ) from exc
 
 
 async def _webhooks_list(
@@ -588,7 +676,11 @@ async def _webhooks_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """List registered webhook definitions (paginated)."""
+    """List registered webhook definitions (paginated).
+
+    Returns:
+        Resulting string.
+    """
     try:
         offset, limit = coerce_pagination(arguments)
         definitions, total = await app_state.webhook_service.list_webhooks(
@@ -611,7 +703,11 @@ async def _webhooks_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Fetch a single webhook definition by ID."""
+    """Fetch a single webhook definition by ID.
+
+    Returns:
+        Resulting string.
+    """
     try:
         webhook_id = _require_str(arguments, _ARG_WEBHOOK_ID)
         definition = await app_state.webhook_service.get_webhook(webhook_id)
@@ -635,7 +731,11 @@ async def _webhooks_create(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Register a new webhook definition (admin op; enforces guardrails)."""
+    """Register a new webhook definition (admin op; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_webhooks_create"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -676,7 +776,11 @@ async def _webhooks_update(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Update an existing webhook definition (admin op; enforces guardrails)."""
+    """Update an existing webhook definition (admin op; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_webhooks_update"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -707,7 +811,11 @@ async def _apply_webhook_update(
     reason: str,
     actor_id: str,
 ) -> str:
-    """Apply a webhook update and emit the admin-op audit record."""
+    """Apply a webhook update and emit the admin-op audit record.
+
+    Returns:
+        Resulting string.
+    """
     try:
         stored = await app_state.webhook_service.update_webhook(
             definition=definition,
@@ -739,7 +847,11 @@ async def _webhooks_delete(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Delete a webhook definition (destructive; enforces guardrails)."""
+    """Delete a webhook definition (destructive; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_webhooks_delete"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -784,7 +896,11 @@ async def _tunnel_get_status(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Return the current tunnel service status."""
+    """Return the current tunnel service status.
+
+    Returns:
+        Resulting string.
+    """
     try:
         status = await app_state.tunnel_service.get_status()
         return ok(status.to_dict())
@@ -799,7 +915,11 @@ async def _tunnel_connect(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Trigger a tunnel reconnect attempt (admin op; enforces guardrails)."""
+    """Trigger a tunnel reconnect attempt (admin op; enforces guardrails).
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_tunnel_connect"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)

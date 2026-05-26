@@ -74,6 +74,14 @@ class RollbackExecutor:
         ``operation_type``. Stops immediately on the first failure
         and returns a failure ``ApplyResult`` so the caller never
         sees a silently partial rollback.
+
+        Returns:
+            ``ApplyResult`` instance.
+
+        Raises:
+            UnknownRollbackOperationError: Raised on the corresponding failure path.
+            MemoryError: Raised on the corresponding failure path.
+            RecursionError: Raised on the corresponding failure path.
         """
         plan = proposal.rollback_plan
         total_changes = 0
@@ -150,6 +158,9 @@ def _fail(
     structured log carries both the redacted message and the exception
     class. The keyword is optional for legacy / validation callers that
     do not have an exception in hand.
+
+    Returns:
+        ``ApplyResult`` instance.
     """
     log_kwargs: dict[str, object] = {
         "proposal_id": str(proposal.id),

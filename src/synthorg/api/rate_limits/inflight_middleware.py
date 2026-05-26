@@ -50,6 +50,9 @@ def _read_live_inflight_config(state: Any) -> PerOpConcurrencyConfig | None:
     minimal state without an ``AppState``.  Returns ``None`` when
     neither source has a config (treated as a wiring error at the
     call site).
+
+    Returns:
+        The ``PerOpConcurrencyConfig`` value when present, ``None`` otherwise.
     """
     app_state = getattr(state, "app_state", None)
     if app_state is not None and getattr(
@@ -83,6 +86,12 @@ def _resolve_wiring(
     or config is a deployment error, not a per-user throttle: fail
     loud (ERROR log) and closed (503) so misconfigured deployments do
     not ship silently uncapped.
+
+    Returns:
+        Tuple of the declared element types.
+
+    Raises:
+        ServiceUnavailableError: Raised on the corresponding failure path.
     """
     store: InflightStore | None = getattr(
         state,
@@ -132,7 +141,11 @@ class PerOpConcurrencyMiddleware(ASGIMiddleware):
         send: Send,
         next_app: ASGIApp,
     ) -> None:
-        """Dispatch: permit-wrap HTTP requests that opted in."""
+        """Dispatch: permit-wrap HTTP requests that opted in.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
+        """
         route_handler = scope.get("route_handler")
         opt = getattr(route_handler, "opt", None) or {}
         policy = opt.get(OPT_KEY)

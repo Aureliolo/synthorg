@@ -61,6 +61,11 @@ async def check_has_company(
 
     Returns:
         True if a user-created company name exists.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
+        Exception: Raised on the corresponding failure path.
     """
     try:
         entry = await settings_svc.get_entry(
@@ -143,6 +148,10 @@ async def check_has_name_locales(
 
     Returns:
         True if name locales are user-configured.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
     """
     try:
         entry = await settings_svc.get_entry(
@@ -175,6 +184,10 @@ async def resolve_min_password_length(
 
     Returns:
         Resolved minimum password length.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
     """
     raw_pw_value: str | None = None
     try:
@@ -211,6 +224,9 @@ def parse_locale_json(raw: str) -> list[str] | None:
     """Parse and validate a JSON-encoded locale list.
 
     Returns a ``list`` on success, or ``None`` when invalid.
+
+    Returns:
+        The ``list[str]`` value when present, ``None`` otherwise.
     """
     try:
         parsed = json.loads(raw)
@@ -252,6 +268,10 @@ async def read_name_locales(
 
     Returns:
         Locale codes, or None when absent/unparseable.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
     """
     try:
         entry = await settings_svc.get_entry(
@@ -295,6 +315,8 @@ async def is_setup_complete(
 
     Raises:
         Exception: Propagates unexpected errors after logging.
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
     """
     try:
         entry = await settings_svc.get_entry(
@@ -317,7 +339,11 @@ async def is_setup_complete(
 async def check_setup_not_complete(
     settings_svc: SettingsService,
 ) -> None:
-    """Raise ConflictError if setup has already been completed."""
+    """Raise ConflictError if setup has already been completed.
+
+    Raises:
+        ConflictError: Raised on the corresponding failure path.
+    """
     is_complete = await is_setup_complete(settings_svc)
     if is_complete:
         logger.warning(SETUP_ALREADY_COMPLETE)
@@ -335,7 +361,11 @@ class TemplateResult(NamedTuple):
 
 
 def resolve_template(template_name: str | None) -> TemplateResult:
-    """Validate template and extract department data."""
+    """Validate template and extract department data.
+
+    Returns:
+        ``TemplateResult`` instance.
+    """
     from synthorg.api.controllers.setup_agents import (  # noqa: PLC0415
         departments_to_json,
     )

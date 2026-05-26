@@ -107,12 +107,20 @@ class _BridgeIntegrationsMixin:
 
     @property
     def has_per_op_rate_limit_config(self) -> bool:
-        """Check whether the per-op sliding-window config is set."""
+        """Check whether the per-op sliding-window config is set.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._per_op_rate_limit_config is not None
 
     @property
     def per_op_rate_limit_config(self) -> PerOpRateLimitConfig:
-        """Return the current per-op sliding-window config or raise 503."""
+        """Return the current per-op sliding-window config or raise 503.
+
+        Returns:
+            ``PerOpRateLimitConfig`` instance.
+        """
         return self._require_service(
             self._per_op_rate_limit_config,
             "per_op_rate_limit_config",
@@ -159,12 +167,20 @@ class _BridgeIntegrationsMixin:
 
     @property
     def has_per_op_concurrency_config(self) -> bool:
-        """Check whether the per-op inflight config is set."""
+        """Check whether the per-op inflight config is set.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._per_op_concurrency_config is not None
 
     @property
     def per_op_concurrency_config(self) -> PerOpConcurrencyConfig:
-        """Return the current per-op inflight config or raise 503."""
+        """Return the current per-op inflight config or raise 503.
+
+        Returns:
+            ``PerOpConcurrencyConfig`` instance.
+        """
         return self._require_service(
             self._per_op_concurrency_config,
             "per_op_concurrency_config",
@@ -219,6 +235,9 @@ class _BridgeIntegrationsMixin:
         :meth:`swap_api_bridge_config` from the startup snapshot path
         and :meth:`mutate_api_bridge_config` from the
         ``ApiBridgeSettingsSubscriber`` hot-reload path.
+
+        Returns:
+            ``ApiBridgeConfig`` instance.
         """
         return self._api_bridge_config
 
@@ -342,6 +361,9 @@ class _BridgeIntegrationsMixin:
         ``workers.*`` defaults) so a dispatcher built before
         ``_apply_bridge_config`` or under a resolver outage still
         observes the documented retry budget.
+
+        Returns:
+            ``WorkersBridgeConfig`` instance.
         """
         return self._workers_bridge_config
 
@@ -383,6 +405,9 @@ class _BridgeIntegrationsMixin:
         ``_apply_bridge_config`` or under a resolver outage still
         observes the documented consolidation / fine-tune preflight
         defaults.
+
+        Returns:
+            ``MemoryBridgeConfig`` instance.
         """
         return self._memory_bridge_config
 
@@ -416,12 +441,20 @@ class _BridgeIntegrationsMixin:
 
     @property
     def has_backup_service(self) -> bool:
-        """Check whether the backup service is configured."""
+        """Check whether the backup service is configured.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._backup_service is not None
 
     @property
     def backup_service(self) -> BackupService:
-        """Return backup service or raise 503."""
+        """Return backup service or raise 503.
+
+        Returns:
+            ``BackupService`` instance.
+        """
         return self._require_service(self._backup_service, "backup_service")
 
     def set_backup_service(self, service: BackupService) -> None:
@@ -430,12 +463,20 @@ class _BridgeIntegrationsMixin:
 
     @property
     def has_connection_catalog(self) -> bool:
-        """Check whether the connection catalog is configured."""
+        """Check whether the connection catalog is configured.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._connection_catalog is not None
 
     @property
     def connection_catalog(self) -> ConnectionCatalog:
-        """Return connection catalog or raise 503."""
+        """Return connection catalog or raise 503.
+
+        Returns:
+            ``ConnectionCatalog`` instance.
+        """
         return self._require_service(
             self._connection_catalog,
             "connection_catalog",
@@ -443,12 +484,20 @@ class _BridgeIntegrationsMixin:
 
     @property
     def has_tunnel_provider(self) -> bool:
-        """Check whether the tunnel provider is configured."""
+        """Check whether the tunnel provider is configured.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._tunnel_provider is not None
 
     @property
     def tunnel_provider(self) -> TunnelProvider:
-        """Return tunnel provider or raise 503."""
+        """Return tunnel provider or raise 503.
+
+        Returns:
+            ``TunnelProvider`` instance.
+        """
         return self._require_service(
             self._tunnel_provider,
             "tunnel_provider",
@@ -456,12 +505,20 @@ class _BridgeIntegrationsMixin:
 
     @property
     def oauth_token_manager(self) -> OAuthTokenManager | None:
-        """Return OAuth token manager, or None if not configured."""
+        """Return OAuth token manager, or None if not configured.
+
+        Returns:
+            The ``OAuthTokenManager`` value when present, ``None`` otherwise.
+        """
         return self._oauth_token_manager
 
     @property
     def has_oauth_state_service(self) -> bool:
-        """Check whether the OAuth state service is configured."""
+        """Check whether the OAuth state service is configured.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._oauth_state_service is not None
 
     @property
@@ -472,6 +529,9 @@ class _BridgeIntegrationsMixin:
         ``persistence.oauth_states``; the OAuth controller routes its
         single ``save(...)`` write through this service so audit
         logging cannot regress.
+
+        Returns:
+            ``OAuthStateService`` instance.
         """
         return self._require_service(
             self._oauth_state_service,
@@ -484,17 +544,29 @@ class _BridgeIntegrationsMixin:
 
     @property
     def health_prober_service(self) -> HealthProberService | None:
-        """Return health prober service, or None if not configured."""
+        """Return health prober service, or None if not configured.
+
+        Returns:
+            The ``HealthProberService`` value when present, ``None`` otherwise.
+        """
         return self._health_prober_service
 
     @property
     def webhook_event_bridge(self) -> WebhookEventBridge | None:
-        """Return webhook event bridge, or None if not configured."""
+        """Return webhook event bridge, or None if not configured.
+
+        Returns:
+            The ``WebhookEventBridge`` value when present, ``None`` otherwise.
+        """
         return self._webhook_event_bridge
 
     @property
     def escalation_store(self) -> EscalationQueueStore | None:
-        """Return the escalation queue store, or None if not configured."""
+        """Return the escalation queue store, or None if not configured.
+
+        Returns:
+            The ``EscalationQueueStore`` value when present, ``None`` otherwise.
+        """
         return self._escalation_store
 
     def set_escalation_store(self, store: EscalationQueueStore) -> None:
@@ -503,7 +575,11 @@ class _BridgeIntegrationsMixin:
 
     @property
     def escalation_registry(self) -> PendingFuturesRegistry | None:
-        """Return the in-process futures registry, or None if not configured."""
+        """Return the in-process futures registry, or None if not configured.
+
+        Returns:
+            The ``PendingFuturesRegistry`` value when present, ``None`` otherwise.
+        """
         return self._escalation_registry
 
     def set_escalation_registry(self, registry: PendingFuturesRegistry) -> None:
@@ -512,7 +588,11 @@ class _BridgeIntegrationsMixin:
 
     @property
     def escalation_processor(self) -> DecisionProcessor | None:
-        """Return the decision processor strategy, or None if not configured."""
+        """Return the decision processor strategy, or None if not configured.
+
+        Returns:
+            The ``DecisionProcessor`` value when present, ``None`` otherwise.
+        """
         return self._escalation_processor
 
     def set_escalation_processor(self, processor: DecisionProcessor) -> None:
@@ -521,7 +601,11 @@ class _BridgeIntegrationsMixin:
 
     @property
     def escalation_sweeper(self) -> EscalationExpirationSweeper | None:
-        """Return the background expiration sweeper, or None if not configured."""
+        """Return the background expiration sweeper, or None if not configured.
+
+        Returns:
+            The ``EscalationExpirationSweeper`` value when present, ``None`` otherwise.
+        """
         return self._escalation_sweeper
 
     def set_escalation_sweeper(self, sweeper: EscalationExpirationSweeper) -> None:
@@ -530,7 +614,11 @@ class _BridgeIntegrationsMixin:
 
     @property
     def escalation_notify_subscriber(self) -> EscalationNotifySubscriber | None:
-        """Return the cross-instance notify subscriber, or None if not configured."""
+        """Return the cross-instance notify subscriber, or None if not configured.
+
+        Returns:
+            The ``EscalationNotifySubscriber`` value when present, ``None`` otherwise.
+        """
         return self._escalation_notify_subscriber
 
     def set_escalation_notify_subscriber(
@@ -546,7 +634,11 @@ class _BridgeIntegrationsMixin:
 
     @property
     def a2a_card_builder(self) -> AgentCardBuilder:
-        """Return the A2A Agent Card builder or raise 503."""
+        """Return the A2A Agent Card builder or raise 503.
+
+        Returns:
+            ``AgentCardBuilder`` instance.
+        """
         return self._require_service(
             self._a2a_card_builder,
             "a2a_card_builder",
@@ -558,7 +650,11 @@ class _BridgeIntegrationsMixin:
 
     @property
     def a2a_client(self) -> A2AClient:
-        """Return the outbound A2A client or raise 503."""
+        """Return the outbound A2A client or raise 503.
+
+        Returns:
+            ``A2AClient`` instance.
+        """
         return self._require_service(
             self._a2a_client,
             "a2a_client",
@@ -570,7 +666,11 @@ class _BridgeIntegrationsMixin:
 
     @property
     def a2a_peer_registry(self) -> PeerRegistry:
-        """Return the A2A peer registry or raise 503."""
+        """Return the A2A peer registry or raise 503.
+
+        Returns:
+            ``PeerRegistry`` instance.
+        """
         return self._require_service(
             self._a2a_peer_registry,
             "a2a_peer_registry",
@@ -586,7 +686,11 @@ class _BridgeIntegrationsMixin:
 
     @property
     def mcp_catalog_service(self) -> CatalogService:
-        """Return MCP catalog service or raise 503."""
+        """Return MCP catalog service or raise 503.
+
+        Returns:
+            ``CatalogService`` instance.
+        """
         return self._require_service(
             self._mcp_catalog_service,
             "mcp_catalog_service",
@@ -598,12 +702,20 @@ class _BridgeIntegrationsMixin:
 
     @property
     def has_mcp_installations_repo(self) -> bool:
-        """Check whether the MCP installations repository is configured."""
+        """Check whether the MCP installations repository is configured.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._mcp_installations_repo is not None
 
     @property
     def mcp_installations_repo(self) -> McpInstallationRepository:
-        """Return the MCP installations repository or raise 503."""
+        """Return the MCP installations repository or raise 503.
+
+        Returns:
+            ``McpInstallationRepository`` instance.
+        """
         return self._require_service(
             self._mcp_installations_repo,
             "mcp_installations_repo",

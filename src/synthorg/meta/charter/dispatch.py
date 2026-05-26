@@ -21,6 +21,7 @@ from synthorg.budget.errors import MixedCurrencyAggregationError
 from synthorg.budget.forecast_models import Forecast, ForecastDecision
 from synthorg.budget.forecaster import BriefSignal, compute_brief_hash
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (
     CharterStatus,
     Complexity,
@@ -82,6 +83,9 @@ def _charter_brief_signal(brief: str, currency: str) -> BriefSignal:
     Mirrors the work-entry signal shape ForecastGate uses (single
     ``"default"`` role placeholder) so the forecast lines up if the
     same brief is later re-checked through the gate.
+
+    Returns:
+        ``BriefSignal`` instance.
     """
     return BriefSignal(
         brief_text=brief,
@@ -92,7 +96,11 @@ def _charter_brief_signal(brief: str, currency: str) -> BriefSignal:
 
 
 def _render_intent(charter: ProjectCharter) -> NotBlankStr:
-    """Fold the charter content into the work item's intent body."""
+    """Fold the charter content into the work item's intent body.
+
+    Returns:
+        ``NotBlankStr`` instance.
+    """
     lines: list[str] = [charter.brief]
     if charter.goals:
         lines.append("\nGoals:\n" + "\n".join(f"- {g}" for g in charter.goals))
@@ -148,7 +156,11 @@ class CharterDispatcher:
         self._locks_guard: asyncio.Lock | None = None
 
     async def _lock_for(self, charter_id: str) -> asyncio.Lock:
-        """Return the per-charter lock, creating it once."""
+        """Return the per-charter lock, creating it once.
+
+        Returns:
+            ``asyncio.Lock`` instance.
+        """
         if self._locks_guard is None:
             self._locks_guard = asyncio.Lock()
         async with self._locks_guard:
@@ -173,6 +185,9 @@ class CharterDispatcher:
                 currency does not match the live ``budget.currency``.
             WorkProjectNotFoundError: When an existing referenced
                 project does not exist.
+
+        Returns:
+            ``CharterApprovalResult`` instance.
         """
         async with await self._lock_for(charter_id):
             return await self._approve(charter_id, approved_by=approved_by)
@@ -183,7 +198,17 @@ class CharterDispatcher:
         *,
         approved_by: NotBlankStr,
     ) -> CharterApprovalResult:
-        """Body of approve() under the per-charter lock."""
+        """Body of approve() under the per-charter lock.
+
+        Returns:
+            ``CharterApprovalResult`` instance.
+
+        Raises:
+            CharterNotFoundError: Raised on the corresponding failure path.
+            CharterAlreadyDecidedError: Raised on the corresponding failure path.
+            Exception: Raised on the corresponding failure path.
+            CharterStateInconsistentError: Raised on the corresponding failure path.
+        """
         charter = await self._charter_repo.get(charter_id)
         if charter is None:
             raise CharterNotFoundError(charter_id=charter_id)
@@ -206,9 +231,8 @@ class CharterDispatcher:
 
         try:
             result = await self._work_pipeline.run(work_item)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, CHARTER_DISPATCH_FAILED, exc, charter_id=charter_id
             )
@@ -249,7 +273,11 @@ class CharterDispatcher:
 
     @staticmethod
     def _require_matching_currency(charter: ProjectCharter, currency: str) -> None:
-        """Reject a charter whose envelope currency is not the budget one."""
+        """Reject a charter whose envelope currency is not the budget one.
+
+        Raises:
+            MixedCurrencyAggregationError: Raised on the corresponding failure path.
+        """
         if charter.envelope.currency != currency:
             msg = "Charter envelope currency does not match live budget.currency"
             raise MixedCurrencyAggregationError(
@@ -263,6 +291,12 @@ class CharterDispatcher:
         New-project creation is idempotent: the project id is derived
         from the charter id, so a retried approval reuses the same
         project rather than minting a duplicate.
+
+        Returns:
+            ``NotBlankStr`` instance.
+
+        Raises:
+            WorkProjectNotFoundError: Raised on the corresponding failure path.
         """
         if charter.project_id is not None:
             existing = await self._project_service.get(charter.project_id)
@@ -304,7 +338,11 @@ class CharterDispatcher:
         approved_by: NotBlankStr,
         now: datetime,
     ) -> Forecast:
-        """Build the already-APPROVED forecast that is the budget record."""
+        """Build the already-APPROVED forecast that is the budget record.
+
+        Returns:
+            ``Forecast`` instance.
+        """
         amount = charter.envelope.amount
         return Forecast(
             forecast_id=uuid.uuid5(_FORECAST_NAMESPACE, charter.id),
@@ -330,7 +368,11 @@ class CharterDispatcher:
         forecast: Forecast,
         now: datetime,
     ) -> WorkItem:
-        """Compose the kickoff work item for the charter's project run."""
+        """Compose the kickoff work item for the charter's project run.
+
+        Returns:
+            ``WorkItem`` instance.
+        """
         return WorkItem(
             origin_adapter_id=_ORIGIN_ADAPTER_ID,
             source=WorkSource.CONVERSATIONAL,
@@ -358,7 +400,11 @@ class CharterDispatcher:
         approved_by: NotBlankStr,
         now: datetime,
     ) -> None:
-        """CAS the charter to APPROVED with full dispatch provenance."""
+        """CAS the charter to APPROVED with full dispatch provenance.
+
+        Raises:
+            CharterAlreadyDecidedError: Raised on the corresponding failure path.
+        """
         transitioned = await self._charter_repo.transition_if(
             charter.id,
             from_state=CharterStatus.DRAFTED,
@@ -400,9 +446,8 @@ class CharterDispatcher:
                 to_state=ConversationStatus.CLOSED,
                 updated_at=now.isoformat(),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CHARTER_DISPATCH_FAILED,
                 conversation_id=conversation_id,

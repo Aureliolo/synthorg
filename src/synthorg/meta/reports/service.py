@@ -121,7 +121,11 @@ class ReportsService:
         return page, total
 
     async def get_report(self, report_id: UUID) -> Report | None:
-        """Return a report by ID or ``None`` when absent."""
+        """Return a report by ID or ``None`` when absent.
+
+        Returns:
+            The ``Report`` value when present, ``None`` otherwise.
+        """
         async with self._lock:
             return self._reports.get(report_id)
 
@@ -138,6 +142,9 @@ class ReportsService:
 
         Raises:
             ValueError: When ``template`` is not in the known set.
+
+        Returns:
+            ``Report`` instance.
         """
         if template not in _SUPPORTED_TEMPLATES:
             msg = (
@@ -182,6 +189,12 @@ class ReportsService:
         falling through to a default renderer, which would mask bugs
         when a new template is added to the allowlist without a
         matching branch here.
+
+        Returns:
+            Tuple of the declared element types.
+
+        Raises:
+            RuntimeError: Raised on the corresponding failure path.
         """
         if template == "org_overview":
             overview = await self._analytics.get_overview(since=since, until=until)

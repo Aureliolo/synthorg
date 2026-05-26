@@ -14,6 +14,7 @@ Exposes:
 from typing import TYPE_CHECKING
 
 from synthorg.core.actor_context import resolve_decided_by
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
     ConflictError,
@@ -65,12 +66,14 @@ async def _reread_approval_item(
     flow chain so each flow can apply its own ownership probe
     (Flow 0: yields to later flows; Flow 1: parked-context gate
     probe; Flow 2: review-gate is a no-op without ``task_id``).
+
+    Returns:
+        The ``ApprovalItem`` value when present, ``None`` otherwise.
     """
     try:
         return await app_state.approval_store.get(approval_id)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             APPROVAL_GATE_RESUME_FAILED,
             approval_id=approval_id,
@@ -114,6 +117,14 @@ async def try_mid_execution_resume(
     transition. Returns ``False`` when the approval is review-gate
     bound (e.g. a hiring/promotion approval) so the caller falls
     through to the review gate.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
+        AgentRuntimeNotConfiguredError: Raised on the corresponding failure path.
     """
     from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
 
@@ -133,9 +144,8 @@ async def try_mid_execution_resume(
             return False
         try:
             has_parked = await gate.has_parked_context(approval_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_RESUME_FAILED,
                 approval_id=approval_id,
@@ -211,6 +221,9 @@ async def _load_conversational_proposal(
             CONVERSATIONAL_INTAKE but the proposal repo is not wired.
             A hard misconfiguration -- swallowing it would silently
             strand a decided conversational approval.
+
+    Returns:
+        The ``tuple[bool, object]`` value when present, ``None`` otherwise.
     """
     from synthorg.core.enums import ApprovalSource  # noqa: PLC0415
     from synthorg.persistence.conversational_proposal_protocol import (  # noqa: PLC0415
@@ -288,6 +301,8 @@ async def _execute_conversational_proposal(
     Raises:
         ServiceUnavailableError: When the work pipeline is not wired
             at all (cannot run approved work without it).
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
     """
     from synthorg.core.enums import ConversationalProposalStatus  # noqa: PLC0415
     from synthorg.engine.pipeline.models import WorkItem  # noqa: PLC0415
@@ -410,6 +425,9 @@ async def try_conversational_intake_resume(
             the proposal repo is not wired, or the work pipeline is
             missing on approve. All three are hard misconfigurations
             the operator must fix.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     owns_decision, proposal = await _load_conversational_proposal(
         app_state, approval_id
@@ -511,6 +529,7 @@ async def try_review_gate_transition(  # noqa: PLR0913
             (agent reassigned between preflight and transition).
         ServiceUnavailableError: When the task engine backend becomes
             unavailable mid-transition.
+        NotFoundError: Raised on the corresponding failure path.
     """
     decided_by = resolve_decided_by(decided_by)
     try:

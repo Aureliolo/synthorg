@@ -87,7 +87,11 @@ class CockpitController(Controller):
 
     @get("/snapshot")
     async def get_snapshot(self, state: State) -> ApiResponse[LiveActivitySnapshot]:
-        """Return the live org-activity snapshot."""
+        """Return the live org-activity snapshot.
+
+        Returns:
+            ``ApiResponse[LiveActivitySnapshot]`` instance.
+        """
         app_state: AppState = state.app_state
         resolver = app_state.config_resolver
         stuck_idle_minutes = await resolver.get_float(
@@ -117,6 +121,9 @@ class CockpitController(Controller):
         paging is gone. The underlying repo still slices on offset
         internally, but the cursor is HMAC-signed so the client treats
         it as opaque.
+
+        Returns:
+            ``PaginatedResponse[FlightRecorderFrame]`` instance.
         """
         app_state: AppState = state.app_state
         offset = (
@@ -147,7 +154,11 @@ class CockpitController(Controller):
         execution_id: PathId,
         turn_index: TurnIndexPath,
     ) -> ApiResponse[ReplaySeekView]:
-        """Reconstruct scrubber state at a target turn."""
+        """Reconstruct scrubber state at a target turn.
+
+        Returns:
+            ``ApiResponse[ReplaySeekView]`` instance.
+        """
         app_state: AppState = state.app_state
         view = await app_state.flight_recorder_service.seek(execution_id, turn_index)
         return ApiResponse(data=view)
@@ -158,7 +169,11 @@ class CockpitController(Controller):
         state: State,
         data: PauseInterventionRequest,
     ) -> ApiResponse[Task]:
-        """Pause a running task (transition to INTERRUPTED)."""
+        """Pause a running task (transition to INTERRUPTED).
+
+        Returns:
+            ``ApiResponse[Task]`` instance.
+        """
         app_state: AppState = state.app_state
         logger.info(
             COCKPIT_INTERVENTION_INITIATED,
@@ -184,7 +199,11 @@ class CockpitController(Controller):
         state: State,
         data: KillInterventionRequest,
     ) -> ApiResponse[Task]:
-        """Kill a running task (cancel it)."""
+        """Kill a running task (cancel it).
+
+        Returns:
+            ``ApiResponse[Task]`` instance.
+        """
         app_state: AppState = state.app_state
         logger.info(
             COCKPIT_INTERVENTION_INITIATED,
@@ -209,7 +228,11 @@ class CockpitController(Controller):
         state: State,
         data: SteerInterventionRequest,
     ) -> ApiResponse[SteeringOutcome]:
-        """Queue a hint for a running agent."""
+        """Queue a hint for a running agent.
+
+        Returns:
+            ``ApiResponse[SteeringOutcome]`` instance.
+        """
         return await self._steer(state, InterventionKind.HINT, data)
 
     @post("/interventions/redirect", guards=[require_write_access])
@@ -218,7 +241,11 @@ class CockpitController(Controller):
         state: State,
         data: SteerInterventionRequest,
     ) -> ApiResponse[SteeringOutcome]:
-        """Queue a redirect for a running agent."""
+        """Queue a redirect for a running agent.
+
+        Returns:
+            ``ApiResponse[SteeringOutcome]`` instance.
+        """
         return await self._steer(state, InterventionKind.REDIRECT, data)
 
     async def _steer(
@@ -237,6 +264,9 @@ class CockpitController(Controller):
         the persisted question for defence-in-depth; double-wrapping is
         safe because the safety envelope is idempotent on already-tagged
         content.
+
+        Returns:
+            ``ApiResponse[SteeringOutcome]`` instance.
         """
         app_state: AppState = state.app_state
         logger.info(

@@ -17,7 +17,6 @@ from synthorg.core.domain_errors import (
     UnauthorizedError,
     ValidationError,
     VersionConflictError,
-    resource_not_found,
 )
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 
@@ -293,63 +292,6 @@ class TestRetryAfterCarriers:
     def test_concurrency_inherits_retry_after(self) -> None:
         exc = ConcurrencyLimitExceededError(retry_after=5)
         assert exc.retry_after == 5
-
-
-class TestResourceNotFoundFactory:
-    """``resource_not_found`` builds NotFoundError with structured codes."""
-
-    def test_default_code_is_generic(self) -> None:
-        err = resource_not_found("task", "abc-123")
-        assert isinstance(err, NotFoundError)
-        assert err.error_code == ErrorCode.RESOURCE_NOT_FOUND
-        assert err.status_code == 404
-        assert "task 'abc-123' not found" in str(err)
-
-    def test_custom_not_found_code_preserved(self) -> None:
-        err = resource_not_found("task", "abc", code=ErrorCode.TASK_NOT_FOUND)
-        assert err.error_code == ErrorCode.TASK_NOT_FOUND
-        assert err.status_code == 404
-
-    def test_rejects_non_not_found_code(self) -> None:
-        """Factory refuses codes outside the 3xxx NOT_FOUND band."""
-        with pytest.raises(ValueError, match="NOT_FOUND"):
-            resource_not_found(
-                "task",
-                "abc",
-                code=ErrorCode.UNAUTHORIZED,  # 1000 -- auth, not NOT_FOUND
-            )
-
-    def test_rejects_validation_code(self) -> None:
-        with pytest.raises(ValueError, match="NOT_FOUND"):
-            resource_not_found(
-                "task",
-                "abc",
-                code=ErrorCode.VALIDATION_ERROR,  # 2000 -- validation
-            )
-
-    def test_every_not_found_code_in_taxonomy_is_accepted(self) -> None:
-        """Smoke test: every declared 3xxx code round-trips the factory."""
-        for code in ErrorCode:
-            if code.value // 1000 != 3:
-                continue
-            err = resource_not_found("thing", "id", code=code)
-            assert err.error_code == code
-
-    def test_factory_does_not_mutate_class_level_classvar(self) -> None:
-        """``resource_not_found`` shadows ``error_code`` on the instance only.
-
-        Regression guard: the factory assigns ``error.error_code = code`` as
-        an instance attribute (per the documented carve-out for the
-        otherwise-immutable ClassVar).  This must not leak to the class
-        and corrupt subsequent constructions.
-        """
-        before = NotFoundError.error_code
-        instance = resource_not_found("task", "abc", code=ErrorCode.TASK_NOT_FOUND)
-        assert instance.error_code == ErrorCode.TASK_NOT_FOUND
-        assert NotFoundError.error_code == before
-        # Fresh construction without the factory still sees the class default.
-        plain = NotFoundError()
-        assert plain.error_code == before
 
 
 class TestInstanceConstruction:

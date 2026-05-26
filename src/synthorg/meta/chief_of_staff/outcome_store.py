@@ -8,6 +8,7 @@ Persists ``ProposalOutcome`` records as episodic memories in the
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.models import MemoryMetadata, MemoryQuery, MemoryStoreRequest
@@ -66,6 +67,9 @@ class MemoryBackendOutcomeStore:
 
         Returns:
             Memory ID assigned by the backend.
+
+        Raises:
+            Exception: Raised on the corresponding failure path.
         """
         tags = self._build_tags(outcome)
         request = MemoryStoreRequest(
@@ -80,9 +84,8 @@ class MemoryBackendOutcomeStore:
         )
         try:
             memory_id = await self._backend.store(self._agent_id, request)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 COS_OUTCOME_RECORD_FAILED,
@@ -209,7 +212,11 @@ class MemoryBackendOutcomeStore:
 
     @staticmethod
     def _build_tags(outcome: ProposalOutcome) -> tuple[NotBlankStr, ...]:
-        """Build filterable metadata tags from an outcome."""
+        """Build filterable metadata tags from an outcome.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         tags: list[NotBlankStr] = [
             NotBlankStr(f"altitude:{outcome.altitude.value}"),
             NotBlankStr(f"decision:{outcome.decision}"),

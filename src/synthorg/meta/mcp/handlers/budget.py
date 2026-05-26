@@ -15,7 +15,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from synthorg.budget.version_service import BudgetConfigVersionsService
-from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
+from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -59,6 +59,9 @@ def _versions_service(app_state: Any) -> BudgetConfigVersionsService:
     per-call construction from the persistence primitive for app_states
     that have not adopted the cached-service pattern yet, mirroring the
     :func:`synthorg.meta.mcp.handlers.memory._service` pattern.
+
+    Returns:
+        ``BudgetConfigVersionsService`` instance.
     """
     cached: BudgetConfigVersionsService | None = getattr(
         app_state,
@@ -86,6 +89,11 @@ async def _budget_get_config(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_budget_get_config`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_budget_get_config"
     try:
         config = await app_state.config_resolver.get_budget_config()
@@ -102,6 +110,14 @@ async def _budget_list_records(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_budget_list_records`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     tool = "synthorg_budget_list_records"
     try:
         agent_id = arguments.get("agent_id")
@@ -109,11 +125,11 @@ async def _budget_list_records(
         if agent_id is not None and (
             not isinstance(agent_id, str) or not agent_id.strip()
         ):
-            raise invalid_argument(_ARG_AGENT_ID, _TY_NON_BLANK)
+            raise ArgumentValidationError(_ARG_AGENT_ID, _TY_NON_BLANK)
         if task_id is not None and (
             not isinstance(task_id, str) or not task_id.strip()
         ):
-            raise invalid_argument(_ARG_TASK_ID, _TY_NON_BLANK)
+            raise ArgumentValidationError(_ARG_TASK_ID, _TY_NON_BLANK)
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
@@ -138,6 +154,11 @@ async def _budget_get_agent_spending(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_budget_get_agent_spending`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_budget_get_agent_spending"
     try:
         agent_id = require_non_blank(arguments, _ARG_AGENT_ID)
@@ -167,6 +188,11 @@ async def _budget_versions_list(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_budget_versions_list`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_budget_versions_list"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -195,11 +221,19 @@ async def _budget_versions_get(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_budget_versions_get`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     tool = "synthorg_budget_versions_get"
     try:
         version_num = require_arg(arguments, _ARG_VERSION, int)
         if version_num < 1:
-            raise invalid_argument(_ARG_VERSION, _TY_POS_INT)
+            raise ArgumentValidationError(_ARG_VERSION, _TY_POS_INT)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)

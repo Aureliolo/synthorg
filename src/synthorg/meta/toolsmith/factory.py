@@ -105,6 +105,7 @@ def build_toolsmith(  # noqa: PLR0913 -- explicit DI of the toolsmith collaborat
     )
 
     def _handler_factory(blueprint: ToolBlueprint) -> ToolHandler:
+        """Return handler factory."""
         return make_dynamic_tool_handler(blueprint, sandbox_resolver(blueprint))
 
     dynamic_registry = DynamicToolRegistry(handler_factory=_handler_factory)
@@ -158,6 +159,9 @@ def _build_overflow_handler(
 
     Returns ``None`` when ``code_modification_enabled`` is unset, so
     service-access gaps simply log an unhandled-overflow notice.
+
+    Returns:
+        The ``ToolCreationOverflowHandler`` value when present, ``None`` otherwise.
     """
     if not si_config.code_modification_enabled:
         return None

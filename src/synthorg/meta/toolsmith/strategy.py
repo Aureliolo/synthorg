@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from synthorg.api.boundary import parse_typed
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -113,6 +114,9 @@ class LLMToolBlueprintGenerator:
                 in the configured allowlist.
             ToolAuthoringError: If the model output cannot be parsed into
                 a valid blueprint.
+
+        Returns:
+            ``ToolBlueprint`` instance.
         """
         capability = gap.signature
         if capability not in self._config.allowed_capabilities:
@@ -124,9 +128,8 @@ class LLMToolBlueprintGenerator:
             blueprint = self._parse(capability, response)
         except ToolAuthoringError, ToolCapabilityNotAllowedError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # ProviderError lands here too: a transient completion failure
             # is a per-gap authoring failure, not a batch-wide abort. The
             # service runs gaps under a TaskGroup, so wrapping it as
@@ -152,7 +155,14 @@ class LLMToolBlueprintGenerator:
         gap: CapabilityGap,
         existing_capabilities: Sequence[NotBlankStr],
     ) -> str:
-        """Call the provider to author the tool; returns raw content."""
+        """Call the provider to author the tool; returns raw content.
+
+        Returns:
+            Resulting string.
+
+        Raises:
+            ToolAuthoringError: Raised on the corresponding failure path.
+        """
         from synthorg.providers.enums import MessageRole  # noqa: PLC0415
         from synthorg.providers.models import (  # noqa: PLC0415
             ChatMessage,
@@ -190,7 +200,11 @@ class LLMToolBlueprintGenerator:
         gap: CapabilityGap,
         existing_capabilities: Sequence[NotBlankStr],
     ) -> str:
-        """Build the authoring prompt; gap context is wrapped as untrusted."""
+        """Build the authoring prompt; gap context is wrapped as untrusted.
+
+        Returns:
+            Resulting string.
+        """
         context = {
             "capability": gap.signature,
             "occurrences": gap.occurrences,
@@ -210,6 +224,12 @@ class LLMToolBlueprintGenerator:
         through the frozen :class:`_AuthoredBlueprintArgs` boundary model
         via ``parse_typed`` rather than ad-hoc field plucking. The sandbox
         backend and network policy come from config, never the model.
+
+        Returns:
+            ``ToolBlueprint`` instance.
+
+        Raises:
+            ToolAuthoringError: Raised on the corresponding failure path.
         """
         text = response.strip()
         try:

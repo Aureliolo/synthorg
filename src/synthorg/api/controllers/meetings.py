@@ -16,6 +16,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from synthorg.communication.meeting.models import MeetingRecord
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError, ValidationError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
@@ -48,6 +49,12 @@ async def _resolve_max_context_keys(app_state: AppState) -> int:
     Falls back to ``_MAX_CONTEXT_KEYS_FALLBACK`` (20) when the settings
     backend is unavailable.  Per-process log-once so a flapping settings
     backend does not spam the logs.
+
+    Returns:
+        Resulting integer.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     global _meeting_context_cap_fallback_logged  # noqa: PLW0603
     if not app_state.has_config_resolver:
@@ -72,9 +79,8 @@ async def _resolve_max_context_keys(app_state: AppState) -> int:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         if not _meeting_context_cap_fallback_logged:
             logger.warning(
                 API_VALIDATION_FAILED,
@@ -140,6 +146,12 @@ class TriggerMeetingRequest(BaseModel):
         can tune it via the ``api.max_meeting_context_keys`` setting
         without code changes.  This validator only checks per-key /
         per-value invariants which are static.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         for k, v in self.context.items():
             if len(k) > _MAX_CONTEXT_KEY_LEN:

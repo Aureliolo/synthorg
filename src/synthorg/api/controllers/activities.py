@@ -63,6 +63,9 @@ def _first_leaf_exception(eg: BaseExceptionGroup[BaseException]) -> BaseExceptio
     that the outer ``TaskGroup`` re-grouped). Walk the leftmost spine
     until a non-group leaf is reached so the caller always logs and
     re-raises a real cause, not a wrapper group.
+
+    Returns:
+        ``BaseException`` instance.
     """
     candidate: BaseException = eg
     while isinstance(candidate, BaseExceptionGroup) and candidate.exceptions:
@@ -71,7 +74,11 @@ def _first_leaf_exception(eg: BaseExceptionGroup[BaseException]) -> BaseExceptio
 
 
 def _leaf_exception_count(eg: BaseExceptionGroup[BaseException]) -> int:
-    """Count non-group leaf exceptions across the nested structure of *eg*."""
+    """Count non-group leaf exceptions across the nested structure of *eg*.
+
+    Returns:
+        Resulting integer.
+    """
     count = 0
     for child in eg.exceptions:
         if isinstance(child, BaseExceptionGroup):
@@ -94,7 +101,11 @@ def _extract_task_result(
     source_name: str,
     degraded: list[str],
 ) -> tuple[Any, ...]:
-    """Extract a completed task's data, appending to degraded if needed."""
+    """Extract a completed task's data, appending to degraded if needed.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     if task is None or task.cancelled():
         degraded.append(source_name)
         return ()
@@ -134,6 +145,10 @@ async def _run_async_fetchers(
 
     Returns:
         ``(cost_records, tool_invocations, sent, received)`` tuples.
+
+    Raises:
+        fatal_exc: Raised on the corresponding failure path.
+        svc_exc: Raised on the corresponding failure path.
     """
     cost_task: asyncio.Task[tuple[tuple[CostRecord, ...], bool]] | None = None
     tool_task: asyncio.Task[tuple[tuple[ToolInvocationRecord, ...], bool]] | None = None
@@ -231,6 +246,10 @@ async def _resolve_currency(
 
     Returns:
         ISO 4217 currency code.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
     """
     try:
         budget_cfg = await app_state.config_resolver.get_budget_config()
@@ -433,6 +452,11 @@ async def _fetch_task_metrics(
 
     Returns:
         ``(records, is_degraded)`` tuple.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
+        ServiceUnavailableError: Raised on the corresponding failure path.
     """
     try:
         return app_state.performance_tracker.get_task_metrics(
@@ -475,6 +499,11 @@ async def _fetch_cost_records(
 
     Returns:
         ``(records, is_degraded)`` tuple.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
+        ServiceUnavailableError: Raised on the corresponding failure path.
     """
     if not app_state.has_cost_tracker:
         return (), False
@@ -519,6 +548,11 @@ async def _fetch_tool_invocations(
 
     Returns:
         ``(records, is_degraded)`` tuple.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
+        ServiceUnavailableError: Raised on the corresponding failure path.
     """
     if not app_state.has_tool_invocation_tracker:
         return (), False
@@ -561,6 +595,11 @@ async def _safe_delegation_query(
 
     Returns:
         ``(records, is_degraded)`` tuple.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
+        ServiceUnavailableError: Raised on the corresponding failure path.
     """
     try:
         return (await coro), False

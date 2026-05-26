@@ -49,7 +49,11 @@ class RateLimitGuard:
 
     @property
     def name(self) -> NotBlankStr:
-        """Guard name."""
+        """Guard name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("rate_limit")
 
     async def evaluate(
@@ -71,7 +75,11 @@ class RateLimitGuard:
         self,
         proposal: ImprovementProposal,
     ) -> GuardResult:
-        """Rate limit check under lock (no concurrent mutation)."""
+        """Rate limit check under lock (no concurrent mutation).
+
+        Returns:
+            ``GuardResult`` instance.
+        """
         now = datetime.now(UTC)
         cutoff = now - self._window
 

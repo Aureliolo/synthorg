@@ -31,6 +31,7 @@ from collections.abc import Mapping  # noqa: TC003 -- PEP 649 annotation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceConnectionError, QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.embedding.fine_tune_models import FineTuneExecutionConfig
@@ -49,7 +50,6 @@ from synthorg.memory.service import (
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
-    invalid_argument,
 )
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -130,6 +130,9 @@ def _service(app_state: Any) -> MemoryService:
 
     Raises:
         MemoryBackendUnsupportedError: In any of the above cases.
+
+    Returns:
+        ``MemoryService`` instance.
     """
     if getattr(app_state, "has_memory_service", False):
         attached: MemoryService = app_state.memory_service
@@ -202,6 +205,9 @@ def _delete_entry_service(app_state: Any) -> MemoryService:
     Raises:
         MemoryBackendUnsupportedError: When no service or backend is wired at
             all -- the only case where deletion truly cannot proceed.
+
+    Returns:
+        ``MemoryService`` instance.
     """
     if getattr(app_state, "has_memory_service", False):
         attached: MemoryService = app_state.memory_service
@@ -233,6 +239,15 @@ async def _memory_start_fine_tune(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- FineTunePlan args carry domain-specific schema; deploy/cancel paths enforce full guardrail
 ) -> str:
+    """Handle the ``synthorg_memory_start_fine_tune`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
+    """
     tool = "synthorg_memory_start_fine_tune"
     try:
         plan = _parse_fine_tune_plan(arguments)
@@ -266,6 +281,11 @@ async def _memory_resume_fine_tune(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- fine-tune args carry plan-specific schema; deploy/cancel paths enforce full guardrail
 ) -> str:
+    """Handle the ``synthorg_memory_resume_fine_tune`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_memory_resume_fine_tune"
     try:
         run_id = require_non_blank(arguments, _ARG_RUN_ID)
@@ -290,9 +310,8 @@ async def _memory_resume_fine_tune(
         # orchestrator won't reclassify the failure.
         log_handler_invoke_failed(tool, exc)
         return err(exc)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -305,12 +324,17 @@ async def _memory_get_fine_tune_status(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_memory_get_fine_tune_status`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_memory_get_fine_tune_status"
     run_id_raw = arguments.get(_ARG_RUN_ID)
     run_id: NotBlankStr | None = None
     if run_id_raw is not None:
         if not isinstance(run_id_raw, str) or not run_id_raw.strip():
-            exc = invalid_argument(_ARG_RUN_ID, _TY_NON_BLANK)
+            exc = ArgumentValidationError(_ARG_RUN_ID, _TY_NON_BLANK)
             log_handler_argument_invalid(tool, exc)
             return err(exc)
         run_id = NotBlankStr(run_id_raw.strip())
@@ -322,9 +346,8 @@ async def _memory_get_fine_tune_status(
     except ValueError as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="not_found")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -337,6 +360,11 @@ async def _memory_cancel_fine_tune(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Handle the ``synthorg_memory_cancel_fine_tune`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_memory_cancel_fine_tune"
     try:
         reason, resolved_actor = require_admin_guardrails(
@@ -351,9 +379,8 @@ async def _memory_cancel_fine_tune(
         target_id = await service.cancel_fine_tune()
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -380,6 +407,11 @@ async def _memory_run_preflight(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- preflight is read-only validation, not a mutation
 ) -> str:
+    """Handle the ``synthorg_memory_run_preflight`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_memory_run_preflight"
     try:
         plan = _parse_fine_tune_plan(arguments)
@@ -391,9 +423,8 @@ async def _memory_run_preflight(
         result = await service.run_preflight(plan)
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -406,6 +437,11 @@ async def _memory_list_checkpoints(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_memory_list_checkpoints`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_memory_list_checkpoints"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -421,9 +457,8 @@ async def _memory_list_checkpoints(
             limit=limit,
             offset=offset,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
@@ -437,6 +472,11 @@ async def _memory_deploy_checkpoint(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001 lint-allow: mcp-admin-guardrail -- deploy routes through fine-tune pipeline reason field; cancel path enforces full guardrail
 ) -> str:
+    """Handle the ``synthorg_memory_deploy_checkpoint`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_memory_deploy_checkpoint"
     try:
         checkpoint_id = require_non_blank(arguments, _ARG_CHECKPOINT_ID)
@@ -458,9 +498,8 @@ async def _memory_deploy_checkpoint(
         # ``conflict`` so callers distinguish from internal errors.
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -473,6 +512,11 @@ async def _memory_rollback_checkpoint(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Handle the ``synthorg_memory_rollback_checkpoint`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_memory_rollback_checkpoint"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -496,9 +540,8 @@ async def _memory_rollback_checkpoint(
     ) as exc:
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -518,6 +561,11 @@ async def _memory_delete_checkpoint(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Handle the ``synthorg_memory_delete_checkpoint`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_memory_delete_checkpoint"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)
@@ -540,9 +588,8 @@ async def _memory_delete_checkpoint(
         # ``conflict`` so callers can distinguish from internal errors.
         log_handler_invoke_failed(tool, exc)
         return err(exc, domain_code="conflict")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
 
@@ -568,6 +615,9 @@ async def _memory_delete_entry(
     Required arguments: ``agent_id``, ``memory_id``, plus the
     destructive-op guardrail triple (``confirm=True``, non-blank
     ``reason``, identifiable actor).
+
+    Returns:
+        Resulting string.
     """
     tool = "synthorg_memory_delete_entry"
     agent_id = ""
@@ -588,9 +638,8 @@ async def _memory_delete_entry(
         return err(exc)
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc, agent_id=agent_id, memory_id=memory_id)
         return err(exc)
     if not deleted:
@@ -620,6 +669,11 @@ async def _memory_list_runs(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_memory_list_runs`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_memory_list_runs"
     try:
         offset, limit = coerce_pagination(arguments)
@@ -631,9 +685,8 @@ async def _memory_list_runs(
         runs, total = await service.list_runs(limit=limit, offset=offset)
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     meta = PaginationMeta(total=total, offset=offset, limit=limit)
@@ -647,15 +700,19 @@ async def _memory_get_active_embedder(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Handle the ``synthorg_memory_get_active_embedder`` MCP tool.
+
+    Returns:
+        JSON-encoded MCP envelope string.
+    """
     tool = "synthorg_memory_get_active_embedder"
     try:
         service = _service(app_state)
         snap = await service.get_active_embedder()
     except MemoryBackendUnsupportedError as exc:
         return not_supported(tool, str(exc))
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_handler_invoke_failed(tool, exc)
         return err(exc)
     logger.info(MCP_HANDLER_INVOKE_SUCCESS, tool_name=tool)
@@ -682,6 +739,11 @@ def _collect_optional_strings(
     arguments: dict[str, Any],
     payload: dict[str, Any],
 ) -> None:
+    """Handle collect optional strings.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     for key in _OPTIONAL_STR_KEYS:
         if key not in arguments:
             continue
@@ -693,7 +755,7 @@ def _collect_optional_strings(
             # non-string) instead of silently dropping them -- otherwise
             # ``resume_run_id=""`` would become a fresh fine-tune rather
             # than an ``invalid_argument`` response.
-            raise invalid_argument(key, _TY_NON_BLANK)
+            raise ArgumentValidationError(key, _TY_NON_BLANK)
         payload[key] = NotBlankStr(raw.strip())
 
 
@@ -701,12 +763,17 @@ def _collect_optional_ints(
     arguments: dict[str, Any],
     payload: dict[str, Any],
 ) -> None:
+    """Handle collect optional ints.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     for key in _OPTIONAL_INT_KEYS:
         raw = arguments.get(key)
         if raw is None:
             continue
         if isinstance(raw, bool) or not isinstance(raw, int):
-            raise invalid_argument(key, "positive int")
+            raise ArgumentValidationError(key, "positive int")
         payload[key] = raw
 
 
@@ -714,12 +781,17 @@ def _collect_optional_floats(
     arguments: dict[str, Any],
     payload: dict[str, Any],
 ) -> None:
+    """Handle collect optional floats.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     for key in _OPTIONAL_FLOAT_KEYS:
         raw = arguments.get(key)
         if raw is None:
             continue
         if isinstance(raw, bool) or not isinstance(raw, (int, float)):
-            raise invalid_argument(key, "positive float")
+            raise ArgumentValidationError(key, "positive float")
         payload[key] = float(raw)
 
 
@@ -735,20 +807,30 @@ def _collect_optional_execution(
     present-but-not-null value must be a JSON object that validates
     against :class:`FineTuneExecutionConfig`, else we return an
     ``invalid_argument`` envelope with the nested field name.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
     """
     raw = arguments.get(_ARG_EXECUTION)
     if raw is None:
         return
     if not isinstance(raw, dict):
-        raise invalid_argument(_ARG_EXECUTION, _TY_EXECUTION_OR_NULL)
+        raise ArgumentValidationError(_ARG_EXECUTION, _TY_EXECUTION_OR_NULL)
     try:
         payload[_ARG_EXECUTION] = FineTuneExecutionConfig(**raw)
     except Exception as exc:
-        raise invalid_argument(_ARG_EXECUTION, _TY_EXECUTION_SHAPE) from exc
+        raise ArgumentValidationError(_ARG_EXECUTION, _TY_EXECUTION_SHAPE) from exc
 
 
 def _parse_fine_tune_plan(arguments: dict[str, Any]) -> FineTunePlan:
-    """Build a :class:`FineTunePlan` from MCP arguments with typed errors."""
+    """Build a :class:`FineTunePlan` from MCP arguments with typed errors.
+
+    Returns:
+        ``FineTunePlan`` instance.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     source_dir = require_non_blank(arguments, "source_dir")
     payload: dict[str, Any] = {"source_dir": NotBlankStr(source_dir)}
     _collect_optional_strings(arguments, payload)
@@ -760,7 +842,7 @@ def _parse_fine_tune_plan(arguments: dict[str, Any]) -> FineTunePlan:
     except Exception as exc:
         arg_name = "plan"
         expected = "valid FineTunePlan shape"
-        raise invalid_argument(arg_name, expected) from exc
+        raise ArgumentValidationError(arg_name, expected) from exc
 
 
 MEMORY_HANDLERS: Mapping[str, ToolHandler] = MappingProxyType(

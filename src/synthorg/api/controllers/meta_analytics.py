@@ -64,7 +64,14 @@ def configure_analytics_controller(
 
 
 def _require_collector() -> InMemoryAnalyticsCollector:
-    """Get the collector or raise ServiceUnavailableError."""
+    """Get the collector or raise ServiceUnavailableError.
+
+    Returns:
+        ``InMemoryAnalyticsCollector`` instance.
+
+    Raises:
+        ServiceUnavailableError: Raised on the corresponding failure path.
+    """
     if _collector is None:
         msg = "Cross-deployment analytics collector is not enabled"
         raise ServiceUnavailableError(msg)
@@ -132,6 +139,9 @@ class MetaAnalyticsController(Controller):
             min_deployments: Minimum unique deployments for pattern.
             cursor: Opaque pagination cursor from the previous page.
             limit: Page size.
+
+        Returns:
+            ``PaginatedResponse[AggregatedPattern]`` instance.
         """
         collector = _require_collector()
         # Clamp to configured privacy floor so callers cannot
@@ -155,7 +165,11 @@ class MetaAnalyticsController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[ThresholdRecommendation]:
-        """Get threshold recommendations from aggregated data (paginated)."""
+        """Get threshold recommendations from aggregated data (paginated).
+
+        Returns:
+            Result matching the declared return annotation.
+        """
         collector = _require_collector()
         if _recommender is None:
             empty_recs: tuple[ThresholdRecommendation, ...] = ()

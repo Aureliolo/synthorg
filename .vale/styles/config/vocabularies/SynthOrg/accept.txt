@@ -629,6 +629,7 @@ prompt_template
 proxied
 proxying
 pull_request
+pydoclint
 pyenv
 pylint
 pymupdf

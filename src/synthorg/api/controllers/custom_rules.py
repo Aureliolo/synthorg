@@ -58,7 +58,11 @@ _DEFAULT_LIMIT: Final[int] = 50
 
 
 def _service(state: State) -> CustomRulesService:
-    """Build the per-request :class:`CustomRulesService`."""
+    """Build the per-request :class:`CustomRulesService`.
+
+    Returns:
+        ``CustomRulesService`` instance.
+    """
     return CustomRulesService(repo=state.app_state.persistence.custom_rules)
 
 
@@ -155,7 +159,11 @@ class PreviewRuleRequest(BaseModel):
 
 
 def rule_to_dict(rule: CustomRuleDefinition) -> dict[str, Any]:
-    """Serialize a CustomRuleDefinition for API response."""
+    """Serialize a CustomRuleDefinition for API response.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
     return {
         "id": str(rule.id),
         "name": rule.name,
@@ -172,7 +180,11 @@ def rule_to_dict(rule: CustomRuleDefinition) -> dict[str, Any]:
 
 
 def _metric_to_dict(metric: MetricDescriptor) -> dict[str, Any]:
-    """Serialize a MetricDescriptor for API response."""
+    """Serialize a MetricDescriptor for API response.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
     return {
         "path": metric.path,
         "label": metric.label,
@@ -241,6 +253,9 @@ class CustomRuleController(Controller):
 
         Returns:
             The custom rule definition.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
         """
         rule = await _service(state).get(rule_id)
         if rule is None:
@@ -275,6 +290,9 @@ class CustomRuleController(Controller):
 
         Returns:
             The created rule definition.
+
+        Raises:
+            ConflictError: Raised on the corresponding failure path.
         """
         now = datetime.now(UTC)
         definition = CustomRuleDefinition(
@@ -340,6 +358,9 @@ class CustomRuleController(Controller):
 
         Returns:
             The updated rule definition.
+
+        Raises:
+            ConflictError: Raised on the corresponding failure path.
         """
         # ``CustomRuleNotFoundError`` inherits ``NotFoundError`` so
         # the central handler maps it to 404 directly; the previous
@@ -441,6 +462,9 @@ class CustomRuleController(Controller):
         Returns metric descriptors with bounds and metadata. The
         registry is bounded today but the endpoint is paginated for
         uniform shape with the rest of the list surface.
+
+        Returns:
+            ``PaginatedResponse[dict[str, Any]]`` instance.
         """
         entries = tuple(_metric_to_dict(m) for m in METRIC_REGISTRY)
         page, meta = paginate_cursor(
@@ -510,6 +534,12 @@ def _build_preview_snapshot(
     """Build a minimal OrgSignalSnapshot with one metric set.
 
     All other fields use safe defaults (zeros/empty).
+
+    Returns:
+        ``OrgSignalSnapshot`` instance.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     domain, field = metric_path.split(".", maxsplit=1)
     perf_kwargs: dict[str, Any] = {

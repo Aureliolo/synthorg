@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.meta import (
@@ -51,6 +52,14 @@ class GroupSamples(BaseModel):
 
     @model_validator(mode="after")
     def _validate_aligned_tuples(self) -> Self:
+        """Validate aligned tuples.
+
+        Returns:
+            The validated model instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         n = len(self.agent_ids)
         if not (
             len(self.quality_samples) == n
@@ -122,6 +131,9 @@ class TrackerGroupAggregator:
         is logged and that agent is dropped from the returned tuples,
         but siblings continue. Only ``MemoryError`` and ``RecursionError``
         are re-raised so catastrophic states still propagate.
+
+        Returns:
+            ``GroupSamples`` instance.
         """
         # Tracker returns a point-in-time snapshot keyed by `now`; the
         # observation window bounds are enforced by the caller, so we
@@ -172,12 +184,14 @@ class TrackerGroupAggregator:
         Returns ``None`` when the tracker raises a recoverable
         ``Exception``; re-raises ``MemoryError`` and ``RecursionError``
         so catastrophic system errors are never swallowed.
+
+        Returns:
+            The ``AgentPerformanceSnapshot`` value when present, ``None`` otherwise.
         """
         try:
             return await self._tracker.get_snapshot(str(agent_id), now=until)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 META_ABTEST_GROUP_AGGREGATOR_SNAPSHOT_FAILED,
                 agent_id=str(agent_id),
@@ -189,7 +203,11 @@ class TrackerGroupAggregator:
 def _extract_triple(
     snapshot: AgentPerformanceSnapshot,
 ) -> tuple[float, float, float] | None:
-    """Return ``(quality, success, spend)`` or ``None`` if incomplete."""
+    """Return ``(quality, success, spend)`` or ``None`` if incomplete.
+
+    Returns:
+        The ``tuple[float, float, float]`` value when present, ``None`` otherwise.
+    """
     quality = snapshot.overall_quality_score
     if quality is None:
         return None

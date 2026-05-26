@@ -12,6 +12,7 @@ import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.meta.models import (
@@ -98,7 +99,11 @@ class CodeApplier:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This applier handles code modification proposals."""
+        """This applier handles code modification proposals.
+
+        Returns:
+            ``ProposalAltitude`` instance.
+        """
         return ProposalAltitude.CODE_MODIFICATION
 
     async def verify_github_token(self) -> None:
@@ -139,9 +144,8 @@ class CodeApplier:
                 branch,
                 project_root,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as outer_exc:
+            reraise_critical(outer_exc)
             # Drop ``logger.exception`` here -- the outer handler
             # runs after the ``_write_changes`` / GitHub-client
             # paths, and the traceback carries full proposal payload
@@ -168,9 +172,8 @@ class CodeApplier:
                     project_root,
                     defensive=True,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as revert_exc:
+                reraise_critical(revert_exc)
                 logger.warning(
                     META_APPLY_FAILED,
                     altitude="code_modification",
@@ -217,6 +220,9 @@ class CodeApplier:
 
         Returns:
             Result indicating success or failure.
+
+        Raises:
+            Exception: Raised on the corresponding failure path.
         """
         # -- Local CI gate ------------------------------------------------
         # Filesystem mutations run on a worker thread (``asyncio.to_thread``)
@@ -247,9 +253,8 @@ class CodeApplier:
                     applied,
                     project_root,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as revert_exc:
+                reraise_critical(revert_exc)
                 logger.warning(
                     META_APPLY_FAILED,
                     altitude="code_modification",
@@ -287,17 +292,15 @@ class CodeApplier:
                 title=proposal.title,
                 body=_build_pr_body(proposal),
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             # Partial push left an orphaned branch -- clean up only
             # when we know this invocation created it.
             if branch_created:
                 try:
                     await self._github.delete_branch(branch)
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as cleanup_exc:
+                    reraise_critical(cleanup_exc)
                     # Same scrub as the other GitHub-client-error
                     # path above.
                     logger.warning(
@@ -437,6 +440,8 @@ class CodeApplier:
             PartialWriteError: If applying a change fails after one or
                 more changes were written; carries the applied subset
                 so the outer ``apply()`` can revert what already landed.
+            MemoryError: Raised on the corresponding failure path.
+            RecursionError: Raised on the corresponding failure path.
         """
         changed: list[str] = []
         applied: list[CodeChange] = []

@@ -130,7 +130,11 @@ class PeriodSummary(BaseModel):
     @computed_field(description="Average cost per record")  # type: ignore[prop-decorator]
     @property
     def avg_cost(self) -> float:
-        """Average cost per record (0.0 if no records)."""
+        """Average cost per record (0.0 if no records).
+
+        Returns:
+            Resulting numeric value.
+        """
         if self.record_count == 0:
             return 0.0
         return self.total_cost / self.record_count
@@ -170,7 +174,14 @@ class CostRecordListResponse(BaseModel):
 
     @model_validator(mode="after")
     def _validate_error_detail_consistency(self) -> Self:
-        """Ensure ``error`` and ``error_detail`` are set together."""
+        """Ensure ``error`` and ``error_detail`` are set together.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.error_detail is not None and self.error is None:
             msg = "error_detail requires error to be set"
             raise ValueError(msg)
@@ -182,7 +193,11 @@ class CostRecordListResponse(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def success(self) -> bool:
-        """Whether the request succeeded (derived from ``error``)."""
+        """Whether the request succeeded (derived from ``error``).
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self.error is None
 
 

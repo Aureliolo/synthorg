@@ -45,6 +45,9 @@ def _check_retry_after(*, retryable: bool, retry_after: int | None) -> None:
     """Validate ``retry_after``/``retryable`` consistency.
 
     Shared by ``ErrorDetail`` and ``ProblemDetail``.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     if not retryable and retry_after is not None:
         msg = "retry_after must be None when retryable is False"
@@ -87,7 +90,11 @@ class ErrorDetail(BaseModel):
 
     @model_validator(mode="after")
     def _validate_retry_after_consistency(self) -> Self:
-        """``retry_after`` must be ``None`` when ``retryable`` is ``False``."""
+        """``retry_after`` must be ``None`` when ``retryable`` is ``False``.
+
+        Returns:
+            ``Self`` instance.
+        """
         _check_retry_after(retryable=self.retryable, retry_after=self.retry_after)
         return self
 
@@ -128,7 +135,11 @@ class ProblemDetail(BaseModel):
 
     @model_validator(mode="after")
     def _validate_retry_after_consistency(self) -> Self:
-        """``retry_after`` must be ``None`` when ``retryable`` is ``False``."""
+        """``retry_after`` must be ``None`` when ``retryable`` is ``False``.
+
+        Returns:
+            ``Self`` instance.
+        """
         _check_retry_after(retryable=self.retryable, retry_after=self.retry_after)
         return self
 
@@ -161,7 +172,14 @@ class ApiResponse[T](BaseModel):
 
     @model_validator(mode="after")
     def _validate_error_detail_consistency(self) -> Self:
-        """``error_detail`` must not appear on a successful response."""
+        """``error_detail`` must not appear on a successful response.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.error_detail is not None and self.error is None:
             msg = "error_detail requires error to be set"
             raise ValueError(msg)
@@ -170,7 +188,11 @@ class ApiResponse[T](BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def success(self) -> bool:
-        """Whether the request succeeded (derived from ``error``)."""
+        """Whether the request succeeded (derived from ``error``).
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self.error is None
 
 
@@ -207,6 +229,12 @@ class PaginationMeta(BaseModel):
         the caller is on the final page. Letting the two disagree would
         silently strand clients -- the envelope would advertise "more
         data" with no way to fetch it, or vice versa.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if self.has_more and self.next_cursor is None:
             msg = "has_more=True requires a non-null next_cursor"
@@ -243,7 +271,14 @@ class PaginatedResponse[T](BaseModel):
 
     @model_validator(mode="after")
     def _validate_error_detail_consistency(self) -> Self:
-        """Ensure ``error`` and ``error_detail`` are set together."""
+        """Ensure ``error`` and ``error_detail`` are set together.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.error_detail is not None and self.error is None:
             msg = "error_detail requires error to be set"
             raise ValueError(msg)
@@ -255,7 +290,11 @@ class PaginatedResponse[T](BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def success(self) -> bool:
-        """Whether the request succeeded (derived from ``error``)."""
+        """Whether the request succeeded (derived from ``error``).
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self.error is None
 
 
@@ -334,7 +373,14 @@ class CreateProjectRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_request(self) -> Self:
-        """Validate deadline format and team uniqueness."""
+        """Validate deadline format and team uniqueness.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.deadline is not None:
             if not self.deadline.strip():
                 msg = "deadline must not be whitespace-only"
@@ -591,6 +637,14 @@ class CreateApprovalRequest(BaseModel):
     @field_validator("action_type")
     @classmethod
     def _validate_action_type_format(cls, v: str) -> str:
+        """Validate action type format.
+
+        Returns:
+            Resulting string.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if not is_valid_action_type(v):
             msg = "action_type must use 'category:action' format"
             raise ValueError(msg)
@@ -598,7 +652,14 @@ class CreateApprovalRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_metadata_bounds(self) -> Self:
-        """Enforce per-entry size limits; key-count via Field(max_length=...)."""
+        """Enforce per-entry size limits; key-count via Field(max_length=...).
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         for k, v in self.metadata.items():
             if len(k) > _MAX_METADATA_STR_LEN:
                 msg = f"metadata key must be at most {_MAX_METADATA_STR_LEN} characters"
@@ -668,7 +729,14 @@ class CoordinateTaskRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_agent_names(self) -> Self:
-        """Reject duplicate agent names."""
+        """Reject duplicate agent names.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.agent_names is not None:
             seen: set[str] = set()
             for name in self.agent_names:
@@ -699,7 +767,14 @@ class CoordinationPhaseResponse(BaseModel):
 
     @model_validator(mode="after")
     def _validate_success_error_consistency(self) -> Self:
-        """Ensure success and error fields are consistent."""
+        """Ensure success and error fields are consistent.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.success and self.error is not None:
             msg = "successful phase must not have an error"
             raise ValueError(msg)
@@ -743,7 +818,11 @@ class CoordinationResultResponse(BaseModel):
     )
     @property
     def is_success(self) -> bool:
-        """True when every phase completed successfully."""
+        """True when every phase completed successfully.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return all(p.success for p in self.phases)
 
 

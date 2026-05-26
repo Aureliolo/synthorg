@@ -13,8 +13,6 @@ import structlog.testing
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
-    guardrail_violation,
-    invalid_argument,
 )
 from synthorg.meta.mcp.handlers.common_logging import (
     log_handler_argument_invalid,
@@ -34,7 +32,7 @@ class TestLogHandlerArgumentInvalid:
     """Pin the wire shape of ``log_handler_argument_invalid``."""
 
     def test_emits_warning_with_required_kwargs(self) -> None:
-        exc = invalid_argument("name", "non-blank string")
+        exc = ArgumentValidationError("name", "non-blank string")
         with structlog.testing.capture_logs() as logs:
             log_handler_argument_invalid("synthorg_x_y", exc)
         assert len(logs) == 1
@@ -193,7 +191,7 @@ class TestLogHandlerGuardrailViolated:
     """Pin the wire shape of ``log_handler_guardrail_violated``."""
 
     def test_emits_warning_with_violation_code(self) -> None:
-        exc = guardrail_violation("missing_actor", "no actor")
+        exc = GuardrailViolationError("missing_actor", "no actor")
         with structlog.testing.capture_logs() as logs:
             log_handler_guardrail_violated("synthorg_tasks_delete", exc)
         record = logs[0]

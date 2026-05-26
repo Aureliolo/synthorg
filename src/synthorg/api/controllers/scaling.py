@@ -143,7 +143,11 @@ class PriorityUpdateRequest(BaseModel):
 
 
 def _signal_to_response(s: ScalingSignal) -> ScalingSignalResponse:
-    """Convert a domain signal to a response DTO."""
+    """Convert a domain signal to a response DTO.
+
+    Returns:
+        ``ScalingSignalResponse`` instance.
+    """
     return ScalingSignalResponse(
         name=str(s.name),
         value=s.value,
@@ -154,7 +158,11 @@ def _signal_to_response(s: ScalingSignal) -> ScalingSignalResponse:
 
 
 def _decision_to_response(d: ScalingDecision) -> ScalingDecisionResponse:
-    """Convert a domain decision to a response DTO."""
+    """Convert a domain decision to a response DTO.
+
+    Returns:
+        ``ScalingDecisionResponse`` instance.
+    """
     return ScalingDecisionResponse(
         id=str(d.id),
         action_type=d.action_type.value,

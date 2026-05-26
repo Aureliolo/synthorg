@@ -18,6 +18,7 @@ from synthorg.budget.currency import (
 )
 from synthorg.budget.trends import BucketSize, TrendDataPoint, bucket_cost_records
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.enums import AgentStatus
 from synthorg.core.normalization import compare_ci
@@ -82,14 +83,25 @@ class DepartmentHealth(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def utilization_percent(self) -> float:
-        """Percentage of agents that are active."""
+        """Percentage of agents that are active.
+
+        Returns:
+            Resulting numeric value.
+        """
         if self.agent_count == 0:
             return 0.0
         return round(self.active_agent_count / self.agent_count * 100, 2)
 
     @model_validator(mode="after")
     def _validate_active_le_total(self) -> Self:
-        """Ensure active agent count does not exceed total."""
+        """Ensure active agent count does not exceed total.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.active_agent_count > self.agent_count:
             msg = (
                 f"active_agent_count ({self.active_agent_count}) "
@@ -103,7 +115,11 @@ def filter_agents_by_department(
     agents: tuple[AgentConfig, ...],
     dept_name: str,
 ) -> tuple[AgentConfig, ...]:
-    """Return agents belonging to the named department (case-insensitive)."""
+    """Return agents belonging to the named department (case-insensitive).
+
+    Returns:
+        Tuple of the declared element types.
+    """
     return tuple(a for a in agents if compare_ci(a.department, dept_name))
 
 
@@ -111,7 +127,11 @@ async def _resolve_active_count(
     app_state: AppState,
     dept_name: str,
 ) -> int:
-    """Count active agents in the department via the registry."""
+    """Count active agents in the department via the registry.
+
+    Returns:
+        Resulting integer.
+    """
     if not app_state.has_agent_registry:
         return 0
     try:
@@ -119,9 +139,8 @@ async def _resolve_active_count(
             dept_name,
         )
         return sum(1 for a in dept_agents if a.status == AgentStatus.ACTIVE)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_REQUEST_ERROR,
             endpoint="departments.health",
@@ -143,6 +162,9 @@ async def _resolve_snapshots(
     whose snapshot cannot be computed (insufficient data, strategy
     errors).  Missing snapshots are filtered out here so callers see
     only the successfully computed ones.
+
+    Returns:
+        Tuple of the declared element types.
     """
     if not agent_ids:
         return ()
@@ -165,6 +187,14 @@ async def _resolve_agent_ids(
     swallowed so a single bad agent identity does not collapse the
     department-wide health snapshot; the missing agent simply omits
     from the result.
+
+    Returns:
+        Tuple of the declared element types.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
+        ServiceUnavailableError: Raised on the corresponding failure path.
     """
     if not app_state.has_agent_registry:
         return ()
@@ -190,7 +220,11 @@ async def _resolve_agent_ids(
 
 
 def _mean_optional(values: list[float | None]) -> float | None:
-    """Compute mean of non-None values, or None if all are None."""
+    """Compute mean of non-None values, or None if all are None.
+
+    Returns:
+        The ``float`` value when present, ``None`` otherwise.
+    """
     filtered = [v for v in values if v is not None]
     if not filtered:
         return None
@@ -198,7 +232,11 @@ def _mean_optional(values: list[float | None]) -> float | None:
 
 
 def _sparkline_start(now: datetime) -> datetime:
-    """Compute the aligned start for a 7-day daily sparkline."""
+    """Compute the aligned start for a 7-day daily sparkline.
+
+    Returns:
+        ``datetime`` instance.
+    """
     return now.replace(
         hour=0,
         minute=0,
@@ -252,6 +290,9 @@ def _aggregate_dept_cost(
             is meaningless without an FX policy and is rejected at the
             aggregator boundary; the caller must scope the input to a
             single currency window.
+
+    Returns:
+        ``DepartmentCostAggregate`` instance.
     """
     dept_records = tuple(r for r in cost_records if r.agent_id in agent_id_set)
     currency = assert_currencies_match(
@@ -278,7 +319,11 @@ def _build_degraded_health(
     *,
     currency: CurrencyCode = DEFAULT_CURRENCY,
 ) -> DepartmentHealth:
-    """Build a minimal DepartmentHealth for when queries fail."""
+    """Build a minimal DepartmentHealth for when queries fail.
+
+    Returns:
+        ``DepartmentHealth`` instance.
+    """
     return DepartmentHealth(
         department_name=dept_name,
         agent_count=agent_count,
@@ -311,6 +356,9 @@ def _build_health_from_data(  # noqa: PLR0913
         MixedCurrencyAggregationError: Propagated from
             ``_aggregate_dept_cost`` if the department's cost records
             span more than one currency.
+
+    Returns:
+        ``DepartmentHealth`` instance.
     """
     agent_id_set = frozenset(agent_ids)
     aggregate = _aggregate_dept_cost(
@@ -349,6 +397,12 @@ async def assemble_department_health(
     fails, returns a degraded health response with zeroed metrics.
     The second stage fetches performance snapshots (depends on the
     agent IDs resolved by the first stage).
+
+    Returns:
+        ``DepartmentHealth`` instance.
+
+    Raises:
+        fatal: Raised on the corresponding failure path.
     """
     agent_count = len(dept_agents)
     agent_names = tuple(str(a.name) for a in dept_agents)

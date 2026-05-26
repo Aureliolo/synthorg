@@ -16,6 +16,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import ApplyResult, ImprovementProposal, ProposalAltitude
 from synthorg.meta.toolsmith.models import ToolBlueprint, ToolBlueprintState
@@ -62,7 +63,11 @@ class ToolCreationApplier:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This applier handles tool-creation proposals."""
+        """This applier handles tool-creation proposals.
+
+        Returns:
+            ``ProposalAltitude`` instance.
+        """
         return ProposalAltitude.TOOL_CREATION
 
     async def apply(self, proposal: ImprovementProposal) -> ApplyResult:
@@ -73,6 +78,9 @@ class ToolCreationApplier:
         others. Provider-wide and system-critical exceptions still
         propagate out of the TaskGroup so the caller can fail the whole
         proposal cleanly.
+
+        Returns:
+            ``ApplyResult`` instance.
         """
         if not proposal.tool_changes:
             return ApplyResult(
@@ -109,14 +117,19 @@ class ToolCreationApplier:
         Returns ``(True, None)`` on a passing apply, ``(False, reason)`` on
         a gate rejection or per-blueprint exception. ``ProviderError`` and
         system-critical errors propagate so the TaskGroup surfaces them.
+
+        Returns:
+            The ``tuple[bool, str]`` value when present, ``None`` otherwise.
+
+        Raises:
+            ProviderError: Raised on the corresponding failure path.
         """
         try:
             ok = await self._apply_one(blueprint)
         except ProviderError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TOOLSMITH_APPLY_FAILED,
                 tool_name=blueprint.name,
@@ -129,7 +142,11 @@ class ToolCreationApplier:
         return False, f"{blueprint.name}: rejected by benchmark gate"
 
     async def dry_run(self, proposal: ImprovementProposal) -> ApplyResult:
-        """Validate every blueprint without persisting or registering."""
+        """Validate every blueprint without persisting or registering.
+
+        Returns:
+            ``ApplyResult`` instance.
+        """
         if not proposal.tool_changes:
             return ApplyResult(
                 success=False,
@@ -162,6 +179,12 @@ class ToolCreationApplier:
         durably ACTIVE, and a persistence failure after a successful
         registration is rolled back by unregistering the live handler. The
         success log only fires once both sides land.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+
+        Raises:
+            Exception: Raised on the corresponding failure path.
         """
         logger.info(TOOLSMITH_APPLY_STARTED, tool_name=blueprint.name)
         candidate = blueprint.model_copy(
@@ -197,9 +220,8 @@ class ToolCreationApplier:
         await self._registry.register(active)
         try:
             await self._repo.save(active)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             # Persisting an ACTIVE row failed: unregister the live handler
             # so the durable state ("not in DB") matches the runtime state
             # ("not registered"). Without rollback the layered tool surface

@@ -14,6 +14,7 @@ declares that surface so ``mypy`` type-checks the mixin in isolation.
 from typing import TYPE_CHECKING
 
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.api import (
@@ -67,6 +68,9 @@ class ApprovalExpirationMixin:
         EXPIRED transitions. ``to_persist`` carries only the rows
         that flipped locally, which is the candidate set the caller
         feeds to ``expire_if_pending`` for the compare-and-set.
+
+        Returns:
+            Tuple of the declared element types.
         """
         page_result: list[ApprovalItem] = []
         to_persist: list[ApprovalItem] = []
@@ -96,6 +100,9 @@ class ApprovalExpirationMixin:
         without a repository there is no batch endpoint to amortise;
         a per-item save is also a no-op (the in-memory cache is
         already updated by ``_check_expiration_locked``).
+
+        Returns:
+            Tuple of the declared element types.
         """
         checked_items: list[ApprovalItem] = []
         for stored in list(self._items.values()):
@@ -180,9 +187,8 @@ class ApprovalExpirationMixin:
         if self._on_expire is not None:
             try:
                 self._on_expire(expired)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # ERROR (matching ``_fire_expire_callback``): the
                 # approval is already EXPIRED in cache + repo, so
                 # the callback failure can't unwind the expiration,
@@ -208,6 +214,9 @@ class ApprovalExpirationMixin:
         Persistence + audit logging + callback fire AFTER the batch
         save in the caller, not here -- this method must be safe to
         call inside a tight loop with no side effects.
+
+        Returns:
+            ``ApprovalItem`` instance.
         """
         if (
             item.status == ApprovalStatus.PENDING
@@ -230,9 +239,8 @@ class ApprovalExpirationMixin:
             return
         try:
             self._on_expire(expired)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # ERROR rather than WARNING: the approval is already
             # EXPIRED in cache + repo, so the callback can't
             # propagate, but a failed downstream side effect (webhook,

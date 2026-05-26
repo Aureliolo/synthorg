@@ -34,7 +34,14 @@ _DEFAULT_LIST_LIMIT: Final[int] = 50
 
 
 def _knowledge_service(state: State) -> KnowledgeService:
-    """Resolve the knowledge service from app state, surfacing 503 if absent."""
+    """Resolve the knowledge service from app state, surfacing 503 if absent.
+
+    Returns:
+        ``KnowledgeService`` instance.
+
+    Raises:
+        ServiceUnavailableError: Raised on the corresponding failure path.
+    """
     svc: KnowledgeService | None = state.app_state.knowledge_service
     if svc is None:
         msg = "Knowledge substrate is not wired in this deployment"
@@ -91,7 +98,11 @@ class ProjectKnowledgeController(Controller):
         include_global: IncludeGlobal = True,  # noqa: FBT002 -- HTTP query flag
         stale_only: StaleOnly = False,  # noqa: FBT002 -- HTTP query flag
     ) -> PaginatedResponse[KnowledgeSource]:
-        """List registered sources for a project (recency-first)."""
+        """List registered sources for a project (recency-first).
+
+        Returns:
+            ``PaginatedResponse[KnowledgeSource]`` instance.
+        """
         sources = await _knowledge_service(state).list_sources(
             project_id=NotBlankStr(project_id),
             include_global=include_global,
@@ -114,7 +125,11 @@ class ProjectKnowledgeController(Controller):
         q: SearchQuery,
         limit: SearchLimit = KNOWLEDGE_SEARCH_DEFAULT_LIMIT,
     ) -> Response[ApiResponse[tuple[KnowledgeHit, ...]]]:
-        """Cited search across the project + global corpus."""
+        """Cited search across the project + global corpus.
+
+        Returns:
+            Result matching the declared return annotation.
+        """
         hits = await _knowledge_service(state).search(
             query=q,
             project_id=NotBlankStr(project_id),
@@ -136,6 +151,9 @@ class ProjectKnowledgeController(Controller):
 
         ``KnowledgeSourceNotFoundError`` propagates to the global RFC 9457
         handler, which maps it to 404 with ``KNOWLEDGE_SOURCE_NOT_FOUND``.
+
+        Returns:
+            ``Response[ApiResponse[KnowledgeSource]]`` instance.
         """
         source = await _knowledge_service(state).get_source(NotBlankStr(source_id))
         return Response(
@@ -164,7 +182,11 @@ class GlobalKnowledgeController(Controller):
         limit: CursorLimit = _DEFAULT_LIST_LIMIT,
         stale_only: StaleOnly = False,  # noqa: FBT002 -- HTTP query flag
     ) -> PaginatedResponse[KnowledgeSource]:
-        """List every global (project-less) source, most-recent first."""
+        """List every global (project-less) source, most-recent first.
+
+        Returns:
+            ``PaginatedResponse[KnowledgeSource]`` instance.
+        """
         sources = await _knowledge_service(state).list_sources(
             project_id=None,
             include_global=True,

@@ -283,7 +283,6 @@ select = [
     "G",      # flake8-logging-format
     "ERA",    # flake8-eradicate (commented-out code)
     "INP",    # flake8-no-pep420 (implicit namespace packages)
-    "DOC",    # pydocstyle extensions (preview)
 ]
 ignore = [
     "D100",   # missing docstring in public module
@@ -301,6 +300,16 @@ ignore = [
 ]
 extend-select = [
     "TID255",  # lazy-import-immediately-resolved; pre-emptive gate for PEP 690 lazy imports
+    # pydoclint extensions (preview). Selected by exact code so
+    # ``explicit-preview-rules`` activates exactly these, not every preview
+    # rule. Selecting the ``DOC`` prefix in ``select`` is inert under that
+    # flag, so the codes must live here for the standard ``ruff check`` to
+    # enforce them. Per-file-ignores below exempt not-yet-swept packages,
+    # tests, scripts, and the god modules; the swept scope (persistence,
+    # api, meta) is gated. Wave plan: https://github.com/Aureliolo/synthorg/issues/2065
+    "DOC201",  # missing return docstring
+    "DOC202",  # extraneous return docstring
+    "DOC501",  # missing raises docstring
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -388,12 +397,27 @@ max-complexity = 8
     "INP001",  # implicit namespace packages (some directories lack __init__)
 ]
 # DOC201/DOC202/DOC501 still ignored on every top-level package except
-# those already swept. The brace expansion shrinks each docstring wave
-# and Wave 6 deletes the entry entirely.
-"src/synthorg/{a2a,api,approval,backup,client,cli,communication,config,coordination,core,docs_engine,experiments,infrastructure,integrations,knowledge,llm,meta,notifications,observability,ontology,organization,providers,research,security,settings,telemetry,templates,versioning,workers}/**/*.py" = [
+# those already swept. Wave 1 swept `persistence/` (omitted from the
+# brace expansion below); Wave 3 swept `api/` and `meta/`; subsequent
+# waves shrink the expansion further and Wave 6 deletes the entry
+# entirely. See https://github.com/Aureliolo/synthorg/issues/2065 for
+# the wave plan.
+"src/synthorg/{a2a,approval,backup,client,cli,communication,config,coordination,core,docs_engine,experiments,infrastructure,integrations,knowledge,llm,notifications,observability,ontology,organization,providers,research,security,settings,telemetry,templates,versioning,workers}/**/*.py" = [
     "DOC201",
     "DOC202",
     "DOC501",
+]
+"src/synthorg/api/{app,state,auto_wire,lifecycle,lifecycle_builder}.py" = [
+    # Wave 3 (#2111) drops ``api`` from the brace expansion above to
+    # enforce DOC201/202/501 across the api/ tree. The 5 god modules on
+    # the ``check_no_growth_in_god_modules`` allowlist stay exempt: each
+    # docstring addition ratchets LOC and would conflict with the
+    # per-PR net-shrink rule. EPIC #2077 dissolves these files via
+    # decomposition; the successor modules are subject to the standard
+    # DOC enforcement.
+    "DOC201",  # missing return docstring
+    "DOC202",  # extraneous return docstring
+    "DOC501",  # missing raises docstring
 ]
 "src/synthorg/tools/browser/**/*.py" = [
     # The BrowserTool catches its own BrowserDomainError chain at the
@@ -421,6 +445,19 @@ max-complexity = 8
     # The host-side screenshot path operations are O(1) stat calls that
     # do not benefit from anyio.Path indirection.
     "ASYNC240",
+]
+"src/synthorg/meta/mcp/handlers/**/*.py" = [
+    # MCP handlers catch their own ArgumentValidationError /
+    # GuardrailViolationError at the envelope boundary
+    # (``except ArgumentValidationError as exc: return err(exc)``) and
+    # convert to the standard ``err(...)`` JSON envelope.  The
+    # raise-inside-try pattern IS the canonical handler shape: the
+    # validation block raises typed errors that the enclosing
+    # ``except`` collapses to the wire-stable envelope, so TRY301
+    # produces noise rather than signal here.  (Wave 3 removed the
+    # ``invalid_argument`` factory that previously satisfied TRY301
+    # by indirection; now the raises are direct.)
+    "TRY301",
 ]
 
 [tool.ruff.lint.isort]
@@ -787,6 +824,7 @@ ignore-module = false
 ignore-nested-functions = true
 ignore-nested-classes = true
 ignore-setters = true
+ignore-overloaded-functions = true
 fail-under = 90
 exclude = ["build", "dist", ".venv", "tests", "evals"]
 verbose = 0

@@ -61,7 +61,11 @@ class WorkflowVersionController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> Response[PaginatedResponse[SnapshotT]]:
-        """List version history for a workflow definition."""
+        """List version history for a workflow definition.
+
+        Returns:
+            ``Response[PaginatedResponse[SnapshotT]]`` instance.
+        """
         secret = state.app_state.cursor_secret
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
         versions, total = await state.app_state.workflow_version_service.list_versions(
@@ -104,7 +108,14 @@ class WorkflowVersionController(Controller):
             ),
         ],
     ) -> Response[ApiResponse[SnapshotT]]:
-        """Get a specific version snapshot."""
+        """Get a specific version snapshot.
+
+        Returns:
+            ``Response[ApiResponse[SnapshotT]]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         version = await state.app_state.workflow_version_service.get_version(
             workflow_id,
             version_num,
@@ -143,7 +154,14 @@ class WorkflowVersionController(Controller):
             ),
         ],
     ) -> Response[ApiResponse[WorkflowDiff]]:
-        """Compute diff between two versions of a workflow definition."""
+        """Compute diff between two versions of a workflow definition.
+
+        Returns:
+            ``Response[ApiResponse[WorkflowDiff]]`` instance.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
+        """
         if from_version == to_version:
             logger.warning(
                 WORKFLOW_DEF_INVALID_REQUEST,
@@ -181,7 +199,14 @@ class WorkflowVersionController(Controller):
         workflow_id: PathId,
         data: RollbackWorkflowRequest,
     ) -> Response[ApiResponse[WorkflowDefinition]]:
-        """Rollback a workflow to a previous version."""
+        """Rollback a workflow to a previous version.
+
+        Returns:
+            Result matching the declared return annotation.
+
+        Raises:
+            VersionConflictError: Raised on the corresponding failure path.
+        """
         rollback_service = state.app_state.workflow_rollback_service
         try:
             rolled_back = await rollback_service.prepare_rollback(

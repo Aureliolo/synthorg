@@ -112,6 +112,9 @@ class QualityController(Controller):
         Raises:
             ServiceUnavailableError: If the quality override store is
                 not configured.
+
+        Returns:
+            ``QualityOverrideStore`` instance.
         """
         app_state: AppState = state.app_state
         tracker = app_state.performance_tracker
@@ -204,6 +207,7 @@ class QualityController(Controller):
                 configured.
             UnauthorizedError: If the authenticated user identity
                 cannot be resolved from the request scope.
+            ConflictError: Raised on the corresponding failure path.
         """
         store = self._require_quality_override_store(state)
 

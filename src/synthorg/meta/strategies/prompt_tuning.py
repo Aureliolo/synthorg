@@ -48,7 +48,11 @@ class PromptTuningStrategy:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This strategy produces prompt tuning proposals."""
+        """This strategy produces prompt tuning proposals.
+
+        Returns:
+            ``ProposalAltitude`` instance.
+        """
         return ProposalAltitude.PROMPT_TUNING
 
     async def propose(
@@ -89,7 +93,11 @@ class PromptTuningStrategy:
         rule_match: RuleMatch,
         snapshot: OrgSignalSnapshot,
     ) -> ImprovementProposal | None:
-        """Build a proposal from a rule match."""
+        """Build a proposal from a rule match.
+
+        Returns:
+            The ``ImprovementProposal`` value when present, ``None`` otherwise.
+        """
         _ = snapshot
         name = rule_match.rule_name
         mode = self._config.prompt_tuning.default_evolution_mode
@@ -104,6 +112,7 @@ class PromptTuningStrategy:
         self,
         mode: EvolutionMode,
     ) -> ImprovementProposal:
+        """Return propose quality principle."""
         return ImprovementProposal(
             id=uuid4(),
             altitude=ProposalAltitude.PROMPT_TUNING,
@@ -152,6 +161,7 @@ class PromptTuningStrategy:
         ctx: dict[str, JsonValue],
         mode: EvolutionMode,
     ) -> ImprovementProposal:
+        """Return propose error awareness."""
         return ImprovementProposal(
             id=uuid4(),
             altitude=ProposalAltitude.PROMPT_TUNING,

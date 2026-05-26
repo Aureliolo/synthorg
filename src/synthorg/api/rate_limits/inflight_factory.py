@@ -9,6 +9,11 @@ from synthorg.core.registry import StrategyRegistry
 
 
 def _build_memory(_config: PerOpConcurrencyConfig) -> InflightStore:
+    """Build the memory.
+
+    Returns:
+        ``InflightStore`` instance.
+    """
     return InMemoryInflightStore()
 
 

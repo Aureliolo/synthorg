@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker  # noqa: TC001 -- runtime DI seam
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.json_parsing import extract_json_from_llm_response
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
@@ -42,12 +43,20 @@ _NO_PROJECT_HINT: str = "No existing project was supplied; propose a new project
 
 
 def _render_history(turns: tuple[ConversationTurn, ...]) -> str:
-    """Render chronological turns into a prompt-ready transcript."""
+    """Render chronological turns into a prompt-ready transcript.
+
+    Returns:
+        Resulting string.
+    """
     return "\n".join(f"{turn.role.value.upper()}: {turn.content}" for turn in turns)
 
 
 def _render_project_hint(project_id: str | None) -> str:
-    """Describe the project binding the interview should target."""
+    """Describe the project binding the interview should target.
+
+    Returns:
+        Resulting string.
+    """
     if project_id is None:
         return _NO_PROJECT_HINT
     return (
@@ -113,7 +122,16 @@ class LLMCharterInterviewer:
         project_id: NotBlankStr | None,
         currency: str,
     ) -> InterviewDecision:
-        """Call the model and parse its structured interview output."""
+        """Call the model and parse its structured interview output.
+
+        Returns:
+            ``InterviewDecision`` instance.
+
+        Raises:
+            Exception: Provider call failed.
+            CharterInterviewResponseInvalidError: Provider response
+                failed validation.
+        """
         prompt = CHARTER_INTERVIEW_PROMPT.format(
             conversation_history=wrap_untrusted(
                 TAG_TASK_DATA, _render_history(history)
@@ -138,9 +156,8 @@ class LLMCharterInterviewer:
                     self._config.interview_model,
                     config=completion_config,
                 )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(logger, CHARTER_INTERVIEW_FAILED, exc)
             raise
         raw = (response.content or "").strip()

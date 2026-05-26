@@ -9,6 +9,7 @@ audit logging, mirroring the structure of :class:`UserService` and
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ProjectStatus  # noqa: TC001
 from synthorg.core.project import Project  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -62,9 +63,8 @@ class ProjectService:
         """
         try:
             return await self._repo.get(project_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Single-project fetch failures get their own event so
             # endpoint-specific alerting can distinguish them from
             # list-level failures (``API_PROJECT_LISTED``).
@@ -107,9 +107,8 @@ class ProjectService:
                 ProjectFilterSpec(status=status, lead=lead),
                 limit=limit,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_PROJECT_LISTED,
                 status=status.value if status is not None else None,
@@ -143,9 +142,8 @@ class ProjectService:
         """
         try:
             await self._repo.create(project)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_PROJECT_CREATED,
                 project_id=project.id,
@@ -184,9 +182,8 @@ class ProjectService:
         """
         try:
             await self._repo.update(project)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_PROJECT_UPDATED,
                 project_id=project.id,
@@ -220,9 +217,8 @@ class ProjectService:
         """
         try:
             deleted = await self._repo.delete(project_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 API_PROJECT_DELETED,
                 project_id=project_id,

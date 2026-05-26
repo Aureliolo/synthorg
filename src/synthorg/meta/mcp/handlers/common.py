@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.meta.mcp.errors import guardrail_violation, invalid_argument
+from synthorg.meta.mcp.errors import ArgumentValidationError, GuardrailViolationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- runtime annotation on placeholder factories
 )
@@ -157,6 +157,9 @@ def _actor_has_identifier(actor: Any) -> bool:
     (typically a ``UUID``) or a non-blank ``.name`` string.  A bare
     object that lacks both is treated as "unattributable" and rejected
     alongside ``actor is None``.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     actor_id = getattr(actor, "id", None)
     if actor_id is not None:
@@ -198,13 +201,13 @@ def require_admin_guardrails(
             ``violation`` attribute distinguishes the failure mode.
     """
     if actor is None or not _actor_has_identifier(actor):
-        raise guardrail_violation(_GR_MISSING_ACTOR, _GR_MSG_ACTOR)
+        raise GuardrailViolationError(_GR_MISSING_ACTOR, _GR_MSG_ACTOR)
     confirm = arguments.get("confirm")
     if not isinstance(confirm, bool) or confirm is not True:
-        raise guardrail_violation(_GR_MISSING_CONFIRM, _GR_MSG_CONFIRM)
+        raise GuardrailViolationError(_GR_MISSING_CONFIRM, _GR_MSG_CONFIRM)
     reason = arguments.get("reason")
     if not isinstance(reason, str) or not reason.strip():
-        raise guardrail_violation(_GR_MISSING_REASON, _GR_MSG_REASON)
+        raise GuardrailViolationError(_GR_MISSING_REASON, _GR_MSG_REASON)
     return reason, actor
 
 
@@ -252,16 +255,20 @@ def paginate_sequence[T](
             is non-positive.
     """
     if offset < 0:
-        raise invalid_argument(_ARG_OFFSET, _TY_NON_NEG_INT)
+        raise ArgumentValidationError(_ARG_OFFSET, _TY_NON_NEG_INT)
     if limit <= 0:
-        raise invalid_argument(_ARG_LIMIT, _TY_POS_INT)
+        raise ArgumentValidationError(_ARG_LIMIT, _TY_POS_INT)
     resolved_total = total if total is not None else len(seq)
     page = list(seq[offset : offset + limit])
     return page, PaginationMeta(total=resolved_total, offset=offset, limit=limit)
 
 
 def _not_supported_envelope(reason: str) -> str:
-    """Build the shared ``not_supported`` JSON envelope string."""
+    """Build the shared ``not_supported`` JSON envelope string.
+
+    Returns:
+        Resulting string.
+    """
     body: dict[str, Any] = {
         "status": "error",
         "error_type": "NotSupportedInMCP",
@@ -383,6 +390,7 @@ def make_placeholder_handler(tool_name: str) -> ToolHandler:
         arguments: dict[str, Any],  # noqa: ARG001
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
+        """Return handler."""
         return not_supported(tool_name, reason)
 
     return handler

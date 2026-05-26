@@ -35,7 +35,14 @@ class RateLimitOutcome(BaseModel):
 
     @model_validator(mode="after")
     def _validate_retry_after_allowed(self) -> Self:
-        """``retry_after_seconds`` only makes sense when ``allowed`` is False."""
+        """``retry_after_seconds`` only makes sense when ``allowed`` is False.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.allowed and self.retry_after_seconds is not None:
             msg = "retry_after_seconds must be None when allowed is True"
             raise ValueError(msg)

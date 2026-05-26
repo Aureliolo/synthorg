@@ -21,6 +21,7 @@ from synthorg.api.pagination import (
 )
 from synthorg.api.path_params import QUERY_MAX_LENGTH
 from synthorg.budget.coordination_store import CoordinationMetricsRecord
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ValidationError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -49,6 +50,12 @@ async def _resolve_metrics_cap(state: State) -> int:
     A settings outage or malformed value must not fail the endpoint;
     the fallback constant keeps the DB-side ``LIMIT`` bounded. Warnings
     are log-once per run of failures (cleared on recovery).
+
+    Returns:
+        Resulting integer.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     global _metrics_cap_fallback_logged  # noqa: PLW0603
     app_state = state.app_state
@@ -60,9 +67,8 @@ async def _resolve_metrics_cap(state: State) -> int:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         if not _metrics_cap_fallback_logged:
             logger.warning(
                 API_VALIDATION_FAILED,

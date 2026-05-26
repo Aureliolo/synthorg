@@ -11,7 +11,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.enums import InterventionKind, TaskStatus
-from synthorg.meta.mcp.errors import ArgumentValidationError, invalid_argument
+from synthorg.meta.mcp.errors import ArgumentValidationError
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
 )
@@ -50,15 +50,20 @@ _TY_POS_INT = "positive int"
 
 
 def _parse_turn_index(arguments: dict[str, Any]) -> int:
+    """Return parse turn index.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw = arguments.get(_ARG_TURN_INDEX)
     if isinstance(raw, bool) or not isinstance(raw, (int, str)):
-        raise invalid_argument(_ARG_TURN_INDEX, _TY_POS_INT)
+        raise ArgumentValidationError(_ARG_TURN_INDEX, _TY_POS_INT)
     try:
         value = int(raw)
     except (TypeError, ValueError) as exc:
-        raise invalid_argument(_ARG_TURN_INDEX, _TY_POS_INT) from exc
+        raise ArgumentValidationError(_ARG_TURN_INDEX, _TY_POS_INT) from exc
     if value < 1:
-        raise invalid_argument(_ARG_TURN_INDEX, _TY_POS_INT)
+        raise ArgumentValidationError(_ARG_TURN_INDEX, _TY_POS_INT)
     return value
 
 
@@ -68,6 +73,7 @@ async def _get_live_activity(
     arguments: dict[str, Any],  # noqa: ARG001
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return the live activity."""
     try:
         resolver = app_state.config_resolver
         stuck = await resolver.get_float(_COCKPIT_NS, "stuck_idle_threshold_minutes")
@@ -94,6 +100,7 @@ async def _get_frames(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return the frames."""
     try:
         execution_id = require_arg(arguments, _ARG_EXECUTION_ID, str)
         offset, limit = coerce_pagination(arguments)
@@ -121,6 +128,7 @@ async def _seek(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return seek."""
     try:
         execution_id = require_arg(arguments, _ARG_EXECUTION_ID, str)
         turn_index = _parse_turn_index(arguments)
@@ -144,6 +152,7 @@ async def _intervene_pause(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return intervene pause."""
     try:
         reason, _actor = require_admin_guardrails(arguments, actor)
         task_id = require_arg(arguments, _ARG_TASK_ID, str)
@@ -172,6 +181,7 @@ async def _intervene_kill(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return intervene kill."""
     try:
         reason, _actor = require_admin_guardrails(arguments, actor)
         task_id = require_arg(arguments, _ARG_TASK_ID, str)
@@ -199,7 +209,11 @@ async def _steer_to(
     kind: InterventionKind,
     tool_name: str,
 ) -> str:
-    """Resolve steering args and route through the steering directive."""
+    """Resolve steering args and route through the steering directive.
+
+    Returns:
+        Resulting string.
+    """
     execution_id = require_arg(arguments, _ARG_EXECUTION_ID, str)
     agent_id = require_arg(arguments, _ARG_AGENT_ID, str)
     text = require_arg(arguments, _ARG_TEXT, str)
@@ -219,6 +233,7 @@ async def _intervene_hint(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return intervene hint."""
     tool_name = "synthorg_cockpit_intervene_hint"
     try:
         require_admin_guardrails(arguments, actor)
@@ -237,6 +252,7 @@ async def _intervene_redirect(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return intervene redirect."""
     tool_name = "synthorg_cockpit_intervene_redirect"
     try:
         require_admin_guardrails(arguments, actor)

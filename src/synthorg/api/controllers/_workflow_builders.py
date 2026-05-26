@@ -51,7 +51,11 @@ logger = get_logger(__name__)
 
 
 def wf_versioning(state: State) -> VersioningService[WorkflowDefinition]:
-    """Build a VersioningService for workflow definitions."""
+    """Build a VersioningService for workflow definitions.
+
+    Returns:
+        ``VersioningService[WorkflowDefinition]`` instance.
+    """
     return VersioningService(state.app_state.persistence.workflow_versions)
 
 
@@ -59,7 +63,11 @@ async def run_subworkflow_validation(
     definition: WorkflowDefinition,
     state: State,
 ) -> tuple[WorkflowValidationError, ...]:
-    """Run save-time subworkflow I/O + cycle validation."""
+    """Run save-time subworkflow I/O + cycle validation.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     registry = SubworkflowRegistry(state.app_state.persistence.subworkflows)
     io_result = await validate_subworkflow_io(definition, registry)
     graph_result = await validate_subworkflow_graph(definition, registry)
@@ -69,7 +77,11 @@ async def run_subworkflow_validation(
 def _scalar_updates(
     data: UpdateWorkflowDefinitionRequest,
 ) -> dict[str, object]:
-    """Extract simple scalar field updates from the request."""
+    """Extract simple scalar field updates from the request.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
     updates: dict[str, object] = {"updated_at": datetime.now(UTC)}
     for field in ("name", "description", "workflow_type", "version", "is_subworkflow"):
         value = getattr(data, field)
@@ -91,6 +103,9 @@ def _validate_collection(
             message so API clients see which collection failed without
             needing to consult server logs. Pydantic detail is scrubbed
             to avoid leaking internal payload shapes.
+
+    Returns:
+        Tuple of the declared element types.
     """
     try:
         return tuple(model_cls.model_validate(i) for i in items)  # type: ignore[attr-defined]
@@ -108,7 +123,11 @@ def _validate_collection(
 def build_update_fields(
     data: UpdateWorkflowDefinitionRequest,
 ) -> dict[str, object]:
-    """Build the update dict from the request, raising on invalid fields."""
+    """Build the update dict from the request, raising on invalid fields.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
     updates = _scalar_updates(data)
 
     collection_specs: tuple[tuple[str, object, type], ...] = (
@@ -131,7 +150,11 @@ def build_update_fields(
 def _nodes_from_blueprint(
     bp: BlueprintData,
 ) -> tuple[WorkflowNode, ...]:
-    """Convert blueprint nodes to workflow nodes."""
+    """Convert blueprint nodes to workflow nodes.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     return tuple(
         WorkflowNode(
             id=n.id,
@@ -148,7 +171,11 @@ def _nodes_from_blueprint(
 def _edges_from_blueprint(
     bp: BlueprintData,
 ) -> tuple[WorkflowEdge, ...]:
-    """Convert blueprint edges to workflow edges."""
+    """Convert blueprint edges to workflow edges.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     return tuple(
         WorkflowEdge(
             id=e.id,
@@ -167,7 +194,11 @@ def build_definition_from_blueprint(
     creator: str,
     now: datetime,
 ) -> WorkflowDefinition:
-    """Build a ``WorkflowDefinition`` from a loaded blueprint."""
+    """Build a ``WorkflowDefinition`` from a loaded blueprint.
+
+    Returns:
+        ``WorkflowDefinition`` instance.
+    """
     return WorkflowDefinition(
         id=f"wfdef-{uuid.uuid4().hex[:12]}",
         name=data.name or bp.display_name,
@@ -194,6 +225,9 @@ def apply_update(
             fails Pydantic validation. Pydantic detail is scrubbed so
             the envelope does not leak internal payload shapes; the
             structured warning log preserves operator context.
+
+    Returns:
+        ``WorkflowDefinition`` instance.
     """
     updates = build_update_fields(data)
     updates["revision"] = existing.revision + 1
@@ -224,6 +258,9 @@ async def load_blueprint_or_raise(
     Raises:
         BlueprintNotFoundError: 404 + ``RESOURCE_NOT_FOUND``.
         BlueprintValidationError: 422 + ``VALIDATION_ERROR``.
+
+    Returns:
+        ``BlueprintData`` instance.
     """
     try:
         return await asyncio.to_thread(load_blueprint, blueprint_name)

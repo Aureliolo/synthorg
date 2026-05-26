@@ -65,6 +65,12 @@ def _bootstrap_app_logging(effective_config: RootConfig) -> RootConfig:
     (env > default; DB bypassed for read_only_post_init). When an env
     override is supplied, path-traversal is rejected before patching
     the live config.
+
+    Returns:
+        ``RootConfig`` instance.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     from synthorg.config import bootstrap_logging  # noqa: PLC0415
 
@@ -105,6 +111,9 @@ def _resolve_llm_judge_strategy(
 
     Returns ``None`` if the judge model is not configured, the named
     provider is not registered, or no providers are available.
+
+    Returns:
+        The ``QualityScoringStrategy`` value when present, ``None`` otherwise.
     """
     from synthorg.providers.errors import DriverNotRegisteredError  # noqa: PLC0415
 
@@ -166,6 +175,9 @@ def build_chief_of_staff_chat(
     The provider is picked by the same convention as the LLM quality
     judge: the first registered provider, since the chat model name in
     config is provider-agnostic.
+
+    Returns:
+        The ``ChiefOfStaffChat`` value when present, ``None`` otherwise.
     """
     from synthorg.meta.chief_of_staff.chat import ChiefOfStaffChat  # noqa: PLC0415
 
@@ -217,6 +229,9 @@ def build_chief_of_staff_proposer(  # noqa: PLR0913 -- DI builder seam
     The provider is the first registered one (same convention as the
     explain-only chat backend); the propose model name in config is
     provider-agnostic.
+
+    Returns:
+        The ``ChiefOfStaffProposer`` value when present, ``None`` otherwise.
     """
     from synthorg.meta.chief_of_staff.propose import (  # noqa: PLC0415
         ChiefOfStaffProposer,
@@ -265,6 +280,9 @@ def _build_configured_trust_service(
     Returns ``None`` for the DISABLED strategy so callers skip the
     orchestrator entirely; controllers already treat
     ``trust_service`` as optional via ``AppState.has_trust_service``.
+
+    Returns:
+        The ``TrustService`` value when present, ``None`` otherwise.
     """
     from synthorg.security.trust.factory import build_trust_strategy  # noqa: PLC0415
     from synthorg.security.trust.service import TrustService  # noqa: PLC0415
@@ -289,6 +307,9 @@ def _build_configured_autonomy_change_strategy(
     selectable surface is the deliverable and the factory fails fast
     at construction if a non-default kind is configured without its
     required signal provider).
+
+    Returns:
+        ``AutonomyChangeStrategy`` instance.
     """
     from synthorg.security.autonomy.change_strategy_config import (  # noqa: PLC0415
         AutonomyStrategyDeps,
@@ -312,6 +333,9 @@ def _allowed_memory_dir_roots() -> tuple[str, ...]:
     admitted -- covering POSIX (``/tmp``, ``/var/tmp``) and Windows
     (``C:\Users\...\AppData\Local\Temp``) runners without special
     casing.
+
+    Returns:
+        Tuple of the declared element types.
     """
     roots: list[str] = [str(Path("/data"))]
     try:
@@ -333,6 +357,9 @@ def _resolve_memory_dir() -> Path:
 
     Rejects empty, traversal, non-absolute, or outside-allowed-root
     values and falls back to :data:`_DEFAULT_MEMORY_DIR` with a warning.
+
+    Returns:
+        ``Path`` instance.
     """
     raw = os.environ.get("SYNTHORG_MEMORY_DIR")
     if raw is None:
@@ -405,6 +432,9 @@ def _resolve_telemetry_enabled(parsed: TelemetryConfig) -> TelemetryConfig:
     Raises:
         ValueError: When the env var is set to a value that is neither
             a truthy nor falsy token from the recognised vocabulary.
+
+    Returns:
+        ``TelemetryConfig`` instance.
     """
     resolved = resolve_init_value(
         SettingNamespace.TELEMETRY,
@@ -438,6 +468,9 @@ def _build_telemetry_collector(
     the resolved boolean as-given. The same env name is registered as
     the ``telemetry.enabled`` setting's ``env_var_override`` so the
     /settings API and the boot path agree on a single source.
+
+    Returns:
+        ``TelemetryCollector`` instance.
     """
     memory_dir = _resolve_memory_dir()
     telemetry_dir = memory_dir.parent / "telemetry"
@@ -452,7 +485,11 @@ def _build_performance_tracker(
     provider_registry: ProviderRegistry | None = None,
     perf_config: PerformanceConfig | None = None,
 ) -> PerformanceTracker:
-    """Build a PerformanceTracker with composite quality strategy."""
+    """Build a PerformanceTracker with composite quality strategy.
+
+    Returns:
+        ``PerformanceTracker`` instance.
+    """
     from synthorg.hr.performance.ci_quality_strategy import (  # noqa: PLC0415
         CISignalQualityStrategy,
     )

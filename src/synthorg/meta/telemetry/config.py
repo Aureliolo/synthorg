@@ -58,7 +58,14 @@ class CrossDeploymentAnalyticsConfig(BaseModel):
         cls,
         v: NotBlankStr | None,
     ) -> NotBlankStr | None:
-        """Require HTTPS scheme on collector_url."""
+        """Require HTTPS scheme on collector_url.
+
+        Returns:
+            The ``NotBlankStr`` value when present, ``None`` otherwise.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if v is None:
             return v
         url = str(v)
@@ -69,7 +76,14 @@ class CrossDeploymentAnalyticsConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_enabled_requirements(self) -> Self:
-        """Require collector_url and salt when analytics is enabled."""
+        """Require collector_url and salt when analytics is enabled.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if not self.enabled:
             return self
         missing: list[str] = []

@@ -9,6 +9,7 @@ import re
 from datetime import datetime  # noqa: TC003
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.models import (
     MetricSummary,
@@ -36,7 +37,11 @@ _WINDOW_DAYS_RE = re.compile(r"(\d+)d")
 
 
 def _parse_window_days(window_size: str) -> int | None:
-    """Extract days from a window size string like '7d', '30d'."""
+    """Extract days from a window size string like '7d', '30d'.
+
+    Returns:
+        The ``int`` value when present, ``None`` otherwise.
+    """
     m = _WINDOW_DAYS_RE.match(window_size)
     return int(m.group(1)) if m else None
 
@@ -104,7 +109,11 @@ class PerformanceSignalAggregator:
 
     @property
     def domain(self) -> NotBlankStr:
-        """Signal domain name."""
+        """Signal domain name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("performance")
 
     async def aggregate(
@@ -179,9 +188,8 @@ class PerformanceSignalAggregator:
                 avg_quality=avg_quality,
                 windows=len(metrics),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain="performance"
             )
@@ -190,7 +198,11 @@ class PerformanceSignalAggregator:
             return summary
 
     def _get_agent_ids(self) -> tuple[str, ...]:
-        """Get current active agent IDs from the provider."""
+        """Get current active agent IDs from the provider.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         if callable(self._agent_ids_provider):
             result = self._agent_ids_provider()
             if isinstance(result, (list, tuple)):

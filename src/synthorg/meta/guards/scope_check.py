@@ -37,7 +37,11 @@ class ScopeCheckGuard:
 
     @property
     def name(self) -> NotBlankStr:
-        """Guard name."""
+        """Guard name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("scope_check")
 
     async def evaluate(
@@ -81,7 +85,11 @@ class ScopeCheckGuard:
         )
 
     def _is_altitude_enabled(self, altitude: ProposalAltitude) -> bool:
-        """Check if an altitude is enabled in config."""
+        """Check if an altitude is enabled in config.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         match altitude:
             case ProposalAltitude.CONFIG_TUNING:
                 return self._config.config_tuning_enabled

@@ -19,6 +19,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEventType
 from synthorg.client.models import ClientRequest, RequestStatus, TaskRequirement
 from synthorg.client.simulation_state import ClientSimulationState  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     AgentRuntimeNotConfiguredError,
     ConflictError,
@@ -111,6 +112,9 @@ def _walk_to_approved(stored: ClientRequest) -> ClientRequest:
     ``APPROVED``. ``with_status`` carries metadata forward, so the
     refined requirement and ``scoping_notes`` survive into the work
     item the adapter builds.
+
+    Returns:
+        ``ClientRequest`` instance.
     """
     walked = stored
     if walked.status is RequestStatus.SUBMITTED:
@@ -178,6 +182,9 @@ async def _approved_or_none(
     evict it themselves. ``release_request_lock_if_idle`` sits in
     ``finally`` so it observes the Lock already released by
     ``__aexit__`` and an idle refcount (its documented contract).
+
+    Returns:
+        The ``ClientRequest`` value when present, ``None`` otherwise.
     """
     handed_off = False
     try:
@@ -226,6 +233,9 @@ async def process_intake_pipeline(
     propagate. The lock-registry entry is evicted on every early
     return so the dict cannot grow unbounded across vanished or
     already-terminal requests.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     approved = await _approved_or_none(app_state, sim_state, request_id)
     if approved is None:
@@ -236,9 +246,8 @@ async def process_intake_pipeline(
         # Task cancelled (e.g. app shutdown): let it propagate; do not
         # convert a cancellation into a CANCELLED request.
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         if not isinstance(exc, WorkIntakeRejectedError):
             # Intake declining the work is a normal outcome, not a
             # defect; only non-rejection paths warrant ERROR.
@@ -289,14 +298,16 @@ async def _safe_finalize(  # noqa: PLR0913 -- keyword-only DI + passthrough
     further fallback is possible) so the operator has an actionable
     signal keyed by ``request_id``. ``CancelledError`` /
     ``MemoryError`` / ``RecursionError`` propagate unchanged.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     try:
         await finalizer(sim_state, app_state, request_id, publish=publish, **kwargs)
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_exception_redacted(
             logger,
             CLIENT_REQUEST_INTAKE_PIPELINE_FAILED,
@@ -403,6 +414,9 @@ async def _current_if_approved(
     A ``None`` return means a concurrent reject (or a redelivered
     reconciliation) already drove the request to a terminal state;
     the caller must not override it.
+
+    Returns:
+        The ``ClientRequest`` value when present, ``None`` otherwise.
     """
     try:
         current = await sim_state.request_store.get(request_id)
@@ -446,7 +460,11 @@ class RequestController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_LIMIT,
     ) -> PaginatedResponse[ClientRequest]:
-        """List stored client requests, optionally filtered by status."""
+        """List stored client requests, optionally filtered by status.
+
+        Returns:
+            ``PaginatedResponse[ClientRequest]`` instance.
+        """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
         all_requests = await sim_state.request_store.list_all()
@@ -466,7 +484,14 @@ class RequestController(Controller):
         state: State,
         request_id: PathId,
     ) -> ApiResponse[ClientRequest]:
-        """Return a single request by id."""
+        """Return a single request by id.
+
+        Returns:
+            ``ApiResponse[ClientRequest]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
         try:
@@ -490,7 +515,14 @@ class RequestController(Controller):
         state: State,
         data: CreateRequestPayload,
     ) -> ApiResponse[ClientRequest]:
-        """Persist a new ``ClientRequest`` in SUBMITTED status."""
+        """Persist a new ``ClientRequest`` in SUBMITTED status.
+
+        Returns:
+            ``ApiResponse[ClientRequest]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
         try:
@@ -529,6 +561,9 @@ class RequestController(Controller):
         Raises:
             NotFoundError: If the request is not known.
             ConflictError: If the request is not in a scopable state.
+
+        Returns:
+            ``ApiResponse[ClientRequest]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
@@ -632,6 +667,9 @@ class RequestController(Controller):
             AgentRuntimeNotConfiguredError: If no work-entry adapter
                 is wired (empty company / no provider): the request
                 stays approvable once a provider is configured.
+
+        Returns:
+            ``ApiResponse[ClientRequest]`` instance.
         """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
@@ -689,7 +727,15 @@ class RequestController(Controller):
         request_id: PathId,
         data: RejectionPayload,
     ) -> ApiResponse[ClientRequest]:
-        """Cancel a request, recording the rejection reason."""
+        """Cancel a request, recording the rejection reason.
+
+        Returns:
+            ``ApiResponse[ClientRequest]`` instance.
+
+        Raises:
+            ConflictError: Raised on the corresponding failure path.
+            NotFoundError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         sim_state = app_state.client_simulation_state
         async with app_state.acquire_request_lock(request_id):

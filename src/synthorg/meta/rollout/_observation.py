@@ -59,6 +59,12 @@ async def observe_until_verdict(  # noqa: PLR0913
         check_interval_hours: Interval between detector polls.
         thresholds: Regression thresholds forwarded to the detector.
         strategy_name: Identifies the caller in structured logs.
+
+    Returns:
+        ``RolloutResult`` instance.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
     """
     observation_hours = float(proposal.observation_window_hours)
     if observation_hours <= 0.0:

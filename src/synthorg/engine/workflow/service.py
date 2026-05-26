@@ -61,7 +61,7 @@ class WorkflowDefinitionNotFoundError(NotFoundError):
 
     default_message: ClassVar[str] = "Workflow definition not found"
     error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
-    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND
     status_code: ClassVar[int] = 404
 
 

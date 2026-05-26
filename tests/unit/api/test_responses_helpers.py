@@ -4,15 +4,15 @@ The helper centralises the ``if resource is None: log + raise``
 pattern that recurred across many controllers.  These tests pin:
 
 - Happy path: returns the value unchanged when not ``None``.
-- Sad path: raises :class:`NotFoundError` with the
-  ``resource_type {identifier!r} not found`` message.
-- The raised error's instance ``error_code`` reflects the supplied
-  ``code`` (so domain-specific 404 codes survive the centralisation).
-- The default ``code`` is the generic ``RESOURCE_NOT_FOUND`` so
-  callers without a dedicated code keep working.
-- The factory call rejects non-NOT_FOUND-band codes (defence in
-  depth: ``resource_not_found`` itself enforces the band; the
-  helper just forwards).
+- Sad path: raises ``error_class`` (a :class:`NotFoundError`
+  subclass) with the ``"<resource_type> <identifier!r> not found"``
+  message.
+- The raised error's ``error_code`` comes from the subclass's
+  ClassVar, so passing a domain-specific subclass gives the response
+  a domain-specific 404 code.
+- The default ``error_class`` is :class:`ResourceNotFoundError` so
+  callers without a dedicated subclass get the generic
+  ``RESOURCE_NOT_FOUND`` code.
 """
 
 from unittest.mock import MagicMock
@@ -22,8 +22,13 @@ import structlog
 
 from synthorg.api import responses as responses_module
 from synthorg.api.responses import require_resource_or_404
-from synthorg.core.domain_errors import NotFoundError
+from synthorg.core.domain_errors import (
+    MemoryEntryNotFoundError,
+    NotFoundError,
+    ResourceNotFoundError,
+)
 from synthorg.core.error_taxonomy import ErrorCode
+from synthorg.engine.errors import TaskNotFoundError
 
 pytestmark = pytest.mark.unit
 
@@ -70,52 +75,43 @@ class TestHappyPath:
 
 
 class TestSadPath:
-    def test_raises_not_found_with_generic_message(self) -> None:
-        with pytest.raises(NotFoundError) as exc_info:
+    def test_default_raises_resource_not_found(self) -> None:
+        """Default ``error_class`` is ``ResourceNotFoundError`` (generic 404)."""
+        with pytest.raises(ResourceNotFoundError) as exc_info:
             require_resource_or_404(
                 None,
                 resource_type="Artifact",
                 identifier="abc-123",
                 log_event="api.resource.not_found",
             )
+        assert isinstance(exc_info.value, NotFoundError)
         assert str(exc_info.value) == "Artifact 'abc-123' not found"
-
-    def test_default_code_is_generic_resource_not_found(self) -> None:
-        with pytest.raises(NotFoundError) as exc_info:
-            require_resource_or_404(
-                None,
-                resource_type="Artifact",
-                identifier="abc-123",
-                log_event="api.resource.not_found",
-            )
-        # ``resource_not_found`` mutates the *instance* attribute; the
-        # ClassVar default stays RESOURCE_NOT_FOUND so the assertion
-        # uses the instance attribute.
         assert exc_info.value.error_code == ErrorCode.RESOURCE_NOT_FOUND
 
-    def test_custom_code_overrides_default(self) -> None:
-        with pytest.raises(NotFoundError) as exc_info:
+    def test_custom_error_class_overrides_default(self) -> None:
+        """Passing ``error_class`` swaps both the raised type and error_code."""
+        with pytest.raises(TaskNotFoundError) as exc_info:
             require_resource_or_404(
                 None,
                 resource_type="task",
                 identifier="task-1",
                 log_event="api.resource.not_found",
-                code=ErrorCode.TASK_NOT_FOUND,
+                error_class=TaskNotFoundError,
             )
         assert exc_info.value.error_code == ErrorCode.TASK_NOT_FOUND
+        assert str(exc_info.value) == "task 'task-1' not found"
 
-    def test_non_not_found_band_code_is_rejected(self) -> None:
-        """``resource_not_found`` enforces the 3xxx band; helper just forwards."""
-        with pytest.raises(ValueError, match="NOT_FOUND"):
+    def test_core_subclass_carries_its_error_code(self) -> None:
+        """Subclasses defined in core/ also flow through cleanly."""
+        with pytest.raises(MemoryEntryNotFoundError) as exc_info:
             require_resource_or_404(
                 None,
-                resource_type="task",
-                identifier="task-1",
+                resource_type="memory entry",
+                identifier="mem-7",
                 log_event="api.resource.not_found",
-                # CONFLICT-band code (4xxx) -- helper forwards to the
-                # factory which rejects it.
-                code=ErrorCode.RESOURCE_CONFLICT,
+                error_class=MemoryEntryNotFoundError,
             )
+        assert exc_info.value.error_code == ErrorCode.MEMORY_ENTRY_NOT_FOUND
 
 
 class TestExtraLogKwargs:
@@ -131,7 +127,7 @@ class TestExtraLogKwargs:
         """
         captured = MagicMock(spec=structlog.stdlib.BoundLogger)
         monkeypatch.setattr(responses_module, "logger", captured)
-        with pytest.raises(NotFoundError):
+        with pytest.raises(ResourceNotFoundError):
             require_resource_or_404(
                 None,
                 resource_type="task",
@@ -154,7 +150,7 @@ class TestExtraLogKwargs:
         """Stable keys (``id`` / ``resource`` / ``operation``) win on collision."""
         captured = MagicMock(spec=structlog.stdlib.BoundLogger)
         monkeypatch.setattr(responses_module, "logger", captured)
-        with pytest.raises(NotFoundError):
+        with pytest.raises(ResourceNotFoundError):
             require_resource_or_404(
                 None,
                 resource_type="task",

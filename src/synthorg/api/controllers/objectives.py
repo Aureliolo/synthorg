@@ -99,6 +99,9 @@ async def submit_objective_impl(
     behaviour is exercised by direct calls (unit tests) and HTTP
     requests (integration tests / production). Public to the package
     for testability, not for external callers.
+
+    Returns:
+        ``ApiResponse[SubmitObjectiveAck]`` instance.
     """
     submission = _build_submission(data)
     adapter = app_state.objective_entry_adapter
@@ -154,6 +157,9 @@ class ObjectiveController(Controller):
         Returns ``202 Accepted`` immediately with the minted
         ``submission_id`` so the HTTP response does not block on the
         full pipeline run.
+
+        Returns:
+            ``ApiResponse[SubmitObjectiveAck]`` instance.
         """
         return await submit_objective_impl(state.app_state, data)
 
@@ -165,6 +171,9 @@ def _build_submission(data: SubmitObjectivePayload) -> ObjectiveSubmission:
     coerces them against the enum members defined on
     :class:`ObjectiveSubmission`, raising a validation error if a
     caller supplies an unknown value.
+
+    Returns:
+        ``ObjectiveSubmission`` instance.
     """
     fields: dict[str, Any] = {
         "submission_id": str(uuid4()),

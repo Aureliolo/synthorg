@@ -3,15 +3,14 @@
 Many controllers used to hand-roll the same ``if resource is None:
 log + raise NotFoundError`` block.  This module centralises that
 pattern so the log-then-raise ordering, the structured kwargs, and
-the domain-specific :class:`ErrorCode` selection are owned by one
-helper that every controller reuses.
+the domain-specific :class:`NotFoundError` subclass selection are
+owned by one helper that every controller reuses.
 """
 
 from collections.abc import Mapping  # noqa: TC003 -- runtime annotation
 from typing import LiteralString
 
-from synthorg.core.domain_errors import resource_not_found
-from synthorg.core.error_taxonomy import ErrorCode
+from synthorg.core.domain_errors import NotFoundError, ResourceNotFoundError
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -24,10 +23,10 @@ def require_resource_or_404[T](  # noqa: PLR0913 -- intentional rich kwargs surf
     identifier: str,
     log_event: LiteralString,
     operation: LiteralString = "read",
-    code: ErrorCode = ErrorCode.RESOURCE_NOT_FOUND,
+    error_class: type[NotFoundError] = ResourceNotFoundError,
     extra_log_kwargs: Mapping[str, object] | None = None,
 ) -> T:
-    """Return ``resource`` or raise ``NotFoundError`` (logged + RFC 9457).
+    """Return ``resource`` or raise the supplied NotFoundError subclass.
 
     The single canonical spelling for the ``if resource is None: log
     then raise`` pattern that recurred across 17+ controller call
@@ -35,11 +34,11 @@ def require_resource_or_404[T](  # noqa: PLR0913 -- intentional rich kwargs surf
 
     1. Logs ``log_event`` at WARNING with structured kwargs so the
        miss is observable in the audit trail.
-    2. Raises :class:`NotFoundError` via :func:`resource_not_found`
-       so the response body carries the **domain-specific**
-       ``error_code`` (``code`` argument) rather than the generic
-       ``RESOURCE_NOT_FOUND`` -- API clients that want to discriminate
-       which resource was missing get the precision back.
+    2. Raises ``error_class`` so the response body carries the
+       **domain-specific** ``error_code`` (defined as a ClassVar on
+       the subclass) rather than the generic ``RESOURCE_NOT_FOUND``.
+       API clients that want to discriminate which resource was
+       missing get the precision back.
 
     Args:
         resource: The fetched value, or ``None`` when the underlying
@@ -56,11 +55,10 @@ def require_resource_or_404[T](  # noqa: PLR0913 -- intentional rich kwargs surf
             slip through the boundary.
         operation: Audit-log discriminator describing what the caller
             attempted (``"read"`` / ``"update"`` / ``"delete"``).
-        code: Resource-specific :class:`ErrorCode` (must be a 3xxx
-            ``NOT_FOUND``-band code; :func:`resource_not_found`
-            enforces the band).  Defaults to the generic
-            ``RESOURCE_NOT_FOUND`` for resources without a dedicated
-            code.
+        error_class: :class:`NotFoundError` subclass to instantiate;
+            its ``error_code`` ClassVar drives the RFC 9457 response.
+            Defaults to :class:`ResourceNotFoundError` for resources
+            without a dedicated subclass.
         extra_log_kwargs: Additional structured fields to merge into
             the WARNING log (e.g. ``{"reason": "wrong_owner"}``).
             Keys collide-protected: ``id`` / ``operation`` /
@@ -71,9 +69,11 @@ def require_resource_or_404[T](  # noqa: PLR0913 -- intentional rich kwargs surf
         ``resource`` (narrowed to ``T``) when not ``None``.
 
     Raises:
-        NotFoundError: When ``resource`` is ``None``; the message is
-            ``"<resource_type> <identifier!r> not found"`` and the
-            instance ``error_code`` matches ``code``.
+        NotFoundError: When ``resource`` is ``None``; the actual
+            class is ``error_class`` (defaults to
+            :class:`ResourceNotFoundError`), the message is
+            ``"<resource_type> <identifier!r> not found"``, and the
+            ``error_code`` is the subclass's ClassVar.
     """
     if resource is not None:
         return resource
@@ -84,7 +84,8 @@ def require_resource_or_404[T](  # noqa: PLR0913 -- intentional rich kwargs surf
     log_kwargs["operation"] = operation
     log_kwargs["resource"] = resource_type
     logger.warning(log_event, **log_kwargs)
-    raise resource_not_found(resource_type, identifier, code=code)
+    msg = f"{resource_type} {identifier!r} not found"
+    raise error_class(msg)
 
 
 __all__ = ["require_resource_or_404"]

@@ -81,7 +81,15 @@ class WorkflowRollbackService:
         workflow_id: NotBlankStr,
         expected_revision: int,
     ) -> WorkflowDefinition:
-        """Return the live definition or raise ``NotFoundError`` / version conflict."""
+        """Return the live definition or raise ``NotFoundError`` / version conflict.
+
+        Returns:
+            ``WorkflowDefinition`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+            VersionConflictError: Raised on the corresponding failure path.
+        """
         existing = await self._definition_repo.get(workflow_id)
         if existing is None:
             logger.warning(WORKFLOW_DEF_NOT_FOUND, definition_id=workflow_id)
@@ -103,7 +111,14 @@ class WorkflowRollbackService:
         workflow_id: NotBlankStr,
         target_version: int,
     ) -> VersionSnapshot[WorkflowDefinition]:
-        """Return the target snapshot or raise ``NotFoundError``."""
+        """Return the target snapshot or raise ``NotFoundError``.
+
+        Returns:
+            ``VersionSnapshot[WorkflowDefinition]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         target = await self._version_repo.get_version(workflow_id, target_version)
         if target is None:
             logger.warning(
@@ -121,7 +136,11 @@ class WorkflowRollbackService:
         target: VersionSnapshot[WorkflowDefinition],
         now: datetime,
     ) -> WorkflowDefinition:
-        """Restore ``target``'s content onto a new revision of ``existing``."""
+        """Restore ``target``'s content onto a new revision of ``existing``.
+
+        Returns:
+            ``WorkflowDefinition`` instance.
+        """
         return target.snapshot.model_copy(
             update={
                 "id": existing.id,
@@ -148,6 +167,9 @@ class WorkflowRollbackService:
         :meth:`rollback` write so the HTTP controller has a single
         entry point and never reaches into ``app_state.persistence``
         directly.
+
+        Returns:
+            ``WorkflowDefinition`` instance.
         """
         existing = await self._fetch_existing(workflow_id, request.expected_revision)
         target = await self._fetch_target(workflow_id, request.target_version)
@@ -173,6 +195,9 @@ class WorkflowRollbackService:
 
         Returns ``rolled_back`` unchanged so the caller can serialise
         it onto the response without re-fetching.
+
+        Returns:
+            ``WorkflowDefinition`` instance.
         """
         await self._definition_repo.save(rolled_back)
         snapshot_service = VersioningService(self._version_repo)

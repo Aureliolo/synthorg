@@ -18,6 +18,7 @@ from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     NotFoundError,
     ServiceUnavailableError,
@@ -79,9 +80,8 @@ def _publish_ws_event(
             event.model_dump_json(),
             channels=[CHANNEL_TASKS],
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # Drop exc_info -- channels_plugin internals can carry
         # connection metadata; surface scrubbed type+msg.
         logger.warning(
@@ -98,7 +98,11 @@ def _map_result_to_response(
     *,
     currency: str = DEFAULT_CURRENCY,
 ) -> CoordinationResultResponse:
-    """Map a domain ``CoordinationResult`` to an API response DTO."""
+    """Map a domain ``CoordinationResult`` to an API response DTO.
+
+    Returns:
+        ``CoordinationResultResponse`` instance.
+    """
     return CoordinationResultResponse(
         parent_task_id=result.parent_task_id,
         topology=result.topology.value,
@@ -196,9 +200,8 @@ class CoordinationController(Controller):
         try:
             budget_cfg = await app_state.config_resolver.get_budget_config()
             currency = budget_cfg.currency
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Drop ``exc_info=True`` -- the config-resolver traceback
             # can carry secret-store URLs in frame-locals.
             logger.warning(
@@ -220,7 +223,14 @@ class CoordinationController(Controller):
         app_state: AppState,
         task_id: PathId,
     ) -> Task:
-        """Fetch task or raise 404."""
+        """Fetch task or raise 404.
+
+        Returns:
+            ``Task`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         task = await app_state.task_engine.get_task(task_id)
         if task is None:
             logger.warning(
@@ -239,7 +249,11 @@ class CoordinationController(Controller):
         agents: tuple[AgentIdentity, ...],
         data: CoordinateTaskRequest,
     ) -> CoordinationContext:
-        """Build coordination context from request data."""
+        """Build coordination context from request data.
+
+        Returns:
+            ``CoordinationContext`` instance.
+        """
         from synthorg.engine.decomposition.models import (  # noqa: PLC0415
             DecompositionContext,
         )
@@ -264,7 +278,15 @@ class CoordinationController(Controller):
         context: CoordinationContext,
         task_id: PathId,
     ) -> CoordinationResultWithAttribution:
-        """Run coordination and publish WS events."""
+        """Run coordination and publish WS events.
+
+        Returns:
+            ``CoordinationResultWithAttribution`` instance.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
+            Exception: Raised on the corresponding failure path.
+        """
         try:
             attributed = await app_state.coordinator.coordinate(context)
         except CoordinationPhaseError as exc:
@@ -286,9 +308,8 @@ class CoordinationController(Controller):
                 },
             )
             raise ValidationError(client_msg) from exc
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Drop ``logger.exception`` -- frame-locals on the
             # unexpected-coordination traceback can carry the full
             # coordination context (task body, agent rosters).

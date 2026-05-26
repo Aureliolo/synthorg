@@ -8,6 +8,7 @@ quality, duplicates, and conflicting evolution modes.
 
 from typing import Final, Protocol, runtime_checkable
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import collapse_whitespace_lowercase
 from synthorg.meta.models import (
     ApplyResult,
@@ -16,7 +17,11 @@ from synthorg.meta.models import (
     PromptChange,
     ProposalAltitude,
 )
-from synthorg.observability import get_logger, log_exception_redacted
+from synthorg.observability import (
+    get_logger,
+    log_exception_redacted,
+    safe_error_description,
+)
 from synthorg.observability.events.meta import (
     META_APPLY_COMPLETED,
     META_APPLY_FAILED,
@@ -77,7 +82,11 @@ class PromptApplier:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This applier handles prompt tuning proposals."""
+        """This applier handles prompt tuning proposals.
+
+        Returns:
+            ``ProposalAltitude`` instance.
+        """
         return ProposalAltitude.PROMPT_TUNING
 
     async def apply(
@@ -101,9 +110,8 @@ class PromptApplier:
                 proposal_id=str(proposal.id),
             )
             return ApplyResult(success=True, changes_applied=count)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 META_APPLY_FAILED,
@@ -171,14 +179,13 @@ class PromptApplier:
                         seen_texts=seen_texts,
                     )
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 return self._fail(
                     proposal,
                     error_message=(
                         f"dry run context failure: "
-                        f"{type(exc).__name__}: {str(exc)[:200]}"
+                        f"{type(exc).__name__}: {safe_error_description(exc)[:200]}"
                     ),
                 )
 
@@ -202,7 +209,11 @@ class PromptApplier:
         *,
         error_message: str,
     ) -> ApplyResult:
-        """Build a failure ``ApplyResult`` and log the dry_run failure."""
+        """Build a failure ``ApplyResult`` and log the dry_run failure.
+
+        Returns:
+            ``ApplyResult`` instance.
+        """
         logger.warning(
             META_DRY_RUN_FAILED,
             altitude="prompt_tuning",
@@ -223,7 +234,11 @@ def _validate_prompt_change(
     scopes_to_override: set[str],
     seen_texts: dict[str, set[str]],
 ) -> list[str]:
-    """Validate a single ``PromptChange``; return any error messages."""
+    """Validate a single ``PromptChange``; return any error messages.
+
+    Returns:
+        List of the declared element type.
+    """
     errors: list[str] = []
 
     scope = change.target_scope

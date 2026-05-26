@@ -104,6 +104,16 @@ Three third-party linters run as pre-push hooks on Markdown to enforce style + l
 - `lychee` (`lycheeverse/lychee`): Markdown link-checker. Config in `lychee.toml`. Runs on the same glob as markdownlint, but at pre-push stage (network probes take 8-15s). Binary installed via `bash scripts/install_cli_tools.sh lychee`; CI runs it via `.github/workflows/lychee.yml`.
 - `vale` (`errata-ai/vale`): prose linter for Google style + a British-English vocabulary. Config in `.vale.ini`; vocabularies under `.vale/styles/config/vocabularies/{British,SynthOrg}/`. Runs on the same glob as markdownlint + lychee, at pre-push stage. Binary installed once per machine via `bash scripts/install_cli_tools.sh vale`; the gitignored `.vale/styles/Google/` style package is then materialised lazily by `scripts/vale-prepush.sh` (the pre-push wrapper) on the first push in each worktree, so additional worktrees need no extra setup step.
 
+## Ruff-enforced docstring completeness (DOC201 / DOC202 / DOC501)
+
+The docstring-completeness convention (Google-style `Returns:` / `Raises:` sections must match the code) is enforced by ruff's pydoclint extensions rather than a `check_*.py` script, so it is listed here for completeness alongside the prose hooks above.
+
+- **Rules**: `DOC201` (missing `Returns:`), `DOC202` (extraneous `Returns:`), `DOC501` (missing `Raises:`).
+- **Activation**: these are ruff *preview* rules. Under `[tool.ruff.lint] preview = true` + `explicit-preview-rules = true`, a preview rule activates only when selected by its exact code, so the codes live in `extend-select` (selecting the `DOC` prefix in `select` is inert under that flag). The standard `ruff check src/ tests/` then enforces them at pre-commit, pre-push, and CI.
+- **Scope / rollout**: `[tool.ruff.lint.per-file-ignores]` exempts the not-yet-swept top-level packages (a brace expansion), `tests/`, `scripts/`, and the five `api/` god modules (`app`, `state`, `auto_wire`, `lifecycle`, `lifecycle_builder`, which stay exempt under the net-shrink rule until EPIC #2077 decomposes them). Each wave removes its package from the brace expansion; the swept scope today is `persistence/` (Wave 1), `api/`, and `meta/` (Wave 3). Wave plan: <https://github.com/Aureliolo/synthorg/issues/2065>.
+- **Per-line opt-out**: a genuine false positive (e.g. an exception raised then caught within the same function, which ruff still reports) is suppressed with `# noqa: DOC501 -- <reason>` on the docstring's closing `"""` line; the reason is mandatory.
+- **Presence vs completeness**: `interrogate` (configured in `[tool.interrogate]`, `fail-under = 90`) covers docstring *presence*; the DOC rules cover *section completeness*. The two are complementary.
+
 ## Registration procedure
 
 1. Wire each new gate into `.pre-commit-config.yaml` (pre-commit or pre-push stage as fits) so it runs locally and in CI.

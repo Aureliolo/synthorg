@@ -29,10 +29,11 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.client.simulation_state import ClientSimulationState  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import AgentRuntimeNotConfiguredError
 from synthorg.core.enums import TaskStatus  # noqa: TC001
-from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.task import Task  # noqa: TC001
+from synthorg.engine.errors import TaskNotFoundError
 from synthorg.engine.pipeline.entry.task_board_adapter import (
     TaskBoardEntryAdapter,
     TaskBoardFiling,
@@ -68,6 +69,9 @@ def _extract_requester(state: State) -> str:
     Falls back to ``"api"`` when the connection carries no user
     (e.g. in tests without auth middleware). Logs a warning on
     fallback so auth misconfiguration is visible in production.
+
+    Returns:
+        Resulting string.
     """
     user = getattr(state, "_connection_user", None)
     if user is not None and hasattr(user, "user_id"):
@@ -92,6 +96,9 @@ async def process_task_board_pipeline(
     ``MemoryError`` and ``RecursionError`` propagate. ``CancelledError``
     propagates so app shutdown does not convert a cancellation into a
     spurious error log.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     try:
         await adapter.submit(filing)
@@ -107,9 +114,8 @@ async def process_task_board_pipeline(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         log_exception_redacted(
             logger,
             API_TASK_BOARD_PIPELINE_FAILED,
@@ -238,7 +244,7 @@ class TaskController(Controller):
             identifier=task_id,
             log_event=API_RESOURCE_NOT_FOUND,
             operation="read",
-            code=ErrorCode.TASK_NOT_FOUND,
+            error_class=TaskNotFoundError,
         )
         return ApiResponse(data=task)
 
@@ -381,6 +387,9 @@ class TaskController(Controller):
         board's transitions are display-only after the spine has
         started (the WS ``task.status_changed`` events keep both in
         sync).
+
+        Returns:
+            ``ApiResponse[Task]`` instance.
         """
         app_state: AppState = state.app_state
         requester = _extract_requester(state)
@@ -456,6 +465,9 @@ class TaskController(Controller):
         when a JetStream claim arrives. Delegates to
         ``WorkerExecutionService.execute_once`` so the agent-runtime
         invocation is configurable per deployment.
+
+        Returns:
+            ``ApiResponse[Task]`` instance.
         """
         app_state: AppState = state.app_state
         requester = _extract_requester(state)

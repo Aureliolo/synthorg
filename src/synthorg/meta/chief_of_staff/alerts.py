@@ -9,6 +9,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.chief_of_staff.models import Alert, OrgInflection
 from synthorg.meta.models import RuleSeverity
 from synthorg.observability import get_logger, log_exception_redacted
@@ -86,11 +87,11 @@ class ProactiveAlertService:
         failed_sinks: list[str] = []
 
         async def _emit(sink: AlertSink) -> None:
+            """Run emit."""
             try:
                 await sink.on_alert(alert)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 failed_sinks.append(type(sink).__name__)
                 log_exception_redacted(
                     logger,

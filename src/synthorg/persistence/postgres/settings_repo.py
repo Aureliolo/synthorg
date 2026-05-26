@@ -414,7 +414,7 @@ class PostgresSettingsRepository:
 
         Raises:
             QueryError: If the database query fails.
-        """
+        """  # noqa: DOC501 -- _CASConflictError is caught locally and converted to a False return
         if not items:
             return True
         cas_map: Mapping[SettingRowKey, str] = expected_updated_at_map or {}

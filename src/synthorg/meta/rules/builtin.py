@@ -55,12 +55,20 @@ class QualityDecliningRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name."""
+        """Rule name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("quality_declining")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning, prompt tuning, and code modification."""
+        """Suggests config tuning, prompt tuning, and code modification.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return (
             ProposalAltitude.CONFIG_TUNING,
             ProposalAltitude.PROMPT_TUNING,
@@ -68,7 +76,11 @@ class QualityDecliningRule:
         )
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
-        """Check if quality is below threshold."""
+        """Check if quality is below threshold.
+
+        Returns:
+            The ``RuleMatch`` value when present, ``None`` otherwise.
+        """
         perf = snapshot.performance
         if perf.agent_count == 0:
             return None
@@ -104,16 +116,28 @@ class SuccessRateDropRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name."""
+        """Rule name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("success_rate_drop")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning."""
+        """Suggests config tuning.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return (ProposalAltitude.CONFIG_TUNING,)
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
-        """Check if success rate is below threshold."""
+        """Check if success rate is below threshold.
+
+        Returns:
+            The ``RuleMatch`` value when present, ``None`` otherwise.
+        """
         perf = snapshot.performance
         if perf.agent_count == 0:
             return None
@@ -152,16 +176,28 @@ class BudgetOverrunRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name."""
+        """Rule name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("budget_overrun")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning."""
+        """Suggests config tuning.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return (ProposalAltitude.CONFIG_TUNING,)
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
-        """Check if budget will be exhausted soon."""
+        """Check if budget will be exhausted soon.
+
+        Returns:
+            The ``RuleMatch`` value when present, ``None`` otherwise.
+        """
         budget = snapshot.budget
         if (
             budget.days_until_exhausted is not None
@@ -199,19 +235,31 @@ class CoordinationCostRatioRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name."""
+        """Rule name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("coordination_cost_ratio")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning and architecture changes."""
+        """Suggests config tuning and architecture changes.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return (
             ProposalAltitude.CONFIG_TUNING,
             ProposalAltitude.ARCHITECTURE,
         )
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
-        """Check if coordination costs are too high."""
+        """Check if coordination costs are too high.
+
+        Returns:
+            The ``RuleMatch`` value when present, ``None`` otherwise.
+        """
         budget = snapshot.budget
         if budget.coordination_ratio > self._threshold:
             return RuleMatch(
@@ -248,16 +296,28 @@ class CoordinationOverheadRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name."""
+        """Rule name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("coordination_overhead")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning."""
+        """Suggests config tuning.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return (ProposalAltitude.CONFIG_TUNING,)
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
-        """Check if coordination overhead is too high."""
+        """Check if coordination overhead is too high.
+
+        Returns:
+            The ``RuleMatch`` value when present, ``None`` otherwise.
+        """
         coord = snapshot.coordination
         if (
             coord.coordination_overhead_pct is not None
@@ -294,19 +354,31 @@ class StragglerBottleneckRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name."""
+        """Rule name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("straggler_bottleneck")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning and architecture changes."""
+        """Suggests config tuning and architecture changes.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return (
             ProposalAltitude.CONFIG_TUNING,
             ProposalAltitude.ARCHITECTURE,
         )
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
-        """Check if straggler gap is too large."""
+        """Check if straggler gap is too large.
+
+        Returns:
+            The ``RuleMatch`` value when present, ``None`` otherwise.
+        """
         coord = snapshot.coordination
         if (
             coord.straggler_gap_ratio is not None
@@ -341,16 +413,28 @@ class RedundancyRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name."""
+        """Rule name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("redundancy")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning."""
+        """Suggests config tuning.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return (ProposalAltitude.CONFIG_TUNING,)
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
-        """Check if redundancy rate is too high."""
+        """Check if redundancy rate is too high.
+
+        Returns:
+            The ``RuleMatch`` value when present, ``None`` otherwise.
+        """
         coord = snapshot.coordination
         if (
             coord.redundancy_rate is not None
@@ -395,16 +479,28 @@ class ScalingFailureRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name."""
+        """Rule name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("scaling_failure")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning."""
+        """Suggests config tuning.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return (ProposalAltitude.CONFIG_TUNING,)
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
-        """Check if scaling decisions are failing too often."""
+        """Check if scaling decisions are failing too often.
+
+        Returns:
+            The ``RuleMatch`` value when present, ``None`` otherwise.
+        """
         scaling = snapshot.scaling
         if scaling.total_decisions < self._min_decisions:
             return None
@@ -445,12 +541,20 @@ class ErrorSpikeRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name."""
+        """Rule name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("error_spike")
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Suggests config tuning, prompt tuning, and code modification."""
+        """Suggests config tuning, prompt tuning, and code modification.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return (
             ProposalAltitude.CONFIG_TUNING,
             ProposalAltitude.PROMPT_TUNING,
@@ -458,7 +562,11 @@ class ErrorSpikeRule:
         )
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:
-        """Check if error count exceeds threshold."""
+        """Check if error count exceeds threshold.
+
+        Returns:
+            The ``RuleMatch`` value when present, ``None`` otherwise.
+        """
         errors = snapshot.errors
         if errors.total_findings > self._threshold:
             return RuleMatch(

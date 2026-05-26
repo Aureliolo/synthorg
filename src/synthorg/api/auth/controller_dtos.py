@@ -48,7 +48,11 @@ class SetupRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_password_length(self) -> Self:
-        """Reject passwords shorter than the minimum."""
+        """Reject passwords shorter than the minimum.
+
+        Returns:
+            ``Self`` instance.
+        """
         _check_password_length(self.password)
         return self
 
@@ -82,7 +86,11 @@ class ChangePasswordRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_password_length(self) -> Self:
-        """Reject new passwords shorter than the minimum."""
+        """Reject new passwords shorter than the minimum.
+
+        Returns:
+            ``Self`` instance.
+        """
         _check_password_length(self.new_password)
         return self
 

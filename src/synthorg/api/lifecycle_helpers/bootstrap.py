@@ -12,6 +12,7 @@ incomplete and bootstrap is deferred to ``POST /setup/complete``.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase_or_default
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
@@ -34,6 +35,12 @@ async def _find_first_user_when_no_owner(app_state: AppState) -> User | None:
     breaks on installs with more than one page of users. Returns
     ``None`` when an owner exists, when there are no users, or when the
     sweep fails (all three mean "do not promote").
+
+    Returns:
+        The ``User`` value when present, ``None`` otherwise.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     from synthorg.core.auth.models import OrgRole  # noqa: PLC0415
 
@@ -50,9 +57,8 @@ async def _find_first_user_when_no_owner(app_state: AppState) -> User | None:
                 return None
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             note="Owner auto-promote skipped: failed to list users",
@@ -68,6 +74,9 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
 
     Idempotent: once at least one user holds ``OrgRole.OWNER`` the
     function returns without modifying state.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     if not app_state.has_persistence:
         return
@@ -87,9 +96,8 @@ async def _maybe_promote_first_owner(app_state: AppState) -> None:
         await app_state.persistence.users.save(promoted)
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             note="Owner auto-promote failed",
@@ -112,6 +120,9 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
     On first run, setup isn't complete yet so bootstrap is deferred
     to ``POST /setup/complete``. On subsequent starts, agents are
     loaded from persisted config into the runtime registry.
+
+    Raises:
+        CancelledError: Raised on the corresponding failure path.
     """
     if not (
         app_state.has_config_resolver
@@ -132,9 +143,8 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
         is_complete = normalize_ascii_lowercase_or_default(setup_entry.value) == "true"
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
             note="Could not read setup_complete setting; skipping agent bootstrap",
@@ -161,9 +171,8 @@ async def _maybe_bootstrap_agents(app_state: AppState) -> None:
         )
     except asyncio.CancelledError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             SETUP_AGENT_BOOTSTRAP_FAILED,
             error_type=type(exc).__name__,

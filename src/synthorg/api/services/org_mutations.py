@@ -137,11 +137,20 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         namespace: str,
         key: str,
     ) -> tuple[str, str]:
-        """Read a setting value and its ``updated_at`` for CAS."""
+        """Read a setting value and its ``updated_at`` for CAS.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         result: tuple[str, str] = await self._settings.get_versioned(namespace, key)
         return result
 
     async def _read_departments(self) -> tuple[Department, ...]:
+        """Read the current departments via the resolver for CAS.
+
+        Returns:
+            Tuple of declared ``Department`` configs.
+        """
         return await self._resolver.get_departments()
 
     async def _write_departments(
@@ -163,6 +172,11 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         )
 
     async def _read_agents(self) -> tuple[AgentConfig, ...]:
+        """Read the current agents via the resolver for CAS.
+
+        Returns:
+            Tuple of declared ``AgentConfig`` configs.
+        """
         return await self._resolver.get_agents()
 
     async def _write_agents(
@@ -188,14 +202,22 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         departments: tuple[Department, ...],
         name: str,
     ) -> Department | None:
-        """Case-insensitive department lookup."""
+        """Case-insensitive department lookup.
+
+        Returns:
+            The ``Department`` value when present, ``None`` otherwise.
+        """
         return find_by_name_ci(departments, name)
 
     @staticmethod
     def _collect_department_updates(
         data: UpdateDepartmentRequest,
     ) -> dict[str, Any]:
-        """Extract set fields from an update request."""
+        """Extract set fields from an update request.
+
+        Returns:
+            Mapping with the declared key/value types.
+        """
         updates: dict[str, Any] = {}
         if "head" in data.model_fields_set:
             updates["head"] = data.head
@@ -214,7 +236,11 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         agents: tuple[AgentConfig, ...],
         name: str,
     ) -> AgentConfig | None:
-        """Case-insensitive agent lookup."""
+        """Case-insensitive agent lookup.
+
+        Returns:
+            The ``AgentConfig`` value when present, ``None`` otherwise.
+        """
         return find_by_name_ci(agents, name)
 
     def _validate_permutation(
@@ -223,7 +249,11 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         requested_names: tuple[str, ...],
         entity: str,
     ) -> None:
-        """Ensure requested names are an exact permutation of current."""
+        """Ensure requested names are an exact permutation of current.
+
+        Raises:
+            ValidationError: Raised on the corresponding failure path.
+        """
         current_set = frozenset(n.lower() for n in current_names)
         requested_set = frozenset(n.lower() for n in requested_names)
         if current_set != requested_set or len(requested_names) != len(
@@ -254,14 +284,22 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
     # ── Company ───────────────────────────────────────────────
 
     async def _get_str_safe(self, namespace: str, key: str) -> str:
-        """Get a setting string, returning empty string if not set."""
+        """Get a setting string, returning empty string if not set.
+
+        Returns:
+            Resulting string.
+        """
         try:
             return await self._resolver.get_str(namespace, key)
         except SettingNotFoundError:
             return ""
 
     async def _company_snapshot_etag(self) -> str:
-        """Compute ETag for the full company snapshot."""
+        """Compute ETag for the full company snapshot.
+
+        Returns:
+            Resulting string.
+        """
         name = await self._get_str_safe("company", "company_name")
         autonomy = await self._get_str_safe("company", "autonomy_level")
         budget = await self._get_str_safe("company", "total_monthly")
@@ -285,7 +323,11 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         if_match: str | None = None,
         saved_by: str = "api",
     ) -> tuple[dict[str, Any], str]:
-        """Update individual company scalar settings."""
+        """Update individual company scalar settings.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         captured: dict[str, Any] = {"updated": {}, "new_etag": ""}
 
         async def read() -> tuple[
@@ -326,7 +368,11 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
     async def _read_snapshot_versions(
         self,
     ) -> dict[tuple[str, str], str]:
-        """Capture versions of every key contributing to the company ETag."""
+        """Capture versions of every key contributing to the company ETag.
+
+        Returns:
+            Mapping with the declared key/value types.
+        """
         keys = (
             ("company", "company_name"),
             ("company", "autonomy_level"),
@@ -352,6 +398,9 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         set_many but ``agents`` / ``departments`` shifts between
         read() and write() would still commit the scalar update under
         a stale If-Match.
+
+        Raises:
+            VersionConflictError: Raised on the corresponding failure path.
         """
         from synthorg.core.domain_errors import VersionConflictError  # noqa: PLC0415
 
@@ -368,7 +417,11 @@ class OrgMutationService(OrgAgentMutationsMixin, OrgDepartmentMutationsMixin):
         self,
         data: UpdateCompanyRequest,
     ) -> dict[str, Any]:
-        """Atomically write all changed company scalars via set_many."""
+        """Atomically write all changed company scalars via set_many.
+
+        Returns:
+            Mapping with the declared key/value types.
+        """
         items: list[tuple[str, str, str]] = []
         updated: dict[str, Any] = {}
         if data.company_name is not None:

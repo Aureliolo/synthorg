@@ -131,6 +131,9 @@ class ToolsmithService:
         per-call ``ToolCapabilityNotAllowedError`` / ``ToolAuthoringError``
         is caught inside ``_handle_gap`` so a single bad gap cannot abort
         the whole batch.
+
+        Returns:
+            Tuple of the declared element types.
         """
         moment = now or self._clock.now()
         logger.info(TOOLSMITH_CYCLE_STARTED)
@@ -153,11 +156,19 @@ class ToolsmithService:
         return tuple(proposals)
 
     async def apply(self, proposal: ImprovementProposal) -> ApplyResult:
-        """Validate and live-register an approved tool-creation proposal."""
+        """Validate and live-register an approved tool-creation proposal.
+
+        Returns:
+            ``ApplyResult`` instance.
+        """
         return await self._applier.apply(proposal)
 
     async def _handle_gap(self, gap: CapabilityGap) -> tuple[ImprovementProposal, ...]:
-        """Author or overflow a single gap, then guard the result."""
+        """Author or overflow a single gap, then guard the result.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         if gap.signature in self._config.service_access_capabilities:
             return await self._handle_overflow(gap)
         # Dedup hint = static surface known at boot + dynamic-registry
@@ -187,7 +198,11 @@ class ToolsmithService:
     async def _handle_overflow(
         self, gap: CapabilityGap
     ) -> tuple[ImprovementProposal, ...]:
-        """Route a service-access gap to the code-modification overflow."""
+        """Route a service-access gap to the code-modification overflow.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         logger.info(
             TOOLSMITH_AUTHOR_OVERFLOW_TO_CODE_MOD,
             capability=gap.signature,
@@ -200,7 +215,11 @@ class ToolsmithService:
         return tuple(guarded)
 
     async def _guards_pass(self, proposal: ImprovementProposal) -> bool:
-        """Evaluate the guard chain sequentially; all must pass."""
+        """Evaluate the guard chain sequentially; all must pass.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         for guard in self._guards:
             result = await guard.evaluate(proposal)
             if result.verdict is GuardVerdict.REJECTED:
@@ -216,7 +235,11 @@ class ToolsmithService:
 def _build_proposal(
     gap: CapabilityGap, blueprint: ToolBlueprint
 ) -> ImprovementProposal:
-    """Wrap an authored blueprint in a ``TOOL_CREATION`` proposal."""
+    """Wrap an authored blueprint in a ``TOOL_CREATION`` proposal.
+
+    Returns:
+        ``ImprovementProposal`` instance.
+    """
     rollback = RollbackPlan(
         operations=(
             RollbackOperation(

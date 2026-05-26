@@ -52,7 +52,15 @@ class RoutedArchitectureMutator:
         )
 
     async def restore(self, *, target: str, previous_value: Any) -> None:
-        """Parse ``target`` and dispatch to the registered adapter."""
+        """Parse ``target`` and dispatch to the registered adapter.
+
+        Raises:
+            UnknownArchitectureTargetError: Raised on the corresponding failure path.
+            MemoryError: Raised on the corresponding failure path.
+            RecursionError: Raised on the corresponding failure path.
+            CancelledError: Raised on the corresponding failure path.
+            RollbackMutationDeniedError: Raised on the corresponding failure path.
+        """
         target_type, sep, target_tail = target.partition(":")
         if not sep or not target_type or not target_tail:
             logger.warning(

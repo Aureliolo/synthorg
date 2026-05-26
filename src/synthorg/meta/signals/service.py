@@ -119,7 +119,11 @@ class SignalsService:
         since: datetime,
         until: datetime | None = None,
     ) -> OrgSignalSnapshot:
-        """Build a composite snapshot across all 7 domains."""
+        """Build a composite snapshot across all 7 domains.
+
+        Returns:
+            ``OrgSignalSnapshot`` instance.
+        """
         return await self._snapshot_builder.build(since=since, until=until)
 
     async def get_performance(
@@ -128,7 +132,11 @@ class SignalsService:
         since: datetime,
         until: datetime,
     ) -> OrgPerformanceSummary:
-        """Performance signal summary for the window."""
+        """Performance signal summary for the window.
+
+        Returns:
+            ``OrgPerformanceSummary`` instance.
+        """
         return await self._performance.aggregate(since=since, until=until)
 
     async def get_budget(
@@ -137,7 +145,11 @@ class SignalsService:
         since: datetime,
         until: datetime,
     ) -> OrgBudgetSummary:
-        """Budget signal summary for the window."""
+        """Budget signal summary for the window.
+
+        Returns:
+            ``OrgBudgetSummary`` instance.
+        """
         return await self._budget.aggregate(since=since, until=until)
 
     async def get_coordination(
@@ -146,7 +158,11 @@ class SignalsService:
         since: datetime,
         until: datetime,
     ) -> OrgCoordinationSummary:
-        """Coordination metrics summary for the window."""
+        """Coordination metrics summary for the window.
+
+        Returns:
+            ``OrgCoordinationSummary`` instance.
+        """
         return await self._coordination.aggregate(since=since, until=until)
 
     async def get_scaling_history(
@@ -155,7 +171,11 @@ class SignalsService:
         since: datetime,
         until: datetime,
     ) -> OrgScalingSummary:
-        """Scaling signal summary for the window."""
+        """Scaling signal summary for the window.
+
+        Returns:
+            ``OrgScalingSummary`` instance.
+        """
         return await self._scaling.aggregate(since=since, until=until)
 
     async def get_error_patterns(
@@ -164,7 +184,11 @@ class SignalsService:
         since: datetime,
         until: datetime,
     ) -> OrgErrorSummary:
-        """Error taxonomy summary for the window."""
+        """Error taxonomy summary for the window.
+
+        Returns:
+            ``OrgErrorSummary`` instance.
+        """
         return await self._errors.aggregate(since=since, until=until)
 
     async def get_evolution_outcomes(
@@ -173,7 +197,11 @@ class SignalsService:
         since: datetime,
         until: datetime,
     ) -> OrgEvolutionSummary:
-        """Evolution outcome summary for the window."""
+        """Evolution outcome summary for the window.
+
+        Returns:
+            ``OrgEvolutionSummary`` instance.
+        """
         return await self._evolution.aggregate(since=since, until=until)
 
     async def get_telemetry(
@@ -182,7 +210,11 @@ class SignalsService:
         since: datetime,
         until: datetime,
     ) -> OrgTelemetrySummary:
-        """Telemetry event summary for the window."""
+        """Telemetry event summary for the window.
+
+        Returns:
+            ``OrgTelemetrySummary`` instance.
+        """
         return await self._telemetry.aggregate(since=since, until=until)
 
     # ── Proposal read ────────────────────────────────────────────────
@@ -256,6 +288,9 @@ class SignalsService:
 
         Returns:
             The stored :class:`ApprovalItem`.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         actor_name = getattr(actor, "name", None)
         if not isinstance(actor_name, str) or not actor_name.strip():
@@ -301,6 +336,9 @@ def _risk_from_altitude(proposal: ImprovementProposal) -> ApprovalRiskLevel:
     this file; log a warning so ops learn about the gap on the first
     occurrence and fall through to ``HIGH`` (fail-safe, not fail-silent)
     rather than silently routing it to ``LOW``.
+
+    Returns:
+        ``ApprovalRiskLevel`` instance.
     """
     # Exhaustive over every ``ProposalAltitude`` value.  A future enum
     # member added without a matching branch will trip the runtime

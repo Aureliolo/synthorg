@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.charter.config import CharterConfig
 from synthorg.meta.chief_of_staff.config import ChiefOfStaffConfig
@@ -78,7 +79,14 @@ class RolloutConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_interval_within_window(self) -> Self:
-        """Regression check interval must fit within observation window."""
+        """Regression check interval must fit within observation window.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.regression_check_interval_hours > self.observation_window_hours:
             msg = "regression_check_interval_hours must be <= observation_window_hours"
             raise ValueError(msg)
@@ -334,6 +342,12 @@ class SelfImprovementConfig(BaseModel):
         allowlist-consistency check. They must agree, otherwise an
         operator can enable one and silently leave the subsystem off (or
         configure an allowlist that never runs).
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if self.tool_creation_enabled != self.toolsmith.enabled:
             msg = "tool_creation_enabled and toolsmith.enabled must match"
@@ -342,7 +356,14 @@ class SelfImprovementConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_code_modification_requirements(self) -> Self:
-        """Require GitHub settings when code modification is enabled."""
+        """Require GitHub settings when code modification is enabled.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if not self.code_modification_enabled:
             return self
         missing: list[str] = []
@@ -378,9 +399,8 @@ async def load_self_improvement_config(
         return SelfImprovementConfig()
     try:
         entry = await settings_service.get("meta", "self_improvement")
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             META_SELF_IMPROVEMENT_LOAD_FAILED,
             reason="settings_get_error",

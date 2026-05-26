@@ -8,6 +8,7 @@ an empty summary via the safe-default path rather than raising.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.signal_models import OrgEvolutionSummary
 from synthorg.observability import get_logger, log_exception_redacted
@@ -42,7 +43,11 @@ class EvolutionSignalAggregator:
 
     @property
     def domain(self) -> NotBlankStr:
-        """Signal domain name."""
+        """Signal domain name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("evolution")
 
     async def aggregate(
@@ -70,9 +75,8 @@ class EvolutionSignalAggregator:
                 domain="evolution",
                 total_proposals=summary.total_proposals,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain="evolution"
             )

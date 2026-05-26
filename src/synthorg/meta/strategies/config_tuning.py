@@ -51,7 +51,11 @@ class ConfigTuningStrategy:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This strategy produces config tuning proposals."""
+        """This strategy produces config tuning proposals.
+
+        Returns:
+            ``ProposalAltitude`` instance.
+        """
         return ProposalAltitude.CONFIG_TUNING
 
     async def propose(
@@ -118,6 +122,7 @@ class ConfigTuningStrategy:
         ctx: dict[str, JsonValue],
         snapshot: OrgSignalSnapshot,
     ) -> ImprovementProposal:
+        """Return propose quality fix."""
         _ = snapshot
         return ImprovementProposal(
             id=uuid4(),
@@ -167,6 +172,7 @@ class ConfigTuningStrategy:
         ctx: dict[str, JsonValue],
         snapshot: OrgSignalSnapshot,
     ) -> ImprovementProposal:
+        """Return propose success rate fix."""
         _ = snapshot
         return ImprovementProposal(
             id=uuid4(),
@@ -212,6 +218,7 @@ class ConfigTuningStrategy:
         ctx: dict[str, JsonValue],
         snapshot: OrgSignalSnapshot,
     ) -> ImprovementProposal:
+        """Return propose budget fix."""
         _ = snapshot
         return ImprovementProposal(
             id=uuid4(),
@@ -261,6 +268,7 @@ class ConfigTuningStrategy:
         self,
         ctx: dict[str, JsonValue],
     ) -> ImprovementProposal:
+        """Return propose coordination cost fix."""
         return ImprovementProposal(
             id=uuid4(),
             altitude=ProposalAltitude.CONFIG_TUNING,
@@ -307,6 +315,7 @@ class ConfigTuningStrategy:
         self,
         ctx: dict[str, JsonValue],
     ) -> ImprovementProposal:
+        """Return propose overhead fix."""
         return ImprovementProposal(
             id=uuid4(),
             altitude=ProposalAltitude.CONFIG_TUNING,
@@ -351,6 +360,7 @@ class ConfigTuningStrategy:
         self,
         ctx: dict[str, JsonValue],
     ) -> ImprovementProposal:
+        """Return propose scaling fix."""
         return ImprovementProposal(
             id=uuid4(),
             altitude=ProposalAltitude.CONFIG_TUNING,

@@ -46,6 +46,7 @@ drain-timeout fallback.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_APP_DRAIN_COMPLETED,
@@ -152,9 +153,13 @@ class RequestDrainMiddleware:
         thus only sees the shutdown event after the drain has
         completed (or timed out), guaranteeing service teardown
         runs after in-flight requests finish.
+
+        Returns:
+            ``Receive`` instance.
         """
 
         async def _receive() -> object:
+            """Return receive."""
             message = await receive()
             # ASGI lifespan messages are dicts with a ``type`` field;
             # the inner ``Receive`` type's union does not include
@@ -207,12 +212,20 @@ class RequestDrainMiddleware:
 
     @property
     def inflight(self) -> int:
-        """Current in-flight HTTP request count (test introspection)."""
+        """Current in-flight HTTP request count (test introspection).
+
+        Returns:
+            Resulting integer.
+        """
         return self._inflight
 
     @property
     def drain_started(self) -> bool:
-        """True once :meth:`begin_drain` has been invoked."""
+        """True once :meth:`begin_drain` has been invoked.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._drain_started.is_set()
 
 
@@ -243,9 +256,8 @@ async def _send_drain_response(send: Send) -> None:
                 "more_body": False,
             },
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.debug(
             API_APP_DRAIN_SEND_FAILED,
             error_type=type(exc).__name__,

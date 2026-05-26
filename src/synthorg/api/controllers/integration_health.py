@@ -16,6 +16,7 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import CursorLimit, CursorParam, paginate_cursor
 from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import ConnectionStatus
 from synthorg.integrations.health.models import HealthReport
@@ -36,12 +37,14 @@ async def _safe_check(
     Unhandled errors inside a ``TaskGroup`` cancel the whole group;
     wrap each check so one bad connection does not fail the entire
     aggregate endpoint. MemoryError and RecursionError propagate.
+
+    Returns:
+        ``HealthReport`` instance.
     """
     try:
         return await check_connection_health(catalog, name)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # Connection health checks can surface exceptions whose
         # str() embeds response bodies (including auth headers or
         # OAuth refresh tokens from the connection catalog). Log via
@@ -129,6 +132,9 @@ class IntegrationHealthController(Controller):
         ``ConnectionNotFoundError`` propagates unchanged and is
         translated by centralized exception handlers into the
         class-defined 404 + ``CONNECTION_NOT_FOUND`` envelope.
+
+        Returns:
+            ``ApiResponse[HealthReport]`` instance.
         """
         catalog = state["app_state"].connection_catalog
         report = await check_connection_health(

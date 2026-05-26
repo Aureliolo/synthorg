@@ -78,6 +78,9 @@ def get_authenticated_user() -> AuthenticatedUser:
     Raises:
         AuthContextMissingError: When called outside an authenticated
             request scope.
+
+    Returns:
+        ``AuthenticatedUser`` instance.
     """
     user = _authenticated_user.get()
     if user is None:
@@ -97,6 +100,9 @@ def get_authenticated_user_id() -> str:
     Raises:
         AuthContextMissingError: When called outside an authenticated
             request scope.
+
+    Returns:
+        Resulting string.
     """
     return get_authenticated_user().user_id
 

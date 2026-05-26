@@ -188,7 +188,11 @@ class DefaultThresholdRecommender:
         metric_name: str,
         current_default: float,
     ) -> ThresholdRecommendation:
-        """Build a recommendation to relax a too-conservative threshold."""
+        """Build a recommendation to relax a too-conservative threshold.
+
+        Returns:
+            ``ThresholdRecommendation`` instance.
+        """
         adjustment = _ADJUSTMENT_BASE + (
             _ADJUSTMENT_CONFIDENCE_COEF * pattern.avg_confidence
         )
@@ -220,7 +224,11 @@ class DefaultThresholdRecommender:
         metric_name: str,
         current_default: float,
     ) -> ThresholdRecommendation:
-        """Build a recommendation to tighten a too-aggressive threshold."""
+        """Build a recommendation to tighten a too-aggressive threshold.
+
+        Returns:
+            ``ThresholdRecommendation`` instance.
+        """
         adjustment = _ADJUSTMENT_BASE + (
             _ADJUSTMENT_CONFIDENCE_COEF * (1.0 - pattern.avg_confidence)
         )
@@ -254,7 +262,11 @@ def _build_recommendation(  # noqa: PLR0913
     confidence: float,
     rationale: str,
 ) -> ThresholdRecommendation:
-    """Construct a ThresholdRecommendation from computed values."""
+    """Construct a ThresholdRecommendation from computed values.
+
+    Returns:
+        ``ThresholdRecommendation`` instance.
+    """
     return ThresholdRecommendation(
         rule_name=NotBlankStr(pattern.source_rule),
         metric_name=NotBlankStr(metric_name),

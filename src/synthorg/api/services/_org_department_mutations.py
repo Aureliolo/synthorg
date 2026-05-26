@@ -45,14 +45,17 @@ class OrgDepartmentMutationsMixin:
     async def _read_setting_versioned(  # pragma: no cover - see concrete
         self, namespace: str, key: str
     ) -> tuple[str, str]:
+        """Read a setting value together with its concurrency version token."""
         raise NotImplementedError
 
     async def _read_departments(  # pragma: no cover - see concrete
         self,
     ) -> tuple[Department, ...]:
+        """Read the company's departments."""
         raise NotImplementedError
 
     async def _read_agents(self) -> tuple[AgentConfig, ...]:  # pragma: no cover
+        """Read the company's agents."""
         raise NotImplementedError
 
     async def _write_departments(  # pragma: no cover - see concrete
@@ -61,24 +64,29 @@ class OrgDepartmentMutationsMixin:
         *,
         expected_updated_at: str | None = None,
     ) -> None:
+        """Persist the department roster under optimistic-concurrency control."""
         raise NotImplementedError
 
     async def _snapshot_company(self, saved_by: str) -> None:  # pragma: no cover
+        """Record a company snapshot attributed to the saver."""
         raise NotImplementedError
 
     def _find_department(  # pragma: no cover - see concrete
         self, departments: tuple[Department, ...], name: str
     ) -> Department | None:
+        """Find a department by name within the given tuple."""
         raise NotImplementedError
 
     def _check_budget_sum(  # pragma: no cover - see concrete
         self, departments: tuple[Department, ...]
     ) -> None:
+        """Validate that department budgets stay within the company ceiling."""
         raise NotImplementedError
 
     def _collect_department_updates(  # pragma: no cover - see concrete
         self, data: UpdateDepartmentRequest
     ) -> dict[str, Any]:
+        """Collect the mutable department fields from an update request."""
         raise NotImplementedError
 
     def _validate_permutation(  # pragma: no cover - see concrete
@@ -87,6 +95,7 @@ class OrgDepartmentMutationsMixin:
         requested_names: tuple[str, ...],
         entity: str,
     ) -> None:
+        """Validate that requested names are a permutation of current names."""
         raise NotImplementedError
 
     async def create_department(
@@ -95,10 +104,22 @@ class OrgDepartmentMutationsMixin:
         *,
         saved_by: str = "api",
     ) -> Department:
-        """Create a new department."""
+        """Create a new department.
+
+        Returns:
+            ``Department`` instance.
+
+        Raises:
+            ConflictError: Raised on the corresponding failure path.
+        """
         captured: dict[str, Department] = {}
 
         async def read() -> tuple[tuple[Department, ...], str]:
+            """Return read.
+
+            Raises:
+                ConflictError: Raised on the corresponding failure path.
+            """
             _, version = await self._read_setting_versioned(
                 "company",
                 "departments",
@@ -128,6 +149,7 @@ class OrgDepartmentMutationsMixin:
             new_departments: tuple[Department, ...],
             version: str,
         ) -> None:
+            """Run write."""
             await self._write_departments(
                 new_departments,
                 expected_updated_at=version,
@@ -152,11 +174,23 @@ class OrgDepartmentMutationsMixin:
         if_match: str | None = None,
         saved_by: str = "api",
     ) -> Department:
-        """Update an existing department."""
+        """Update an existing department.
+
+        Returns:
+            ``Department`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+        """
         captured: dict[str, Department] = {}
         captured_updates: dict[str, Any] = {}
 
         async def read() -> tuple[tuple[Department, ...], str]:
+            """Return read.
+
+            Raises:
+                NotFoundError: Raised on the corresponding failure path.
+            """
             _, version = await self._read_setting_versioned(
                 "company",
                 "departments",
@@ -197,6 +231,7 @@ class OrgDepartmentMutationsMixin:
             new_departments: tuple[Department, ...],
             version: str,
         ) -> None:
+            """Run write."""
             await self._write_departments(
                 new_departments,
                 expected_updated_at=version,
@@ -223,12 +258,20 @@ class OrgDepartmentMutationsMixin:
         TOCTOU-safe: CAS guards both the departments and agents
         settings simultaneously via ``set_many`` so a concurrent
         agent reattach cannot race the department removal.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
         """
         from synthorg.api.services._org_serialization import (  # noqa: PLC0415
             json_dump_models as _json_dump_models,
         )
 
         async def read() -> tuple[dict[str, Any], str]:
+            """Return read.
+
+            Raises:
+                NotFoundError: Raised on the corresponding failure path.
+            """
             _, dept_version = await self._read_setting_versioned(
                 "company",
                 "departments",
@@ -258,6 +301,7 @@ class OrgDepartmentMutationsMixin:
             return payload, ""
 
         async def write(payload: dict[str, Any], _version: str) -> None:
+            """Run write."""
             await self._settings.set_many(
                 [
                     (
@@ -286,7 +330,11 @@ class OrgDepartmentMutationsMixin:
         department_name: str,
         agents: Sequence[AgentConfig],
     ) -> None:
-        """Raise ConflictError when any agent references the department."""
+        """Raise ConflictError when any agent references the department.
+
+        Raises:
+            ConflictError: Raised on the corresponding failure path.
+        """
         attached = tuple(a for a in agents if compare_ci(a.department, department_name))
         if not attached:
             return
@@ -308,9 +356,14 @@ class OrgDepartmentMutationsMixin:
         *,
         saved_by: str = "api",
     ) -> tuple[Department, ...]:
-        """Reorder departments."""
+        """Reorder departments.
+
+        Returns:
+            Tuple of the declared element types.
+        """
 
         async def read() -> tuple[tuple[Department, ...], str]:
+            """Return read."""
             _, version = await self._read_setting_versioned(
                 "company",
                 "departments",
@@ -331,6 +384,7 @@ class OrgDepartmentMutationsMixin:
             reordered: tuple[Department, ...],
             version: str,
         ) -> None:
+            """Run write."""
             await self._write_departments(reordered, expected_updated_at=version)
             await self._snapshot_company(saved_by=saved_by)
 

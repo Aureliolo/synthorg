@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, create_model
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.mcp.handler_protocol import ToolHandler
 from synthorg.meta.mcp.registry import MCPToolDef, ToolDefReader
@@ -58,6 +59,9 @@ def _python_type_for(prop_schema: object) -> Any | None:
     mapped Python type for a known type. Returns ``None`` for an explicit
     but unknown/unsupported ``type`` so the caller rejects the blueprint
     rather than silently accepting any value for that field.
+
+    Returns:
+        The ``Any`` value when present, ``None`` otherwise.
     """
     if not isinstance(prop_schema, dict):
         return Any
@@ -70,7 +74,11 @@ def _python_type_for(prop_schema: object) -> Any | None:
 
 
 def _model_class_name(tool_name: str) -> str:
-    """Derive a valid Python class name from a tool name."""
+    """Derive a valid Python class name from a tool name.
+
+    Returns:
+        Resulting string.
+    """
     parts = [p for p in _MODEL_NAME_RE.sub("_", tool_name).split("_") if p]
     camel = "".join(p[:1].upper() + p[1:] for p in parts)
     candidate = f"{camel}Args"
@@ -126,9 +134,8 @@ def build_args_model(blueprint: ToolBlueprint) -> type[BaseModel]:
             __config__=ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False),
             **field_defs,
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         msg = (
             f"blueprint {blueprint.name!r} args model materialization failed: "
             f"{type(exc).__name__}"
@@ -145,6 +152,9 @@ def blueprint_to_mcp_def(blueprint: ToolBlueprint) -> MCPToolDef:
     Raises:
         ToolRegistrationError: If the schema cannot be materialised or the
             resulting definition violates the MCP tool contract.
+
+    Returns:
+        ``MCPToolDef`` instance.
     """
     args_model = build_args_model(blueprint)
     try:
@@ -216,7 +226,11 @@ class DynamicToolRegistry:
         )
 
     async def unregister(self, name: NotBlankStr) -> bool:
-        """Remove a live tool by name; ``True`` iff it was present."""
+        """Remove a live tool by name; ``True`` iff it was present.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         async with self._lock:
             if name not in self._snapshot:
                 return False
@@ -227,7 +241,11 @@ class DynamicToolRegistry:
         return True
 
     def names(self) -> tuple[NotBlankStr, ...]:
-        """Return the currently-registered dynamic tool names (sorted)."""
+        """Return the currently-registered dynamic tool names (sorted).
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return tuple(NotBlankStr(n) for n in sorted(self._snapshot))
 
     def capabilities(self) -> tuple[NotBlankStr, ...]:
@@ -236,6 +254,9 @@ class DynamicToolRegistry:
         The toolsmith generator consumes this as a dedup hint so authored
         tools never duplicate a capability already live in the dynamic
         layer of the same process.
+
+        Returns:
+            Tuple of the declared element types.
         """
         return tuple(
             NotBlankStr(entry.definition.capability)
@@ -243,12 +264,20 @@ class DynamicToolRegistry:
         )
 
     def get_def(self, name: str) -> MCPToolDef | None:
-        """Return the definition for ``name``, or ``None`` if absent."""
+        """Return the definition for ``name``, or ``None`` if absent.
+
+        Returns:
+            The ``MCPToolDef`` value when present, ``None`` otherwise.
+        """
         entry = self._snapshot.get(name)
         return entry.definition if entry is not None else None
 
     def get_handler(self, handler_key: str) -> ToolHandler | None:
-        """Return the handler for ``handler_key``, or ``None`` if absent."""
+        """Return the handler for ``handler_key``, or ``None`` if absent.
+
+        Returns:
+            The ``ToolHandler`` value when present, ``None`` otherwise.
+        """
         entry = self._snapshot.get(handler_key)
         return entry.handler if entry is not None else None
 
@@ -273,6 +302,9 @@ class LayeredToolRegistry:
 
         Raises:
             KeyError: If neither layer knows the name.
+
+        Returns:
+            ``MCPToolDef`` instance.
         """
         try:
             return self._static.get(name)
@@ -283,7 +315,11 @@ class LayeredToolRegistry:
             return dynamic
 
     def get_names(self) -> tuple[str, ...]:
-        """Return all known tool names (static + dynamic), sorted."""
+        """Return all known tool names (static + dynamic), sorted.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return tuple(sorted({*self._static.get_names(), *self._dynamic.names()}))
 
 
@@ -299,7 +335,14 @@ class LayeredHandlerMap(Mapping[str, ToolHandler]):
         self._dynamic = dynamic_registry
 
     def __getitem__(self, key: str) -> ToolHandler:
-        """Resolve a handler, static layer first then dynamic."""
+        """Resolve a handler, static layer first then dynamic.
+
+        Returns:
+            ``ToolHandler`` instance.
+
+        Raises:
+            KeyError: Raised on the corresponding failure path.
+        """
         if key in self._static:
             return self._static[key]
         handler = self._dynamic.get_handler(key)
@@ -316,7 +359,11 @@ class LayeredHandlerMap(Mapping[str, ToolHandler]):
                 yield name
 
     def __len__(self) -> int:
-        """Return the count of distinct static + dynamic keys."""
+        """Return the count of distinct static + dynamic keys.
+
+        Returns:
+            Resulting integer.
+        """
         return len(set(self._static) | set(self._dynamic.names()))
 
 

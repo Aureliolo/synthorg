@@ -24,30 +24,37 @@ _EPSILON: Final[float] = 1e-9
 
 
 def _perf_quality(s: OrgSignalSnapshot) -> float:
+    """Return perf quality."""
     return s.performance.avg_quality_score
 
 
 def _perf_success(s: OrgSignalSnapshot) -> float:
+    """Return perf success."""
     return s.performance.avg_success_rate
 
 
 def _perf_collab(s: OrgSignalSnapshot) -> float:
+    """Return perf collab."""
     return s.performance.avg_collaboration_score
 
 
 def _budget_spend(s: OrgSignalSnapshot) -> float:
+    """Return budget spend."""
     return s.budget.total_spend
 
 
 def _budget_orch(s: OrgSignalSnapshot) -> float:
+    """Return budget orch."""
     return s.budget.orchestration_overhead
 
 
 def _coord_overhead(s: OrgSignalSnapshot) -> float | None:
+    """Return coord overhead."""
     return s.coordination.coordination_overhead_pct
 
 
 def _error_count(s: OrgSignalSnapshot) -> float:
+    """Return error count."""
     return float(s.errors.total_findings)
 
 
@@ -127,7 +134,11 @@ class OrgInflectionDetector:
         new_val: float,
         now: datetime,
     ) -> OrgInflection | None:
-        """Check a single metric for significant change."""
+        """Check a single metric for significant change.
+
+        Returns:
+            The ``OrgInflection`` value when present, ``None`` otherwise.
+        """
         if old_val == 0.0 and new_val == 0.0:
             return None
         ratio = abs(new_val - old_val) / max(

@@ -28,7 +28,6 @@ from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
-    invalid_argument,
 )
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -100,27 +99,41 @@ _ARG_RISK_LEVEL = "risk_level"
 
 
 def _coerce_status(raw: Any) -> ApprovalStatus | None:
-    """Map a string argument to ``ApprovalStatus`` or raise."""
+    """Map a string argument to ``ApprovalStatus`` or raise.
+
+    Returns:
+        The ``ApprovalStatus`` value when present, ``None`` otherwise.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     if raw is None:
         return None
     if not isinstance(raw, str):
-        raise invalid_argument(_ARG_STATUS, _TY_STRING)
+        raise ArgumentValidationError(_ARG_STATUS, _TY_STRING)
     try:
         return ApprovalStatus(raw)
     except ValueError as exc:
-        raise invalid_argument(_ARG_STATUS, _TY_STATUS) from exc
+        raise ArgumentValidationError(_ARG_STATUS, _TY_STATUS) from exc
 
 
 def _coerce_risk(raw: Any, *, field: str = "risk_level") -> ApprovalRiskLevel | None:
-    """Map a string argument to ``ApprovalRiskLevel`` or raise."""
+    """Map a string argument to ``ApprovalRiskLevel`` or raise.
+
+    Returns:
+        The ``ApprovalRiskLevel`` value when present, ``None`` otherwise.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     if raw is None:
         return None
     if not isinstance(raw, str):
-        raise invalid_argument(field, _TY_STRING)
+        raise ArgumentValidationError(field, _TY_STRING)
     try:
         return ApprovalRiskLevel(raw)
     except ValueError as exc:
-        raise invalid_argument(field, _TY_RISK) from exc
+        raise ArgumentValidationError(field, _TY_RISK) from exc
 
 
 # --- handlers --------------------------------------------------------------
@@ -132,7 +145,14 @@ async def _list_approvals(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Handler: ``synthorg_approvals_list``."""
+    """Handler: ``synthorg_approvals_list``.
+
+    Returns:
+        Resulting string.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     tool = "synthorg_approvals_list"
 
     # Arg parsing (may raise ArgumentValidationError).
@@ -143,7 +163,7 @@ async def _list_approvals(
         action_type: str | None = None
         if action_type_raw is not None:
             if not isinstance(action_type_raw, str) or not action_type_raw.strip():
-                raise invalid_argument(_ARG_ACTION_TYPE, _TY_NON_BLANK)
+                raise ArgumentValidationError(_ARG_ACTION_TYPE, _TY_NON_BLANK)
             action_type = action_type_raw.strip()
         offset, limit = coerce_pagination(arguments)
     except ArgumentValidationError as exc:
@@ -174,7 +194,11 @@ async def _get_approval(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
-    """Handler: ``synthorg_approvals_get``."""
+    """Handler: ``synthorg_approvals_get``.
+
+    Returns:
+        Resulting string.
+    """
     tool = "synthorg_approvals_get"
 
     try:
@@ -204,7 +228,14 @@ async def _create_approval(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Handler: ``synthorg_approvals_create``."""
+    """Handler: ``synthorg_approvals_create``.
+
+    Returns:
+        Resulting string.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     tool = "synthorg_approvals_create"
 
     try:
@@ -215,12 +246,12 @@ async def _create_approval(
         if title_raw is None:
             title = description[:80]
         elif not isinstance(title_raw, str) or not title_raw.strip():
-            raise invalid_argument(_ARG_TITLE, _TY_NON_BLANK)
+            raise ArgumentValidationError(_ARG_TITLE, _TY_NON_BLANK)
         else:
             title = title_raw
         risk = _coerce_risk(arguments.get("risk_level", "medium"))
         if risk is None:
-            raise invalid_argument(_ARG_RISK_LEVEL, _TY_RISK)
+            raise ArgumentValidationError(_ARG_RISK_LEVEL, _TY_RISK)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -270,6 +301,9 @@ async def _decide(
         _NotFoundError: Approval id does not exist or was removed.
         _ConflictError: Item already decided or in-flight save.
         ArgumentValidationError: Actor is missing a decidable name.
+
+    Returns:
+        ``ApprovalItem`` instance.
     """
     decided_by = require_actor_id(actor)
     existing = await app_state.approval_store.get(approval_id)
@@ -310,14 +344,21 @@ async def _approve(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
-    """Handler: ``synthorg_approvals_approve``."""
+    """Handler: ``synthorg_approvals_approve``.
+
+    Returns:
+        Resulting string.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     tool = "synthorg_approvals_approve"
 
     try:
         approval_id = require_non_blank(arguments, "approval_id")
         comment = arguments.get("comment")
         if comment is not None and not isinstance(comment, str):
-            raise invalid_argument(_ARG_COMMENT, _TY_STRING)
+            raise ArgumentValidationError(_ARG_COMMENT, _TY_STRING)
     except ArgumentValidationError as exc:
         log_handler_argument_invalid(tool, exc)
         return err(exc)
@@ -357,6 +398,9 @@ async def _reject(
 
     Guardrails (via ``require_admin_guardrails``): ``confirm=True``,
     non-blank ``reason``, non-``None`` ``actor``.
+
+    Returns:
+        Resulting string.
     """
     tool = "synthorg_approvals_reject"
 

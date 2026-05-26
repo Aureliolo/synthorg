@@ -50,6 +50,12 @@ class CursorConfig(BaseModel):
         see a startup warning about the explicit secret being missing.
         Raising here makes the intent unambiguous: pass ``None`` for
         ephemeral, or a real key.
+
+        Returns:
+            ``object`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if isinstance(value, str) and not value.strip():
             msg = "cursor secret must not be blank; use None for ephemeral"
@@ -65,6 +71,12 @@ class CursorConfig(BaseModel):
         so the startup log surfaces the typo, instead of silently
         routing to the ephemeral branch which would quietly invalidate
         pagination tokens on every restart.
+
+        Returns:
+            ``CursorConfig`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         raw = os.environ.get(_ENV_VAR)
         if raw is None:

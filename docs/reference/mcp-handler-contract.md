@@ -63,7 +63,7 @@ Use the helpers in `common_args.py` for tools without `args_model`:
 
 For actor identity: use `actor_id(actor)` for optional attribution, `require_actor_id(actor)` when attribution is mandatory (raises if missing), and `actor_label(actor)` only for emit-only paths where a `"mcp-anonymous"` fallback is acceptable.
 
-In every case, catch `ArgumentValidationError` and return `err(exc)`. Never let raw `TypeError` / `ValueError` escape from `int(...)` / enum coercion; wrap them and call `invalid_argument(name, expected)`.
+In every case, catch `ArgumentValidationError` and return `err(exc)`. Never let raw `TypeError` / `ValueError` escape from `int(...)` / enum coercion; wrap them by raising `ArgumentValidationError(name, expected)` directly.
 
 ## Structured logging
 

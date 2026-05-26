@@ -29,6 +29,9 @@ def _atomic_write(target: Path, content: str) -> None:
     rename is atomic on POSIX and Windows for files on the same
     volume, so a crash in the middle leaves either the old file or
     the new file fully written, never a half-written one.
+
+    Raises:
+        BaseException: Raised on the corresponding failure path.
     """
     parent = target.parent
     parent.mkdir(parents=True, exist_ok=True)
@@ -76,6 +79,9 @@ class WorkspaceCodeMutator:
         Raises:
             RollbackMutationDeniedError: If the path escapes the
                 workspace, or the underlying write fails.
+            MemoryError: Raised on the corresponding failure path.
+            RecursionError: Raised on the corresponding failure path.
+            CancelledError: Raised on the corresponding failure path.
         """
         try:
             resolved = self._path_validator.validate(path)

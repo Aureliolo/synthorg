@@ -31,6 +31,7 @@ from synthorg.api.pagination import (
 from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.domain_errors import ValidationError as DomainValidationError
 from synthorg.core.normalization import compare_ci
@@ -128,7 +129,14 @@ class TestSinkConfigResponse(BaseModel):
 
     @model_validator(mode="after")
     def _check_consistency(self) -> Self:
-        """Ensure valid=True implies error is None and vice-versa."""
+        """Ensure valid=True implies error is None and vice-versa.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.valid and self.error is not None:
             msg = "valid=True requires error to be None"
             raise ValueError(msg)
@@ -196,6 +204,9 @@ def _hash_sink_target(target: str) -> str:
     sinks).  The fingerprint length is centralised in
     :data:`SINK_IDENTIFIER_FINGERPRINT_LENGTH` so the wire-format
     contract changes in one place.
+
+    Returns:
+        Resulting string.
     """
     return hashlib.sha256(target.encode("utf-8")).hexdigest()[
         :SINK_IDENTIFIER_FINGERPRINT_LENGTH
@@ -224,6 +235,9 @@ def _sink_identifier(sink: SinkConfig) -> str:
     ``unnamed-<type>`` fallback only fires defensively against a
     future sink type that hasn't been wired here yet, never on
     well-formed config.
+
+    Returns:
+        Resulting string.
     """
     if sink.sink_type == SinkType.CONSOLE:
         return CONSOLE_SINK_ID
@@ -246,7 +260,11 @@ def _sink_to_response(
     enabled: bool = True,
     routing_prefixes: tuple[str, ...] | None = None,
 ) -> SinkInfoResponse:
-    """Convert a SinkConfig to the typed API response model."""
+    """Convert a SinkConfig to the typed API response model.
+
+    Returns:
+        ``SinkInfoResponse`` instance.
+    """
     identifier = _sink_identifier(sink)
     return SinkInfoResponse(
         identifier=NotBlankStr(identifier),
@@ -267,7 +285,11 @@ def _sink_to_response(
 
 
 def _validate_namespace(namespace: str) -> None:
-    """Raise 404 if namespace is not a known SettingNamespace member."""
+    """Raise 404 if namespace is not a known SettingNamespace member.
+
+    Raises:
+        NotFoundError: Raised on the corresponding failure path.
+    """
     if namespace not in _VALID_NAMESPACES:
         msg = f"Unknown namespace: {namespace!r}"
         logger.warning(
@@ -458,6 +480,9 @@ class SettingsController(Controller):
 
         Returns:
             Resolved setting entry with ETag response header.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
         """
         _validate_namespace(namespace)
         app_state: AppState = state.app_state
@@ -495,7 +520,21 @@ class SettingsController(Controller):
         key: PathKey,
         data: UpdateSettingRequest,
     ) -> Response[ApiResponse[SettingEntry]]:
-        """Update a setting value with optimistic concurrency."""
+        """Update a setting value with optimistic concurrency.
+
+        Returns:
+            ``Response[ApiResponse[SettingEntry]]`` wrapping the
+            updated setting entry.
+
+        Raises:
+            NotFoundError: The setting key is not registered.
+            ValidationError: The payload failed schema or value
+                validation.
+            DomainValidationError: A typed domain rule rejected the
+                update.
+            SettingsEncryptionFailedError: Encryption of a sensitive
+                value failed.
+        """
         _validate_namespace(namespace)
         app_state: AppState = state.app_state
 
@@ -573,6 +612,9 @@ class SettingsController(Controller):
             state: Application state.
             namespace: Setting namespace.
             key: Setting key.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
         """
         _validate_namespace(namespace)
         app_state: AppState = state.app_state
@@ -678,6 +720,9 @@ class SettingsController(Controller):
 
         Returns:
             Validation result with valid flag and optional error.
+
+        Raises:
+            SinkConfigValidationError: Raised on the corresponding failure path.
         """
         try:
             build_log_config_from_settings(
@@ -691,9 +736,8 @@ class SettingsController(Controller):
             return ApiResponse(
                 data=TestSinkConfigResponse(valid=False, error=msg),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, SETTINGS_OBSERVABILITY_VALIDATION_FAILED, exc
             )
@@ -762,6 +806,8 @@ class SettingsController(Controller):
         Raises:
             DomainValidationError: If the config fails validation
                 (HTTP 422).
+            ValidationError: Generic schema-level validation rejected
+                a registered setting value.
         """
         app_state: AppState = state.app_state
         try:
@@ -896,9 +942,8 @@ async def _get_setting_or_default(
             key=key,
         )
         return fallback
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
             namespace=SettingNamespace.OBSERVABILITY.value,

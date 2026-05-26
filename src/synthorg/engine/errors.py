@@ -2,7 +2,11 @@
 
 from typing import TYPE_CHECKING, ClassVar
 
-from synthorg.core.domain_errors import DomainError, VersionConflictError
+from synthorg.core.domain_errors import (
+    DomainError,
+    NotFoundError,
+    VersionConflictError,
+)
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 
@@ -398,8 +402,13 @@ class TaskMutationError(TaskEngineError):
     default_message: ClassVar[str] = "Task mutation invalid"
 
 
-class TaskNotFoundError(TaskMutationError):
-    """Raised when a task is not found during mutation."""
+class TaskNotFoundError(TaskMutationError, NotFoundError):
+    """Raised when a task is not found during mutation.
+
+    Multi-inherits :class:`TaskMutationError` (engine-layer family
+    catch) and :class:`NotFoundError` (API-layer
+    :func:`require_resource_or_404` accepts as ``error_class``).
+    """
 
     status_code: ClassVar[int] = 404
     error_code: ClassVar[ErrorCode] = ErrorCode.TASK_NOT_FOUND
@@ -516,8 +525,13 @@ class WorkflowConditionEvalError(WorkflowExecutionError):
     default_message: ClassVar[str] = "Workflow condition evaluation failed"
 
 
-class WorkflowExecutionNotFoundError(WorkflowExecutionError):
-    """Raised when a workflow execution instance is not found."""
+class WorkflowExecutionNotFoundError(WorkflowExecutionError, NotFoundError):
+    """Raised when a workflow execution instance is not found.
+
+    Multi-inherits :class:`WorkflowExecutionError` (engine-layer
+    family catch) and :class:`NotFoundError`
+    (:func:`require_resource_or_404` accepts as ``error_class``).
+    """
 
     status_code: ClassVar[int] = 404
     error_code: ClassVar[ErrorCode] = ErrorCode.WORKFLOW_EXECUTION_NOT_FOUND

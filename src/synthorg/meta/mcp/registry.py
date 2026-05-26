@@ -84,13 +84,24 @@ class MCPToolDef(BaseModel):
 
     @model_validator(mode="after")
     def _deepcopy_parameters(self) -> Self:
-        """Deep-copy parameters at construction to prevent shared mutable state."""
+        """Deep-copy parameters at construction to prevent shared mutable state.
+
+        Returns:
+            ``Self`` instance.
+        """
         object.__setattr__(self, "parameters", deepcopy(self.parameters))
         return self
 
     @model_validator(mode="after")
     def _validate_name_prefix(self) -> Self:
-        """Enforce ``synthorg_{domain}_{action}`` naming convention."""
+        """Enforce ``synthorg_{domain}_{action}`` naming convention.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if not self._NAME_RE.match(self.name):
             msg = (
                 f"Tool name must match 'synthorg_{{domain}}_{{action}}' "
@@ -101,7 +112,14 @@ class MCPToolDef(BaseModel):
 
     @model_validator(mode="after")
     def _validate_capability_format(self) -> Self:
-        """Enforce ``domain:action`` capability format."""
+        """Enforce ``domain:action`` capability format.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if not self._CAPABILITY_RE.match(self.capability):
             msg = (
                 f"Capability must match 'domain:action' "
@@ -122,6 +140,12 @@ class MCPToolDef(BaseModel):
         rejects shapes the wire schema accepts (or vice versa), or the
         wire schema documents one contract while validation enforces
         another -- both of which surface as silent caller bugs.
+
+        Returns:
+            ``Self`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if self.args_model is None:
             return self
@@ -193,12 +217,20 @@ class DomainToolRegistry:
 
     @property
     def frozen(self) -> bool:
-        """Whether the registry has been frozen."""
+        """Whether the registry has been frozen.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._frozen
 
     @property
     def tool_count(self) -> int:
-        """Number of registered tools."""
+        """Number of registered tools.
+
+        Returns:
+            Resulting integer.
+        """
         return len(self._tools)
 
     def register(self, tool: MCPToolDef) -> None:

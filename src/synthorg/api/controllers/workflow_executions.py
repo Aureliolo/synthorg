@@ -19,7 +19,6 @@ from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.core.domain_errors import NotFoundError, VersionConflictError
-from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.persistence_errors import (
     PersistenceVersionConflictError,
     RecordNotFoundError,
@@ -48,6 +47,9 @@ def _extract_username(request: Request[Any, Any, Any]) -> str:
     fallback warning fires for those cases too -- ``str(None)`` would
     otherwise persist the literal string ``"None"`` as the actor on
     workflow audit entries.
+
+    Returns:
+        Resulting string.
     """
     user = getattr(request, "user", None)
     if user is not None:
@@ -75,6 +77,9 @@ async def _build_service(state: State) -> WorkflowExecutionService:
     unavailable (test fixtures wiring the controller without the full
     settings stack), falls back to the bridge config's Pydantic
     default so the service still receives a valid depth limit.
+
+    Returns:
+        ``WorkflowExecutionService`` instance.
     """
     from synthorg.settings.bridge_configs import (  # noqa: PLC0415
         EngineBridgeConfig,
@@ -119,6 +124,12 @@ class WorkflowExecutionController(Controller):
         ``WorkflowDefinitionInvalidError`` (422), ``WorkflowConditionEvalError``
         (422) and ``PersistenceError`` (500) propagate to the centralised
         RFC 9457 dispatch in ``api/exception_handlers.py``.
+
+        Returns:
+            ``Response[ApiResponse[WorkflowExecution]]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
         """
         activated_by = _extract_username(request)
         service = await _build_service(state)
@@ -153,7 +164,11 @@ class WorkflowExecutionController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = _DEFAULT_PAGE_SIZE,
     ) -> Response[PaginatedResponse[WorkflowExecution] | ApiResponse[None]]:
-        """List executions for a workflow definition with cursor pagination."""
+        """List executions for a workflow definition with cursor pagination.
+
+        Returns:
+            Result matching the declared return annotation.
+        """
         service = await _build_service(state)
         # Over-fetch by one page so the cursor paginator can detect
         # has_more without a separate COUNT round-trip.
@@ -180,7 +195,11 @@ class WorkflowExecutionController(Controller):
         state: State,
         execution_id: PathId,
     ) -> Response[ApiResponse[WorkflowExecution]]:
-        """Get a specific workflow execution."""
+        """Get a specific workflow execution.
+
+        Returns:
+            ``Response[ApiResponse[WorkflowExecution]]`` instance.
+        """
         service = await _build_service(state)
         execution = await service.get_execution(execution_id)
         execution = require_resource_or_404(
@@ -190,7 +209,7 @@ class WorkflowExecutionController(Controller):
             log_event=WORKFLOW_EXEC_NOT_FOUND,
             operation="read",
             extra_log_kwargs={"execution_id": execution_id},
-            code=ErrorCode.WORKFLOW_EXECUTION_NOT_FOUND,
+            error_class=WorkflowExecutionNotFoundError,
         )
         return Response(
             content=ApiResponse[WorkflowExecution](data=execution),
@@ -219,6 +238,13 @@ class WorkflowExecutionController(Controller):
         ``WorkflowExecutionAlreadyTerminalError`` propagates from the
         engine; only the persistence-layer race is re-mapped here.
         ``PersistenceError`` (500) propagates unchanged.
+
+        Returns:
+            ``Response[ApiResponse[WorkflowExecution]]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+            VersionConflictError: Raised on the corresponding failure path.
         """
         cancelled_by = _extract_username(request)
         service = await _build_service(state)

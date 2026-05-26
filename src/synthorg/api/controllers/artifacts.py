@@ -16,6 +16,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.responses import require_resource_or_404
 from synthorg.api.ws_models import WsEventType
 from synthorg.core.artifact import Artifact
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     ArtifactRejectedTooLargeError,
     ArtifactStorageRejectedFullError,
@@ -57,6 +58,9 @@ def _service(state: State) -> ArtifactService:
     plumbed in so the service can orchestrate
     :meth:`ArtifactService.delete_with_content` (storage delete +
     persistence delete with the right ordering and error taxonomy).
+
+    Returns:
+        ``ArtifactService`` instance.
     """
     return ArtifactService(
         repo=state.app_state.persistence.artifacts,
@@ -135,6 +139,8 @@ async def _save_metadata_with_rollback(
             ``PersistenceError`` only would leave stored content
             behind on any other failure mode (validation,
             serialisation, etc.).
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
     """
     try:
         await service.save(updated)
@@ -405,6 +411,11 @@ class ArtifactController(Controller):
 
         Returns:
             Updated artifact metadata with size_bytes set.
+
+        Raises:
+            ArtifactRejectedTooLargeError: Raised on the corresponding failure path.
+            ArtifactStorageRejectedFullError: Raised on the corresponding failure path.
+            Exception: Raised on the corresponding failure path.
         """
         service = _service(state)
         artifact = require_resource_or_404(
@@ -440,9 +451,8 @@ class ArtifactController(Controller):
                 note="artifact_storage_full",
             )
             raise ArtifactStorageRejectedFullError from exc
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Catch-all so any other backend / storage failure leaves an
             # operator-visible breadcrumb on the standardized error path
             # this PR is widening; the original exception still
@@ -508,6 +518,7 @@ class ArtifactController(Controller):
         Raises:
             NotFoundError: If the artifact metadata or content is
                 missing (HTTP 404).
+            Exception: Raised on the corresponding failure path.
         """
         artifact = require_resource_or_404(
             await _service(state).get(artifact_id),
@@ -528,9 +539,8 @@ class ArtifactController(Controller):
             )
             msg = f"Artifact content for {artifact_id!r} not found"
             raise NotFoundError(msg) from exc
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Catch-all so any backend / storage failure on the
             # download path leaves an operator-visible breadcrumb
             # alongside the standardized error path; the original

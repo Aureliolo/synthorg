@@ -10,7 +10,11 @@ if TYPE_CHECKING:
 
 
 def json_dump_models(models: Sequence[BaseModel]) -> str:
-    """Serialize a sequence of Pydantic models to compact JSON."""
+    """Serialize a sequence of Pydantic models to compact JSON.
+
+    Returns:
+        Resulting string.
+    """
     return json.dumps(
         [m.model_dump(mode="json") for m in models],
         separators=(",", ":"),

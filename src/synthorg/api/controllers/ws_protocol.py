@@ -64,6 +64,9 @@ def matches_filters(
     by sending ``{"task_id": null}`` as the filter: payloads without
     that key would match. Use explicit ``in``-checks instead so a
     missing payload key always fails the filter.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     payload = event.get("payload", {})
     if not isinstance(payload, dict):
@@ -92,6 +95,9 @@ def channel_allowed(
     - User channels: only the owning user.
     - Budget channels: CEO or Manager only.
     - All others: any read-capable user.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     if is_user_channel(channel):
         return extract_user_id(channel) == conn_user.user_id
@@ -109,6 +115,9 @@ def parse_event_payload(event_data: bytes) -> dict[str, Any] | None:
     ``event_data.decode("utf-8")`` call in ``ws.py`` would then fail
     on the same bytes. Decoding here first catches both cases with a
     single ``UnicodeDecodeError``.
+
+    Returns:
+        The ``dict[str, Any]`` value when present, ``None`` otherwise.
     """
     try:
         text = (
@@ -144,7 +153,11 @@ def parse_event_payload(event_data: bytes) -> dict[str, Any] | None:
 
 
 def _parse_ws_message(data: str) -> dict[str, Any] | str:
-    """Parse raw JSON from the client, returning a dict or an error string."""
+    """Parse raw JSON from the client, returning a dict or an error string.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
     encoded = data.encode()
     if len(encoded) > _MAX_WS_MESSAGE_BYTES:
         logger.warning(
@@ -194,6 +207,9 @@ def handle_message(
     Malformed frames emit ``api.boundary.validation_failed`` and the
     legacy ``api.ws.invalid_message`` event in tandem so operators
     keep the ws-specific search trail.
+
+    Returns:
+        Resulting string.
     """
     parsed = _parse_ws_message(data)
     if isinstance(parsed, str):
@@ -252,6 +268,9 @@ def _handle_subscribe_typed(
         ``None``  -- filters key absent, leave existing filters unchanged.
         ``{}``    -- explicitly clear filters for the subscribed channels.
         ``{...}`` -- set new filters for the subscribed channels.
+
+    Returns:
+        Resulting string.
     """
     client_filters = message.filters
     if client_filters is not None and (
@@ -305,7 +324,11 @@ def _handle_unsubscribe(
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
 ) -> str:
-    """Process an unsubscribe action."""
+    """Process an unsubscribe action.
+
+    Returns:
+        Resulting string.
+    """
     subscribed -= set(channels)
     for c in channels:
         filters.pop(c, None)

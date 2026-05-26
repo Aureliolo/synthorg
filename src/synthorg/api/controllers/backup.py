@@ -77,6 +77,9 @@ async def _do_backup_as_dict(
     pollutes the cache; the controller's cache-hit branch already
     handles the symmetric "row already in cache fails to validate"
     case, so this closes the loop on both directions.
+
+    Returns:
+        Mapping with the declared key/value types.
     """
     manifest = await backup_callable()
     dumped = manifest.model_dump(mode="json")
@@ -132,6 +135,10 @@ class BackupController(Controller):
 
         Returns:
             Manifest of the created backup.
+
+        Raises:
+            ConflictError: Raised on the corresponding failure path.
+            InternalServerException: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
 
@@ -326,6 +333,7 @@ class BackupController(Controller):
             ConflictError: If a backup is in progress (409).
             NotFoundError: If the backup does not exist (404).
             InternalServerException: If the restore fails.
+            BackupNotFoundError: Raised on the corresponding failure path.
         """
         if not data.confirm:
             msg = "Restore requires confirm=true"

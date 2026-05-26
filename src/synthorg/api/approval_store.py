@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING
 from synthorg.api._approval_expiration import ApprovalExpirationMixin
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.enums import (
     ApprovalRiskLevel,
@@ -124,6 +125,9 @@ class ApprovalStore(ApprovalExpirationMixin):
         conversational-intake approvals cannot be durably persisted.
         Callers should refuse proposer wiring for unsupported
         persistence modes.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
         """
         return self._repo is not None
 
@@ -228,6 +232,9 @@ class ApprovalStore(ApprovalExpirationMixin):
         caller. The cache pop is unconditional even when the repo
         reports a miss so the in-memory view never holds an item
         that has already been removed durably.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
         """
         async with self._lock:
             cached = self._items.pop(approval_id, None)
@@ -235,9 +242,8 @@ class ApprovalStore(ApprovalExpirationMixin):
             if self._repo is not None:
                 try:
                     repo_removed = await self._repo.delete(approval_id)
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         API_APPROVAL_CONFLICT,
                         phase="delete_failed",
@@ -370,6 +376,9 @@ class ApprovalStore(ApprovalExpirationMixin):
         * Fires the optional ``on_expire`` callback for each item via
           :meth:`_fire_expire_callback` (best-effort; failures are
           logged at ERROR but do not unwind the expiration).
+
+        Returns:
+            Tuple of the declared element types.
         """
         assert self._repo is not None  # noqa: S101 -- caller invariant
         # Capture generation under the lock before any repo I/O so a
@@ -431,9 +440,8 @@ class ApprovalStore(ApprovalExpirationMixin):
                             tuple(item.id for item in to_persist),
                         ),
                     )
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     # Log the attempted ids before re-raising so a
                     # production failure on the batched expiry path
                     # is diagnosable -- otherwise the caller sees the
@@ -529,6 +537,10 @@ class ApprovalStore(ApprovalExpirationMixin):
         Returns:
             The saved item, or ``None`` if the ID was not found or a
             concurrent save already claimed it.
+
+        Raises:
+            CancelledError: Propagated unchanged if the awaiting
+                caller cancels the lock acquisition.
         """
         async with self._lock:
             if item.id not in self._items and self._repo is not None:
@@ -624,6 +636,10 @@ class ApprovalStore(ApprovalExpirationMixin):
             * a concurrent ``save()`` on the same id is mid-flight
               (its outcome is still committing, so the cached status
               may be stale).
+
+        Raises:
+            CancelledError: Propagated unchanged if the awaiting
+                caller cancels the lock acquisition.
         """
         async with self._lock:
             # Mirror the FWW guard from ``save()``: ``save()`` releases

@@ -140,7 +140,11 @@ def _insufficient_observations(
     treatment: GroupMetrics,
     min_obs: int,
 ) -> bool:
-    """Check if either group has fewer samples than required."""
+    """Check if either group has fewer samples than required.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+    """
     return (
         len(control.quality_samples) < min_obs
         or len(treatment.quality_samples) < min_obs
@@ -152,7 +156,11 @@ def _build_insufficient_result(
     treatment: GroupMetrics,
     min_obs: int,
 ) -> ABTestComparison:
-    """Build INCONCLUSIVE result for insufficient observations."""
+    """Build INCONCLUSIVE result for insufficient observations.
+
+    Returns:
+        ``ABTestComparison`` instance.
+    """
     logger.info(
         META_ABTEST_INCONCLUSIVE,
         reason="insufficient_observations",
@@ -172,7 +180,11 @@ def _build_regression_result(
     treatment: GroupMetrics,
     regressed: list[str],
 ) -> ABTestComparison:
-    """Build TREATMENT_REGRESSED result."""
+    """Build TREATMENT_REGRESSED result.
+
+    Returns:
+        ``ABTestComparison`` instance.
+    """
     logger.warning(
         META_ABTEST_TREATMENT_REGRESSED,
         regressed_metrics=list(regressed),
@@ -191,7 +203,11 @@ def _build_winner_result(
     effect: float,
     p_value: float,
 ) -> ABTestComparison:
-    """Build TREATMENT_WINS result."""
+    """Build TREATMENT_WINS result.
+
+    Returns:
+        ``ABTestComparison`` instance.
+    """
     logger.info(
         META_ABTEST_WINNER_DECLARED,
         winner="treatment",
@@ -213,7 +229,11 @@ def _build_no_difference_result(
     effect: float,
     p_value: float,
 ) -> ABTestComparison:
-    """Build INCONCLUSIVE result for no significant difference."""
+    """Build INCONCLUSIVE result for no significant difference.
+
+    Returns:
+        ``ABTestComparison`` instance.
+    """
     logger.info(
         META_ABTEST_INCONCLUSIVE,
         reason="no_significant_difference",
@@ -233,7 +253,11 @@ def _check_regressions(
     treatment: GroupMetrics,
     thresholds: RegressionThresholds,
 ) -> list[str]:
-    """Check if treatment regressed beyond thresholds."""
+    """Check if treatment regressed beyond thresholds.
+
+    Returns:
+        List of the declared element type.
+    """
     regressed: list[str] = []
 
     # Quality drop (lower is worse).
@@ -319,7 +343,11 @@ def _pooled_sd(
     control: tuple[float, ...],
     treatment: tuple[float, ...],
 ) -> float:
-    """Simple pooled standard deviation for Cohen's d."""
+    """Simple pooled standard deviation for Cohen's d.
+
+    Returns:
+        Resulting numeric value.
+    """
     n_a = len(control)
     n_b = len(treatment)
     if n_a < _MIN_SAMPLES_FOR_VARIANCE or n_b < _MIN_SAMPLES_FOR_VARIANCE:
@@ -341,6 +369,9 @@ def _practical_improvement(
     Returns ``0.0`` if control has zero mean (treat as no reference).
     Negative values (treatment worse) also return ``0.0`` -- the
     caller uses this to gate winner declarations.
+
+    Returns:
+        Resulting numeric value.
     """
     c = control.avg_quality_score
     t = treatment.avg_quality_score

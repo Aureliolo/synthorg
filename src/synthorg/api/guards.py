@@ -41,7 +41,11 @@ _READ_ROLES: frozenset[HumanRole] = _WRITE_ROLES | frozenset(
 
 
 def _get_role(connection: ASGIConnection) -> HumanRole | None:  # type: ignore[type-arg]
-    """Extract the human role from the authenticated user."""
+    """Extract the human role from the authenticated user.
+
+    Returns:
+        The ``HumanRole`` value when present, ``None`` otherwise.
+    """
     user = connection.scope.get("user")
     if user is not None and hasattr(user, "role"):
         try:
@@ -62,6 +66,9 @@ def has_write_role(role: HumanRole) -> bool:
 
     Use this for inline role checks instead of importing ``_WRITE_ROLES``
     directly.  The write set includes CEO, Manager, and Pair Programmer.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     return role in _WRITE_ROLES
 
@@ -153,6 +160,11 @@ def require_roles(
         connection: ASGIConnection,  # type: ignore[type-arg]
         _: object,
     ) -> None:
+        """Handle guard.
+
+        Raises:
+            PermissionDeniedException: Raised on the corresponding failure path.
+        """
         role = _get_role(connection)
         if role not in allowed:
             logger.warning(
@@ -197,7 +209,11 @@ _ORG_ROLE_DEPARTMENT_ADMIN = "department_admin"
 def _get_org_roles(
     connection: ASGIConnection,  # type: ignore[type-arg]
 ) -> tuple[str, ...]:
-    """Extract OrgRole string values from the authenticated user."""
+    """Extract OrgRole string values from the authenticated user.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     user = connection.scope.get("user")
     if user is not None and hasattr(user, "org_roles"):
         return tuple(r.value if hasattr(r, "value") else str(r) for r in user.org_roles)
@@ -207,7 +223,11 @@ def _get_org_roles(
 def _get_scoped_departments(
     connection: ASGIConnection,  # type: ignore[type-arg]
 ) -> tuple[str, ...]:
-    """Extract scoped departments from the authenticated user."""
+    """Extract scoped departments from the authenticated user.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     user = connection.scope.get("user")
     if user is not None and hasattr(user, "scoped_departments"):
         return tuple(str(d) for d in user.scoped_departments)
@@ -238,12 +258,20 @@ def require_org_mutation(
 
     Returns:
         A guard function compatible with Litestar's guard protocol.
+
+    Raises:
+        PermissionDeniedException: Raised on the corresponding failure path.
     """
 
     def guard(
         connection: ASGIConnection,  # type: ignore[type-arg]
         _: object,
     ) -> None:
+        """Handle guard.
+
+        Raises:
+            PermissionDeniedException: Raised on the corresponding failure path.
+        """
         org_roles = _get_org_roles(connection)
 
         # Backward compat: if no org_roles set, fall back to HumanRole

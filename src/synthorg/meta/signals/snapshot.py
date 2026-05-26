@@ -8,6 +8,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.models import (
     OrgBudgetSummary,
     OrgCoordinationSummary,
@@ -131,9 +132,8 @@ class SnapshotBuilder:
             """Run aggregator, store result on success."""
             try:
                 results[name] = await coro  # type: ignore[misc]
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger, META_SIGNAL_AGGREGATION_FAILED, exc, domain=name
                 )

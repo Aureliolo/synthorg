@@ -201,6 +201,9 @@ def _flatten_nullable_ref(
     ``{type: [T, "null"], enum: [..., null]}``.
 
     Returns ``True`` if the union was handled, ``False`` otherwise.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     ref: str = branch.get("$ref", "")
     if not ref.startswith(_SCHEMAS_PREFIX):
@@ -362,6 +365,9 @@ def _normalize_nullable_unions(
       for ``tuple[T, ...]`` item schemas).
     * **Discriminated unions** -- no ``{"type": "null"}`` entry and
       no empty-schema branch: left unchanged.
+
+    Returns:
+        ``Any`` instance.
     """
     if isinstance(obj, dict):
         result = {k: _normalize_nullable_unions(v, all_schemas) for k, v in obj.items()}
@@ -421,6 +427,9 @@ def _rewrite_refs(obj: Any) -> Any:
     ``#/components/schemas/``.  Other prefixes (e.g.
     already-rewritten ``#/components/schemas/``) pass through
     unchanged for idempotency.
+
+    Returns:
+        ``Any`` instance.
     """
     if isinstance(obj, dict):
         if "$ref" in obj:
@@ -442,7 +451,11 @@ def _envelope_example(
     error_category: ErrorCategory,
     retryable: bool,
 ) -> dict[str, Any]:
-    """Build an ``ApiResponse`` envelope example for an error response."""
+    """Build an ``ApiResponse`` envelope example for an error response.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
     title = CATEGORY_TITLES[error_category]
     type_uri = category_type_uri(error_category)
     return {
@@ -470,7 +483,11 @@ def _problem_detail_example(
     error_category: ErrorCategory,
     retryable: bool,
 ) -> dict[str, Any]:
-    """Build a bare RFC 9457 ``ProblemDetail`` example."""
+    """Build a bare RFC 9457 ``ProblemDetail`` example.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
     title = CATEGORY_TITLES[error_category]
     type_uri = category_type_uri(error_category)
     return {
@@ -487,7 +504,11 @@ def _problem_detail_example(
 
 
 def _build_reusable_response(spec: _ErrorResponseSpec) -> dict[str, Any]:
-    """Build a reusable response object with dual content types."""
+    """Build a reusable response object with dual content types.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
     return {
         "description": spec.description,
         "content": {
@@ -515,17 +536,29 @@ def _build_reusable_response(spec: _ErrorResponseSpec) -> dict[str, Any]:
 
 
 def _is_public_path(path: str) -> bool:
-    """Check whether a path is unauthenticated (no 401/403)."""
+    """Check whether a path is unauthenticated (no 401/403).
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+    """
     return any(path.endswith(suffix) for suffix in _PUBLIC_PATH_SUFFIXES)
 
 
 def _has_path_params(path: str) -> bool:
-    """Check whether a path contains ``{param}`` segments."""
+    """Check whether a path contains ``{param}`` segments.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
+    """
     return "{" in path
 
 
 def _response_ref(key: str) -> dict[str, str]:
-    """Build a ``$ref`` to a reusable response."""
+    """Build a ``$ref`` to a reusable response.
+
+    Returns:
+        Mapping with the declared key/value types.
+    """
     return {"$ref": f"#/components/responses/{key}"}
 
 
@@ -543,6 +576,9 @@ def _should_inject(
     Returns ``True`` when the given error response *key* is applicable
     to the *path*/*method* combination.  Returns ``False`` for
     unrecognised keys (defensive fallback).
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     is_public = _is_public_path(path)
     is_write = method in _WRITE_METHODS
@@ -578,6 +614,9 @@ def _is_litestar_validation_400(response: dict[str, Any]) -> bool:
     ``"Validation Exception"`` description that Litestar emits for
     request-body validation errors.  Custom 400 responses will not
     match this heuristic and are left untouched.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     content: dict[str, Any] = response.get("content", {})
     json_content: dict[str, Any] = content.get("application/json", {})
@@ -640,7 +679,11 @@ def _add_problem_detail_schema(schemas: dict[str, Any]) -> None:
 def _build_all_responses(
     responses: dict[str, Any],
 ) -> tuple[list[str], dict[str, str]]:
-    """Build reusable error responses and return keys + status mapping."""
+    """Build reusable error responses and return keys + status mapping.
+
+    Returns:
+        Tuple of the declared element types.
+    """
     response_keys: list[str] = []
     status_for_key: dict[str, str] = {}
     for spec in _ERROR_RESPONSES:

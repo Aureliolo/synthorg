@@ -9,6 +9,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any, Literal
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.chief_of_staff.models import ProposalOutcome
 from synthorg.meta.chief_of_staff.outcome_store import MemoryBackendOutcomeStore
@@ -86,6 +87,9 @@ def _redact_secrets(
     Operates on a copy so the caller's source data is never mutated.
     Unknown paths are silently ignored: redaction must remain a
     safe-default operation even when the config schema is in flux.
+
+    Returns:
+        Mapping with the declared key/value types.
     """
     redacted = dict(dump)
     for path in paths:
@@ -418,7 +422,11 @@ class SelfImprovementService:
         return tuple(approved)
 
     def _build_regression_thresholds(self) -> RegressionThresholds:
-        """Build RegressionThresholds from the service config."""
+        """Build RegressionThresholds from the service config.
+
+        Returns:
+            ``RegressionThresholds`` instance.
+        """
         rc = self._config.regression
         return RegressionThresholds(
             quality_drop=rc.quality_drop_threshold,
@@ -473,7 +481,14 @@ class SelfImprovementService:
         self,
         proposal: ImprovementProposal,
     ) -> tuple[ProposalApplier, RolloutStrategy]:
-        """Validate proposal status, applier, and strategy exist."""
+        """Validate proposal status, applier, and strategy exist.
+
+        Returns:
+            Tuple of the declared element types.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if proposal.status is not ProposalStatus.APPROVED:
             logger.error(
                 META_ROLLOUT_PRECONDITION_FAILED,
@@ -517,7 +532,11 @@ class SelfImprovementService:
         baseline: OrgSignalSnapshot | None,
         current: OrgSignalSnapshot | None,
     ) -> RolloutResult:
-        """Run tiered regression detection after a successful rollout."""
+        """Run tiered regression detection after a successful rollout.
+
+        Returns:
+            ``RolloutResult`` instance.
+        """
         if (
             baseline is None
             or current is None
@@ -554,13 +573,18 @@ class SelfImprovementService:
         snapshot: OrgSignalSnapshot,
         matches: tuple[RuleMatch, ...],
     ) -> list[ImprovementProposal]:
-        """Run strategies in parallel via TaskGroup."""
+        """Run strategies in parallel via TaskGroup.
+
+        Returns:
+            List of the declared element type.
+        """
         results: list[ImprovementProposal] = []
 
         async def _run(
             strategy: ImprovementStrategy,
             relevant: tuple[RuleMatch, ...],
         ) -> tuple[ImprovementProposal, ...]:
+            """Return run."""
             return await strategy.propose(
                 snapshot=snapshot,
                 triggered_rules=relevant,
@@ -632,9 +656,8 @@ class SelfImprovementService:
         if self._outcome_store is not None:
             try:
                 await self._outcome_store.record_outcome(outcome)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     COS_OUTCOME_RECORD_FAILED,
                     proposal_id=str(proposal.id),
@@ -658,6 +681,9 @@ class SelfImprovementService:
         every path in :data:`_SECRET_PATHS` -- callers (notably the MCP
         ``synthorg_meta_get_config`` tool) get a useful, auditable
         readout without leaking GitHub PATs into telemetry.
+
+        Returns:
+            Mapping with the declared key/value types.
         """
         dump = self._config.model_dump(mode="json")
         return _redact_secrets(dump, _SECRET_PATHS)
@@ -676,6 +702,9 @@ class SelfImprovementService:
                 would only generate misleading proposals; failing
                 fast is preferable to running a no-op against an
                 empty snapshot.
+
+        Returns:
+            ``ImprovementCycleResult`` instance.
         """
         if self._snapshot_builder is None:
             msg = (
@@ -696,9 +725,8 @@ class SelfImprovementService:
         started_monotonic = self._clock.monotonic()
         try:
             snapshot = await self._snapshot_builder()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 META_CYCLE_TRIGGER_FAILED,
                 reason="snapshot_builder_failed",
@@ -714,9 +742,8 @@ class SelfImprovementService:
             raise SelfImprovementTriggerError(msg) from exc
         try:
             proposals = await self.run_cycle(snapshot)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 META_CYCLE_TRIGGER_FAILED,
                 reason="run_cycle_failed",
@@ -746,9 +773,8 @@ class SelfImprovementService:
             if close is not None:
                 try:
                     await close()
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         META_SERVICE_CLOSE_FAILED,
                         reason="applier_close_failed",
@@ -759,9 +785,8 @@ class SelfImprovementService:
         if self._analytics_emitter is not None:
             try:
                 await self._analytics_emitter.aclose()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     XDEPLOY_EVENT_EMIT_FAILED,
                     reason="emitter_close_failed",

@@ -21,7 +21,6 @@ from synthorg.core.enums import ApprovalStatus
 from synthorg.meta.mcp.errors import (
     ArgumentValidationError,
     GuardrailViolationError,
-    invalid_argument,
 )
 from synthorg.meta.mcp.handler_protocol import (
     ToolHandler,  # noqa: TC001 -- PEP 649 annotation
@@ -62,27 +61,41 @@ _TY_PROPOSAL_SCHEMA = "valid ImprovementProposal schema"
 
 
 def _parse_status(arguments: dict[str, Any]) -> ApprovalStatus | None:
-    """Extract and validate the optional ``status`` filter."""
+    """Extract and validate the optional ``status`` filter.
+
+    Returns:
+        The ``ApprovalStatus`` value when present, ``None`` otherwise.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     status_raw = arguments.get(_ARG_STATUS)
     if status_raw in (None, ""):
         return None
     if not isinstance(status_raw, str):
-        raise invalid_argument(_ARG_STATUS, _TY_APPROVAL_STATUS)
+        raise ArgumentValidationError(_ARG_STATUS, _TY_APPROVAL_STATUS)
     try:
         return ApprovalStatus(status_raw)
     except ValueError as exc:
-        raise invalid_argument(_ARG_STATUS, _TY_APPROVAL_STATUS) from exc
+        raise ArgumentValidationError(_ARG_STATUS, _TY_APPROVAL_STATUS) from exc
 
 
 def _parse_proposal(arguments: dict[str, Any]) -> ImprovementProposal:
-    """Decode the ``proposal`` argument into a validated model."""
+    """Decode the ``proposal`` argument into a validated model.
+
+    Returns:
+        ``ImprovementProposal`` instance.
+
+    Raises:
+        ArgumentValidationError: Raised on the corresponding failure path.
+    """
     raw_proposal = arguments.get(_ARG_PROPOSAL)
     if not isinstance(raw_proposal, dict):
-        raise invalid_argument(_ARG_PROPOSAL, _TY_PROPOSAL_OBJ)
+        raise ArgumentValidationError(_ARG_PROPOSAL, _TY_PROPOSAL_OBJ)
     try:
         return ImprovementProposal.model_validate(raw_proposal)
     except ValidationError as exc:
-        raise invalid_argument(_ARG_PROPOSAL, _TY_PROPOSAL_SCHEMA) from exc
+        raise ArgumentValidationError(_ARG_PROPOSAL, _TY_PROPOSAL_SCHEMA) from exc
 
 
 async def _snapshot(
@@ -91,6 +104,7 @@ async def _snapshot(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return snapshot."""
     try:
         since, until = parse_time_window(arguments, until_required=False)
         snapshot = await app_state.signals_service.get_org_snapshot(
@@ -111,7 +125,11 @@ def _make_window_handler(
     tool_name: str,
     method_name: str,
 ) -> ToolHandler:
-    """Build a windowed-read handler dispatching to ``signals_service.<method>``."""
+    """Build a windowed-read handler dispatching to ``signals_service.<method>``.
+
+    Returns:
+        ``ToolHandler`` instance.
+    """
 
     async def handler(
         *,
@@ -119,6 +137,7 @@ def _make_window_handler(
         arguments: dict[str, Any],
         actor: AgentIdentity | None = None,  # noqa: ARG001
     ) -> str:
+        """Return handler."""
         try:
             since, until = parse_time_window(arguments, until_required=False)
             fn: Callable[..., Any] = getattr(app_state.signals_service, method_name)
@@ -140,6 +159,7 @@ async def _list_proposals(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,  # noqa: ARG001
 ) -> str:
+    """Return list proposals."""
     try:
         offset, limit = coerce_pagination(arguments)
         status = _parse_status(arguments)
@@ -164,6 +184,7 @@ async def _submit_proposal(
     arguments: dict[str, Any],
     actor: AgentIdentity | None = None,
 ) -> str:
+    """Return submit proposal."""
     tool_name = "synthorg_signals_submit_proposal"
     try:
         reason, resolved_actor = require_admin_guardrails(arguments, actor)

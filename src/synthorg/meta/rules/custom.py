@@ -56,11 +56,19 @@ class Comparator(StrEnum):
     NE = "ne"
 
     def to_operator(self) -> Callable[[float | int, float | int], bool]:
-        """Return the stdlib ``operator`` function for this comparator."""
+        """Return the stdlib ``operator`` function for this comparator.
+
+        Returns:
+            Result matching the declared return annotation.
+        """
         return _COMPARATOR_OPS[self]
 
     def symbol(self) -> str:
-        """Return the human-readable symbol (e.g. ``<``, ``>=``)."""
+        """Return the human-readable symbol (e.g. ``<``, ``>=``).
+
+        Returns:
+            Resulting string.
+        """
         return _COMPARATOR_SYMBOLS[self]
 
 
@@ -386,6 +394,14 @@ class CustomRuleDefinition(BaseModel):
     @field_validator("metric_path")
     @classmethod
     def _validate_metric_path(cls, v: str) -> str:
+        """Validate metric path.
+
+        Returns:
+            Resulting string.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if v not in _VALID_METRIC_PATHS:
             valid = ", ".join(sorted(_VALID_METRIC_PATHS))
             msg = (
@@ -425,7 +441,11 @@ class CustomRuleResponse(BaseModel):
 
     @classmethod
     def from_definition(cls, rule: CustomRuleDefinition) -> CustomRuleResponse:
-        """Project a ``CustomRuleDefinition`` onto the wire-shape DTO."""
+        """Project a ``CustomRuleDefinition`` onto the wire-shape DTO.
+
+        Returns:
+            ``CustomRuleResponse`` instance.
+        """
         return cls(
             id=str(rule.id),
             name=rule.name,
@@ -460,12 +480,20 @@ class DeclarativeRule:
 
     @property
     def name(self) -> NotBlankStr:
-        """Rule name from the definition."""
+        """Rule name from the definition.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return self._definition.name
 
     @property
     def target_altitudes(self) -> tuple[ProposalAltitude, ...]:
-        """Target altitudes from the definition."""
+        """Target altitudes from the definition.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return self._definition.target_altitudes
 
     def evaluate(self, snapshot: OrgSignalSnapshot) -> RuleMatch | None:

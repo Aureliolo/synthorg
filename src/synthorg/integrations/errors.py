@@ -40,8 +40,15 @@ class IntegrationError(DomainError):
 # -- Connection errors ---------------------------------------------------
 
 
-class ConnectionNotFoundError(IntegrationError):
-    """A connection with the given name does not exist."""
+class ConnectionNotFoundError(IntegrationError, NotFoundError):
+    """A connection with the given name does not exist.
+
+    Multi-inherits :class:`IntegrationError` (so the integrations
+    catch-all family covers it) and :class:`NotFoundError` (so
+    :func:`synthorg.api.responses.require_resource_or_404` accepts it
+    as a typed ``error_class``).  Mirrors the pattern used by
+    :class:`CatalogEntryNotFoundError`.
+    """
 
     status_code: ClassVar[int] = 404
     error_code: ClassVar[ErrorCode] = ErrorCode.CONNECTION_NOT_FOUND

@@ -85,7 +85,11 @@ class NoSampleSource:
         *,
         window_end: datetime,
     ) -> WindowSamples:
-        """Return empty samples regardless of the window."""
+        """Return empty samples regardless of the window.
+
+        Returns:
+            ``WindowSamples`` instance.
+        """
         _ = window_end
         return WindowSamples()
 
@@ -133,7 +137,11 @@ class StatisticalDetector:
 
     @property
     def name(self) -> NotBlankStr:
-        """Detector name."""
+        """Detector name.
+
+        Returns:
+            ``NotBlankStr`` instance.
+        """
         return NotBlankStr("statistical")
 
     async def check(
@@ -143,7 +151,11 @@ class StatisticalDetector:
         current: OrgSignalSnapshot,
         thresholds: RegressionThresholds,
     ) -> RegressionResult:
-        """Check for a statistically significant regression."""
+        """Check for a statistically significant regression.
+
+        Returns:
+            ``RegressionResult`` instance.
+        """
         _ = baseline, current, thresholds  # alpha lives on the detector
         baseline_samples = await self._source.fetch_for_window(
             window_end=baseline.collected_at,
@@ -218,6 +230,9 @@ class StatisticalDetector:
         or ``_MetricCheckOutcome.UNTESTABLE`` when Welch could not run
         (insufficient samples or zero variance). The caller uses the
         sentinel to distinguish "clean" from "not testable yet".
+
+        Returns:
+            ``RegressionResult | _MetricCheckOutcome`` instance.
         """
         if (
             len(baseline) < self._min_data_points
@@ -266,7 +281,11 @@ class StatisticalDetector:
         baseline: WindowSamples,
         current: WindowSamples,
     ) -> bool:
-        """True when every metric has fewer than ``min_data_points`` in one arm."""
+        """True when every metric has fewer than ``min_data_points`` in one arm.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         for base_tuple, curr_tuple in (
             (baseline.quality_samples, current.quality_samples),
             (baseline.success_samples, current.success_samples),

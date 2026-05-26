@@ -550,7 +550,7 @@ class TestWorkflowControllerErrorEnvelope:
         body = resp.json()
         assert body["success"] is False
         detail = body["error_detail"]
-        assert detail["error_code"] == ErrorCode.RESOURCE_NOT_FOUND
+        assert detail["error_code"] == ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND
         assert detail["error_category"] == ErrorCategory.NOT_FOUND
         assert detail["retryable"] is False
 

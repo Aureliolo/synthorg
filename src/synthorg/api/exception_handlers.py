@@ -48,6 +48,7 @@ from synthorg.budget.errors import (
     MixedCurrencyAggregationError,
 )
 from synthorg.communication.errors import CommunicationError
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError
 from synthorg.core.error_taxonomy import (
     ErrorCategory,
@@ -100,15 +101,17 @@ def _get_instance_id() -> str:
     failures still surface; every other ``Exception`` falls back to a
     fresh correlation ID with a warning so operators can correlate the
     fallback to its triggering request.
+
+    Returns:
+        Resulting string.
     """
     try:
         ctx = structlog.contextvars.get_contextvars()
         request_id = ctx.get("request_id")
         if isinstance(request_id, str) and request_id:
             return request_id
-    except MemoryError, RecursionError:  # pragma: no cover
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_CORRELATION_FALLBACK,
             error_type=type(exc).__qualname__,
@@ -130,14 +133,16 @@ def _wants_problem_json(request: Request[Any, Any, Any]) -> bool:
     failures still surface; every other ``Exception`` falls back to the
     envelope format with a warning so a malformed Accept header from a
     misbehaving client cannot crash the response path.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     try:
         match = request.accept.best_match(
             ["application/json", _PROBLEM_JSON],
         )
-    except MemoryError, RecursionError:  # pragma: no cover
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             API_ACCEPT_PARSE_FAILED,
             error_type=type(exc).__qualname__,
@@ -160,6 +165,9 @@ def _build_error_response(
     The ``instance`` field is auto-populated from the current structlog
     request context (falling back to a newly generated correlation ID
     if unavailable).
+
+    Returns:
+        ``ApiResponse[None]`` instance.
     """
     return ApiResponse[None](
         error=detail,
@@ -186,7 +194,11 @@ def _build_problem_detail_response(  # noqa: PLR0913
     retry_after: int | None,
     headers: dict[str, str] | None,
 ) -> Response[ProblemDetail]:
-    """Build a bare RFC 9457 ``application/problem+json`` response."""
+    """Build a bare RFC 9457 ``application/problem+json`` response.
+
+    Returns:
+        ``Response[ProblemDetail]`` instance.
+    """
     return Response(
         content=ProblemDetail(
             type=category_type_uri(error_category),
@@ -224,6 +236,9 @@ def _build_response(  # noqa: PLR0913
 
     Wrapped in a defensive try/except because this runs inside
     exception handlers -- a failure here would lose the original error.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
     """
     # Every 4xx/5xx response emits a classification counter so
     # operators can observe error-category rates without digging
@@ -348,7 +363,11 @@ _SERVER_ERROR_DEFAULT: tuple[ErrorCode, ErrorCategory, bool] = (
 def _category_for_status(
     status: int,
 ) -> tuple[ErrorCode, ErrorCategory, bool]:
-    """Map HTTP status to error code, category, and retryability."""
+    """Map HTTP status to error code, category, and retryability.
+
+    Returns:
+        Tuple matching the ``tuple[ErrorCode, ErrorCategory, bool]`` annotation.
+    """
     if status in _STATUS_TO_ERROR_META:
         return _STATUS_TO_ERROR_META[status]
     if status >= _SERVER_ERROR_THRESHOLD:
@@ -388,6 +407,9 @@ def _safe_log_attrs(exc: Exception) -> dict[str, object]:
     log envelope (``method`` / ``path`` / ``status_code`` etc.) are
     dropped so the API request fields cannot be shadowed by an
     exception attribute.
+
+    Returns:
+        Mapping matching the ``dict[str, object]`` annotation.
     """
     safe: dict[str, object] = {}
     instance_attrs = getattr(exc, "__dict__", {})
@@ -406,7 +428,11 @@ _LOG_SKIP: Final = object()
 
 
 def _clamp_log_value(value: object) -> object:
-    """Coerce *value* into a log-safe form, or ``_LOG_SKIP`` if unsafe."""
+    """Coerce *value* into a log-safe form, or ``_LOG_SKIP`` if unsafe.
+
+    Returns:
+        ``object`` instance.
+    """
     match value:
         case None | True | False:
             return value
@@ -459,7 +485,11 @@ def handle_record_not_found(
     request: Request[Any, Any, Any],
     exc: RecordNotFoundError,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
-    """Map ``RecordNotFoundError`` to 404."""
+    """Map ``RecordNotFoundError`` to 404.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
+    """
     _log_error(request, exc, status=404)
     return _build_response(
         request,
@@ -474,7 +504,11 @@ def handle_duplicate_record(
     request: Request[Any, Any, Any],
     exc: DuplicateRecordError,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
-    """Map ``DuplicateRecordError`` to 409."""
+    """Map ``DuplicateRecordError`` to 409.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
+    """
     _log_error(request, exc, status=409)
     return _build_response(
         request,
@@ -489,7 +523,11 @@ def handle_persistence_error(
     request: Request[Any, Any, Any],
     exc: PersistenceError,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
-    """Map ``PersistenceError`` to 500."""
+    """Map ``PersistenceError`` to 500.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
+    """
     _log_error(request, exc, status=500)
     return _build_response(
         request,
@@ -517,6 +555,9 @@ def handle_persistence_integrity_error(
     so this handler is a backstop, not the primary path. Logging
     via the standard helper keeps any embedded SQL fragments out
     of the audit trail.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
     """
     _log_error(request, exc, status=400)
     return _build_response(
@@ -537,6 +578,9 @@ def _normalize_status_code(raw: object) -> int:
     every normalization so a typo'd ``status_code`` field on an
     exception class surfaces in operator logs instead of silently
     rendering as 500.
+
+    Returns:
+        Resulting integer.
     """
     value: int
     try:
@@ -575,6 +619,9 @@ def _normalize_error_metadata(
     Values that are not members of their respective enums are replaced
     by the generic INTERNAL fallbacks so ``_build_response`` never
     serialises junk.
+
+    Returns:
+        Tuple matching the ``tuple[ErrorCode, ErrorCategory]`` annotation.
     """
     raw_code = getattr(exc, "error_code", ErrorCode.INTERNAL_ERROR)
     code = raw_code if isinstance(raw_code, ErrorCode) else ErrorCode.INTERNAL_ERROR
@@ -590,6 +637,9 @@ def _determine_retryable(exc: Exception) -> bool:
     that value respected -- a stale ClassVar ``retryable`` elsewhere
     in the MRO would otherwise mask the more specific signal.
     ``retryable`` is consulted only when ``is_retryable`` is not set.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     sentinel = object()
     is_retryable = getattr(exc, "is_retryable", sentinel)
@@ -604,6 +654,9 @@ def _select_message(exc: Exception, status_code: int) -> str:
     5xx responses return the class-level ``default_message`` to avoid
     leaking internal detail; 4xx responses pass through the exception
     message (controller-authored, user-safe).
+
+    Returns:
+        Resulting string.
     """
     if status_code >= _SERVER_ERROR_THRESHOLD:
         return str(getattr(exc, "default_message", "Internal server error"))
@@ -617,6 +670,9 @@ def _parse_retry_after(raw: object) -> int | None:
     crash header serialization).  Round up rather than truncate so a
     fractional 0.5s delay is surfaced as at least 1s and clients
     never hot-loop.  Returns ``None`` for anything else.
+
+    Returns:
+        The ``int`` value when present, ``None`` otherwise.
     """
     if raw is None or isinstance(raw, bool):
         return None
@@ -649,6 +705,9 @@ def handle_domain_error(
     5xx responses return the class-level ``default_message`` to avoid
     leaking internal detail; 4xx responses pass through the exception
     message which is controller-authored and user-safe.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
     """
     status_code = _normalize_status_code(getattr(exc, "status_code", 500))
     error_code_val, error_category_val = _normalize_error_metadata(exc)
@@ -679,7 +738,11 @@ def handle_unexpected(
     request: Request[Any, Any, Any],
     exc: Exception,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
-    """Catch-all for unexpected errors -> 500."""
+    """Catch-all for unexpected errors -> 500.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
+    """
     _log_error(request, exc, status=500)
     return _build_response(
         request,
@@ -694,7 +757,11 @@ def handle_permission_denied(
     request: Request[Any, Any, Any],
     exc: PermissionDeniedException,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
-    """Map ``PermissionDeniedException`` to 403."""
+    """Map ``PermissionDeniedException`` to 403.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
+    """
     _log_error(request, exc, status=403)
     return _build_response(
         request,
@@ -709,7 +776,11 @@ def handle_validation_error(
     request: Request[Any, Any, Any],
     exc: ValidationException,
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
-    """Map ``ValidationException`` to 400."""
+    """Map ``ValidationException`` to 400.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
+    """
     _log_error(request, exc, status=400)
     msg = str(exc.detail) if exc.detail else "Validation error"
     return _build_response(
@@ -733,6 +804,9 @@ def handle_invalid_cursor(
     can distinguish malformed-base64 from signature-mismatch without
     leaking secret-prefixed tokens or signature material into the
     error envelope.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
     """
     _log_error(request, exc, status=400)
     # ``safe_error_description`` is documented to always return at
@@ -761,6 +835,9 @@ def handle_not_authorized(
     ``synthorg.api.auth.middleware`` is the only producer of these
     detail strings; see :func:`discriminate_unauthorized` in
     :mod:`synthorg.api.auth_response_discriminator` for the mapping.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
     """
     _log_error(request, exc, status=401)
     error_code, detail = discriminate_unauthorized(exc.detail)
@@ -782,6 +859,9 @@ def handle_not_found(
     Ensures unmatched routes return 404 instead of falling through
     to ``handle_unexpected`` (which returns 500), which ZAP flags
     as a security misconfiguration.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
     """
     logger.warning(
         API_ROUTE_NOT_FOUND,
@@ -808,6 +888,9 @@ def handle_http_exception(
 
     Preserves the correct status code (e.g. 405, 429) instead of
     letting them fall through to ``handle_unexpected`` as 500.
+
+    Returns:
+        ``Response[ApiResponse[None]] | Response[ProblemDetail]`` instance.
     """
     status = exc.status_code
     _log_error(request, exc, status=status)

@@ -16,6 +16,7 @@ import asyncio
 from collections import deque
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.evolution.outcome_models import EvolutionOutcomeRecord
 from synthorg.meta.models import ProposalAltitude
@@ -96,9 +97,8 @@ class InMemoryEvolutionOutcomeStore:
                     EVOLUTION_OUTCOME_STORE_EVICTED,
                     max_results=self._max_results,
                 )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EVOLUTION_OUTCOME_RECORD_FAILED,
                 agent_id=agent_id,
@@ -116,6 +116,9 @@ class InMemoryEvolutionOutcomeStore:
         """Return outcomes recorded within ``[since, until)``.
 
         Ordered newest-first.
+
+        Returns:
+            Tuple of the declared element types.
         """
         _validate_window(since, until)
         async with self._lock:
@@ -133,7 +136,14 @@ class InMemoryEvolutionOutcomeStore:
         until: datetime,
         max_recent: int = _DEFAULT_MAX_RECENT,
     ) -> OrgEvolutionSummary:
-        """Roll recorded outcomes into an :class:`OrgEvolutionSummary`."""
+        """Roll recorded outcomes into an :class:`OrgEvolutionSummary`.
+
+        Returns:
+            ``OrgEvolutionSummary`` instance.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if max_recent < 1:
             msg = f"max_recent must be >= 1, got {max_recent}"
             raise ValueError(msg)
@@ -168,7 +178,11 @@ class InMemoryEvolutionOutcomeStore:
         )
 
     async def count(self) -> int:
-        """Return current buffer size (not capacity)."""
+        """Return current buffer size (not capacity).
+
+        Returns:
+            Resulting integer.
+        """
         async with self._lock:
             return len(self._records)
 
@@ -179,7 +193,11 @@ class InMemoryEvolutionOutcomeStore:
 
 
 def _validate_window(since: datetime, until: datetime) -> None:
-    """Reject inverted or naive windows before any scan happens."""
+    """Reject inverted or naive windows before any scan happens.
+
+    Raises:
+        ValueError: Raised on the corresponding failure path.
+    """
     if since.tzinfo is None or until.tzinfo is None:
         msg = "since/until must be timezone-aware"
         raise ValueError(msg)
@@ -195,6 +213,9 @@ def _pick_most_adapted(axis_counts: dict[str, int]) -> NotBlankStr | None:
     """Return the axis with the most outcomes.
 
     Ties broken alphabetically for determinism.
+
+    Returns:
+        The ``NotBlankStr`` value when present, ``None`` otherwise.
     """
     if not axis_counts:
         return None

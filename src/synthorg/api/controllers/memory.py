@@ -26,15 +26,15 @@ from synthorg.api.rate_limits import (
 )
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     CheckpointOperationConflictError,
     FeatureNotImplementedError,
     FineTuneRunActiveError,
+    MemoryEntryNotFoundError,
     NotFoundError,
     ServiceUnavailableError,
-    resource_not_found,
 )
-from synthorg.core.error_taxonomy import ErrorCode
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.embedding.fine_tune import FineTuneStage
@@ -123,6 +123,9 @@ def _build_memory_service(
         FeatureNotImplementedError: When ``require_fine_tune`` is
             ``True`` and the backend does not implement the fine-tune
             repositories (HTTP 501).
+
+    Returns:
+        ``MemoryService`` instance.
     """
     backend = app_state.persistence
     checkpoint_repo: FineTuneCheckpointRepository | None = None
@@ -197,6 +200,9 @@ async def _resolve_fine_tune_thresholds(
     setting that is missing from the registry, fails to parse as int,
     or when no ``SettingsService`` is available -- the controller
     must remain functional in offline / unit-test invocations.
+
+    Returns:
+        ``_FineTuneThresholds`` instance.
     """
     fallbacks = {
         "fine_tune_default_batch_size": FINE_TUNE_DEFAULT_BATCH_SIZE,
@@ -323,7 +329,15 @@ class MemoryAdminController(Controller):
         state: State,
         data: FineTuneRequest,
     ) -> ApiResponse[FineTuneStatus]:
-        """Trigger a fine-tuning pipeline run."""
+        """Trigger a fine-tuning pipeline run.
+
+        Returns:
+            ``ApiResponse[FineTuneStatus]`` instance.
+
+        Raises:
+            FeatureNotImplementedError: Raised on the corresponding failure path.
+            FineTuneRunActiveError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         logger.info(
             MEMORY_FINE_TUNE_REQUESTED,
@@ -391,6 +405,9 @@ class MemoryAdminController(Controller):
                 (HTTP 409).
             NotFoundError: Run does not exist or is not resumable
                 (HTTP 404).
+
+        Returns:
+            ``ApiResponse[FineTuneStatus]`` instance.
         """
         app_state: AppState = state.app_state
         if not app_state.has_fine_tune_orchestrator:
@@ -437,7 +454,11 @@ class MemoryAdminController(Controller):
         self,
         state: State,
     ) -> ApiResponse[FineTuneStatus]:
-        """Get the current fine-tuning pipeline status."""
+        """Get the current fine-tuning pipeline status.
+
+        Returns:
+            ``ApiResponse[FineTuneStatus]`` instance.
+        """
         app_state: AppState = state.app_state
         if not app_state.has_fine_tune_orchestrator:
             return ApiResponse(
@@ -457,7 +478,14 @@ class MemoryAdminController(Controller):
         self,
         state: State,
     ) -> ApiResponse[FineTuneStatus]:
-        """Cancel the active pipeline run."""
+        """Cancel the active pipeline run.
+
+        Returns:
+            ``ApiResponse[FineTuneStatus]`` instance.
+
+        Raises:
+            FeatureNotImplementedError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         if not app_state.has_fine_tune_orchestrator:
             msg = "Fine-tuning is not available"
@@ -487,7 +515,14 @@ class MemoryAdminController(Controller):
         state: State,
         data: FineTuneRequest,
     ) -> ApiResponse[PreflightResult]:
-        """Run pre-flight validation checks."""
+        """Run pre-flight validation checks.
+
+        Returns:
+            ``ApiResponse[PreflightResult]`` instance.
+
+        Raises:
+            ServiceUnavailableError: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         settings_service = (
             app_state.settings_service if app_state.has_settings_service else None
@@ -558,7 +593,11 @@ class MemoryAdminController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = DEFAULT_LIMIT,
     ) -> PaginatedResponse[CheckpointRecord]:
-        """List fine-tuning checkpoints."""
+        """List fine-tuning checkpoints.
+
+        Returns:
+            ``PaginatedResponse[CheckpointRecord]`` instance.
+        """
         app_state: AppState = state.app_state
         secret = app_state.cursor_secret
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
@@ -607,6 +646,13 @@ class MemoryAdminController(Controller):
         - Any other exception propagates so unexpected server bugs
           surface as HTTP 500 instead of being silenced as 409
           "conflict".
+
+        Returns:
+            ``ApiResponse[CheckpointRecord]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+            CheckpointOperationConflictError: Raised on the corresponding failure path.
         """
         service = _build_memory_service(state.app_state)
         try:
@@ -670,6 +716,14 @@ class MemoryAdminController(Controller):
           ``CHECKPOINT_ROLLBACK_CORRUPT``) carry distinct codes so the
           dashboard can message operator error vs corrupt backup apart
         - Any other exception propagates as HTTP 500
+
+        Returns:
+            ``ApiResponse[CheckpointRecord]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+            CheckpointRollbackUnavailableError: Rollback target unusable.
+            CheckpointRollbackCorruptError: Raised on the corresponding failure path.
         """
         service = _build_memory_service(state.app_state)
         try:
@@ -739,6 +793,13 @@ class MemoryAdminController(Controller):
         - ``QueryError`` (e.g. attempt to delete the active checkpoint)
           -> HTTP 409
         - anything else propagates as HTTP 500
+
+        Returns:
+            ``ApiResponse[None]`` instance.
+
+        Raises:
+            NotFoundError: Raised on the corresponding failure path.
+            CheckpointOperationConflictError: Raised on the corresponding failure path.
         """
         service = _build_memory_service(state.app_state)
         try:
@@ -799,6 +860,13 @@ class MemoryAdminController(Controller):
         memory entry does not exist (or the agent has no entry with
         that id). Returns ``501 Not Implemented`` when no memory
         backend is wired on the active app state.
+
+        Returns:
+            ``ApiResponse[None]`` instance.
+
+        Raises:
+            MemoryEntryNotFoundError: Raised on the corresponding failure path.
+            FeatureNotImplementedError: Raised on the corresponding failure path.
         """
         # ``require_fine_tune=False`` -- entry deletion only needs the
         # ``MemoryBackend``; eagerly resolving the fine-tune repos
@@ -823,12 +891,8 @@ class MemoryAdminController(Controller):
             # ``MEMORY_ENTRY_DELETE_FAILED`` with ``reason="not_found"``
             # for this branch, so the controller stays in the layering
             # role of HTTP translation only.
-            resource_type = "memory entry"
-            raise resource_not_found(
-                resource_type,
-                memory_id,
-                code=ErrorCode.MEMORY_ENTRY_NOT_FOUND,
-            )
+            msg = f"memory entry {memory_id!r} not found"
+            raise MemoryEntryNotFoundError(msg)
         return ApiResponse(data=None)
 
     # -- Run history -------------------------------------------------
@@ -840,7 +904,11 @@ class MemoryAdminController(Controller):
         cursor: CursorParam = None,
         limit: CursorLimit = DEFAULT_LIMIT,
     ) -> PaginatedResponse[FineTuneRun]:
-        """List historical pipeline runs with pagination metadata."""
+        """List historical pipeline runs with pagination metadata.
+
+        Returns:
+            ``PaginatedResponse[FineTuneRun]`` instance.
+        """
         app_state: AppState = state.app_state
         secret = app_state.cursor_secret
         offset = 0 if cursor is None else decode_cursor(cursor, secret=secret)
@@ -865,7 +933,14 @@ class MemoryAdminController(Controller):
         self,
         state: State,
     ) -> ApiResponse[ActiveEmbedderResponse]:
-        """Get the active embedder configuration."""
+        """Get the active embedder configuration.
+
+        Returns:
+            ``ApiResponse[ActiveEmbedderResponse]`` instance.
+
+        Raises:
+            Exception: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
         result = ActiveEmbedderResponse()
         if app_state.has_settings_service:
@@ -893,9 +968,8 @@ class MemoryAdminController(Controller):
                     model=model_sv.value or None,
                     dims=dims_value,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Re-raise after logging instead of silently
                 # swallowing -- a settings-service failure here would
                 # otherwise look like "no embedder configured" to the
@@ -935,6 +1009,9 @@ def _run_preflight_checks(
             the same fallback contract as ``min_required``.
         max_depth: Directory recursion cap for the document scan.
         walk_timeout_s: Wall-clock deadline for the document scan.
+
+    Returns:
+        List of the declared element type.
     """
     checks: list[PreflightCheck] = []
     checks.append(_check_dependencies())
@@ -971,6 +1048,9 @@ def _check_documents(
     either bound returns a ``warn`` band (never a hang and never a
     false ``fail``): the operator is told the scan was truncated and
     can re-run against a shallower tree or raise the limits.
+
+    Returns:
+        ``PreflightCheck`` instance.
     """
     import os  # noqa: PLC0415
     import time  # noqa: PLC0415
@@ -1059,6 +1139,9 @@ def _check_fine_tune_sidecar_health() -> bool:
     the deps are reachable even though ``import torch`` would fail
     locally.  Any error (DNS miss, refused connection, non-200, timeout)
     is swallowed so the caller falls back to the in-process import.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     import urllib.error  # noqa: PLC0415
     import urllib.request  # noqa: PLC0415
@@ -1073,9 +1156,8 @@ def _check_fine_tune_sidecar_health() -> bool:
             return _HTTP_STATUS_OK_MIN <= status < _HTTP_STATUS_OK_MAX_EXCLUSIVE
     except urllib.error.URLError, TimeoutError, OSError:
         return False
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         return False
 
 
@@ -1091,6 +1173,9 @@ def _check_dependencies() -> PreflightCheck:
     so every Docker-orchestrated install reported "Fine-tuning not
     enabled" regardless of whether the user had set ``fine_tuning=true``
     in the CLI config and started the sidecar.
+
+    Returns:
+        ``PreflightCheck`` instance.
     """
     try:
         from synthorg.memory.embedding.fine_tune import (  # noqa: PLC0415
@@ -1116,9 +1201,8 @@ def _check_dependencies() -> PreflightCheck:
             message="Missing ML dependencies",
             detail=safe_error_description(exc),
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         return PreflightCheck(
             name="dependencies",
             status="fail",
@@ -1133,7 +1217,11 @@ def _check_dependencies() -> PreflightCheck:
 
 
 def _check_gpu() -> PreflightCheck:
-    """Best-effort GPU availability check."""
+    """Best-effort GPU availability check.
+
+    Returns:
+        ``PreflightCheck`` instance.
+    """
     try:
         import torch  # type: ignore[import-not-found]  # noqa: PLC0415
 
@@ -1158,9 +1246,8 @@ def _check_gpu() -> PreflightCheck:
             status="warn",
             message="Cannot detect GPU (torch not installed)",
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         return PreflightCheck(
             name="gpu",
             status="warn",
@@ -1188,6 +1275,13 @@ def _recommend_batch_size(
             ``app_state.memory_bridge_config.fine_tune_vram_batch_table``
             (operator-tunable via ``memory.fine_tune_vram_batch_table``);
             the module constant is the offline/standalone fallback.
+
+    Returns:
+        The ``int`` value when present, ``None`` otherwise.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
     """
     try:
         import torch  # noqa: PLC0415
@@ -1218,7 +1312,11 @@ def _recommend_batch_size(
 
 
 def _check_disk_space(source_dir: str) -> PreflightCheck:
-    """Check available disk space for fine-tuning output."""
+    """Check available disk space for fine-tuning output.
+
+    Returns:
+        ``PreflightCheck`` instance.
+    """
     import shutil  # noqa: PLC0415
     from pathlib import Path  # noqa: PLC0415
 
@@ -1245,9 +1343,8 @@ def _check_disk_space(source_dir: str) -> PreflightCheck:
             status="pass",
             message=f"{free_gb:.1f} GB available",
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         return PreflightCheck(
             name="disk_space",
             status="warn",

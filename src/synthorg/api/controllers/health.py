@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg import __version__
 from synthorg.api.dto import ApiResponse
 from synthorg.api.state import AppState  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -116,14 +117,17 @@ async def _probe_service(
     probe: Callable[[], Awaitable[bool]],
     component: str,
 ) -> bool | None:
-    """Probe an async service, returning None if not configured."""
+    """Probe an async service, returning None if not configured.
+
+    Returns:
+        The ``bool`` value when present, ``None`` otherwise.
+    """
     if not configured:
         return None
     try:
         return await probe()
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # ``exc_info=True`` would serialize frame locals from the probe
         # into the log record; persistence / bus probes carry connection
         # objects and partial auth state, so we emit only the sanitized
@@ -138,7 +142,11 @@ async def _probe_service(
 
 
 def _resolve_telemetry_status(app_state: AppState) -> TelemetryStatus:
-    """Read the telemetry collector and map to a public status."""
+    """Read the telemetry collector and map to a public status.
+
+    Returns:
+        ``TelemetryStatus`` instance.
+    """
     if not app_state.has_telemetry_collector:
         return TelemetryStatus.DISABLED
     return (
@@ -156,6 +164,9 @@ def _unavailable_response(
     Used when the probe TaskGroup itself raises an unexpected error;
     we still want to emit a well-formed envelope so operator tooling
     can parse it, rather than letting a 500 surface.
+
+    Returns:
+        ``Response[ApiResponse[ReadinessStatus]]`` instance.
     """
     uptime = round(app_state.clock.monotonic() - app_state.startup_time, 2)
     return Response(
@@ -190,7 +201,11 @@ class LivenessController(Controller):
         self,
         state: State,
     ) -> ApiResponse[LivenessStatus]:
-        """Return a constant ``ok`` response while the process is alive."""
+        """Return a constant ``ok`` response while the process is alive.
+
+        Returns:
+            ``ApiResponse[LivenessStatus]`` instance.
+        """
         app_state: AppState = state.app_state
         uptime = round(app_state.clock.monotonic() - app_state.startup_time, 2)
         return ApiResponse(
@@ -218,7 +233,14 @@ class ReadinessController(Controller):
         self,
         state: State,
     ) -> Response[ApiResponse[ReadinessStatus]]:
-        """Return readiness status + 200/503 based on dependency health."""
+        """Return readiness status + 200/503 based on dependency health.
+
+        Returns:
+            ``Response[ApiResponse[ReadinessStatus]]`` instance.
+
+        Raises:
+            BaseExceptionGroup: Raised on the corresponding failure path.
+        """
         app_state: AppState = state.app_state
 
         # ``_probe_service`` swallows ``Exception`` and returns False, so
@@ -246,6 +268,7 @@ class ReadinessController(Controller):
                 )
 
                 async def _probe_providers() -> bool:
+                    """Return probe providers."""
                     return await app_state.provider_health_tracker.are_all_reachable()
 
                 providers_task = tg.create_task(

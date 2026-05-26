@@ -37,6 +37,7 @@ from synthorg.api.path_params import PathId  # noqa: TC001 -- runtime annotation
 from synthorg.api.rate_limits.policies import per_op_rate_limit_from_policy
 from synthorg.core.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.core.auth.roles import HumanRole
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import (
     AccountLockedError,
     ConflictError,
@@ -117,6 +118,9 @@ async def _record_failed_login(
     context (threshold + duration) and raises ``AccountLockedError``
     so the caller's flow short-circuits before the generic
     ``invalid_credentials`` log line.
+
+    Raises:
+        AccountLockedError: Raised on the corresponding failure path.
     """
     if not app_state.has_lockout_store:
         return
@@ -178,6 +182,12 @@ class AuthController(Controller):
         Only available when no users exist. Returns 409 after
         the first account is created.  The JWT is delivered via
         an HttpOnly ``Set-Cookie`` header.
+
+        Returns:
+            Result matching the declared return annotation.
+
+        Raises:
+            ConflictError: Raised on the corresponding failure path.
         """
         app_state = request.app.state["app_state"]
         auth_service: AuthService = app_state.auth_service
@@ -278,7 +288,15 @@ class AuthController(Controller):
         data: LoginRequest,
         request: Request[Any, Any, Any],
     ) -> Response[ApiResponse[CookieSessionResponse]]:
-        """Validate credentials and set session cookie."""
+        """Validate credentials and set session cookie.
+
+        Returns:
+            Result matching the declared return annotation.
+
+        Raises:
+            AccountLockedError: Raised on the corresponding failure path.
+            UnauthorizedError: Raised on the corresponding failure path.
+        """
         app_state = request.app.state["app_state"]
         auth_service: AuthService = app_state.auth_service
         persistence = app_state.persistence
@@ -393,6 +411,12 @@ class AuthController(Controller):
         The reject matrix + ``SECURITY_AUTH_REFRESH_REJECTED`` audit
         live in :meth:`AuthService.rotate_refresh_token`; this handler
         is a thin cookie adapter (mirrors ``login``).
+
+        Returns:
+            Result matching the declared return annotation.
+
+        Raises:
+            RefreshTokenInvalidError: Raised on the corresponding failure path.
         """
         app_state = request.app.state["app_state"]
         auth_service: AuthService = app_state.auth_service
@@ -467,7 +491,15 @@ class AuthController(Controller):
         data: ChangePasswordRequest,
         request: Request[Any, Any, Any],
     ) -> Response[ApiResponse[UserInfoResponse]]:
-        """Validate current password and set new one."""
+        """Validate current password and set new one.
+
+        Returns:
+            ``Response[ApiResponse[UserInfoResponse]]`` instance.
+
+        Raises:
+            UnauthorizedError: Raised on the corresponding failure path.
+            PermissionDeniedException: Raised on the corresponding failure path.
+        """
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
             logger.warning(
@@ -582,7 +614,14 @@ class AuthController(Controller):
         self,
         request: Request[Any, Any, Any],
     ) -> Response[ApiResponse[UserInfoResponse]]:
-        """Return information about the authenticated user."""
+        """Return information about the authenticated user.
+
+        Returns:
+            ``Response[ApiResponse[UserInfoResponse]]`` instance.
+
+        Raises:
+            UnauthorizedError: Raised on the corresponding failure path.
+        """
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
             logger.warning(
@@ -623,6 +662,14 @@ class AuthController(Controller):
         Issue a short-lived, single-use ticket for WebSocket connections.
         The ticket is passed as a query parameter instead of the JWT, so
         long-lived credentials never appear in URLs or server logs.
+
+        Returns:
+            ``Response[ApiResponse[WsTicketResponse]]`` instance.
+
+        Raises:
+            UnauthorizedError: Raised on the corresponding failure path.
+            PermissionDeniedException: Raised on the corresponding failure path.
+            ConflictError: Raised on the corresponding failure path.
         """
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
@@ -689,7 +736,15 @@ class AuthController(Controller):
         request: Request[Any, Any, Any],
         scope: str = "own",
     ) -> Response[ApiResponse[list[SessionResponse]]]:
-        """List active sessions. CEO: ``?scope=all`` for all users."""
+        """List active sessions. CEO: ``?scope=all`` for all users.
+
+        Returns:
+            Result matching the declared return annotation.
+
+        Raises:
+            UnauthorizedError: Raised on the corresponding failure path.
+            ValidationError: Raised on the corresponding failure path.
+        """
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
             logger.warning(
@@ -754,7 +809,12 @@ class AuthController(Controller):
         request: Request[Any, Any, Any],
         session_id: PathId,
     ) -> None:
-        """Revoke a session. Own sessions or CEO any."""
+        """Revoke a session. Own sessions or CEO any.
+
+        Raises:
+            UnauthorizedError: Raised on the corresponding failure path.
+            NotFoundError: Raised on the corresponding failure path.
+        """
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
             logger.warning(
@@ -808,6 +868,9 @@ class AuthController(Controller):
         a valid session to call logout -- which would be a catch-22.
         Revoking the server-side session record is a best-effort
         extra step when the JWT is still valid.
+
+        Returns:
+            ``Response[None]`` instance.
         """
         auth_user = request.scope.get("user")
         app_state = request.app.state["app_state"]
@@ -841,9 +904,8 @@ class AuthController(Controller):
                         session_id=jti,
                         user_id=user_id,
                     )
-            except MemoryError, RecursionError:
-                raise
             except Exception as err:
+                reraise_critical(err)
                 logger.warning(
                     API_SESSION_REVOKE_FAILED,
                     session_id=jti,

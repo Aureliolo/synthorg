@@ -16,6 +16,7 @@ import asyncio
 from collections import deque
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.meta.toolsmith.models import CapabilityGap
 from synthorg.observability import get_logger, safe_error_description
@@ -84,9 +85,8 @@ class RingBufferCapabilityGapStore:
             logger.debug(TOOLSMITH_GAP_RECORDED, signature=signature)
             if evicted:
                 logger.info(TOOLSMITH_GAP_EVICTED, max_observations=self._max)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TOOLSMITH_GAP_RECORD_FAILED,
                 signature=signature,
@@ -111,6 +111,9 @@ class RingBufferCapabilityGapStore:
         Returns:
             Qualifying gaps, most-frequent first; ties broken by
             signature ascending for determinism.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
         """
         if threshold < 1:
             msg = f"threshold must be >= 1, got {threshold}"
@@ -138,7 +141,11 @@ class RingBufferCapabilityGapStore:
         return tuple(gaps)
 
     async def count(self) -> int:
-        """Return current buffer size (not capacity)."""
+        """Return current buffer size (not capacity).
+
+        Returns:
+            Resulting integer.
+        """
         async with self._lock:
             return len(self._obs)
 

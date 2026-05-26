@@ -80,6 +80,9 @@ def _len_prefixed(segment: str) -> str:
     ``"3:a:b:1:c"`` and ``"1:a:3:b:c"`` respectively. The colon inside
     a segment is irrelevant because the length tells the reader (and
     any future parser) how many characters belong to that segment.
+
+    Returns:
+        Resulting string.
     """
     return f"{len(segment)}:{segment}"
 
@@ -99,6 +102,9 @@ def _build_idem_scope(
     distinct ``(connection_type, connection_name)`` pairs can never
     collapse to the same scope string even when one of the parts
     contains ``":"``.
+
+    Returns:
+        Resulting string.
     """
     return f"webhooks:{_len_prefixed(connection_type)}:{_len_prefixed(connection_name)}"
 
@@ -120,6 +126,9 @@ def _build_idem_key(
     is length-prefixed via :func:`_len_prefixed` so two distinct
     ``(connection_name, event_type, nonce)`` tuples can never produce
     the same key string even when one of the parts contains ``":"``.
+
+    Returns:
+        Resulting string.
     """
     nonce_for_key = (
         nonce
@@ -160,6 +169,9 @@ async def _get_activity_service(state: State) -> WebhookActivityService:
     touches ``persistence.webhook_receipts`` directly. The cache lives
     on ``app_state`` so a single instance survives across requests.
     The lock guards against concurrent first-call races.
+
+    Returns:
+        ``WebhookActivityService`` instance.
     """
     app_state = state["app_state"]
     cached: WebhookActivityService | None = getattr(
@@ -190,6 +202,9 @@ async def _get_replay_protector(state: State) -> ReplayProtector:
     write would discard the nonces the first had already seen, briefly
     weakening replay protection. The lock makes the construct-and-
     store atomic.
+
+    Returns:
+        ``ReplayProtector`` instance.
     """
     app_state = state["app_state"]
     cached: ReplayProtector | None = getattr(

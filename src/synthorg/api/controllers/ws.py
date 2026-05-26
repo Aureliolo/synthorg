@@ -44,6 +44,7 @@ from synthorg.api.guards import _READ_ROLES
 from synthorg.core.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -100,6 +101,9 @@ async def _validate_ticket(
 
     Returns ``None`` and closes the socket if the ticket is
     missing, invalid, or expired.
+
+    Returns:
+        The ``AuthenticatedUser`` value when present, ``None`` otherwise.
     """
     ticket = socket.query_params.get("ticket")
     logger.debug(
@@ -160,6 +164,9 @@ async def _read_auth_message(
     ``app_state.ws_auth_timeout_seconds``, which is baked in at
     startup by ``_apply_bridge_config`` from the operator-tunable
     ``api.ws_auth_timeout_seconds`` setting.
+
+    Returns:
+        The ``str`` value when present, ``None`` otherwise.
     """
     app_state = socket.app.state["app_state"]
     try:
@@ -211,6 +218,9 @@ async def _auth_from_first_message(
     Expects ``{"action": "auth", "ticket": "<ticket>"}``.  Returns
     ``None`` and closes the socket on invalid ticket, wrong message
     format, or timeout.
+
+    Returns:
+        The ``AuthenticatedUser`` value when present, ``None`` otherwise.
     """
     ticket = await _read_auth_message(socket)
     if ticket is None:
@@ -248,6 +258,9 @@ async def _check_ws_role(
 
     Returns ``True`` if the role is valid.  On failure, closes the
     socket with a forbidden code and returns ``False``.
+
+    Returns:
+        ``True`` or ``False`` reflecting the condition.
     """
     logger.debug(
         API_WS_AUTH_STAGE,
@@ -309,7 +322,11 @@ class _BackpressureTracker:
     window_started_at: float = 0.0
 
     def note_drop(self, *, now: float) -> bool:
-        """Record one drop; return ``True`` when the threshold is crossed."""
+        """Record one drop; return ``True`` when the threshold is crossed.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         if (
             self.consecutive_drops == 0
             or now - self.window_started_at > _WS_BACKPRESSURE_WINDOW_SECONDS
@@ -355,6 +372,10 @@ async def _trip_breaker_and_close(
     ``log_context`` is merged into the breaker-tripped warning so the
     caller's per-frame metadata (event type / channel / response
     shape) lands alongside the queue stats.
+
+    Raises:
+        MemoryError: Raised on the corresponding failure path.
+        RecursionError: Raised on the corresponding failure path.
     """
     # Clock seam (CLAUDE.md): tests inject ``FakeClock`` so the
     # rolling-window rollover in ``_BackpressureTracker.note_drop``
@@ -500,9 +521,8 @@ async def _outbound_consumer(
             except WebSocketDisconnect:
                 logger.debug(API_WS_SEND_FAILED, reason="client_disconnected")
                 return
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(logger, API_WS_SEND_FAILED, exc)
                 await socket.close(code=1011, reason="Internal error")
                 return
@@ -519,6 +539,10 @@ async def _send_auth_ok(socket: WebSocket[Any, Any, Any]) -> None:
     treated as fatal: the socket is closed with 1011 on the generic
     path, mirroring ``_outbound_consumer``'s failure handling, and
     the exception is re-raised so the outer handler runs its cleanup.
+
+    Raises:
+        WebSocketDisconnect: Raised on the corresponding failure path.
+        Exception: Raised on the corresponding failure path.
     """
     try:
         await socket.send_text(json.dumps({"action": "auth_ok"}))
@@ -546,6 +570,9 @@ async def _authenticate_ws(
 
     Returns ``(user, already_accepted)`` on success, or ``None``
     (socket already closed) on failure.
+
+    Returns:
+        The ``tuple[AuthenticatedUser, bool]`` value when present, ``None`` otherwise.
     """
     ticket_param = socket.query_params.get("ticket")
 
@@ -572,6 +599,9 @@ def _resolve_channels_plugin(
     WebSocket handlers (the parameter is misidentified as a query
     param, causing a Litestar-internal 4500 close before the
     handler runs); resolve from ``socket.app.plugins`` directly.
+
+    Returns:
+        The ``ChannelsPlugin`` value when present, ``None`` otherwise.
     """
     for plugin in socket.app.plugins:
         if isinstance(plugin, ChannelsPlugin):
@@ -594,6 +624,9 @@ async def _setup_connection(
     checking.  A valid-ticket, insufficient-role client receives a WS
     upgrade followed immediately by close code 4003.  This is inherent
     to reading over an established WS connection.
+
+    Returns:
+        The ``tuple[ChannelsPlugin, Any]`` value when present, ``None`` otherwise.
     """
     channels_plugin = _resolve_channels_plugin(socket)
     if channels_plugin is None:
@@ -731,6 +764,9 @@ async def _teardown_connection(
     re-raise until after unsubscribe + user_presence cleanup + the
     ``API_WS_DISCONNECTED`` log have run, so subscriber/presence
     state stays consistent with the socket actually closing.
+
+    Raises:
+        outer_cancelled_exc: Raised on the corresponding failure path.
     """
     outer_cancelled_exc: asyncio.CancelledError | None = None
     consumer_task.cancel()
@@ -829,6 +865,7 @@ async def ws_handler(
     backpressure_tracker = _BackpressureTracker()
 
     async def _event_callback(event_data: bytes) -> None:
+        """Run event callback."""
         await _on_event(
             event_data,
             subscribed,
@@ -885,6 +922,10 @@ async def ws_handler(
         # Real failure from a background task -- log each and proceed
         # with teardown so subscriber/presence cleanup still runs.
         for exc in eg.exceptions:
+            # A worker's reraise_critical surfaced a process-fatal error
+            # into the group; propagate it instead of folding it into
+            # routine teardown logging.
+            reraise_critical(exc)
             logger.warning(
                 API_WS_TRANSPORT_ERROR,
                 stage="ws_worker_failed",
@@ -938,6 +979,9 @@ async def _receive_loop(  # noqa: PLR0913 -- optional backpressure + clock + tim
     silent client cannot indefinitely hold a slot (DoS prevention).
     Defaults to ``app_state.ws_frame_timeout_seconds`` (registered
     setting ``api.ws_frame_timeout_seconds``, default 30).
+
+    Raises:
+        Exception: Raised on the corresponding failure path.
     """
     if frame_timeout_seconds is None:
         app_state = socket.app.state["app_state"]

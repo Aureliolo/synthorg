@@ -90,6 +90,9 @@ class CursorSecret:
 
         Raises:
             ValueError: If the encoded key is shorter than 16 bytes.
+
+        Returns:
+            ``Self`` instance.
         """
         return cls(key=key.encode("utf-8"), ephemeral=False)
 
@@ -99,6 +102,9 @@ class CursorSecret:
 
         Tokens signed with an ephemeral secret are invalidated on
         restart -- suitable for local dev and test only.
+
+        Returns:
+            ``Self`` instance.
         """
         return cls(key=secrets.token_bytes(32), ephemeral=True)
 
@@ -109,6 +115,9 @@ class CursorSecret:
         If ``config.secret`` is ``None`` or blank, the secret is
         ephemeral and :attr:`is_ephemeral` is ``True`` so callers can
         surface a single boot-time warning.
+
+        Returns:
+            ``Self`` instance.
         """
         if config.secret and config.secret.strip():
             return cls.from_key(config.secret)
@@ -116,15 +125,27 @@ class CursorSecret:
 
     @property
     def is_ephemeral(self) -> bool:
-        """Whether this secret was randomly generated (not configured)."""
+        """Whether this secret was randomly generated (not configured).
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._ephemeral
 
     def sign(self, payload: bytes) -> str:
-        """Return the hex HMAC-SHA256 of ``payload``."""
+        """Return the hex HMAC-SHA256 of ``payload``.
+
+        Returns:
+            Resulting string.
+        """
         return hmac.new(self._key, payload, hashlib.sha256).hexdigest()
 
     def verify(self, payload: bytes, signature: str) -> bool:
-        """Constant-time compare ``signature`` against the HMAC of ``payload``."""
+        """Constant-time compare ``signature`` against the HMAC of ``payload``.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         expected = self.sign(payload)
         return hmac.compare_digest(expected, signature)
 
@@ -160,6 +181,9 @@ def _decode_token_payload(token: str) -> dict[str, object]:
             :data:`_MAX_CURSOR_LEN` characters, contains non-ASCII
             characters, is not valid base64, or does not decode to a
             JSON object.
+
+    Returns:
+        Mapping with the declared key/value types.
     """
     if not token:
         logger.warning(API_CURSOR_DECODE_FAILED, reason="empty_token")
@@ -213,7 +237,14 @@ def _validate_cursor_payload(
     *,
     secret: CursorSecret,
 ) -> int:
-    """Extract + verify the offset from a decoded cursor payload."""
+    """Extract + verify the offset from a decoded cursor payload.
+
+    Returns:
+        Resulting integer.
+
+    Raises:
+        InvalidCursorError: Raised on the corresponding failure path.
+    """
     offset = payload.get("o")
     signature = payload.get("s")
     if not isinstance(offset, int) or isinstance(offset, bool):
@@ -318,7 +349,14 @@ def _validate_keyset_payload(
     *,
     secret: CursorSecret,
 ) -> str:
-    """Extract + verify the keyset key from a decoded cursor payload."""
+    """Extract + verify the keyset key from a decoded cursor payload.
+
+    Returns:
+        Resulting string.
+
+    Raises:
+        InvalidCursorError: Raised on the corresponding failure path.
+    """
     after_key = payload.get("k")
     signature = payload.get("s")
     if not isinstance(after_key, str) or not after_key:

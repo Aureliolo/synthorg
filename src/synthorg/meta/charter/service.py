@@ -73,12 +73,20 @@ _CAP_MESSAGE: NotBlankStr = NotBlankStr(
 
 
 def _new_id() -> NotBlankStr:
-    """Return a fresh opaque identifier."""
+    """Return a fresh opaque identifier.
+
+    Returns:
+        ``NotBlankStr`` instance.
+    """
     return NotBlankStr(str(uuid.uuid4()))
 
 
 def _summarise_draft(draft: CharterDraft) -> NotBlankStr:
-    """One-line assistant summary acknowledging a drafted charter."""
+    """One-line assistant summary acknowledging a drafted charter.
+
+    Returns:
+        ``NotBlankStr`` instance.
+    """
     return NotBlankStr(
         f"I've drafted the project charter '{draft.title}'. Review and edit"
         " it, then approve to start the project run."
@@ -121,7 +129,11 @@ class CharterInterviewService:
         self._conversation_locks_guard: asyncio.Lock | None = None
 
     async def _lock_for(self, conversation_id: str) -> asyncio.Lock:
-        """Return the per-conversation lock, creating it once."""
+        """Return the per-conversation lock, creating it once.
+
+        Returns:
+            ``asyncio.Lock`` instance.
+        """
         if self._conversation_locks_guard is None:
             self._conversation_locks_guard = asyncio.Lock()
         async with self._conversation_locks_guard:
@@ -139,6 +151,9 @@ class CharterInterviewService:
             ConversationClosedError: The conversation is terminal.
             CharterInterviewResponseInvalidError: The model output did
                 not satisfy the structured contract.
+
+        Returns:
+            ``InterviewTurnResult`` instance.
         """
         now = self._clock.now()
         conversation = await self._resolve_conversation(args, now)
@@ -151,7 +166,14 @@ class CharterInterviewService:
         args: InterviewTurnArgs,
         now: datetime,
     ) -> InterviewTurnResult:
-        """Body of one interview turn under the conversation lock."""
+        """Body of one interview turn under the conversation lock.
+
+        Returns:
+            ``InterviewTurnResult`` instance.
+
+        Raises:
+            ConversationClosedError: Raised on the corresponding failure path.
+        """
         current = await self._conversation_repo.get(conversation.id)
         if current is None or current.status is not ConversationStatus.ACTIVE:
             raise ConversationClosedError(conversation_id=conversation.id)
@@ -198,7 +220,15 @@ class CharterInterviewService:
     async def _resolve_conversation(
         self, args: InterviewTurnArgs, now: datetime
     ) -> Conversation:
-        """Load an existing conversation or open a fresh interview."""
+        """Load an existing conversation or open a fresh interview.
+
+        Returns:
+            ``Conversation`` instance.
+
+        Raises:
+            ConversationNotFoundError: Raised on the corresponding failure path.
+            ConversationClosedError: Raised on the corresponding failure path.
+        """
         if args.conversation_id is None:
             conversation = Conversation(
                 id=_new_id(),
@@ -221,7 +251,11 @@ class CharterInterviewService:
     async def _ordered_turns(
         self, conversation_id: NotBlankStr
     ) -> tuple[ConversationTurn, ...]:
-        """Return all turns for a conversation, oldest-first."""
+        """Return all turns for a conversation, oldest-first.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         newest_first = await self._turn_repo.query(
             ConversationTurnFilterSpec(conversation_id=conversation_id),
             limit=_MAX_TURNS_QUERY_LIMIT,
@@ -236,7 +270,11 @@ class CharterInterviewService:
         content: NotBlankStr,
         now: datetime,
     ) -> ConversationTurn:
-        """Construct a conversation turn (not persisted)."""
+        """Construct a conversation turn (not persisted).
+
+        Returns:
+            ``ConversationTurn`` instance.
+        """
         return ConversationTurn(
             id=_new_id(),
             conversation_id=conversation_id,
@@ -266,7 +304,11 @@ class CharterInterviewService:
         sequence: int,
         now: datetime,
     ) -> InterviewTurnResult:
-        """Persist the assistant question; conversation stays ACTIVE."""
+        """Persist the assistant question; conversation stays ACTIVE.
+
+        Returns:
+            ``InterviewTurnResult`` instance.
+        """
         await self._append_turn(
             conversation.id, sequence, ConversationRole.ASSISTANT, question, now
         )
@@ -287,7 +329,11 @@ class CharterInterviewService:
         sequence: int,
         now: datetime,
     ) -> InterviewTurnResult:
-        """Persist (or update) the single charter for this conversation."""
+        """Persist (or update) the single charter for this conversation.
+
+        Returns:
+            ``InterviewTurnResult`` instance.
+        """
         existing = await self._existing_charter(conversation.id)
         charter = self._charter_from_draft(conversation, draft, existing, now)
         await self._charter_repo.save(charter)
@@ -316,7 +362,11 @@ class CharterInterviewService:
     async def _existing_charter(
         self, conversation_id: NotBlankStr
     ) -> ProjectCharter | None:
-        """Return the conversation's DRAFTED charter, if one exists."""
+        """Return the conversation's DRAFTED charter, if one exists.
+
+        Returns:
+            The ``ProjectCharter`` value when present, ``None`` otherwise.
+        """
         rows = await self._charter_repo.query(
             CharterFilterSpec(
                 conversation_id=conversation_id, status=CharterStatus.DRAFTED
@@ -332,7 +382,11 @@ class CharterInterviewService:
         existing: ProjectCharter | None,
         now: datetime,
     ) -> ProjectCharter:
-        """Mint a new charter or bump the existing draft in place."""
+        """Mint a new charter or bump the existing draft in place.
+
+        Returns:
+            ``ProjectCharter`` instance.
+        """
         charter_id = existing.id if existing is not None else _new_id()
         version = existing.version + 1 if existing is not None else 1
         created_at = existing.created_at if existing is not None else now
@@ -362,7 +416,11 @@ class CharterInterviewService:
         sequence: int,
         now: datetime,
     ) -> InterviewTurnResult:
-        """Force-close an interview that will not converge."""
+        """Force-close an interview that will not converge.
+
+        Returns:
+            ``InterviewTurnResult`` instance.
+        """
         await self._append_turn(
             conversation.id, sequence, ConversationRole.ASSISTANT, _CAP_MESSAGE, now
         )
@@ -404,6 +462,9 @@ class CharterInterviewService:
         Raises:
             CharterNotFoundError: When the id is unknown OR the
                 requester is not the creator.
+
+        Returns:
+            ``ProjectCharter`` instance.
         """
         charter = await self._charter_repo.get(charter_id)
         if charter is None:
@@ -427,7 +488,11 @@ class CharterInterviewService:
         limit: int = _DEFAULT_LIST_LIMIT,
         offset: int = 0,
     ) -> tuple[ProjectCharter, ...]:
-        """List charters matching the optional filters, newest-first."""
+        """List charters matching the optional filters, newest-first.
+
+        Returns:
+            Tuple of the declared element types.
+        """
         return await self._charter_repo.query(
             CharterFilterSpec(
                 status=status, project_id=project_id, created_by=created_by
@@ -451,6 +516,9 @@ class CharterInterviewService:
                 as NotFound so the response cannot probe existence).
             CharterNotEditableError: When the charter is no longer
                 DRAFTED.
+
+        Returns:
+            ``ProjectCharter`` instance.
         """
         charter = await self.get(charter_id, requested_by=edited_by)
         if charter.status is not CharterStatus.DRAFTED:
@@ -474,7 +542,11 @@ class CharterInterviewService:
 
     @staticmethod
     def _edit_updates(args: CharterEditArgs) -> dict[str, object]:
-        """Collect the provided (non-``None``) edit fields."""
+        """Collect the provided (non-``None``) edit fields.
+
+        Returns:
+            Mapping with the declared key/value types.
+        """
         candidates: dict[str, object | None] = {
             "title": args.title,
             "brief": args.brief,
@@ -500,11 +572,16 @@ class CharterInterviewService:
         operator legitimately cancels a stalled charter they did not
         create.
 
+        Returns:
+            ``ProjectCharter`` reflecting the cancelled state.
+
         Raises:
             CharterNotFoundError: When the id is unknown OR (when
                 ``enforce_ownership`` is set) the canceller is not the
                 creator.
             CharterNotEditableError: When the charter is not DRAFTED.
+            CharterStateInconsistentError: When the persisted state
+                fails the post-cancel invariant check.
         """
         charter = await self.get(
             charter_id, requested_by=cancelled_by if enforce_ownership else None

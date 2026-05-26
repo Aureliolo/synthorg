@@ -141,7 +141,11 @@ class _MetaMcp4FacadesMixin:
 
     @property
     def has_agent_health_service(self) -> bool:
-        """Whether the agent-health service has been attached."""
+        """Whether the agent-health service has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._agent_health_service is not None
 
     @property
@@ -150,6 +154,9 @@ class _MetaMcp4FacadesMixin:
 
         Raises:
             RuntimeError: When the service has not been wired yet.
+
+        Returns:
+            ``AgentHealthService`` instance.
         """
         return self._require_service(
             self._agent_health_service,
@@ -178,7 +185,11 @@ class _MetaMcp4FacadesMixin:
 
     @property
     def has_agent_version_service(self) -> bool:
-        """Whether the agent-version service has been attached."""
+        """Whether the agent-version service has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._agent_version_service is not None
 
     @property
@@ -187,6 +198,9 @@ class _MetaMcp4FacadesMixin:
 
         Raises:
             RuntimeError: When the service has not been wired yet.
+
+        Returns:
+            ``AgentVersionService`` instance.
         """
         return self._require_service(
             self._agent_version_service,
@@ -215,7 +229,11 @@ class _MetaMcp4FacadesMixin:
 
     @property
     def has_ceremony_policy_service(self) -> bool:
-        """Whether the ceremony-policy service has been attached."""
+        """Whether the ceremony-policy service has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._ceremony_policy_service is not None
 
     @property
@@ -224,6 +242,9 @@ class _MetaMcp4FacadesMixin:
 
         Raises:
             RuntimeError: When the service has not been wired yet.
+
+        Returns:
+            ``CeremonyPolicyService`` instance.
         """
         return self._require_service(
             self._ceremony_policy_service,
@@ -252,7 +273,11 @@ class _MetaMcp4FacadesMixin:
 
     @property
     def has_coordination_service(self) -> bool:
-        """Whether the coordination service has been attached."""
+        """Whether the coordination service has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._coordination_service is not None
 
     @property
@@ -261,6 +286,9 @@ class _MetaMcp4FacadesMixin:
 
         Raises:
             RuntimeError: When the service has not been wired yet.
+
+        Returns:
+            ``CoordinationService`` instance.
         """
         return self._require_service(
             self._coordination_service,
@@ -289,7 +317,11 @@ class _MetaMcp4FacadesMixin:
 
     @property
     def has_memory_service(self) -> bool:
-        """Whether the memory service has been attached."""
+        """Whether the memory service has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._memory_service is not None
 
     @property
@@ -298,6 +330,9 @@ class _MetaMcp4FacadesMixin:
 
         Raises:
             RuntimeError: When the service has not been wired yet.
+
+        Returns:
+            ``MemoryService`` instance.
         """
         return self._require_service(
             self._memory_service,
@@ -326,7 +361,11 @@ class _MetaMcp4FacadesMixin:
 
     @property
     def has_personality_service(self) -> bool:
-        """Whether the personality service has been attached."""
+        """Whether the personality service has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._personality_service is not None
 
     @property
@@ -335,6 +374,9 @@ class _MetaMcp4FacadesMixin:
 
         Raises:
             RuntimeError: When the service has not been wired yet.
+
+        Returns:
+            ``PersonalityService`` instance.
         """
         return self._require_service(
             self._personality_service,
@@ -363,7 +405,11 @@ class _MetaMcp4FacadesMixin:
 
     @property
     def has_scaling_decision_service(self) -> bool:
-        """Whether the scaling-decision service has been attached."""
+        """Whether the scaling-decision service has been attached.
+
+        Returns:
+            ``True`` or ``False`` reflecting the condition.
+        """
         return self._scaling_decision_service is not None
 
     @property
@@ -372,6 +418,9 @@ class _MetaMcp4FacadesMixin:
 
         Raises:
             RuntimeError: When the service has not been wired yet.
+
+        Returns:
+            ``ScalingDecisionService`` instance.
         """
         return self._require_service(
             self._scaling_decision_service,

@@ -14,8 +14,7 @@ from synthorg.api.rate_limits import per_op_rate_limit_from_policy
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message  # noqa: TC001
-from synthorg.core.domain_errors import resource_not_found
-from synthorg.core.error_taxonomy import ErrorCode
+from synthorg.core.domain_errors import ResourceNotFoundError
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
@@ -103,6 +102,12 @@ class MessageController(Controller):
                 drives the audit log's actor field.
             message_id: Globally unique message identifier (the
                 lookup key on the messages table).
+
+        Returns:
+            ``ApiResponse[None]`` instance.
+
+        Raises:
+            ResourceNotFoundError: Raised on the corresponding failure path.
         """
         app_state: AppState = state.app_state
         deleted = await app_state.message_service.delete_message(
@@ -117,18 +122,14 @@ class MessageController(Controller):
                 actor_id=str(request.user.user_id),
                 reason="not_found",
             )
-            # ``resource_not_found`` routes through
+            # Raising ``ResourceNotFoundError`` routes through
             # ``handle_domain_error`` so the response body carries
             # the structured RFC 9457 envelope every other 404 in
             # the API uses; ``litestar.NotFoundException`` would
             # bypass ``handle_domain_error`` and lose the category
             # / error_code triple.
-            resource_type = "message"
-            raise resource_not_found(
-                resource_type,
-                message_id,
-                code=ErrorCode.RESOURCE_NOT_FOUND,
-            )
+            msg = f"message {message_id!r} not found"
+            raise ResourceNotFoundError(msg)
         return ApiResponse(data=None)
 
     @get("/channels")

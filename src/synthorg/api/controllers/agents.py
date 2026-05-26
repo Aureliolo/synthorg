@@ -102,6 +102,9 @@ async def _resolve_agent_identity(
 
     Raises:
         NotFoundError: If the agent is not found in the registry.
+
+    Returns:
+        ``AgentIdentity`` instance.
     """
     return require_resource_or_404(
         await app_state.agent_registry.get_by_name(agent_name),
@@ -128,6 +131,11 @@ class TrustSummary(BaseModel):
 
     @model_validator(mode="after")
     def _score_requires_evaluation_time(self) -> Self:
+        """Return score requires evaluation time.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if self.score is not None and self.last_evaluated_at is None:
             msg = "score requires last_evaluated_at to be set"
             raise ValueError(msg)
@@ -153,6 +161,11 @@ class PerformanceSummary(BaseModel):
 
     @model_validator(mode="after")
     def _trend_requires_at_least_one_score(self) -> Self:
+        """Return trend requires at least one score.
+
+        Raises:
+            ValueError: Raised on the corresponding failure path.
+        """
         if (
             self.trend is not None
             and self.quality_score is None

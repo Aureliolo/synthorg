@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.meta.appliers._validation import (
     DottedPathError,
     format_validation_errors,
@@ -77,7 +78,11 @@ class ConfigApplier:
 
     @property
     def altitude(self) -> ProposalAltitude:
-        """This applier handles config tuning proposals."""
+        """This applier handles config tuning proposals.
+
+        Returns:
+            ``ProposalAltitude`` instance.
+        """
         return ProposalAltitude.CONFIG_TUNING
 
     async def apply(
@@ -101,9 +106,8 @@ class ConfigApplier:
                 proposal_id=str(proposal.id),
             )
             return ApplyResult(success=True, changes_applied=count)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 META_APPLY_FAILED,
@@ -179,9 +183,8 @@ class ConfigApplier:
 
         try:
             root_config = self._config_provider()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             return self._fail(
                 proposal,
                 error_message=(
@@ -228,7 +231,11 @@ class ConfigApplier:
         *,
         error_message: str,
     ) -> ApplyResult:
-        """Build a failure ``ApplyResult`` and log the ``dry_run.failed`` event."""
+        """Build a failure ``ApplyResult`` and log the ``dry_run.failed`` event.
+
+        Returns:
+            ``ApplyResult`` instance.
+        """
         logger.warning(
             META_DRY_RUN_FAILED,
             altitude="config_tuning",

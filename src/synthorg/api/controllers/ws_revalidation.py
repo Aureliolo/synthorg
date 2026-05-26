@@ -194,6 +194,9 @@ def _revocation_reason(
     time and consults the in-memory revoked-session set published by
     ``session_store`` so an admin's ``DELETE /sessions/{jti}`` kicks
     the live connection out without waiting for token expiry.
+
+    Returns:
+        The ``str`` value when present, ``None`` otherwise.
     """
     if db_user is None:
         return "user_deleted"
