@@ -1,14 +1,21 @@
-# Lychee link-checker config.
+# Lychee link-checker config. One source of truth, consumed two ways:
 #
-# Consumed by .github/workflows/lychee.yml in CI and by the local
-# pre-push hook in .pre-commit-config.yaml (id: lychee). One source
-# of truth; ad-hoc local invocations should also pass
-# `--config lychee.toml` for parity.
+#   - .github/workflows/lychee.yml (PR/push gate) and the local
+#     pre-push hook in .pre-commit-config.yaml (id: lychee) run lychee
+#     `--offline`: internal links only (relative + file://), so a
+#     third-party host's downtime or expired certificate can never
+#     block a merge or a push.
+#   - .github/workflows/lychee-external.yml (weekly) runs online and
+#     applies the strict network tuning below to remote links, filing
+#     a tracking issue on rot instead of blocking.
 #
-# Strictness preset: STRICT. Every non-200 response counts as link
-# rot. Per-host pacing + the .lycheecache (1 day max-age) absorb
-# incidental flakes between back-to-back runs; a real outage on a
-# single host blocks the run, which is the point.
+# Ad-hoc local invocations should also pass `--config lychee.toml`.
+#
+# Strictness preset: STRICT. Every non-200 response counts as link rot.
+# Per-host pacing + the .lycheecache (1 day max-age) absorb incidental
+# flakes between back-to-back runs. The strict network settings apply
+# to the weekly online run; the offline gate makes no network probes
+# and ignores them.
 
 # Cache so repeated CI runs on the same SHA do not re-hit every URL.
 cache = true
@@ -21,7 +28,7 @@ retry_wait_time = 1
 timeout = 10
 
 # Treat ONLY 200 OK as success. A non-OK response is a real link-rot
-# signal worth surfacing on the PR.
+# signal worth surfacing in the weekly external report.
 accept = ["200"]
 
 # Mail links are not real HTTP targets and lychee SMTP probing is noisy
@@ -30,10 +37,12 @@ accept = ["200"]
 # inspectable.
 include_mail = false
 
-# Loopback + placeholder hosts referenced only as examples in docs, plus
-# upstream hosts that reject lychee's HTTP client (anti-bot 403) or rate
-# limit aggressively (429). These are NOT link rot -- the URLs are real
-# and resolvable in a normal browser -- so excluding here is correct.
+# Excludes apply to the weekly online run; the offline gate makes no
+# network probes. Loopback + placeholder hosts referenced only as
+# examples in docs, plus upstream hosts that reject lychee's HTTP client
+# (anti-bot 403) or rate limit aggressively (429). These are NOT link
+# rot -- the URLs are real and resolvable in a normal browser -- so
+# excluding here keeps the weekly report from filing bogus issues.
 exclude = [
     '^https?://localhost',
     '^https?://127\.0\.0\.1',
