@@ -36,32 +36,30 @@ export interface LineDiff {
  * Removed lines are reported at the line number where the deletion
  * occurred in the edited document (clamped to the last line).
  */
-export function computeLineDiff(
-  serverText: string,
-  editedText: string,
-): LineDiff[] {
-  if (serverText === editedText) return []
-  const serverLines = serverText.replace(/\r\n/g, '\n').split('\n')
-  const editedLines = editedText.replace(/\r\n/g, '\n').split('\n')
-  const diffs: LineDiff[] = []
-
-  // LCS-based diff: find longest common subsequence to identify
-  // true additions, removals, and changes (handles insertions/deletions
-  // at any position without cascading false "changed" markers).
+/** Longest-common-subsequence length table for two line arrays. */
+function buildLcsTable(serverLines: string[], editedLines: string[]): number[][] {
   const n = serverLines.length
   const m = editedLines.length
   const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
   for (let i = 1; i <= n; i++) {
     for (let j = 1; j <= m; j++) {
-      dp[i]![j] = serverLines[i - 1] === editedLines[j - 1]
-        ? dp[i - 1]![j - 1]! + 1
-        : Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!)
+      dp[i]![j] =
+        serverLines[i - 1] === editedLines[j - 1]
+          ? dp[i - 1]![j - 1]! + 1
+          : Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!)
     }
   }
+  return dp
+}
 
-  // Backtrack to classify each line
-  let si = n
-  let ei = m
+/** Backtrack the LCS table to the matched line indices on each side. */
+function backtrackMatches(
+  serverLines: string[],
+  editedLines: string[],
+  dp: number[][],
+): { serverMatched: Set<number>; editedMatched: Set<number> } {
+  let si = serverLines.length
+  let ei = editedLines.length
   const serverMatched = new Set<number>()
   const editedMatched = new Set<number>()
   while (si > 0 && ei > 0) {
@@ -76,21 +74,40 @@ export function computeLineDiff(
       ei--
     }
   }
+  return { serverMatched, editedMatched }
+}
 
-  // Unmatched edited lines are additions
+/** Classify unmatched lines: edited -> added, server -> removed. */
+function collectDiffs(
+  serverMatched: Set<number>,
+  editedMatched: Set<number>,
+  n: number,
+  m: number,
+): LineDiff[] {
+  const diffs: LineDiff[] = []
   for (let j = 0; j < m; j++) {
-    if (!editedMatched.has(j)) {
-      diffs.push({ line: j + 1, kind: 'added' })
-    }
+    if (!editedMatched.has(j)) diffs.push({ line: j + 1, kind: 'added' })
   }
-  // Unmatched server lines are removals (shown at nearest edited position)
+  // Removed server lines are shown at the nearest edited position.
   for (let i = 0; i < n; i++) {
     if (!serverMatched.has(i)) {
       diffs.push({ line: Math.max(1, Math.min(i + 1, m)), kind: 'removed' })
     }
   }
-
   return diffs.sort((a, b) => a.line - b.line)
+}
+
+export function computeLineDiff(serverText: string, editedText: string): LineDiff[] {
+  if (serverText === editedText) return []
+  const serverLines = serverText.replace(/\r\n/g, '\n').split('\n')
+  const editedLines = editedText.replace(/\r\n/g, '\n').split('\n')
+
+  // LCS-based diff identifies true additions, removals, and changes
+  // (handles insertions/deletions at any position without cascading
+  // false "changed" markers).
+  const dp = buildLcsTable(serverLines, editedLines)
+  const { serverMatched, editedMatched } = backtrackMatches(serverLines, editedLines, dp)
+  return collectDiffs(serverMatched, editedMatched, serverLines.length, editedLines.length)
 }
 
 // ── Gutter markers ────────────────────────────────────────────
