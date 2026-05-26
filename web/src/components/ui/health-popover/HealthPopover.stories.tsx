@@ -3,8 +3,8 @@ import { http, HttpResponse } from 'msw'
 import type { getHealth } from '@/api/endpoints/health'
 import { ErrorCategory, ErrorCode } from '@/api/types/errors'
 import { apiError, successFor } from '@/mocks/handlers/helpers'
-import { Button } from './button'
-import { HealthPopover } from './health-popover'
+import { Button } from '@/components/ui/button'
+import { HealthPopover } from './HealthPopover'
 
 const meta = {
   title: 'Overlays/HealthPopover',
@@ -113,6 +113,11 @@ export const LoadError: Story = {
   },
 }
 
+// 3 seconds: long enough for Chromatic to capture the loading skeleton,
+// short enough that the story does not block a manual Storybook visit
+// for a full 10 seconds before the dialog populates.
+const LOADING_STORY_DELAY_MS = 3_000
+
 export const Loading: Story = {
   args: {
     children: <Button size="sm">Fetching health...</Button>,
@@ -121,7 +126,7 @@ export const Loading: Story = {
     msw: {
       handlers: [
         http.get('/api/v1/readyz', async () => {
-          await new Promise((resolve) => { setTimeout(resolve, 10_000) })
+          await new Promise((resolve) => { setTimeout(resolve, LOADING_STORY_DELAY_MS) })
           return HttpResponse.json(successFor<typeof getHealth>(BASE_PAYLOAD))
         }),
       ],
@@ -136,7 +141,7 @@ export const Loading: Story = {
 export const Hover = AllSystemsOk
 
 // Empty: the popover always renders a health summary while the probe resolves
-// or after it succeeds. There is no "no data" surface to document -- the empty
+// or after it succeeds. There is no "no data" surface to document. The empty
 // state is represented by `Loading` (probe in flight) and `LoadError` (probe
 // rejected).
 export const Empty = Loading

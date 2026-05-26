@@ -12,6 +12,50 @@ import type { AgentConfig, AgentPerformanceSummary } from '@/api/types/agents'
 import type { AutonomyLevel } from '@/api/types/enums'
 import { apiError, emptyPage, paginatedFor, successFor } from './helpers'
 
+const ALLOWED_AUTONOMY_LEVELS: readonly AutonomyLevel[] = [
+  'full',
+  'semi',
+  'supervised',
+  'locked',
+]
+
+interface AutonomyValidationError {
+  readonly status: number
+  readonly message: string
+}
+
+interface AutonomyValidationOk {
+  readonly level: AutonomyLevel
+  readonly reason: string
+}
+
+function _normalizeAutonomyBody(raw: unknown): { level?: unknown; reason?: unknown } {
+  if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as { level?: unknown; reason?: unknown }
+  }
+  return {}
+}
+
+function _validateAutonomyBody(
+  raw: unknown,
+): AutonomyValidationOk | AutonomyValidationError {
+  const body = _normalizeAutonomyBody(raw)
+  if (typeof body.level !== 'string' || body.level.length === 0) {
+    return { status: 400, message: "Field 'level' is required" }
+  }
+  // Backend requires a non-blank reason (>= 3 non-whitespace chars).
+  // Guard the type first: a non-string payload must hit the 422 path,
+  // not throw on .trim().
+  const reason = typeof body.reason === 'string' ? body.reason.trim() : ''
+  if (reason.length < 3) {
+    return { status: 422, message: "Field 'reason' is required" }
+  }
+  if (!(ALLOWED_AUTONOMY_LEVELS as readonly string[]).includes(body.level)) {
+    return { status: 400, message: 'Unsupported autonomy level' }
+  }
+  return { level: body.level as AutonomyLevel, reason }
+}
+
 /** Minimal AgentConfig stub used when tests do not override. */
 export function buildAgent(
   overrides: Partial<AgentConfig> = {},
@@ -74,45 +118,20 @@ export const agentsHandlers = [
     ),
   ),
   http.post('/api/v1/agents/:agentId/autonomy', async ({ params, request }) => {
-    // request.json() can yield null / array / primitive; normalize to
-    // an object so the property reads below cannot throw and the
-    // handler still mirrors the API's 400/422 validation path.
+    // request.json() can yield null / array / primitive; the validator
+    // normalises to an object so property reads cannot throw, and
+    // mirrors the API's 400/422 validation path on bad inputs.
     const raw: unknown = await request.json()
-    const body: { level?: unknown; reason?: unknown } =
-      raw !== null && typeof raw === 'object' && !Array.isArray(raw)
-        ? (raw as { level?: unknown; reason?: unknown })
-        : {}
-    if (typeof body.level !== 'string' || body.level.length === 0) {
-      return HttpResponse.json(apiError("Field 'level' is required"), {
-        status: 400,
-      })
-    }
-    // Backend requires a non-blank reason (>= 3 non-whitespace chars);
-    // mirror it so tests cannot pass a body the API would 422. Guard
-    // the type first -- a non-string payload must hit the 422 path,
-    // not throw on .trim().
-    const reason =
-      typeof body.reason === 'string' ? body.reason.trim() : ''
-    if (reason.length < 3) {
-      return HttpResponse.json(apiError("Field 'reason' is required"), {
-        status: 422,
-      })
-    }
-    const allowed: readonly AutonomyLevel[] = [
-      'full',
-      'semi',
-      'supervised',
-      'locked',
-    ]
-    if (!(allowed as readonly string[]).includes(body.level)) {
-      return HttpResponse.json(apiError('Unsupported autonomy level'), {
-        status: 400,
+    const validation = _validateAutonomyBody(raw)
+    if ('status' in validation) {
+      return HttpResponse.json(apiError(validation.message), {
+        status: validation.status,
       })
     }
     return HttpResponse.json(
       successFor<typeof setAutonomy>({
         agent_id: String(params.agentId),
-        level: body.level as AutonomyLevel,
+        level: validation.level,
         promotion_pending: false,
       }),
     )

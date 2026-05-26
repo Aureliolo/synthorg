@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, XCircle, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useElapsedSeconds } from '@/hooks/useElapsedSeconds'
 import { formatElapsed } from '@/utils/format'
@@ -40,77 +40,119 @@ export interface ProgressIndicatorProps {
   className?: string
 }
 
-/**
- * Progress indicator for long-running operations.
- *
- * - `determinate`: labeled bar with percentage, ARIA progressbar.
- * - `indeterminate`: shimmer bar for unknown duration (e.g. "Preparing...").
- * - `stages`: ordered list of checkpoints with done / running / pending / failed
- *   states -- use for multi-step pipelines like fine-tuning or setup flows.
- */
-export function ProgressIndicator({
-  variant,
-  value,
+interface StageMeta {
+  readonly Icon: LucideIcon
+  readonly iconColor: string
+  readonly iconExtra: string
+  readonly labelColor: string
+}
+
+const STAGE_META: Record<ProgressStageStatus, StageMeta> = {
+  pending: {
+    Icon: Circle,
+    iconColor: 'text-muted-foreground',
+    iconExtra: '',
+    labelColor: 'text-muted-foreground',
+  },
+  running: {
+    Icon: Loader2,
+    iconColor: 'text-accent',
+    iconExtra: 'animate-spin',
+    labelColor: 'text-foreground',
+  },
+  done: {
+    Icon: CheckCircle2,
+    iconColor: 'text-success',
+    iconExtra: '',
+    labelColor: 'text-foreground',
+  },
+  failed: {
+    Icon: XCircle,
+    iconColor: 'text-danger',
+    iconExtra: '',
+    labelColor: 'text-foreground',
+  },
+}
+
+interface StageRowProps {
+  stage: ProgressStage
+}
+
+function StageRow({ stage }: StageRowProps) {
+  const meta = STAGE_META[stage.status]
+  return (
+    <li
+      className="flex items-start gap-2 text-sm"
+      aria-label={`${stage.label}: ${stage.status}`}
+    >
+      <meta.Icon
+        className={cn('mt-0.5 size-4 shrink-0', meta.iconColor, meta.iconExtra)}
+        aria-hidden="true"
+        strokeWidth="var(--so-stroke-thin)"
+      />
+      <div className="min-w-0 flex-1">
+        <p className={cn('font-medium', meta.labelColor)}>{stage.label}</p>
+        {stage.description && (
+          <p className="text-xs text-muted-foreground">{stage.description}</p>
+        )}
+      </div>
+    </li>
+  )
+}
+
+function _isElapsedWarning(
+  elapsed: number | null,
+  warningAfterSeconds: number | undefined,
+): boolean {
+  return (
+    elapsed !== null &&
+    typeof warningAfterSeconds === 'number' &&
+    Number.isFinite(warningAfterSeconds) &&
+    warningAfterSeconds > 0 &&
+    elapsed >= warningAfterSeconds
+  )
+}
+
+function ElapsedChip({
+  elapsed,
+  isWarning,
+}: {
+  elapsed: number
+  isWarning: boolean
+}) {
+  return (
+    <span
+      className={cn(
+        'font-mono text-xs tabular-nums',
+        isWarning ? 'text-warning' : 'text-muted-foreground',
+      )}
+      aria-label={`Elapsed: ${formatElapsed(elapsed)}`}
+    >
+      {formatElapsed(elapsed)}
+    </span>
+  )
+}
+
+function IndeterminateHeader({
   label,
   description,
-  stages,
-  startedAt,
-  warningAfterSeconds,
-  className,
-}: ProgressIndicatorProps) {
-  if (variant === 'stages') {
-    return (
-      <div className={cn('space-y-3', className)}>
-        {label && (
-          <p className="text-sm font-medium text-foreground">{label}</p>
-        )}
-        {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
-        )}
-        <ol className="space-y-2" role="list">
-          {(stages ?? []).map((stage) => (
-            <StageRow key={stage.id} stage={stage} />
-          ))}
-        </ol>
-      </div>
-    )
-  }
-
-  if (variant === 'indeterminate') {
-    return (
-      <IndeterminateBar
-        label={label}
-        description={description}
-        startedAt={startedAt}
-        warningAfterSeconds={warningAfterSeconds}
-        className={className}
-      />
-    )
-  }
-
-  // determinate
-  const pct = Math.min(100, Math.max(0, Math.round(value ?? 0)))
+  elapsed,
+  isWarning,
+}: {
+  label: string | undefined
+  description: string | undefined
+  elapsed: number | null
+  isWarning: boolean
+}) {
+  const chip = elapsed !== null ? <ElapsedChip elapsed={elapsed} isWarning={isWarning} /> : null
+  if (!label && !chip) return null
   return (
-    <div className={cn('space-y-1.5', className)}>
-      {label && (
-        <div className="flex items-center justify-between gap-3 text-sm">
-          <span className="font-medium text-foreground">{label}</span>
-          <span className="font-mono text-xs text-muted-foreground tabular-nums">{pct}%</span>
-        </div>
-      )}
-      <div
-        role="progressbar"
-        aria-label={label ?? 'Progress'}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={pct}
-        className="h-1.5 w-full overflow-hidden rounded-full bg-card"
-      >
-        <div className="h-full bg-accent transition-[width] duration-[var(--so-transition-medium)] ease-out" style={{ width: `${pct}%` }} />
+    <div className="flex items-center justify-between gap-3 text-sm">
+      {label && <span className="font-medium text-foreground">{label}</span>}
+      <div className="flex items-center gap-2">
+        {description && <span className="text-xs text-muted-foreground">{description}</span>}
+        {chip}
       </div>
-      {description && (
-        <p className="text-xs text-muted-foreground">{description}</p>
-      )}
     </div>
   )
 }
@@ -131,36 +173,16 @@ function IndeterminateBar({
   className,
 }: IndeterminateBarProps) {
   const elapsed = useElapsedSeconds(startedAt ?? null)
-  const isWarning =
-    elapsed !== null &&
-    typeof warningAfterSeconds === 'number' &&
-    Number.isFinite(warningAfterSeconds) &&
-    elapsed >= warningAfterSeconds
-
-  const elapsedChip =
-    elapsed !== null ? (
-      <span
-        className={cn(
-          'font-mono text-xs tabular-nums',
-          isWarning ? 'text-warning' : 'text-muted-foreground',
-        )}
-        aria-label={`Elapsed: ${formatElapsed(elapsed)}`}
-      >
-        {formatElapsed(elapsed)}
-      </span>
-    ) : null
-
+  const isWarning = _isElapsedWarning(elapsed, warningAfterSeconds)
+  const hasHeader = Boolean(label) || elapsed !== null
   return (
     <div className={cn('space-y-1.5', className)}>
-      {(label || elapsedChip) && (
-        <div className="flex items-center justify-between gap-3 text-sm">
-          {label && <span className="font-medium text-foreground">{label}</span>}
-          <div className="flex items-center gap-2">
-            {description && <span className="text-xs text-muted-foreground">{description}</span>}
-            {elapsedChip}
-          </div>
-        </div>
-      )}
+      <IndeterminateHeader
+        label={label}
+        description={description}
+        elapsed={elapsed}
+        isWarning={isWarning}
+      />
       <div
         role="progressbar"
         aria-label={label ?? 'Loading'}
@@ -177,43 +199,122 @@ function IndeterminateBar({
           )}
         />
       </div>
-      {!label && !elapsedChip && description && (
+      {!hasHeader && description && (
         <p className="text-xs text-muted-foreground">{description}</p>
       )}
     </div>
   )
 }
 
-interface StageRowProps {
-  stage: ProgressStage
+function StagesProgress({
+  label,
+  description,
+  stages,
+  className,
+}: {
+  label: string | undefined
+  description: string | undefined
+  stages: readonly ProgressStage[] | undefined
+  className: string | undefined
+}) {
+  return (
+    <div className={cn('space-y-3', className)}>
+      {label && <p className="text-sm font-medium text-foreground">{label}</p>}
+      {description && <p className="text-xs text-muted-foreground">{description}</p>}
+      <ol className="space-y-2" role="list">
+        {(stages ?? []).map((stage) => (
+          <StageRow key={stage.id} stage={stage} />
+        ))}
+      </ol>
+    </div>
+  )
 }
 
-function StageRow({ stage }: StageRowProps) {
-  const Icon =
-    stage.status === 'done' ? CheckCircle2
-      : stage.status === 'failed' ? XCircle
-      : stage.status === 'running' ? Loader2
-      : Circle
-
-  const iconColor =
-    stage.status === 'done' ? 'text-success'
-      : stage.status === 'failed' ? 'text-danger'
-      : stage.status === 'running' ? 'text-accent'
-      : 'text-muted-foreground'
-
-  const iconExtra = stage.status === 'running' ? 'animate-spin' : ''
-
-  const labelColor = stage.status === 'pending' ? 'text-muted-foreground' : 'text-foreground'
-
+function DeterminateBar({
+  value,
+  label,
+  description,
+  className,
+}: {
+  value: number | undefined
+  label: string | undefined
+  description: string | undefined
+  className: string | undefined
+}) {
+  const pct = Math.min(100, Math.max(0, Math.round(value ?? 0)))
   return (
-    <li className="flex items-start gap-2 text-sm" aria-label={`${stage.label}: ${stage.status}`}>
-      <Icon className={cn('mt-0.5 size-4 shrink-0', iconColor, iconExtra)} aria-hidden="true" strokeWidth="var(--so-stroke-thin)" />
-      <div className="min-w-0 flex-1">
-        <p className={cn('font-medium', labelColor)}>{stage.label}</p>
-        {stage.description && (
-          <p className="text-xs text-muted-foreground">{stage.description}</p>
-        )}
+    <div className={cn('space-y-1.5', className)}>
+      {label && (
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <span className="font-medium text-foreground">{label}</span>
+          <span className="font-mono text-xs text-muted-foreground tabular-nums">{pct}%</span>
+        </div>
+      )}
+      <div
+        role="progressbar"
+        aria-label={label ?? 'Progress'}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+        className="h-1.5 w-full overflow-hidden rounded-full bg-card"
+      >
+        <div
+          className="h-full bg-accent transition-[width] duration-[var(--so-transition-medium)] ease-out"
+          style={{ width: `${pct}%` }}
+        />
       </div>
-    </li>
+      {description && (
+        <p className="text-xs text-muted-foreground">{description}</p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Progress indicator for long-running operations.
+ *
+ * - `determinate`: labelled bar with percentage, ARIA progressbar.
+ * - `indeterminate`: shimmer bar for unknown duration (e.g. "Preparing...").
+ * - `stages`: ordered list of checkpoints with done / running / pending / failed
+ *   states. Use for multi-step pipelines like fine-tuning or setup flows.
+ */
+export function ProgressIndicator({
+  variant,
+  value,
+  label,
+  description,
+  stages,
+  startedAt,
+  warningAfterSeconds,
+  className,
+}: ProgressIndicatorProps) {
+  if (variant === 'stages') {
+    return (
+      <StagesProgress
+        label={label}
+        description={description}
+        stages={stages}
+        className={className}
+      />
+    )
+  }
+  if (variant === 'indeterminate') {
+    return (
+      <IndeterminateBar
+        label={label}
+        description={description}
+        startedAt={startedAt}
+        warningAfterSeconds={warningAfterSeconds}
+        className={className}
+      />
+    )
+  }
+  return (
+    <DeterminateBar
+      value={value}
+      label={label}
+      description={description}
+      className={className}
+    />
   )
 }

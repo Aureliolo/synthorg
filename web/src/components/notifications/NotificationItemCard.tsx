@@ -1,6 +1,5 @@
 import { AlertTriangle, Check, Info, X, XCircle } from 'lucide-react'
 import { Link } from 'react-router'
-import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/utils/format'
@@ -33,36 +32,17 @@ interface NotificationItemCardProps {
   readonly onDismiss: (id: string) => void
 }
 
-export function NotificationItemCard({
-  item,
-  onMarkRead,
-  onDismiss,
-}: NotificationItemCardProps) {
+function _safeInternalHref(href: string | undefined): string | null {
+  // Only accept internal absolute paths (a single leading slash, not
+  // the protocol-relative ``//host`` form). External / malformed hrefs
+  // collapse to ``null`` so we never hand them to react-router's <Link>.
+  if (!href || !href.startsWith('/') || href.startsWith('//')) return null
+  return href
+}
+
+function NotificationContent({ item }: { item: NotificationItem }) {
   const Icon = SEVERITY_ICONS[item.severity]
-
-  // ``safeHref`` only accepts internal absolute paths (a single
-  // leading slash, not the protocol-relative ``//host`` form).
-  // External / malformed hrefs collapse to ``null`` so we never
-  // hand them to react-router's <Link>.
-  const safeHref =
-    item.href && item.href.startsWith('/') && !item.href.startsWith('//')
-      ? item.href
-      : null
-  const isActionable = !item.read || safeHref !== null
-
-  // Three render modes for the main click target:
-  //   1. ``<Link>`` when the notification carries a safe internal
-  //      href: native anchor semantics (right-click open in new
-  //      tab, Cmd-click, etc.) and react-router takes care of the
-  //      transition. ``onClick`` still drives the mark-as-read.
-  //   2. ``<button>`` when the only side-effect is marking as read
-  //      (no navigation): native keyboard support without an
-  //      onKeyDown shim.
-  //   3. Plain ``<div>`` when the row is inert (already read AND no
-  //      valid href): no role, not focusable, no hover affordance.
-  //      This keeps screen readers from announcing a redundant
-  //      interactive element for a row that does nothing.
-  const innerContent: ReactNode = (
+  return (
     <>
       <Icon
         className={cn('mt-0.5 size-4 shrink-0', SEVERITY_COLORS[item.severity])}
@@ -72,9 +52,8 @@ export function NotificationItemCard({
         {/* Severity surfaced as an sr-only prefix so the accessible
             name still mentions it without overriding the rich text
             content the way a hardcoded ``aria-label`` would. The
-            click target's accessible name is otherwise derived
-            from the visible title + description + timestamp,
-            matching what the operator reads on screen. */}
+            click target's accessible name is otherwise derived from
+            the visible title + description + timestamp. */}
         <span className="sr-only">{`${item.severity} notification: `}</span>
         <span className="block truncate text-sm font-medium text-foreground">
           {item.title}
@@ -90,76 +69,116 @@ export function NotificationItemCard({
       </span>
     </>
   )
+}
 
+function NotificationMainTarget({
+  item,
+  safeHref,
+  innerClassName,
+  onMarkRead,
+}: {
+  item: NotificationItem
+  safeHref: string | null
+  innerClassName: string
+  onMarkRead: (id: string) => void
+}) {
+  const content = <NotificationContent item={item} />
+  // Three render modes for the main click target:
+  //   1. ``<Link>`` when the notification carries a safe internal
+  //      href: native anchor semantics (right-click open in new tab,
+  //      Cmd-click) and react-router takes care of the transition.
+  //   2. ``<button>`` when the only side-effect is marking as read
+  //      (no navigation): native keyboard support without a shim.
+  //   3. Plain ``<div>`` when the row is inert (already read AND no
+  //      valid href): no role, not focusable, no hover affordance.
+  const markOnInteract = (): void => {
+    if (!item.read) onMarkRead(item.id)
+  }
+  if (safeHref) {
+    return (
+      <Link to={safeHref} onClick={markOnInteract} className={innerClassName}>
+        {content}
+      </Link>
+    )
+  }
+  if (!item.read) {
+    return (
+      <button type="button" onClick={markOnInteract} className={innerClassName}>
+        {content}
+      </button>
+    )
+  }
+  return <div className={innerClassName}>{content}</div>
+}
+
+function NotificationActions({
+  item,
+  onMarkRead,
+  onDismiss,
+}: NotificationItemCardProps) {
+  return (
+    <div className="flex shrink-0 items-start gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      {!item.read && (
+        <button
+          type="button"
+          className="rounded p-0.5 text-muted-foreground hover:bg-accent/10 hover:text-accent"
+          aria-label="Mark as read"
+          title="Mark as read"
+          onClick={() => { onMarkRead(item.id) }}
+        >
+          <Check className="size-3.5" aria-hidden="true" />
+        </button>
+      )}
+      <button
+        type="button"
+        className="rounded p-0.5 text-muted-foreground hover:bg-danger/10 hover:text-danger"
+        aria-label="Dismiss notification"
+        title="Dismiss"
+        onClick={() => { onDismiss(item.id) }}
+      >
+        <X className="size-3.5" aria-hidden="true" />
+      </button>
+    </div>
+  )
+}
+
+export function NotificationItemCard({
+  item,
+  onMarkRead,
+  onDismiss,
+}: NotificationItemCardProps) {
+  const safeHref = _safeInternalHref(item.href)
+  const isActionable = !item.read || safeHref !== null
   const innerClassName = cn(
     'flex flex-1 items-start gap-3 text-left -m-px',
     isActionable ? 'cursor-pointer' : 'cursor-default',
   )
-
-  function handleMarkOnNavigate() {
-    if (!item.read) onMarkRead(item.id)
-  }
-
-  function handleMarkOnly() {
-    if (!item.read) onMarkRead(item.id)
-  }
-
-  let mainTarget: ReactNode
-  if (safeHref) {
-    mainTarget = (
-      <Link to={safeHref} onClick={handleMarkOnNavigate} className={innerClassName}>
-        {innerContent}
-      </Link>
-    )
-  } else if (!item.read) {
-    mainTarget = (
-      <button type="button" onClick={handleMarkOnly} className={innerClassName}>
-        {innerContent}
-      </button>
-    )
-  } else {
-    mainTarget = <div className={innerClassName}>{innerContent}</div>
-  }
-
   return (
     <div
       role="listitem"
       className={cn(
         'group relative flex w-full gap-3 rounded-md border-l-2 px-3 py-2 text-left',
-        // Hover affordance only when the row has somewhere to go:
-        // a read-with-no-link item is inert and shouldn't visually
-        // suggest interactivity. The per-action icons keep their
-        // own hover styles below regardless.
+        // Hover affordance only when the row has somewhere to go: a
+        // read-with-no-link item is inert and shouldn't visually
+        // suggest interactivity. The per-action icons keep their own
+        // hover styles below regardless.
         'transition-colors',
         isActionable && 'hover:bg-card-hover',
         item.read ? 'border-l-transparent' : BORDER_COLORS[item.severity],
         !item.read && 'bg-accent/5',
       )}
     >
-      {mainTarget}
-
-      <div className="flex shrink-0 items-start gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-        {!item.read && (
-          <button
-            type="button"
-            className="rounded p-0.5 text-muted-foreground hover:bg-accent/10 hover:text-accent"
-            aria-label="Mark as read"
-            title="Mark as read"
-            onClick={() => { onMarkRead(item.id) }}
-          >
-            <Check className="size-3.5" aria-hidden="true" />
-          </button>
-        )}
-        <button
-          type="button"
-          className="rounded p-0.5 text-muted-foreground hover:bg-danger/10 hover:text-danger"
-          aria-label="Dismiss notification"
-          title="Dismiss"
-          onClick={() => { onDismiss(item.id) }}
-        >
-          <X className="size-3.5" aria-hidden="true" />
-        </button>
-      </div>
+      <NotificationMainTarget
+        item={item}
+        safeHref={safeHref}
+        innerClassName={innerClassName}
+        onMarkRead={onMarkRead}
+      />
+      <NotificationActions
+        item={item}
+        onMarkRead={onMarkRead}
+        onDismiss={onDismiss}
+      />
     </div>
   )
 }

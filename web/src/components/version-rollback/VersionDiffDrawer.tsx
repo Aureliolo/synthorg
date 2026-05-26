@@ -1,21 +1,26 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Drawer } from '@/components/ui/drawer'
-import { ErrorBanner } from '@/components/ui/error-banner'
-import { Skeleton } from '@/components/ui/skeleton'
 import { getErrorMessage } from '@/utils/errors'
 import { createLogger } from '@/lib/logger'
 import type {
   ReadOnlyVersionHistoryClient,
   VersionDiffResponse,
 } from '@/api/endpoints/version-history'
+import { VersionDiffPanel } from './VersionDiffPanel'
 
 const log = createLogger('version-diff')
+
+interface DiffResultState {
+  key: string | null
+  diff: VersionDiffResponse | null
+  error: string | null
+}
 
 interface VersionDiffDrawerProps<T> {
   /**
    * Read-only client is sufficient: this component only calls
-   * ``client.diff(...)``.  Accepting the broader read-only contract
+   * ``client.diff(...)``. Accepting the broader read-only contract
    * lets read-only domains (role, budget config, evaluation config,
    * company) render this drawer without forcing a rollback-capable
    * client at the call site.
@@ -27,47 +32,49 @@ interface VersionDiffDrawerProps<T> {
   onClose: () => void
 }
 
-function formatValue(value: unknown): string {
-  if (value === null || value === undefined) return '∅'
-  if (typeof value === 'string') return value
-  return JSON.stringify(value, null, 2)
+function _diffResultDirty(result: DiffResultState): boolean {
+  return result.key !== null || result.diff !== null || result.error !== null
 }
 
 /**
- * Shared (cross-domain) drawer that renders the field-level diff
- * between two version snapshots.  ``client`` is the version-history
- * client for the resource scope (e.g. ``roleVersions(roleName)``);
- * ``fromVersion`` / ``toVersion`` identify the snapshots to compare.
- *
- * IMPORTANT: ``client`` MUST be a stable reference across renders
- * (e.g. constructed once via ``useMemo`` or imported as a
- * module-level singleton).  This component depends on ``client`` in
- * its diff-fetch effect; passing a freshly-constructed client on
- * every render would trigger an infinite fetch loop.
+ * Render-phase sub-hook that resets ``result`` to the empty snapshot
+ * whenever ``requestKey`` changes. Uses the React-blessed prevProp
+ * tracker idiom so the next render never shows a stale diff/error
+ * from the previous version pair, without tripping
+ * ``@eslint-react/set-state-in-effect``.
  */
-export function VersionDiffDrawer<T>({
-  client,
-  fromVersion,
-  toVersion,
-  open,
-  onClose,
-}: VersionDiffDrawerProps<T>) {
-  // Diff state is keyed by the (fromVersion, toVersion) pair.  When
-  // the pair changes (or the drawer reopens), the inner result key
-  // shifts and the previous diff is treated as stale.  Avoids
-  // synchronous setState calls inside the effect body, which the
-  // ``eslint-react/set-state-in-effect`` rule prohibits.
+function useResetResultOnRequestChange(
+  requestKey: string | null,
+  result: DiffResultState,
+  setResult: (next: DiffResultState) => void,
+): void {
+  const [prevRequestKey, setPrevRequestKey] = useState<string | null>(null)
+  if (requestKey !== prevRequestKey) {
+    setPrevRequestKey(requestKey)
+    if (_diffResultDirty(result)) {
+      setResult({ key: null, diff: null, error: null })
+    }
+  }
+}
+
+function useDiffRequest<T>(
+  client: ReadOnlyVersionHistoryClient<T>,
+  fromVersion: number | null,
+  toVersion: number | null,
+  open: boolean,
+): { diff: VersionDiffResponse | null; error: string | null; isLoading: boolean } {
   const requestKey =
     open && fromVersion !== null && toVersion !== null
       ? `${fromVersion}-${toVersion}`
       : null
-  const [result, setResult] = useState<{
-    key: string | null
-    diff: VersionDiffResponse | null
-    error: string | null
-  }>({ key: null, diff: null, error: null })
-  const { key: resultKey, diff, error } = result
-  const isLoading = requestKey !== null && resultKey !== requestKey
+  const [result, setResult] = useState<DiffResultState>({
+    key: null,
+    diff: null,
+    error: null,
+  })
+  useResetResultOnRequestChange(requestKey, result, setResult)
+
+  const isLoading = requestKey !== null && result.key !== requestKey
 
   useEffect(() => {
     if (requestKey === null || fromVersion === null || toVersion === null) return
@@ -81,11 +88,7 @@ export function VersionDiffDrawer<T>({
       } catch (err) {
         log.warn('Failed to load version diff:', getErrorMessage(err))
         if (!cancelled) {
-          setResult({
-            key: requestKey,
-            diff: null,
-            error: getErrorMessage(err),
-          })
+          setResult({ key: requestKey, diff: null, error: getErrorMessage(err) })
         }
       }
     }
@@ -95,70 +98,42 @@ export function VersionDiffDrawer<T>({
     }
   }, [client, fromVersion, toVersion, requestKey])
 
+  return { diff: result.diff, error: result.error, isLoading }
+}
+
+/**
+ * Shared (cross-domain) drawer that renders the field-level diff
+ * between two version snapshots. ``client`` is the version-history
+ * client for the resource scope (e.g. ``roleVersions(roleName)``);
+ * ``fromVersion`` / ``toVersion`` identify the snapshots to compare.
+ *
+ * IMPORTANT: ``client`` MUST be a stable reference across renders
+ * (e.g. constructed once via ``useMemo`` or imported as a
+ * module-level singleton). This component depends on ``client`` in
+ * its diff-fetch effect; passing a freshly-constructed client on
+ * every render would trigger an infinite fetch loop.
+ */
+export function VersionDiffDrawer<T>({
+  client,
+  fromVersion,
+  toVersion,
+  open,
+  onClose,
+}: VersionDiffDrawerProps<T>) {
+  const { diff, error, isLoading } = useDiffRequest(client, fromVersion, toVersion, open)
+  const title = fromVersion !== null && toVersion !== null
+    ? `Diff · v${fromVersion} -> v${toVersion}`
+    : 'Diff'
   return (
     <Drawer
       open={open}
       onClose={onClose}
-      title={
-        fromVersion !== null && toVersion !== null
-          ? `Diff · v${fromVersion} -> v${toVersion}`
-          : 'Diff'
-      }
+      title={title}
       ariaLabel="Version diff"
       width="wide"
     >
       <div className="flex flex-col gap-section-gap p-card">
-        {error && (
-          <ErrorBanner
-            severity="error"
-            title="Could not load diff"
-            description={error}
-          />
-        )}
-
-        {isLoading && (
-          <div className="flex flex-col gap-grid-gap">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-16 w-full" />
-            ))}
-          </div>
-        )}
-
-        {!isLoading && diff !== null && diff.entries.length === 0 && (
-          <p className="text-sm text-text-secondary">
-            No field-level changes between these versions.
-          </p>
-        )}
-
-        {!isLoading && diff !== null && diff.entries.length > 0 && (
-          <ul className="flex flex-col gap-grid-gap">
-            {diff.entries.map((entry) => (
-              <li
-                key={entry.path}
-                className="rounded-md border border-border bg-card p-card"
-              >
-                <p className="mb-1 font-mono text-xs text-text-secondary">
-                  {entry.path}
-                </p>
-                <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2">
-                  <div>
-                    <p className="text-xs text-text-secondary">Before</p>
-                    <pre className="overflow-x-auto rounded-md bg-surface p-2 font-mono text-xs text-foreground">
-                      {formatValue(entry.before)}
-                    </pre>
-                  </div>
-                  <div>
-                    <p className="text-xs text-text-secondary">After</p>
-                    <pre className="overflow-x-auto rounded-md bg-surface p-2 font-mono text-xs text-foreground">
-                      {formatValue(entry.after)}
-                    </pre>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-
+        <VersionDiffPanel diff={diff} error={error} isLoading={isLoading} />
         <div className="flex justify-end pt-card">
           <Button variant="secondary" onClick={onClose}>
             Close

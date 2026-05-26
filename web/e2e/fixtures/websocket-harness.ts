@@ -15,8 +15,6 @@
  * The harness only activates inside the Playwright runtime; it relies
  * on ``page.addInitScript`` so the stub is in place before the SPA
  * runs and never reaches production code.
- *
- * Issue #1604 / W5a.
  */
 
 import type { Page } from '@playwright/test'

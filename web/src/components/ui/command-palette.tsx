@@ -1,5 +1,5 @@
 import { Command } from 'cmdk-base'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createLogger } from '@/lib/logger'
@@ -29,11 +29,22 @@ function getRecentIds(): string[] {
   }
 }
 
+// In-process subscribers for the recent-IDs store. ``addRecentId``
+// notifies these so ``useSyncExternalStore`` consumers re-render
+// inside the same tab; cross-tab changes flow through the
+// ``storage`` event registered in ``_subscribeRecentIds``.
+const _recentIdsListeners = new Set<() => void>()
+
+function _notifyRecentIdsListeners(): void {
+  for (const listener of _recentIdsListeners) listener()
+}
+
 function addRecentId(id: string) {
   try {
     const recent = getRecentIds().filter((r) => r !== id)
     recent.unshift(id)
     localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(recent.slice(0, MAX_RECENT)))
+    _notifyRecentIdsListeners()
   } catch (err) {
     // Best-effort convenience feature -- never block command execution, but
     // surface the diagnostic so quota/security errors can be correlated with
@@ -42,22 +53,60 @@ function addRecentId(id: string) {
   }
 }
 
+// Cached snapshot kept referentially stable across reads when the
+// underlying localStorage value hasn't changed. ``useSyncExternalStore``
+// requires a stable reference between unchanged reads, otherwise it
+// treats every read as a state change and triggers an infinite render
+// loop.
+let _recentIdsSnapshot: readonly string[] = []
+let _recentIdsRawSnapshot: string | null = null
+
+function _readRecentIdsRaw(): string | null {
+  try {
+    return localStorage.getItem(RECENT_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function _getRecentIdsSnapshot(): readonly string[] {
+  const raw = _readRecentIdsRaw()
+  if (raw === _recentIdsRawSnapshot) return _recentIdsSnapshot
+  _recentIdsRawSnapshot = raw
+  _recentIdsSnapshot = getRecentIds()
+  return _recentIdsSnapshot
+}
+
+const _RECENT_IDS_SERVER_SNAPSHOT: readonly string[] = []
+
+function _getRecentIdsServerSnapshot(): readonly string[] {
+  return _RECENT_IDS_SERVER_SNAPSHOT
+}
+
+function _subscribeRecentIds(callback: () => void): () => void {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === RECENT_STORAGE_KEY) callback()
+  }
+  window.addEventListener('storage', onStorage)
+  _recentIdsListeners.add(callback)
+  return () => {
+    window.removeEventListener('storage', onStorage)
+    _recentIdsListeners.delete(callback)
+  }
+}
+
 export interface CommandPaletteProps {
   className?: string
 }
 
-export function CommandPalette({ className }: CommandPaletteProps) {
-  const { commands, isOpen, close, toggle, setOpen } = useCommandPalette()
-  const [search, setSearch] = useState('')
-  const [scope, setScope] = useState<'global' | 'local'>('global')
-
-  // Cmd+K / Ctrl+K global toggle. Escape is handled by Base UI Dialog inside
-  // cmdk-base's Command.Dialog, so we no longer need a manual Escape handler.
+function useCommandPaletteShortcut(toggle: () => void): void {
+  // Cmd+K / Ctrl+K global toggle. Escape is handled by Base UI Dialog
+  // inside cmdk-base's Command.Dialog, so no manual Escape handler.
   //
-  // Uses toLowerCase() to match both 'k' and 'K' -- with Caps Lock on (or
-  // AZERTY layouts that remap the key), `e.key` reports 'K' for the same
-  // physical keystroke. The sibling useSettingsKeyboard.ts hook follows
-  // the same convention for its Ctrl+S/ handlers.
+  // Uses toLowerCase() to match both 'k' and 'K' -- with Caps Lock on
+  // (or AZERTY layouts that remap the key), `e.key` reports 'K' for
+  // the same physical keystroke. The sibling useSettingsKeyboard.ts
+  // hook follows the same convention for its Ctrl+S handlers.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey)) {
@@ -68,8 +117,73 @@ export function CommandPalette({ className }: CommandPaletteProps) {
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [toggle])
+}
 
-  // Reset search and scope when palette opens
+interface FilteredCommands {
+  grouped: Map<string, CommandItem[]>
+  recentItems: CommandItem[]
+  recentIdSet: Set<string>
+  hasLocalCommands: boolean
+}
+
+function _matchesScope(cmd: CommandItem, scope: 'global' | 'local'): boolean {
+  const cmdScope = cmd.scope ?? 'global'
+  return scope === 'global' ? true : cmdScope === 'local'
+}
+
+function _groupCommands(commands: readonly CommandItem[]): Map<string, CommandItem[]> {
+  const groups = new Map<string, CommandItem[]>()
+  for (const cmd of commands) {
+    const existing = groups.get(cmd.group) ?? []
+    existing.push(cmd)
+    groups.set(cmd.group, existing)
+  }
+  return groups
+}
+
+function useFilteredCommands(
+  commands: readonly CommandItem[],
+  scope: 'global' | 'local',
+  search: string,
+): FilteredCommands {
+  const filtered = useMemo(
+    () => commands.filter((cmd) => _matchesScope(cmd, scope)),
+    [commands, scope],
+  )
+  const grouped = useMemo(() => _groupCommands(filtered), [filtered])
+  // Route the recent-IDs read through ``useSyncExternalStore`` so the
+  // ``localStorage`` access happens inside the React-blessed snapshot
+  // callback (not in a render body, where ``@eslint-react/globals``
+  // would flag it, nor inside a ``useEffect`` setState, where
+  // ``@eslint-react/set-state-in-effect`` would flag it). The
+  // subscription covers both cross-tab (``storage`` event) and
+  // intra-tab (``addRecentId`` notifies via
+  // ``_notifyRecentIdsListeners``) flows so a freshly-recorded
+  // command appears the next time the palette renders without an
+  // explicit "refresh on open" trigger.
+  const recentIds = useSyncExternalStore(
+    _subscribeRecentIds,
+    _getRecentIdsSnapshot,
+    _getRecentIdsServerSnapshot,
+  )
+  const recentItems = useMemo(() => {
+    if (search) return []
+    return recentIds
+      .map((id) => commands.find((c) => c.id === id))
+      .filter((c): c is CommandItem => c !== undefined && _matchesScope(c, scope))
+  }, [search, recentIds, commands, scope])
+  const recentIdSet = useMemo(() => new Set(recentItems.map((c) => c.id)), [recentItems])
+  const hasLocalCommands = commands.some((c) => c.scope === 'local')
+  return { grouped, recentItems, recentIdSet, hasLocalCommands }
+}
+
+export function CommandPalette({ className }: CommandPaletteProps) {
+  const { commands, isOpen, close, toggle, setOpen } = useCommandPalette()
+  const [search, setSearch] = useState('')
+  const [scope, setScope] = useState<'global' | 'local'>('global')
+  useCommandPaletteShortcut(toggle)
+
+  // Reset search and scope when palette opens.
   useEffect(() => {
     if (isOpen) {
       setSearch('') // eslint-disable-line @eslint-react/set-state-in-effect -- intentional reset on open
@@ -77,40 +191,8 @@ export function CommandPalette({ className }: CommandPaletteProps) {
     }
   }, [isOpen])
 
-  const filteredCommands = useMemo(() => {
-    return commands.filter((cmd) => {
-      const cmdScope = cmd.scope ?? 'global'
-      return scope === 'global' ? true : cmdScope === 'local'
-    })
-  }, [commands, scope])
-
-  const grouped = useMemo(() => {
-    const groups = new Map<string, CommandItem[]>()
-    for (const cmd of filteredCommands) {
-      const existing = groups.get(cmd.group) ?? []
-      existing.push(cmd)
-      groups.set(cmd.group, existing)
-    }
-    return groups
-  }, [filteredCommands])
-
-  // Recent items (only shown when search is empty)
-  // Re-read recent items each time the palette opens
-  const recentIds = useMemo(() => getRecentIds(), [isOpen]) // eslint-disable-line @eslint-react/exhaustive-deps
-  const recentItems = useMemo(() => {
-    if (search) return []
-    return recentIds
-      .map((id) => commands.find((c) => c.id === id))
-      .filter((c): c is CommandItem => {
-        if (c === undefined) return false
-        const cmdScope = c.scope ?? 'global'
-        return scope === 'global' ? true : cmdScope === 'local'
-      })
-  }, [search, recentIds, commands, scope])
-
-  const recentIdSet = useMemo(
-    () => new Set(recentItems.map((c) => c.id)),
-    [recentItems],
+  const { grouped, recentItems, recentIdSet, hasLocalCommands } = useFilteredCommands(
+    commands, scope, search,
   )
 
   const handleSelect = useCallback(
@@ -118,15 +200,15 @@ export function CommandPalette({ className }: CommandPaletteProps) {
       addRecentId(cmd.id)
       try {
         // Await via Promise.resolve so both sync and async actions are
-        // handled. A promise rejection from an async action would otherwise
-        // escape the try/catch and close() below would run as if the action
-        // succeeded -- the opposite of the "user sees failures" contract.
+        // handled. A promise rejection from an async action would
+        // otherwise escape the try/catch and close() below would run
+        // as if the action succeeded -- the opposite of the "user sees
+        // failures" contract.
         await Promise.resolve(cmd.action())
       } catch (err) {
-        // Always log + toast so users see when a destructive command (e.g.
-        // "Delete agent") fails instead of the palette closing silently as
-        // if the action succeeded. Getting this wrong would mean users
-        // believe destructive actions completed when they did not.
+        // Always log + toast so users see when a destructive command
+        // (e.g. "Delete agent") fails instead of the palette closing
+        // silently as if the action succeeded.
         log.error('Command action failed', { commandId: cmd.id, label: cmd.label }, err)
         useToastStore.getState().add({
           variant: 'error',
@@ -144,15 +226,13 @@ export function CommandPalette({ className }: CommandPaletteProps) {
 
   const handleScopeToggle = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Tab' && commands.some((c) => c.scope === 'local')) {
+      if (e.key === 'Tab' && hasLocalCommands) {
         e.preventDefault()
         setScope((prev) => (prev === 'global' ? 'local' : 'global'))
       }
     },
-    [commands],
+    [hasLocalCommands],
   )
-
-  const hasLocalCommands = commands.some((c) => c.scope === 'local')
 
   return (
     <Command.Dialog
@@ -174,65 +254,101 @@ export function CommandPalette({ className }: CommandPaletteProps) {
       )}
       onKeyDown={handleScopeToggle}
     >
-      {/* Search input */}
-      <div className="flex items-center gap-3 border-b border-border px-4">
-        <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <Command.Input
-          value={search}
-          onValueChange={setSearch}
-          placeholder={scope === 'global' ? 'Search commands...' : 'Search page commands...'}
-          className="flex-1 bg-transparent py-3 text-base text-foreground placeholder:text-muted-foreground outline-none"
-        />
-        {hasLocalCommands && (
-          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            Tab: {scope}
-          </span>
-        )}
-      </div>
-
-      <Command.List className="max-h-[320px] overflow-y-auto p-2">
-        <Command.Empty className="py-6 text-center text-sm text-muted-foreground">
-          No results found.
-        </Command.Empty>
-
-        {/* Recent items */}
-        {recentItems.length > 0 && (
-          <Command.Group heading="Recent" className="mb-1">
-            {recentItems.map((cmd) => (
-              <CommandItemRow key={`recent-${cmd.id}`} item={cmd} onSelect={(item) => { void handleSelect(item) }} />
-            ))}
-          </Command.Group>
-        )}
-
-        {/* Command groups */}
-        {[...grouped.entries()].map(([groupName, items]) => (
-          <Command.Group
-            key={groupName}
-            heading={groupName}
-            className="mb-1"
-          >
-            {items.filter((cmd) => !recentIdSet.has(cmd.id)).map((cmd) => (
-              <CommandItemRow key={cmd.id} item={cmd} onSelect={(item) => { void handleSelect(item) }} />
-            ))}
-          </Command.Group>
-        ))}
-      </Command.List>
-
-      {/* Footer hint */}
-      <div className="flex items-center gap-4 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
-        <span>
-          <kbd className="rounded border border-border px-1">Enter</kbd> select
-        </span>
-        <span>
-          <kbd className="rounded border border-border px-1">Esc</kbd> close
-        </span>
-        {hasLocalCommands && (
-          <span>
-            <kbd className="rounded border border-border px-1">Tab</kbd> scope
-          </span>
-        )}
-      </div>
+      <CommandPaletteSearch
+        search={search}
+        setSearch={setSearch}
+        scope={scope}
+        hasLocalCommands={hasLocalCommands}
+      />
+      <CommandPaletteList
+        grouped={grouped}
+        recentItems={recentItems}
+        recentIdSet={recentIdSet}
+        onSelect={(item) => { void handleSelect(item) }}
+      />
+      <CommandPaletteFooter hasLocalCommands={hasLocalCommands} />
     </Command.Dialog>
+  )
+}
+
+function CommandPaletteSearch({
+  search,
+  setSearch,
+  scope,
+  hasLocalCommands,
+}: {
+  search: string
+  setSearch: (value: string) => void
+  scope: 'global' | 'local'
+  hasLocalCommands: boolean
+}) {
+  return (
+    <div className="flex items-center gap-3 border-b border-border px-4">
+      <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <Command.Input
+        value={search}
+        onValueChange={setSearch}
+        placeholder={scope === 'global' ? 'Search commands...' : 'Search page commands...'}
+        className="flex-1 bg-transparent py-3 text-base text-foreground placeholder:text-muted-foreground outline-none"
+      />
+      {hasLocalCommands && (
+        <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          Tab: {scope}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function CommandPaletteList({
+  grouped,
+  recentItems,
+  recentIdSet,
+  onSelect,
+}: {
+  grouped: Map<string, CommandItem[]>
+  recentItems: CommandItem[]
+  recentIdSet: Set<string>
+  onSelect: (item: CommandItem) => void
+}) {
+  return (
+    <Command.List className="max-h-[320px] overflow-y-auto p-2">
+      <Command.Empty className="py-6 text-center text-sm text-muted-foreground">
+        No results found.
+      </Command.Empty>
+      {recentItems.length > 0 && (
+        <Command.Group heading="Recent" className="mb-1">
+          {recentItems.map((cmd) => (
+            <CommandItemRow key={`recent-${cmd.id}`} item={cmd} onSelect={onSelect} />
+          ))}
+        </Command.Group>
+      )}
+      {[...grouped.entries()].map(([groupName, items]) => (
+        <Command.Group key={groupName} heading={groupName} className="mb-1">
+          {items.filter((cmd) => !recentIdSet.has(cmd.id)).map((cmd) => (
+            <CommandItemRow key={cmd.id} item={cmd} onSelect={onSelect} />
+          ))}
+        </Command.Group>
+      ))}
+    </Command.List>
+  )
+}
+
+function CommandPaletteFooter({ hasLocalCommands }: { hasLocalCommands: boolean }) {
+  return (
+    <div className="flex items-center gap-4 border-t border-border px-4 py-2 text-[10px] text-muted-foreground">
+      <span>
+        <kbd className="rounded border border-border px-1">Enter</kbd> select
+      </span>
+      <span>
+        <kbd className="rounded border border-border px-1">Esc</kbd> close
+      </span>
+      {hasLocalCommands && (
+        <span>
+          <kbd className="rounded border border-border px-1">Tab</kbd> scope
+        </span>
+      )}
+    </div>
   )
 }
 

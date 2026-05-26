@@ -24,6 +24,214 @@ export interface PaginationProps {
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [20, 50, 100] as const
 
+interface PaginationGeometry {
+  knownTotal: boolean
+  safePageSize: number
+  totalPages: number
+  safePage: number
+  isFirst: boolean
+  isNextDisabled: boolean
+  isLastJumpDisabled: boolean
+  rangeStart: number | undefined
+  rangeEnd: number | undefined
+}
+
+function _safePageSizeFor(pageSize: number, pageSizeOptions: readonly number[]): number {
+  // Defensive clamp: pageSize must be positive to avoid division-by-zero
+  // in totalPages. Fall back to the first option in the caller-supplied
+  // list (rather than a fixed 20) so the <select> below always has a
+  // matching <option> when `pageSize` is invalid or absent.
+  const firstValidOption = pageSizeOptions.find((size) => size > 0) ?? DEFAULT_PAGE_SIZE_OPTIONS[0]!
+  return pageSize > 0 ? pageSize : firstValidOption
+}
+
+function _computeRange(
+  total: number | undefined,
+  safePage: number,
+  safePageSize: number,
+): { rangeStart: number | undefined; rangeEnd: number | undefined } {
+  if (total === undefined) return { rangeStart: undefined, rangeEnd: undefined }
+  if (total === 0) return { rangeStart: 0, rangeEnd: 0 }
+  return {
+    rangeStart: (safePage - 1) * safePageSize + 1,
+    rangeEnd: Math.min(safePage * safePageSize, total),
+  }
+}
+
+function _computeGeometry(
+  page: number,
+  pageSize: number,
+  total: number | undefined,
+  pageSizeOptions: readonly number[],
+): PaginationGeometry {
+  const knownTotal = total !== undefined
+  const safePageSize = _safePageSizeFor(pageSize, pageSizeOptions)
+  const totalPages = knownTotal && total > 0
+    ? Math.max(1, Math.ceil(total / safePageSize))
+    : 1
+  // In cursor mode (total unknown) we cannot determine totalPages, so
+  // do not clamp down to 1.
+  const safePage = knownTotal ? Math.min(Math.max(1, page), totalPages) : Math.max(1, page)
+  const isFirst = safePage <= 1
+  const isLastKnown = knownTotal && safePage >= totalPages
+  // In cursor mode Next stays enabled (consumer controls flow); Last is
+  // disabled because the total page count is not known to this control.
+  const isNextDisabled = knownTotal ? isLastKnown : false
+  const isLastJumpDisabled = knownTotal ? isLastKnown : true
+  const { rangeStart, rangeEnd } = _computeRange(total, safePage, safePageSize)
+  return {
+    knownTotal, safePageSize, totalPages, safePage,
+    isFirst, isNextDisabled, isLastJumpDisabled,
+    rangeStart, rangeEnd,
+  }
+}
+
+interface KeyAction {
+  readonly disabled: boolean
+  readonly nextPage: number
+}
+
+function _isShortcutOriginEditable(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  return (
+    tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT' ||
+    target.isContentEditable
+  )
+}
+
+function _keyActionFor(key: string, geo: PaginationGeometry): KeyAction | null {
+  switch (key) {
+    case 'ArrowLeft':
+    case 'PageUp':
+      return { disabled: geo.isFirst, nextPage: geo.safePage - 1 }
+    case 'ArrowRight':
+    case 'PageDown':
+      return { disabled: geo.isNextDisabled, nextPage: geo.safePage + 1 }
+    case 'Home':
+      return { disabled: geo.isFirst, nextPage: 1 }
+    case 'End':
+      return { disabled: geo.isLastJumpDisabled, nextPage: geo.totalPages }
+    default:
+      return null
+  }
+}
+
+function PageSizeSelect({
+  pageSize,
+  safePageSize,
+  pageSizeOptions,
+  onPageSizeChange,
+}: {
+  pageSize: number
+  safePageSize: number
+  pageSizeOptions: readonly number[]
+  onPageSizeChange: (size: number) => void
+}) {
+  const selectId = useId()
+  return (
+    <div className="flex items-center gap-1.5">
+      <label htmlFor={selectId} className="sr-only">
+        Items per page
+      </label>
+      <select
+        id={selectId}
+        value={pageSizeOptions.includes(pageSize) ? pageSize : safePageSize}
+        onChange={(e) => onPageSizeChange(Number(e.target.value))}
+        className={cn(
+          'rounded-md border border-border bg-surface px-2 py-1 text-xs text-foreground',
+          'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent',
+        )}
+      >
+        {pageSizeOptions.map((size) => (
+          <option key={size} value={size}>
+            {size} / page
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+function PaginationButtons({
+  geo,
+  total,
+  onPageChange,
+}: {
+  geo: PaginationGeometry
+  total: number | undefined
+  onPageChange: (page: number) => void
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label="First page"
+        disabled={geo.isFirst}
+        onClick={() => onPageChange(1)}
+      >
+        <ChevronsLeft className="size-3.5" aria-hidden="true" />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label="Previous page"
+        disabled={geo.isFirst}
+        onClick={() => onPageChange(geo.safePage - 1)}
+      >
+        <ChevronLeft className="size-3.5" aria-hidden="true" />
+      </Button>
+      <span aria-current="page" className="px-2 tabular-nums text-foreground">
+        {formatNumber(geo.safePage)}
+        {total !== undefined && (
+          <span className="text-muted-foreground"> / {formatNumber(geo.totalPages)}</span>
+        )}
+      </span>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label="Next page"
+        disabled={geo.isNextDisabled}
+        onClick={() => onPageChange(geo.safePage + 1)}
+      >
+        <ChevronRight className="size-3.5" aria-hidden="true" />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label="Last page"
+        disabled={geo.isLastJumpDisabled}
+        onClick={() => onPageChange(geo.totalPages)}
+      >
+        <ChevronsRight className="size-3.5" aria-hidden="true" />
+      </Button>
+    </div>
+  )
+}
+
+function PaginationStatus({
+  total,
+  geo,
+}: {
+  total: number | undefined
+  geo: PaginationGeometry
+}) {
+  if (total === undefined) {
+    return <div className="text-muted-foreground">Page {formatNumber(geo.safePage)}</div>
+  }
+  if (total === 0) {
+    return <div className="text-muted-foreground">No items</div>
+  }
+  return (
+    <div className="text-muted-foreground">
+      {formatNumber(geo.rangeStart ?? 0)}-{formatNumber(geo.rangeEnd ?? 0)} of {formatNumber(total)}
+    </div>
+  )
+}
+
 /**
  * Pagination control for list views.
  *
@@ -49,78 +257,32 @@ export function Pagination({
   ariaLabel = 'Pagination',
   className,
 }: PaginationProps) {
-  const knownTotal = total !== undefined
-  // Defensive clamp: pageSize must be positive to avoid division-by-zero in
-  // totalPages. Fall back to the first option in the caller-supplied list
-  // (rather than a fixed 20) so the <select> below always has a matching
-  // <option> when `pageSize` is invalid or absent from the option set.
-  const firstValidOption = pageSizeOptions.find((size) => size > 0) ?? DEFAULT_PAGE_SIZE_OPTIONS[0]!
-  const safePageSize = pageSize > 0 ? pageSize : firstValidOption
-  const totalPages = knownTotal && total > 0 ? Math.max(1, Math.ceil(total / safePageSize)) : 1
-  // In cursor mode (total unknown) we cannot determine totalPages, so don't clamp down to 1.
-  const safePage = knownTotal ? Math.min(Math.max(1, page), totalPages) : Math.max(1, page)
-  const isFirst = safePage <= 1
-  const isLastKnown = knownTotal && safePage >= totalPages
-  // In cursor mode Next stays enabled (consumer controls flow); Last is disabled because
-  // the total page count is not known to this control.
-  const isNextDisabled = knownTotal ? isLastKnown : false
-  const isLastJumpDisabled = knownTotal ? isLastKnown : true
+  // Filter out non-positive entries up-front and fall back to the
+  // default list when every supplied option is invalid, so
+  // ``_computeGeometry`` and ``PageSizeSelect`` see the same validated
+  // list. Without this normalisation a hostile caller can leave the
+  // controlled <select> with no matching <option>, surfacing as a
+  // page-size control the operator cannot interact with.
+  const normalizedPageSizeOptions =
+    pageSizeOptions.some((size) => size > 0)
+      ? pageSizeOptions.filter((size) => size > 0)
+      : DEFAULT_PAGE_SIZE_OPTIONS
+  const geo = _computeGeometry(page, pageSize, total, normalizedPageSizeOptions)
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>) => {
       // Swallow only shortcuts that originate on the nav buttons themselves.
       // If the user is typing in the page-size <select>, the browser's own
       // Arrow / Home / End behaviour (open/close options, jump to bounds)
-      // should win -- we must not hijack it.
-      const target = event.target as HTMLElement | null
-      if (target) {
-        const tag = target.tagName
-        if (
-          tag === 'INPUT' ||
-          tag === 'TEXTAREA' ||
-          tag === 'SELECT' ||
-          (target as HTMLElement).isContentEditable === true
-        ) {
-          return
-        }
-      }
-      switch (event.key) {
-        case 'ArrowLeft':
-        case 'PageUp':
-          if (!isFirst) {
-            event.preventDefault()
-            onPageChange(safePage - 1)
-          }
-          break
-        case 'ArrowRight':
-        case 'PageDown':
-          if (!isNextDisabled) {
-            event.preventDefault()
-            onPageChange(safePage + 1)
-          }
-          break
-        case 'Home':
-          if (!isFirst) {
-            event.preventDefault()
-            onPageChange(1)
-          }
-          break
-        case 'End':
-          if (!isLastJumpDisabled) {
-            event.preventDefault()
-            onPageChange(totalPages)
-          }
-          break
-        default:
-          break
-      }
+      // should win, we must not hijack it.
+      if (_isShortcutOriginEditable(event.target)) return
+      const action = _keyActionFor(event.key, geo)
+      if (!action || action.disabled) return
+      event.preventDefault()
+      onPageChange(action.nextPage)
     },
-    [isFirst, isNextDisabled, isLastJumpDisabled, onPageChange, safePage, totalPages],
+    [geo, onPageChange],
   )
-
-  const rangeStart = total === undefined ? undefined : total === 0 ? 0 : (safePage - 1) * safePageSize + 1
-  const rangeEnd = total === undefined ? undefined : Math.min(safePage * safePageSize, total)
-  const selectId = useId()
 
   return (
     <nav
@@ -128,82 +290,17 @@ export function Pagination({
       onKeyDown={onKeyDown}
       className={cn('flex flex-wrap items-center justify-between gap-3 text-xs', className)}
     >
-      <div className="text-muted-foreground">
-        {total === undefined
-          ? `Page ${formatNumber(safePage)}`
-          : total === 0
-            ? 'No items'
-            : `${formatNumber(rangeStart ?? 0)}-${formatNumber(rangeEnd ?? 0)} of ${formatNumber(total)}`}
-      </div>
-
+      <PaginationStatus total={total} geo={geo} />
       <div className="flex items-center gap-2">
         {!hidePageSize && onPageSizeChange && (
-          <div className="flex items-center gap-1.5">
-            <label htmlFor={selectId} className="sr-only">
-              Items per page
-            </label>
-            <select
-              id={selectId}
-              value={pageSizeOptions.includes(pageSize) ? pageSize : safePageSize}
-              onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              className={cn(
-                'rounded-md border border-border bg-surface px-2 py-1 text-xs text-foreground',
-                'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent',
-              )}
-            >
-              {pageSizeOptions.map((size) => (
-                <option key={size} value={size}>
-                  {size} / page
-                </option>
-              ))}
-            </select>
-          </div>
+          <PageSizeSelect
+            pageSize={pageSize}
+            safePageSize={geo.safePageSize}
+            pageSizeOptions={normalizedPageSizeOptions}
+            onPageSizeChange={onPageSizeChange}
+          />
         )}
-
-        <div className="flex items-center gap-1">
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label="First page"
-            disabled={isFirst}
-            onClick={() => onPageChange(1)}
-          >
-            <ChevronsLeft className="size-3.5" aria-hidden="true" />
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label="Previous page"
-            disabled={isFirst}
-            onClick={() => onPageChange(safePage - 1)}
-          >
-            <ChevronLeft className="size-3.5" aria-hidden="true" />
-          </Button>
-          <span aria-current="page" className="px-2 tabular-nums text-foreground">
-            {formatNumber(safePage)}
-            {total !== undefined && (
-              <span className="text-muted-foreground"> / {formatNumber(totalPages)}</span>
-            )}
-          </span>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label="Next page"
-            disabled={isNextDisabled}
-            onClick={() => onPageChange(safePage + 1)}
-          >
-            <ChevronRight className="size-3.5" aria-hidden="true" />
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label="Last page"
-            disabled={isLastJumpDisabled}
-            onClick={() => onPageChange(totalPages)}
-          >
-            <ChevronsRight className="size-3.5" aria-hidden="true" />
-          </Button>
-        </div>
+        <PaginationButtons geo={geo} total={total} onPageChange={onPageChange} />
       </div>
     </nav>
   )

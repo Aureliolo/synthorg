@@ -10,14 +10,10 @@
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatDateTime } from '@/utils/format'
-import { cn } from '@/lib/utils'
+import { VersionHistoryItem } from './VersionHistoryItem'
+import type { TimelineItem } from './timeline-types'
 
-export interface TimelineItem {
-  readonly id: string
-  readonly version: number
-  readonly created_at: string
-}
+export type { TimelineItem }
 
 export interface VersionTimelineProps<T extends TimelineItem> {
   items: readonly T[]
@@ -63,34 +59,14 @@ export function VersionTimeline<T extends TimelineItem>({
         aria-label="Version history"
         className="flex flex-col divide-y divide-border rounded-md border border-border bg-card"
       >
-        {items.map((item) => {
-          const active = selectedVersion === item.version
-          return (
-            <li key={item.id}>
-              <button
-                type="button"
-                onClick={() => onSelect(item)}
-                aria-current={active ? 'true' : undefined}
-                className={cn(
-                  'flex w-full items-center justify-between gap-grid-gap px-card py-grid-gap text-left transition-colors',
-                  active
-                    ? 'bg-accent/10'
-                    : 'bg-card hover:bg-surface',
-                )}
-              >
-                <span className="font-mono text-sm text-foreground">
-                  v{item.version}
-                </span>
-                <time
-                  dateTime={item.created_at}
-                  className="text-xs text-text-secondary"
-                >
-                  {formatDateTime(item.created_at)}
-                </time>
-              </button>
-            </li>
-          )
-        })}
+        {items.map((item) => (
+          <VersionHistoryItem
+            key={item.id}
+            item={item}
+            active={selectedVersion === item.version}
+            onSelect={onSelect}
+          />
+        ))}
       </ol>
 
       {hasMore && (

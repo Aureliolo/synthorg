@@ -109,6 +109,13 @@
   --so-transition-slow: 400ms;
   /* Indeterminate progress-bar cycle (matches @/lib/motion indeterminate). */
   --so-transition-indeterminate: 1500ms;
+  /*
+   * Progress fill / health-bar / gauge stroke animation. Deliberately
+   * slower than the base durations above so a meter's value change
+   * reads as a deliberate sweep rather than a jump, mirroring the
+   * Material progress-meter motion guidance.
+   */
+  --so-transition-progress: 900ms;
 
   /* -- Org chart -- */
   --so-opacity-dragging: 0.6;

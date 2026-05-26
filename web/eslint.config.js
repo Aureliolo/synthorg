@@ -9,7 +9,12 @@ import pluginSecurity from 'eslint-plugin-security'
 // in the meantime (rules-of-hooks, exhaustive-deps, set-state-in-effect, etc.).
 
 export default tseslint.config(
-  { ignores: ['dist/**'] },
+  // Generated artefacts are never linted. They live alongside the
+  // hand-written sources but are produced by ``scripts/generate_*.py``
+  // (the canonical regeneration commands live in ``web/CLAUDE.md``);
+  // the four caps below (and every other rule) would only flag
+  // unfixable issues there.
+  { ignores: ['dist/**', '**/*.gen.ts', '**/*.gen.tsx'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   eslintReact.configs['recommended-type-checked'],
@@ -152,6 +157,8 @@ export default tseslint.config(
     // Cleaned (rules apply normally):
     //   PR A (#2092): src/utils/**, src/hooks/**, src/lib/**, src/cookie-shim.ts
     //   PR B (#2093): src/stores/**
+    //   PR C (#2094): src/components/**, src/api/types/**,
+    //                 src/api/endpoints/**, src/mocks/**
     files: ['src/**/*.{ts,tsx}'],
     ignores: [
       'src/utils/**',
@@ -159,6 +166,10 @@ export default tseslint.config(
       'src/lib/**',
       'src/cookie-shim.ts',
       'src/stores/**',
+      'src/components/**',
+      'src/api/types/**',
+      'src/api/endpoints/**',
+      'src/mocks/**',
     ],
     rules: {
       complexity: 'off',

@@ -44,11 +44,104 @@ export interface EmptyStateProps {
   announce?: boolean
 }
 
+const EXTERNAL_HREF_PREFIXES = ['http://', 'https://', '//'] as const
+const LINK_CLASS = 'inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm'
+
+function _sanitizeLearnMore(learnMore: EmptyStateLearnMore | undefined): EmptyStateLearnMore | undefined {
+  // Strip any href with an unsafe protocol (javascript:, data:, vbscript:,
+  // file:, ...) before we render <a href=...>. Internal paths starting
+  // with `/` or `#` and conventional protocols (http/https/mailto/tel)
+  // are allowed.
+  if (!learnMore) return undefined
+  const normalized = learnMore.href.trim()
+  if (!SAFE_HREF_PATTERN.test(normalized)) return undefined
+  return { ...learnMore, href: normalized }
+}
+
+function _isExternalHref(learnMore: EmptyStateLearnMore): boolean {
+  if (typeof learnMore.external === 'boolean') return learnMore.external
+  return EXTERNAL_HREF_PREFIXES.some((prefix) => learnMore.href.startsWith(prefix))
+}
+
+function LearnMoreLink({
+  learnMore,
+  isExternal,
+  useReactRouterLink,
+}: {
+  learnMore: EmptyStateLearnMore
+  isExternal: boolean
+  useReactRouterLink: boolean
+}) {
+  const label = learnMore.label ?? 'Learn more'
+  if (useReactRouterLink) {
+    return (
+      <Link to={learnMore.href} className={LINK_CLASS}>
+        {label}
+      </Link>
+    )
+  }
+  return (
+    <a
+      href={learnMore.href}
+      target={isExternal ? '_blank' : undefined}
+      rel={isExternal ? 'noopener noreferrer' : undefined}
+      className={LINK_CLASS}
+    >
+      {label}
+      {isExternal && <ExternalLink className="size-3" aria-hidden="true" />}
+    </a>
+  )
+}
+
 /**
  * Empty state placeholder for sections with no data.
  *
  * Centers within its parent container with muted styling.
  */
+function EmptyStateBody({
+  title,
+  description,
+  safeLearnMore,
+  isExternal,
+  useReactRouterLink,
+}: {
+  title: string
+  description: string | undefined
+  safeLearnMore: EmptyStateLearnMore | undefined
+  isExternal: boolean
+  useReactRouterLink: boolean
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      {description && (
+        <p className="max-w-sm text-xs text-muted-foreground">{description}</p>
+      )}
+      {safeLearnMore && (
+        <LearnMoreLink
+          learnMore={safeLearnMore}
+          isExternal={isExternal}
+          useReactRouterLink={useReactRouterLink}
+        />
+      )}
+    </div>
+  )
+}
+
+function _resolveLinkMode(
+  safeLearnMore: EmptyStateLearnMore | undefined,
+  insideRouter: boolean,
+): { isExternal: boolean; useReactRouterLink: boolean } {
+  if (!safeLearnMore) return { isExternal: false, useReactRouterLink: false }
+  const isExternal = _isExternalHref(safeLearnMore)
+  // Only route internal paths through React Router when the EmptyState
+  // is actually inside a router context. Outside a router (e.g. isolated
+  // unit tests, certain Storybook setups) fall back to a plain <a>;
+  // `<Link>` would throw otherwise.
+  const useReactRouterLink = !isExternal && insideRouter && safeLearnMore.href.startsWith('/')
+  return { isExternal, useReactRouterLink }
+}
+
 export function EmptyState({
   icon: Icon,
   title,
@@ -58,30 +151,9 @@ export function EmptyState({
   className,
   announce = false,
 }: EmptyStateProps) {
-  // Strip any href with an unsafe protocol (javascript:, data:, vbscript:,
-  // file:, ...) before we render <a href=...>. Internal paths starting with
-  // `/` or `#` and conventional protocols (http/https/mailto/tel) are
-  // allowed. Normalise once so the protocol check, the internal/external
-  // classification, and the rendered `href` all see the same string.
-  const normalizedHref = learnMore?.href.trim()
-  const safeLearnMore =
-    learnMore !== undefined && normalizedHref !== undefined && SAFE_HREF_PATTERN.test(normalizedHref)
-      ? { ...learnMore, href: normalizedHref }
-      : undefined
-  const isExternal =
-    safeLearnMore !== undefined &&
-    (safeLearnMore.external ??
-      (safeLearnMore.href.startsWith('http://') ||
-        safeLearnMore.href.startsWith('https://') ||
-        safeLearnMore.href.startsWith('//')))
-  // Only route internal paths through React Router when the EmptyState is
-  // actually inside a router context. Outside a router (e.g. isolated unit
-  // tests, certain Storybook setups) we fall back to a plain <a>; `<Link>`
-  // would throw otherwise.
+  const safeLearnMore = _sanitizeLearnMore(learnMore)
   const insideRouter = useInRouterContext()
-  const useReactRouterLink =
-    safeLearnMore !== undefined && !isExternal && insideRouter && safeLearnMore.href.startsWith('/')
-
+  const { isExternal, useReactRouterLink } = _resolveLinkMode(safeLearnMore, insideRouter)
   return (
     <div
       role={announce ? 'status' : undefined}
@@ -98,32 +170,13 @@ export function EmptyState({
           aria-hidden="true"
         />
       )}
-      <div className="space-y-1">
-        <p className="text-sm font-medium text-foreground">{title}</p>
-        {description && (
-          <p className="max-w-sm text-xs text-muted-foreground">{description}</p>
-        )}
-        {safeLearnMore && (
-          useReactRouterLink ? (
-            <Link
-              to={safeLearnMore.href}
-              className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
-            >
-              {safeLearnMore.label ?? 'Learn more'}
-            </Link>
-          ) : (
-            <a
-              href={safeLearnMore.href}
-              target={isExternal ? '_blank' : undefined}
-              rel={isExternal ? 'noopener noreferrer' : undefined}
-              className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-sm"
-            >
-              {safeLearnMore.label ?? 'Learn more'}
-              {isExternal && <ExternalLink className="size-3" aria-hidden="true" />}
-            </a>
-          )
-        )}
-      </div>
+      <EmptyStateBody
+        title={title}
+        description={description}
+        safeLearnMore={safeLearnMore}
+        isExternal={isExternal}
+        useReactRouterLink={useReactRouterLink}
+      />
       {action && (
         <Button
           variant={action.variant ?? 'outline'}

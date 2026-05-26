@@ -4,10 +4,8 @@
  * Each factory returns a deterministic, typed payload that mirrors
  * the dashboard's API response shape. Tests pass overrides to vary
  * single fields without rebuilding the whole object. Factories are
- * pure data builders -- no I/O, no Playwright dependency -- so they
- * are usable from any test or fixture.
- *
- * Issue #1604 / W5a.
+ * pure data builders (no I/O, no Playwright dependency) so they are
+ * usable from any test or fixture.
  */
 
 export * from './agents'

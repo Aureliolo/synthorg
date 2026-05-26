@@ -64,7 +64,7 @@ function TaskHistoryBarImpl({ task, maxDurationMs }: TaskHistoryBarProps) {
         <div className="relative h-2 w-full rounded-full bg-border overflow-hidden">
           <div
             className={cn(
-              'h-full rounded-full transition-all duration-[900ms]',
+              'h-full rounded-full transition-all duration-[var(--so-transition-progress)]',
               barColor,
               isActive && 'animate-pulse',
             )}

@@ -16,6 +16,75 @@ export interface MetricCardProps {
   animateValue?: boolean
 }
 
+function _computeProgressPct(progress: MetricCardProps['progress']): number {
+  if (!progress || progress.total <= 0) return 0
+  return Math.max(0, Math.min(100, Math.round((progress.current / progress.total) * 100)))
+}
+
+function MetricProgressBar({ label, pct }: { label: string; pct: number }) {
+  return (
+    <div
+      role="progressbar"
+      aria-valuenow={pct}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={`${label} progress`}
+      className="mt-2 h-0.5 w-full overflow-hidden rounded-full bg-border"
+    >
+      <div
+        className="h-full rounded-full bg-accent transition-all duration-[var(--so-transition-progress)]"
+        style={{
+          width: `${pct}%`,
+          transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+      />
+    </div>
+  )
+}
+
+function MetricFooter({
+  subText,
+  change,
+}: {
+  subText: string | undefined
+  change: MetricCardProps['change']
+}) {
+  if (!subText && !change) return null
+  return (
+    <div className="mt-2 flex items-center justify-between">
+      {subText && <span className="text-xs text-muted-foreground">{subText}</span>}
+      {change && <ChangeBadge {...change} className={subText ? undefined : 'ml-auto'} />}
+    </div>
+  )
+}
+
+function MetricHeader({
+  label,
+  sparklineData,
+}: {
+  label: string
+  sparklineData: number[] | undefined
+}) {
+  const hasSparkline = sparklineData && sparklineData.length > 1
+  return (
+    <div className="flex items-start justify-between">
+      <span className="text-compact uppercase tracking-[0.06em] text-muted-foreground">
+        {label}
+      </span>
+      {hasSparkline && <Sparkline data={sparklineData} width={60} height={28} />}
+    </div>
+  )
+}
+
+function _resolveDisplayValue(
+  value: string | number,
+  animateValue: boolean,
+  animatedValue: number,
+): string | number {
+  const numericValue = typeof value === 'number' ? value : undefined
+  return animateValue && numericValue !== undefined ? animatedValue : value
+}
+
 export function MetricCard({
   label,
   value,
@@ -29,11 +98,8 @@ export function MetricCard({
 }: MetricCardProps) {
   const numericValue = typeof value === 'number' ? value : undefined
   const animatedValue = useCountAnimation(numericValue ?? 0)
-  const displayValue = animateValue && numericValue !== undefined ? animatedValue : value
-  const progressPct = progress && progress.total > 0
-    ? Math.max(0, Math.min(100, Math.round((progress.current / progress.total) * 100)))
-    : 0
-
+  const displayValue = _resolveDisplayValue(value, animateValue, animatedValue)
+  const progressPct = _computeProgressPct(progress)
   return (
     <div
       className={cn(
@@ -44,50 +110,15 @@ export function MetricCard({
       )}
       style={flashStyle}
     >
-      {/* Top row: label + sparkline */}
-      <div className="flex items-start justify-between">
-        <span className="text-compact uppercase tracking-[0.06em] text-muted-foreground">
-          {label}
-        </span>
-        {sparklineData && sparklineData.length > 1 && (
-          <Sparkline data={sparklineData} width={60} height={28} />
-        )}
-      </div>
-
-      {/* Value */}
-      <div className="mt-1 font-mono text-metric font-bold leading-tight tracking-tight text-foreground" data-testid="metric-value">
+      <MetricHeader label={label} sparklineData={sparklineData} />
+      <div
+        className="mt-1 font-mono text-metric font-bold leading-tight tracking-tight text-foreground"
+        data-testid="metric-value"
+      >
         {displayValue}
       </div>
-
-      {/* Progress bar */}
-      {progress && (
-        <div
-          role="progressbar"
-          aria-valuenow={progressPct}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label={`${label} progress`}
-          className="mt-2 h-0.5 w-full overflow-hidden rounded-full bg-border"
-        >
-          <div
-            className="h-full rounded-full bg-accent transition-all duration-[900ms]"
-            style={{
-              width: `${progressPct}%`,
-              transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)',
-            }}
-          />
-        </div>
-      )}
-
-      {/* Bottom row: sub-text + change badge */}
-      {(subText || change) && (
-        <div className="mt-2 flex items-center justify-between">
-          {subText && (
-            <span className="text-xs text-muted-foreground">{subText}</span>
-          )}
-          {change && <ChangeBadge {...change} className={subText ? undefined : 'ml-auto'} />}
-        </div>
-      )}
+      {progress && <MetricProgressBar label={label} pct={progressPct} />}
+      <MetricFooter subText={subText} change={change} />
     </div>
   )
 }

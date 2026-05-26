@@ -23,28 +23,27 @@ interface SidebarNavItemProps {
   external?: boolean
 }
 
-export function SidebarNavItem({
-  to,
+function _isForcedInactive(
+  pathname: string,
+  inactivePaths: readonly string[] | undefined,
+): boolean {
+  if (inactivePaths === undefined) return false
+  return inactivePaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
+}
+
+export type SidebarNavItemContentProps = Pick<
+  SidebarNavItemProps,
+  'icon' | 'label' | 'collapsed' | 'badge' | 'dotColor'
+>
+
+function SidebarNavItemContent({
   icon: Icon,
   label,
   collapsed,
   badge,
   dotColor,
-  end,
-  inactivePaths,
-  external,
-}: SidebarNavItemProps) {
-  const { pathname } = useLocation()
-  const forcedInactive =
-    inactivePaths !== undefined &&
-    inactivePaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))
-  const baseClass = cn(
-    'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-    'text-text-secondary hover:bg-card-hover hover:text-foreground',
-    collapsed && 'justify-center px-0',
-  )
-
-  const content = (
+}: SidebarNavItemContentProps) {
+  return (
     <>
       <Icon className="size-5 shrink-0" aria-hidden="true" />
       {!collapsed && (
@@ -65,14 +64,40 @@ export function SidebarNavItem({
             )}
           </span>
           {dotColor && (
-            <span
-              className={cn('size-2 rounded-full', dotColor)}
-              aria-hidden="true"
-            />
+            <span className={cn('size-2 rounded-full', dotColor)} aria-hidden="true" />
           )}
         </>
       )}
     </>
+  )
+}
+
+export function SidebarNavItem({
+  to,
+  icon,
+  label,
+  collapsed,
+  badge,
+  dotColor,
+  end,
+  inactivePaths,
+  external,
+}: SidebarNavItemProps) {
+  const { pathname } = useLocation()
+  const forcedInactive = _isForcedInactive(pathname, inactivePaths)
+  const baseClass = cn(
+    'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+    'text-text-secondary hover:bg-card-hover hover:text-foreground',
+    collapsed && 'justify-center px-0',
+  )
+  const content = (
+    <SidebarNavItemContent
+      icon={icon}
+      label={label}
+      collapsed={collapsed}
+      badge={badge}
+      dotColor={dotColor}
+    />
   )
 
   if (external) {
