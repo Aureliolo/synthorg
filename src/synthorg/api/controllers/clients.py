@@ -191,7 +191,7 @@ def _build_default_client(
             # digest keeps the seed deterministic for a given client_id.
             seed=int.from_bytes(
                 hashlib.blake2s(
-                    profile.client_id.encode("utf-8"), digest_size=2
+                    profile.client_id.encode("utf-8"), digest_size=8
                 ).digest(),
                 byteorder="big",
             ),
