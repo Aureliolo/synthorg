@@ -24,7 +24,7 @@ function OwnerNodeComponent({ data }: NodeProps<OwnerNodeType>) {
   return (
     <div
       className={cn(
-        'relative rounded-xl border-2 border-warning/50 bg-card px-4 py-3',
+        'relative rounded-xl border-2 border-warning/50 bg-card p-card',
         // Fixed 240 px (not min/max) so the card's rendered width
         // matches build-org-tree's declared OWNER_NODE_WIDTH exactly.
         // Without this, React Flow measures the actual rendered

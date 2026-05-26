@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { buildOrgTree } from '@/pages/org/build-org-tree'
+import {
+  findCeo,
+  findHighestSeniority,
+  humanizeDepartmentName,
+} from '@/pages/org/build-org-tree-types'
 import type {
   AgentNodeData,
   DepartmentGroupData,
@@ -520,5 +525,72 @@ describe('team group nodes', () => {
     const result = buildTree(makeConfig(agents, depts), {}, [])
     const carol = result.nodes.find((n) => n.id === 'a3')
     expect(carol?.parentId).toBe('dept-engineering')
+  })
+})
+
+// ── Pure org-tree helpers ───────────────────────────────────
+// buildOrgTree exercises these transitively; the cases below pin
+// the branchy logic directly so a regression names the helper.
+
+describe('humanizeDepartmentName', () => {
+  const cases: ReadonlyArray<[string, string]> = [
+    ['', ''],
+    ['engineering', 'Engineering'],
+    ['quality_assurance', 'Quality Assurance'],
+    ['customer_success_ops', 'Customer Success Ops'],
+    ['_', ' '],
+    ['__', '  '],
+  ]
+
+  it.each(cases)('humanises %j -> %j', (raw, expected) => {
+    expect(humanizeDepartmentName(raw)).toBe(expected)
+  })
+})
+
+describe('findHighestSeniority', () => {
+  it('returns null for an empty roster', () => {
+    expect(findHighestSeniority([])).toBeNull()
+  })
+
+  it('returns the only agent in a single-member roster', () => {
+    const solo = makeAgent({ name: 'Solo', department: 'engineering', level: 'mid' })
+    expect(findHighestSeniority([solo])).toBe(solo)
+  })
+
+  it('picks the highest-ranked level regardless of array order', () => {
+    const junior = makeAgent({ name: 'Jr', department: 'engineering', level: 'junior' })
+    const director = makeAgent({ name: 'Dir', department: 'engineering', level: 'director' })
+    const senior = makeAgent({ name: 'Sr', department: 'engineering', level: 'senior' })
+    expect(findHighestSeniority([junior, director, senior])).toBe(director)
+  })
+
+  it('keeps the first agent on a seniority tie', () => {
+    const first = makeAgent({ name: 'First', department: 'engineering', level: 'lead' })
+    const second = makeAgent({ name: 'Second', department: 'engineering', level: 'lead' })
+    expect(findHighestSeniority([first, second])).toBe(first)
+  })
+})
+
+describe('findCeo', () => {
+  it('returns null for an empty roster', () => {
+    expect(findCeo([])).toBeNull()
+  })
+
+  it('prefers a c_suite agent in the executive department', () => {
+    const otherCSuite = makeAgent({ name: 'CTO', department: 'engineering', level: 'c_suite' })
+    const execCeo = makeAgent({ name: 'Exec', department: 'executive', level: 'c_suite' })
+    expect(findCeo([otherCSuite, execCeo])).toBe(execCeo)
+  })
+
+  it('falls back to any c_suite agent when none sit in executive', () => {
+    const ic = makeAgent({ name: 'IC', department: 'engineering', level: 'senior' })
+    const cto = makeAgent({ name: 'CTO', department: 'engineering', level: 'c_suite' })
+    expect(findCeo([ic, cto])).toBe(cto)
+  })
+
+  it('falls back to the highest-seniority agent when no c_suite exists', () => {
+    const mid = makeAgent({ name: 'Mid', department: 'engineering', level: 'mid' })
+    const vp = makeAgent({ name: 'VP', department: 'engineering', level: 'vp' })
+    expect(findCeo([mid, vp])).toBe(vp)
   })
 })

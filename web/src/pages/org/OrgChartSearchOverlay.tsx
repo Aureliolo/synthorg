@@ -58,7 +58,7 @@ export function OrgChartSearchOverlay({
     <div
       className={cn(
         'absolute left-1/2 top-4 z-10 -translate-x-1/2',
-        'flex items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 shadow-lg backdrop-blur',
+        'flex items-center gap-2 rounded-lg border border-border bg-card/95 p-card shadow-lg backdrop-blur',
         'min-w-[320px] max-w-[480px]',
       )}
       role="search"

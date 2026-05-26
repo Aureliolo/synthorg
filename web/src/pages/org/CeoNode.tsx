@@ -23,7 +23,7 @@ function CeoNodeComponent({ data }: NodeProps<CeoNodeType>) {
   return (
     <div
       className={cn(
-        'group/ceo relative rounded-lg border-2 border-accent/40 bg-card px-4 py-3',
+        'group/ceo relative rounded-lg border-2 border-accent/40 bg-card p-card',
         'min-w-[200px] max-w-[240px]',
         'shadow-[var(--so-shadow-card-hover)] transition-all duration-200',
         'hover:shadow-[var(--so-shadow-card-hover)]',
