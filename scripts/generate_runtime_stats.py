@@ -273,7 +273,12 @@ def _fetch_providers_via_litellm() -> StatEntry:
         raise _StatFetchError(
             name, source, "litellm has no models_by_provider attribute"
         )
-    raw = len(by_provider)
+    try:
+        raw = len(by_provider)
+    except TypeError as exc:
+        raise _StatFetchError(
+            name, source, f"models_by_provider is not sized: {exc}"
+        ) from exc
     rounded = _round_floor(raw, _LITELLM_PROVIDER_ROUND_TO)
     return {"raw": raw, "display": f"{rounded}+"}
 

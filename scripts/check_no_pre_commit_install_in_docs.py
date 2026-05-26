@@ -24,6 +24,7 @@ Exit codes:
     1 - one or more recommending mentions printed to stderr.
 """
 
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,16 +44,31 @@ _SCOPED_FILES: Final[tuple[str, ...]] = (
 
 _FORBIDDEN: Final[str] = "pre-commit install"
 
+# U+2019 RIGHT SINGLE QUOTATION MARK. Normalised to the ASCII apostrophe
+# before cue matching so the curly-apostrophe spelling of "don't" still
+# matches the straight-apostrophe cue.
+_CURLY_APOSTROPHE: Final[str] = chr(0x2019)
+
 # A line may mention ``pre-commit install`` only if it also discourages
-# running it. Matched case-insensitively as plain substrings against the
-# whole line, so phrasing stays flexible ("Do not run", "(NOT ...)",
-# "rejected", "no longer", "never").
+# running it. Cues are matched case-insensitively as whole words/phrases
+# (regex word boundaries), so "Do not run", "(NOT ...)", "rejected",
+# "no longer", and "never" all count. A bare substring match would let a
+# recommending line slip through whenever a cue appears inside an
+# unrelated word ("not" in "Note" / "cannot" / "annotation"), so the
+# boundary check is what keeps the gate from passing such lines.
 _DISCOURAGEMENT_CUES: Final[tuple[str, ...]] = (
     "not",
     "never",
     "no longer",
     "rejected",
     "don't",
+)
+
+# Pre-compiled word-boundary patterns for the cues above. Apostrophes are
+# normalised to the straight form before matching (see ``scan_text``) so
+# the curly-apostrophe spelling of "don't" still matches.
+_DISCOURAGEMENT_PATTERNS: Final[tuple[re.Pattern[str], ...]] = tuple(
+    re.compile(rf"\b{re.escape(cue)}\b") for cue in _DISCOURAGEMENT_CUES
 )
 
 _REMEDIATION_HINT: Final[str] = (
@@ -73,10 +89,10 @@ class Violation:
     line: str
 
     def render(self) -> str:
-        """Render as the standard ``<file>:<line>: msg`` form."""
+        """Render as ``<file>:<line>: <offending text> -- <hint>``."""
         return (
-            f"{self.file_label}:{self.lineno}: recommends `pre-commit "
-            f"install` -- {_REMEDIATION_HINT}"
+            f"{self.file_label}:{self.lineno}: {self.line!r} recommends "
+            f"`pre-commit install` -- {_REMEDIATION_HINT}"
         )
 
 
@@ -84,14 +100,14 @@ def scan_text(text: str, *, file_label: str) -> list[str]:
     """Return violation messages for every recommending mention in *text*.
 
     A line is a violation when it contains ``pre-commit install`` but no
-    discouragement cue (case-insensitive substring match).
+    discouragement cue (whole-word/phrase match, case-insensitive).
     """
     violations: list[Violation] = []
     for lineno, raw_line in enumerate(text.splitlines(), start=1):
-        lowered = raw_line.lower()
+        lowered = raw_line.lower().replace(_CURLY_APOSTROPHE, "'")
         if _FORBIDDEN not in lowered:
             continue
-        if any(cue in lowered for cue in _DISCOURAGEMENT_CUES):
+        if any(pattern.search(lowered) for pattern in _DISCOURAGEMENT_PATTERNS):
             continue
         violations.append(
             Violation(file_label=file_label, lineno=lineno, line=raw_line.strip())
