@@ -85,12 +85,14 @@ jobs:
     needs: lychee-external
     # Only the schedule path gets the issue sink. workflow_dispatch is
     # visible to the triggerer, so a manual test run shows red without
-    # filing an issue.
+    # filing an issue. Gate on `== 'failure'` specifically: a `cancelled`
+    # result (e.g. the 15-minute timeout) is not link rot and must not
+    # open an "External link rot" issue; only an actual lychee failure
+    # (broken links) should.
     if: >-
       always()
       && github.event_name == 'schedule'
-      && needs.lychee-external.result != 'success'
-      && needs.lychee-external.result != 'skipped'
+      && needs.lychee-external.result == 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

@@ -12,12 +12,14 @@
 # Ad-hoc local invocations should also pass `--config lychee.toml`.
 #
 # Strictness preset: STRICT. Every non-200 response counts as link rot.
-# Per-host pacing + the .lycheecache (1 day max-age) absorb incidental
-# flakes between back-to-back runs. The strict network settings apply
-# to the weekly online run; the offline gate makes no network probes
-# and ignores them.
+# Per-host pacing keeps the strict run polite. These network settings
+# apply to the weekly online run; the offline gate makes no network
+# probes and ignores them.
 
-# Cache so repeated CI runs on the same SHA do not re-hit every URL.
+# Local on-disk cache (.lycheecache, gitignored). Only repeated manual
+# local online runs benefit from it: the offline gate makes no requests,
+# and the weekly online workflow has no cache restore/save step, so the
+# cache has no cross-run effect in CI.
 cache = true
 max_cache_age = "1d"
 
