@@ -197,6 +197,11 @@ async def unsubscribe(
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+            # The state-level subscription was already removed above; the
+            # consumer teardown failed. Return after the WARNING so the
+            # same operation does not also emit a success COMM_SUBSCRIPTION_REMOVED
+            # INFO that would mislead telemetry consumers.
+            return
 
     logger.info(
         COMM_SUBSCRIPTION_REMOVED,

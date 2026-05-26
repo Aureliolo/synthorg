@@ -25,7 +25,7 @@ from synthorg.communication.enums import ChannelType, MessageType
 from synthorg.communication.message import DataPart, Message
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.errors import ConnectionRateLimitError
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     RATE_LIMIT_ACQUIRE_PUBLISHED,
     RATE_LIMIT_COORDINATOR_STARTED,
@@ -345,7 +345,9 @@ async def set_coordinator_factory(
             logger.warning(
                 RATE_LIMIT_COORDINATOR_STOPPED,
                 connection_name=coordinator._connection_name,  # noqa: SLF001
-                error="stop failed during factory swap",
+                phase="factory_swap_stop_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
 
