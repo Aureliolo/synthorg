@@ -16,6 +16,7 @@ and consistent across the codebase.
 import asyncio
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 
@@ -71,6 +72,7 @@ async def resolve_bool_with_fallback(
         # real semantic.
         raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             SETTINGS_FETCH_FAILED,
             namespace=namespace,

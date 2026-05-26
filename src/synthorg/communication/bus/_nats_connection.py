@@ -18,6 +18,7 @@ from synthorg.communication.bus.errors import (
     BusStopTimeoutError,
     BusStreamError,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_BUS_CONNECTED,
@@ -91,6 +92,7 @@ async def drain_partial_client(state: _NatsState) -> None:
     try:
         await client.drain()
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             COMM_BUS_DISCONNECTED,
             phase="drain_partial",
@@ -212,9 +214,8 @@ async def stop(state: _NatsState) -> None:
         for key, sub in list(state.subscriptions.items()):
             try:
                 await sub.unsubscribe()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     COMM_BUS_DISCONNECTED,
                     phase="stop_unsubscribe",
@@ -250,9 +251,8 @@ async def stop(state: _NatsState) -> None:
                 state.js = None
                 state.kv = None
                 raise BusStopTimeoutError(msg) from exc
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     COMM_BUS_DISCONNECTED,
                     phase="stop_drain",

@@ -23,6 +23,18 @@ Call :func:`reraise_critical` as the first statement of every broad
 logging or business logic runs; all other exceptions return silently
 so the caller's recovery logic continues.
 
+The call is deliberately placed BEFORE the ``logger.warning`` /
+``logger.error`` in the handler, which is why the general "log
+WARNING/ERROR before raising" guidance does NOT apply to this helper:
+a fatal out-of-memory / stack-overflow condition must propagate
+immediately, before the handler tries to allocate and emit a
+structured log record (which can itself fail under memory pressure, or
+add frames to an already-overflowing stack). Telemetry for the
+ordinary (non-critical) failures is not lost: ``reraise_critical``
+returns for them, so the WARNING/ERROR on the following line runs as
+normal. The ordering is intentional; do not reorder these blocks to
+log-before-reraise.
+
 ``asyncio.CancelledError`` is **not** routed through this helper because
 it is a subclass of ``BaseException``, not ``Exception`` -- broad
 ``except Exception:`` blocks never catch it in the first place, so no

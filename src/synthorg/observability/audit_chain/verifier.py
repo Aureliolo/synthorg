@@ -4,6 +4,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import HashChain
 from synthorg.observability.audit_chain.protocol import AuditChainSigner  # noqa: TC001
@@ -79,9 +80,8 @@ class AuditChainVerifier:
         """
         try:
             result = await self._verify_chain_inner(chain)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             record_audit_chain_verification(
                 outcome="broken",
                 entries_checked=0,

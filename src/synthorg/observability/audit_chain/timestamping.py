@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, Protocol
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.audit_chain.tsa_client import (
     TsaError,
@@ -190,9 +191,8 @@ class ResilientTimestampProvider:
                 incident=type(exc).__name__,
             )
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SECURITY_TIMESTAMP_FALLBACK,
                 tsa_url=self._client.tsa_url,

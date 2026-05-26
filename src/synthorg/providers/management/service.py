@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import (
     get_logger,
@@ -506,16 +507,10 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 error=safe_error_description(exc),
                 model_tested=model_id,
             )
-        except MemoryError, RecursionError:
-            # Process-level failures must propagate, not collapse into
-            # a normal "probe failed" response. Placed before the
-            # ``except asyncio.CancelledError`` and ``except Exception``
-            # branches so the broad catch downstream cannot swallow
-            # them.
-            raise
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 PROVIDER_CONNECTION_TESTED,
@@ -831,6 +826,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
             registry = ProviderRegistry.from_config(new_providers)
             router = self._build_router(new_providers)
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Provider configuration validation failed: {type(exc).__name__}"
             logger.warning(
                 PROVIDER_VALIDATION_FAILED,
@@ -849,6 +845,7 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
                 json.dumps(serialized),
             )
         except Exception as exc:
+            reraise_critical(exc)
             msg = f"Failed to persist provider configuration: {type(exc).__name__}"
             # ``error=str(exc)`` would leak credential material via
             # exception text, so we redact via
@@ -968,9 +965,8 @@ class ProviderManagementService(ProviderCapabilitiesMixin):
         await manager.delete_model(model_id)
         try:
             await self.discover_models_for_provider(name)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROVIDER_DISCOVERY_FAILED,
                 provider=name,

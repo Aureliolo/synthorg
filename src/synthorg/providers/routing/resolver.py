@@ -14,6 +14,7 @@ immutability after construction.
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.routing import (
     ROUTING_MODEL_RESOLUTION_FAILED,
@@ -207,9 +208,8 @@ class ModelResolver:
                 error=safe_error_description(exc),
             )
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ROUTING_SELECTION_FAILED,
                 ref=ref,
@@ -250,8 +250,6 @@ class ModelResolver:
             return None
         try:
             return self._selector.select(candidates)
-        except MemoryError, RecursionError:
-            raise
         except ModelResolutionError as exc:
             logger.debug(
                 ROUTING_SELECTION_FAILED,
@@ -264,6 +262,7 @@ class ModelResolver:
             )
             return None
         except Exception as exc:
+            reraise_critical(exc)
             # Defensive fallback: any non-domain selector error converts
             # to a "no model found" outcome rather than propagating up
             # the model-resolution stack, where the caller would have
@@ -271,8 +270,9 @@ class ModelResolver:
             # provider-management code path. The WARNING below (with
             # ``reason="unexpected_selector_error"``) is loud enough
             # for operators to see the underlying cause; ``MemoryError``
-            # and ``RecursionError`` are already re-raised above so
-            # interpreter-state failures are not silenced here.
+            # and ``RecursionError`` are re-raised via
+            # :func:`reraise_critical` so interpreter-state failures
+            # are not silenced here.
             logger.warning(
                 ROUTING_SELECTION_FAILED,
                 ref=ref,

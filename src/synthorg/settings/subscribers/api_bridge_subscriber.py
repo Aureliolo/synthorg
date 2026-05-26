@@ -16,6 +16,7 @@ consumers need hot-reload semantics.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
@@ -113,9 +114,8 @@ class ApiBridgeSettingsSubscriber:
         try:
             value = await self._app_state.config_resolver.get_int(namespace, key)
             self._app_state.mutate_api_bridge_config({key: value})
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="api_bridge_config",

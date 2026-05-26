@@ -35,6 +35,7 @@ from synthorg.communication.meeting.orchestrator import (
 from synthorg.communication.meeting.participant import (
     ParticipantResolver,  # noqa: TC001
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -243,16 +244,21 @@ class MeetingScheduler:
             return
         try:
             records = await self._cooldown_repo.load_all()
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
-            logger.warning(
+            reraise_critical(exc)
+            logger.error(
                 MEETING_SCHEDULER_ERROR,
                 phase="hydrate_cooldown_repo",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return
+            # Abort startup rather than continuing with an empty
+            # ``_last_triggered``: a silent hydrate failure drops the
+            # persisted cooldown floor, so an event-triggered meeting
+            # could fire again immediately after a restart. The operator
+            # opted into durable cooldowns by configuring the repo, so a
+            # load failure must surface, not be swallowed.
+            raise
         from datetime import UTC, datetime  # noqa: PLC0415
 
         now_wall = datetime.now(UTC)
@@ -297,9 +303,8 @@ class MeetingScheduler:
         )
         try:
             await self._cooldown_repo.save(record)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 phase="persist_cooldown",
@@ -639,9 +644,8 @@ class MeetingScheduler:
                 )
                 try:
                     await self._execute_meeting(meeting_type)
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         MEETING_SCHEDULER_ERROR,
                         meeting_type=meeting_type.name,
@@ -679,9 +683,8 @@ class MeetingScheduler:
 
         try:
             agenda = self._build_default_agenda(meeting_type, context)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 meeting_type=meeting_type.name,
@@ -723,9 +726,8 @@ class MeetingScheduler:
                 meeting_type=meeting_type.name,
             )
             return None
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 meeting_type=meeting_type.name,
@@ -774,9 +776,8 @@ class MeetingScheduler:
                 participant_ids=tuple(participant_ids),
                 token_budget=meeting_type.duration_tokens,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 meeting_type=meeting_type.name,
@@ -811,9 +812,8 @@ class MeetingScheduler:
                     "status": record.status.value,
                 },
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 meeting_id=record.meeting_id,
@@ -838,9 +838,8 @@ class MeetingScheduler:
                     "status": "in_progress",
                 },
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEETING_SCHEDULER_ERROR,
                 meeting_type=meeting_type_name,

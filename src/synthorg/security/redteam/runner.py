@@ -13,6 +13,7 @@ import asyncio
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import Complexity, Priority, Stakes, TaskStatus, TaskType
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -89,9 +90,8 @@ class AgentEngineRunner:
             await self._engine.run(identity=self._identity, task=task)
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 RED_TEAM_AGENT_FAILED,
                 execution_id=review_input.execution_id,

@@ -22,7 +22,8 @@ from synthorg.communication.bus._nats_utils import (
 from synthorg.communication.bus.errors import BusStreamError
 from synthorg.communication.channel import Channel  # noqa: TC001
 from synthorg.communication.subscription import Subscription
-from synthorg.observability import get_logger
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_DUPLICATE_SUBSCRIPTION_DISCARDED,
     COMM_SUBSCRIPTION_CREATED,
@@ -185,14 +186,22 @@ async def unsubscribe(
     if sub is not None:
         try:
             await sub.unsubscribe()
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMM_SUBSCRIPTION_REMOVED,
                 channel=channel_name,
                 subscriber=subscriber_id,
                 backend="nats",
                 phase="unsubscribe_consumer_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
+            # The state-level subscription was already removed above; the
+            # consumer teardown failed. Return after the WARNING so the
+            # same operation does not also emit a success COMM_SUBSCRIPTION_REMOVED
+            # INFO that would mislead telemetry consumers.
+            return
 
     logger.info(
         COMM_SUBSCRIPTION_REMOVED,

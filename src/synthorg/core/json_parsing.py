@@ -25,6 +25,8 @@ import re
 from collections.abc import Callable  # noqa: TC003
 from typing import Any
 
+from synthorg.core.critical_errors import reraise_critical
+
 # Captures the body of a fenced block, optional ``json`` language tag,
 # tolerant to leading / trailing newlines around the body. Reused by
 # both extractors below.
@@ -58,9 +60,8 @@ def _safe_log(callback: Callable[[str], None] | None, detail: str) -> None:
         return
     try:
         callback(detail)
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         return
 
 

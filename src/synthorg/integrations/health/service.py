@@ -7,6 +7,7 @@ endpoint on ``ConnectionsController`` and the aggregate endpoint on
 
 from datetime import UTC, datetime
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import ConnectionStatus
 from synthorg.integrations.health.models import HealthReport
@@ -63,6 +64,7 @@ async def check_connection_health(
     try:
         return await checker.check(conn)
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             HEALTH_CHECK_FAILED,
             connection_name=name,
@@ -72,6 +74,6 @@ async def check_connection_health(
         return HealthReport(
             connection_name=conn.name,
             status=ConnectionStatus.UNHEALTHY,
-            error_detail=str(exc),
+            error_detail=safe_error_description(exc),
             checked_at=now,
         )

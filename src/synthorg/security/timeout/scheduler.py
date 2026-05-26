@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable  # noqa: TC003
 from typing import TYPE_CHECKING
 
 from synthorg.core.actor_context import ActorIdentity, actor_scope
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalStatus, TimeoutActionType
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.observability import get_logger
@@ -298,9 +299,8 @@ class ApprovalTimeoutScheduler:
             logger.debug(TIMEOUT_SCHEDULER_TICK)
             try:
                 await self._check_pending_approvals()
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.error(
                     TIMEOUT_SCHEDULER_ERROR,
                     error="Unexpected error in scheduler loop",
@@ -312,9 +312,8 @@ class ApprovalTimeoutScheduler:
             items = await self._store.list_items(
                 status=ApprovalStatus.PENDING,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.error(
                 TIMEOUT_SCHEDULER_ERROR,
                 error="Failed to list pending approvals",
@@ -337,9 +336,8 @@ class ApprovalTimeoutScheduler:
         with actor_scope(ActorIdentity.system(TIMEOUT_POLICY_DECIDER)):
             try:
                 updated, action = await self._checker.check_and_resolve(item)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     TIMEOUT_SCHEDULER_ERROR,
                     approval_id=item.id,
@@ -378,9 +376,8 @@ class ApprovalTimeoutScheduler:
         """Persist an APPROVE/DENY resolution and invoke callback."""
         try:
             saved = await self._store.save_if_pending(item)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.error(
                 TIMEOUT_SCHEDULER_ERROR,
                 approval_id=item.id,
@@ -402,9 +399,8 @@ class ApprovalTimeoutScheduler:
         if self._on_resolve is not None:
             try:
                 await self._on_resolve(saved, action)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.error(
                     TIMEOUT_SCHEDULER_ERROR,
                     approval_id=item.id,

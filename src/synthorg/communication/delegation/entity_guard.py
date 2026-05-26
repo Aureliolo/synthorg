@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.ontology import (
@@ -113,9 +114,8 @@ class EntityAlignmentGuard:
 
         try:
             manifest = await self._ontology.get_version_manifest()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ONTOLOGY_GUARD_BLOCKED,
                 delegator=request.delegator_id,

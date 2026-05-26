@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from opentelemetry import trace as _ot_trace
 from opentelemetry.trace import Status, StatusCode
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import safe_error_description
 
 if TYPE_CHECKING:
@@ -77,9 +78,8 @@ async def llm_span(
             span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
         try:
             yield span
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             span.set_attribute("exception.type", type(exc).__name__)
             span.set_attribute(
                 "exception.message",
@@ -120,9 +120,8 @@ async def tool_span(
         span.set_attribute("tool.call_id", tool_call_id)
         try:
             yield span
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             span.set_attribute("exception.type", type(exc).__name__)
             span.set_attribute(
                 "exception.message",

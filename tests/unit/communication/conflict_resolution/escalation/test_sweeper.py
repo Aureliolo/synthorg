@@ -175,6 +175,35 @@ class TestSweeperLifecycle:
             stuck_task.cancel()
 
 
+class TestSweeperErrorPaths:
+    async def test_stop_drain_swallows_noncritical_run_exception(self) -> None:
+        store = InMemoryEscalationStore()
+        sweeper = EscalationExpirationSweeper(store, interval_seconds=1.0)
+        await sweeper.start()
+        real_task = sweeper._task
+        assert real_task is not None
+        real_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await real_task
+
+        async def _boom_run() -> None:
+            msg = "run boom"
+            raise RuntimeError(msg)
+
+        boom_task = asyncio.create_task(_boom_run())
+        # Drive the task to its RuntimeError so the drain's ``await task``
+        # re-raises it (hitting the non-critical except branch) instead
+        # of seeing a CancelledError.
+        with contextlib.suppress(RuntimeError):
+            await boom_task
+        sweeper._task = boom_task
+
+        # stop() drains the failed task, logs the non-critical error,
+        # and completes without propagating.
+        await sweeper.stop()
+        assert sweeper._task is None
+
+
 class TestSweeperRunLoop:
     async def test_sweep_expires_stale_rows_on_loop_tick(
         self,

@@ -10,6 +10,8 @@ is an opt-in feature and logging must never depend on it.
 
 from typing import Any
 
+from synthorg.core.critical_errors import reraise_critical
+
 
 def inject_trace_context(
     _logger: Any,
@@ -42,9 +44,8 @@ def inject_trace_context(
     try:
         span = _ot_trace.get_current_span()
         context = span.get_span_context() if span is not None else None
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         return event_dict
     if context is None or not context.is_valid:
         return event_dict

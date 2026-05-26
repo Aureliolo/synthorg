@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Final
 import structlog
 from structlog.stdlib import ProcessorFormatter
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import safe_error_description
 from synthorg.observability.enums import OtlpProtocol
@@ -140,9 +141,8 @@ class OtlpHandler(logging.Handler):
                 self._pending_count += 1
                 if self._pending_count >= self._batch_size:
                     self._batch_ready.set()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             self.handleError(record)
 
     def set_export_callback(
@@ -239,9 +239,8 @@ class OtlpHandler(logging.Handler):
                 break
             try:
                 self._drain_and_flush()
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 _internal_logger.error(
                     METRICS_OTLP_FLUSHER_ERROR,
                 )
@@ -270,9 +269,8 @@ class OtlpHandler(logging.Handler):
         for record in records:
             try:
                 log_records.append(self._format_as_otlp_dict(record))
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 self.handleError(record)
                 self._increment_dropped(1)
                 format_drops += 1
@@ -314,9 +312,8 @@ class OtlpHandler(logging.Handler):
                 timeout=self._timeout,
             ):
                 pass
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # urllib.error.HTTPError wraps a file pointer to the response
             # body.  Close it explicitly to avoid leaking file descriptors.
             if isinstance(exc, urllib.error.HTTPError):
@@ -358,9 +355,8 @@ class OtlpHandler(logging.Handler):
             return
         try:
             callback(outcome, dropped)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             _internal_logger.warning(
                 METRICS_OTLP_CALLBACK_ERROR,
                 outcome=outcome,

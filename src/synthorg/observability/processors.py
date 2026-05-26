@@ -5,6 +5,7 @@ import sys
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability.redaction import scrub_secret_tokens
 
 if TYPE_CHECKING:
@@ -142,13 +143,8 @@ def scrub_event_fields(
     """
     try:
         return {key: _scrub_value(value) for key, value in event_dict.items()}
-    except MemoryError, RecursionError:
-        # Interpreter-fatal errors must propagate per project convention
-        # -- swallowing them here would hide exactly the class of failures
-        # the rest of the codebase relies on for surfacing catastrophic
-        # state.
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # Fail open: pass the event through unscrubbed rather than drop
         # the log line entirely.  Still safer than crashing the log
         # pipeline -- ``sanitize_sensitive_fields`` (which ran just

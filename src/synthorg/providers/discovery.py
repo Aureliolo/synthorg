@@ -1,3 +1,4 @@
+# module-kind: integration
 """Model auto-discovery for LLM providers.
 
 Two capabilities:
@@ -24,7 +25,8 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
 from synthorg.config.schema import ProviderModelConfig  # noqa: TC001
-from synthorg.observability import get_logger
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_FAILED,
     PROVIDER_DISCOVERY_SSRF_BYPASSED,
@@ -545,8 +547,6 @@ async def _safe_fetch(
     """
     try:
         return await coro
-    except MemoryError, RecursionError:
-        raise
     except httpx.HTTPStatusError as exc:
         logger.warning(
             PROVIDER_DISCOVERY_FAILED,
@@ -561,12 +561,15 @@ async def _safe_fetch(
         _log_fetch_failure(preset_name, "timeout", safe_url)
     except json.JSONDecodeError:
         _log_fetch_failure(preset_name, "invalid_json_response", safe_url)
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PROVIDER_DISCOVERY_FAILED,
             preset=preset_name,
             reason="unexpected_error",
             url=safe_url,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
     return None
 

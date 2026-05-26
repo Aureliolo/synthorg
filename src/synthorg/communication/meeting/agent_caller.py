@@ -32,6 +32,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.meeting.models import AgentResponse
 from synthorg.communication.meeting.protocol import AgentCaller  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError, NotFoundError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr
@@ -146,9 +147,8 @@ def build_meeting_agent_caller(
                     str(identity.model.model_id),
                     config=config,
                 )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEETING_AGENT_CALL_FAILED,
                 agent_id=agent_id,

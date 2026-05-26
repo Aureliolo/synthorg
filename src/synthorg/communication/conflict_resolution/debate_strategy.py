@@ -34,6 +34,7 @@ from synthorg.communication.delegation.hierarchy import (  # noqa: TC001
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
 from synthorg.communication.errors import ConflictHierarchyError
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.conflict import (
     CONFLICT_AUTHORITY_FALLBACK,
@@ -101,9 +102,8 @@ class DebateResolver:
                     conflict,
                     judge_id,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     CONFLICT_DEBATE_EVALUATOR_FAILED,

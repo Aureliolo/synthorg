@@ -120,8 +120,6 @@ def merge_installed_servers(
                 entry,
                 install.connection_name,
             )
-        except MemoryError, RecursionError:
-            raise
         except ValueError:
             continue
         additions.append(server_cfg)

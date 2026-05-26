@@ -28,6 +28,7 @@ from synthorg.communication.event_stream.types import (
     StreamEvent,
 )
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ConflictError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.observability import get_logger, safe_error_description
@@ -352,9 +353,8 @@ class EventStreamHub:
                 await self._prune_idle_subscribers(idle_ttl_seconds)
             except asyncio.CancelledError:
                 raise
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     EVENT_STREAM_HUB_JANITOR_FAILED,
                     error_type=type(exc).__name__,

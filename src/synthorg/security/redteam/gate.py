@@ -22,6 +22,7 @@ import asyncio
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.red_team import (
     RED_TEAM_AGENT_FAILED,
@@ -249,9 +250,8 @@ class RedTeamGateService:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 RED_TEAM_REPORT_MISSING,
                 execution_id=review_input.execution_id,
@@ -305,9 +305,8 @@ class RedTeamGateService:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 RED_TEAM_GROUNDING_CHECK_FAILED,
                 execution_id=review_input.execution_id,

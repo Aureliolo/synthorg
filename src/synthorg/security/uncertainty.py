@@ -31,6 +31,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # type hints (DI containers, doc generators).
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -428,9 +429,8 @@ class UncertaintyChecker:
                         ),
                         timeout=self._config.timeout_seconds,
                     )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # ``logger.warning`` + ``safe_error_description``
                 # instead of ``logger.exception`` so the traceback
                 # (which can carry credential-bearing locals from

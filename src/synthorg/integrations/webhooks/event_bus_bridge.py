@@ -13,6 +13,7 @@ from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType, MessageType
 from synthorg.communication.message import DataPart, Message
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.integrations import (
     WEBHOOK_EVENT_PUBLISH_FAILED,
@@ -68,6 +69,7 @@ async def publish_webhook_event(
     try:
         await bus.publish(message)
     except Exception as exc:
+        reraise_critical(exc)
         log_exception_redacted(
             logger,
             WEBHOOK_EVENT_PUBLISH_FAILED,

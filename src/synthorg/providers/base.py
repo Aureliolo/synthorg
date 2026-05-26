@@ -15,6 +15,7 @@ from opentelemetry.trace import Status, StatusCode
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -180,9 +181,8 @@ class BaseCompletionProvider(ABC):
                     result = retry_info.value
                 else:
                     result = await _attempt()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 latency_ms = (
                     self._clock.monotonic() - t_start
                 ) * _MILLISECONDS_PER_SECOND
@@ -315,9 +315,8 @@ class BaseCompletionProvider(ABC):
 
         try:
             return await self._resilient_execute(_attempt)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # See the ``complete`` sibling handler; ``logger.error``
             # + scrubbed fields instead of ``logger.exception``
             # prevents traceback frame-locals from leaking provider
@@ -361,9 +360,8 @@ class BaseCompletionProvider(ABC):
 
         try:
             return await self._resilient_execute(_attempt)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # ``logger.exception`` would attach a traceback whose
             # frame-locals can leak provider credentials; use
             # ``logger.error`` with the structured ``error_type`` +
@@ -418,6 +416,7 @@ class BaseCompletionProvider(ABC):
             except MemoryError, RecursionError, RetryExhaustedError:
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
                     model=m,

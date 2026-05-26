@@ -25,6 +25,7 @@ from synthorg.communication.bus._nats_utils import (
 )
 from synthorg.communication.errors import MessageBusNotRunningError
 from synthorg.communication.message import Message
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMM_BATCH_PUBLISHED,
@@ -281,6 +282,7 @@ async def publish_batch(
         try:
             future.result()
         except Exception as exc:
+            reraise_critical(exc)
             errors.append(exc)
     if errors:
         msg = "publish_batch: one or more publishes failed"

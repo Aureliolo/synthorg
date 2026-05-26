@@ -15,6 +15,7 @@ import asyncio
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.vision_verify import (
     VISION_GATE_BLOCKED,
@@ -129,9 +130,8 @@ class VisionVerifierGateService:
             return await self._verifier.verify(review_input)
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 VISION_VERIFIER_FAILED,
                 execution_id=review_input.execution_id,

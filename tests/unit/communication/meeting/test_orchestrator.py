@@ -427,6 +427,43 @@ class TestMeetingOrchestratorBudgetExhaustion:
 class TestMeetingOrchestratorTaskCreation:
     """Tests for task creation from action items."""
 
+    def test_task_creator_failure_is_counted_and_swallowed(self) -> None:
+        """A task_creator that raises is logged per-item; _create_tasks
+        does not propagate (best-effort task fan-out)."""
+
+        def _raising_creator(
+            desc: str,
+            assignee: str | None,
+            priority: Priority,
+        ) -> None:
+            msg = "task create boom"
+            raise RuntimeError(msg)
+
+        orchestrator = _make_orchestrator(task_creator=_raising_creator)
+        now = datetime.now(UTC)
+        agenda = MeetingAgenda(title="Test")
+        minutes = MeetingMinutes(
+            meeting_id="m-fail",
+            protocol_type=MeetingProtocolType.ROUND_ROBIN,
+            leader_id="leader",
+            participant_ids=("agent-a",),
+            agenda=agenda,
+            action_items=(
+                ActionItem(description="Deploy API", priority=Priority.HIGH),
+                ActionItem(description="Write docs"),
+            ),
+            started_at=now,
+            ended_at=now,
+        )
+
+        # Each task_creator call raises; the failures are counted and
+        # logged but never propagate out of _create_tasks.
+        orchestrator._create_tasks(
+            "m-fail",
+            MeetingProtocolConfig(),
+            minutes,
+        )
+
     async def test_task_creator_called_with_correct_args(self) -> None:
         """Task creator receives correct args from action items."""
         created_tasks: list[tuple[str, str | None, Priority]] = []

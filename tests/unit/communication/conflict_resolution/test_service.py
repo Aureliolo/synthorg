@@ -1,9 +1,11 @@
 """Tests for the conflict resolution service."""
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 
+from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.conflict_resolution.authority_strategy import (
     AuthorityResolver,
 )
@@ -27,7 +29,9 @@ from synthorg.communication.enums import (
     ConflictType,
 )
 from synthorg.communication.errors import ConflictResolutionError
+from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.core.enums import SeniorityLevel
+from tests._shared import mock_of
 
 from .conftest import make_position
 
@@ -501,3 +505,63 @@ class TestAuditTrail:
         await service.resolve(conflict)
         records = service.get_dissent_records()
         assert isinstance(records, tuple)
+
+
+@pytest.mark.unit
+class TestDissentPublishErrorPaths:
+    """Best-effort dissent publication: bus / SSE failures are logged,
+    never propagated, and never swallow interpreter-critical errors."""
+
+    async def test_bus_and_sse_publish_failures_do_not_propagate(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        bus = mock_of[MessageBus](
+            publish=AsyncMock(
+                spec=MessageBus.publish,
+                side_effect=RuntimeError("bus publish boom"),
+            ),
+        )
+        hub = mock_of[EventStreamHub](
+            publish_raw=AsyncMock(
+                spec=EventStreamHub.publish_raw,
+                side_effect=RuntimeError("sse publish boom"),
+            ),
+        )
+        config = ConflictResolutionConfig(
+            strategy=ConflictResolutionStrategy.AUTHORITY,
+        )
+        service = ConflictResolutionService(
+            config=config,
+            resolvers={
+                ConflictResolutionStrategy.AUTHORITY: AuthorityResolver(
+                    hierarchy=hierarchy,
+                ),
+            },
+            message_bus=bus,
+            event_hub=hub,
+        )
+        # task_id gives the SSE path a session id so it reaches the
+        # publish_raw call (rather than the early-return guard).
+        conflict = service.create_conflict(
+            conflict_type=ConflictType.ARCHITECTURE,
+            subject="Design",
+            positions=[
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Other",
+                ),
+            ],
+            task_id="task-dissent-fail",
+        )
+
+        # Both publish paths raise non-critical errors; resolve still
+        # returns its resolution and dissent records.
+        resolution, records = await service.resolve(conflict)
+
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
+        assert len(records) == 1
+        bus.publish.assert_awaited()
+        hub.publish_raw.assert_awaited()

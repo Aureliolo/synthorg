@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.audit_chain.chain import HashChain
 from synthorg.observability.audit_chain.payloads import AuditChainEventPayload
@@ -370,8 +371,6 @@ class AuditChainSink(logging.Handler):
                 ts_result.timestamp.timestamp(),
             )
 
-        except MemoryError, RecursionError:
-            raise
         except ValidationError as exc:
             # Boundary validation rejected the assembled payload --
             # do NOT fall through to the generic ``except Exception``
@@ -411,7 +410,8 @@ class AuditChainSink(logging.Handler):
                 timeout_seconds=self._signing_timeout_seconds,
             )
             self._invoke_append_callback("error", 0, 0.0)
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             # Use a non-audited event prefix (``audit_chain.*``) so
             # this error log can't loop back through ``emit()`` and
             # recurse on the single-worker signing executor.
@@ -436,9 +436,8 @@ class AuditChainSink(logging.Handler):
             return
         try:
             callback(status, chain_depth, timestamp_unix)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 AUDIT_CHAIN_CALLBACK_ERROR,
             )

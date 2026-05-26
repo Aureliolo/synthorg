@@ -14,6 +14,7 @@ from synthorg.config.schema import (  # noqa: TC001 -- runtime use in return typ
     ProviderConfig,
     ProviderModelConfig,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_ALREADY_EXISTS,
@@ -157,9 +158,8 @@ class ProviderCapabilitiesMixin:
                 actor=actor or SYSTEM_ACTOR,
                 payload=dict(payload) if payload else {},
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROVIDER_AUDIT_WRITE_FAILED,
                 provider=provider_name,

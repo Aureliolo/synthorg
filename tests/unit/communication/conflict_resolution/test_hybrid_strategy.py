@@ -38,6 +38,47 @@ class FakeReviewEvaluator:
         return JudgeDecision(self._winner_id, self._reasoning)
 
 
+class RaisingReviewEvaluator:
+    """Review evaluator whose evaluate() always raises."""
+
+    async def evaluate(
+        self,
+        conflict: Conflict,
+        judge_agent_id: str,
+    ) -> JudgeDecision:
+        msg = "evaluate boom"
+        raise RuntimeError(msg)
+
+
+@pytest.mark.unit
+class TestHybridResolverEvaluatorError:
+    async def test_evaluator_failure_is_logged_and_reraised(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        resolver = HybridResolver(
+            hierarchy=hierarchy,
+            config=HybridConfig(),
+            human_resolver=HumanEscalationResolver(timeout_seconds=0),
+            review_evaluator=RaisingReviewEvaluator(),
+        )
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Other",
+                ),
+            ),
+        )
+
+        # A non-critical evaluator failure is logged with context and
+        # re-raised (the hybrid resolver does not silently swallow it).
+        with pytest.raises(RuntimeError, match="evaluate boom"):
+            await resolver.resolve(conflict)
+
+
 @pytest.mark.unit
 class TestHybridResolverAutoResolve:
     async def test_clear_winner_auto_resolves(

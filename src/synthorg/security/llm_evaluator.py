@@ -36,6 +36,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.config.schema import ProviderConfig  # noqa: TC001
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -289,9 +290,8 @@ class LlmSecurityEvaluator:
                 )
         except TimeoutError:
             return self._on_llm_timeout(context, rule_verdict, start)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             return self._on_llm_error(
                 context,
                 rule_verdict,

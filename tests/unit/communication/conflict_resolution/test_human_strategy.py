@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -33,6 +34,8 @@ from synthorg.communication.errors import (
     EscalationDecisionAgentError,
     EscalationDecisionShapeError,
 )
+from synthorg.notifications.dispatcher import NotificationDispatcher
+from tests._shared import mock_of
 
 from .conftest import make_conflict
 
@@ -283,3 +286,150 @@ class TestHumanEscalationFullLoop:
         row = await store.get("escalation-stale-0001")
         assert row is not None
         assert row.status == EscalationStatus.EXPIRED
+
+
+@pytest.mark.unit
+class TestHumanEscalationErrorPaths:
+    """Storage / notifier / registry failures degrade without swallowing
+    interpreter-critical exceptions."""
+
+    async def test_store_create_failure_reaps_future_and_reraises(self) -> None:
+        store = InMemoryEscalationStore()
+        store.create = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("create boom"),
+        )
+        registry = PendingFuturesRegistry()
+        resolver = HumanEscalationResolver(
+            store=store,
+            registry=registry,
+            timeout_seconds=0,
+        )
+        conflict = make_conflict()
+
+        with pytest.raises(RuntimeError, match="create boom"):
+            await resolver.resolve(conflict)
+
+    async def test_notification_dispatch_failure_is_swallowed(self) -> None:
+        notifier = mock_of[NotificationDispatcher](
+            dispatch=AsyncMock(
+                spec=NotificationDispatcher.dispatch,
+                side_effect=RuntimeError("dispatch boom"),
+            ),
+        )
+        resolver = HumanEscalationResolver(notifier=notifier, timeout_seconds=0)
+        conflict = make_conflict()
+        escalation = resolver._build_escalation(conflict)
+
+        # Notifier is best-effort: a non-critical dispatch failure is
+        # logged and never propagated to the resolver.
+        await resolver._dispatch_notification(escalation, conflict)
+
+    async def test_timeout_cleanup_tolerates_registry_and_store_failures(
+        self,
+    ) -> None:
+        store = InMemoryEscalationStore()
+        store.mark_expired = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("mark_expired boom"),
+        )
+        registry = PendingFuturesRegistry()
+        registry.cancel = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("cancel boom"),
+        )
+        resolver = HumanEscalationResolver(
+            store=store,
+            registry=registry,
+            timeout_seconds=5,
+        )
+        conflict = make_conflict()
+        escalation = resolver._build_escalation(conflict)
+
+        # Both cleanup awaits fail; the method still completes so
+        # ``resolve`` can return its terminal timeout resolution.
+        await resolver._handle_timeout_cleanup(escalation, conflict)
+
+    async def test_cancelled_cleanup_tolerates_registry_and_store_failures(
+        self,
+    ) -> None:
+        store = InMemoryEscalationStore()
+        store.cancel = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("store cancel boom"),
+        )
+        registry = PendingFuturesRegistry()
+        registry.cancel = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("registry cancel boom"),
+        )
+        resolver = HumanEscalationResolver(
+            store=store,
+            registry=registry,
+            timeout_seconds=5,
+        )
+        conflict = make_conflict()
+        escalation = resolver._build_escalation(conflict)
+
+        await resolver._handle_cancelled_cleanup(escalation, conflict)
+
+    async def test_read_late_decision_lookup_failure_returns_none(self) -> None:
+        store = InMemoryEscalationStore()
+        store.get = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("get boom"),
+        )
+        resolver = HumanEscalationResolver(store=store, timeout_seconds=5)
+        conflict = make_conflict()
+        escalation = resolver._build_escalation(conflict)
+
+        result = await resolver._read_late_decision(escalation, conflict)
+
+        assert result is None
+
+    async def test_read_late_decision_tolerates_registry_cancel_failure(
+        self,
+    ) -> None:
+        store = InMemoryEscalationStore()
+        registry = PendingFuturesRegistry()
+        registry.cancel = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("cancel boom"),
+        )
+        resolver = HumanEscalationResolver(
+            store=store,
+            registry=registry,
+            processor=WinnerOnlyDecisionProcessor(),
+            timeout_seconds=5,
+        )
+        conflict = make_conflict()
+        escalation = resolver._build_escalation(conflict)
+        winning_agent_id = conflict.positions[0].agent_id
+        decided_row = escalation.model_copy(
+            update={
+                "status": EscalationStatus.DECIDED,
+                "decided_at": datetime.now(UTC),
+                "decided_by": "human:op-late",
+                "decision": WinnerDecision(
+                    winning_agent_id=winning_agent_id,
+                    reasoning="late decision",
+                ),
+            },
+        )
+        store.get = AsyncMock(  # type: ignore[method-assign]
+            return_value=decided_row,
+        )
+
+        # Registry cancel fails while reaping the future, but the
+        # durable decision is still honoured.
+        resolution = await resolver._read_late_decision(escalation, conflict)
+
+        assert resolution is not None
+        assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_HUMAN
+        assert resolution.winning_agent_id == winning_agent_id
+
+    async def test_resolve_decided_by_lookup_failure_falls_back_to_human(
+        self,
+    ) -> None:
+        store = InMemoryEscalationStore()
+        store.get = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("get boom"),
+        )
+        resolver = HumanEscalationResolver(store=store, timeout_seconds=5)
+
+        decided_by = await resolver._resolve_decided_by("escalation-missing")
+
+        assert decided_by == "human"

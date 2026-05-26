@@ -13,6 +13,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
@@ -122,8 +123,6 @@ async def _probe_and_fetch(
                 _log_probe_miss(preset_name, "unexpected_json_type", url)
                 return None
             return data
-    except MemoryError, RecursionError:
-        raise
     except httpx.ConnectError:
         _log_probe_miss(preset_name, "connection_refused", url)
     except httpx.TimeoutException:
@@ -131,6 +130,7 @@ async def _probe_and_fetch(
     except json.JSONDecodeError:
         _log_probe_miss(preset_name, "invalid_json", url)
     except Exception as exc:
+        reraise_critical(exc)
         _log_probe_miss(preset_name, "unexpected_error", url, exc=exc)
     return None
 

@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
@@ -96,9 +97,8 @@ class BackupSettingsSubscriber:
         """Start or stop the scheduler based on the current setting value."""
         try:
             result = await self._settings_service.get("backup", "enabled")
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 SETTINGS_SUBSCRIBER_NOTIFIED,
@@ -116,9 +116,8 @@ class BackupSettingsSubscriber:
         if enabled and not scheduler.is_running:
             try:
                 await scheduler.start()
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Surface a startup failure here -- without this branch
                 # the exception would propagate from the subscriber
                 # callback with no context tying it back to the
@@ -157,9 +156,8 @@ class BackupSettingsSubscriber:
         """Update the scheduler interval from current settings."""
         try:
             result = await self._settings_service.get("backup", "schedule_hours")
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 SETTINGS_SUBSCRIBER_NOTIFIED,

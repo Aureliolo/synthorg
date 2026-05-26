@@ -9,6 +9,7 @@ declared on the concrete service.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.security import (
     SECURITY_SAFETY_CLASSIFY_BLOCKED,
@@ -90,9 +91,8 @@ class SecOpsServiceSafetyMixin:
                 result.reason,
                 metadata,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 SECURITY_SAFETY_CLASSIFY_ERROR,
@@ -210,9 +210,8 @@ class SecOpsServiceSafetyMixin:
                 metadata["embedding_similarity"] = str(
                     result.embedding_similarity,
                 )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 SECURITY_UNCERTAINTY_CHECK_ERROR,

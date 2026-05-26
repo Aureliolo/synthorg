@@ -35,6 +35,7 @@ from synthorg.communication.errors import ConflictResolutionError
 from synthorg.communication.event_stream.stream import EventStreamHub  # noqa: TC001
 from synthorg.communication.event_stream.types import AgUiEventType
 from synthorg.communication.message import DataPart, Message
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.communication import (
@@ -199,9 +200,8 @@ class ConflictResolutionService:
 
         try:
             resolution = await resolver.resolve(conflict)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 CONFLICT_RESOLUTION_FAILED,
@@ -337,9 +337,8 @@ class ConflictResolutionService:
                     transport="bus",
                     note="Message bus missing publish method",
                 )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMM_DISSENT_PUBLISH_FAILED,
                 dissent_id=record.id,
@@ -374,9 +373,8 @@ class ConflictResolutionService:
                 conflict_id=conflict_id,
                 transport="sse",
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMM_DISSENT_PUBLISH_FAILED,
                 dissent_id=record.id,

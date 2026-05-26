@@ -13,6 +13,7 @@ from synthorg.communication.bus._nats_utils import decode_token, encode_token
 from synthorg.communication.bus.errors import BusStreamError
 from synthorg.communication.channel import Channel
 from synthorg.communication.errors import ChannelAlreadyExistsError
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_BUS_KV_READ_FAILED,
@@ -62,6 +63,7 @@ async def create_channel_in_kv(
             msg, context={"channel": channel.name}
         ) from None
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             COMM_BUS_KV_WRITE_FAILED,
             channel=channel.name,
@@ -86,6 +88,7 @@ async def write_channel_to_kv(state: _NatsState, channel: Channel) -> None:
     try:
         await state.kv.put(key, value)
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             COMM_BUS_KV_WRITE_FAILED,
             channel=channel.name,
@@ -124,6 +127,7 @@ async def fetch_kv_entry(
     except KeyNotFoundError:
         return None
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             COMM_BUS_KV_READ_FAILED,
             channel=channel_name,
@@ -196,6 +200,7 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
     except NoKeysError:
         return []
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             COMM_BUS_KV_READ_FAILED,
             channel="*",
@@ -211,6 +216,7 @@ async def scan_kv_channels(state: _NatsState) -> list[Channel]:
         try:
             decoded_keys.append((key, decode_token(key)))
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMM_BUS_KV_READ_FAILED,
                 channel=key,
