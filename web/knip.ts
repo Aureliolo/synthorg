@@ -31,7 +31,9 @@ const config: KnipConfig = {
   ignoreExportsUsedInFile: { interface: true, type: true },
   compilers: {
     css: (text: string) =>
-      [...text.matchAll(/(?<=@)import[^;]+/g)].map((match) => match[0]).join('\n'),
+      [...text.matchAll(/@import\s+(?:url\()?['"]?([^'")]+)['"]?\)?/g)]
+        .map((match) => `import '${match[1]}'`)
+        .join('\n'),
   },
 }
 
