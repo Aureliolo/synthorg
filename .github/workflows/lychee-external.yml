@@ -1,0 +1,135 @@
+name: Link Check (lychee, external)
+
+# Weekly external-link checker for README, every CLAUDE.md tier, and
+# every Markdown under docs/. Runs lychee ONLINE (no ``--offline``):
+# every remote link is probed and any non-200 is surfaced. This is the
+# counterpart to the blocking gate in ``.github/workflows/lychee.yml``,
+# which runs ``--offline`` and only validates internal links so a
+# third-party host can never block a merge. External rot is real but is
+# not the committer's to fix, so it is reported here off the critical
+# path: the lychee job goes red for visibility, and on a scheduled
+# failure the report-failure job files (or updates) an ``External link
+# rot`` tracking issue via the ``post-tracking-issue`` composite action,
+# the same issue sink the security workflows use. A human triages and
+# closes the issue.
+#
+# Config is the shared ``lychee.toml``: its ``exclude`` list suppresses
+# anti-bot (403) and rate-limit (429) hosts that are live in a browser,
+# so they never file a bogus issue here.
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"  # Weekly Monday 07:00 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  lychee-external:
+    name: lychee-external
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Install lychee
+        shell: bash
+        # ``runner.temp`` is only available at step-level env; job-level
+        # env limits context to github/inputs/matrix/needs/secrets/strategy/vars
+        # (actionlint enforces this). Same install dir is reused by the
+        # following PATH step.
+        env:
+          LYCHEE_INSTALL_DIR: ${{ runner.temp }}/lychee-bin
+        run: bash scripts/install_cli_tools.sh lychee
+
+      - name: Add lychee to PATH
+        shell: bash
+        env:
+          LYCHEE_INSTALL_DIR: ${{ runner.temp }}/lychee-bin
+        run: echo "${LYCHEE_INSTALL_DIR}" >> "${GITHUB_PATH}"
+
+      - name: Run lychee (online)
+        shell: bash
+        env:
+          # Authenticated GitHub requests get a higher rate-limit budget,
+          # which matters because docs reference many github.com URLs.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          # No ``--offline``: probe every remote link. A non-200 fails
+          # the step (pipefail propagates lychee's exit through tee), so
+          # the job goes red and the report-failure job below opens the
+          # tracking issue. The markdown report lands in the run summary.
+          lychee \
+            --config lychee.toml \
+            --no-progress \
+            --format markdown \
+            './README.md' \
+            './CLAUDE.md' \
+            './cli/CLAUDE.md' \
+            './web/CLAUDE.md' \
+            './docs/**/*.md' \
+            | tee -a "${GITHUB_STEP_SUMMARY}"
+
+  report-failure:
+    name: Open / update tracking issue on broken external links
+    needs: lychee-external
+    # Only the schedule path gets the issue sink. workflow_dispatch is
+    # visible to the triggerer, so a manual test run shows red without
+    # filing an issue. Gate on `== 'failure'` specifically: a `cancelled`
+    # result (e.g. the 15-minute timeout) is not link rot and must not
+    # open an "External link rot" issue; only an actual lychee failure
+    # (broken links) should.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.lychee-external.result == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Compose body
+        id: body
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'body<<TRACKING_ISSUE_BODY_EOF'
+            cat <<EOF
+          The weekly external link check found broken links at $(date -u +%Y-%m-%dT%H:%M:%SZ).
+
+          Run: ${RUN_URL}
+
+          The step summary on that run lists the failing links. These are
+          external (remote) links, not link rot in our own docs: fix the
+          doc if a link is genuinely wrong, add an exclude to \`lychee.toml\`
+          for a false-positive host (anti-bot 403 / rate-limit 429), or
+          leave this open until the upstream site recovers.
+          EOF
+            echo 'TRACKING_ISSUE_BODY_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/post-tracking-issue
+        with:
+          title: 'External link rot'
+          labels: 'automation:ci-health,type:ci,prio:low'
+          body: ${{ steps.body.outputs.body }}
+          pin: 'false'
+          gh-token: ${{ github.token }}
