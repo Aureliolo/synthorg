@@ -79,7 +79,7 @@ async def test_unsubscribe_failure_skips_success_info(
     event, kwargs = recording.warning_events[0]
     assert event == COMM_SUBSCRIPTION_REMOVED
     assert kwargs["phase"] == "unsubscribe_consumer_failed"
-    # Pin the SEC-1 redacted fields so a regression that drops them is caught.
+    # Pin the redacted error fields so a regression that drops them is caught.
     assert kwargs["error_type"] == "RuntimeError"
     assert isinstance(kwargs["error"], str)
     assert kwargs["error"]
