@@ -998,7 +998,12 @@ class TestCollectorErrorIsolation:
             _raise_value_error,
         )
         collector = CoordinationMetricsCollector(
-            config=_config(collect=(CoordinationMetricName.EFFICIENCY,)),
+            config=_config(
+                collect=(
+                    CoordinationMetricName.EFFICIENCY,
+                    CoordinationMetricName.OVERHEAD,
+                )
+            ),
             cost_tracker=_cost_tracker(),
             baseline_store=_baseline_store(turns=5.0),
         )
@@ -1009,7 +1014,9 @@ class TestCollectorErrorIsolation:
             task_id="t",
             is_multi_agent=True,
         )
+        # The forced failure drops only efficiency; overhead still computes.
         assert result.efficiency is None
+        assert result.overhead is not None
 
     async def test_overhead_compute_failure_isolated(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1019,7 +1026,12 @@ class TestCollectorErrorIsolation:
             _raise_value_error,
         )
         collector = CoordinationMetricsCollector(
-            config=_config(collect=(CoordinationMetricName.OVERHEAD,)),
+            config=_config(
+                collect=(
+                    CoordinationMetricName.OVERHEAD,
+                    CoordinationMetricName.EFFICIENCY,
+                )
+            ),
             cost_tracker=_cost_tracker(),
             baseline_store=_baseline_store(turns=4.0),
         )
@@ -1030,7 +1042,9 @@ class TestCollectorErrorIsolation:
             task_id="t",
             is_multi_agent=True,
         )
+        # The forced failure drops only overhead; efficiency still computes.
         assert result.overhead is None
+        assert result.efficiency is not None
 
     async def test_error_amplification_compute_failure_isolated(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1040,7 +1054,12 @@ class TestCollectorErrorIsolation:
             _raise_value_error,
         )
         collector = CoordinationMetricsCollector(
-            config=_config(collect=(CoordinationMetricName.ERROR_AMPLIFICATION,)),
+            config=_config(
+                collect=(
+                    CoordinationMetricName.ERROR_AMPLIFICATION,
+                    CoordinationMetricName.EFFICIENCY,
+                )
+            ),
             cost_tracker=_cost_tracker(),
             baseline_store=_baseline_store(error_rate=0.1),
         )
@@ -1053,7 +1072,9 @@ class TestCollectorErrorIsolation:
             task_id="t",
             is_multi_agent=True,
         )
+        # The forced failure drops only error_amplification; efficiency computes.
         assert result.error_amplification is None
+        assert result.efficiency is not None
 
     async def test_amdahl_compute_failure_isolated(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1063,7 +1084,12 @@ class TestCollectorErrorIsolation:
             _raise_value_error,
         )
         collector = CoordinationMetricsCollector(
-            config=_config(collect=(CoordinationMetricName.AMDAHL_CEILING,)),
+            config=_config(
+                collect=(
+                    CoordinationMetricName.AMDAHL_CEILING,
+                    CoordinationMetricName.STRAGGLER_GAP,
+                )
+            ),
             cost_tracker=_cost_tracker(),
         )
         result = await _collect(
@@ -1073,8 +1099,11 @@ class TestCollectorErrorIsolation:
             task_id="t",
             is_multi_agent=True,
             team_size=4,
+            agent_durations=(("agent-1", 10.0), ("agent-2", 20.0)),
         )
+        # The forced failure drops only amdahl_ceiling; straggler_gap computes.
         assert result.amdahl_ceiling is None
+        assert result.straggler_gap is not None
 
     async def test_straggler_gap_compute_failure_isolated(
         self, monkeypatch: pytest.MonkeyPatch
@@ -1084,7 +1113,12 @@ class TestCollectorErrorIsolation:
             _raise_value_error,
         )
         collector = CoordinationMetricsCollector(
-            config=_config(collect=(CoordinationMetricName.STRAGGLER_GAP,)),
+            config=_config(
+                collect=(
+                    CoordinationMetricName.STRAGGLER_GAP,
+                    CoordinationMetricName.AMDAHL_CEILING,
+                )
+            ),
             cost_tracker=_cost_tracker(),
         )
         result = await _collect(
@@ -1093,9 +1127,12 @@ class TestCollectorErrorIsolation:
             agent_id="a",
             task_id="t",
             is_multi_agent=True,
+            team_size=4,
             agent_durations=(("agent-1", 10.0), ("agent-2", 20.0)),
         )
+        # The forced failure drops only straggler_gap; amdahl_ceiling computes.
         assert result.straggler_gap is None
+        assert result.amdahl_ceiling is not None
 
     async def test_critical_error_propagates(
         self, monkeypatch: pytest.MonkeyPatch

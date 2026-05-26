@@ -178,8 +178,15 @@ class TestDiscoveryErrorIsolation:
         assert names == {"good"}
 
     def test_loaded_definitions_skips_faulty_tool(self) -> None:
-        invoker = _build_invoker(tools=[_FaultyTool(name="faulty")])
-        names = {d.name for d in invoker.get_loaded_definitions(frozenset({"faulty"}))}
+        invoker = _build_invoker(
+            tools=[_FaultyTool(name="faulty"), _FakeTool(name="good")]
+        )
+        names = {
+            d.name
+            for d in invoker.get_loaded_definitions(frozenset({"faulty", "good"}))
+        }
+        # Per-tool isolation: the faulty tool is skipped, the healthy one kept.
+        assert "good" in names
         assert "faulty" not in names
 
     def test_l2_body_returns_none_on_failure(self) -> None:

@@ -119,7 +119,9 @@ class ToolBasedReformulationMixin:
         raises a non-system exception, the round helper returns
         ``None`` and the loop returns the current cumulative entries
         rather than propagating.  System errors
-        (builtins.MemoryError, RecursionError) still propagate.
+        (builtins.MemoryError, RecursionError) still propagate.  The
+        initial (round 0) retrieval is NOT isolated, so a non-system
+        error from the backend there propagates to the caller.
 
         Returns:
             Tuple of ``MemoryEntry`` results merged across rounds and
@@ -129,6 +131,9 @@ class ToolBasedReformulationMixin:
             MemoryError: If a critical system error occurs.
             RecursionError: If a critical system error occurs.
             CancelledError: If the task is cancelled.
+            Exception: Any non-system error raised by the backend during
+                the initial (round 0) retrieval propagates uncaught; only
+                the per-round reformulation steps isolate such errors.
         """
         max_rounds = self._config.max_reformulation_rounds
         current_query = query_text
