@@ -363,6 +363,22 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: no-pre-commit-install-in-docs
+        name: docs must not recommend `pre-commit install` (use install_git_hooks.sh)
+        entry: uv run python scripts/check_no_pre_commit_install_in_docs.py
+        language: system
+        # `pre-commit install` rewrites the shared core.hooksPath to an
+        # absolute .git/hooks path, silently disabling hook gating for
+        # every worktree. The sanctioned setup is the relative
+        # core.hooksPath wired by scripts/install_git_hooks.sh. Trigger
+        # on the scoped setup docs, the gate script itself, or this
+        # config so a doc that reintroduces the bad instruction (or a PR
+        # that weakens the gate) cannot bypass the check. Mirrors
+        # `_SCOPED_FILES` in the gate script.
+        files: ^(\.github/CONTRIBUTING\.md|docs/getting_started\.md|README\.md|(web/|cli/)?CLAUDE\.md|docs/architecture/decisions\.md|scripts/check_no_pre_commit_install_in_docs\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
+        stages: [pre-commit, pre-push]
+
       - id: runtime-stats-freshness
         name: runtime_stats.yaml freshness (values + 14-day ceiling)
         entry: uv
