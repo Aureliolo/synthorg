@@ -788,14 +788,16 @@ repos:
 
       - id: no-boilerplate-docstrings
         name: no machine-generated filler docstrings in src/synthorg/
-        entry: uv run python scripts/check_no_boilerplate_docstrings.py
+        entry: uv run python scripts/check_no_boilerplate_docstrings.py --scan-all
         language: system
-        # Trigger on any src file or the gate script itself (so a PR
-        # that reintroduces filler -- or weakens the gate -- cannot
-        # bypass the check). The gate is a fast line-scan, so it stays
-        # on pre-commit. Changed files are passed through; CI runs it
-        # with --scan-all for the whole tree.
-        files: ^(src/synthorg/.*\.py|scripts/check_no_boilerplate_docstrings\.py)$
+        # Trigger on any src file, the gate script itself, or this
+        # config so a PR that reintroduces filler -- or weakens the gate
+        # by editing the script or its hook wiring -- cannot bypass the
+        # check. The gate is a fast full-tree line-scan, so it runs
+        # --scan-all on every fire (pass_filenames disabled) and stays
+        # on pre-commit.
+        files: ^(src/synthorg/.*\.py|scripts/check_no_boilerplate_docstrings\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
         stages: [pre-commit, pre-push]
 
       # ── Codebase modularity gates ─────────────────────────────────

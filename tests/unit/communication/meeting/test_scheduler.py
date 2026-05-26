@@ -549,14 +549,19 @@ class _FakeCooldownRepo:
         *,
         initial: tuple[MeetingCooldownRecord, ...] = (),
         fail_save: bool = False,
+        fail_load: bool = False,
     ) -> None:
         self._rows: dict[str, MeetingCooldownRecord] = {
             r.meeting_type_name: r for r in initial
         }
         self._fail_save = fail_save
+        self._fail_load = fail_load
         self.saved: list[MeetingCooldownRecord] = []
 
     async def load_all(self) -> tuple[MeetingCooldownRecord, ...]:
+        if self._fail_load:
+            msg = "cooldown read failed"
+            raise QueryError(msg)
         return tuple(self._rows.values())
 
     async def save(self, entity: MeetingCooldownRecord) -> None:
@@ -640,3 +645,26 @@ class TestMeetingSchedulerCooldownPersistence:
 
         assert "stale_type" not in scheduler._last_triggered
         assert "persisted_type" in scheduler._last_triggered
+
+    async def test_hydrate_failure_aborts_start(
+        self, orchestrator: MagicMock, resolver: MagicMock
+    ) -> None:
+        """A cooldown load failure aborts startup instead of running empty.
+
+        Continuing with an empty ``_last_triggered`` would silently drop
+        the persisted cooldown floor and let an event-triggered meeting
+        re-fire immediately after a restart, so the failure must surface.
+        """
+        config = _make_config(types=(_make_trigger_type(),))
+        scheduler = MeetingScheduler(
+            config=config,
+            orchestrator=orchestrator,
+            participant_resolver=resolver,
+            cooldown_repo=_FakeCooldownRepo(fail_load=True),
+        )
+
+        with pytest.raises(QueryError):
+            await scheduler.start()
+
+        assert scheduler.running is False
+        assert scheduler._last_triggered == {}

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_CALL_ERROR,
     PROVIDER_RETRY_ATTEMPT,
@@ -110,6 +110,8 @@ class RetryHandler:
                 logger.warning(
                     PROVIDER_CALL_ERROR,
                     reason="unexpected_non_provider_error",
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
                 )
                 raise
 

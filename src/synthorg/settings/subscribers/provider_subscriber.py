@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
     SETTINGS_SUBSCRIBER_NOTIFIED,
@@ -123,6 +123,8 @@ class ProviderSettingsSubscriber:
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="model_router",
                 attempted_strategy=attempted_strategy,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
             raise
         self._app_state.swap_model_router(new_router)

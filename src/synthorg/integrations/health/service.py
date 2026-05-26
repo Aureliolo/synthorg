@@ -74,6 +74,6 @@ async def check_connection_health(
         return HealthReport(
             connection_name=conn.name,
             status=ConnectionStatus.UNHEALTHY,
-            error_detail=str(exc),
+            error_detail=safe_error_description(exc),
             checked_at=now,
         )

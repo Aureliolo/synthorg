@@ -1,29 +1,26 @@
 #!/usr/bin/env python3
 """Gate: forbid machine-generated filler docstrings in src/synthorg/.
 
-A docstring backfill once emitted templated, tautological, or
-implementation-contradicting docstrings across the codebase (e.g.
-``"Internal helper: init"`` stubs with a ``Raises:`` clause that says
-the input "violates a validator", ``Returns:`` sections that read "the
-value captured by the summary above"). An inaccurate docstring is worse
-than no docstring: it actively misleads the reader and the generated
-API docs.
+Blocks a fixed set of templated, tautological, or
+implementation-contradicting docstring phrases (e.g. an
+``"Internal helper:"`` stub, a ``Raises:`` clause asserting the input
+"violates a validator", a ``Returns:`` section reading "the value
+captured by the summary above"). An inaccurate docstring is worse than
+no docstring: it actively misleads the reader and the generated API
+docs.
 
-This gate blocks the exact machine-artifact phrases that backfill
-produced. Each pattern was verified to occur ZERO times in the
-pre-existing ``src/synthorg/`` tree, so the gate has no false positives
-against hand-written docstrings -- it only catches the filler.
-
-A docstring that genuinely needs to describe a helper, a validator, or
-a return value can always do so without these phrases; the fix is to
-state the real intent / contract, per ``CLAUDE.md`` ("Comments WHY
-only").
+Each blocked phrase is a machine-artifact shape that does not occur in
+legitimate hand-written docstrings, so a substring match is a precise
+signal with no false positives. A docstring that genuinely needs to
+describe a helper, a validator, or a return value can always do so
+without these phrases; the fix is to state the real intent / contract,
+per ``CLAUDE.md`` ("Comments WHY only").
 
 Usage
 -----
 
-    python scripts/check_no_boilerplate_docstrings.py <file>...  # pre-commit
-    python scripts/check_no_boilerplate_docstrings.py --scan-all # CI
+    python scripts/check_no_boilerplate_docstrings.py --scan-all  # full tree
+    python scripts/check_no_boilerplate_docstrings.py <file>...   # specific files
 """
 
 import argparse
@@ -37,12 +34,11 @@ if TYPE_CHECKING:
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 _SRC_ROOT: Final[Path] = _REPO_ROOT / "src" / "synthorg"
 
-# Each phrase is a machine-generated docstring artifact. Verified to
-# appear zero times in the pre-backfill ``src/synthorg/`` tree, so a
-# substring match is a precise signal with no hand-written false
-# positives. Keep this list conservative: only add a phrase after
-# confirming ``git grep -F "<phrase>" <base-ref> -- 'src/**/*.py'``
-# returns nothing.
+# Each phrase is a machine-generated docstring artifact that does not
+# occur in legitimate hand-written docstrings, so a substring match is
+# a precise signal with no false positives. Keep this list
+# conservative: only add a phrase that cannot plausibly appear in a
+# genuine, hand-written docstring.
 _BOILERPLATE_PHRASES: Final[tuple[str, ...]] = (
     "Internal helper:",
     "violates a validator",
@@ -53,11 +49,12 @@ _BOILERPLATE_PHRASES: Final[tuple[str, ...]] = (
 
 
 def _scan_file(path: Path) -> list[tuple[int, str]]:
-    """Return ``(lineno, phrase)`` hits for *path*, sorted by line."""
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except UnicodeDecodeError, OSError:
-        return []
+    """Return ``(lineno, phrase)`` hits for *path*, sorted by line.
+
+    Read errors are NOT swallowed: an unreadable / undecodable file in
+    scope propagates and fails the gate rather than passing unscanned.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
     return [
         (lineno, phrase)
         for lineno, line in enumerate(lines, start=1)

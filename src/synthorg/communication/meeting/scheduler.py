@@ -246,13 +246,19 @@ class MeetingScheduler:
             records = await self._cooldown_repo.load_all()
         except Exception as exc:
             reraise_critical(exc)
-            logger.warning(
+            logger.error(
                 MEETING_SCHEDULER_ERROR,
                 phase="hydrate_cooldown_repo",
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return
+            # Abort startup rather than continuing with an empty
+            # ``_last_triggered``: a silent hydrate failure drops the
+            # persisted cooldown floor, so an event-triggered meeting
+            # could fire again immediately after a restart. The operator
+            # opted into durable cooldowns by configuring the repo, so a
+            # load failure must surface, not be swallowed.
+            raise
         from datetime import UTC, datetime  # noqa: PLC0415
 
         now_wall = datetime.now(UTC)

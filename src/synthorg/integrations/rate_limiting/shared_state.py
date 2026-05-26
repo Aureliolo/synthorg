@@ -84,6 +84,11 @@ class SharedRateLimitCoordinator:
         self._subscriber_id = f"{_SUBSCRIBER_PREFIX}{connection_name}_{uuid4().hex[:8]}"
         self._started = False
         self._distributed = True
+        # Tracks whether ``_bus.subscribe`` actually succeeded. A
+        # local-only fallback start (subscribe failed) leaves this
+        # False so ``stop()`` does not call ``unsubscribe`` on a
+        # subscriber the bus never registered.
+        self._subscribed = False
         # Eager init: stop() must be safe before any start() call.
         self._lifecycle_lock = asyncio.Lock()  # lint-allow: loop-bound-init -- see.
 
@@ -107,6 +112,7 @@ class SharedRateLimitCoordinator:
                 self._distributed = False
                 self._started = True
                 return
+            self._subscribed = True
             self._task = asyncio.create_task(
                 self._poll_loop(),
                 name=f"ratelimit-{self._connection_name}",
@@ -122,11 +128,18 @@ class SharedRateLimitCoordinator:
     async def stop(self) -> None:
         """Cancel polling and unsubscribe.
 
-        On unsubscribe failure, the started/distributed flags are
-        left untouched and the exception propagates. Flipping them
-        to ``False`` on a failed unsubscribe would let a later
-        ``start()`` reuse the same subscriber id against a live
-        ghost subscription and corrupt the coordination window.
+        Skips ``unsubscribe`` entirely when the coordinator fell back
+        to local-only mode (subscribe never succeeded): the bus has no
+        registration for this subscriber id, so unsubscribing it would
+        raise ``NotSubscribedError`` and leave the coordinator stuck in
+        a partial-stop state on every shutdown / factory swap.
+
+        On a genuine unsubscribe failure (a subscription that did
+        exist), the started/distributed flags are left untouched and
+        the exception propagates. Flipping them to ``False`` on a
+        failed unsubscribe would let a later ``start()`` reuse the same
+        subscriber id against a live ghost subscription and corrupt the
+        coordination window.
         """
         async with self._lifecycle_lock:
             if self._task is not None:
@@ -134,24 +147,26 @@ class SharedRateLimitCoordinator:
                 with contextlib.suppress(asyncio.CancelledError):
                     await self._task
                 self._task = None
-            try:
-                await self._bus.unsubscribe(
-                    _RATELIMIT_CHANNEL.name,
-                    self._subscriber_id,
-                )
-            except Exception as exc:
-                reraise_critical(exc)
-                logger.warning(
-                    RATE_LIMIT_COORDINATOR_STOPPED,
-                    connection_name=self._connection_name,
-                    subscriber_id=self._subscriber_id,
-                    error=(
-                        "unsubscribe failed -- coordinator remains "
-                        "in partial-stop state; resolve the bus "
-                        "issue before calling stop() again"
-                    ),
-                )
-                raise
+            if self._subscribed:
+                try:
+                    await self._bus.unsubscribe(
+                        _RATELIMIT_CHANNEL.name,
+                        self._subscriber_id,
+                    )
+                except Exception as exc:
+                    reraise_critical(exc)
+                    logger.warning(
+                        RATE_LIMIT_COORDINATOR_STOPPED,
+                        connection_name=self._connection_name,
+                        subscriber_id=self._subscriber_id,
+                        error=(
+                            "unsubscribe failed -- coordinator remains "
+                            "in partial-stop state; resolve the bus "
+                            "issue before calling stop() again"
+                        ),
+                    )
+                    raise
+                self._subscribed = False
             self._started = False
             self._distributed = False
             logger.debug(

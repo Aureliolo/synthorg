@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from synthorg.config.schema import ProviderConfig  # noqa: TC001
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_ALLOWLIST_CORRUPTED,
     PROVIDER_DISCOVERY_ALLOWLIST_SEEDED,
@@ -137,6 +137,8 @@ class DiscoveryAllowlistManager:
                 PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
                 action="add_failed",
                 host_port=hp,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def update_for_delete(
@@ -189,6 +191,8 @@ class DiscoveryAllowlistManager:
                 PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
                 action="remove_failed",
                 host_port=hp,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def update_for_update(
@@ -241,6 +245,8 @@ class DiscoveryAllowlistManager:
                 action="update_failed",
                 old_host_port=old_hp,
                 new_host_port=new_hp,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     async def add_entry(

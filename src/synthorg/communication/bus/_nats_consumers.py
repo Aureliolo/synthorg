@@ -23,7 +23,7 @@ from synthorg.communication.bus.errors import BusStreamError
 from synthorg.communication.channel import Channel  # noqa: TC001
 from synthorg.communication.subscription import Subscription
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_DUPLICATE_SUBSCRIPTION_DISCARDED,
     COMM_SUBSCRIPTION_CREATED,
@@ -194,6 +194,8 @@ async def unsubscribe(
                 subscriber=subscriber_id,
                 backend="nats",
                 phase="unsubscribe_consumer_failed",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
             )
 
     logger.info(

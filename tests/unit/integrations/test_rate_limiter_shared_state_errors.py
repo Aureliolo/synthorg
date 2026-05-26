@@ -36,10 +36,12 @@ class TestSharedRateLimitErrorPaths:
         await coord.start()
 
         # Subscribe failure is swallowed: coordinator marks itself
-        # started but degraded to in-process (non-distributed) mode.
+        # started but degraded to in-process (non-distributed) mode,
+        # with no live bus subscription recorded.
         assert coord._started is True
         assert coord._distributed is False
         assert coord._task is None
+        assert coord._subscribed is False
 
     async def test_stop_unsubscribe_failure_reraises_and_preserves_flags(
         self,
@@ -53,6 +55,7 @@ class TestSharedRateLimitErrorPaths:
         coord = SharedRateLimitCoordinator(bus=bus, connection_name="unsub-fail")
         coord._started = True
         coord._distributed = True
+        coord._subscribed = True
 
         with pytest.raises(RuntimeError, match="unsubscribe boom"):
             await coord.stop()
@@ -61,6 +64,31 @@ class TestSharedRateLimitErrorPaths:
         # start() cannot reuse the subscriber id against a ghost sub.
         assert coord._started is True
         assert coord._distributed is True
+        assert coord._subscribed is True
+
+    async def test_stop_after_local_only_fallback_skips_unsubscribe(self) -> None:
+        unsubscribe = AsyncMock(spec=MessageBus.unsubscribe)
+        bus = mock_of[MessageBus](
+            subscribe=AsyncMock(
+                spec=MessageBus.subscribe,
+                side_effect=RuntimeError("subscribe boom"),
+            ),
+            unsubscribe=unsubscribe,
+        )
+        coord = SharedRateLimitCoordinator(bus=bus, connection_name="local-only")
+
+        await coord.start()
+        # Fell back to local-only: no bus registration was created.
+        assert coord._subscribed is False
+
+        # stop() must not try to unsubscribe a never-registered
+        # subscriber (the bus would raise NotSubscribedError); it
+        # cleanly resets the lifecycle flags instead.
+        await coord.stop()
+
+        unsubscribe.assert_not_awaited()
+        assert coord._started is False
+        assert coord._distributed is False
 
     async def test_publish_failure_falls_back_to_local(self) -> None:
         bus = mock_of[MessageBus](
@@ -107,6 +135,7 @@ class TestSharedRateLimitErrorPaths:
             doomed = SharedRateLimitCoordinator(bus=bus, connection_name="doomed")
             doomed._started = True
             doomed._distributed = True
+            doomed._subscribed = True
             shared_state_module._coordinators["doomed"] = doomed
 
             def new_factory(name: str) -> SharedRateLimitCoordinator:
