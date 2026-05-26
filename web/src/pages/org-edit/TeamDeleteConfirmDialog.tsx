@@ -12,6 +12,16 @@ export interface TeamDeleteConfirmDialogProps {
   loading?: boolean
 }
 
+/** Human-readable fate of a team's members on deletion. */
+function buildDeleteDescription(memberCount: number, reassignTo: string): string {
+  if (memberCount === 0) return 'This team has no members.'
+  const plural = memberCount !== 1 ? 's' : ''
+  const fate = reassignTo
+    ? `be reassigned to "${reassignTo}".`
+    : 'become direct reports of the department head.'
+  return `The ${memberCount} member${plural} of this team will ${fate}`
+}
+
 export function TeamDeleteConfirmDialog({
   open,
   onOpenChange,
@@ -25,14 +35,7 @@ export function TeamDeleteConfirmDialog({
   const memberCount = team?.members.length ?? 0
   const hasMembers = memberCount > 0
   const hasSiblings = siblingTeams.length > 0
-
-  const description = hasMembers
-    ? `The ${memberCount} member${memberCount !== 1 ? 's' : ''} of this team will ${
-        reassignTo
-          ? `be reassigned to "${reassignTo}".`
-          : 'become direct reports of the department head.'
-      }`
-    : 'This team has no members.'
+  const description = buildDeleteDescription(memberCount, reassignTo)
 
   return (
     <ConfirmDialog

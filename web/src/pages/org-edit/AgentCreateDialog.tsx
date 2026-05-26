@@ -23,18 +23,100 @@ interface FormState {
   level: SeniorityLevel
 }
 
-const INITIAL_FORM: FormState = {
-  name: '',
-  role: '',
-  department: '',
-  level: 'mid',
+type FormErrors = Partial<Record<keyof FormState, string>>
+type UpdateFieldFn = <K extends keyof FormState>(key: K, value: FormState[K]) => void
+
+const INITIAL_FORM: FormState = { name: '', role: '', department: '', level: 'mid' }
+const LEVEL_OPTIONS = SENIORITY_LEVEL_VALUES.map((l) => ({ value: l, label: l }))
+
+function validateAgentForm(form: FormState): FormErrors {
+  const next: FormErrors = {}
+  if (!form.name.trim()) next.name = 'Name is required'
+  if (!form.role.trim()) next.role = 'Role is required'
+  if (!form.department) next.department = 'Department is required'
+  return next
 }
 
-const LEVEL_OPTIONS = SENIORITY_LEVEL_VALUES.map((l) => ({ value: l, label: l }))
+const POPUP_CLASS = cn(
+  'fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',
+  'rounded-xl border border-border-bright bg-surface p-card-tight sm:p-card md:p-card-roomy shadow-[var(--so-shadow-card-hover)]',
+  'transition-[opacity,translate,scale] duration-200 ease-out',
+  'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
+  'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
+)
+
+interface AgentCreateBodyProps {
+  form: FormState
+  errors: FormErrors
+  updateField: UpdateFieldFn
+  deptOptions: { value: string; label: string }[]
+  submitting: boolean
+  onSubmit: () => void
+}
+
+function AgentCreateBody({ form, errors, updateField, deptOptions, submitting, onSubmit }: AgentCreateBodyProps) {
+  return (
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <Dialog.Title className="text-base font-semibold text-foreground">New Agent</Dialog.Title>
+        <Dialog.Close
+          render={
+            <Button variant="ghost" size="icon" aria-label="Close" disabled={submitting}>
+              <X className="size-4" />
+            </Button>
+          }
+        />
+      </div>
+
+      <div className="space-y-4">
+        <InputField
+          label="Name"
+          value={form.name}
+          onChange={(e) => updateField('name', e.target.value)}
+          error={errors.name}
+          required
+          autoFocus
+          placeholder="Agent name"
+        />
+        <InputField
+          label="Role"
+          value={form.role}
+          onChange={(e) => updateField('role', e.target.value)}
+          error={errors.role}
+          required
+          placeholder="e.g. Backend Developer"
+        />
+        <SelectField
+          label="Department"
+          options={deptOptions}
+          value={form.department}
+          onChange={(value) => updateField('department', value)}
+          error={errors.department}
+          required
+          placeholder="Select department..."
+        />
+        <SelectField
+          label="Level"
+          options={LEVEL_OPTIONS}
+          value={form.level}
+          onChange={(value) => updateField('level', value as SeniorityLevel)}
+        />
+
+        <div className="flex justify-end gap-3 pt-2">
+          <Dialog.Close render={<Button variant="outline" disabled={submitting}>Cancel</Button>} />
+          <Button disabled={submitting} onClick={onSubmit}>
+            {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+            Create Agent
+          </Button>
+        </div>
+      </div>
+    </>
+  )
+}
 
 export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }: AgentCreateDialogProps) {
   const [form, setForm] = useState<FormState>(INITIAL_FORM)
-  const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
+  const [errors, setErrors] = useState<FormErrors>({})
   const [submitting, setSubmitting] = useState(false)
 
   const prevOpenRef = useRef(open)
@@ -44,16 +126,13 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
   }
   prevOpenRef.current = open
 
-  function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
+  const updateField: UpdateFieldFn = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }))
     setErrors((prev) => ({ ...prev, [key]: undefined }))
   }
 
   const handleSubmit = useCallback(async () => {
-    const next: Partial<Record<keyof FormState, string>> = {}
-    if (!form.name.trim()) next.name = 'Name is required'
-    if (!form.role.trim()) next.role = 'Role is required'
-    if (!form.department) next.department = 'Department is required'
+    const next = validateAgentForm(form)
     setErrors(next)
     if (Object.keys(next).length > 0) return
 
@@ -65,17 +144,12 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
         department: form.department as CreateAgentOrgRequest['department'],
         level: form.level,
       })
-      if (result === null) {
-        // Store owns the toast UX; the dialog stays open so the user can
-        // amend their input.
-        return
-      }
+      // Store owns the toast UX; the dialog stays open on failure so the
+      // user can amend their input.
+      if (result === null) return
       setForm(INITIAL_FORM)
       onOpenChange(false)
     } finally {
-      // ``finally`` (not the happy path only) so an unexpected reject
-      // never leaves the dialog locked (onOpenChange is gated on
-      // !submitting).
       setSubmitting(false)
     }
   }, [form, onCreate, onOpenChange])
@@ -86,88 +160,23 @@ export function AgentCreateDialog({ open, onOpenChange, departments, onCreate }:
   )
 
   return (
-    <Dialog.Root open={open} onOpenChange={(v: boolean) => { if (!submitting) onOpenChange(v) }}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(v: boolean) => {
+        if (!submitting) onOpenChange(v)
+      }}
+    >
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm transition-opacity duration-200 ease-out data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
-        <Dialog.Popup
-          className={cn(
-            'fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',
-            'rounded-xl border border-border-bright bg-surface p-card-tight sm:p-card md:p-card-roomy shadow-[var(--so-shadow-card-hover)]',
-            'transition-[opacity,translate,scale] duration-200 ease-out',
-            'data-[closed]:opacity-0 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0',
-            'data-[closed]:scale-95 data-[starting-style]:scale-95 data-[ending-style]:scale-95',
-          )}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <Dialog.Title className="text-base font-semibold text-foreground">
-              New Agent
-            </Dialog.Title>
-            <Dialog.Close
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Close"
-                  disabled={submitting}
-                >
-                  <X className="size-4" />
-                </Button>
-              }
-            />
-          </div>
-
-          <div className="space-y-4">
-            <InputField
-              label="Name"
-              value={form.name}
-              onChange={(e) => updateField('name', e.target.value)}
-              error={errors.name}
-              required
-              autoFocus
-              placeholder="Agent name"
-            />
-
-            <InputField
-              label="Role"
-              value={form.role}
-              onChange={(e) => updateField('role', e.target.value)}
-              error={errors.role}
-              required
-              placeholder="e.g. Backend Developer"
-            />
-
-            <SelectField
-              label="Department"
-              options={deptOptions}
-              value={form.department}
-              onChange={(value) => updateField('department', value)}
-              error={errors.department}
-              required
-              placeholder="Select department..."
-            />
-
-            <SelectField
-              label="Level"
-              options={LEVEL_OPTIONS}
-              value={form.level}
-              onChange={(value) => updateField('level', value as SeniorityLevel)}
-            />
-
-            <div className="flex justify-end gap-3 pt-2">
-              <Dialog.Close
-                render={
-                  <Button variant="outline" disabled={submitting}>Cancel</Button>
-                }
-              />
-              <Button
-                disabled={submitting}
-                onClick={handleSubmit}
-              >
-                {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
-                Create Agent
-              </Button>
-            </div>
-          </div>
+        <Dialog.Popup className={POPUP_CLASS}>
+          <AgentCreateBody
+            form={form}
+            errors={errors}
+            updateField={updateField}
+            deptOptions={deptOptions}
+            submitting={submitting}
+            onSubmit={handleSubmit}
+          />
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>

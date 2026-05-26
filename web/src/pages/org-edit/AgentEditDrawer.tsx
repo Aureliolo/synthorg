@@ -22,37 +22,58 @@ export interface AgentEditDrawerProps {
   saving: boolean
 }
 
+interface AgentFormState {
+  name: string
+  role: string
+  department: string
+  level: SeniorityLevel
+}
+
 const LEVEL_OPTIONS = SENIORITY_LEVEL_VALUES.map((l) => ({ value: l, label: l }))
 
-export function AgentEditDrawer({
-  open,
-  onClose,
-  agent,
-  departments,
-  onUpdate,
-  onDelete,
-  saving,
-}: AgentEditDrawerProps) {
-  const [form, setForm] = useState({
+/** "provider / model_id" display string for an agent's model config. */
+function agentModelDisplay(agent: AgentConfig): string {
+  return [
+    typeof agent.model['provider'] === 'string' ? agent.model['provider'] : '',
+    typeof agent.model['model_id'] === 'string' ? agent.model['model_id'] : '',
+  ]
+    .filter((v) => v.length > 0)
+    .join(' / ')
+}
+
+interface AgentEditForm {
+  form: AgentFormState
+  setForm: React.Dispatch<React.SetStateAction<AgentFormState>>
+  submitError: string | null
+  deleteOpen: boolean
+  setDeleteOpen: (open: boolean) => void
+  deleting: boolean
+  deptOptions: { value: string; label: string }[]
+  hiredDate: string
+  modelDisplay: string
+  handleSave: () => Promise<void>
+  handleDelete: () => Promise<void>
+}
+
+function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
+  const { agent, departments, onUpdate, onDelete, onClose } = props
+  const [form, setForm] = useState<AgentFormState>({
     name: '',
     role: '',
     department: '',
-    level: 'mid' as SeniorityLevel,
+    level: 'mid',
   })
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // Render-phase prop sync (the "adjust state when a prop changes"
+  // pattern): reseed the form whenever a different agent is opened.
   const prevAgentRef = useRef<typeof agent | undefined>(undefined)
   if (agent !== prevAgentRef.current) {
     prevAgentRef.current = agent
     if (agent) {
-      setForm({
-        name: agent.name,
-        role: agent.role,
-        department: agent.department,
-        level: agent.level,
-      })
+      setForm({ name: agent.name, role: agent.role, department: agent.department, level: agent.level })
       setSubmitError(null)
     }
     setDeleteOpen(false)
@@ -64,16 +85,10 @@ export function AgentEditDrawer({
     [departments],
   )
   const hiredDate = useMemo(
-    () => agent?.hiring_date ? formatDateOnly(agent.hiring_date) : '',
+    () => (agent?.hiring_date ? formatDateOnly(agent.hiring_date) : ''),
     [agent],
   )
-  const modelDisplay = useMemo(() => {
-    if (!agent) return ''
-    return [
-      typeof agent.model['provider'] === 'string' ? agent.model['provider'] : '',
-      typeof agent.model['model_id'] === 'string' ? agent.model['model_id'] : '',
-    ].filter((v) => v.length > 0).join(' / ')
-  }, [agent])
+  const modelDisplay = useMemo(() => (agent ? agentModelDisplay(agent) : ''), [agent])
 
   const handleSave = useCallback(async () => {
     if (!agent) return
@@ -89,8 +104,7 @@ export function AgentEditDrawer({
       department: form.department as UpdateAgentOrgRequest['department'],
       level: form.level,
     })
-    // Store owns the error toast; the drawer just decides whether to
-    // close on success.
+    // Store owns the error toast; the drawer only decides whether to close.
     if (result !== null) onClose()
   }, [agent, form, onUpdate, onClose])
 
@@ -104,100 +118,120 @@ export function AgentEditDrawer({
         onClose()
       }
     } finally {
-      // ``finally`` so an unexpected reject never strands the
-      // confirm dialog in loading state.
       setDeleting(false)
     }
   }, [agent, onDelete, onClose])
 
+  return {
+    form,
+    setForm,
+    submitError,
+    deleteOpen,
+    setDeleteOpen,
+    deleting,
+    deptOptions,
+    hiredDate,
+    modelDisplay,
+    handleSave,
+    handleDelete,
+  }
+}
+
+interface AgentEditBodyProps {
+  agent: AgentConfig
+  saving: boolean
+  form: AgentEditForm
+  onClose: () => void
+}
+
+function AgentEditBody({ agent, saving, form, onClose }: AgentEditBodyProps) {
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-2">
+        <StatusBadge status={toRuntimeStatus(agent.status ?? 'active')} label />
+        {form.hiredDate && <span className="text-xs text-text-secondary">Hired: {form.hiredDate}</span>}
+      </div>
+
+      <InputField
+        label="Name"
+        value={form.form.name}
+        onChange={(e) => form.setForm((prev) => ({ ...prev, name: e.target.value }))}
+      />
+      <InputField
+        label="Role"
+        value={form.form.role}
+        onChange={(e) => form.setForm((prev) => ({ ...prev, role: e.target.value }))}
+      />
+      <SelectField
+        label="Department"
+        options={form.deptOptions}
+        value={form.form.department}
+        onChange={(v) => form.setForm((prev) => ({ ...prev, department: v }))}
+      />
+      <SelectField
+        label="Level"
+        options={LEVEL_OPTIONS}
+        value={form.form.level}
+        onChange={(v) => form.setForm((prev) => ({ ...prev, level: v as SeniorityLevel }))}
+      />
+
+      <div className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Status</p>
+        <StatusBadge status={toRuntimeStatus(agent.status ?? 'active')} />
+      </div>
+
+      <div className="border-t border-border pt-4 space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Model</p>
+        {form.modelDisplay && (
+          <p className="text-xs text-text-secondary font-mono">{form.modelDisplay}</p>
+        )}
+      </div>
+
+      {form.submitError && <p className="text-xs text-danger">{form.submitError}</p>}
+
+      <div className="flex items-center justify-between pt-2">
+        <Button
+          variant="outline"
+          onClick={() => form.setDeleteOpen(true)}
+          className="text-danger hover:text-danger"
+          disabled={saving}
+        >
+          <Trash2 className="mr-1.5 size-3.5" />
+          Delete
+        </Button>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={form.handleSave} disabled={saving}>
+            {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
+            Save
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function AgentEditDrawer(props: AgentEditDrawerProps) {
+  const { open, onClose, agent, saving } = props
+  const form = useAgentEditForm(props)
+
   return (
     <>
       <Drawer open={open} onClose={onClose} title={agent ? `Edit: ${agent.name}` : 'Edit Agent'}>
-        {agent && (
-          <div className="space-y-5">
-            <div className="flex items-center gap-2">
-              <StatusBadge status={toRuntimeStatus(agent.status ?? 'active')} label />
-              {hiredDate && <span className="text-xs text-text-secondary">Hired: {hiredDate}</span>}
-            </div>
-
-            <InputField
-              label="Name"
-              value={form.name}
-              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-            />
-
-            <InputField
-              label="Role"
-              value={form.role}
-              onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value }))}
-            />
-
-            <SelectField
-              label="Department"
-              options={deptOptions}
-              value={form.department}
-              onChange={(v) => setForm((prev) => ({ ...prev, department: v }))}
-            />
-
-            <SelectField
-              label="Level"
-              options={LEVEL_OPTIONS}
-              value={form.level}
-              onChange={(v) => setForm((prev) => ({ ...prev, level: v as SeniorityLevel }))}
-            />
-
-            {/* Status is read-only; managed by system */}
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Status</p>
-              <StatusBadge status={toRuntimeStatus(agent?.status ?? 'active')} />
-            </div>
-
-            {/* Read-only info */}
-            <div className="border-t border-border pt-4 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Model</p>
-              {modelDisplay && (
-                <p className="text-xs text-text-secondary font-mono">{modelDisplay}</p>
-              )}
-            </div>
-
-            {submitError && (
-              <p className="text-xs text-danger">{submitError}</p>
-            )}
-
-            <div className="flex items-center justify-between pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setDeleteOpen(true)}
-                className="text-danger hover:text-danger"
-                disabled={saving}
-              >
-                <Trash2 className="mr-1.5 size-3.5" />
-                Delete
-              </Button>
-              <div className="flex gap-3">
-                <Button variant="outline" onClick={onClose}>Cancel</Button>
-                <Button
-                  onClick={handleSave}
-                  disabled={saving}
-                >
-                  {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
-                  Save
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+        {agent && <AgentEditBody agent={agent} saving={saving} form={form} onClose={onClose} />}
       </Drawer>
 
       <ConfirmDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
+        open={form.deleteOpen}
+        onOpenChange={form.setDeleteOpen}
         title={`Delete ${agent?.name ?? 'agent'}?`}
         description="This action cannot be undone. The agent will be permanently removed."
         variant="destructive"
         confirmLabel="Delete"
-        onConfirm={handleDelete}
-        loading={deleting}
+        onConfirm={form.handleDelete}
+        loading={form.deleting}
       />
     </>
   )

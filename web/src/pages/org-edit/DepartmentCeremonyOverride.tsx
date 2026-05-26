@@ -22,6 +22,75 @@ const VELOCITY_OPTIONS = VELOCITY_CALC_TYPES.map((v) => ({
   label: VELOCITY_CALC_LABELS[v],
 }))
 
+const THRESHOLD_MIN = 0.01
+const THRESHOLD_MAX = 1.0
+
+interface AutoTransitionRowProps {
+  policy: CeremonyPolicyConfig | null | undefined
+  onChange: (policy: CeremonyPolicyConfig | null) => void
+  disabled?: boolean
+}
+
+function AutoTransitionRow({ policy, onChange, disabled }: AutoTransitionRowProps) {
+  const autoTransition = policy?.auto_transition ?? true
+  const threshold = policy?.transition_threshold ?? THRESHOLD_MAX
+  return (
+    <>
+      <ToggleField
+        label="Auto-transition"
+        checked={autoTransition}
+        onChange={(v) => onChange({ ...policy, auto_transition: v })}
+        disabled={disabled}
+      />
+      {autoTransition && (
+        <InputField
+          label="Transition Threshold"
+          type="number"
+          value={String(threshold)}
+          onChange={(e) => {
+            const val = Number(e.target.value)
+            if (!Number.isFinite(val)) return
+            onChange({ ...policy, transition_threshold: Math.min(THRESHOLD_MAX, Math.max(THRESHOLD_MIN, val)) })
+          }}
+          disabled={disabled}
+          hint="0.01 to 1.0"
+        />
+      )}
+    </>
+  )
+}
+
+interface CeremonyPolicyFieldsProps {
+  policy: CeremonyPolicyConfig | null | undefined
+  onChange: (policy: CeremonyPolicyConfig | null) => void
+  onStrategyChange: (s: CeremonyStrategyType) => void
+  disabled?: boolean
+}
+
+function CeremonyPolicyFields({ policy, onChange, onStrategyChange, disabled }: CeremonyPolicyFieldsProps) {
+  const strategy = policy?.strategy ?? 'task_driven'
+  const velocityCalc = policy?.velocity_calculator ?? STRATEGY_DEFAULT_VELOCITY_CALC[strategy]
+  return (
+    <div className="space-y-3 pl-2 border-l-2 border-accent/20">
+      <SelectField
+        label="Strategy"
+        options={STRATEGY_OPTIONS}
+        value={strategy}
+        onChange={(v) => onStrategyChange(v as CeremonyStrategyType)}
+        disabled={disabled}
+      />
+      <SelectField
+        label="Velocity Calculator"
+        options={VELOCITY_OPTIONS}
+        value={velocityCalc}
+        onChange={(v) => onChange({ ...policy, velocity_calculator: v as VelocityCalcType })}
+        disabled={disabled}
+      />
+      <AutoTransitionRow policy={policy} onChange={onChange} disabled={disabled} />
+    </div>
+  )
+}
+
 export interface DepartmentCeremonyOverrideProps {
   policy: CeremonyPolicyConfig | null | undefined
   onChange: (policy: CeremonyPolicyConfig | null) => void
@@ -44,7 +113,7 @@ export function DepartmentCeremonyOverride({
         onChange(null)
         setExpanded(false)
       } else {
-        // Preserve existing policy fields if available, otherwise start empty
+        // Preserve existing policy fields if available, otherwise start empty.
         onChange(policy ?? {})
         setExpanded(true)
       }
@@ -54,13 +123,10 @@ export function DepartmentCeremonyOverride({
 
   const handleStrategyChange = useCallback(
     (s: CeremonyStrategyType) => {
-      // Only reset config/velocity when strategy actually changes
-      if (s === policy?.strategy) {
-        return
-      }
+      // Only reset config/velocity when strategy actually changes.
+      if (s === policy?.strategy) return
       // Clear strategy_config because different strategies have different
-      // config schemas, and this component has no StrategyConfigPanel to
-      // edit it.
+      // config schemas, and this component has no StrategyConfigPanel.
       // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure to omit strategy_config
       const { strategy_config: _omitted, ...rest } = policy ?? {}
       onChange({
@@ -86,52 +152,14 @@ export function DepartmentCeremonyOverride({
 
       {expanded && (
         <div className="space-y-3">
-          <InheritToggle
-            inherit={!hasOverride}
-            onChange={handleInheritChange}
-            disabled={disabled}
-          />
-
+          <InheritToggle inherit={!hasOverride} onChange={handleInheritChange} disabled={disabled} />
           {hasOverride && (
-            <div className="space-y-3 pl-2 border-l-2 border-accent/20">
-              <SelectField
-                label="Strategy"
-                options={STRATEGY_OPTIONS}
-                value={policy?.strategy ?? 'task_driven'}
-                onChange={(v) => handleStrategyChange(v as CeremonyStrategyType)}
-                disabled={disabled}
-              />
-
-              <SelectField
-                label="Velocity Calculator"
-                options={VELOCITY_OPTIONS}
-                value={policy?.velocity_calculator ?? STRATEGY_DEFAULT_VELOCITY_CALC[policy?.strategy ?? 'task_driven']}
-                onChange={(v) => onChange({ ...policy, velocity_calculator: v as VelocityCalcType })}
-                disabled={disabled}
-              />
-
-              <ToggleField
-                label="Auto-transition"
-                checked={policy?.auto_transition ?? true}
-                onChange={(v) => onChange({ ...policy, auto_transition: v })}
-                disabled={disabled}
-              />
-
-              {(policy?.auto_transition ?? true) && (
-                <InputField
-                  label="Transition Threshold"
-                  type="number"
-                  value={String(policy?.transition_threshold ?? 1.0)}
-                  onChange={(e) => {
-                    const val = Number(e.target.value)
-                    if (!Number.isFinite(val)) return
-                    onChange({ ...policy, transition_threshold: Math.min(1.0, Math.max(0.01, val)) })
-                  }}
-                  disabled={disabled}
-                  hint="0.01 to 1.0"
-                />
-              )}
-            </div>
+            <CeremonyPolicyFields
+              policy={policy}
+              onChange={onChange}
+              onStrategyChange={handleStrategyChange}
+              disabled={disabled}
+            />
           )}
         </div>
       )}

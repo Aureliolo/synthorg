@@ -15,6 +15,28 @@ export interface YamlEditorPanelProps {
   saving: boolean
 }
 
+interface YamlEditorFooterProps {
+  dirty: boolean
+  saving: boolean
+  onSave: () => void
+  onReset: () => void
+}
+
+function YamlEditorFooter({ dirty, saving, onSave, onReset }: YamlEditorFooterProps) {
+  const busy = !dirty || saving
+  return (
+    <div className="flex items-center gap-3">
+      <Button onClick={onSave} disabled={busy}>
+        {saving ? 'Saving...' : 'Save YAML'}
+      </Button>
+      <Button variant="outline" onClick={onReset} disabled={busy}>
+        Reset
+      </Button>
+      {dirty && <span className="text-xs text-warning">Unsaved changes</span>}
+    </div>
+  )
+}
+
 export function YamlEditorPanel({ config, onSave, saving }: YamlEditorPanelProps) {
   const [yamlText, setYamlText] = useState('')
   const [parseError, setParseError] = useState<string | null>(null)
@@ -74,18 +96,7 @@ export function YamlEditorPanel({ config, onSave, saving }: YamlEditorPanelProps
       {parseError && (
         <p className="text-xs text-danger" role="alert">{parseError}</p>
       )}
-      <div className="flex items-center gap-3">
-        <Button
-          onClick={handleSave}
-          disabled={!dirty || saving}
-        >
-          {saving ? 'Saving...' : 'Save YAML'}
-        </Button>
-        <Button variant="outline" onClick={handleReset} disabled={!dirty || saving}>
-          Reset
-        </Button>
-        {dirty && <span className="text-xs text-warning">Unsaved changes</span>}
-      </div>
+      <YamlEditorFooter dirty={dirty} saving={saving} onSave={handleSave} onReset={handleReset} />
     </div>
   )
 }

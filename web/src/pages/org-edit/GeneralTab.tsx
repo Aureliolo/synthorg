@@ -31,7 +31,7 @@ const VALID_AUTONOMY_LEVELS: ReadonlySet<string> = new Set(AUTONOMY_OPTIONS.map(
 
 /**
  * Mirrors `synthorg.communication.enums.CommunicationPattern` on the
- * backend.  Keep this list in sync -- the backend rejects any value not
+ * backend. Keep this list in sync -- the backend rejects any value not
  * in the enum, so the dashboard must only offer known values.
  */
 const COMMUNICATION_PATTERN_OPTIONS = [
@@ -52,6 +52,93 @@ interface FormState {
   communication_pattern: string
 }
 
+type UpdateFormFn = <K extends keyof FormState>(key: K, value: FormState[K]) => void
+
+/** Seed the form from a loaded company config, clamping to known enums. */
+function buildGeneralForm(config: CompanyConfig): FormState {
+  return {
+    company_name: config.company_name,
+    autonomy_level:
+      config.autonomy_level && VALID_AUTONOMY_LEVELS.has(config.autonomy_level)
+        ? config.autonomy_level
+        : 'semi',
+    budget_monthly: config.budget_monthly ?? 100,
+    communication_pattern: config.communication_pattern ?? 'hybrid',
+  }
+}
+
+/** Offer the known patterns plus an "(unknown)" passthrough for drift. */
+function commPatternOptions(value: string): readonly { value: string; label: string }[] {
+  if (VALID_COMM_PATTERNS.has(value)) return COMMUNICATION_PATTERN_OPTIONS
+  return [...COMMUNICATION_PATTERN_OPTIONS, { value, label: `${value} (unknown)` }]
+}
+
+interface CompanySettingsFieldsProps {
+  form: FormState
+  updateForm: UpdateFormFn
+  saving: boolean
+  dirty: boolean
+  onSave: () => void
+}
+
+function CompanySettingsFields({ form, updateForm, saving, dirty, onSave }: CompanySettingsFieldsProps) {
+  return (
+    <div className="space-y-5 max-w-xl">
+      <InputField
+        label="Company Name"
+        value={form.company_name}
+        onChange={(e) => updateForm('company_name', e.target.value)}
+        required
+      />
+
+      <SelectField
+        label="Autonomy Level"
+        options={AUTONOMY_OPTIONS}
+        value={form.autonomy_level}
+        onChange={(value) => {
+          if (VALID_AUTONOMY_LEVELS.has(value)) updateForm('autonomy_level', value as AutonomyLevel)
+        }}
+      />
+
+      <InputField
+        label="Monthly Budget (EUR)"
+        type="number"
+        value={String(form.budget_monthly)}
+        onChange={(e) => {
+          const raw = e.target.value
+          if (raw === '') {
+            updateForm('budget_monthly', 0)
+            return
+          }
+          // Accept any non-negative finite number; the operator chooses
+          // the spend, so there is no arbitrary upper bound.
+          const parsed = Number(raw)
+          if (Number.isFinite(parsed) && parsed >= 0) {
+            updateForm('budget_monthly', parsed)
+          }
+        }}
+        min="0"
+        step="any"
+        hint="Monthly spending cap for the whole company."
+      />
+
+      <SelectField
+        label="Communication Pattern"
+        options={commPatternOptions(form.communication_pattern)}
+        value={form.communication_pattern}
+        onChange={(value) => {
+          if (VALID_COMM_PATTERNS.has(value)) updateForm('communication_pattern', value)
+        }}
+      />
+
+      <Button onClick={onSave} disabled={saving || !dirty}>
+        {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
+        Save Settings
+      </Button>
+    </div>
+  )
+}
+
 export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
   const [form, setForm] = useState<FormState>({
     company_name: '',
@@ -61,23 +148,17 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
   })
   const [dirty, setDirty] = useState(false)
 
-  // Sync form to config on identity change (react.dev "Adjusting some state when a prop changes"); skip while dirty so we don't clobber in-progress edits. Only update the prev-ref after a successful sync so a config identity change while dirty is retried on the next render once dirty clears.
+  // Sync form to config on identity change (react.dev "Adjusting some
+  // state when a prop changes"); skip while dirty so in-progress edits
+  // are not clobbered. The prev-ref only advances after a successful
+  // sync, so a config change while dirty is retried once dirty clears.
   const prevConfigRef = useRef<typeof config | undefined>(undefined)
   if (!dirty && config !== prevConfigRef.current) {
     prevConfigRef.current = config
-    if (config) {
-      setForm({
-        company_name: config.company_name,
-        autonomy_level: (config.autonomy_level && VALID_AUTONOMY_LEVELS.has(config.autonomy_level))
-          ? config.autonomy_level
-          : 'semi',
-        budget_monthly: config.budget_monthly ?? 100,
-        communication_pattern: config.communication_pattern ?? 'hybrid',
-      })
-    }
+    if (config) setForm(buildGeneralForm(config))
   }
 
-  const updateForm = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
+  const updateForm = useCallback<UpdateFormFn>((key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }))
     setDirty(true)
   }, [])
@@ -93,73 +174,24 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
   }, [form, onUpdate])
 
   if (!config) {
-    return <EmptyState icon={Settings} title="No company data" description="Company configuration is not loaded yet." />
+    return (
+      <EmptyState
+        icon={Settings}
+        title="No company data"
+        description="Company configuration is not loaded yet."
+      />
+    )
   }
 
   return (
     <SectionCard title="Company Settings" icon={Settings}>
-      <div className="space-y-5 max-w-xl">
-        <InputField
-          label="Company Name"
-          value={form.company_name}
-          onChange={(e) => updateForm('company_name', e.target.value)}
-          required
-        />
-
-        <SelectField
-          label="Autonomy Level"
-          options={AUTONOMY_OPTIONS}
-          value={form.autonomy_level}
-          onChange={(value) => {
-            if (VALID_AUTONOMY_LEVELS.has(value)) updateForm('autonomy_level', value as AutonomyLevel)
-          }}
-        />
-
-        <InputField
-          label="Monthly Budget (EUR)"
-          type="number"
-          value={String(form.budget_monthly)}
-          onChange={(e) => {
-            const raw = e.target.value
-            if (raw === '') {
-              updateForm('budget_monthly', 0)
-              return
-            }
-            const parsed = Number(raw)
-            // Accept any non-negative finite number.  There is no
-            // upper bound here -- the operator is the one choosing
-            // how much to spend, and a v0.5 dashboard that capped at
-            // 10k was silently excluding legitimate larger budgets.
-            if (Number.isFinite(parsed) && parsed >= 0) {
-              updateForm('budget_monthly', parsed)
-            }
-          }}
-          min="0"
-          step="any"
-          hint="Monthly spending cap for the whole company."
-        />
-
-        <SelectField
-          label="Communication Pattern"
-          options={
-            VALID_COMM_PATTERNS.has(form.communication_pattern)
-              ? COMMUNICATION_PATTERN_OPTIONS
-              : [...COMMUNICATION_PATTERN_OPTIONS, { value: form.communication_pattern, label: `${form.communication_pattern} (unknown)` }]
-          }
-          value={form.communication_pattern}
-          onChange={(value) => {
-            if (VALID_COMM_PATTERNS.has(value)) updateForm('communication_pattern', value)
-          }}
-        />
-
-        <Button
-          onClick={handleSave}
-          disabled={saving || !dirty}
-        >
-          {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
-          Save Settings
-        </Button>
-      </div>
+      <CompanySettingsFields
+        form={form}
+        updateForm={updateForm}
+        saving={saving}
+        dirty={dirty}
+        onSave={handleSave}
+      />
     </SectionCard>
   )
 }
