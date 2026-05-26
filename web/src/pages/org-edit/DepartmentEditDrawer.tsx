@@ -16,6 +16,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { DepartmentCeremonyOverride } from './DepartmentCeremonyOverride'
 import { TeamListSection } from './TeamListSection'
+import { useDrawerDelete } from './use-drawer-delete'
 
 export interface DepartmentEditDrawerProps {
   open: boolean
@@ -52,8 +53,8 @@ function useDepartmentEditForm(props: DepartmentEditDrawerProps): DepartmentEdit
   const [budgetPercent, setBudgetPercent] = useState('0')
   const [ceremonyPolicy, setCeremonyPolicy] = useState<CeremonyPolicyConfig | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
+  const del = useDrawerDelete(department?.name, onDelete, onClose)
+  const { setDeleteOpen, setDeleting } = del
 
   const prevDepartmentRef = useRef<typeof department | undefined>(undefined)
   useEffect(() => {
@@ -67,7 +68,7 @@ function useDepartmentEditForm(props: DepartmentEditDrawerProps): DepartmentEdit
       setDeleteOpen(false)
       setDeleting(false)
     }
-  }, [department])
+  }, [department, setDeleteOpen, setDeleting])
 
   const otherDeptsBudget = useMemo(() => {
     if (!config) return 0
@@ -97,22 +98,6 @@ function useDepartmentEditForm(props: DepartmentEditDrawerProps): DepartmentEdit
     if (result !== null) onClose()
   }, [department, budgetPercent, ceremonyPolicy, onUpdate, onClose])
 
-  const handleDelete = useCallback(async () => {
-    if (!department) return
-    setDeleting(true)
-    try {
-      const ok = await onDelete(department.name)
-      if (ok) {
-        setDeleteOpen(false)
-        onClose()
-      }
-    } finally {
-      // `finally` so an unexpected reject never strands the dialog in
-      // its loading state.
-      setDeleting(false)
-    }
-  }, [department, onDelete, onClose])
-
   return {
     budgetPercent,
     setBudgetPercent,
@@ -121,11 +106,11 @@ function useDepartmentEditForm(props: DepartmentEditDrawerProps): DepartmentEdit
     submitError,
     projectedTotal,
     budgetWouldExceed: projectedTotal > 100.01,
-    deleteOpen,
+    deleteOpen: del.deleteOpen,
     setDeleteOpen,
-    deleting,
+    deleting: del.deleting,
     handleSave,
-    handleDelete,
+    handleDelete: del.handleDelete,
   }
 }
 

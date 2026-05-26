@@ -143,6 +143,42 @@ interface SinkForm {
   handleSave: () => void
 }
 
+interface SinkTestState {
+  testResult: TestSinkResult | null
+  testing: boolean
+  handleTest: () => Promise<void>
+}
+
+/** Test-config state for the sink form (banner result + in-flight flag). */
+function useSinkTest(
+  values: SinkFormValues,
+  onTest: SinkFormDrawerProps['onTest'],
+  setFilePathError: (value: string | null) => void,
+): SinkTestState {
+  const [testResult, setTestResult] = useState<TestSinkResult | null>(null)
+  const [testing, setTesting] = useState(false)
+
+  const handleTest = useCallback(async () => {
+    const payload = buildSinkPayload(values)
+    if (!payload) {
+      setFilePathError('File path is required')
+      return
+    }
+    setFilePathError(null)
+    setTesting(true)
+    setTestResult(null)
+    try {
+      // onTest uses the sentinel contract -- null means the store already
+      // logged + toasted, so leave testResult cleared (no stale banner).
+      setTestResult(await onTest(payload))
+    } finally {
+      setTesting(false)
+    }
+  }, [values, onTest, setFilePathError])
+
+  return { testResult, testing, handleTest }
+}
+
 function useSinkForm(props: SinkFormDrawerProps): SinkForm {
   const { sink, isNew, onTest, onSave, onClose } = props
   // State seeded lazily from the sink prop (the parent remounts via
@@ -164,8 +200,6 @@ function useSinkForm(props: SinkFormDrawerProps): SinkForm {
   const [routingPrefixes, setRoutingPrefixes] = useState<string[]>(() =>
     sink?.routing_prefixes ? [...sink.routing_prefixes] : [],
   )
-  const [testResult, setTestResult] = useState<TestSinkResult | null>(null)
-  const [testing, setTesting] = useState(false)
   const [filePathError, setFilePathError] = useState<string | null>(null)
 
   const values: SinkFormValues = useMemo(
@@ -186,23 +220,7 @@ function useSinkForm(props: SinkFormDrawerProps): SinkForm {
     [filePath, level, enabled, jsonFormat, rotationStrategy, maxBytes, backupCount, routingPrefixes, sink, isNew],
   )
 
-  const handleTest = useCallback(async () => {
-    const payload = buildSinkPayload(values)
-    if (!payload) {
-      setFilePathError('File path is required')
-      return
-    }
-    setFilePathError(null)
-    setTesting(true)
-    setTestResult(null)
-    try {
-      // onTest uses the sentinel contract -- null means the store already
-      // logged + toasted, so leave testResult cleared (no stale banner).
-      setTestResult(await onTest(payload))
-    } finally {
-      setTesting(false)
-    }
-  }, [values, onTest])
+  const { testResult, testing, handleTest } = useSinkTest(values, onTest, setFilePathError)
 
   const handleSave = useCallback(() => {
     if (!values.isDefault && !filePath.trim()) {

@@ -3,6 +3,10 @@ import {
   type GroupResult,
   type LayoutOptions,
   DEFAULT_GROUP_PADDING,
+  DEFAULT_NODE_HEIGHT,
+  DEFAULT_NODE_WIDTH,
+  EMPTY_GROUP_HEIGHT,
+  EMPTY_GROUP_MIN_WIDTH,
   computeFooterHeight,
   computeHeaderHeight,
 } from './layout-shared'
@@ -13,7 +17,6 @@ import {
   collectRootGroupIds,
   computePopulatedGroups,
   enforceVerticalGaps,
-  layoutEmptyChart,
   placeEmptyGroups,
   runDagreOnLeaves,
   toGroupRelative,
@@ -24,6 +27,25 @@ export type {
   LayoutOptions,
   LayoutVisualPrefs,
 } from './layout-shared'
+
+/** Grid fallback when there are no agent leaf nodes to lay out. */
+function layoutEmptyChart(nodes: Node[]): Node[] {
+  return nodes.map((n, i) => {
+    const major = i % 3
+    const minor = Math.floor(i / 3)
+    const x = major * 260
+    const y = minor * 180
+    const w = n.type === 'owner' ? DEFAULT_NODE_WIDTH : EMPTY_GROUP_MIN_WIDTH
+    const h = n.type === 'owner' ? DEFAULT_NODE_HEIGHT : EMPTY_GROUP_HEIGHT
+    return {
+      ...n,
+      position: { x, y },
+      width: w,
+      height: h,
+      style: { ...n.style, width: w, height: h },
+    }
+  })
+}
 
 /**
  * Apply dagre hierarchical layout to React Flow nodes and edges.

@@ -87,6 +87,20 @@ function onReassignSettled(
   args.addToast({ variant: 'success', title: `Moved ${args.agentName} to ${args.newDept}` })
 }
 
+/** Drop-target hit boxes derived from the rendered department group nodes. */
+function computeDeptBounds(displayNodes: Node[]): DepartmentBounds[] {
+  return displayNodes
+    .filter((n) => n.type === 'department')
+    .map((n) => ({
+      departmentName: (n.data as DepartmentGroupData).departmentName,
+      nodeId: n.id,
+      x: n.position.x,
+      y: n.position.y,
+      width: (n.measured?.width ?? n.width ?? 200) as number,
+      height: (n.measured?.height ?? n.height ?? 120) as number,
+    }))
+}
+
 export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDragDropResult {
   const { viewMode, displayNodes, announce } = args
   const addToast = useToastStore((s) => s.add)
@@ -95,18 +109,10 @@ export function useOrgChartDragDrop(args: UseOrgChartDragDropArgs): OrgChartDrag
   const dragOverDeptIdRef = useRef<string | null>(null)
   const dragOriginalDeptRef = useRef<string | null>(null)
 
-  const deptBounds = useMemo<DepartmentBounds[]>(() => {
-    return displayNodes
-      .filter((n) => n.type === 'department')
-      .map((n) => ({
-        departmentName: (n.data as DepartmentGroupData).departmentName,
-        nodeId: n.id,
-        x: n.position.x,
-        y: n.position.y,
-        width: (n.measured?.width ?? n.width ?? 200) as number,
-        height: (n.measured?.height ?? n.height ?? 120) as number,
-      }))
-  }, [displayNodes])
+  const deptBounds = useMemo<DepartmentBounds[]>(
+    () => computeDeptBounds(displayNodes),
+    [displayNodes],
+  )
 
   const handleNodeDragStart = useCallback(
     (_event: ReactMouseEvent, node: Node) => {

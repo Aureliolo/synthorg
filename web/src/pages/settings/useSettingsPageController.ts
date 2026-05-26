@@ -144,6 +144,26 @@ export interface SettingsFilters {
   effectiveNamespace: SettingNamespace | null
 }
 
+/** Namespace-grouped + search-filtered entries, with the active-namespace gate. */
+function useSettingsFilters(
+  entries: SettingEntry[],
+  advancedMode: boolean,
+  searchQuery: string,
+  activeNamespace: SettingNamespace | null,
+): SettingsFilters {
+  const filteredByNamespace = useMemo(
+    () => filterByNamespace(entries, advancedMode, searchQuery),
+    [entries, advancedMode, searchQuery],
+  )
+  const namespaceCounts = useMemo(
+    () => new Map(NAMESPACE_ORDER.map((ns) => [ns, filteredByNamespace.get(ns)?.length ?? 0])),
+    [filteredByNamespace],
+  )
+  const effectiveNamespace =
+    activeNamespace && (namespaceCounts.get(activeNamespace) ?? 0) > 0 ? activeNamespace : null
+  return { filteredByNamespace, namespaceCounts, effectiveNamespace }
+}
+
 export interface SettingsPageController {
   data: ReturnType<typeof useSettingsData>
   ui: SettingsUiState
@@ -161,6 +181,28 @@ export interface SettingsPageController {
   unsavedGuard: ReturnType<typeof useUnsavedChangesGuard>
   handleSave: () => Promise<void>
   handleCodeSave: (changes: Map<string, string>) => Promise<Set<string>>
+}
+
+interface CodeSaveDeps {
+  updateSetting: ReturnType<typeof useSettingsData>['updateSetting']
+  entries: SettingEntry[]
+  setDirtyValues: ReturnType<typeof useSettingsDirtyState>['setDirtyValues']
+  setRestartBannerCount: (value: number) => void
+}
+
+/** Persist a batch of code-editor changes, prune saved drafts, surface restarts. */
+async function runCodeSave(changes: Map<string, string>, deps: CodeSaveDeps): Promise<Set<string>> {
+  const failedKeys = await saveSettingsBatch(changes, deps.updateSetting)
+  deps.setDirtyValues((prev) => {
+    const next = new Map(prev)
+    for (const key of changes.keys()) {
+      if (!failedKeys.has(key)) next.delete(key)
+    }
+    return next
+  })
+  const restartCount = countRestartRequired(changes.keys(), deps.entries, failedKeys)
+  if (restartCount > 0) deps.setRestartBannerCount(restartCount)
+  return failedKeys
 }
 
 export function useSettingsPageController(): SettingsPageController {
@@ -193,16 +235,12 @@ export function useSettingsPageController(): SettingsPageController {
     message: 'You have unsaved setting changes. Leaving now will discard them. Continue anyway?',
   })
 
-  const filteredByNamespace = useMemo(
-    () => filterByNamespace(data.entries, advanced.advancedMode, ui.searchQuery),
-    [data.entries, advanced.advancedMode, ui.searchQuery],
+  const filters = useSettingsFilters(
+    data.entries,
+    advanced.advancedMode,
+    ui.searchQuery,
+    ui.activeNamespace,
   )
-  const namespaceCounts = useMemo(
-    () => new Map(NAMESPACE_ORDER.map((ns) => [ns, filteredByNamespace.get(ns)?.length ?? 0])),
-    [filteredByNamespace],
-  )
-  const effectiveNamespace =
-    ui.activeNamespace && (namespaceCounts.get(ui.activeNamespace) ?? 0) > 0 ? ui.activeNamespace : null
 
   const controllerDisabledMap = useMemo(
     () => buildControllerDisabledMap(data.entries, dirtyValues),
@@ -210,19 +248,13 @@ export function useSettingsPageController(): SettingsPageController {
   )
 
   const handleCodeSave = useCallback(
-    async (changes: Map<string, string>): Promise<Set<string>> => {
-      const failedKeys = await saveSettingsBatch(changes, data.updateSetting)
-      setDirtyValues((prev) => {
-        const next = new Map(prev)
-        for (const key of changes.keys()) {
-          if (!failedKeys.has(key)) next.delete(key)
-        }
-        return next
-      })
-      const restartCount = countRestartRequired(changes.keys(), data.entries, failedKeys)
-      if (restartCount > 0) setRestartBannerCount(restartCount)
-      return failedKeys
-    },
+    (changes: Map<string, string>): Promise<Set<string>> =>
+      runCodeSave(changes, {
+        updateSetting: data.updateSetting,
+        entries: data.entries,
+        setDirtyValues,
+        setRestartBannerCount,
+      }),
     [data.updateSetting, data.entries, setDirtyValues, setRestartBannerCount],
   )
 
@@ -235,7 +267,7 @@ export function useSettingsPageController(): SettingsPageController {
     data,
     ui,
     advanced,
-    filters: { filteredByNamespace, namespaceCounts, effectiveNamespace },
+    filters,
     dirtyValues,
     handleValueChange,
     handleDiscard,

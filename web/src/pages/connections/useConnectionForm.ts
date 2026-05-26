@@ -181,6 +181,31 @@ async function submitConnection(deps: SubmitDeps): Promise<boolean> {
   return false
 }
 
+interface PreparedSubmit {
+  errors: Record<string, string | null>
+  proceed: boolean
+  supportsWebhook: boolean
+  retentionValue: number | null
+  retentionError: string | null
+}
+
+/** Validate the form and resolve webhook retention without touching state. */
+function prepareConnectionSubmit(
+  form: ConnectionFormState,
+  spec: ConnectionTypeSpec,
+  mode: Mode,
+): PreparedSubmit {
+  const errors = validateConnectionForm(form, spec, mode)
+  const base = { errors, proceed: false, supportsWebhook: false, retentionValue: null, retentionError: null }
+  if (!Object.values(errors).every((v) => v === null)) return base
+  const supportsWebhook = form.type ? connectionTypeUsesWebhookReceipts(form.type) : false
+  const retention: RetentionResult = supportsWebhook
+    ? parseRetentionDays(form.webhookRetention)
+    : { ok: true, value: null }
+  if (!retention.ok) return { ...base, supportsWebhook, retentionError: retention.error }
+  return { errors, proceed: true, supportsWebhook, retentionValue: retention.value, retentionError: null }
+}
+
 export interface ConnectionFormModalArgs {
   open: boolean
   mode: Mode
@@ -202,6 +227,55 @@ export interface ConnectionForm {
   setWebhookRetention: (value: string) => void
   handleFieldChange: (group: 'topLevel' | 'credentials', key: string, value: string) => void
   handleSubmit: (event: React.FormEvent) => Promise<void>
+}
+
+interface ConnectionFieldSetters {
+  setName: (value: string) => void
+  setType: (type: ConnectionType) => void
+  clearType: () => void
+  setSensitive: (value: boolean) => void
+  setWebhookRetention: (value: string) => void
+  handleFieldChange: (group: 'topLevel' | 'credentials', key: string, value: string) => void
+}
+
+/** Field-level setters that also clear the matching validation error. */
+function useConnectionFieldSetters(
+  setForm: React.Dispatch<React.SetStateAction<ConnectionFormState>>,
+  setErrors: React.Dispatch<React.SetStateAction<Record<string, string | null>>>,
+): ConnectionFieldSetters {
+  const handleFieldChange = useCallback(
+    (group: 'topLevel' | 'credentials', key: string, value: string) => {
+      setForm((p) => ({ ...p, [group]: { ...p[group], [key]: value } }))
+      setErrors((p) => (p[key] ? { ...p, [key]: null } : p))
+    },
+    [setForm, setErrors],
+  )
+  const setName = useCallback(
+    (value: string) => {
+      setForm((p) => ({ ...p, name: value }))
+      setErrors((p) => (p.name ? { ...p, name: null } : p))
+    },
+    [setForm, setErrors],
+  )
+  const setType = useCallback((type: ConnectionType) => setForm((p) => ({ ...p, type })), [setForm])
+  const clearType = useCallback(
+    () => setForm((p) => ({ ...p, type: null, topLevel: {}, credentials: {} })),
+    [setForm],
+  )
+  const setSensitive = useCallback(
+    (value: boolean) => setForm((p) => ({ ...p, sensitive: value })),
+    [setForm],
+  )
+  const setWebhookRetention = useCallback(
+    (value: string) => {
+      setForm((p) => ({ ...p, webhookRetention: value }))
+      setErrors((p) =>
+        p.webhook_receipt_retention_days ? { ...p, webhook_receipt_retention_days: null } : p,
+      )
+    },
+    [setForm, setErrors],
+  )
+  return { setName, setType, clearType, setSensitive, setWebhookRetention, handleFieldChange }
 }
 
 export function useConnectionForm(props: ConnectionFormModalArgs): ConnectionForm {
@@ -227,40 +301,27 @@ export function useConnectionForm(props: ConnectionFormModalArgs): ConnectionFor
   prevRef.current = current
 
   const spec = useMemo(() => (form.type ? CONNECTION_TYPE_FIELDS[form.type] : null), [form.type])
-
-  const handleFieldChange = useCallback(
-    (group: 'topLevel' | 'credentials', key: string, value: string) => {
-      setForm((p) => ({ ...p, [group]: { ...p[group], [key]: value } }))
-      setErrors((p) => (p[key] ? { ...p, [key]: null } : p))
-    },
-    [],
-  )
+  const setters = useConnectionFieldSetters(setForm, setErrors)
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent) => {
       event.preventDefault()
       setSubmitted(true)
       if (!spec || !form.type) return
-      const nextErrors = validateConnectionForm(form, spec, mode)
-      setErrors(nextErrors)
-      if (!Object.values(nextErrors).every((v) => v === null)) return
-
-      const supportsWebhook = connectionTypeUsesWebhookReceipts(form.type)
-      const retention: RetentionResult = supportsWebhook
-        ? parseRetentionDays(form.webhookRetention)
-        : { ok: true, value: null }
-      if (!retention.ok) {
-        setErrors((p) => ({ ...p, webhook_receipt_retention_days: retention.error }))
-        return
-      }
-
+      const prep = prepareConnectionSubmit(form, spec, mode)
+      setErrors(
+        prep.retentionError
+          ? { ...prep.errors, webhook_receipt_retention_days: prep.retentionError }
+          : prep.errors,
+      )
+      if (!prep.proceed) return
       const shouldClose = await submitConnection({
         form,
         spec,
         mode,
         connection,
-        supportsWebhook,
-        retentionValue: retention.value,
+        supportsWebhook: prep.supportsWebhook,
+        retentionValue: prep.retentionValue,
         createConnection,
         updateConnection,
       })
@@ -275,20 +336,7 @@ export function useConnectionForm(props: ConnectionFormModalArgs): ConnectionFor
     submitted,
     spec,
     mutating,
-    setName: useCallback((value: string) => {
-      setForm((p) => ({ ...p, name: value }))
-      setErrors((p) => (p.name ? { ...p, name: null } : p))
-    }, []),
-    setType: useCallback((type: ConnectionType) => setForm((p) => ({ ...p, type })), []),
-    clearType: useCallback(() => setForm((p) => ({ ...p, type: null, topLevel: {}, credentials: {} })), []),
-    setSensitive: useCallback((value: boolean) => setForm((p) => ({ ...p, sensitive: value })), []),
-    setWebhookRetention: useCallback((value: string) => {
-      setForm((p) => ({ ...p, webhookRetention: value }))
-      setErrors((p) =>
-        p.webhook_receipt_retention_days ? { ...p, webhook_receipt_retention_days: null } : p,
-      )
-    }, []),
-    handleFieldChange,
+    ...setters,
     handleSubmit,
   }
 }

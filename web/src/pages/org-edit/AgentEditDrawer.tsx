@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { formatDateOnly } from '@/utils/format'
 import { toRuntimeStatus } from '@/utils/agents'
+import { useDrawerDelete } from './use-drawer-delete'
 
 export interface AgentEditDrawerProps {
   open: boolean
@@ -64,8 +65,7 @@ function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
     level: 'mid',
   })
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
+  const del = useDrawerDelete(agent?.name, onDelete, onClose)
 
   // Render-phase prop sync (the "adjust state when a prop changes"
   // pattern): reseed the form whenever a different agent is opened.
@@ -76,8 +76,8 @@ function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
       setForm({ name: agent.name, role: agent.role, department: agent.department, level: agent.level })
       setSubmitError(null)
     }
-    setDeleteOpen(false)
-    setDeleting(false)
+    del.setDeleteOpen(false)
+    del.setDeleting(false)
   }
 
   const deptOptions = useMemo(
@@ -108,32 +108,18 @@ function useAgentEditForm(props: AgentEditDrawerProps): AgentEditForm {
     if (result !== null) onClose()
   }, [agent, form, onUpdate, onClose])
 
-  const handleDelete = useCallback(async () => {
-    if (!agent) return
-    setDeleting(true)
-    try {
-      const ok = await onDelete(agent.name)
-      if (ok) {
-        setDeleteOpen(false)
-        onClose()
-      }
-    } finally {
-      setDeleting(false)
-    }
-  }, [agent, onDelete, onClose])
-
   return {
     form,
     setForm,
     submitError,
-    deleteOpen,
-    setDeleteOpen,
-    deleting,
+    deleteOpen: del.deleteOpen,
+    setDeleteOpen: del.setDeleteOpen,
+    deleting: del.deleting,
     deptOptions,
     hiredDate,
     modelDisplay,
     handleSave,
-    handleDelete,
+    handleDelete: del.handleDelete,
   }
 }
 

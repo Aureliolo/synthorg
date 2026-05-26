@@ -219,13 +219,60 @@ interface CodeEditorState {
   handleReset: () => void
 }
 
+type Entries = CodeEditorPanelProps['entries']
+
+/**
+ * Sync editor text from server entries during render (not in an effect,
+ * to avoid a flash of stale content) but only while the user has no
+ * unsaved edits.
+ */
+function useSyncTextFromEntries(
+  entries: Entries,
+  format: CodeFormat,
+  dirty: boolean,
+  setText: (value: string) => void,
+  setParseError: (value: string | null) => void,
+): void {
+  const prevEntriesRef = useRef<Entries | undefined>(undefined)
+  if (entries !== prevEntriesRef.current) {
+    prevEntriesRef.current = entries
+    if (!dirty) {
+      setText(serializeEntries(entries, format))
+      setParseError(null)
+    }
+  }
+}
+
+interface CodeEditorView {
+  splitView: boolean
+  serverText: string
+  diffSummary: string | null
+  toggleSplit: () => void
+}
+
+/** Split-view toggle plus the server text + dirty diff summary. */
+function useCodeEditorView(
+  entries: Entries,
+  format: CodeFormat,
+  dirty: boolean,
+  text: string,
+): CodeEditorView {
+  const [splitView, setSplitView] = useState(false)
+  const serverText = useMemo(() => serializeEntries(entries, format), [entries, format])
+  const diffSummary = useMemo(
+    () => (dirty ? computeDiffSummary(serverText, text) : null),
+    [dirty, serverText, text],
+  )
+  const toggleSplit = useCallback(() => setSplitView((v) => !v), [])
+  return { splitView, serverText, diffSummary, toggleSplit }
+}
+
 function useCodeEditorState(props: CodeEditorPanelProps): CodeEditorState {
   const { entries, onSave, onDirtyChange } = props
   const [format, setFormat] = useState<CodeFormat>('json')
   const [text, setText] = useState('')
   const [parseError, setParseError] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
-  const [splitView, setSplitView] = useState(false)
   const textRef = useRef(text)
   textRef.current = text
   const entryLookup = useEntryLookup(entries)
@@ -238,16 +285,13 @@ function useCodeEditorState(props: CodeEditorPanelProps): CodeEditorState {
     [onDirtyChange],
   )
 
-  // Sync from entries during render (not useEffect) to avoid a flash of
-  // stale content; only when the user has not made edits (dirty=false).
-  const prevEntriesRef = useRef<typeof entries | undefined>(undefined)
-  if (entries !== prevEntriesRef.current) {
-    prevEntriesRef.current = entries
-    if (!dirty) {
-      setText(serializeEntries(entries, format))
-      setParseError(null)
-    }
-  }
+  useSyncTextFromEntries(entries, format, dirty, setText, setParseError)
+  const { splitView, serverText, diffSummary, toggleSplit } = useCodeEditorView(
+    entries,
+    format,
+    dirty,
+    text,
+  )
 
   const handleFormatChange = useCallback(
     (newFormat: CodeFormat) =>
@@ -283,13 +327,6 @@ function useCodeEditorState(props: CodeEditorPanelProps): CodeEditorState {
     () => resetEditor({ entries, format, setText, setParseError, updateDirty }),
     [entries, format, updateDirty],
   )
-
-  const serverText = useMemo(() => serializeEntries(entries, format), [entries, format])
-  const diffSummary = useMemo(
-    () => (dirty ? computeDiffSummary(serverText, text) : null),
-    [dirty, serverText, text],
-  )
-  const toggleSplit = useCallback(() => setSplitView((v) => !v), [])
 
   return {
     format,

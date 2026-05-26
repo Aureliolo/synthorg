@@ -5,33 +5,12 @@ import {
   type LayoutDirection,
   CEO_TO_CHILD_MINLEN,
   DEFAULT_GROUP_PADDING,
-  DEFAULT_NODE_HEIGHT,
-  DEFAULT_NODE_WIDTH,
   DESIRED_INTER_DEPT_GAP,
   EMPTY_GROUP_HEIGHT,
   EMPTY_GROUP_MIN_WIDTH,
   OWNER_TO_ROOT_MINLEN,
   getNodeDim,
 } from './layout-shared'
-
-/** Grid fallback when there are no agent leaf nodes to lay out. */
-export function layoutEmptyChart(nodes: Node[]): Node[] {
-  return nodes.map((n, i) => {
-    const major = i % 3
-    const minor = Math.floor(i / 3)
-    const x = major * 260
-    const y = minor * 180
-    const w = n.type === 'owner' ? DEFAULT_NODE_WIDTH : EMPTY_GROUP_MIN_WIDTH
-    const h = n.type === 'owner' ? DEFAULT_NODE_HEIGHT : EMPTY_GROUP_HEIGHT
-    return {
-      ...n,
-      position: { x, y },
-      width: w,
-      height: h,
-      style: { ...n.style, width: w, height: h },
-    }
-  })
-}
 
 interface DagreParams {
   direction: LayoutDirection

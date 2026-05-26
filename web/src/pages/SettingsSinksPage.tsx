@@ -48,6 +48,33 @@ function useSinkAutoRefresh(fetchSinks: () => Promise<void> | void): void {
   useWebSocket({ bindings: [{ channel: 'system', handler: sinkHandler }] })
 }
 
+interface SinkDeleteState {
+  deleteTarget: SinkInfo | null
+  setDeleteTarget: (sink: SinkInfo | null) => void
+  deleting: boolean
+  handleDelete: (sink: SinkInfo) => void
+  handleDeleteConfirm: () => Promise<void>
+}
+
+function useSinkDelete(deleteSink: (sink: SinkInfo) => Promise<boolean>): SinkDeleteState {
+  const [deleteTarget, setDeleteTarget] = useState<SinkInfo | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const handleDelete = useCallback((sink: SinkInfo) => {
+    setDeleteTarget(sink)
+  }, [])
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    const ok = await deleteSink(deleteTarget)
+    setDeleting(false)
+    if (ok) setDeleteTarget(null)
+  }, [deleteSink, deleteTarget])
+
+  return { deleteTarget, setDeleteTarget, deleting, handleDelete, handleDeleteConfirm }
+}
+
 function useSinksPage(): SinksPage {
   const sinks = useSinksStore((s) => s.sinks)
   const loading = useSinksStore((s) => s.loading)
@@ -59,9 +86,8 @@ function useSinksPage(): SinksPage {
   const [editSinkId, setEditSinkId] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [isNewSink, setIsNewSink] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<SinkInfo | null>(null)
-  const [deleting, setDeleting] = useState(false)
   const editSink = editSinkId ? (sinks.find((s) => s.identifier === editSinkId) ?? null) : null
+  const del = useSinkDelete(deleteSink)
 
   useEffect(() => {
     void fetchSinks()
@@ -99,18 +125,6 @@ function useSinksPage(): SinksPage {
     [saveSink],
   )
 
-  const handleDelete = useCallback((sink: SinkInfo) => {
-    setDeleteTarget(sink)
-  }, [])
-
-  const handleDeleteConfirm = useCallback(async () => {
-    if (!deleteTarget) return
-    setDeleting(true)
-    const ok = await deleteSink(deleteTarget)
-    setDeleting(false)
-    if (ok) setDeleteTarget(null)
-  }, [deleteSink, deleteTarget])
-
   return {
     sinks,
     loading,
@@ -118,16 +132,16 @@ function useSinksPage(): SinksPage {
     editSink,
     isNewSink,
     drawerOpen,
-    deleteTarget,
-    deleting,
+    deleteTarget: del.deleteTarget,
+    deleting: del.deleting,
     testConfig,
-    setDeleteTarget,
+    setDeleteTarget: del.setDeleteTarget,
     handleEdit,
     handleAddNew,
     handleCloseDrawer,
     handleSave,
-    handleDelete,
-    handleDeleteConfirm,
+    handleDelete: del.handleDelete,
+    handleDeleteConfirm: del.handleDeleteConfirm,
   }
 }
 

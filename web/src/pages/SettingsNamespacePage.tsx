@@ -82,6 +82,19 @@ function NamespaceContent({
   )
 }
 
+function UnknownNamespaceView({ namespace }: { namespace: string | undefined }) {
+  return (
+    <div className="space-y-section-gap">
+      <SettingsBackHeader title="Settings" />
+      <EmptyState
+        icon={Settings}
+        title="Unknown namespace"
+        description={`"${namespace}" is not a valid settings namespace.`}
+      />
+    </div>
+  )
+}
+
 export default function SettingsNamespacePage() {
   const { namespace } = useParams<{ namespace: string }>()
   const { entries, loading, error, saving, saveError, wsConnected, wsSetupError, updateSetting } =
@@ -112,16 +125,7 @@ export default function SettingsNamespacePage() {
   }
 
   if (!validNamespace) {
-    return (
-      <div className="space-y-section-gap">
-        <SettingsBackHeader title="Settings" />
-        <EmptyState
-          icon={Settings}
-          title="Unknown namespace"
-          description={`"${namespace}" is not a valid settings namespace.`}
-        />
-      </div>
-    )
+    return <UnknownNamespaceView namespace={namespace} />
   }
 
   const displayName = NAMESPACE_DISPLAY_NAMES[ns]
