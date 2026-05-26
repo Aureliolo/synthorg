@@ -7,10 +7,11 @@ name: Link Check (lychee, external)
 # which runs ``--offline`` and only validates internal links so a
 # third-party host can never block a merge. External rot is real but is
 # not the committer's to fix, so it is reported here off the critical
-# path instead: on broken links this run files (or updates) a tracking
-# issue via the ``post-tracking-issue`` composite action, the same sink
-# the security workflows use. The run itself goes red on a scheduled
-# failure for visibility; a human triages and closes the issue.
+# path: the lychee job goes red for visibility, and on a scheduled
+# failure the report-failure job files (or updates) an ``External link
+# rot`` tracking issue via the ``post-tracking-issue`` composite action,
+# the same issue sink the security workflows use. A human triages and
+# closes the issue.
 #
 # Config is the shared ``lychee.toml``: its ``exclude`` list suppresses
 # anti-bot (403) and rate-limit (429) hosts that are live in a browser,
@@ -33,20 +34,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: read  # actions/checkout + load .github/actions/post-tracking-issue
-      issues: write   # post-tracking-issue (gh issue create / edit / reopen)
+      contents: read
     steps:
       - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-
-      - name: Restore lychee cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: .lycheecache
-          key: cache-lychee-${{ github.sha }}
-          restore-keys: cache-lychee-
 
       - name: Install lychee
         shell: bash
@@ -65,17 +58,17 @@ jobs:
         run: echo "${LYCHEE_INSTALL_DIR}" >> "${GITHUB_PATH}"
 
       - name: Run lychee (online)
-        id: lychee
         shell: bash
         env:
           # Authenticated GitHub requests get a higher rate-limit budget,
           # which matters because docs reference many github.com URLs.
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          # Disable errexit so a non-200 (the signal we want) does not
-          # abort the step before we capture the exit code; the report
-          # is teed to the job summary and stashed for the issue body.
-          set +e
+          set -o pipefail
+          # No ``--offline``: probe every remote link. A non-200 fails
+          # the step (pipefail propagates lychee's exit through tee), so
+          # the job goes red and the report-failure job below opens the
+          # tracking issue. The markdown report lands in the run summary.
           lychee \
             --config lychee.toml \
             --no-progress \
@@ -85,43 +78,56 @@ jobs:
             './cli/CLAUDE.md' \
             './web/CLAUDE.md' \
             './docs/**/*.md' \
-            > lychee-report.md
-          status=$?
-          cat lychee-report.md >> "${GITHUB_STEP_SUMMARY}"
-          echo "status=${status}" >> "${GITHUB_OUTPUT}"
-          exit 0
+            | tee -a "${GITHUB_STEP_SUMMARY}"
 
-      - name: Compose issue body
-        if: steps.lychee.outputs.status != '0'
+  report-failure:
+    name: Open / update tracking issue on broken external links
+    needs: lychee-external
+    # Only the schedule path gets the issue sink. workflow_dispatch is
+    # visible to the triggerer, so a manual test run shows red without
+    # filing an issue.
+    if: >-
+      always()
+      && github.event_name == 'schedule'
+      && needs.lychee-external.result != 'success'
+      && needs.lychee-external.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read    # actions/checkout (to load .github/actions/post-tracking-issue)
+      issues: write     # gh issue create / comment / reopen
+    steps:
+      - uses: Aureliolo/synthorg/.github/actions/checkout@25921183f274c930bf473dc0339376bda0961eaf
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Compose body
         id: body
-        shell: bash
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           {
             echo 'body<<TRACKING_ISSUE_BODY_EOF'
-            echo "The weekly external link check found broken links at $(date -u +%Y-%m-%dT%H:%M:%SZ)."
-            echo ""
-            echo "Run: ${RUN_URL}"
-            echo ""
-            cat lychee-report.md
-            echo ""
-            echo "These are external (remote) links, not link rot in our own docs. Fix the doc if the link is genuinely wrong, add an exclude to \`lychee.toml\` for a false-positive host (anti-bot 403 / rate-limit 429), or leave this open until the upstream site recovers."
+            cat <<EOF
+          The weekly external link check found broken links at $(date -u +%Y-%m-%dT%H:%M:%SZ).
+
+          Run: ${RUN_URL}
+
+          The step summary on that run lists the failing links. These are
+          external (remote) links, not link rot in our own docs: fix the
+          doc if a link is genuinely wrong, add an exclude to \`lychee.toml\`
+          for a false-positive host (anti-bot 403 / rate-limit 429), or
+          leave this open until the upstream site recovers.
+          EOF
             echo 'TRACKING_ISSUE_BODY_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Open / update tracking issue on broken external links
-        if: steps.lychee.outputs.status != '0' && github.event_name == 'schedule'
-        uses: ./.github/actions/post-tracking-issue
+      - uses: ./.github/actions/post-tracking-issue
         with:
           title: 'External link rot'
           labels: 'automation:ci-health,type:ci,prio:low'
           body: ${{ steps.body.outputs.body }}
           pin: 'false'
           gh-token: ${{ github.token }}
-
-      - name: Re-surface broken links as a run failure
-        if: steps.lychee.outputs.status != '0'
-        shell: bash
-        run: exit 1
