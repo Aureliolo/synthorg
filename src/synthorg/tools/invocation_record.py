@@ -52,7 +52,14 @@ class ToolInvocationRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_success_consistency(self) -> Self:
-        """Reject error_message when the invocation succeeded."""
+        """Reject error_message when the invocation succeeded.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.is_success and self.error_message is not None:
             msg = "error_message must be None when is_success is True"
             raise ValueError(msg)

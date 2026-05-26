@@ -493,6 +493,9 @@ def _is_window_exhausted(
     uses ``>`` for projected tokens (``usage + estimated``), allowing
     exact-fill: a request whose projected total exactly matches the
     limit is still permitted.
+
+    Returns:
+        ``True`` when the predicate holds, ``False`` otherwise.
     """
     if quota.max_requests > 0 and usage.requests >= quota.max_requests:
         return True
@@ -506,7 +509,11 @@ def _build_exhaustion_reason(
     quota: QuotaLimit,
     estimated_tokens: int = 0,
 ) -> str:
-    """Build a human-readable exhaustion reason."""
+    """Build a human-readable exhaustion reason.
+
+    Returns:
+        Result of type ``str``.
+    """
     parts: list[str] = [f"{provider_name} {window.value}:"]
     if quota.max_requests > 0 and usage.requests >= quota.max_requests:
         parts.append(f"requests {usage.requests}/{quota.max_requests}")
@@ -526,7 +533,11 @@ _WINDOW_DELTAS: dict[QuotaWindow, timedelta] = {
 
 
 def _window_end(window: QuotaWindow, start: datetime) -> datetime:
-    """Compute end of a quota window from its start."""
+    """Compute end of a quota window from its start.
+
+    Returns:
+        Result of type ``datetime``.
+    """
     delta = _WINDOW_DELTAS.get(window)
     if delta is not None:
         return start + delta

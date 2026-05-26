@@ -97,11 +97,19 @@ class ToolRegistry:
         return tool
 
     def list_tools(self) -> tuple[str, ...]:
-        """Return sorted tuple of registered tool names."""
+        """Return sorted tuple of registered tool names.
+
+        Returns:
+            Tuple of ``str``.
+        """
         return tuple(sorted(self._tools))
 
     def all_tools(self) -> tuple[BaseTool, ...]:
-        """Return all registered tool instances, sorted by name."""
+        """Return all registered tool instances, sorted by name.
+
+        Returns:
+            Tuple of ``BaseTool``.
+        """
         return tuple(self._tools[name] for name in sorted(self._tools))
 
     def to_definitions(self) -> tuple[ToolDefinition, ...]:
@@ -113,7 +121,11 @@ class ToolRegistry:
         return tuple(self._tools[name].to_definition() for name in sorted(self._tools))
 
     def __contains__(self, name: object) -> bool:
-        """Check whether a tool name is registered."""
+        """Check whether a tool name is registered.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         if not isinstance(name, str):
             logger.debug(
                 TOOL_REGISTRY_CONTAINS_TYPE_ERROR,
@@ -134,5 +146,9 @@ class ToolRegistry:
         return tuple(self._tools[name].to_l1_metadata() for name in sorted(self._tools))
 
     def __len__(self) -> int:
-        """Return the number of registered tools."""
+        """Return the number of registered tools.
+
+        Returns:
+            Result of type ``int``.
+        """
         return len(self._tools)

@@ -66,7 +66,15 @@ class QueryStructureMapTool(BaseTool):
         self._project_id = project_id
 
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
-        """Dispatch a ``query_structure_map`` invocation to the repository."""
+        """Dispatch a ``query_structure_map`` invocation to the repository.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
         try:
             parsed = parse_typed("mcp.tool", arguments, QueryStructureMapArgs)
         except (ValueError, TypeError) as exc:
@@ -108,7 +116,11 @@ def _render_facet(
     facet: StructureMapFacet,
     name_filter: str | None,
 ) -> str:
-    """Render the requested facet as one entry per line."""
+    """Render the requested facet as one entry per line.
+
+    Returns:
+        Result of type ``str``.
+    """
     lines = _facet_lines(structure_map, facet)
     if name_filter is not None:
         needle = name_filter.casefold()
@@ -122,7 +134,11 @@ def _facet_lines(
     structure_map: CodebaseStructureMap,
     facet: StructureMapFacet,
 ) -> list[str]:
-    """Produce the per-entry rendering for *facet*."""
+    """Produce the per-entry rendering for *facet*.
+
+    Returns:
+        List of ``str``.
+    """
     if facet is StructureMapFacet.MODULES:
         return [
             f"{m.path} [{m.language.value}, {m.kind.value}]"

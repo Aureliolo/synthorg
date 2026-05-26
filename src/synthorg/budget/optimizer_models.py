@@ -91,7 +91,14 @@ class SpendingAnomaly(BaseModel):
 
     @model_validator(mode="after")
     def _validate_period_ordering(self) -> Self:
-        """Ensure period_start is strictly before period_end."""
+        """Ensure period_start is strictly before period_end.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.period_start >= self.period_end:
             msg = (
                 f"period_start ({self.period_start.isoformat()}) "
@@ -125,7 +132,14 @@ class AnomalyDetectionResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_period_ordering(self) -> Self:
-        """Ensure scan_period_start is strictly before scan_period_end."""
+        """Ensure scan_period_start is strictly before scan_period_end.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.scan_period_start >= self.scan_period_end:
             msg = (
                 f"scan_period_start ({self.scan_period_start.isoformat()}) "
@@ -213,7 +227,14 @@ class EfficiencyAnalysis(BaseModel):
 
     @model_validator(mode="after")
     def _validate_period_ordering(self) -> Self:
-        """Ensure analysis_period_start is before analysis_period_end."""
+        """Ensure analysis_period_start is before analysis_period_end.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.analysis_period_start >= self.analysis_period_end:
             msg = (
                 f"analysis_period_start "
@@ -226,7 +247,14 @@ class EfficiencyAnalysis(BaseModel):
 
     @model_validator(mode="after")
     def _validate_agents_sort_order(self) -> Self:
-        """Ensure agents are sorted by cost_per_1k_tokens descending."""
+        """Ensure agents are sorted by cost_per_1k_tokens descending.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         costs = [a.cost_per_1k_tokens for a in self.agents]
         if costs != sorted(costs, reverse=True):
             msg = "agents must be sorted by cost_per_1k_tokens descending"
@@ -263,7 +291,14 @@ class DowngradeRecommendation(BaseModel):
 
     @model_validator(mode="after")
     def _validate_different_models(self) -> Self:
-        """Ensure current and recommended models differ."""
+        """Ensure current and recommended models differ.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.current_model == self.recommended_model:
             msg = (
                 f"current_model and recommended_model must differ, "
@@ -460,7 +495,14 @@ class RoutingSuggestion(BaseModel):
 
     @model_validator(mode="after")
     def _validate_different_models(self) -> Self:
-        """Ensure current and suggested models differ."""
+        """Ensure current and suggested models differ.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.current_model == self.suggested_model:
             msg = (
                 f"current_model and suggested_model must differ, "
@@ -471,7 +513,14 @@ class RoutingSuggestion(BaseModel):
 
     @model_validator(mode="after")
     def _validate_savings_positive(self) -> Self:
-        """Ensure suggested model is actually cheaper."""
+        """Ensure suggested model is actually cheaper.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.suggested_cost_per_1k >= self.current_cost_per_1k:
             msg = (
                 f"suggested_cost_per_1k ({self.suggested_cost_per_1k}) "
@@ -515,7 +564,14 @@ class RoutingOptimizationAnalysis(BaseModel):
 
     @model_validator(mode="after")
     def _validate_period_ordering(self) -> Self:
-        """Ensure analysis_period_start is before analysis_period_end."""
+        """Ensure analysis_period_start is before analysis_period_end.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.analysis_period_start >= self.analysis_period_end:
             msg = (
                 f"analysis_period_start "

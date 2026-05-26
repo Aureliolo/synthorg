@@ -44,6 +44,12 @@ class ExternalAccessRequest(BaseModel):
         A provider pins the validated IP at connect time while keeping the
         hostname for TLS SNI; an IP without its hostname (or vice versa)
         is a malformed pin that would break SNI / certificate validation.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if (self.pinned_ip is None) != (self.pinned_hostname is None):
             msg = "pinned_ip and pinned_hostname must be set together or both omitted"
@@ -80,5 +86,9 @@ class ExternalAccessProvider(Protocol):
         self,
         req: ExternalAccessRequest,
     ) -> ExternalAccessResponse:
-        """Perform *req* and return the (truncated) response."""
+        """Perform *req* and return the (truncated) response.
+
+        Returns:
+            Result of type ``ExternalAccessResponse``.
+        """
         ...

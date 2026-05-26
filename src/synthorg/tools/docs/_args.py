@@ -43,6 +43,11 @@ class HeadingBlockArg(BaseModel):
     text: NotBlankStr = Field(description="Heading text")
 
     def to_block(self) -> DocBlock:
+        """To block.
+
+        Returns:
+            Result of type ``DocBlock``.
+        """
         return HeadingBlock(level=self.level, text=self.text)
 
 
@@ -55,6 +60,11 @@ class ProseBlockArg(BaseModel):
     text: NotBlankStr = Field(description="Prose body")
 
     def to_block(self) -> DocBlock:
+        """To block.
+
+        Returns:
+            Result of type ``DocBlock``.
+        """
         return ProseBlock(text=self.text)
 
 
@@ -70,6 +80,11 @@ class BulletListBlockArg(BaseModel):
     )
 
     def to_block(self) -> DocBlock:
+        """To block.
+
+        Returns:
+            Result of type ``DocBlock``.
+        """
         return BulletListBlock(items=self.items)
 
 
@@ -86,6 +101,11 @@ class CodeBlockArg(BaseModel):
     )
 
     def to_block(self) -> DocBlock:
+        """To block.
+
+        Returns:
+            Result of type ``DocBlock``.
+        """
         return CodeBlock(code=self.code, language=self.language)
 
 
@@ -99,6 +119,11 @@ class DecisionBlockArg(BaseModel):
     rationale: NotBlankStr = Field(description="Why this decision")
 
     def to_block(self) -> DocBlock:
+        """To block.
+
+        Returns:
+            Result of type ``DocBlock``.
+        """
         return DecisionBlock(decision=self.decision, rationale=self.rationale)
 
 
@@ -113,6 +138,11 @@ class MetricBlockArg(BaseModel):
     unit: NotBlankStr | None = Field(default=None, description="Optional unit suffix")
 
     def to_block(self) -> DocBlock:
+        """To block.
+
+        Returns:
+            Result of type ``DocBlock``.
+        """
         return MetricBlock(name=self.name, value=self.value, unit=self.unit)
 
 
@@ -126,6 +156,11 @@ class LinkBlockArg(BaseModel):
     url: NotBlankStr = Field(description="Link target URL")
 
     def to_block(self) -> DocBlock:
+        """To block.
+
+        Returns:
+            Result of type ``DocBlock``.
+        """
         return LinkBlock(label=self.label, url=self.url)
 
 
@@ -147,7 +182,11 @@ _BLOCK_ARG_ADAPTER: TypeAdapter[WriteLivingDocBlockArg] = TypeAdapter(
 
 
 def parse_block_arg(value: object) -> WriteLivingDocBlockArg:
-    """Validate one raw block dict against the discriminated union."""
+    """Validate one raw block dict against the discriminated union.
+
+    Returns:
+        Result of type ``WriteLivingDocBlockArg``.
+    """
     return _BLOCK_ARG_ADAPTER.validate_python(value)
 
 

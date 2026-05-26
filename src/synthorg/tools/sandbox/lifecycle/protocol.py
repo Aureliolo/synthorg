@@ -26,7 +26,11 @@ class ContainerHandle:
     network_mode: str = "none"
 
     def __post_init__(self) -> None:
-        """Validate invariants at construction time."""
+        """Validate invariants at construction time.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if not self.container_id or self.container_id.isspace():
             msg = "container_id must be non-empty"
             raise ValueError(msg)

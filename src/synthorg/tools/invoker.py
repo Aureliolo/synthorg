@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.approval.models import EscalationInfo
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
@@ -142,6 +143,9 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
 
         Returns ``None`` if permitted, or a ``ToolResult(is_error=True)``
         if denied.
+
+        Returns:
+            The resulting ``ToolResult``, or ``None`` when unavailable.
         """
         if self._permission_checker is None:
             return None
@@ -169,6 +173,9 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
 
         Returns ``None`` if permitted, or a ``ToolResult`` if denied or
         if the action requires approval (escalation).
+
+        Returns:
+            The resulting ``ToolResult``, or ``None`` when unavailable.
         """
         if self._permission_checker is None:
             return None
@@ -227,7 +234,11 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         tool: BaseTool,
         tool_call: ToolCall,
     ) -> SecurityContext:
-        """Build a ``SecurityContext`` for the given tool call."""
+        """Build a ``SecurityContext`` for the given tool call.
+
+        Returns:
+            Result of type ``SecurityContext``.
+        """
         return SecurityContext(
             tool_name=tool.name,
             tool_category=tool.category,
@@ -250,6 +261,9 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
 
         Returns ``(context, None)`` if allowed, or ``(context, ToolResult)``
         if denied/escalated.  Returns ``(None, None)`` when no interceptor.
+
+        Returns:
+            Tuple ``(SecurityContext | None, ToolResult | None)``.
         """
         if self._security_interceptor is None:
             return None, None
@@ -258,9 +272,8 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             verdict = await self._security_interceptor.evaluate_pre_tool(
                 context,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SECURITY_INTERCEPTOR_ERROR,
                 tool_call_id=tool_call.id,
@@ -336,6 +349,9 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
 
         Scanner exceptions are caught and fail-closed -- a generic error
         result is returned to prevent leaking sensitive data.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
         """
         if self._security_interceptor is None:
             return result
@@ -345,9 +361,8 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 context,
                 result.content,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SECURITY_OUTPUT_SCAN_ERROR,
                 tool_call_id=tool_call.id,
@@ -397,6 +412,15 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         (which clears once at the batch level). Wraps the full
         invocation in a ``tool {name}`` OTel span so latency and
         outcome are queryable in the tracing UI.
+
+        Returns:
+            Result of type ``ToolResult``.
+
+        Raises:
+            CancelledError: If the related operation fails.
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            Exception: Raised when the relevant invariant fails.
         """
         logger.info(
             TOOL_INVOKE_START,
@@ -447,6 +471,12 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         ``CancelledError`` branch synthesizes a sentinel ``ToolResult``
         before re-raising so the engine deadline that cancelled this
         coroutine is captured as ``outcome="timeout"``.
+
+        Returns:
+            Result of type ``ToolResult``.
+
+        Raises:
+            CancelledError: If the related operation fails.
         """
         started_at = datetime.now(UTC)
         try:
@@ -489,6 +519,9 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         security block, execution failure, parking error, success).
         Caller is responsible for recording metrics around this
         function so all exit paths are observable.
+
+        Returns:
+            Result of type ``ToolResult``.
         """
         tool_or_error = self._lookup_tool(tool_call)
         if isinstance(tool_or_error, ToolResult):
@@ -554,7 +587,11 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         return self._build_result(tool_call, exec_result)
 
     def _lookup_tool(self, tool_call: ToolCall) -> BaseTool | ToolResult:
-        """Look up a tool in the registry, returning an error on miss."""
+        """Look up a tool in the registry, returning an error on miss.
+
+        Returns:
+            Result of type ``BaseTool | ToolResult``.
+        """
         try:
             return self._registry.get(tool_call.name)
         except ToolNotFoundError as exc:
@@ -585,6 +622,13 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         so nested ``dict``/``list`` fields aren't shared with subsequent
         invocations.  When ``None`` (legacy JSON-Schema path), fall
         back to deep-copying the raw ``tool_call.arguments``.
+
+        Returns:
+            Result of type ``ToolExecutionResult | ToolResult``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         if validated_arguments is not None:
             safe_args: dict[str, object] = copy.deepcopy(validated_arguments)
@@ -605,6 +649,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             # Propagated error string lands in agent context; redact to
             # prevent credential leakage from third-party HTTP / driver
             # exceptions.
@@ -675,9 +720,8 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                     reason="Agent requested human approval",
                 ),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 TOOL_INVOKE_EXECUTION_ERROR,
                 tool_call_id=tool_call.id,
@@ -706,6 +750,9 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         so the returned result is always marked errored when the
         underlying execution flagged a timeout, even if the inner
         ``result.is_error`` was left at its default ``False``.
+
+        Returns:
+            Result of type ``ToolResult``.
         """
         # Strict identity check (``is True``) so a tool that
         # accidentally stamped a string like ``"false"`` or a 1
@@ -742,6 +789,9 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         Strips scripts, styles, hidden elements, and detects
         render-gap injection attacks.  Returns the original result
         unchanged if the output is not HTML or on parse errors.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
         """
         if result.is_error or not result.content:
             return result
@@ -792,7 +842,11 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
 
     @staticmethod
     def _raise_fatal_errors(fatal_errors: list[Exception]) -> None:
-        """Re-raise collected fatal errors after all tasks complete."""
+        """Re-raise collected fatal errors after all tasks complete.
+
+        Raises:
+            ExceptionGroup: Raised when the relevant invariant fails.
+        """
         if not fatal_errors:
             return
         if len(fatal_errors) == 1:

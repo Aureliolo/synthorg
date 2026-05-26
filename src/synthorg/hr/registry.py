@@ -785,7 +785,11 @@ class AgentRegistryService:
         return previous_level, applied
 
     async def agent_count(self) -> int:
-        """Number of agents currently in the registry."""
+        """Number of agents currently in the registry.
+
+        Returns:
+            Result of type ``int``.
+        """
         async with self._lock:
             return len(self._agents)
 

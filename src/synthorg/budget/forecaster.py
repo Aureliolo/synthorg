@@ -74,12 +74,20 @@ ClockFn = Callable[[], datetime]
 
 
 async def _empty_history(_tier: str, _role_id: str) -> Sequence[float]:
-    """Default :class:`HistoryLookup` returning no observations."""
+    """Default :class:`HistoryLookup` returning no observations.
+
+    Returns:
+        Result of type ``Sequence[float]``.
+    """
     return ()
 
 
 def _utc_now() -> datetime:
-    """Default clock returning the current UTC timestamp."""
+    """Default clock returning the current UTC timestamp.
+
+    Returns:
+        Result of type ``datetime``.
+    """
     return datetime.now(UTC)
 
 
@@ -121,6 +129,9 @@ def compute_brief_hash(signal: BriefSignal) -> str:
     role names lower-cased and stripped, model ids passed through
     verbatim (the caller is expected to normalise model ids to their
     canonical alias before constructing the signal).
+
+    Returns:
+        Result of type ``str``.
     """
     payload = {
         "brief_text": signal.brief_text,
@@ -141,6 +152,9 @@ def _tier_from_model_id(model_id: str) -> str | None:
     Canonical model ids follow ``example-<tier>-<rev>``; we read the
     tier suffix. Unknown patterns return ``None`` and the caller
     falls back to ``medium``.
+
+    Returns:
+        The resulting ``str``, or ``None`` when unavailable.
     """
     parts = model_id.split("-")
     if len(parts) < 2:  # noqa: PLR2004 -- canonical id requires at least two parts
@@ -157,7 +171,11 @@ def _tier_from_model_id(model_id: str) -> str | None:
 
 
 def _static_prior_per_turn(config: BudgetConfig, tier: str) -> float:
-    """Look up the static prior cost-per-turn for a model tier."""
+    """Look up the static prior cost-per-turn for a model tier.
+
+    Returns:
+        Result of type ``float``.
+    """
     if tier == "large":
         return config.forecast_static_prior_per_turn_large
     if tier == "medium":
@@ -181,6 +199,9 @@ def _bayesian_blend(
     deviation is the within-sample standard deviation of the
     observations when there are >= 2 observations, otherwise the
     cold-start width is folded in at the caller's discretion.
+
+    Returns:
+        Tuple ``(float, float)``.
     """
     n = len(observations)
     if n == 0:
@@ -298,6 +319,9 @@ class CostForecaster:
         the point estimate) when no role had history, else the
         sqrt-sum-of-squares of per-role stddevs floored at a coefficient
         of the point estimate so it never claims unrealistic precision.
+
+        Returns:
+            Tuple ``(float, float, float, bool)``.
         """
         turns_per_role = (
             signal.estimated_turns_per_role
@@ -314,6 +338,11 @@ class CostForecaster:
         # Per-role history lookups are independent; fan them out so a
         # many-role brief does not pay the sum of their latencies.
         async def _lookup(tier: str, role_id: str) -> Sequence[float]:
+            """Lookup.
+
+            Returns:
+                Result of type ``Sequence[float]``.
+            """
             return await self._history_lookup(tier, role_id)
 
         async with asyncio.TaskGroup() as tg:

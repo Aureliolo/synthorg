@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar runtime ref
 
 from synthorg.api.boundary import parse_typed
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (
     ActionType,
     ToolCategory,
@@ -67,7 +68,11 @@ class SearchLivingDocsTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Dispatch a ``search_living_docs`` invocation to :class:`DocsService`."""
+        """Dispatch a ``search_living_docs`` invocation to :class:`DocsService`.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         try:
             parsed = parse_typed("mcp.tool", arguments, SearchLivingDocsArgs)
             logger.info(
@@ -96,9 +101,8 @@ class SearchLivingDocsTool(BaseTool):
                 ),
                 is_error=True,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger, DOC_SEARCH_FAILED, exc, project_id=self._project_id
             )
@@ -131,6 +135,11 @@ class SearchLivingDocsTool(BaseTool):
 
 
 def _format_hits(hits: tuple[DocSearchHit, ...]) -> str:
+    """Format hits.
+
+    Returns:
+        Result of type ``str``.
+    """
     if not hits:
         return "No matching living docs for this project."
     lines: list[str] = []

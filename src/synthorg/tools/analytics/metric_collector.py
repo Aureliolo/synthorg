@@ -10,6 +10,7 @@ from typing import Any, ClassVar, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.analytics import (
     ANALYTICS_TOOL_METRIC_NOT_ALLOWED,
@@ -220,9 +221,8 @@ class MetricCollectorTool(BaseAnalyticsTool):
                 tags=tags,
                 unit=unit,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ANALYTICS_TOOL_METRIC_RECORD_FAILED,
                 metric_name=metric_name,

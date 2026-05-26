@@ -127,6 +127,9 @@ class HiringService:
 
         Returns:
             The created hiring request.
+
+        Raises:
+            HiringError: If the related operation fails.
         """
         try:
             parsed_level = SeniorityLevel(level)

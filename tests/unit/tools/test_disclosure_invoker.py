@@ -135,3 +135,91 @@ class TestGetLoadedDefinitions:
         defs = invoker.get_loaded_definitions(frozenset({"zebra", "aardvark"}))
         names = [d.name for d in defs]
         assert names == ["aardvark", "zebra"]
+
+
+# ── error isolation ─────────────────────────────────────────────
+
+
+class _FaultyTool(_FakeTool):
+    """A tool whose disclosure methods raise a non-critical error."""
+
+    def to_l1_metadata(self) -> Any:
+        raise ValueError
+
+    def to_definition(self) -> Any:
+        raise ValueError
+
+    def to_l2_body(self) -> Any:
+        raise ValueError
+
+    def get_l3_resources(self) -> Any:
+        raise ValueError
+
+
+class _OomTool(_FakeTool):
+    """A tool whose L1 metadata raises an interpreter-critical error."""
+
+    def to_l1_metadata(self) -> Any:
+        raise MemoryError
+
+
+@pytest.mark.unit
+class TestDiscoveryErrorIsolation:
+    """A non-critical failure in one tool's disclosure methods is logged and
+    skipped so a single malformed tool cannot break discovery for the rest,
+    while interpreter-critical errors propagate via ``reraise_critical``.
+    """
+
+    def test_l1_summary_skips_faulty_tool(self) -> None:
+        invoker = _build_invoker(
+            tools=[_FaultyTool(name="faulty"), _FakeTool(name="good")]
+        )
+        names = {m.name for m in invoker.get_l1_summaries()}
+        assert names == {"good"}
+
+    def test_loaded_definitions_skips_faulty_tool(self) -> None:
+        invoker = _build_invoker(
+            tools=[_FaultyTool(name="faulty"), _FakeTool(name="good")]
+        )
+        names = {
+            d.name
+            for d in invoker.get_loaded_definitions(frozenset({"faulty", "good"}))
+        }
+        # Per-tool isolation: the faulty tool is skipped, the healthy one kept.
+        assert "good" in names
+        assert "faulty" not in names
+
+    def test_l2_body_returns_none_on_failure(self) -> None:
+        invoker = _build_invoker(tools=[_FaultyTool(name="faulty")])
+        assert invoker.get_l2_body("faulty") is None
+
+    def test_l3_resource_returns_none_on_failure(self) -> None:
+        invoker = _build_invoker(tools=[_FaultyTool(name="faulty")])
+        assert invoker.get_l3_resource("faulty", "res-1") is None
+
+    def test_l1_summary_skips_registry_lookup_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        invoker = _build_invoker(tools=[_FakeTool(name="alpha")])
+
+        def _boom(_name: str) -> object:
+            raise ValueError
+
+        monkeypatch.setattr(invoker._registry, "get", _boom)
+        assert invoker.get_l1_summaries() == ()
+
+    def test_l2_body_returns_none_on_registry_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        invoker = _build_invoker(tools=[_FakeTool(name="alpha")])
+
+        def _boom(_name: str) -> object:
+            raise ValueError
+
+        monkeypatch.setattr(invoker._registry, "get", _boom)
+        assert invoker.get_l2_body("alpha") is None
+
+    def test_critical_error_propagates(self) -> None:
+        invoker = _build_invoker(tools=[_OomTool(name="oom")])
+        with pytest.raises(MemoryError):
+            invoker.get_l1_summaries()

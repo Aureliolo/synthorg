@@ -30,6 +30,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.errors import FineTuneDependencyError
 from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
@@ -102,7 +103,11 @@ _ENCODE_ROLE_PASSAGE: Final[str] = "passage"
 
 
 def _likely_truncated_count(texts: list[str], max_length: int) -> int:
-    """Count texts whose word count suggests they will hit ``max_length`` tokens."""
+    """Count texts whose word count suggests they will hit ``max_length`` tokens.
+
+    Returns:
+        Result of type ``int``.
+    """
     word_threshold = max_length / _TOKENS_PER_WORD
     return sum(1 for text in texts if len(text.split()) > word_threshold)
 
@@ -115,7 +120,11 @@ async def _encode_with_observability(
     role: str,
     model_name: str,
 ) -> object:
-    """Run ``model.encode`` with per-call ``processing_kwargs`` and observability."""
+    """Run ``model.encode`` with per-call ``processing_kwargs`` and observability.
+
+    Returns:
+        Result of type ``object``.
+    """
     logger.debug(
         MEMORY_FINE_TUNE_ENCODE_INVOKED,
         role=role,
@@ -151,7 +160,11 @@ async def _encode_query_passage_pair(
     passages: list[str],
     cancellation: CancellationToken | None,
 ) -> tuple[object, object]:
-    """Encode queries and passages, honouring cancellation between the two calls."""
+    """Encode queries and passages, honouring cancellation between the two calls.
+
+    Returns:
+        Tuple ``(object, object)``.
+    """
     if cancellation is not None:
         cancellation.check()
     q_embs = await _encode_with_observability(
@@ -183,7 +196,15 @@ async def _load_query_passage_pairs(
     *,
     require_non_empty: bool,
 ) -> tuple[list[str], list[str]]:
-    """Read JSONL ``{"query", "positive_passage"}`` records into parallel lists."""
+    """Read JSONL ``{"query", "positive_passage"}`` records into parallel lists.
+
+    Returns:
+        Tuple ``(list[str], list[str])``.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
+        TypeError: If an argument has an unexpected type.
+    """
     pairs = await asyncio.to_thread(_read_jsonl, Path(path))
     if require_non_empty and not pairs:
         msg = "Validation data is empty"
@@ -227,7 +248,11 @@ async def _persist_triples(
     triples: list[dict[str, object]],
     output_dir: str,
 ) -> Path:
-    """Write mining triples to ``training_triples.jsonl`` under ``output_dir``."""
+    """Write mining triples to ``training_triples.jsonl`` under ``output_dir``.
+
+    Returns:
+        Result of type ``Path``.
+    """
     out = _ensure_dir(output_dir)
     triples_path = out / "training_triples.jsonl"
     await asyncio.to_thread(_write_jsonl_any, triples_path, triples)
@@ -235,7 +260,14 @@ async def _persist_triples(
 
 
 def _import_sentence_transformers() -> ModuleType:
-    """Lazy-import sentence-transformers with friendly error."""
+    """Lazy-import sentence-transformers with friendly error.
+
+    Returns:
+        Result of type ``ModuleType``.
+
+    Raises:
+        FineTuneDependencyError: If the related operation fails.
+    """
     try:
         import sentence_transformers  # type: ignore[import-not-found]  # noqa: PLC0415
     except ImportError as exc:
@@ -253,7 +285,14 @@ def _import_sentence_transformers() -> ModuleType:
 
 
 def _import_torch() -> ModuleType:
-    """Lazy-import torch with friendly error."""
+    """Lazy-import torch with friendly error.
+
+    Returns:
+        Result of type ``ModuleType``.
+
+    Raises:
+        FineTuneDependencyError: If the related operation fails.
+    """
     try:
         import torch  # type: ignore[import-not-found]  # noqa: PLC0415
     except ImportError as exc:
@@ -274,7 +313,11 @@ def _import_torch() -> ModuleType:
 
 
 def _require_not_blank(value: str, name: str) -> None:
-    """Raise ``ValueError`` if *value* is blank."""
+    """Raise ``ValueError`` if *value* is blank.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
+    """
     if not value.strip():
         msg = f"{name} must not be blank"
         logger.warning(
@@ -286,7 +329,11 @@ def _require_not_blank(value: str, name: str) -> None:
 
 
 def _ensure_dir(path: str) -> Path:
-    """Create directory if needed and return as Path."""
+    """Create directory if needed and return as Path.
+
+    Returns:
+        Result of type ``Path``.
+    """
     p = Path(path)
     p.mkdir(parents=True, exist_ok=True)
     return p
@@ -303,6 +350,9 @@ def _chunk_text(
 
     Produces chunks of exactly *chunk_size* words
     (the last chunk may be shorter).
+
+    Returns:
+        List of ``str``.
     """
     words = text.split()
     chunks: list[str] = []
@@ -314,7 +364,11 @@ def _chunk_text(
 
 
 def _scan_documents(source_dir: str) -> list[tuple[str, str]]:
-    """Scan directory for text files, return (path, content) pairs."""
+    """Scan directory for text files, return (path, content) pairs.
+
+    Returns:
+        List of ``tuple[str, str]``.
+    """
     src = Path(source_dir)
     results: list[tuple[str, str]] = []
     for ext in ("*.txt", "*.md", "*.rst"):
@@ -421,6 +475,9 @@ def _generate_query(
 
     The *llm_provider* parameter is accepted for forward compatibility
     but is currently unused -- all queries use extractive fallback.
+
+    Returns:
+        Result of type ``str``.
     """
     # LLM-based generation would go here when provider protocol
     # is wired. For now, use extractive fallback.
@@ -497,7 +554,11 @@ async def _mine_negatives_from_pairs(  # noqa: PLR0913
     cancellation: CancellationToken | None,
     progress_callback: ProgressCallback | None,
 ) -> list[dict[str, object]]:
-    """Encode the pairs and pick hard negatives in one orchestration."""
+    """Encode the pairs and pick hard negatives in one orchestration.
+
+    Returns:
+        List of ``dict[str, object]``.
+    """
     query_embeddings, passage_embeddings = await _encode_query_passage_pair(
         model=model,
         model_name=model_name,
@@ -530,7 +591,11 @@ async def _select_hard_negatives(  # noqa: PLR0913
     cancellation: CancellationToken | None,
     progress_callback: ProgressCallback | None,
 ) -> list[dict[str, object]]:
-    """Pick the top-k hardest non-positive passages per query by similarity."""
+    """Pick the top-k hardest non-positive passages per query by similarity.
+
+    Returns:
+        List of ``dict[str, object]``.
+    """
     triples: list[dict[str, object]] = []
     for i, query in enumerate(queries):
         if cancellation is not None and i % _CANCELLATION_CHECK_INTERVAL == 0:
@@ -561,7 +626,11 @@ async def _select_hard_negatives(  # noqa: PLR0913
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    """Read a JSONL file into a list of dicts."""
+    """Read a JSONL file into a list of dicts.
+
+    Returns:
+        List of ``dict[str, Any]``.
+    """
     records: list[dict[str, Any]] = []
     with path.open(encoding="utf-8") as f:
         for raw_line in f:
@@ -585,7 +654,11 @@ def _cosine_similarities(
     query_emb: object,
     passage_embs: object,
 ) -> list[float]:
-    """Compute cosine similarities between query and passages."""
+    """Compute cosine similarities between query and passages.
+
+    Returns:
+        List of ``float``.
+    """
     import numpy as np  # noqa: PLC0415
 
     q = np.array(query_emb, dtype=np.float32)
@@ -668,6 +741,7 @@ async def contrastive_fine_tune(  # noqa: PLR0913
         _epoch: int,
         steps: int,  # noqa: ARG001
     ) -> None:
+        """Trainer callback: check cancellation and report progress."""
         nonlocal step
         step += 1
         if cancellation is not None and step % 10 == 0:
@@ -702,7 +776,11 @@ def _build_training_examples(
     st: ModuleType,
     triples: list[dict[str, Any]],
 ) -> list[object]:
-    """Build sentence-transformers InputExample from triples."""
+    """Build sentence-transformers InputExample from triples.
+
+    Returns:
+        List of ``object``.
+    """
     examples = []
     for triple in triples:
         query = str(triple["query"])
@@ -785,7 +863,11 @@ async def _run_eval_pipeline(  # noqa: PLR0913
     cancellation: CancellationToken | None,
     progress_callback: ProgressCallback | None,
 ) -> EvalMetrics:
-    """Load both models, encode query/passage pairs, persist metrics."""
+    """Load both models, encode query/passage pairs, persist metrics.
+
+    Returns:
+        Result of type ``EvalMetrics``.
+    """
     st = _import_sentence_transformers()
     from synthorg.memory.embedding.fine_tune_models import (  # noqa: PLC0415
         EvalMetrics,
@@ -833,7 +915,11 @@ async def _persist_eval_metrics(  # noqa: PLR0913
     output_dir: str,
     eval_metrics_cls: type[EvalMetrics],
 ) -> EvalMetrics:
-    """Compute eval metrics, write the JSON file, and emit the completion log."""
+    """Compute eval metrics, write the JSON file, and emit the completion log.
+
+    Returns:
+        Result of type ``EvalMetrics``.
+    """
     ft_ndcg, ft_recall = _compute_metrics(ft_q_embs, ft_p_embs)
     base_ndcg, base_recall = _compute_metrics(base_q_embs, base_p_embs)
 
@@ -869,6 +955,9 @@ def _compute_metrics(
     """Compute NDCG@k and Recall@k.
 
     Each query's ground truth is the passage at the same index.
+
+    Returns:
+        Tuple ``(float, float)``.
     """
     import numpy as np  # noqa: PLC0415
 
@@ -951,9 +1040,8 @@ async def deploy_checkpoint(
                 sv = await settings_service.get("memory", key)
                 if sv and hasattr(sv, "value") and sv.value:
                     backup[key] = sv.value
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED,
                     key=key,

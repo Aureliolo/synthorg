@@ -126,5 +126,8 @@ class OrgMemoryBackend(Protocol):
 
         Companion to :meth:`list_policies` for paginated controllers
         that need a total alongside the page.
+
+        Returns:
+            Result of type ``int``.
         """
         ...

@@ -70,7 +70,14 @@ class ExternalApiArgs(BaseModel):
 
     @model_validator(mode="after")
     def _normalise_and_validate(self) -> Self:
-        """Uppercase the method and enforce cross-field invariants."""
+        """Uppercase the method and enforce cross-field invariants.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         normalised = self.method.strip().upper()
         if normalised not in _ALLOWED_METHODS:
             allowed = ", ".join(sorted(_ALLOWED_METHODS))

@@ -15,7 +15,11 @@ _SIGNATURE_METADATA_KEY = "external_api_signature"
 
 
 def _hash(value: str | None) -> str:
-    """Stable SHA-256 hex digest of *value* (``""`` sentinel for None)."""
+    """Stable SHA-256 hex digest of *value* (``""`` sentinel for None).
+
+    Returns:
+        Result of type ``str``.
+    """
     payload = "\x00NONE\x00" if value is None else value
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -47,7 +51,11 @@ class ApprovalSignature(BaseModel):
         body: str | None,
         headers: dict[str, str],
     ) -> ApprovalSignature:
-        """Construct a signature from the resolved call components."""
+        """Construct a signature from the resolved call components.
+
+        Returns:
+            Result of type ``ApprovalSignature``.
+        """
         canonical_headers = json.dumps(
             sorted((k.lower(), v) for k, v in headers.items()),
             separators=(",", ":"),
@@ -61,12 +69,20 @@ class ApprovalSignature(BaseModel):
         )
 
     def to_metadata(self) -> dict[str, str]:
-        """Serialise to an approval-metadata fragment."""
+        """Serialise to an approval-metadata fragment.
+
+        Returns:
+            Mapping from ``str`` to ``str``.
+        """
         return {_SIGNATURE_METADATA_KEY: self.model_dump_json()}
 
     @classmethod
     def from_metadata(cls, metadata: dict[str, str]) -> ApprovalSignature | None:
-        """Parse a signature from approval metadata, or ``None`` if absent/invalid."""
+        """Parse a signature from approval metadata, or ``None`` if absent/invalid.
+
+        Returns:
+            The resulting ``ApprovalSignature``, or ``None`` when unavailable.
+        """
         raw = metadata.get(_SIGNATURE_METADATA_KEY)
         if raw is None:
             return None
@@ -76,5 +92,9 @@ class ApprovalSignature(BaseModel):
             return None
 
     def matches(self, other: ApprovalSignature | None) -> bool:
-        """Whether *other* is an identical call signature."""
+        """Whether *other* is an identical call signature.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         return other is not None and self == other

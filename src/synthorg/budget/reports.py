@@ -70,7 +70,14 @@ class TaskSpending(BaseModel):
 
     @model_validator(mode="after")
     def _validate_currency_presence(self) -> Self:
-        """Require ``currency`` whenever at least one record aggregated."""
+        """Require ``currency`` whenever at least one record aggregated.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.record_count > 0 and self.currency is None:
             msg = (
                 f"currency is required when record_count > 0 "
@@ -109,7 +116,14 @@ class ProviderDistribution(BaseModel):
 
     @model_validator(mode="after")
     def _validate_currency_presence(self) -> Self:
-        """Require ``currency`` whenever at least one record aggregated."""
+        """Require ``currency`` whenever at least one record aggregated.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.record_count > 0 and self.currency is None:
             msg = (
                 f"currency is required when record_count > 0 "
@@ -150,7 +164,14 @@ class ModelDistribution(BaseModel):
 
     @model_validator(mode="after")
     def _validate_currency_presence(self) -> Self:
-        """Require ``currency`` whenever at least one record aggregated."""
+        """Require ``currency`` whenever at least one record aggregated.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.record_count > 0 and self.currency is None:
             msg = (
                 f"currency is required when record_count > 0 "
@@ -248,7 +269,14 @@ class SpendingReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_agent_ranking_order(self) -> Self:
-        """Ensure top_agents_by_cost is sorted descending."""
+        """Ensure top_agents_by_cost is sorted descending.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         costs = [c for _, c in self.top_agents_by_cost]
         if costs != sorted(costs, reverse=True):
             msg = "top_agents_by_cost must be sorted by cost descending"
@@ -257,7 +285,14 @@ class SpendingReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_task_ranking_order(self) -> Self:
-        """Ensure top_tasks_by_cost is sorted descending."""
+        """Ensure top_tasks_by_cost is sorted descending.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         costs = [c for _, c in self.top_tasks_by_cost]
         if costs != sorted(costs, reverse=True):
             msg = "top_tasks_by_cost must be sorted by cost descending"
@@ -402,7 +437,11 @@ class ReportGenerator:
         current_end: datetime,
         current_cost: float,
     ) -> PeriodComparison | None:
-        """Build a period comparison with the previous period."""
+        """Build a period comparison with the previous period.
+
+        Returns:
+            The resulting ``PeriodComparison``, or ``None`` when unavailable.
+        """
         duration = current_end - current_start
         prev_start = current_start - duration
         prev_end = current_start
@@ -428,7 +467,11 @@ class ReportGenerator:
 def _build_task_spendings(
     records: Sequence[CostRecord],
 ) -> tuple[TaskSpending, ...]:
-    """Group records by task and aggregate."""
+    """Group records by task and aggregate.
+
+    Returns:
+        Tuple of ``TaskSpending``.
+    """
     by_task: dict[str, list[CostRecord]] = defaultdict(list)
     for r in records:
         by_task[r.task_id].append(r)
@@ -461,7 +504,11 @@ def _build_provider_distribution(
     records: Sequence[CostRecord],
     total_cost: float,
 ) -> tuple[ProviderDistribution, ...]:
-    """Group records by provider and compute distribution."""
+    """Group records by provider and compute distribution.
+
+    Returns:
+        Tuple of ``ProviderDistribution``.
+    """
     by_provider: dict[str, list[CostRecord]] = defaultdict(list)
     for r in records:
         by_provider[r.provider].append(r)
@@ -497,7 +544,11 @@ def _build_model_distribution(
     records: Sequence[CostRecord],
     total_cost: float,
 ) -> tuple[ModelDistribution, ...]:
-    """Group records by (model, provider) and compute distribution."""
+    """Group records by (model, provider) and compute distribution.
+
+    Returns:
+        Tuple of ``ModelDistribution``.
+    """
     by_model: dict[tuple[str, str], list[CostRecord]] = defaultdict(list)
     for r in records:
         by_model[(r.model, r.provider)].append(r)
@@ -532,7 +583,11 @@ def _build_top_agents(
     summary: SpendingSummary,
     top_n: int,
 ) -> tuple[tuple[str, float], ...]:
-    """Extract top-N agents by cost from a spending summary."""
+    """Extract top-N agents by cost from a spending summary.
+
+    Returns:
+        Tuple of ``tuple[str, float]``.
+    """
     sorted_agents = sorted(
         summary.by_agent,
         key=lambda a: a.total_cost,
@@ -545,7 +600,11 @@ def _build_top_tasks(
     task_spendings: tuple[TaskSpending, ...],
     top_n: int,
 ) -> tuple[tuple[str, float], ...]:
-    """Extract top-N tasks by cost from task spendings."""
+    """Extract top-N tasks by cost from task spendings.
+
+    Returns:
+        Tuple of ``tuple[str, float]``.
+    """
     sorted_tasks = sorted(
         task_spendings,
         key=lambda t: t.total_cost,

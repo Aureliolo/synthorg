@@ -31,6 +31,7 @@ from synthorg.budget.spending_summary import (
 )
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
@@ -177,6 +178,9 @@ class CostTracker(CostTrackerSummaryMixin):
         and assignment cannot race within a loop. Constructing the
         lock lazily lets the tracker survive xdist workers that
         recreate the event loop between tests.
+
+        Returns:
+            Result of type ``asyncio.Lock``.
         """
         if self._lock is None:
             self._lock = asyncio.Lock()
@@ -220,6 +224,7 @@ class CostTracker(CostTrackerSummaryMixin):
         Raises:
             MixedCurrencyAggregationError: If the record's currency
                 does not match the configured ``budget.currency``.
+            BaseException: Raised when the relevant invariant fails.
         """
         # Currency check first -- it's synchronous, has no in-flight
         # state to roll back, and a mismatch is a hard caller-contract
@@ -661,6 +666,11 @@ class CostTracker(CostTrackerSummaryMixin):
         cancelled background task is the *expected* outcome of a
         graceful shutdown or a test cancelling the surrounding
         ``TaskGroup``, not a regression.
+
+        Raises:
+            MemoryError: Propagated from a background task, never swallowed.
+            RecursionError: Propagated from a background task, never swallowed.
+            CancelledError: Re-raised so cancellation propagates.
         """
         if not self._pending_record_tasks:
             return
@@ -711,6 +721,9 @@ class CostTracker(CostTrackerSummaryMixin):
         :class:`MixedCurrencyAggregationError`, which propagates as a
         data-integrity error the caller must see) are logged at
         WARNING and swallowed.
+
+        Raises:
+            MixedCurrencyAggregationError: If the related operation fails.
         """
         if self._project_cost_repo is None or cost_record.project_id is None:
             return
@@ -729,8 +742,6 @@ class CostTracker(CostTrackerSummaryMixin):
                 cost=cost_record.cost,
                 currency=cost_record.currency,
             )
-        except MemoryError, RecursionError:
-            raise
         except MixedCurrencyAggregationError as exc:
             # Mixed-currency increments are a caller-contract violation;
             # surface to the caller rather than silently swallowing --
@@ -745,7 +756,8 @@ class CostTracker(CostTrackerSummaryMixin):
                 reason="mixed_currency_aggregation",
             )
             raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BUDGET_PROJECT_COST_AGGREGATION_FAILED,
                 project_id=cost_record.project_id,
@@ -766,6 +778,9 @@ class CostTracker(CostTrackerSummaryMixin):
             now: Reference time for auto-prune cutoff.  Defaults to
                 ``self._clock.now()`` so ``FakeClock`` injection
                 deterministically controls auto-prune timing.
+
+        Returns:
+            Tuple of ``CostRecord``.
         """
         async with self._get_lock():
             if len(self._records) > self._auto_prune_threshold:
@@ -781,7 +796,11 @@ class CostTracker(CostTrackerSummaryMixin):
             return tuple(self._records)
 
     def _prune_before(self, cutoff: datetime) -> int:
-        """Remove records older than *cutoff*.  Caller must hold ``_lock``."""
+        """Remove records older than *cutoff*.  Caller must hold ``_lock``.
+
+        Returns:
+            Result of type ``int``.
+        """
         if not self._records:
             return 0
         before = len(self._records)
@@ -793,6 +812,9 @@ class CostTracker(CostTrackerSummaryMixin):
         agent_spendings: list[AgentSpending],
     ) -> list[DepartmentSpending]:
         """Aggregate per-department spending from agent spendings.
+
+        Returns:
+            List of ``DepartmentSpending``.
 
         Raises:
             MixedCurrencyAggregationError: If two agents assigned to
@@ -830,7 +852,11 @@ class CostTracker(CostTrackerSummaryMixin):
         self,
         total_cost: float,
     ) -> tuple[float, float, BudgetAlertLevel]:
-        """Compute budget monthly, used percentage, and alert level."""
+        """Compute budget monthly, used percentage, and alert level.
+
+        Returns:
+            Tuple ``(float, float, BudgetAlertLevel)``.
+        """
         budget_monthly = (
             self._budget_config.total_monthly if self._budget_config else 0.0
         )
@@ -846,7 +872,11 @@ class CostTracker(CostTrackerSummaryMixin):
         return budget_monthly, used_pct, alert
 
     def _compute_alert_level(self, used_pct: float) -> BudgetAlertLevel:
-        """Determine alert level from the rounded budget percentage."""
+        """Determine alert level from the rounded budget percentage.
+
+        Returns:
+            Result of type ``BudgetAlertLevel``.
+        """
         if self._budget_config is None or self._budget_config.total_monthly <= 0:
             return BudgetAlertLevel.NORMAL
 
@@ -861,14 +891,17 @@ class CostTracker(CostTrackerSummaryMixin):
         return BudgetAlertLevel.NORMAL
 
     def _resolve_department(self, agent_id: str) -> str | None:
-        """Resolve agent to department, logging resolver errors."""
+        """Resolve agent to department, logging resolver errors.
+
+        Returns:
+            The matching ``str``, or ``None`` when no match is found.
+        """
         if self._department_resolver is None:
             return None
         try:
             return self._department_resolver(agent_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BUDGET_DEPARTMENT_RESOLVE_FAILED,
                 agent_id=agent_id,

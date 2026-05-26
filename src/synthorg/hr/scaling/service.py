@@ -9,6 +9,7 @@ from collections import deque
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import FiringReason
 from synthorg.hr.models import FiringRequest
@@ -58,7 +59,11 @@ if TYPE_CHECKING:
         """Protocol for agent registry lookups."""
 
         async def get(self, agent_id: str) -> Any | None:
-            """Retrieve an agent by ID."""
+            """Retrieve an agent by ID.
+
+            Returns:
+                The matching ``Any``, or ``None`` when no match is found.
+            """
             ...
 
 
@@ -74,7 +79,11 @@ _STRATEGY_TO_FIRING_REASON: dict[str, FiringReason] = {
 
 
 def _firing_reason_for(decision: ScalingDecision) -> FiringReason:
-    """Map a decision's source strategy to the appropriate firing reason."""
+    """Map a decision's source strategy to the appropriate firing reason.
+
+    Returns:
+        Result of type ``FiringReason``.
+    """
     return _STRATEGY_TO_FIRING_REASON.get(
         decision.source_strategy.value,
         FiringReason.PERFORMANCE,
@@ -156,11 +165,19 @@ class ScalingService:
             self._disabled_strategies.add(name)
 
     def is_strategy_enabled(self, name: str) -> bool:
-        """Check if a strategy is enabled at runtime."""
+        """Check if a strategy is enabled at runtime.
+
+        Returns:
+            ``True`` when the predicate holds, ``False`` otherwise.
+        """
         return name not in self._disabled_strategies
 
     async def _check_trigger(self) -> bool:
-        """Check trigger and return True if evaluation should proceed."""
+        """Check trigger and return True if evaluation should proceed.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         if self._trigger is None:
             return True
         return await self._trigger.should_trigger()
@@ -234,13 +251,20 @@ class ScalingService:
         async def _safe_evaluate(
             s: ScalingStrategy,
         ) -> tuple[ScalingDecision, ...]:
+            """Safe evaluate.
+
+            Returns:
+                Tuple of ``ScalingDecision``.
+
+            Raises:
+                CancelledError: If the related operation fails.
+            """
             try:
                 return await s.evaluate(context)
-            except MemoryError, RecursionError:
-                raise
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     HR_SCALING_STRATEGY_EVALUATED,
                     strategy=str(s.name),
@@ -332,7 +356,11 @@ class ScalingService:
         self,
         decision: ScalingDecision,
     ) -> ScalingActionRecord:
-        """Dispatch a single decision and return its action record."""
+        """Dispatch a single decision and return its action record.
+
+        Returns:
+            Result of type ``ScalingActionRecord``.
+        """
         now = datetime.now(UTC)
 
         if decision.action_type in {
@@ -373,7 +401,14 @@ class ScalingService:
         decision: ScalingDecision,
         now: datetime,
     ) -> ScalingActionRecord:
-        """Execute a HIRE decision via the hiring service."""
+        """Execute a HIRE decision via the hiring service.
+
+        Returns:
+            Result of type ``ScalingActionRecord``.
+
+        Raises:
+            CancelledError: If the related operation fails.
+        """
         assert self._hiring_service is not None  # noqa: S101
         try:
             request = await self._hiring_service.create_request(
@@ -384,11 +419,10 @@ class ScalingService:
                 required_skills=decision.target_skills,
                 reason=decision.rationale,
             )
-        except MemoryError, RecursionError:
-            raise
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 HR_SCALING_EXECUTION_FAILED,
                 decision_id=str(decision.id),
@@ -416,7 +450,14 @@ class ScalingService:
         decision: ScalingDecision,
         now: datetime,
     ) -> ScalingActionRecord:
-        """Execute a PRUNE decision via the offboarding service."""
+        """Execute a PRUNE decision via the offboarding service.
+
+        Returns:
+            Result of type ``ScalingActionRecord``.
+
+        Raises:
+            CancelledError: If the related operation fails.
+        """
         assert self._offboarding_service is not None  # noqa: S101
         assert decision.target_agent_id is not None  # noqa: S101
         try:
@@ -439,11 +480,10 @@ class ScalingService:
                 created_at=now,
             )
             record = await self._offboarding_service.offboard(firing_request)
-        except MemoryError, RecursionError:
-            raise
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 HR_SCALING_EXECUTION_FAILED,
                 decision_id=str(decision.id),
@@ -470,7 +510,11 @@ class ScalingService:
         )
 
     def _iter_inner_guards(self) -> list[Any]:
-        """Flatten the guard chain into a list of leaf guards."""
+        """Flatten the guard chain into a list of leaf guards.
+
+        Returns:
+            List of ``Any``.
+        """
         guard = self._guard
         if isinstance(guard, CompositeScalingGuard):
             return list(guard.get_guards())
@@ -485,9 +529,8 @@ class ScalingService:
             if isinstance(inner, (CooldownGuard, RateLimitGuard)):
                 try:
                     await inner.record_action(decision)
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     log_exception_redacted(
                         logger,
                         HR_SCALING_EXECUTION_FAILED,
@@ -506,9 +549,8 @@ class ScalingService:
             if isinstance(inner, CooldownGuard):
                 try:
                     await inner.release_reservation(decision)
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     log_exception_redacted(
                         logger,
                         HR_SCALING_EXECUTION_FAILED,
@@ -539,7 +581,11 @@ class ScalingService:
             )
 
     def get_last_context(self) -> ScalingContext | None:
-        """Return the most recently built scaling context (if any)."""
+        """Return the most recently built scaling context (if any).
+
+        Returns:
+            The matching ``ScalingContext``, or ``None`` when no match is found.
+        """
         return self._last_context
 
     def get_recent_decisions(self) -> tuple[ScalingDecision, ...]:

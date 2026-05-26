@@ -39,7 +39,11 @@ class XvfbDesktopDriver:
         return DesktopDriverKind.XVFB
 
     def session_config(self) -> DesktopSessionConfig:
-        """Return a VNC-free session at the configured geometry."""
+        """Return a VNC-free session at the configured geometry.
+
+        Returns:
+            Result of type ``DesktopSessionConfig``.
+        """
         return DesktopSessionConfig(
             display=self._display,
             screen_width=self._screen_width,

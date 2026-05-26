@@ -139,7 +139,14 @@ class InteractionFeedback(BaseModel):
 
     @model_validator(mode="after")
     def _validate_has_signal(self) -> Self:
-        """Ensure at least one rating or non-blank free_text is present."""
+        """Ensure at least one rating or non-blank free_text is present.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         has_rating = any(
             v is not None
             for v in (
@@ -197,7 +204,14 @@ class ResilienceMetrics(BaseModel):
 
     @model_validator(mode="after")
     def _validate_counts(self) -> Self:
-        """Ensure failed_tasks <= total_tasks and streaks are consistent."""
+        """Ensure failed_tasks <= total_tasks and streaks are consistent.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.failed_tasks > self.total_tasks:
             msg = (
                 f"failed_tasks ({self.failed_tasks}) cannot exceed "
@@ -337,7 +351,14 @@ class EvaluationContext(BaseModel):
 
     @model_validator(mode="after")
     def _validate_agent_id_consistency(self) -> Self:
-        """Ensure context agent_id matches snapshot agent_id."""
+        """Ensure context agent_id matches snapshot agent_id.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.agent_id != self.snapshot.agent_id:
             msg = (
                 f"Context agent_id ({self.agent_id}) does not match "
@@ -394,7 +415,14 @@ class EvaluationReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_pillars(self) -> Self:
-        """Ensure pillar scores have unique pillar names."""
+        """Ensure pillar scores have unique pillar names.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         names = [ps.pillar for ps in self.pillar_scores]
         if len(names) != len(set(names)):
             seen: set[EvaluationPillar] = set()
@@ -409,7 +437,14 @@ class EvaluationReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_agent_id_consistency(self) -> Self:
-        """Ensure report agent_id matches snapshot agent_id."""
+        """Ensure report agent_id matches snapshot agent_id.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.agent_id != self.snapshot.agent_id:
             msg = (
                 f"Report agent_id ({self.agent_id}) does not match "
@@ -420,7 +455,14 @@ class EvaluationReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_weights_match_scores(self) -> Self:
-        """Ensure pillar_weights entries correspond to pillar_scores."""
+        """Ensure pillar_weights entries correspond to pillar_scores.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         weight_names = [name for name, _ in self.pillar_weights]
         if len(weight_names) != len(set(weight_names)):
             msg = "Duplicate entries in pillar_weights"

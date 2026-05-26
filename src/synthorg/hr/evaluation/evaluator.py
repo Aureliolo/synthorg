@@ -113,6 +113,11 @@ class EvaluationService:
 
     @staticmethod
     def _default_intelligence() -> PillarScoringStrategy:
+        """Default intelligence.
+
+        Returns:
+            Result of type ``PillarScoringStrategy``.
+        """
         from synthorg.hr.evaluation.configurable_scorer import (  # noqa: PLC0415
             ConfigurablePillarScorer,
         )
@@ -126,6 +131,11 @@ class EvaluationService:
         )
 
     def _default_efficiency(self) -> PillarScoringStrategy:
+        """Default efficiency.
+
+        Returns:
+            Result of type ``PillarScoringStrategy``.
+        """
         from synthorg.hr.evaluation.configurable_scorer import (  # noqa: PLC0415
             ConfigurablePillarScorer,
         )
@@ -140,6 +150,11 @@ class EvaluationService:
 
     @staticmethod
     def _default_resilience() -> PillarScoringStrategy:
+        """Default resilience.
+
+        Returns:
+            Result of type ``PillarScoringStrategy``.
+        """
         from synthorg.hr.evaluation.configurable_scorer import (  # noqa: PLC0415
             ConfigurablePillarScorer,
         )
@@ -154,6 +169,11 @@ class EvaluationService:
 
     @staticmethod
     def _default_governance() -> PillarScoringStrategy:
+        """Default governance.
+
+        Returns:
+            Result of type ``PillarScoringStrategy``.
+        """
         from synthorg.hr.evaluation.configurable_scorer import (  # noqa: PLC0415
             ConfigurablePillarScorer,
         )
@@ -168,6 +188,11 @@ class EvaluationService:
 
     @staticmethod
     def _default_ux() -> PillarScoringStrategy:
+        """Default ux.
+
+        Returns:
+            Result of type ``PillarScoringStrategy``.
+        """
         from synthorg.hr.evaluation.configurable_scorer import (  # noqa: PLC0415
             ConfigurablePillarScorer,
         )
@@ -220,7 +245,11 @@ class EvaluationService:
         *,
         now: AwareDatetime,
     ) -> EvaluationContext:
-        """Fetch data from tracker and build the evaluation context."""
+        """Fetch data from tracker and build the evaluation context.
+
+        Returns:
+            Result of type ``EvaluationContext``.
+        """
         cfg = self._config
         snapshot = await self._tracker.get_snapshot(agent_id, now=now)
         task_records = self._tracker.get_task_metrics(agent_id=agent_id)
@@ -255,6 +284,9 @@ class EvaluationService:
         (Resilience) when wired; falls back to the YAML-baked
         ``pillar.enabled`` field for the other pillars and when no
         resolver is wired.
+
+        Returns:
+            List of ``tuple[EvaluationPillar, bool, float, PillarScoringStrategy]``.
         """
         cfg = self._config
         # The two resolver lookups are independent; running them
@@ -320,7 +352,12 @@ class EvaluationService:
         list[tuple[EvaluationPillar, PillarScoringStrategy]],
         dict[str, float],
     ]:
-        """Determine enabled pillars, log skipped ones, redistribute weights."""
+        """Determine enabled pillars, log skipped ones, redistribute weights.
+
+        Returns:
+            Tuple ``(list[tuple[EvaluationPillar, PillarScoringStrategy]], dict[str,
+            float])``.
+        """
         pillar_map = await self._get_pillar_configs()
 
         enabled: list[tuple[EvaluationPillar, float, PillarScoringStrategy]] = []
@@ -350,7 +387,11 @@ class EvaluationService:
         enabled: list[tuple[EvaluationPillar, PillarScoringStrategy]],
         context: EvaluationContext,
     ) -> list[PillarScore]:
-        """Score all enabled pillars concurrently via TaskGroup."""
+        """Score all enabled pillars concurrently via TaskGroup.
+
+        Returns:
+            List of ``PillarScore``.
+        """
         async with asyncio.TaskGroup() as tg:
             tasks: dict[EvaluationPillar, asyncio.Task[PillarScore]] = {
                 pillar: tg.create_task(strategy.score(context=context))
@@ -366,7 +407,11 @@ class EvaluationService:
         pillar_scores: list[PillarScore],
         weights: dict[str, float],
     ) -> EvaluationReport:
-        """Compute weighted overall score and build the report."""
+        """Compute weighted overall score and build the report.
+
+        Returns:
+            Result of type ``EvaluationReport``.
+        """
         overall_score = 0.0
         overall_confidence = 0.0
         for ps in pillar_scores:
@@ -456,6 +501,9 @@ class EvaluationService:
         counts, recovery rate, success streaks, and quality score
         standard deviation. Recovered tasks are capped at the failure
         count as a defensive invariant.
+
+        Returns:
+            Result of type ``ResilienceMetrics``.
         """
         total = len(records)
         if total == 0:
@@ -517,6 +565,9 @@ def _compute_quality_stddev(
     """Compute population standard deviation of quality scores.
 
     Returns None when fewer than 2 scored records exist.
+
+    Returns:
+        The resulting ``float``, or ``None`` when unavailable.
     """
     quality_scores = [
         r.quality_score for r in sorted_records if r.quality_score is not None

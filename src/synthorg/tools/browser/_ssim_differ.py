@@ -13,6 +13,7 @@ import asyncio
 from pathlib import Path  # noqa: TC003 -- runtime use in image open
 from typing import Any, cast
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.browser import (
     BROWSER_DIFF_FAILED,
@@ -40,7 +41,14 @@ class SSIMDiffer:
         tolerance: float,
         diff_output: Path,
     ) -> float:
-        """Return SSIM score in [0.0, 1.0]."""
+        """Return SSIM score in [0.0, 1.0].
+
+        Returns:
+            Result of type ``float``.
+
+        Raises:
+            BrowserDiffError: If the related operation fails.
+        """
         del tolerance  # caller compares; differ only computes the score
         if not baseline.exists():
             raise BrowserDiffError(
@@ -70,6 +78,12 @@ def _compare_sync(
     Separated from :meth:`SSIMDiffer.compare` so the async wrapper
     can offload it to ``asyncio.to_thread`` without re-entering
     Pillow / NumPy from the event-loop thread.
+
+    Returns:
+        Result of type ``float``.
+
+    Raises:
+        BrowserDiffError: If the related operation fails.
     """
     try:
         import numpy as np  # noqa: PLC0415
@@ -114,9 +128,8 @@ def _compare_sync(
 
     except BrowserDiffError:
         raise
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             BROWSER_DIFF_FAILED,
             baseline=str(baseline),

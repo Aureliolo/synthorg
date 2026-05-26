@@ -5,6 +5,7 @@ Shares memory with agents of the same role.
 
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.models import MemoryStoreRequest
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.procedural_memory import (
@@ -101,6 +102,7 @@ class RoleScopedPropagation:
                 await memory_backend.store(str(target.id), store_request)
                 count += 1
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     PROCEDURAL_PROPAGATION_TARGET_FAILED,
                     target_id=str(target.id),

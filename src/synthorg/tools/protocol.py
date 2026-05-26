@@ -55,6 +55,9 @@ class ToolInvokerProtocol(Protocol):
         Recoverable errors are returned as ``ToolResult(is_error=True)``;
         non-recoverable errors (``MemoryError``, ``RecursionError``) are
         re-raised after logging.
+
+        Returns:
+            Result of type ``ToolResult``.
         """
         ...
 
@@ -67,6 +70,9 @@ class ToolInvokerProtocol(Protocol):
         """Execute multiple tool calls concurrently.
 
         Results are returned in input order.
+
+        Returns:
+            Tuple of ``ToolResult``.
         """
         ...
 
@@ -74,6 +80,9 @@ class ToolInvokerProtocol(Protocol):
         """Return lightweight L1 metadata for permitted tools.
 
         Used by the agent engine for system-prompt discovery injection.
+
+        Returns:
+            Tuple of ``ToolL1Metadata``.
         """
         ...
 
@@ -81,5 +90,9 @@ class ToolInvokerProtocol(Protocol):
         self,
         loaded_tools: frozenset[str],
     ) -> tuple[ToolDefinition, ...]:
-        """Return full definitions for loaded + discovery tools."""
+        """Return full definitions for loaded + discovery tools.
+
+        Returns:
+            Tuple of ``ToolDefinition``.
+        """
         ...

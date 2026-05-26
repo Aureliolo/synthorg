@@ -35,6 +35,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from synthorg.api.boundary import parse_typed
 from synthorg.core.clock import SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ToolCategory
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.desktop import (
@@ -93,7 +94,11 @@ _DEPLOY_LOCKS: Final[dict[Path, asyncio.Lock]] = {}
 
 
 def _get_deploy_lock(workspace: Path) -> asyncio.Lock:
-    """Return the workspace-scoped asset-deployment lock."""
+    """Return the workspace-scoped asset-deployment lock.
+
+    Returns:
+        Result of type ``asyncio.Lock``.
+    """
     lock = _DEPLOY_LOCKS.get(workspace)
     if lock is None:
         lock = asyncio.Lock()
@@ -139,6 +144,9 @@ class DesktopTool(BaseTool):
             clock: Clock seam. Production passes :class:`SystemClock`;
                 tests pass :class:`FakeClock`. Defaults to a
                 :class:`SystemClock`.
+
+        Raises:
+            DesktopDomainError: If the related operation fails.
         """
         super().__init__(
             name="desktop",
@@ -171,7 +179,11 @@ class DesktopTool(BaseTool):
         *,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Dispatch on ``mode`` and return a structured result."""
+        """Dispatch on ``mode`` and return a structured result.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         try:
             args = parse_typed("tool.desktop", arguments, DesktopToolArgs)
         except PydanticValidationError as exc:
@@ -200,9 +212,8 @@ class DesktopTool(BaseTool):
         """Release sandbox resources tied to this tool's owner."""
         try:
             await self._sandbox.release_owner(self._owner_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DESKTOP_CLOSE_FAILED,
                 owner_id=self._owner_id,
@@ -215,6 +226,11 @@ class DesktopTool(BaseTool):
     # ---------------------------------------------------------------
 
     async def _mode_launch(self, args: DesktopToolArgs) -> ToolExecutionResult:
+        """Mode launch.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         logger.debug(DESKTOP_LAUNCH_START, command_present=True)
         payload = await self._run_executor(
             operation="launch",
@@ -234,6 +250,11 @@ class DesktopTool(BaseTool):
         return _ok_result(launch)
 
     async def _mode_input(self, args: DesktopToolArgs) -> ToolExecutionResult:
+        """Mode input.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         logger.debug(DESKTOP_INPUT_START, action=args.mode)
         extra = {
             "x": args.x,
@@ -260,6 +281,11 @@ class DesktopTool(BaseTool):
         return _ok_result(input_result)
 
     async def _mode_screenshot(self, args: DesktopToolArgs) -> ToolExecutionResult:
+        """Mode screenshot.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         assert args.screenshot_name is not None  # noqa: S101 -- args validator guard
         logger.debug(DESKTOP_SCREENSHOT_START, screenshot=args.screenshot_name)
         host_path = self._screenshots.screenshot_path(
@@ -297,7 +323,11 @@ class DesktopTool(BaseTool):
     # ---------------------------------------------------------------
 
     def _container_path(self, host_path: Path) -> str:
-        """Map a host workspace path to its in-container equivalent."""
+        """Map a host workspace path to its in-container equivalent.
+
+        Returns:
+            Result of type ``str``.
+        """
         relative = host_path.resolve().relative_to(self._workspace).as_posix()
         return f"{CONTAINER_WORKSPACE_ROOT}/{relative}"
 
@@ -312,6 +342,9 @@ class DesktopTool(BaseTool):
         The launch budget honours the per-call ``launch_timeout_seconds``
         so a deliberately long launch is not terminated prematurely by a
         static outer deadline.
+
+        Returns:
+            Result of type ``float``.
         """
         budget = SESSION_START_TIMEOUT_SECONDS
         if operation == "launch":
@@ -334,6 +367,12 @@ class DesktopTool(BaseTool):
         ``result`` is protocol drift, not a successful action, so it
         surfaces as a domain error rather than silently defaulting to
         placeholder values.
+
+        Returns:
+            Result of type ``T``.
+
+        Raises:
+            DesktopSessionError: If the related operation fails.
         """
         try:
             return parse_typed(boundary, payload.get("result"), model)
@@ -357,6 +396,16 @@ class DesktopTool(BaseTool):
         args: DesktopToolArgs,
         extra: dict[str, Any],
     ) -> dict[str, Any]:
+        """Run executor.
+
+        Returns:
+            Mapping from ``str`` to ``Any``.
+
+        Raises:
+            DesktopSessionError: If the related operation fails.
+            _map_executor_error: Raised when the relevant invariant fails.
+            DesktopDomainError: If the related operation fails.
+        """
         executor_container = (
             f"{CONTAINER_WORKSPACE_ROOT}/{_DEPLOY_SUBDIR}/{_EXECUTOR_DEPLOY_NAME}"
         )
@@ -376,9 +425,8 @@ class DesktopTool(BaseTool):
                 timeout=timeout,
                 owner_id=self._owner_id,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DESKTOP_EXECUTOR_FAILED,
                 operation=operation,
@@ -428,6 +476,9 @@ class DesktopTool(BaseTool):
         Re-copies only when the source is newer than the deployed copy,
         so an updated executor lands on the next call without a stale
         in-container script lingering.
+
+        Raises:
+            DesktopSessionError: If the related operation fails.
         """
         lock = _get_deploy_lock(self._workspace)
         dest_dir = self._workspace / _DEPLOY_SUBDIR
@@ -435,6 +486,11 @@ class DesktopTool(BaseTool):
         source = _EXECUTOR_SOURCE_PATH
 
         def _deploy() -> bool:
+            """Deploy.
+
+            Returns:
+                ``True`` if the operation succeeds, ``False`` otherwise.
+            """
             dest_dir.mkdir(parents=True, exist_ok=True)
             if dest.exists() and dest.stat().st_mtime >= source.stat().st_mtime:
                 return False
@@ -460,7 +516,11 @@ class DesktopTool(BaseTool):
 
 
 def _ok_result(model: BaseModel) -> ToolExecutionResult:
-    """Wrap a result model as a successful ToolExecutionResult."""
+    """Wrap a result model as a successful ToolExecutionResult.
+
+    Returns:
+        Result of type ``ToolExecutionResult``.
+    """
     payload = model.model_dump(mode="json")
     return ToolExecutionResult(
         content=json.dumps(payload),
@@ -473,7 +533,11 @@ def _error_result(
     error_cls: type[DesktopDomainError],
     exc: Exception,
 ) -> ToolExecutionResult:
-    """Wrap a domain error as an error ToolExecutionResult."""
+    """Wrap a domain error as an error ToolExecutionResult.
+
+    Returns:
+        Result of type ``ToolExecutionResult``.
+    """
     return ToolExecutionResult(
         content=safe_error_description(exc),
         is_error=True,
@@ -491,6 +555,9 @@ def _map_executor_error(
     A recognised executor ``error_type`` maps to its specific domain
     error; an unrecognised one is logged so executor / host drift is
     visible, then mapped by operation.
+
+    Returns:
+        Result of type ``DesktopDomainError``.
     """
     if err_type == "DesktopAppNotRunningError":
         return DesktopAppNotRunningError(message)

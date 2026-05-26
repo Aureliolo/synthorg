@@ -54,6 +54,9 @@ async def resolve_desktop_settings(
     path. On validation failure log a warning and return the
     ``DesktopSettings`` defaults so the ``DesktopTool`` behaves as if no
     overrides were configured.
+
+    Returns:
+        Result of type ``DesktopSettings``.
     """
     try:
         kind = DesktopDriverKind(await resolver.get_str(_NS, _KEY_DRIVER))

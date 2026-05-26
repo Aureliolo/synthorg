@@ -68,7 +68,14 @@ class EmbeddingFineTuneConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_required_when_enabled(self) -> Self:
-        """Require checkpoint_path and base_model when fine-tuning is enabled."""
+        """Require checkpoint_path and base_model when fine-tuning is enabled.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.enabled and self.checkpoint_path is None:
             msg = "checkpoint_path must be set when fine-tuning is enabled"
             logger.warning(
@@ -96,6 +103,12 @@ class EmbeddingFineTuneConfig(BaseModel):
         """Reject parent-directory traversal and Windows paths.
 
         Consistent with ``Mem0BackendConfig._reject_traversal``.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         for field_name in ("checkpoint_path", "training_data_dir"):
             val = getattr(self, field_name)
@@ -214,7 +227,14 @@ class EmbeddingCostConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_pricing_non_negative(self) -> Self:
-        """Reject negative cost-per-1K values in model_pricing."""
+        """Reject negative cost-per-1K values in model_pricing.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         for model_name, cost in self.model_pricing.items():
             if cost < 0.0:
                 msg = (
@@ -279,6 +299,12 @@ class Mem0BackendConfig(BaseModel):
         Note: ``build_config_from_company_config`` passes ``data_dir``
         from ``CompanyMemoryConfig``, so this check also protects
         the factory path.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         parts = (
             PureWindowsPath(self.data_dir).parts + PurePosixPath(self.data_dir).parts

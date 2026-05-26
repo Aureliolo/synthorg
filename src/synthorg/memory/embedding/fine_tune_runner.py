@@ -25,6 +25,7 @@ import time
 from pathlib import Path
 from typing import Any, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.embedding.cancellation import CancellationToken
 from synthorg.memory.embedding.fine_tune import FineTuneStage
 from synthorg.observability import (
@@ -59,6 +60,12 @@ def _resolve_health_port() -> int:
     log ``CONFIG_VALIDATION_FAILED`` and raise :class:`ValueError` so
     the orchestrator sees a fast, loud failure instead of the
     container silently binding the wrong port.
+
+    Returns:
+        Result of type ``int``.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
     """
     raw = os.environ.get(_HEALTH_PORT_ENV_VAR)
     if raw is None:
@@ -149,6 +156,7 @@ class _HealthHandler(http.server.BaseHTTPRequestHandler):
     _start_time: float = 0.0  # Set by _start_health_server before serving.
 
     def do_GET(self) -> None:
+        """Do GET."""
         if self.path == "/healthz":
             body = json.dumps(
                 {
@@ -166,7 +174,8 @@ class _HealthHandler(http.server.BaseHTTPRequestHandler):
             self.send_error(404)
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
-        pass  # Suppress access logs.
+        """Log message."""
+        # Suppress access logs.
 
 
 def _start_health_server() -> http.server.HTTPServer | None:
@@ -205,7 +214,11 @@ def _shutdown_health_server(server: http.server.HTTPServer | None) -> None:
 
 
 def _run() -> int:
-    """Execute the fine-tune stage and return an exit code."""
+    """Execute the fine-tune stage and return an exit code.
+
+    Returns:
+        Result of type ``int``.
+    """
     health_server = _start_health_server()
 
     config = _load_config()
@@ -235,9 +248,8 @@ def _run() -> int:
         print(f"STAGE_START:{stage_name}", flush=True)  # noqa: T201
         try:
             asyncio.run(_dispatch_stage(stage, config, token))
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             print(  # noqa: T201
                 f"ERROR: {stage_name} failed: {safe_error_description(exc)}",
                 file=sys.stderr,

@@ -132,7 +132,14 @@ class HiringRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_status_candidate_consistency(self) -> Self:
-        """Ensure status-dependent candidate constraints."""
+        """Ensure status-dependent candidate constraints.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         needs_candidate = {
             HiringRequestStatus.INSTANTIATED,
             HiringRequestStatus.APPROVED,
@@ -184,7 +191,14 @@ class FiringRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_temporal_order(self) -> Self:
-        """Ensure completed_at >= created_at when both are present."""
+        """Ensure completed_at >= created_at when both are present.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.completed_at is not None and self.completed_at < self.created_at:
             msg = (
                 f"completed_at ({self.completed_at}) must be >= "
@@ -216,7 +230,14 @@ class OnboardingStepRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_completed_consistency(self) -> Self:
-        """Ensure completed and completed_at are consistent."""
+        """Ensure completed and completed_at are consistent.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.completed and self.completed_at is None:
             msg = "completed_at must be set when completed is True"
             raise ValueError(msg)
@@ -258,7 +279,14 @@ class OnboardingChecklist(BaseModel):
 
     @model_validator(mode="after")
     def _validate_completion_consistency(self) -> Self:
-        """Ensure completed_at and step completion status are consistent."""
+        """Ensure completed_at and step completion status are consistent.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         all_done = all(s.completed for s in self.steps)
         if all_done and self.completed_at is None:
             msg = "completed_at must be set when all steps are completed"
@@ -317,7 +345,14 @@ class OffboardingRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_temporal_order(self) -> Self:
-        """Ensure completed_at >= started_at."""
+        """Ensure completed_at >= started_at.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.completed_at < self.started_at:
             msg = (
                 f"completed_at ({self.completed_at}) must be >= "

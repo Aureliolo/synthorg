@@ -68,6 +68,9 @@ class ReviewGateGuard:
 
         Returns:
             Decision blocking items when review required.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
         """
         if not items:
             return TrainingGuardDecision(

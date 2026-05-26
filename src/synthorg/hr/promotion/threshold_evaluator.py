@@ -139,7 +139,11 @@ class ThresholdEvaluator:
         thresholds: Mapping[str, float],
         direction: PromotionDirection,
     ) -> list[CriterionResult]:
-        """Evaluate individual criteria against thresholds."""
+        """Evaluate individual criteria against thresholds.
+
+        Returns:
+            List of ``CriterionResult``.
+        """
         results: list[CriterionResult] = []
 
         # Quality score criterion

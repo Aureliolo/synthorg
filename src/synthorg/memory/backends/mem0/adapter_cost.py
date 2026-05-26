@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.budget import (
     BUDGET_EMBEDDING_COST_FAILED,
@@ -91,7 +92,13 @@ class Mem0AdapterCostMixin:
         operation: str,
         model: str,
     ) -> None:
-        """Persist a CostRecord via the tracker (best-effort)."""
+        """Persist a CostRecord via the tracker (best-effort).
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            CancelledError: If the related operation fails.
+        """
         try:
             await self._cost_tracker.record(record)  # type: ignore[union-attr]
             logger.debug(
@@ -114,6 +121,7 @@ class Mem0AdapterCostMixin:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 BUDGET_EMBEDDING_COST_FAILED,
                 agent_id=agent_id,

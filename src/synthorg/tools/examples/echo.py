@@ -51,5 +51,8 @@ class EchoTool(BaseTool):
         ``ToolInvoker`` has already validated ``arguments`` against
         :class:`EchoArgs` via :attr:`BaseTool.args_model` before this
         method is called, so the access below is unconditionally safe.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
         """
         return ToolExecutionResult(content=arguments["message"])

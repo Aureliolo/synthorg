@@ -97,7 +97,11 @@ class ToolIntegrityReport(BaseModel):
 
     @model_validator(mode="after")
     def _deep_copy_hashes(self) -> Self:
-        """Deep-copy and freeze current_hashes."""
+        """Deep-copy and freeze current_hashes.
+
+        Returns:
+            Result of type ``Self``.
+        """
         object.__setattr__(
             self,
             "current_hashes",
@@ -156,6 +160,9 @@ class ToolIntegrityChecker:
 
         Returns:
             Report with any violations and all current hashes.
+
+        Raises:
+            RuntimeError: If the operation fails at runtime.
         """
         logger.debug(
             TOOL_REGISTRY_INTEGRITY_CHECK_START,

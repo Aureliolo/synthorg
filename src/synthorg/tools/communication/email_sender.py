@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
@@ -231,9 +232,8 @@ class EmailSenderTool(BaseCommunicationTool):
                 body=body,
                 body_is_html=body_is_html,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMM_TOOL_EMAIL_SEND_FAILED,
                 error="smtp_error",

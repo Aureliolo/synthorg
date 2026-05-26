@@ -10,6 +10,7 @@ import asyncio
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry import StrategyRegistry
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.sandbox import (
@@ -59,6 +60,14 @@ def _build_subprocess_backend(
     # Subprocess backend has no Docker containers to track or reuse;
     # the repo / lifecycle parameters are accepted to keep a uniform
     # registry signature.
+    """Build subprocess backend.
+
+    Returns:
+        Result of type ``SandboxBackend``.
+
+    Raises:
+        Exception: Raised when the relevant invariant fails.
+    """
     del tracked_container_repo, lifecycle_strategy
     try:
         return SubprocessSandbox(
@@ -83,6 +92,14 @@ def _build_docker_backend(
     tracked_container_repo: TrackedContainerRepository | None = None,
     lifecycle_strategy: SandboxLifecycleStrategy | None = None,
 ) -> SandboxBackend:
+    """Build docker backend.
+
+    Returns:
+        Result of type ``SandboxBackend``.
+
+    Raises:
+        Exception: Raised when the relevant invariant fails.
+    """
     try:
         return DockerSandbox(
             config=config.docker,
@@ -269,15 +286,25 @@ async def cleanup_sandbox_backends(
     ``return_exceptions=True`` for best-effort parallel cleanup
     that is resilient to task cancellation.
 
+    Interpreter-critical exceptions (``MemoryError`` / ``RecursionError``)
+    are the exception: they are re-raised rather than logged, so a fatal
+    condition propagates instead of being demoted to a warning.
+
     Args:
         backends: Mapping of backend name to backend instance.
+
+    Raises:
+        MemoryError: Propagated when a backend cleanup raises it.
+        RecursionError: Propagated when a backend cleanup raises it.
     """
 
     async def _cleanup_one(name: str, backend: SandboxBackend) -> None:
+        """Clean up one backend; broad-except so one failure cannot cancel siblings."""
         logger.debug(SANDBOX_FACTORY_CLEANUP, backend=name)
         try:
             await backend.cleanup()
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SANDBOX_FACTORY_CLEANUP_FAILED,
                 backend=name,
@@ -295,9 +322,13 @@ async def cleanup_sandbox_backends(
         return_exceptions=True,
     )
     # Log BaseException subclasses (CancelledError, KeyboardInterrupt)
-    # that escaped _cleanup_one's except Exception block
+    # that escaped _cleanup_one's except Exception block. gather captured
+    # them as results, so reraise_critical must run here too: otherwise an
+    # interpreter-critical error (MemoryError / RecursionError) re-raised
+    # inside _cleanup_one would be silently demoted to a log line.
     for (name, _), result in zip(backend_items, results, strict=True):
         if isinstance(result, BaseException):
+            reraise_critical(result)
             log_exception_redacted(
                 logger,
                 SANDBOX_FACTORY_CLEANUP_FAILED,

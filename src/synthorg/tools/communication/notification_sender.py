@@ -10,6 +10,7 @@ from typing import Any, ClassVar, Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ValidationError
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
 from synthorg.notifications.models import (
     Notification,
@@ -213,9 +214,8 @@ class NotificationSenderTool(BaseCommunicationTool):
 
         try:
             await self._dispatcher.dispatch(notification)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMM_TOOL_NOTIFICATION_SEND_FAILED,
                 notification_id=notification.id,

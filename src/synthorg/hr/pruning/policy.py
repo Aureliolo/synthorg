@@ -172,7 +172,11 @@ class ThresholdPruningPolicy:
         )
 
     def _window_qualifies(self, window: WindowMetrics) -> bool:
-        """Check if a single window fails both thresholds."""
+        """Check if a single window fails both thresholds.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         if window.data_point_count < self._config.minimum_window_data_points:
             return False
         if window.avg_quality_score is None or window.collaboration_score is None:
@@ -186,7 +190,11 @@ class ThresholdPruningPolicy:
         self,
         snapshot: AgentPerformanceSnapshot,
     ) -> dict[str, float]:
-        """Build debug scores from snapshot data."""
+        """Build debug scores from snapshot data.
+
+        Returns:
+            Mapping from ``str`` to ``float``.
+        """
         scores: dict[str, float] = {}
         if snapshot.overall_quality_score is not None:
             scores["overall_quality"] = snapshot.overall_quality_score

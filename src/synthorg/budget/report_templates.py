@@ -172,7 +172,14 @@ class RiskTrendsReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_agent_ranking_order(self) -> Self:
-        """Ensure risk_by_agent is sorted descending."""
+        """Ensure risk_by_agent is sorted descending.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         values = [v for _, v in self.risk_by_agent]
         if values != sorted(values, reverse=True):
             msg = "risk_by_agent must be sorted by risk_units descending"
@@ -181,7 +188,14 @@ class RiskTrendsReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_action_type_ranking_order(self) -> Self:
-        """Ensure risk_by_action_type is sorted descending."""
+        """Ensure risk_by_action_type is sorted descending.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         values = [v for _, v in self.risk_by_action_type]
         if values != sorted(values, reverse=True):
             msg = "risk_by_action_type must be sorted by risk_units descending"
@@ -219,7 +233,14 @@ class ComprehensiveReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_time_range(self) -> Self:
-        """Ensure start < end."""
+        """Ensure start < end.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.start >= self.end:
             msg = (
                 f"start ({self.start.isoformat()}) must be before "

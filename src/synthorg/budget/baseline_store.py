@@ -74,7 +74,11 @@ class BaselineStore:
         self._window_size = window_size
 
     def __len__(self) -> int:
-        """Number of records currently in the store."""
+        """Number of records currently in the store.
+
+        Returns:
+            Result of type ``int``.
+        """
         return len(self._records)
 
     def record(self, baseline: BaselineRecord) -> None:
@@ -97,28 +101,44 @@ class BaselineStore:
         )
 
     def get_baseline_turns(self) -> float | None:
-        """Mean turns across stored records, or None if empty."""
+        """Mean turns across stored records, or None if empty.
+
+        Returns:
+            The matching ``float``, or ``None`` when no match is found.
+        """
         if not self._records:
             logger.debug(COORD_METRICS_BASELINE_INSUFFICIENT, metric="turns")
             return None
         return statistics.mean(r.turns for r in self._records)
 
     def get_baseline_error_rate(self) -> float | None:
-        """Mean error rate across stored records, or None if empty."""
+        """Mean error rate across stored records, or None if empty.
+
+        Returns:
+            The matching ``float``, or ``None`` when no match is found.
+        """
         if not self._records:
             logger.debug(COORD_METRICS_BASELINE_INSUFFICIENT, metric="error_rate")
             return None
         return statistics.mean(r.error_rate for r in self._records)
 
     def get_baseline_tokens(self) -> float | None:
-        """Mean total tokens across stored records, or None if empty."""
+        """Mean total tokens across stored records, or None if empty.
+
+        Returns:
+            The matching ``float``, or ``None`` when no match is found.
+        """
         if not self._records:
             logger.debug(COORD_METRICS_BASELINE_INSUFFICIENT, metric="total_tokens")
             return None
         return statistics.mean(r.total_tokens for r in self._records)
 
     def get_baseline_duration(self) -> float | None:
-        """Mean duration in seconds across stored records, or None if empty."""
+        """Mean duration in seconds across stored records, or None if empty.
+
+        Returns:
+            The matching ``float``, or ``None`` when no match is found.
+        """
         if not self._records:
             logger.debug(COORD_METRICS_BASELINE_INSUFFICIENT, metric="duration_seconds")
             return None

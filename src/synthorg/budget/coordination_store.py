@@ -143,5 +143,9 @@ class CoordinationMetricsStore:
         return tuple(results), total_matches
 
     def count(self) -> int:
-        """Return the number of stored records."""
+        """Return the number of stored records.
+
+        Returns:
+            Result of type ``int``.
+        """
         return len(self._records)

@@ -8,6 +8,7 @@ company-level defaults.
 from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime, timedelta
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.consolidation.config import RetentionConfig  # noqa: TC001
@@ -105,6 +106,9 @@ class RetentionEnforcer:
 
         Returns:
             Merged tuple of (category, days) pairs.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         for days in agent_overrides.values():
             if days < 1:
@@ -237,6 +241,7 @@ class RetentionEnforcer:
                             category=category.value,
                         )
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     RETENTION_CLEANUP_FAILED,
                     agent_id=agent_id,

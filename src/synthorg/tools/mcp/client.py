@@ -14,6 +14,7 @@ from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared._httpx_utils import create_mcp_http_client
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_CLIENT_CONNECTED,
@@ -129,6 +130,12 @@ class MCPClient:
         Failures are logged at WARNING (not EXCEPTION) so ``exc_info``
         cannot re-bind ``str(exc)`` and bypass the
         ``safe_error_description`` scrub on credential-bearing paths.
+
+        Returns:
+            Result of type ``ClientSession``.
+
+        Raises:
+            MCPConnectionError: If the related operation fails.
         """
         try:
             return await asyncio.wait_for(
@@ -148,12 +155,8 @@ class MCPClient:
             self._raise_connection_error(msg, exc)
         except MCPConnectionError:
             raise
-        except MemoryError, RecursionError:
-            # Interpreter-state failures bypass the broad-Exception
-            # wrapper so the orchestrator can surface them as
-            # catastrophic rather than transient transport errors.
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MCP_CLIENT_CONNECTION_FAILED,
                 server=self._config.name,
@@ -174,7 +177,11 @@ class MCPClient:
         message: str,
         exc: BaseException,
     ) -> NoReturn:
-        """Raise ``MCPConnectionError`` with the server context attached."""
+        """Raise ``MCPConnectionError`` with the server context attached.
+
+        Raises:
+            MCPConnectionError: If the related operation fails.
+        """
         raise MCPConnectionError(
             message,
             context={
@@ -216,6 +223,7 @@ class MCPClient:
                 try:
                     await self._exit_stack.aclose()
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         MCP_CLIENT_DISCONNECT_FAILED,
                         server=self._config.name,
@@ -260,6 +268,7 @@ class MCPClient:
             try:
                 result = await session.list_tools()
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     MCP_DISCOVERY_FAILED,
                     server=self._config.name,
@@ -344,6 +353,7 @@ class MCPClient:
                     },
                 ) from exc
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     MCP_INVOKE_FAILED,
                     server=self._config.name,
@@ -392,7 +402,11 @@ class MCPClient:
         await self.connect()
 
     async def __aenter__(self) -> Self:
-        """Enter async context: connect to server."""
+        """Enter async context: connect to server.
+
+        Returns:
+            Result of type ``Self``.
+        """
         await self.connect()
         return self
 
@@ -440,6 +454,9 @@ class MCPClient:
 
         Returns:
             Connected ``ClientSession`` (not yet initialized).
+
+        Raises:
+            MCPConnectionError: If the related operation fails.
         """
         if self._config.command is None:
             msg = f"Server {self._config.name!r}: stdio transport requires 'command'"
@@ -475,6 +492,9 @@ class MCPClient:
 
         Returns:
             Connected ``ClientSession`` (not yet initialized).
+
+        Raises:
+            MCPConnectionError: If the related operation fails.
         """
         if self._config.url is None:
             msg = f"Server {self._config.name!r}: streamable_http requires 'url'"

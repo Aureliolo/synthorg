@@ -113,7 +113,11 @@ class ScalingDecisionService:
         return None
 
     async def get_config(self) -> ScalingConfig:
-        """Return the current scaling configuration."""
+        """Return the current scaling configuration.
+
+        Returns:
+            Result of type ``ScalingConfig``.
+        """
         return self._scaling.config
 
     async def trigger(

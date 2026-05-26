@@ -93,7 +93,11 @@ _CAREER_EVENT_TYPES: frozenset[LifecycleEventType] = frozenset(
 
 
 def _lifecycle_to_activity(event: AgentLifecycleEvent) -> ActivityEvent:
-    """Convert a lifecycle event to a timeline activity event."""
+    """Convert a lifecycle event to a timeline activity event.
+
+    Returns:
+        Result of type ``ActivityEvent``.
+    """
     activity_type = ActivityEventType(event.event_type.value)
     return ActivityEvent(
         event_type=activity_type,
@@ -108,7 +112,11 @@ def _task_metric_to_activity(
     *,
     currency: str = DEFAULT_CURRENCY,
 ) -> ActivityEvent:
-    """Convert a task metric record to a task_completed event (success or failure)."""
+    """Convert a task metric record to a task_completed event (success or failure).
+
+    Returns:
+        Result of type ``ActivityEvent``.
+    """
     status = "succeeded" if record.is_success else "failed"
     desc = (
         f"Task {record.task_id} {status} "
@@ -132,6 +140,12 @@ def _task_metric_to_started_activity(
     """Convert a task metric with ``started_at`` to a task_started event.
 
     Caller must ensure ``record.started_at`` is not None.
+
+    Returns:
+        Result of type ``ActivityEvent``.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
     """
     if record.started_at is None:
         msg = "started_at must not be None"
@@ -152,7 +166,11 @@ def _cost_record_to_activity(
     *,
     currency: str = DEFAULT_CURRENCY,
 ) -> ActivityEvent:
-    """Convert a cost record to a cost_incurred activity event."""
+    """Convert a cost record to a cost_incurred activity event.
+
+    Returns:
+        Result of type ``ActivityEvent``.
+    """
     desc = (
         f"API call to {record.model} "
         f"({record.input_tokens}+{record.output_tokens} tokens, "
@@ -172,7 +190,11 @@ def _cost_record_to_activity(
 def _tool_invocation_to_activity(
     record: ToolInvocationRecord,
 ) -> ActivityEvent:
-    """Convert a tool invocation record to a tool_used activity event."""
+    """Convert a tool invocation record to a tool_used activity event.
+
+    Returns:
+        Result of type ``ActivityEvent``.
+    """
     if record.is_success:
         desc = f"Tool {record.tool_name} executed successfully"
     else:
@@ -193,7 +215,11 @@ def _tool_invocation_to_activity(
 def _delegation_to_sent_activity(
     record: DelegationRecord,
 ) -> ActivityEvent:
-    """Convert a delegation record to a delegation_sent activity event."""
+    """Convert a delegation record to a delegation_sent activity event.
+
+    Returns:
+        Result of type ``ActivityEvent``.
+    """
     return ActivityEvent(
         event_type=ActivityEventType.DELEGATION_SENT,
         timestamp=record.timestamp,
@@ -213,7 +239,11 @@ def _delegation_to_sent_activity(
 def _delegation_to_received_activity(
     record: DelegationRecord,
 ) -> ActivityEvent:
-    """Convert a delegation record to a delegation_received activity event."""
+    """Convert a delegation record to a delegation_received activity event.
+
+    Returns:
+        Result of type ``ActivityEvent``.
+    """
     return ActivityEvent(
         event_type=ActivityEventType.DELEGATION_RECEIVED,
         timestamp=record.timestamp,

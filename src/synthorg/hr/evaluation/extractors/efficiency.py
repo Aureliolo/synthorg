@@ -48,7 +48,11 @@ class EfficiencyMetricExtractor:
         return EvaluationPillar.EFFICIENCY
 
     async def extract(self, context: EvaluationContext) -> ExtractedMetrics:
-        """Pick a window, gate cost/latency via resolver, emit sub-metrics."""
+        """Pick a window, gate cost/latency via resolver, emit sub-metrics.
+
+        Returns:
+            Result of type ``ExtractedMetrics``.
+        """
         cfg = context.config.efficiency
         window_map = {w.window_size: w for w in context.snapshot.windows}
         window = window_map.get("30d") or window_map.get("7d")
@@ -167,6 +171,9 @@ def _build_score_weight_dicts(
 
     Each sub-metric is added only when its toggle is on AND the
     window carries the source value. Returned dicts share keys.
+
+    Returns:
+        Tuple ``(dict[str, float], dict[str, float])``.
     """
     scores: dict[str, float] = {}
     weights: dict[str, float] = {}
@@ -201,5 +208,8 @@ def _normalize_to_score(observed: float, reference: float) -> float:
     ``score = clamp(MAX_SCORE * (1 - observed / reference), 0, MAX_SCORE)``.
     Values at or above ``reference`` clamp to 0; values at zero clamp
     to ``MAX_SCORE``.
+
+    Returns:
+        Result of type ``float``.
     """
     return min(MAX_SCORE, max(0.0, MAX_SCORE * (1.0 - observed / reference)))

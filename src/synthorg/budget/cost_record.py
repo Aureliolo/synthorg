@@ -22,6 +22,9 @@ def _new_claim_id() -> NotBlankStr:
 
     Module-level so it can be patched in tests if a deterministic key
     is needed; production callers should accept the default.
+
+    Returns:
+        Result of type ``NotBlankStr``.
     """
     return NotBlankStr(str(uuid.uuid4()))
 
@@ -137,7 +140,14 @@ class CostRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_token_consistency(self) -> Self:
-        """Ensure positive cost implies at least one non-zero token count."""
+        """Ensure positive cost implies at least one non-zero token count.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.cost > 0 and self.input_tokens == 0 and self.output_tokens == 0:
             msg = "cost is positive but both token counts are zero"
             raise ValueError(msg)
@@ -149,6 +159,12 @@ class CostRecord(BaseModel):
 
         If a retry reason is set, at least one retry must have occurred.
         If retry_count is zero or unset, there can be no retry reason.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if self.retry_reason is not None and (
             self.retry_count is None or self.retry_count == 0

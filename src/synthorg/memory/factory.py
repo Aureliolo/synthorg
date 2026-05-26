@@ -8,6 +8,7 @@ dispatches to concrete backend implementations based on
 import builtins
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.memory.config import CompanyMemoryConfig  # noqa: TC001
 from synthorg.observability.redaction import safe_error_description
@@ -45,6 +46,8 @@ def _create_mem0_backend(
     Raises:
         MemoryConfigError: If embedder is missing/invalid or
             backend construction fails.
+        MemoryError: If the related operation fails.
+        RecursionError: If the related operation fails.
     """
     from synthorg.memory.backends.mem0 import Mem0MemoryBackend  # noqa: PLC0415
     from synthorg.memory.backends.mem0.config import (  # noqa: PLC0415
@@ -91,6 +94,7 @@ def _create_mem0_backend(
         )
         raise
     except Exception as exc:
+        reraise_critical(exc)
         msg = f"Invalid Mem0 configuration: {safe_error_description(exc)}"
         logger.warning(
             MEMORY_BACKEND_CONFIG_INVALID,
@@ -114,6 +118,7 @@ def _create_mem0_backend(
         )
         raise
     except Exception as exc:
+        reraise_critical(exc)
         msg = f"Failed to create Mem0 backend: {safe_error_description(exc)}"
         logger.warning(
             MEMORY_BACKEND_CONFIG_INVALID,
@@ -216,6 +221,11 @@ def _build_mem0_entry(
     *,
     embedder: Mem0EmbedderConfig | None,
 ) -> MemoryBackend:
+    """Registry entry: build the mem0 backend (requires an embedder).
+
+    Returns:
+        A disconnected ``Mem0MemoryBackend``.
+    """
     return _create_mem0_backend(config, embedder=embedder)
 
 
@@ -224,6 +234,11 @@ def _build_inmemory_entry(
     *,
     embedder: Mem0EmbedderConfig | None,  # noqa: ARG001
 ) -> MemoryBackend:
+    """Registry entry: build the in-memory backend (embedder ignored).
+
+    Returns:
+        A disconnected ``InMemoryBackend``.
+    """
     return _create_inmemory_backend(config)
 
 
@@ -232,6 +247,11 @@ def _build_composite_entry(
     *,
     embedder: Mem0EmbedderConfig | None,
 ) -> MemoryBackend:
+    """Registry entry: build the namespace-routing composite backend.
+
+    Returns:
+        A disconnected ``CompositeBackend`` wrapping the configured children.
+    """
     return _create_composite_backend(config, embedder=embedder)
 
 
@@ -256,7 +276,11 @@ _REGISTRY: MemoryBackendRegistry = MemoryBackendRegistry(
 
 
 def default_registry() -> MemoryBackendRegistry:
-    """Return the module-level registry containing the built-in backends."""
+    """Return the module-level registry containing the built-in backends.
+
+    Returns:
+        Result of type ``MemoryBackendRegistry``.
+    """
     return _REGISTRY
 
 

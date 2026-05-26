@@ -22,6 +22,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.security import (
@@ -86,6 +87,9 @@ class AutonomyWorkflow:
         update: AutonomyUpdate,
     ) -> AutonomyUpdateResult:
         """Submit an autonomy change request and return the outcome.
+
+        Returns:
+            Result of type ``AutonomyUpdateResult``.
 
         Raises:
             AgentNotFoundError: If the agent is not registered.
@@ -159,6 +163,9 @@ class AutonomyWorkflow:
         Nothing mutates the agent's identity until a human decides. A
         PENDING row is non-terminal, so persisting it before any
         mutation is the designed behaviour, not a false audit.
+
+        Returns:
+            Result of type ``AutonomyUpdateResult``.
         """
         from synthorg.core.approval import (  # noqa: PLC0415
             ApprovalItem as _ApprovalItem,
@@ -220,6 +227,9 @@ class AutonomyWorkflow:
         audit row is a best-effort artefact (failure logs but does
         not roll back the mutation, since the run-time change has
         already taken effect).
+
+        Returns:
+            Result of type ``AutonomyUpdateResult``.
         """
         from synthorg.core.approval import (  # noqa: PLC0415
             ApprovalItem as _ApprovalItem,
@@ -267,9 +277,8 @@ class AutonomyWorkflow:
                     ),
                 )
                 approval_enqueued = True
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED,

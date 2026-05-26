@@ -65,7 +65,14 @@ class MemoryStorageConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_store_names(self) -> Self:
-        """Ensure vector_store and history_store are recognized values."""
+        """Ensure vector_store and history_store are recognized values.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.vector_store not in self._VALID_VECTOR_STORES:
             msg = (
                 f"Unknown vector_store {self.vector_store!r}. "
@@ -94,7 +101,14 @@ class MemoryStorageConfig(BaseModel):
 
     @model_validator(mode="after")
     def _reject_traversal(self) -> Self:
-        """Reject parent-directory traversal to prevent path escapes."""
+        """Reject parent-directory traversal to prevent path escapes.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         parts = (
             PureWindowsPath(self.data_dir).parts + PurePosixPath(self.data_dir).parts
         )
@@ -174,7 +188,14 @@ class EmbedderOverrideConfig(BaseModel):
 
     @model_validator(mode="after")
     def _model_requires_dims(self) -> Self:
-        """Require dims when model is set, and model when dims is set."""
+        """Require dims when model is set, and model when dims is set.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.model is not None and self.dims is None:
             msg = (
                 "dims must be set when model is overridden "
@@ -285,11 +306,23 @@ class CompanyMemoryConfig(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _apply_mirrors(cls, data: Any) -> Any:
+        """Apply mirrors.
+
+        Returns:
+            Result of type ``Any``.
+        """
         return apply_settings_mirrors(data, cls._MIRROR_FIELDS)
 
     @model_validator(mode="after")
     def _validate_backend_name(self) -> Self:
-        """Ensure backend is a known memory backend."""
+        """Ensure backend is a known memory backend.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.backend not in self._VALID_BACKENDS:
             msg = (
                 f"Unknown memory backend {self.backend!r}. "
@@ -306,7 +339,14 @@ class CompanyMemoryConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_composite_config(self) -> Self:
-        """Require composite config when backend is ``"composite"``."""
+        """Require composite config when backend is ``"composite"``.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.backend == "composite" and self.composite is None:
             msg = "composite config is required when backend is 'composite'"
             logger.warning(

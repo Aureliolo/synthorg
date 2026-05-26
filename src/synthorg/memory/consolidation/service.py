@@ -8,6 +8,7 @@ from collections.abc import Mapping  # noqa: TC003
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.consolidation.archival import ArchivalStore  # noqa: TC001
@@ -161,6 +162,12 @@ class MemoryConsolidationService:
         helper private prevents external callers from bypassing the
         ``memory.consolidation_enabled`` setting while still letting
         the maintenance flow resolve the flag exactly once.
+
+        Returns:
+            Result of type ``ConsolidationResult``.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
         """
         if self._strategy is None:
             logger.info(CONSOLIDATION_SKIPPED, agent_id=agent_id)
@@ -225,6 +232,9 @@ class MemoryConsolidationService:
 
         Returns:
             Number of entries deleted.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
         """
         try:
             total = await self._backend.count(agent_id)
@@ -316,6 +326,9 @@ class MemoryConsolidationService:
 
         Returns:
             Consolidation result from the consolidation step.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
         """
         enabled = await resolve_bool_with_fallback(
             resolver=self._config_resolver,
@@ -451,6 +464,7 @@ class MemoryConsolidationService:
         try:
             archival_id = await self._archival_store.archive(archival_entry)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ARCHIVAL_FAILED,
                 original_id=entry.id,

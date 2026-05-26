@@ -50,7 +50,14 @@ class RiskRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_action_type_format(self) -> Self:
-        """Ensure action_type follows the category:action convention."""
+        """Ensure action_type follows the category:action convention.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         parts = self.action_type.split(":", maxsplit=1)
         if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():  # noqa: PLR2004
             msg = (

@@ -72,7 +72,14 @@ class AnalyticsAggregation(BaseModel):
 
     @model_validator(mode="after")
     def _validate_count_consistency(self) -> Self:
-        """Enforce count invariants across aggregation fields."""
+        """Enforce count invariants across aggregation fields.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.retry_count > self.total_calls:
             msg = "retry_count cannot exceed total_calls"
             raise ValueError(msg)

@@ -68,6 +68,9 @@ class DatabaseConfig(BaseModel):
 
         Does not raise -- the tool factory falls back to the first
         available connection when the default is not found.
+
+        Returns:
+            Result of type ``Self``.
         """
         if self.connections and self.default_connection not in self.connections:
             logger.warning(

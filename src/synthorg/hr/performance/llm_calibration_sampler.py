@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -139,9 +140,8 @@ class LlmCalibrationSampler:
 
         try:
             llm_score, rationale, cost = await self._call_llm(record)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PERF_LLM_SAMPLE_FAILED,
                 agent_id=record.agent_id,
@@ -241,9 +241,17 @@ class LlmCalibrationSampler:
         the directive to the user message would send it at
         user-priority instead of system-priority, leaving the call
         site prompt-injectable even with the summary fenced.
+
+        Returns:
+            Result of type ``str``.
         """
 
         def _display(val: object) -> str:
+            """Display.
+
+            Returns:
+                Result of type ``str``.
+            """
             return "not observed" if val is None else str(val)
 
         metrics_block = (

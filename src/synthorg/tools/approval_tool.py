@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.core.validation import is_valid_action_type
 from synthorg.observability import get_logger, safe_error_description
@@ -155,6 +156,9 @@ class RequestHumanApprovalTool(BaseTool):
         """Create and persist the approval item.
 
         Returns ``None`` on success, or an error result on failure.
+
+        Returns:
+            The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
         """
         try:
             from synthorg.core.approval import ApprovalItem  # noqa: PLC0415
@@ -175,9 +179,8 @@ class RequestHumanApprovalTool(BaseTool):
                 metadata={"source": "request_human_approval"},
             )
             await self._approval_store.add(item)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 APPROVAL_GATE_ESCALATION_FAILED,
                 agent_id=self._agent_id,
@@ -199,7 +202,11 @@ class RequestHumanApprovalTool(BaseTool):
         risk_level: ApprovalRiskLevel,
         title: str,
     ) -> ToolExecutionResult:
-        """Build the success result with parking metadata."""
+        """Build the success result with parking metadata.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         logger.info(
             APPROVAL_GATE_ESCALATION_DETECTED,
             approval_id=approval_id,
@@ -228,6 +235,9 @@ class RequestHumanApprovalTool(BaseTool):
         """Validate action_type has ``category:action`` format.
 
         Returns ``None`` if valid, or an error result if invalid.
+
+        Returns:
+            The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
         """
         if not is_valid_action_type(action_type):
             return ToolExecutionResult(
@@ -245,13 +255,15 @@ class RequestHumanApprovalTool(BaseTool):
 
         Falls back to HIGH when no classifier is configured or when
         classification fails.
+
+        Returns:
+            Result of type ``ApprovalRiskLevel``.
         """
         if self._risk_classifier is not None:
             try:
                 level = self._risk_classifier.classify(action_type)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     APPROVAL_GATE_RISK_CLASSIFY_FAILED,
                     action_type=action_type,

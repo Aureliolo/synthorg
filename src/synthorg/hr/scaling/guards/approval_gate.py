@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Final
 from uuid import NAMESPACE_URL, uuid5
 
 from synthorg.core.approval import ApprovalItem
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.scaling.enums import ScalingActionType
@@ -146,9 +147,8 @@ class ApprovalGateGuard:
 
             try:
                 await self._store.add(item)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     HR_SCALING_GUARD_APPLIED,

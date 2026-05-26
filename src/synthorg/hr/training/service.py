@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.hr.training._storage import store_guarded_items
 from synthorg.hr.training.models import (
@@ -184,6 +185,12 @@ class TrainingService:
         either runs the pipeline; only the caller that actually
         acquires the lock and runs gets ``ran_pipeline=True``, so
         only that caller writes the terminal ``EXECUTED`` session.
+
+        Returns:
+            Tuple ``(TrainingResult, bool)``.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
         """
         started_at = datetime.now(UTC)
 
@@ -278,6 +285,7 @@ class TrainingService:
             try:
                 await self._record_session(plan)
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     HR_TRAINING_SESSION_RECORD_FAILED,
                     plan_id=str(plan.id),
@@ -297,6 +305,7 @@ class TrainingService:
             try:
                 await self._record_session(failed)
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     HR_TRAINING_SESSION_RECORD_FAILED,
                     plan_id=str(failed.id),
@@ -323,6 +332,7 @@ class TrainingService:
         try:
             await self._record_session(executed)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 HR_TRAINING_SESSION_RECORD_FAILED,
                 plan_id=str(executed.id),
@@ -394,7 +404,11 @@ class TrainingService:
         self,
         plan_id: NotBlankStr,
     ) -> TrainingPlan | None:
-        """Fetch a single session by plan id or ``None`` if absent."""
+        """Fetch a single session by plan id or ``None`` if absent.
+
+        Returns:
+            The matching ``TrainingPlan``, or ``None`` when no match is found.
+        """
         async with self._session_lock:
             return self._sessions.get(str(plan_id))
 
@@ -406,6 +420,9 @@ class TrainingService:
         ``EXECUTED`` and ``FAILED``. A session whose status is still
         ``PENDING`` or ``SKIPPED`` is not terminal; re-entry is
         allowed to overwrite those states.
+
+        Returns:
+            ``True`` when the predicate holds, ``False`` otherwise.
         """
         async with self._session_lock:
             existing = self._sessions.get(plan_id)
@@ -464,7 +481,11 @@ class TrainingService:
         plan: TrainingPlan,
         started_at: datetime,
     ) -> TrainingResult:
-        """Execute extraction, curation, guards, and storage."""
+        """Execute extraction, curation, guards, and storage.
+
+        Returns:
+            Result of type ``TrainingResult``.
+        """
         source_ids = await self._resolve_sources(plan)
         extracted, curated, curated_items = await self._extract_and_curate(
             plan, source_ids
@@ -509,7 +530,11 @@ class TrainingService:
         self,
         plan: TrainingPlan,
     ) -> tuple[NotBlankStr, ...]:
-        """Resolve source agent IDs."""
+        """Resolve source agent IDs.
+
+        Returns:
+            Tuple of ``NotBlankStr``.
+        """
         if plan.override_sources:
             return plan.override_sources
         return await self._selector.select(
@@ -534,6 +559,10 @@ class TrainingService:
         the TaskGroup completes -- no shared mutable state during
         the parallel phase.  Iteration order is deterministic via
         sorted content type values.
+
+        Returns:
+            Tuple ``(tuple[tuple[ContentType, int], ...], tuple[tuple[ContentType, int],
+            ...], _CuratedMap)``.
         """
         ordered_types = tuple(
             sorted(plan.enabled_content_types, key=lambda ct: ct.value),
@@ -572,7 +601,16 @@ class TrainingService:
         source_ids: tuple[NotBlankStr, ...],
         ct: ContentType,
     ) -> tuple[ContentType, int, int, tuple[TrainingItem, ...]] | None:
-        """Extract + curate a single content type with error logging."""
+        """Extract + curate a single content type with error logging.
+
+        Returns:
+            The resulting ``tuple[ContentType, int, int, tuple[TrainingItem, ...]]``, or
+            ``None`` when unavailable.
+
+        Raises:
+            RuntimeError: If the operation fails at runtime.
+            Exception: Raised when the relevant invariant fails.
+        """
         extractor = self._extractors.get(ct)
         if extractor is None:
             msg = (
@@ -641,6 +679,10 @@ class TrainingService:
         approval item id (for backwards-compatible callers), and the
         full tuple of pending approval handles so no ID is lost when
         multiple content types trigger review.
+
+        Returns:
+            Tuple ``(tuple[tuple[ContentType, int], ...], tuple[str, ...], _CuratedMap,
+            str | None, tuple[TrainingApprovalHandle, ...])``.
         """
         guarded_counts: list[tuple[ContentType, int]] = []
         all_errors: list[str] = []
@@ -690,7 +732,15 @@ class TrainingService:
         list[str],
         TrainingApprovalHandle | None,
     ]:
-        """Apply the guard chain to a single content type."""
+        """Apply the guard chain to a single content type.
+
+        Returns:
+            Tuple ``(tuple[TrainingItem, ...], list[str], TrainingApprovalHandle |
+            None)``.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
+        """
         current_items = items
         errors: list[str] = []
         handle: TrainingApprovalHandle | None = None
@@ -745,6 +795,9 @@ class TrainingService:
         so this module stays under the 800-line ceiling; the helper is
         a thin function pulling the persistence dependencies from the
         service.
+
+        Returns:
+            Tuple of ``tuple[ContentType, int]``.
         """
         return await store_guarded_items(
             plan,
@@ -759,7 +812,11 @@ class TrainingService:
         plan: TrainingPlan,
         started_at: datetime,
     ) -> TrainingResult:
-        """Build an empty result for skipped/idempotent plans."""
+        """Build an empty result for skipped/idempotent plans.
+
+        Returns:
+            Result of type ``TrainingResult``.
+        """
         return TrainingResult(
             plan_id=plan.id,
             new_agent_id=plan.new_agent_id,

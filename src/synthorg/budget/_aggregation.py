@@ -36,6 +36,9 @@ def group_by_agent(
     a missing key raise ``KeyError`` rather than silently materialising
     an empty list -- a defensive barrier against mutation-on-read
     bugs that would skew aggregations downstream.
+
+    Returns:
+        Mapping from ``str`` to ``list[CostRecord]``.
     """
     bucket: dict[str, list[CostRecord]] = defaultdict(list)
     for record in records:
@@ -55,6 +58,9 @@ def sum_cost(records: Sequence[CostRecord]) -> float:
     primitive is safe by construction even when the caller forgets;
     mixed input raises :class:`MixedCurrencyAggregationError` (HTTP
     409) before any reduction.
+
+    Returns:
+        Result of type ``float``.
     """
     assert_currencies_match(r.currency for r in records)
     return round(
@@ -64,7 +70,11 @@ def sum_cost(records: Sequence[CostRecord]) -> float:
 
 
 def sum_tokens(records: Sequence[CostRecord]) -> int:
-    """Sum ``input_tokens + output_tokens`` across records."""
+    """Sum ``input_tokens + output_tokens`` across records.
+
+    Returns:
+        Result of type ``int``.
+    """
     return sum(r.input_tokens + r.output_tokens for r in records)
 
 
@@ -74,6 +84,9 @@ def compute_cost_per_1k(total_cost: float, total_tokens: int) -> float:
     Returns ``0.0`` when ``total_tokens`` is ``0`` so callers never
     divide by zero on agents that ran without token counts (usually
     error or no-op invocations).
+
+    Returns:
+        Result of type ``float``.
     """
     if total_tokens <= 0:
         return 0.0

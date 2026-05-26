@@ -25,6 +25,11 @@ class DesktopDriverConfigError(DesktopDriverError):
 
 
 def _build_xvfb(config: DesktopDriverConfig) -> DesktopDriver:
+    """Build xvfb.
+
+    Returns:
+        Result of type ``DesktopDriver``.
+    """
     return XvfbDesktopDriver(
         screen_width=config.screen_width,
         screen_height=config.screen_height,
@@ -32,6 +37,11 @@ def _build_xvfb(config: DesktopDriverConfig) -> DesktopDriver:
 
 
 def _build_vnc(config: DesktopDriverConfig) -> DesktopDriver:
+    """Build vnc.
+
+    Returns:
+        Result of type ``DesktopDriver``.
+    """
     return VncDesktopDriver(
         screen_width=config.screen_width,
         screen_height=config.screen_height,

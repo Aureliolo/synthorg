@@ -198,7 +198,14 @@ carry the code; this keeps persistence and formatting in sync.
 
 
 def _check_iso4217(value: str) -> str:
-    """Reject currency codes not present in the known ISO 4217 allowlist."""
+    """Reject currency codes not present in the known ISO 4217 allowlist.
+
+    Returns:
+        Result of type ``str``.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
+    """
     if value not in _KNOWN_ISO4217:
         msg = f"unknown ISO 4217 currency code: {value!r}"
         raise ValueError(msg)

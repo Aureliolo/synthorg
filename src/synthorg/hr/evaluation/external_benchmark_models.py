@@ -105,7 +105,14 @@ class BenchmarkRunResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_passed_within_total(self) -> Self:
-        """Ensure passed_count does not exceed cases_run."""
+        """Ensure passed_count does not exceed cases_run.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.passed_count > self.cases_run:
             msg = (
                 f"passed_count ({self.passed_count}) cannot exceed "
@@ -224,7 +231,14 @@ class EvalCycleReport(BaseModel):
 
     @model_validator(mode="after")
     def _validate_window_order(self) -> Self:
-        """Ensure window_start is not after window_end."""
+        """Ensure window_start is not after window_end.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.window_start > self.window_end:
             msg = (
                 f"window_start ({self.window_start}) cannot be "

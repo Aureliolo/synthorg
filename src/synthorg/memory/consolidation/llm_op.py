@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
@@ -135,6 +136,9 @@ class LLMSynthesisOp:
         ``_fetch_trajectory_context``: best-effort, degrades to empty
         context on non-system failure (logged WARNING), propagates
         ``MemoryError`` / ``RecursionError``.
+
+        Returns:
+            Result of type ``ConsolidationContext``.
         """
         return ConsolidationContext(
             agent_id=agent_id,
@@ -153,6 +157,9 @@ class LLMSynthesisOp:
         and store the summary FIRST, then delete the originals, so a
         synthesis/store failure loses no data. Only entries the prompt
         cap admitted are eligible for deletion.
+
+        Returns:
+            Result of type ``OpResult``.
         """
         synthesized, outcome, summarized = await self._synthesize(
             group.to_remove,
@@ -187,7 +194,16 @@ class LLMSynthesisOp:
         self,
         agent_id: NotBlankStr,
     ) -> tuple[MemoryEntry, ...]:
-        """Verbatim ``LLMConsolidationStrategy._fetch_trajectory_context``."""
+        """Verbatim ``LLMConsolidationStrategy._fetch_trajectory_context``.
+
+        Returns:
+            Tuple of ``MemoryEntry``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            CancelledError: If the related operation fails.
+        """
         if not self._config.include_distillation_context:
             return ()
         try:
@@ -213,6 +229,7 @@ class LLMSynthesisOp:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 LLM_STRATEGY_FALLBACK,
                 agent_id=agent_id,
@@ -230,7 +247,11 @@ class LLMSynthesisOp:
         agent_id: NotBlankStr,
         outcome: SynthesisOutcome,
     ) -> NotBlankStr:
-        """Verbatim ``LLMConsolidationStrategy._store_summary``."""
+        """Verbatim ``LLMConsolidationStrategy._store_summary``.
+
+        Returns:
+            Result of type ``NotBlankStr``.
+        """
         tag = (
             _LLM_SYNTHESIZED_TAG
             if outcome == SynthesisOutcome.LLM_SYNTHESIZED
@@ -253,7 +274,16 @@ class LLMSynthesisOp:
         agent_id: NotBlankStr,
         category: MemoryCategory,
     ) -> list[NotBlankStr]:
-        """Verbatim ``LLMConsolidationStrategy._delete_consolidated``."""
+        """Verbatim ``LLMConsolidationStrategy._delete_consolidated``.
+
+        Returns:
+            List of ``NotBlankStr``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            CancelledError: If the related operation fails.
+        """
         removed_ids: list[NotBlankStr] = []
         for entry in to_remove:
             try:
@@ -271,6 +301,7 @@ class LLMSynthesisOp:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     LLM_STRATEGY_ERROR,
                     agent_id=agent_id,
@@ -292,7 +323,11 @@ class LLMSynthesisOp:
         category: MemoryCategory,
         trajectory_context: tuple[MemoryEntry, ...],
     ) -> tuple[str, SynthesisOutcome, tuple[MemoryEntry, ...]]:
-        """Verbatim ``LLMConsolidationStrategy._synthesize``."""
+        """Verbatim ``LLMConsolidationStrategy._synthesize``.
+
+        Returns:
+            Tuple ``(str, SynthesisOutcome, tuple[MemoryEntry, ...])``.
+        """
         user_content, summarized = self._build_user_prompt(entries, agent_id, category)
         system_prompt = self._build_system_prompt(trajectory_context)
         response_content = await self._call_llm(
@@ -313,7 +348,11 @@ class LLMSynthesisOp:
         agent_id: NotBlankStr,
         category: MemoryCategory,
     ) -> tuple[str, tuple[MemoryEntry, ...]]:
-        """Verbatim ``LLMConsolidationStrategy._build_user_prompt``."""
+        """Verbatim ``LLMConsolidationStrategy._build_user_prompt``.
+
+        Returns:
+            Tuple ``(str, tuple[MemoryEntry, ...])``.
+        """
         parts: list[str] = []
         included: list[MemoryEntry] = []
         total_chars = 0
@@ -348,7 +387,16 @@ class LLMSynthesisOp:
         category: MemoryCategory,
         entry_count: int,
     ) -> str | None:
-        """Verbatim ``LLMConsolidationStrategy._call_llm``."""
+        """Verbatim ``LLMConsolidationStrategy._call_llm``.
+
+        Returns:
+            The resulting ``str``, or ``None`` when unavailable.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            CancelledError: If the related operation fails.
+        """
         messages = [
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
             ChatMessage(role=MessageRole.USER, content=user_content),
@@ -396,6 +444,7 @@ class LLMSynthesisOp:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 LLM_STRATEGY_FALLBACK,
                 agent_id=agent_id,
@@ -428,7 +477,14 @@ class LLMSynthesisOp:
         category: MemoryCategory,
         entry_count: int,
     ) -> str | None:
-        """Verbatim ``LLMConsolidationStrategy._handle_provider_error``."""
+        """Verbatim ``LLMConsolidationStrategy._handle_provider_error``.
+
+        Returns:
+            The resulting ``str``, or ``None`` when unavailable.
+
+        Raises:
+            exc: Raised when the relevant invariant fails.
+        """
         if exc.is_retryable:
             logger.warning(
                 LLM_STRATEGY_FALLBACK,
@@ -457,7 +513,11 @@ class LLMSynthesisOp:
         self,
         trajectory_context: tuple[MemoryEntry, ...],
     ) -> str:
-        """Verbatim ``LLMConsolidationStrategy._build_system_prompt``."""
+        """Verbatim ``LLMConsolidationStrategy._build_system_prompt``.
+
+        Returns:
+            Result of type ``str``.
+        """
         if not trajectory_context:
             return _BASE_SYSTEM_PROMPT
         context_lines = ["\nRecent trajectory context (for disambiguation only):"]
@@ -469,7 +529,11 @@ class LLMSynthesisOp:
         return _BASE_SYSTEM_PROMPT + "\n" + "\n".join(context_lines)
 
     def _fallback_summary(self, entries: tuple[MemoryEntry, ...]) -> str:
-        """Verbatim ``LLMConsolidationStrategy._fallback_summary``."""
+        """Verbatim ``LLMConsolidationStrategy._fallback_summary``.
+
+        Returns:
+            Result of type ``str``.
+        """
         if not entries:
             return ""
         lines = [f"Consolidated {entries[0].category.value} memories:"]

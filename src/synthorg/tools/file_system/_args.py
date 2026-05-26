@@ -58,7 +58,14 @@ class ReadFileArgs(BaseModel):
 
     @model_validator(mode="after")
     def _check_line_range(self) -> Self:
-        """Reject ``start_line > end_line`` when both are supplied."""
+        """Reject ``start_line > end_line`` when both are supplied.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if (
             self.start_line is not None
             and self.end_line is not None

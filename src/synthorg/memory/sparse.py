@@ -105,7 +105,14 @@ class SparseVector(BaseModel):
 
     @model_validator(mode="after")
     def _validate_structure(self) -> Self:
-        """Validate length match, sorted indices, non-negative, positive values."""
+        """Validate length match, sorted indices, non-negative, positive values.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if len(self.indices) != len(self.values):
             msg = (
                 f"indices and values must have equal length, "

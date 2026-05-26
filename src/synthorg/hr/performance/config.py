@@ -107,7 +107,14 @@ class PerformanceConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_quality_judge_provider_requires_model(self) -> Self:
-        """Ensure quality_judge_provider is not set without a model."""
+        """Ensure quality_judge_provider is not set without a model.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.quality_judge_provider is not None and self.quality_judge_model is None:
             msg = "quality_judge_provider requires quality_judge_model to be set"
             raise ValueError(msg)
@@ -115,7 +122,14 @@ class PerformanceConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_threshold_ordering(self) -> Self:
-        """Ensure improving_threshold > declining_threshold."""
+        """Ensure improving_threshold > declining_threshold.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.improving_threshold <= self.declining_threshold:
             msg = (
                 f"improving_threshold ({self.improving_threshold}) must be "
@@ -126,7 +140,14 @@ class PerformanceConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_quality_weights_sum(self) -> Self:
-        """Ensure quality weights sum to 1.0 (within tolerance)."""
+        """Ensure quality weights sum to 1.0 (within tolerance).
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         total = self.quality_ci_weight + self.quality_llm_weight
         if abs(total - 1.0) > self._WEIGHT_TOLERANCE:
             msg = (

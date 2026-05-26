@@ -37,10 +37,22 @@ class Mem0AdapterSharedMixin:
 
     @property
     def supports_sparse_search(self) -> bool:  # pragma: no cover - see concrete
-        """Whether BM25 sparse search is available (implemented on concrete class)."""
+        """Whether BM25 sparse search is available (implemented on concrete class).
+
+        Raises:
+            NotImplementedError: If the subclass does not implement this operation.
+        """
         raise NotImplementedError
 
     def _require_connected(self) -> Mem0Client:  # pragma: no cover - see concrete
+        """Require connected.
+
+        Returns:
+            Result of type ``Mem0Client``.
+
+        Raises:
+            NotImplementedError: If the subclass does not implement this operation.
+        """
         raise NotImplementedError
 
     def _validate_agent_id(
@@ -49,6 +61,11 @@ class Mem0AdapterSharedMixin:
         *,
         error_cls: type[DomainMemoryError] = MemoryRetrievalError,
     ) -> None:  # pragma: no cover - see concrete
+        """Validate agent id.
+
+        Raises:
+            NotImplementedError: If the subclass does not implement this operation.
+        """
         raise NotImplementedError
 
     async def retrieve_sparse(
@@ -56,7 +73,11 @@ class Mem0AdapterSharedMixin:
         agent_id: NotBlankStr,
         query: MemoryQuery,
     ) -> tuple[MemoryEntry, ...]:
-        """Retrieve memories via BM25 sparse search (delegates to sparse_search)."""
+        """Retrieve memories via BM25 sparse search (delegates to sparse_search).
+
+        Returns:
+            Tuple of ``MemoryEntry``.
+        """
         if not self.supports_sparse_search or self._sparse_encoder is None:
             return ()
         self._require_connected()

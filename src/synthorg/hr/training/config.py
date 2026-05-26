@@ -23,10 +23,20 @@ _DEFAULT_CAP_TOOL_PATTERNS: Final[int] = 20
 
 
 def _default_selector_config() -> dict[str, _ConfigValue]:
+    """Default selector config.
+
+    Returns:
+        Mapping from ``str`` to ``_ConfigValue``.
+    """
     return {"top_n": 3}
 
 
 def _default_curation_config() -> dict[str, _ConfigValue]:
+    """Default curation config.
+
+    Returns:
+        Mapping from ``str`` to ``_ConfigValue``.
+    """
     return {"top_k": 50}
 
 
@@ -38,6 +48,9 @@ def _default_volume_caps() -> dict[ContentType, int]:
     instead of an anonymous closure -- the same shape as
     :func:`_default_selector_config` / :func:`_default_curation_config`
     above.
+
+    Returns:
+        Mapping from ``ContentType`` to ``int``.
     """
     return {
         ContentType.PROCEDURAL: _DEFAULT_CAP_PROCEDURAL,

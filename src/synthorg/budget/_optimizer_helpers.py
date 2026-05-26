@@ -59,7 +59,11 @@ def _build_efficiency_from_records(
     threshold_factor: float,
     lower_bound_factor: float,
 ) -> EfficiencyAnalysis:
-    """Build an EfficiencyAnalysis from pre-fetched records."""
+    """Build an EfficiencyAnalysis from pre-fetched records.
+
+    Returns:
+        Result of type ``EfficiencyAnalysis``.
+    """
     # Same-currency invariant: records that share aggregations must
     # also share a currency so the resulting ``global_avg`` + per-
     # agent ``cost_per_1k`` comparisons are meaningful. Mixed input
@@ -115,6 +119,9 @@ def _compute_window_costs(
     one currency.  Callers (``_build_efficiency_from_records``) already
     guard upstream; this local guard keeps the helper safe by
     construction so a future caller cannot bypass the invariant.
+
+    Returns:
+        Tuple of ``float``.
     """
     assert_currencies_match(r.currency for r in agent_records)
     costs: list[float] = []
@@ -140,6 +147,9 @@ def _detect_spike_anomaly(  # noqa: PLR0913
     """Detect a spike anomaly for a single agent.
 
     Returns ``None`` if no anomaly is detected or insufficient data.
+
+    Returns:
+        The resulting ``SpendingAnomaly``, or ``None`` when unavailable.
     """
     if len(window_costs) < config.min_anomaly_windows:
         logger.debug(
@@ -234,6 +244,9 @@ def _classify_severity(value: float) -> AnomalySeverity:
             determine severity.  Thresholds: ``>= _SEVERITY_HIGH_DEVIATION``
             -> HIGH, ``>= _SEVERITY_MEDIUM_DEVIATION`` -> MEDIUM,
             else LOW.
+
+    Returns:
+        Result of type ``AnomalySeverity``.
     """
     if value >= _SEVERITY_HIGH_DEVIATION:
         return AnomalySeverity.HIGH
@@ -243,7 +256,11 @@ def _classify_severity(value: float) -> AnomalySeverity:
 
 
 def _compute_cost_per_1k(total_cost: float, total_tokens: int) -> float:
-    """Compute cost per 1000 tokens, returning 0 for zero tokens."""
+    """Compute cost per 1000 tokens, returning 0 for zero tokens.
+
+    Returns:
+        Result of type ``float``.
+    """
     return compute_cost_per_1k(total_cost, total_tokens)
 
 
@@ -253,7 +270,11 @@ def _rate_efficiency(
     threshold_factor: float,
     lower_bound_factor: float,
 ) -> EfficiencyRating:
-    """Rate an agent's cost efficiency relative to global average."""
+    """Rate an agent's cost efficiency relative to global average.
+
+    Returns:
+        Result of type ``EfficiencyRating``.
+    """
     if global_avg == 0.0:
         return EfficiencyRating.NORMAL
     if cost_per_1k > threshold_factor * global_avg:
@@ -266,14 +287,22 @@ def _rate_efficiency(
 def _compute_global_avg_cost_per_1k(
     records: Sequence[CostRecord],
 ) -> float:
-    """Compute global average cost per 1000 tokens across all records."""
+    """Compute global average cost per 1000 tokens across all records.
+
+    Returns:
+        Result of type ``float``.
+    """
     return compute_cost_per_1k(sum_cost(records), sum_tokens(records))
 
 
 def _find_most_used_model(
     agent_records: Sequence[CostRecord],
 ) -> str | None:
-    """Find the most frequently used model from pre-filtered records."""
+    """Find the most frequently used model from pre-filtered records.
+
+    Returns:
+        The matching ``str``, or ``None`` when no match is found.
+    """
     model_counts: dict[str, int] = defaultdict(int)
     for r in agent_records:
         model_counts[r.model] += 1
@@ -290,7 +319,11 @@ def _build_downgrade_recommendation(
     resolver: ModelResolver,
     currency: str = DEFAULT_CURRENCY,
 ) -> DowngradeRecommendation | None:
-    """Build a downgrade recommendation for a single agent."""
+    """Build a downgrade recommendation for a single agent.
+
+    Returns:
+        The resulting ``DowngradeRecommendation``, or ``None`` when unavailable.
+    """
     current_resolved = resolver.resolve_safe(current_model)
     if current_resolved is None:
         logger.debug(
@@ -376,7 +409,11 @@ def _find_cheaper_model(
     *,
     min_context: int = 0,
 ) -> ResolvedModel | None:
-    """Find the cheapest model below current cost with sufficient context."""
+    """Find the cheapest model below current cost with sufficient context.
+
+    Returns:
+        The matching ``ResolvedModel``, or ``None`` when no match is found.
+    """
     all_models = resolver.all_models_sorted_by_cost()
     for model in all_models:
         if (
@@ -391,7 +428,11 @@ def _compute_alert_level(
     used_pct: float,
     cfg: BudgetConfig,
 ) -> BudgetAlertLevel:
-    """Compute alert level from budget usage percentage."""
+    """Compute alert level from budget usage percentage.
+
+    Returns:
+        Result of type ``BudgetAlertLevel``.
+    """
     alerts = cfg.alerts
     if used_pct >= alerts.hard_stop_at:
         return BudgetAlertLevel.HARD_STOP

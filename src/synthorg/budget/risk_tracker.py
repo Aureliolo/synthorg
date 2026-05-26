@@ -251,14 +251,22 @@ class RiskTracker:
         return tuple(filtered)
 
     async def get_record_count(self) -> int:
-        """Total number of recorded risk entries."""
+        """Total number of recorded risk entries.
+
+        Returns:
+            Result of type ``int``.
+        """
         async with self._lock:
             return len(self._records)
 
     # ── Internal helpers ─────────────────────────────────────────
 
     async def _snapshot(self) -> list[RiskRecord]:
-        """Return a shallow copy of records, auto-pruning if needed."""
+        """Return a shallow copy of records, auto-pruning if needed.
+
+        Returns:
+            List of ``RiskRecord``.
+        """
         async with self._lock:
             if len(self._records) > self._auto_prune_threshold:
                 cutoff = datetime.now(UTC) - timedelta(
@@ -274,7 +282,11 @@ class RiskTracker:
             return list(self._records)
 
     def _prune_before(self, cutoff: datetime) -> int:
-        """Remove records with timestamp before cutoff.  Caller holds lock."""
+        """Remove records with timestamp before cutoff.  Caller holds lock.
+
+        Returns:
+            Result of type ``int``.
+        """
         before = len(self._records)
         self._records = [r for r in self._records if r.timestamp >= cutoff]
         return before - len(self._records)
@@ -287,7 +299,11 @@ def _validate_time_range(
     start: datetime | None,
     end: datetime | None,
 ) -> None:
-    """Raise ValueError if start >= end."""
+    """Raise ValueError if start >= end.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
+    """
     if start is not None and end is not None and start >= end:
         msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
         raise ValueError(msg)
@@ -302,7 +318,11 @@ def _filter_records(  # noqa: PLR0913
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> list[RiskRecord]:
-    """Filter records by optional criteria."""
+    """Filter records by optional criteria.
+
+    Returns:
+        List of ``RiskRecord``.
+    """
     gen = (r for r in records)
     if agent_id is not None:
         gen = (r for r in gen if r.agent_id == agent_id)
@@ -318,5 +338,9 @@ def _filter_records(  # noqa: PLR0913
 
 
 def _sum_risk_units(records: list[RiskRecord]) -> float:
-    """Sum risk_units from a list of records using fsum for precision."""
+    """Sum risk_units from a list of records using fsum for precision.
+
+    Returns:
+        Result of type ``float``.
+    """
     return math.fsum(r.risk_units for r in records)

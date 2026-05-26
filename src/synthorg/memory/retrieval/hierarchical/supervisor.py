@@ -16,6 +16,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # so they must resolve at runtime when downstream tooling evaluates
 # type hints (DI containers, doc generators).
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_TASK_DATA,
@@ -144,12 +145,17 @@ class SupervisorRouter:
 
         Returns:
             Routing decision with selected workers and reason.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         try:
             return await self._route_via_llm(query)
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             # Provider exceptions in str(exc) can carry the API
             # key; scrub before logging.
             logger.warning(
@@ -181,6 +187,10 @@ class SupervisorRouter:
 
         Returns:
             Retry correction if warranted, else ``None``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         if not self._retry_enabled:
             return None
@@ -199,6 +209,7 @@ class SupervisorRouter:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_HIERARCHICAL_RETRY,
                 action="eval_failed",
@@ -212,7 +223,15 @@ class SupervisorRouter:
         self,
         query: RetrievalQuery,
     ) -> WorkerRoutingDecision:
-        """Call LLM for routing decision."""
+        """Call LLM for routing decision.
+
+        Returns:
+            Result of type ``WorkerRoutingDecision``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+            JSONDecodeError: If the related operation fails.
+        """
         system_prompt = _ROUTING_SYSTEM_PROMPT.format(
             max_workers=self._max_workers,
         )
@@ -273,7 +292,15 @@ class SupervisorRouter:
         query: RetrievalQuery,
         result: FinalRetrievalResult,
     ) -> RetrievalRetryCorrection | None:
-        """Call LLM for retry evaluation."""
+        """Call LLM for retry evaluation.
+
+        Returns:
+            The resulting ``RetrievalRetryCorrection``, or ``None`` when unavailable.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
         avg_score = sum(c.combined_score for c in result.candidates) / max(
             len(result.candidates), 1
         )
@@ -332,6 +359,7 @@ class SupervisorRouter:
             except builtins.MemoryError, RecursionError:
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.debug(
                     MEMORY_HIERARCHICAL_RETRY,
                     action="corrected_query_invalid",

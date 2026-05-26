@@ -20,7 +20,11 @@ class WorkspaceScreenshotStore:
     """Resolves screenshot paths rooted at the persistent workspace."""
 
     def __init__(self, *, workspace: Path) -> None:
-        """Initialise the store rooted at the persistent workspace."""
+        """Initialise the store rooted at the persistent workspace.
+
+        Raises:
+            DesktopDomainError: If the related operation fails.
+        """
         if not workspace.is_absolute():
             msg = f"workspace must be absolute, got {workspace!r}"
             raise DesktopDomainError(msg)
@@ -38,17 +42,29 @@ class WorkspaceScreenshotStore:
         return self._root
 
     def screenshot_path(self, *, screenshot_name: str) -> Path:
-        """Return the canonical PNG path for a named screenshot."""
+        """Return the canonical PNG path for a named screenshot.
+
+        Returns:
+            Result of type ``Path``.
+        """
         self._reject_traversal(screenshot_name)
         return self._root / f"{screenshot_name}{PNG_EXTENSION}"
 
     def relative(self, absolute_path: Path) -> str:
-        """Return a path expressed relative to the workspace root."""
+        """Return a path expressed relative to the workspace root.
+
+        Returns:
+            Result of type ``str``.
+        """
         return absolute_path.resolve().relative_to(self._workspace).as_posix()
 
     @staticmethod
     def _reject_traversal(name: str) -> None:
-        """Reject names containing ``..`` segments or path separators."""
+        """Reject names containing ``..`` segments or path separators.
+
+        Raises:
+            DesktopDomainError: If the related operation fails.
+        """
         if not name:
             raise DesktopDomainError("screenshot name must be non-empty")
         if "/" in name or "\\" in name:

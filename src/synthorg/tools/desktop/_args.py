@@ -138,7 +138,14 @@ class DesktopToolArgs(BaseModel):
 
     @model_validator(mode="after")
     def _validate_per_mode_fields(self) -> Self:
-        """Enforce the per-mode required-field invariants."""
+        """Enforce the per-mode required-field invariants.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.mode == "launch" and self.app_command is None:
             msg = "'launch' mode requires app_command"
             raise ValueError(msg)

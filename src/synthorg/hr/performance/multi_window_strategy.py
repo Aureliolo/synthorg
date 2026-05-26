@@ -107,7 +107,11 @@ class MultiWindowStrategy:
         window_label: str,
         records: tuple[TaskMetricRecord, ...],
     ) -> WindowMetrics:
-        """Compute metrics for a single time window."""
+        """Compute metrics for a single time window.
+
+        Returns:
+            Result of type ``WindowMetrics``.
+        """
         count = len(records)
         completed = sum(1 for r in records if r.is_success)
         failed = count - completed

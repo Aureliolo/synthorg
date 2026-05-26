@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.hr.scaling.models import ScalingContext, ScalingSignal
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.hr import (
@@ -153,6 +154,12 @@ class ScalingContextBuilder:
 
         A single source crashing must not prevent the rest of the
         context from being built.
+
+        Returns:
+            Tuple of ``ScalingSignal``.
+
+        Raises:
+            CancelledError: If the related operation fails.
         """
         if source is None:
             return ()
@@ -161,11 +168,10 @@ class ScalingContextBuilder:
                 agent_ids,
                 **(kwargs or {}),
             )
-        except MemoryError, RecursionError:
-            raise
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 HR_SCALING_SIGNAL_COLLECTION_DEGRADED,
                 source=name,

@@ -151,6 +151,9 @@ def _task_type_to_behavior_tag(task_type: str) -> BehaviorTag:
     """Map a task type string to a behavior tag.
 
     Coarse mapping for dogfooding dataset construction.
+
+    Returns:
+        Result of type ``BehaviorTag``.
     """
     mapping: dict[str, BehaviorTag] = {
         "development": BehaviorTag.FILE_OPERATIONS,

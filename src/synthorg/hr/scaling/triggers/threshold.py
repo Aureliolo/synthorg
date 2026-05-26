@@ -57,6 +57,9 @@ class SignalThresholdTrigger:
         """Check whether the signal has crossed the threshold.
 
         Call ``update_signal`` first to provide current values.
+
+        Returns:
+            ``True`` when the predicate holds, ``False`` otherwise.
         """
         async with self._lock:
             if self._was_crossed:

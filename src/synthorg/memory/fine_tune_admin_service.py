@@ -77,6 +77,15 @@ class FineTuneAdminService:
         self._orchestrator = orchestrator
 
     def _require_runs(self) -> FineTuneRunRepository:
+        """Require runs.
+
+        Returns:
+            Result of type ``FineTuneRunRepository``.
+
+        Raises:
+            MemoryBackendUnsupportedError: If the operation is not supported by the
+                active backend.
+        """
         if self._runs is None:
             msg = (
                 "fine-tune run repository is not wired on the active "
@@ -92,6 +101,15 @@ class FineTuneAdminService:
         return self._runs
 
     def _require_orchestrator(self) -> FineTuneOrchestrator:
+        """Require orchestrator.
+
+        Returns:
+            Result of type ``FineTuneOrchestrator``.
+
+        Raises:
+            MemoryBackendUnsupportedError: If the operation is not supported by the
+                active backend.
+        """
         if self._orchestrator is None:
             msg = (
                 "fine-tune orchestration is not available on the active "
@@ -112,6 +130,9 @@ class FineTuneAdminService:
         offset: int,
     ) -> tuple[tuple[FineTuneRun, ...], int]:
         """Paginated newest-first runs + total count.
+
+        Returns:
+            Tuple ``(tuple[FineTuneRun, ...], int)``.
 
         Raises:
             ValueError: If ``offset`` is negative or ``limit`` is not
@@ -142,6 +163,9 @@ class FineTuneAdminService:
     async def start_fine_tune(self, plan: FineTunePlan) -> FineTuneRun:
         """Start a new fine-tune run from *plan*.
 
+        Returns:
+            Result of type ``FineTuneRun``.
+
         Raises:
             MemoryBackendUnsupportedError: When the active backend does
                 not expose fine-tune support.
@@ -170,6 +194,9 @@ class FineTuneAdminService:
         exception type) into typed variants so MCP handlers can map them
         to ``not_found`` / ``conflict`` domain codes via
         ``exc.domain_code`` instead of regex-matching the message.
+
+        Returns:
+            Result of type ``FineTuneRun``.
 
         Raises:
             MemoryBackendUnsupportedError: When the active backend does
@@ -203,6 +230,9 @@ class FineTuneAdminService:
         the current / most-recent run. When provided, looks up the run
         directly from persistence so historical runs remain queryable
         after the in-memory ``current_run`` slot rotates.
+
+        Returns:
+            Result of type ``FineTuneStatus``.
 
         Raises:
             MemoryBackendUnsupportedError: When the backend does not
@@ -266,6 +296,9 @@ class FineTuneAdminService:
         (if provided) is writable, and that numeric overrides are
         within the runner's declared bounds.
 
+        Returns:
+            Result of type ``PreflightResult``.
+
         Raises:
             MemoryBackendUnsupportedError: When the backend does not
                 support fine-tune runs.
@@ -286,7 +319,11 @@ class FineTuneAdminService:
 
 
 def _check_source_dir_exists(source_dir: str) -> PreflightCheck:
-    """Verify that *source_dir* exists, is a directory, and is readable."""
+    """Verify that *source_dir* exists, is a directory, and is readable.
+
+    Returns:
+        Result of type ``PreflightCheck``.
+    """
     path = Path(source_dir)
     if not path.exists():
         return PreflightCheck(
@@ -324,6 +361,9 @@ def _check_output_dir_writable(output_dir: str) -> PreflightCheck:
 
     Resolves symlinks before the writability probe so a dangling
     symlink does not silently pass the non-existent-parent fallback.
+
+    Returns:
+        Result of type ``PreflightCheck``.
     """
     path = Path(output_dir)
     if path.is_symlink():
@@ -379,6 +419,9 @@ def _check_overrides(plan: FineTunePlan) -> PreflightCheck:
     Preserved as an explicit check so the preflight report always
     includes the override review; any operator reading the result gets
     an audit-trail style confirmation rather than a silent omission.
+
+    Returns:
+        Result of type ``PreflightCheck``.
     """
     overrides = {
         "epochs": plan.epochs,

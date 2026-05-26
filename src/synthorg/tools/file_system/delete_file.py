@@ -23,6 +23,9 @@ _DIRECTORY_HINT: str = "use a dedicated tool for directory removal"
 def _delete_sync(resolved: Path) -> int:
     """Delete file synchronously, returning its size before deletion.
 
+    Returns:
+        Result of type ``int``.
+
     Raises:
         FileNotFoundError: If the file does not exist.
         IsADirectoryError: If the path is a directory.

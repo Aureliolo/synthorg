@@ -61,7 +61,15 @@ class SearchKnowledgeTool(BaseTool):
         self._project_id = project_id
 
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
-        """Dispatch a ``search_knowledge`` invocation to the service."""
+        """Dispatch a ``search_knowledge`` invocation to the service.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
         try:
             parsed = parse_typed("mcp.tool", arguments, SearchKnowledgeArgs)
             hits = await self._service.search(
@@ -107,7 +115,11 @@ class SearchKnowledgeTool(BaseTool):
 
 
 def _format_citation(citation: Citation) -> str:
-    """Render a concise human-readable source locator."""
+    """Render a concise human-readable source locator.
+
+    Returns:
+        Result of type ``str``.
+    """
     locator = citation.locator
     if locator.locator_kind == "pdf":
         where = f"page {locator.page}"
@@ -121,7 +133,11 @@ def _format_citation(citation: Citation) -> str:
 
 
 def _citation_dict(citation: Citation) -> dict[str, Any]:
-    """Structured citation for tool metadata (programmatic consumers)."""
+    """Structured citation for tool metadata (programmatic consumers).
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+    """
     return {
         "source_id": citation.source_id,
         "chunk_id": citation.chunk_id,
@@ -133,7 +149,11 @@ def _citation_dict(citation: Citation) -> dict[str, Any]:
 
 
 def _format_hits(hits: tuple[KnowledgeHit, ...]) -> str:
-    """Render hits with citations; wrap each chunk's untrusted text."""
+    """Render hits with citations; wrap each chunk's untrusted text.
+
+    Returns:
+        Result of type ``str``.
+    """
     if not hits:
         return "No matching knowledge for this query."
     blocks: list[str] = []

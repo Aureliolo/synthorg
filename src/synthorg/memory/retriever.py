@@ -9,6 +9,7 @@ import builtins
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory import errors as memory_errors
 from synthorg.memory.filter import TagBasedMemoryFilter
 from synthorg.memory.formatter import format_memory_context_with_directive
@@ -79,6 +80,7 @@ async def _safe_call(
     Raises:
         builtins.MemoryError: Re-raised (system-level).
         RecursionError: Re-raised (system-level).
+        MemoryError: If the related operation fails.
     """
     try:
         return await coro
@@ -99,6 +101,7 @@ async def _safe_call(
         )
         return ()
     except Exception as exc:
+        reraise_critical(exc)
         logger.error(
             MEMORY_RETRIEVAL_DEGRADED,
             source=source,
@@ -143,6 +146,9 @@ class ContextInjectionStrategy:
                 (used when ``config.retriever == "hierarchical"``).
             reranker: Optional query-specific re-ranker (used when
                 ``config.query_specific_rerank_enabled`` is ``True``).
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         self._backend = backend
         self._config = config
@@ -202,6 +208,10 @@ class ContextInjectionStrategy:
 
         Returns:
             Tuple of ``ChatMessage`` instances (may be empty).
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         logger.info(
             MEMORY_RETRIEVAL_START,
@@ -241,6 +251,7 @@ class ContextInjectionStrategy:
             )
             return ()
         except Exception as exc:
+            reraise_critical(exc)
             # ExceptionGroup may wrap system-level errors that must
             # propagate -- inspect and re-raise them.
             if isinstance(exc, ExceptionGroup):
@@ -274,7 +285,15 @@ class ContextInjectionStrategy:
         token_budget: int,
         categories: frozenset[MemoryCategory] | None,
     ) -> tuple[ChatMessage, ...]:
-        """Execute the retrieval -> rank -> filter -> diversity -> format pipeline."""
+        """Execute the retrieval -> rank -> filter -> diversity -> format pipeline.
+
+        Returns:
+            Tuple of ``ChatMessage``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
         if (
             self._config.retriever == "hierarchical"
             and self._hierarchical_retriever is not None
@@ -321,6 +340,7 @@ class ContextInjectionStrategy:
             except builtins.MemoryError, RecursionError:
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     MEMORY_RETRIEVAL_DEGRADED,
                     source="reranker",
@@ -360,7 +380,11 @@ class ContextInjectionStrategy:
         query_text: NotBlankStr,
         categories: frozenset[MemoryCategory] | None,
     ) -> tuple[ScoredMemory, ...]:
-        """Delegate to hierarchical retriever and convert results."""
+        """Delegate to hierarchical retriever and convert results.
+
+        Returns:
+            Tuple of ``ScoredMemory``.
+        """
         query = RetrievalQuery(
             text=query_text,
             agent_id=agent_id,
@@ -386,7 +410,11 @@ class ContextInjectionStrategy:
         agent_id: NotBlankStr,
         ranked: tuple[ScoredMemory, ...],
     ) -> tuple[ScoredMemory, ...]:
-        """Apply query-specific re-ranking to scored memories."""
+        """Apply query-specific re-ranking to scored memories.
+
+        Returns:
+            Tuple of ``ScoredMemory``.
+        """
         query = RetrievalQuery(text=query_text, agent_id=agent_id)
         candidates = tuple(
             RetrievalCandidate(
@@ -417,6 +445,9 @@ class ContextInjectionStrategy:
         When diversity penalty is enabled, over-fetches by the
         ``candidate_pool_multiplier`` so MMR can promote diverse
         candidates that would otherwise fall below the top-K cutoff.
+
+        Returns:
+            Result of type ``int``.
         """
         if self._config.diversity_penalty_enabled:
             return self._config.max_memories * self._config.candidate_pool_multiplier
@@ -440,6 +471,13 @@ class ContextInjectionStrategy:
         unfiltered memories.  System errors (``MemoryError``,
         ``RecursionError``) propagate.  When no filter is configured,
         ``ranked`` is returned unchanged.
+
+        Returns:
+            Tuple of ``ScoredMemory``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         if self._memory_filter is None:
             return ranked
@@ -454,6 +492,7 @@ class ContextInjectionStrategy:
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
                 source="memory_filter",

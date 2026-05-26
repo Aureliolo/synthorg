@@ -41,6 +41,9 @@ def _merge_override(
 
     Override fields take precedence; ``None`` falls through to
     fallback.
+
+    Returns:
+        Tuple ``(str | None, str | None, int | None)``.
     """
     if override is None:
         return fallback_provider, fallback_model, fallback_dims

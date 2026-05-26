@@ -51,6 +51,7 @@ def _edit_sync(resolved: Path, old_text: str, new_text: str) -> int:
         FileNotFoundError: If the file does not exist.
         PermissionError: If the process lacks read/write permission.
         OSError: For other OS-level I/O failures.
+        BaseException: Raised when the relevant invariant fails.
     """
     content = resolved.read_text(encoding="utf-8")
     count = content.count(old_text)
@@ -116,7 +117,11 @@ class EditFileTool(BaseFileSystemTool):
         old_text: str,
         new_text: str,
     ) -> ToolExecutionResult | None:
-        """Return an early error result if args are invalid, else None."""
+        """Return an early error result if args are invalid, else None.
+
+        Returns:
+            The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
+        """
         if not old_text:
             return ToolExecutionResult(
                 content="old_text cannot be empty",
@@ -144,7 +149,11 @@ class EditFileTool(BaseFileSystemTool):
         user_path: str,
         resolved: Path,
     ) -> ToolExecutionResult | None:
-        """Verify the file is editable (exists, not a dir, not too large)."""
+        """Verify the file is editable (exists, not a dir, not too large).
+
+        Returns:
+            The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
+        """
         if resolved.is_dir():  # noqa: ASYNC240
             logger.warning(TOOL_FS_ERROR, path=user_path, error="is_directory")
             return ToolExecutionResult(
@@ -181,7 +190,11 @@ class EditFileTool(BaseFileSystemTool):
         old_text: str,
         new_text: str,
     ) -> ToolExecutionResult:
-        """Run the edit and return the result."""
+        """Run the edit and return the result.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         try:
             count = await asyncio.to_thread(
                 _edit_sync,

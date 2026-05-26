@@ -553,7 +553,11 @@ class CostOptimizer:
         efficiency: EfficiencyAnalysis,
         by_agent: dict[str, list[CostRecord]],
     ) -> list[DowngradeRecommendation]:
-        """Build downgrade recommendations for inefficient agents."""
+        """Build downgrade recommendations for inefficient agents.
+
+        Returns:
+            List of ``DowngradeRecommendation``.
+        """
         assert self._model_resolver is not None  # noqa: S101
         downgrade_map = dict(self._budget_config.auto_downgrade.downgrade_map)
         recommendations: list[DowngradeRecommendation] = []
@@ -596,7 +600,11 @@ class CostOptimizer:
         by_agent: dict[str, list[CostRecord]],
         all_models: tuple[ResolvedModel, ...],
     ) -> list[RoutingSuggestion]:
-        """Find routing suggestions for all agents."""
+        """Find routing suggestions for all agents.
+
+        Returns:
+            List of ``RoutingSuggestion``.
+        """
         assert self._model_resolver is not None  # noqa: S101
         suggestions: list[RoutingSuggestion] = []
         cur = self._budget_config.currency
@@ -670,6 +678,9 @@ class CostOptimizer:
         """Check if the operation should be denied.
 
         Returns the denial decision, or ``None`` if not denied.
+
+        Returns:
+            The resulting ``ApprovalDecision``, or ``None`` when unavailable.
         """
         auto_deny_level = self._config.approval_auto_deny_alert_level
 
@@ -733,7 +744,11 @@ class CostOptimizer:
         projected_alert: BudgetAlertLevel,
         projected_pct: float,
     ) -> tuple[str, ...]:
-        """Build warning conditions for an approved operation."""
+        """Build warning conditions for an approved operation.
+
+        Returns:
+            Tuple of ``str``.
+        """
         conditions: list[str] = []
         warn_threshold = self._config.approval_warn_threshold
         if estimated_cost >= warn_threshold:
@@ -752,7 +767,11 @@ class CostOptimizer:
         return tuple(conditions)
 
     async def _compute_budget_pressure(self) -> float:
-        """Compute current budget utilization percentage."""
+        """Compute current budget utilization percentage.
+
+        Returns:
+            Result of type ``float``.
+        """
         cfg = self._budget_config
         if cfg.total_monthly <= 0:
             return 0.0

@@ -14,6 +14,7 @@ from enum import StrEnum
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.loop_protocol import (
@@ -207,6 +208,9 @@ def _render_store_content(request: DistillationRequest) -> str:
     Includes ``task_id`` so downstream readers can correlate distillation
     entries by task, plus outcome, trajectory, and the memory tool
     invocation names (not entry IDs).
+
+    Returns:
+        Result of type ``str``.
     """
     tool_names = (
         ", ".join(request.memory_tool_invocations)
@@ -251,6 +255,8 @@ async def capture_distillation(
             failure; not swallowed even though the rest of the function
             is best-effort).
         RecursionError: Re-raised (treated as system-level).
+        MemoryError: If the related operation fails.
+        CancelledError: If the related operation fails.
     """
     try:
         request = _build_distillation_request(execution_result, agent_id, task_id)
@@ -274,6 +280,7 @@ async def capture_distillation(
     except asyncio.CancelledError:
         raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             DISTILLATION_CAPTURE_FAILED,
             agent_id=agent_id,

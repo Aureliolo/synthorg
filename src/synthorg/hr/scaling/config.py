@@ -45,7 +45,14 @@ class WorkloadScalingConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_threshold_order(self) -> Self:
-        """Ensure prune_threshold < hire_threshold."""
+        """Ensure prune_threshold < hire_threshold.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.prune_threshold >= self.hire_threshold:
             msg = (
                 f"prune_threshold ({self.prune_threshold}) "
@@ -91,7 +98,14 @@ class BudgetCapConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_margin_order(self) -> Self:
-        """Ensure headroom_fraction < safety_margin."""
+        """Ensure headroom_fraction < safety_margin.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.headroom_fraction >= self.safety_margin:
             msg = (
                 f"headroom_fraction ({self.headroom_fraction}) "
@@ -247,6 +261,12 @@ class ScalingConfig(BaseModel):
 
         Omitted strategies are treated as lowest priority during conflict
         resolution (they receive ``_LOWEST_PRIORITY`` rank).
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if len(self.priority_order) != len(set(self.priority_order)):
             msg = "priority_order must not contain duplicates"

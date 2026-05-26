@@ -12,6 +12,7 @@ import asyncio
 import builtins
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.mem0.mappers import (
     PUBLISHER_KEY,
@@ -132,6 +133,8 @@ async def publish_shared(
 
     Raises:
         MemoryStoreError: If the publish operation fails.
+        MemoryError: If the related operation fails.
+        RecursionError: If the related operation fails.
     """
     try:
         metadata = {
@@ -162,6 +165,7 @@ async def publish_shared(
         )
         raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             MEMORY_SHARED_PUBLISH_FAILED,
             agent_id=agent_id,
@@ -197,6 +201,8 @@ async def search_shared_memories(
 
     Raises:
         MemoryRetrievalError: If the search fails.
+        MemoryError: If the related operation fails.
+        RecursionError: If the related operation fails.
     """
     if exclude_agent is not None and str(exclude_agent) == SHARED_NAMESPACE:
         msg = (
@@ -257,6 +263,7 @@ async def search_shared_memories(
         )
         raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             MEMORY_SHARED_SEARCH_FAILED,
             error=safe_error_description(exc),
@@ -295,6 +302,8 @@ async def retract_shared(
     Raises:
         MemoryStoreError: If the retraction operation fails or
             ownership verification fails.
+        MemoryError: If the related operation fails.
+        RecursionError: If the related operation fails.
     """
     try:
         raw = await asyncio.to_thread(client.get, str(memory_id))
@@ -320,6 +329,7 @@ async def retract_shared(
         )
         raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             MEMORY_SHARED_RETRACT_FAILED,
             agent_id=agent_id,

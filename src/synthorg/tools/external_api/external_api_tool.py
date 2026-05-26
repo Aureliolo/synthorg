@@ -19,6 +19,7 @@ from pydantic import ValidationError as PydanticValidationError
 from synthorg.api.boundary import parse_typed
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import (
     ActionType,
     ApprovalRiskLevel,
@@ -136,7 +137,11 @@ class ExternalApiTool(BaseTool):
         )
 
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
-        """Run a governed external API call."""
+        """Run a governed external API call.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         try:
             args = parse_typed("tool.external_api", arguments, ExternalApiArgs)
         except PydanticValidationError as exc:
@@ -151,7 +156,16 @@ class ExternalApiTool(BaseTool):
             return ToolExecutionResult(content=str(exc), is_error=True)
 
     async def _run(self, args: ExternalApiArgs) -> ToolExecutionResult:
-        """Execute the governed flow; raises ``ExternalApiError`` on failure."""
+        """Execute the governed flow; raises ``ExternalApiError`` on failure.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+
+        Raises:
+            ExternalApiConnectionNotFoundError: If the requested resource cannot be
+                located.
+            ExternalApiEgressBlockedError: If the related operation fails.
+        """
         conn = await self._catalog.get(args.connection)
         if conn is None:
             msg = f"Connection {args.connection!r} not found"
@@ -213,6 +227,12 @@ class ExternalApiTool(BaseTool):
         ``.`` / ``..`` traversal segments are rejected outright; the
         connection's base-URL path is a default prefix for relative paths,
         not a containment boundary for absolute same-host urls.
+
+        Returns:
+            Result of type ``str``.
+
+        Raises:
+            ExternalApiEgressBlockedError: If the related operation fails.
         """
         if not conn.base_url:
             logger.warning(
@@ -262,12 +282,22 @@ class ExternalApiTool(BaseTool):
         The path is percent-decoded first so encoded traversal sequences
         (``%2e`` / ``%2e%2e``) that an upstream server would normalise back
         into ``.`` / ``..`` are detected here rather than slipping past.
+
+        Returns:
+            ``True`` when the predicate holds, ``False`` otherwise.
         """
         path = unquote(urlsplit(url).path)
         return any(segment in {".", ".."} for segment in path.split("/"))
 
     async def _credentials(self, conn: Connection) -> dict[str, str]:
-        """Fetch decrypted credentials, mapping retrieval failure to a domain error."""
+        """Fetch decrypted credentials, mapping retrieval failure to a domain error.
+
+        Returns:
+            Mapping from ``str`` to ``str``.
+
+        Raises:
+            ExternalApiCredentialError: If the related operation fails.
+        """
         try:
             return await self._catalog.get_credentials(conn.name)
         except SecretRetrievalError as exc:
@@ -286,7 +316,11 @@ class ExternalApiTool(BaseTool):
         conn: Connection,
         credentials: dict[str, str],
     ) -> dict[str, str]:
-        """Map credentials to auth headers (never logged)."""
+        """Map credentials to auth headers (never logged).
+
+        Returns:
+            Mapping from ``str`` to ``str``.
+        """
         return build_auth_headers(conn.auth_method, credentials)
 
     @staticmethod
@@ -299,6 +333,9 @@ class ExternalApiTool(BaseTool):
         the signature either. Otherwise two calls differing only in a
         never-sent ``Host`` would sign differently and force a redundant
         re-approval.
+
+        Returns:
+            Mapping from ``str`` to ``str``.
         """
         return {
             k: v
@@ -319,6 +356,9 @@ class ExternalApiTool(BaseTool):
         brokered header, so an agent can neither inject a forged ``Host``
         nor shadow a brokered credential with a differently-cased
         duplicate. Brokered headers always win.
+
+        Returns:
+            Mapping from ``str`` to ``str``.
         """
         brokered_keys = {k.lower() for k in brokered_headers}
         safe_agent_headers = {
@@ -333,7 +373,11 @@ class ExternalApiTool(BaseTool):
         conn: Connection,
         request: ExternalAccessRequest,
     ) -> ToolExecutionResult:
-        """Rate-limited egress with graceful rate-limit + transport-error handling."""
+        """Rate-limited egress with graceful rate-limit + transport-error handling.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         config = conn.rate_limiter or RateLimiterConfig(
             max_requests_per_minute=self._default_max_rpm,
         )
@@ -384,6 +428,12 @@ class ExternalApiTool(BaseTool):
         parking result when no approval exists yet. Raises
         ``ExternalApiApprovalMismatchError`` when an explicitly-referenced
         approval does not match this call, or the consume CAS loses a race.
+
+        Returns:
+            The resulting ``ToolExecutionResult``, or ``None`` when unavailable.
+
+        Raises:
+            ExternalApiApprovalMismatchError: If the related operation fails.
         """
         match = await self._find_matching_approval(args, signature)
         if match is None:
@@ -417,6 +467,12 @@ class ExternalApiTool(BaseTool):
         ``ExternalApiApprovalMismatchError`` (a deliberate replay/confusion
         signal) rather than silently minting another approval. Without one,
         a content-signature scan returns the id or ``None`` (park).
+
+        Returns:
+            The matching ``str``, or ``None`` when no match is found.
+
+        Raises:
+            ExternalApiApprovalMismatchError: If the related operation fails.
         """
         if args.approval_id is not None:
             item = await self._approval_store.get(args.approval_id)
@@ -461,6 +517,9 @@ class ExternalApiTool(BaseTool):
         grant, and a leaked ``approval_id`` must not let an unrelated
         caller proceed. The grant is bound to the ``requested_by`` /
         ``task_id`` stamped at park time.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
         """
         return item.requested_by == self._agent_id and item.task_id == self._task_id
 
@@ -469,7 +528,11 @@ class ExternalApiTool(BaseTool):
         args: ExternalApiArgs,
         signature: ApprovalSignature,
     ) -> ToolExecutionResult:
-        """Create a PENDING approval bound to this call and signal parking."""
+        """Create a PENDING approval bound to this call and signal parking.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         approval_id = f"approval-{uuid4().hex}"
         risk_level = self._classify_risk()
         item = ApprovalItem(
@@ -509,14 +572,17 @@ class ExternalApiTool(BaseTool):
         )
 
     def _classify_risk(self) -> ApprovalRiskLevel:
-        """Classify the call's risk, defaulting to HIGH when unavailable."""
+        """Classify the call's risk, defaulting to HIGH when unavailable.
+
+        Returns:
+            Result of type ``ApprovalRiskLevel``.
+        """
         if self._risk_classifier is None:
             return ApprovalRiskLevel.HIGH
         try:
             return self._risk_classifier.classify(_ACTION_TYPE)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 EXTERNAL_API_RISK_CLASSIFY_FAILED,
                 action_type=_ACTION_TYPE,

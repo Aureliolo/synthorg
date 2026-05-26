@@ -16,6 +16,7 @@ from synthorg.budget.call_category import LLMCallCategory
 # module top -- not under ``TYPE_CHECKING`` -- keeps the name in module
 # globals.
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import (
     TAG_UNTRUSTED_ARTIFACT,
@@ -50,7 +51,11 @@ _SYSTEM_PROMPT = (
 
 
 def _truncate_fallback(content: str) -> str:
-    """Truncate content as a fallback when LLM summarization fails."""
+    """Truncate content as a fallback when LLM summarization fails.
+
+    Returns:
+        Result of type ``str``.
+    """
     if len(content) <= _TRUNCATE_LENGTH:
         return content
     return content[:_TRUNCATE_LENGTH] + "..."
@@ -114,6 +119,9 @@ class AbstractiveSummarizer:
 
         Returns:
             Summary text.
+
+        Raises:
+            ProviderError: If the related operation fails.
         """
         try:
             # ``content`` is the raw memory body, which may have
@@ -148,8 +156,6 @@ class AbstractiveSummarizer:
                     model=self._model,
                 )
                 return response.content.strip()
-        except MemoryError, RecursionError:
-            raise
         except ProviderError as exc:
             if not exc.is_retryable:
                 logger.warning(
@@ -168,6 +174,7 @@ class AbstractiveSummarizer:
             )
             return _truncate_fallback(content)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DUAL_MODE_ABSTRACTIVE_FALLBACK,
                 content_length=len(content),

@@ -8,6 +8,7 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.mcp import (
     MCP_CLIENT_DISCONNECT_FAILED,
@@ -102,6 +103,9 @@ class MCPToolFactory:
 
         Returns:
             List of (client, tools) tuples.
+
+        Raises:
+            BaseException: Raised when the relevant invariant fails.
         """
         tasks: list[asyncio.Task[tuple[MCPClient, tuple[MCPToolInfo, ...]]]] = []
         try:
@@ -141,6 +145,7 @@ class MCPToolFactory:
                 try:
                     await client.disconnect()
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         MCP_CLIENT_DISCONNECT_FAILED,
                         server=client.server_name,
@@ -167,6 +172,9 @@ class MCPToolFactory:
 
         Returns:
             Tuple of (connected client, discovered tools).
+
+        Raises:
+            BaseException: Raised when the relevant invariant fails.
         """
         client = MCPClient(config)
         await client.connect()

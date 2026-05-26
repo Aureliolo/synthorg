@@ -38,7 +38,11 @@ class IntelligenceMetricExtractor:
         return EvaluationPillar.INTELLIGENCE
 
     async def extract(self, context: EvaluationContext) -> ExtractedMetrics:
-        """Read CI quality + LLM calibration and emit sub-metric scores."""
+        """Read CI quality + LLM calibration and emit sub-metric scores.
+
+        Returns:
+            Result of type ``ExtractedMetrics``.
+        """
         scores, weights, data_points, calibration_drift = _collect_metrics(context)
 
         if not weights:
@@ -125,7 +129,11 @@ def _drift_confidence_multiplier(
     context: EvaluationContext,
     calibration_drift: float,
 ) -> float:
-    """Compute the multiplier on base confidence from calibration drift."""
+    """Compute the multiplier on base confidence from calibration drift.
+
+    Returns:
+        Result of type ``float``.
+    """
     threshold = context.config.calibration_drift_threshold
     if calibration_drift <= threshold:
         return 1.0

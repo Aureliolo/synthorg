@@ -29,5 +29,8 @@ def deduplicate_tags[T](tags: Iterable[T]) -> tuple[T, ...]:
     * truncation can be composed in the validator itself
       (``deduplicate_tags(value)[:max_items]``) without a separate
       helper.
+
+    Returns:
+        Tuple of ``T``.
     """
     return dedupe_preserving_order(tags)

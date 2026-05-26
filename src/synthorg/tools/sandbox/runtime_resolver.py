@@ -9,6 +9,7 @@ requested runtime is unavailable.
 import asyncio
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.sandbox import (
     SANDBOX_GVISOR_AVAILABLE,
@@ -82,7 +83,8 @@ class SandboxRuntimeResolver:
                 reason="docker_info_timeout",
             )
             return frozenset({"runc"})
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SANDBOX_GVISOR_UNAVAILABLE,
                 reason="docker_unavailable",

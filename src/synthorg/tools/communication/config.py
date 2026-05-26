@@ -66,7 +66,14 @@ class EmailConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_auth_fields(self) -> Self:
-        """Validate credential pairing and TLS mutual exclusivity."""
+        """Validate credential pairing and TLS mutual exclusivity.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         has_user = self.username is not None
         has_pass = self.password is not None
         if has_user != has_pass:

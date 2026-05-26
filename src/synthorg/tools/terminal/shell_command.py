@@ -72,6 +72,9 @@ class ShellCommandTool(BaseTerminalTool):
         Returns ``None`` when no working dir is specified, a ``Path``
         for valid relative paths, or a ``ToolExecutionResult`` error
         for absolute or traversal paths.
+
+        Returns:
+            The resulting ``ToolExecutionResult | Path``, or ``None`` when unavailable.
         """
         if not working_dir:
             return None
@@ -178,6 +181,9 @@ class ShellCommandTool(BaseTerminalTool):
 
         Returns:
             A ``ToolExecutionResult`` with the output.
+
+        Raises:
+            RuntimeError: If the operation fails at runtime.
         """
         if self._sandbox is None:  # pragma: no cover -- guarded by caller
             msg = "_execute_sandboxed called without sandbox"

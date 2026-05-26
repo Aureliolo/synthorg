@@ -110,16 +110,29 @@ ClockFn = Callable[[], datetime]
 
 
 async def _empty_assignments() -> Sequence[RoleAssignment]:
-    """Default :data:`RoleAssignmentLookup` returning no assignments."""
+    """Default :data:`RoleAssignmentLookup` returning no assignments.
+
+    Returns:
+        Result of type ``Sequence[RoleAssignment]``.
+    """
     return ()
 
 
 def _utc_now() -> datetime:
+    """Utc now.
+
+    Returns:
+        Result of type ``datetime``.
+    """
     return datetime.now(UTC)
 
 
 def _tier_from_model_id(model_id: str) -> str | None:
-    """Map ``example-<tier>-<rev>`` to its tier label."""
+    """Map ``example-<tier>-<rev>`` to its tier label.
+
+    Returns:
+        The resulting ``str``, or ``None`` when unavailable.
+    """
     parts = model_id.split("-")
     if len(parts) < 2:  # noqa: PLR2004
         return None
@@ -132,7 +145,11 @@ def _tier_from_model_id(model_id: str) -> str | None:
 
 
 def _candidate_model_id(downgrade_map: Mapping[str, str], tier: str) -> str | None:
-    """Return the downgrade target's tier-aligned canonical model id."""
+    """Return the downgrade target's tier-aligned canonical model id.
+
+    Returns:
+        The resulting ``str``, or ``None`` when unavailable.
+    """
     candidate_tier = downgrade_map.get(tier)
     if candidate_tier is None:
         return None
@@ -177,7 +194,11 @@ class ParetoAnalyzer:
         self._clock = clock if clock is not None else _utc_now
 
     async def analyse(self) -> ParetoFrontier:
-        """Compute the current cost / quality frontier."""
+        """Compute the current cost / quality frontier.
+
+        Returns:
+            Result of type ``ParetoFrontier``.
+        """
         assignments = await self._assignment_lookup()
         downgrade_map: Mapping[str, str] = dict(
             self._budget_config.auto_downgrade.downgrade_map,
@@ -217,7 +238,11 @@ class ParetoAnalyzer:
         assignment: RoleAssignment,
         downgrade_map: Mapping[str, str],
     ) -> ParetoPoint | None:
-        """Evaluate a single role assignment for a frontier candidate."""
+        """Evaluate a single role assignment for a frontier candidate.
+
+        Returns:
+            The resulting ``ParetoPoint``, or ``None`` when unavailable.
+        """
         current_tier = _tier_from_model_id(assignment.current_model)
         if current_tier is None:
             return None
@@ -275,6 +300,9 @@ class ParetoAnalyzer:
 
         Future enhancements may consult a BaselineStore-backed
         observed ratio when sufficient history exists.
+
+        Returns:
+            Result of type ``float``.
         """
         priors: Mapping[str, float] = {
             "large": self._budget_config.forecast_static_prior_per_turn_large,

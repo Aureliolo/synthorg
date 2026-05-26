@@ -24,6 +24,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.config import PerformanceConfig
 from synthorg.hr.performance.models import (
@@ -99,6 +100,12 @@ def _coerce_finite_weights(
     non-finite values here with a plain ``ValueError`` so the
     surrounding ``except Exception`` path (which logs and falls back
     to ``component_weights=()``) catches the failure cleanly.
+
+    Returns:
+        Tuple of ``tuple[NotBlankStr, float]``.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
     """
     coerced: list[tuple[NotBlankStr, float]] = []
     for name, value in raw:
@@ -169,6 +176,11 @@ class PerformanceTracker:
 
     @staticmethod
     def _default_quality() -> QualityScoringStrategy:
+        """Default quality.
+
+        Returns:
+            Result of type ``QualityScoringStrategy``.
+        """
         from synthorg.hr.performance.ci_quality_strategy import (  # noqa: PLC0415
             CISignalQualityStrategy,
         )
@@ -179,6 +191,11 @@ class PerformanceTracker:
     def _default_collaboration(
         cfg: PerformanceConfig,  # noqa: ARG004
     ) -> CollaborationScoringStrategy:
+        """Default collaboration.
+
+        Returns:
+            Result of type ``CollaborationScoringStrategy``.
+        """
         from synthorg.hr.performance.behavioral_collaboration_strategy import (  # noqa: PLC0415
             BehavioralTelemetryStrategy,
         )
@@ -187,6 +204,11 @@ class PerformanceTracker:
 
     @staticmethod
     def _default_window(cfg: PerformanceConfig) -> MetricsWindowStrategy:
+        """Default window.
+
+        Returns:
+            Result of type ``MetricsWindowStrategy``.
+        """
         from synthorg.hr.performance.multi_window_strategy import (  # noqa: PLC0415
             MultiWindowStrategy,
         )
@@ -198,6 +220,11 @@ class PerformanceTracker:
 
     @staticmethod
     def _default_trend(cfg: PerformanceConfig) -> TrendDetectionStrategy:
+        """Default trend.
+
+        Returns:
+            Result of type ``TrendDetectionStrategy``.
+        """
         from synthorg.hr.performance.theil_sen_strategy import (  # noqa: PLC0415
             TheilSenTrendStrategy,
         )
@@ -260,6 +287,9 @@ class PerformanceTracker:
         aclose() with the result that the caller sees
         ``aclose() returned`` while a live sampling / inflection task
         keeps running and can still repopulate cache state.
+
+        Raises:
+            system_error: Raised when the relevant invariant fails.
         """
         async with self._metrics_lock:
             self._closing = True
@@ -517,9 +547,8 @@ class PerformanceTracker:
             try:
                 raw = describe()
                 weights = _coerce_finite_weights(raw)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Coercion failures (malformed pair, blank component name,
                 # non-numeric weight) are folded into the same fail-soft
                 # path as ``describe_weights`` raising directly so one bad
@@ -595,9 +624,8 @@ class PerformanceTracker:
         for agent_id in agent_ids:
             try:
                 snapshot = await self.get_snapshot(agent_id, now=now)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     PERF_SNAPSHOT_FAILED,
                     agent_id=str(agent_id),
@@ -688,6 +716,9 @@ class PerformanceTracker:
 
         Records are filtered to each window's time boundary so that
         e.g. the "7d" trend only considers the last 7 days of data.
+
+        Returns:
+            List of ``TrendResult``.
         """
         trends: list[TrendResult] = []
         for window in windows:
@@ -708,6 +739,10 @@ class PerformanceTracker:
         """Filter records to a window's time boundary.
 
         Returns None if the window label is unparseable.
+
+        Returns:
+            The resulting ``tuple[TaskMetricRecord, ...]``, or ``None`` when
+            unavailable.
         """
         window_label = str(window.window_size)
         match = re.match(r"^(\d+)d$", window_label)
@@ -727,7 +762,11 @@ class PerformanceTracker:
         window_records: tuple[TaskMetricRecord, ...],
         window: WindowMetrics,
     ) -> list[TrendResult]:
-        """Detect quality and cost trends for window records."""
+        """Detect quality and cost trends for window records.
+
+        Returns:
+            List of ``TrendResult``.
+        """
         trends: list[TrendResult] = []
         quality_values = tuple(
             (r.completed_at, r.quality_score)
@@ -942,9 +981,8 @@ class PerformanceTracker:
                 agent_id=record.agent_id,
                 records=(record,),
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PERF_LLM_SAMPLE_FAILED,
                 agent_id=record.agent_id,
@@ -958,9 +996,8 @@ class PerformanceTracker:
                 record=record,
                 behavioral_score=behavioral_result.score,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PERF_LLM_SAMPLE_FAILED,
                 agent_id=record.agent_id,
@@ -1003,6 +1040,9 @@ class PerformanceTracker:
         """Emit inflection events for trend direction changes.
 
         Best-effort: failures are logged and never propagated.
+
+        Raises:
+            CancelledError: If the related operation fails.
         """
         from synthorg.hr.performance.inflection_protocol import (  # noqa: PLC0415
             PerformanceInflection,
@@ -1044,11 +1084,10 @@ class PerformanceTracker:
                         new=trend.direction.value,
                     )
                     await sink.emit(inflection)
-        except MemoryError, RecursionError:
-            raise
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PERF_INFLECTION_EMISSION_FAILED,
                 agent_id=str(agent_id),

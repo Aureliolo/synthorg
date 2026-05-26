@@ -88,7 +88,14 @@ class PromotionEvaluation(BaseModel):
 
     @model_validator(mode="after")
     def _validate_direction_consistency(self) -> Self:
-        """Validate direction matches level ordering."""
+        """Validate direction matches level ordering.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         cmp = compare_seniority(self.target_level, self.current_level)
         if self.direction == PromotionDirection.PROMOTION and cmp <= 0:
             msg = "direction=PROMOTION requires target_level > current_level"
@@ -191,7 +198,14 @@ class PromotionRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_model_fields(self) -> Self:
-        """Validate model_changed consistency with model ID fields."""
+        """Validate model_changed consistency with model ID fields.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.model_changed and (
             self.old_model_id is None or self.new_model_id is None
         ):

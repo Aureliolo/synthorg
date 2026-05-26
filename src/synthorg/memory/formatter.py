@@ -91,6 +91,9 @@ def _format_memory_context(
     Returns:
         Tuple containing a single ``ChatMessage`` with formatted
         memories, or empty tuple if no memories fit or input is empty.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
     """
     if not memories or token_budget <= 0:
         return ()

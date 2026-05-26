@@ -42,24 +42,40 @@ _KEY_VALUE_PATTERN = re.compile(
 
 
 def _extract_urls(text: str) -> list[str]:
-    """Extract URLs from text."""
+    """Extract URLs from text.
+
+    Returns:
+        List of ``str``.
+    """
     return _URL_PATTERN.findall(text)
 
 
 def _extract_identifiers(text: str) -> list[str]:
-    """Extract UUIDs and hex hashes from text."""
+    """Extract UUIDs and hex hashes from text.
+
+    Returns:
+        List of ``str``.
+    """
     uuids = _UUID_PATTERN.findall(text)
     hashes = _HEX_HASH_PATTERN.findall(text)
     return uuids + hashes
 
 
 def _extract_versions(text: str) -> list[str]:
-    """Extract version numbers from text."""
+    """Extract version numbers from text.
+
+    Returns:
+        List of ``str``.
+    """
     return _VERSION_PATTERN.findall(text)
 
 
 def _extract_key_values(text: str) -> list[str]:
-    """Extract key-value pairs from text, preserving original form."""
+    """Extract key-value pairs from text, preserving original form.
+
+    Returns:
+        List of ``str``.
+    """
     return [m.strip() for m in _KEY_VALUE_PATTERN.findall(text)]
 
 

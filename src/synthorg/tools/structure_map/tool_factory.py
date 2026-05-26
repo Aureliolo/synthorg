@@ -35,7 +35,11 @@ class StructureMapToolFactory:
         *,
         project_id: NotBlankStr,
     ) -> tuple[BaseTool, ...]:
-        """Return the structure-map query tool bound to *project_id*."""
+        """Return the structure-map query tool bound to *project_id*.
+
+        Returns:
+            Tuple of ``BaseTool``.
+        """
         return (
             QueryStructureMapTool(
                 repository=self._repository,
@@ -44,7 +48,11 @@ class StructureMapToolFactory:
         )
 
     def tool_names(self) -> Iterable[str]:
-        """Inventory of tool names produced by this factory."""
+        """Inventory of tool names produced by this factory.
+
+        Returns:
+            Each ``str`` produced by the iterator.
+        """
         return STRUCTURE_MAP_TOOL_NAMES
 
 
@@ -52,7 +60,11 @@ def build_structure_map_tool_factory(
     *,
     repository: CodebaseStructureMapRepository,
 ) -> StructureMapToolFactory:
-    """Construct the default :class:`StructureMapToolFactory` (boot wiring)."""
+    """Construct the default :class:`StructureMapToolFactory` (boot wiring).
+
+    Returns:
+        Result of type ``StructureMapToolFactory``.
+    """
     return StructureMapToolFactory(repository=repository)
 
 

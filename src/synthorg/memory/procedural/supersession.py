@@ -75,19 +75,31 @@ _MIN_TOKEN_LENGTH: int = 2
 
 
 def _tokenize(text: str) -> set[str]:
-    """Extract lowercase alphanumeric word tokens from text."""
+    """Extract lowercase alphanumeric word tokens from text.
+
+    Returns:
+        Set of ``str``.
+    """
     return {w.lower() for w in _WORD_RE.findall(text) if len(w) >= _MIN_TOKEN_LENGTH}
 
 
 def _overlap_ratio(a: set[str], b: set[str]) -> float:
-    """Fraction of b's tokens present in a (0.0-1.0)."""
+    """Fraction of b's tokens present in a (0.0-1.0).
+
+    Returns:
+        Result of type ``float``.
+    """
     if not b:
         return 1.0
     return len(a & b) / len(b)
 
 
 def _similarity(a: set[str], b: set[str]) -> float:
-    """Jaccard similarity between two token sets."""
+    """Jaccard similarity between two token sets.
+
+    Returns:
+        Result of type ``float``.
+    """
     if not a and not b:
         return 1.0
     union = a | b
@@ -105,7 +117,11 @@ def _emit_result(  # noqa: PLR0913
     reason: str,
     **log_kwargs: str,
 ) -> SupersessionResult:
-    """Log an event and build a ``SupersessionResult``."""
+    """Log an event and build a ``SupersessionResult``.
+
+    Returns:
+        Result of type ``SupersessionResult``.
+    """
     log_fn(
         event,
         candidate_id=candidate_id,

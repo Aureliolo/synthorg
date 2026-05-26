@@ -82,6 +82,14 @@ class SubprocessSandboxConfig(BaseModel):
     @field_validator("extra_safe_path_prefixes")
     @classmethod
     def _validate_prefixes(cls, v: tuple[str, ...]) -> tuple[str, ...]:
+        """Validate prefixes.
+
+        Returns:
+            Tuple of ``str``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         sanitized: list[str] = []
         for prefix in v:
             # Null bytes confuse OS-level path APIs that treat

@@ -189,7 +189,11 @@ class AssetManagerTool(BaseDesignTool):
         self,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """List assets, optionally filtered by tags."""
+        """List assets, optionally filtered by tags.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         raw_tags = arguments.get("tags")
         if raw_tags is not None and not isinstance(raw_tags, list):
             logger.debug(
@@ -236,7 +240,11 @@ class AssetManagerTool(BaseDesignTool):
         self,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Retrieve a specific asset by ID."""
+        """Retrieve a specific asset by ID.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         asset_id = arguments.get("asset_id")
         if not isinstance(asset_id, str) or not asset_id.strip():
             logger.warning(
@@ -279,7 +287,11 @@ class AssetManagerTool(BaseDesignTool):
         self,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Delete an asset by ID."""
+        """Delete an asset by ID.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         asset_id = arguments.get("asset_id")
         if not isinstance(asset_id, str) or not asset_id.strip():
             logger.warning(
@@ -319,7 +331,11 @@ class AssetManagerTool(BaseDesignTool):
         self,
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
-        """Search assets by query string in metadata values."""
+        """Search assets by query string in metadata values.
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         raw_query = arguments.get("query")
         if not isinstance(raw_query, str) or not raw_query.strip():
             logger.warning(

@@ -105,7 +105,14 @@ class ProceduralMemoryExtractor:
         agent_id: NotBlankStr,
         query: MemoryQuery,
     ) -> tuple[NotBlankStr, tuple[MemoryEntry, ...]]:
-        """Retrieve procedural entries for a single agent with error logging."""
+        """Retrieve procedural entries for a single agent with error logging.
+
+        Returns:
+            Tuple ``(NotBlankStr, tuple[MemoryEntry, ...])``.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
+        """
         try:
             entries = await self._backend.retrieve(agent_id, query)
         except Exception as exc:

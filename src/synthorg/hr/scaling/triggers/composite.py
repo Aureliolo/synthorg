@@ -34,7 +34,11 @@ class CompositeScalingTrigger:
         return NotBlankStr("composite")
 
     async def should_trigger(self) -> bool:
-        """Trigger if any child trigger fires."""
+        """Trigger if any child trigger fires.
+
+        Returns:
+            ``True`` when the predicate holds, ``False`` otherwise.
+        """
         for trigger in self._triggers:
             if await trigger.should_trigger():
                 return True

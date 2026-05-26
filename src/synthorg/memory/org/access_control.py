@@ -45,7 +45,11 @@ class CategoryWriteRule(BaseModel):
 
 
 def _default_rules() -> dict[OrgFactCategory, CategoryWriteRule]:
-    """Build default write rules for all org fact categories."""
+    """Build default write rules for all org fact categories.
+
+    Returns:
+        Mapping from ``OrgFactCategory`` to ``CategoryWriteRule``.
+    """
     senior_rule = CategoryWriteRule(
         allowed_seniority=SeniorityLevel.SENIOR,
     )
@@ -78,7 +82,11 @@ class WriteAccessConfig(BaseModel):
 
     @model_validator(mode="after")
     def _wrap_rules_readonly(self) -> Self:
-        """Wrap the rules mapping in a MappingProxyType for immutability."""
+        """Wrap the rules mapping in a MappingProxyType for immutability.
+
+        Returns:
+            Result of type ``Self``.
+        """
         object.__setattr__(self, "rules", MappingProxyType(dict(self.rules)))
         return self
 

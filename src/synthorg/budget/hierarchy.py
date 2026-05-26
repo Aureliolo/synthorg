@@ -65,7 +65,14 @@ class DepartmentBudget(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_team_names(self) -> Self:
-        """Ensure no duplicate team names within the department."""
+        """Ensure no duplicate team names within the department.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         names = [t.team_name for t in self.teams]
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
@@ -77,7 +84,14 @@ class DepartmentBudget(BaseModel):
 
     @model_validator(mode="after")
     def _validate_team_budget_sum(self) -> Self:
-        """Ensure team budget percentages do not exceed 100%."""
+        """Ensure team budget percentages do not exceed 100%.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         max_budget_percent = 100.0
         total = sum(t.budget_percent for t in self.teams)
         if round(total, BUDGET_ROUNDING_PRECISION) > max_budget_percent:
@@ -116,7 +130,14 @@ class BudgetHierarchy(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_department_names(self) -> Self:
-        """Ensure no duplicate department names."""
+        """Ensure no duplicate department names.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         names = [d.department_name for d in self.departments]
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
@@ -126,7 +147,14 @@ class BudgetHierarchy(BaseModel):
 
     @model_validator(mode="after")
     def _validate_department_budget_sum(self) -> Self:
-        """Ensure department budget percentages do not exceed 100%."""
+        """Ensure department budget percentages do not exceed 100%.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         max_budget_percent = 100.0
         total = sum(d.budget_percent for d in self.departments)
         if round(total, BUDGET_ROUNDING_PRECISION) > max_budget_percent:

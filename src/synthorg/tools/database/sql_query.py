@@ -252,7 +252,11 @@ class SqlQueryTool(BaseDatabaseTool):
         keyword: str,
         is_write: bool,  # noqa: FBT001  -- private method
     ) -> ToolExecutionResult:
-        """Execute the query against SQLite (inner coroutine for timeout wrapping)."""
+        """Execute the query against SQLite (inner coroutine for timeout wrapping).
+
+        Returns:
+            Result of type ``ToolExecutionResult``.
+        """
         if self._config.read_only:
             encoded = urllib.parse.quote(str(self._config.database_path))
             db_uri = f"file:{encoded}?mode=ro"

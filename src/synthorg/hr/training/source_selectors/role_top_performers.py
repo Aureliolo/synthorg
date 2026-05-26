@@ -125,11 +125,23 @@ class RoleTopPerformers:
         self,
         candidates: Sequence[AgentIdentity],
     ) -> list[AgentPerformanceSnapshot]:
-        """Fetch quality snapshots for all candidates concurrently."""
+        """Fetch quality snapshots for all candidates concurrently.
+
+        Returns:
+            List of ``AgentPerformanceSnapshot``.
+        """
 
         async def _fetch_one(
             agent: AgentIdentity,
         ) -> AgentPerformanceSnapshot:
+            """Fetch one.
+
+            Returns:
+                Result of type ``AgentPerformanceSnapshot``.
+
+            Raises:
+                Exception: Raised when the relevant invariant fails.
+            """
             try:
                 return await self._tracker.get_snapshot(str(agent.id))
             except Exception as exc:

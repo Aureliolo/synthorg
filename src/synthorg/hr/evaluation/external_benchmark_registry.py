@@ -67,6 +67,9 @@ class ExternalBenchmarkRegistry:
         Args:
             name: Registered benchmark name.
 
+        Returns:
+            Result of type ``ExternalBenchmark``.
+
         Raises:
             KeyError: If the benchmark is not registered.
         """
@@ -77,7 +80,11 @@ class ExternalBenchmarkRegistry:
         return self._benchmarks[name]
 
     def list_registered(self) -> tuple[str, ...]:
-        """List all registered benchmark names."""
+        """List all registered benchmark names.
+
+        Returns:
+            Tuple of ``str``.
+        """
         return tuple(sorted(self._benchmarks))
 
     async def run_benchmark(
@@ -98,6 +105,9 @@ class ExternalBenchmarkRegistry:
 
         Returns:
             Aggregated benchmark run result.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
         """
         benchmark = self.get(name)
         cases_run = 0

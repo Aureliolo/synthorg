@@ -52,7 +52,14 @@ class QuotaLimit(BaseModel):
 
     @model_validator(mode="after")
     def _at_least_one_limit(self) -> Self:
-        """Ensure at least one of max_requests or max_tokens is set."""
+        """Ensure at least one of max_requests or max_tokens is set.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.max_requests == 0 and self.max_tokens == 0:
             msg = "At least one of max_requests or max_tokens must be > 0"
             logger.warning(
@@ -117,7 +124,14 @@ class SubscriptionConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_quotas_unique_windows(self) -> Self:
-        """Ensure quota windows are unique."""
+        """Ensure quota windows are unique.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         seen: set[QuotaWindow] = set()
         dupes: set[str] = set()
         for q in self.quotas:
@@ -137,7 +151,14 @@ class SubscriptionConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_cost_model_constraints(self) -> Self:
-        """Validate cost_model-specific constraints."""
+        """Validate cost_model-specific constraints.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.cost_model == ProviderCostModel.LOCAL and self.monthly_cost > 0:
             msg = (
                 f"LOCAL cost_model must have monthly_cost=0.0, got {self.monthly_cost}"
@@ -200,7 +221,11 @@ class DegradationConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_fallback_providers(self) -> Self:
-        """Warn if FALLBACK strategy has no fallback providers."""
+        """Warn if FALLBACK strategy has no fallback providers.
+
+        Returns:
+            Result of type ``Self``.
+        """
         if self.strategy == DegradationAction.FALLBACK and not self.fallback_providers:
             logger.warning(
                 CONFIG_VALIDATION_FAILED,
@@ -304,7 +329,14 @@ class QuotaCheckResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_denied_has_reason(self) -> Self:
-        """Ensure denied results have a non-empty reason."""
+        """Ensure denied results have a non-empty reason.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if not self.allowed and not self.reason:
             msg = "Denied QuotaCheckResult must have a non-empty reason"
             raise ValueError(msg)
@@ -315,7 +347,11 @@ class QuotaCheckResult(BaseModel):
 
 
 def always_allowed_result(provider_name: NotBlankStr) -> QuotaCheckResult:
-    """Build an always-allowed QuotaCheckResult."""
+    """Build an always-allowed QuotaCheckResult.
+
+    Returns:
+        Result of type ``QuotaCheckResult``.
+    """
     return QuotaCheckResult(
         allowed=True,
         provider_name=provider_name,

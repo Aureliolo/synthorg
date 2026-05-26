@@ -40,6 +40,7 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.collections import dedupe_preserving_order
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import (
     get_logger,
@@ -132,7 +133,11 @@ class GitCloneNetworkPolicy(BaseModel):
 
     @model_validator(mode="after")
     def _normalize_allowlist(self) -> Self:
-        """Lowercase and deduplicate allowlist entries."""
+        """Lowercase and deduplicate allowlist entries.
+
+        Returns:
+            Result of type ``Self``.
+        """
         normalized = dedupe_preserving_order(h.lower() for h in self.hostname_allowlist)
         if normalized != self.hostname_allowlist:
             object.__setattr__(self, "hostname_allowlist", normalized)
@@ -314,7 +319,11 @@ def build_curl_resolve_value(
 
 
 def _dns_failure(hostname: str, reason: str, message: str) -> str:
-    """Log a DNS resolution failure and return the error message."""
+    """Log a DNS resolution failure and return the error message.
+
+    Returns:
+        Result of type ``str``.
+    """
     logger.warning(
         GIT_CLONE_DNS_FAILED,
         hostname=hostname,
@@ -356,6 +365,7 @@ async def _resolve_dns(
             f"DNS resolution for {hostname!r} failed: {safe_error_description(exc)}",
         )
     except Exception as exc:
+        reraise_critical(exc)
         log_exception_redacted(
             logger, GIT_CLONE_DNS_FAILED, exc, hostname=hostname, reason="unexpected"
         )
@@ -484,7 +494,11 @@ def _ok(
     is_https: bool,
     resolved_ips: tuple[str, ...] = (),
 ) -> DnsValidationOk:
-    """Construct a successful validation result."""
+    """Construct a successful validation result.
+
+    Returns:
+        Result of type ``DnsValidationOk``.
+    """
     return DnsValidationOk(
         hostname=hostname,
         port=port,

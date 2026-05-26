@@ -66,6 +66,12 @@ def __getattr__(name: str) -> object:
     threading lock so concurrent first-access from multiple threads
     does not double-import the same submodule and overwrite the
     cached object mid-write.
+
+    Returns:
+        Result of type ``object``.
+
+    Raises:
+        AttributeError: If the related operation fails.
     """
     if name in _LAZY_IMPORTS:
         import importlib  # noqa: PLC0415

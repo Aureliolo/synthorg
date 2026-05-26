@@ -70,6 +70,30 @@ _AXE_SCRIPT_MAX_BYTES: Final[int] = 5 * 1024 * 1024
 _SANDBOX_ROOT: Final[str] = "/workspace"
 
 
+def _reraise_critical(exc: BaseException) -> None:
+    """Re-raise ``exc`` when it is an interpreter-critical exception.
+
+    Dependency-free re-implementation of
+    ``synthorg.core.critical_errors.reraise_critical`` so this executor
+    stays self-contained and importable inside an arbitrary Playwright
+    image that has no ``synthorg`` package installed.
+
+    Args:
+        exc: The caught exception, inspected before any error handling.
+
+    Returns:
+        ``None`` when ``exc`` is neither ``MemoryError`` nor
+        ``RecursionError``, so the caller continues its normal flow.
+
+    Raises:
+        MemoryError: Re-raised unchanged when ``exc`` is a ``MemoryError``.
+        RecursionError: Re-raised unchanged when ``exc`` is a
+            ``RecursionError``.
+    """
+    if isinstance(exc, (MemoryError, RecursionError)):
+        raise exc
+
+
 def _validated_sandbox_path(raw: str, *, field: str) -> Path:
     """Return ``Path(raw)`` after asserting it resolves under ``_SANDBOX_ROOT``.
 
@@ -78,6 +102,12 @@ def _validated_sandbox_path(raw: str, *, field: str) -> Path:
     sandbox workspace. ``..`` segments, absolute paths outside the root,
     and relative paths all raise ``ValueError`` so the boundary stays
     defensive against malformed callers.
+
+    Returns:
+        Result of type ``Path``.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
     """
     if not raw:
         raise ValueError(f"{field} must be a non-empty path")
@@ -130,6 +160,11 @@ async () => {
 
 
 async def _navigate(page: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    """Navigate.
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+    """
     url = payload["url"]
     wait_condition = payload.get("wait_condition") or "load"
     timeout_seconds = float(
@@ -156,6 +191,11 @@ async def _screenshot(
     page: Any,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
+    """Screenshot.
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+    """
     out = _validated_sandbox_path(
         payload["screenshot_path"],
         field="screenshot_path",
@@ -181,7 +221,11 @@ async def _screenshot(
 
 
 def _empty_a11y_result(url: str, min_impact: str) -> dict[str, Any]:
-    """A11y result when no axe script is staged in the sandbox."""
+    """A11y result when no axe script is staged in the sandbox.
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+    """
     return {
         "url": url,
         "min_impact": min_impact,
@@ -198,7 +242,11 @@ def _partition_violations(
     raw_violations: list[dict[str, Any]],
     min_impact: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Sort axe-core violations into (failing, warning) buckets."""
+    """Sort axe-core violations into (failing, warning) buckets.
+
+    Returns:
+        Tuple ``(list[dict[str, Any]], list[dict[str, Any]])``.
+    """
     min_rank = _A11Y_RANK[min_impact]
     violations: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
@@ -228,7 +276,15 @@ def _partition_violations(
 
 
 def _load_axe_script(axe_script_path: str) -> str:
-    """Read and size-check the bundled axe-core script."""
+    """Read and size-check the bundled axe-core script.
+
+    Returns:
+        Result of type ``str``.
+
+    Raises:
+        FileNotFoundError: If the target path does not exist.
+        ValueError: If an argument fails domain validation.
+    """
     axe_path = _validated_sandbox_path(axe_script_path, field="axe_script_path")
     if not axe_path.exists():
         raise FileNotFoundError(
@@ -243,6 +299,14 @@ async def _accessibility(
     page: Any,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
+    """Accessibility.
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+
+    Raises:
+        RuntimeError: If the operation fails at runtime.
+    """
     axe_script_path = payload.get("axe_script_path")
     min_impact = payload.get("min_impact") or "serious"
     if not axe_script_path:
@@ -277,6 +341,14 @@ async def _dispatch(payload: dict[str, Any]) -> dict[str, Any]:
     # Playwright is only available inside the sandbox image where this
     # script executes; importing lazily keeps the executor importable
     # for host-side static analysis without a host playwright install.
+    """Dispatch.
+
+    Returns:
+        Mapping from ``str`` to ``Any``.
+
+    Raises:
+        ValueError: If an argument fails domain validation.
+    """
     from playwright.async_api import async_playwright  # noqa: PLC0415
 
     operation = payload["operation"]
@@ -337,6 +409,11 @@ async def _dispatch(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
+    """Main.
+
+    Returns:
+        Result of type ``int``.
+    """
     raw = os.environ.get("BROWSER_TOOL_ARGS_JSON")
     if not raw:
         sys.stdout.write(
@@ -365,6 +442,7 @@ def main() -> int:
     try:
         result = asyncio.run(_dispatch(payload))
     except Exception as exc:
+        _reraise_critical(exc)
         # Redact the raw exception message entirely: str(exc) can carry
         # filesystem paths, env vars, URLs, or page content. Emit only
         # the exception class name plus a static generic message so the

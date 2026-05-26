@@ -267,7 +267,11 @@ def rank_memories(
 def _normalize_rrf_scores(
     scores: dict[str, float],
 ) -> dict[str, float]:
-    """Min-max normalize raw RRF scores to [0.0, 1.0]."""
+    """Min-max normalize raw RRF scores to [0.0, 1.0].
+
+    Returns:
+        Mapping from ``str`` to ``float``.
+    """
     min_score = min(scores.values())
     max_score = max(scores.values())
     score_range = max_score - min_score
@@ -281,7 +285,11 @@ def _build_rrf_scored_memories(
     entries: dict[str, MemoryEntry],
     normalized: dict[str, float],
 ) -> list[ScoredMemory]:
-    """Build ScoredMemory objects from RRF-normalized scores."""
+    """Build ScoredMemory objects from RRF-normalized scores.
+
+    Returns:
+        List of ``ScoredMemory``.
+    """
     scored: list[ScoredMemory] = []
     for eid, entry in entries.items():
         raw_rel = entry.relevance_score if entry.relevance_score is not None else 0.0
@@ -527,7 +535,11 @@ def _mmr_rerank_bigram_cached(
     *,
     diversity_lambda: float,
 ) -> tuple[ScoredMemory, ...]:
-    """MMR re-ranking with pre-computed bigram sets for each entry."""
+    """MMR re-ranking with pre-computed bigram sets for each entry.
+
+    Returns:
+        Tuple of ``ScoredMemory``.
+    """
     bigrams_by_idx = [_word_bigrams(s.entry.content) for s in scored]
     remaining_indices = list(range(len(scored)))
     selected_indices: list[int] = []
@@ -566,7 +578,11 @@ def _bigram_jaccard_cached(
     bigrams_a: frozenset[tuple[str, str]],
     bigrams_b: frozenset[tuple[str, str]],
 ) -> float:
-    """Jaccard similarity between two pre-computed bigram sets."""
+    """Jaccard similarity between two pre-computed bigram sets.
+
+    Returns:
+        Result of type ``float``.
+    """
     if not bigrams_a or not bigrams_b:
         return 0.0
     intersection = len(bigrams_a & bigrams_b)
@@ -580,7 +596,11 @@ def _mmr_rerank_generic(
     diversity_lambda: float,
     similarity_fn: Callable[[str, str], float],
 ) -> tuple[ScoredMemory, ...]:
-    """MMR re-ranking with a caller-supplied similarity function."""
+    """MMR re-ranking with a caller-supplied similarity function.
+
+    Returns:
+        Tuple of ``ScoredMemory``.
+    """
     remaining = list(scored)
     selected: list[ScoredMemory] = []
 

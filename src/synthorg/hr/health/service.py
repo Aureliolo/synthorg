@@ -108,6 +108,12 @@ class AgentHealthReport(BaseModel):
 
         Enforcing both at construction time means any report handed
         to a handler is already well-formed.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if self.recent_failed_count > self.recent_task_count:
             msg = (
@@ -189,7 +195,11 @@ def _report_from_snapshot(
     agent_id: NotBlankStr,
     snapshot: AgentPerformanceSnapshot,
 ) -> AgentHealthReport:
-    """Collapse a full performance snapshot into a health report."""
+    """Collapse a full performance snapshot into a health report.
+
+    Returns:
+        Result of type ``AgentHealthReport``.
+    """
     window = _pick_recent_window(snapshot.windows)
     if window is None or window.success_rate is None:
         return AgentHealthReport(
@@ -223,6 +233,9 @@ def _pick_recent_window(
     longest horizon and masked a fresh dip behind months of older
     successes. We now iterate in the tracker's configured order and
     take the first populated window.
+
+    Returns:
+        The resulting ``WindowMetrics``, or ``None`` when unavailable.
     """
     for window in windows:
         if window.data_point_count > 0:
@@ -231,7 +244,11 @@ def _pick_recent_window(
 
 
 def _verdict(success_rate: float) -> HealthStatus:
-    """Map a success rate onto a health status."""
+    """Map a success rate onto a health status.
+
+    Returns:
+        Result of type ``HealthStatus``.
+    """
     if success_rate <= _UNAVAILABLE_THRESHOLD:
         return "unavailable"
     if success_rate < _DEGRADED_THRESHOLD:

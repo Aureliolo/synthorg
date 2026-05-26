@@ -170,6 +170,13 @@ class AgentVersionService:
         :class:`NotFoundError` when the version row is absent and
         :class:`ValidationError` when the snapshot's encoded owner
         does not match ``agent_id``.
+
+        Returns:
+            Result of type ``VersionSnapshot[AgentIdentity]``.
+
+        Raises:
+            NotFoundError: If the requested resource cannot be located.
+            ValidationError: If the request fails validation.
         """
         target = await self.get_version(agent_id, version)
         if target is None:
@@ -210,6 +217,14 @@ class AgentVersionService:
         ``BaseExceptionGroup``; the controller's exception handler
         would otherwise see a group and route the request through the
         500 fallback instead of the 400 validation path.
+
+        Returns:
+            Tuple ``(VersionSnapshot[AgentIdentity], VersionSnapshot[AgentIdentity])``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+            NotFoundError: If the requested resource cannot be located.
+            ValidationError: If the request fails validation.
         """
         for version in (from_version, to_version):
             if version < 1:

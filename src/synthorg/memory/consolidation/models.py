@@ -130,7 +130,14 @@ class ConsolidationResult(BaseModel):
 
     @model_validator(mode="after")
     def _validate_archival_consistency(self) -> Self:
-        """Ensure archival fields are internally consistent."""
+        """Ensure archival fields are internally consistent.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if len(self.removed_ids) != len(set(self.removed_ids)):
             msg = "removed_ids contains duplicates"
             raise ValueError(msg)
@@ -232,7 +239,14 @@ class ArchivalEntry(BaseModel):
 
     @model_validator(mode="after")
     def _validate_temporal_order(self) -> Self:
-        """Ensure archived_at >= created_at."""
+        """Ensure archived_at >= created_at.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.archived_at < self.created_at:
             msg = (
                 f"archived_at ({self.archived_at}) must be >= "
@@ -327,7 +341,14 @@ class DetailedExperience(BaseModel):
 
     @model_validator(mode="after")
     def _validate_tier_tag(self) -> Self:
-        """Require the ``detailed_experience`` tag in metadata.tags."""
+        """Require the ``detailed_experience`` tag in metadata.tags.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if "detailed_experience" not in self.metadata.tags:
             msg = (
                 "DetailedExperience.metadata.tags must contain "
@@ -398,7 +419,14 @@ class CompressedExperience(BaseModel):
 
     @model_validator(mode="after")
     def _validate_non_empty(self) -> Self:
-        """Require strategic decisions, provenance, and tier marker."""
+        """Require strategic decisions, provenance, and tier marker.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if not self.strategic_decisions:
             msg = "strategic_decisions must contain at least one entry"
             raise ValueError(msg)

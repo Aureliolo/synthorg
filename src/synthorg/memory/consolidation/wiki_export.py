@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.models import MemoryQuery
 from synthorg.observability import get_logger, safe_error_description
@@ -152,7 +153,15 @@ class WikiExporter:
         agent_id: str,
         output_dir: Path,
     ) -> int:
-        """Export Tier 1 raw artifacts to ``raw/`` directory."""
+        """Export Tier 1 raw artifacts to ``raw/`` directory.
+
+        Returns:
+            Result of type ``int``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
         query = MemoryQuery(
             tags=(_DETAILED_TAG,),
             # ``MemoryQuery.limit`` is capped at 1000 by schema;
@@ -164,6 +173,7 @@ class WikiExporter:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 WIKI_EXPORT_FAILED,
                 tier="raw",
@@ -221,7 +231,16 @@ class WikiExporter:
         agent_id: str,
         output_dir: Path,
     ) -> int:
-        """Export Tier 2 compressed experiences to ``wiki/`` directory."""
+        """Export Tier 2 compressed experiences to ``wiki/`` directory.
+
+        Returns:
+            Result of type ``int``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            TypeError: If an argument has an unexpected type.
+        """
         query = MemoryQuery(
             tags=(_COMPRESSED_TAG,),
             # ``MemoryQuery.limit`` is capped at 1000 by schema;
@@ -233,6 +252,7 @@ class WikiExporter:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 WIKI_EXPORT_FAILED,
                 tier="compressed",
@@ -332,7 +352,12 @@ class WikiExporter:
         raw_count: int,
         compressed_count: int,
     ) -> None:
-        """Generate ``index.md`` with navigation links."""
+        """Generate ``index.md`` with navigation links.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
         now = datetime.now(UTC).isoformat()
         index_content = (
             f"# Memory Wiki Export\n\n"

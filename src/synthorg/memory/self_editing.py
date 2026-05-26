@@ -23,6 +23,7 @@ from typing import Any, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.formatter import format_memory_context_with_directive
@@ -184,6 +185,9 @@ def _format_self_editing_error(err: object) -> str:
 
     Strips the ``tool`` discriminator from ``loc`` (it's a dispatch
     concern not surfaced to the LLM caller).
+
+    Returns:
+        Result of type ``str``.
     """
     if not isinstance(err, dict):
         return "<arguments>: invalid"
@@ -286,7 +290,14 @@ class SelfEditingMemoryConfig(BaseModel):
 
     @model_validator(mode="after")
     def _no_working_in_archival(self) -> Self:
-        """WORKING is session-scoped -- disallow in persistent writes."""
+        """WORKING is session-scoped -- disallow in persistent writes.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if MemoryCategory.WORKING in self.archival_categories:
             msg = (
                 "MemoryCategory.WORKING must not appear in "
@@ -301,6 +312,12 @@ class SelfEditingMemoryConfig(BaseModel):
         """archival_categories must not be empty.
 
         An empty set prevents all archival memory writes.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if not self.archival_categories:
             msg = (
@@ -366,7 +383,11 @@ class SelfEditingMemoryStrategy:
         return InjectionStrategy.SELF_EDITING.value
 
     def _core_query(self) -> MemoryQuery:
-        """Return the MemoryQuery for core memory (SEMANTIC + core tag, no text)."""
+        """Return the MemoryQuery for core memory (SEMANTIC + core tag, no text).
+
+        Returns:
+            Result of type ``MemoryQuery``.
+        """
         return MemoryQuery(
             text=None,
             categories=frozenset({MemoryCategory.SEMANTIC}),
@@ -402,6 +423,10 @@ class SelfEditingMemoryStrategy:
             untrusted-content directive ahead of the fenced memory
             block. Returns ``()`` when the core is empty, the budget
             is zero, or the backend is unavailable.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         try:
             entries = await self._backend.retrieve(agent_id, self._core_query())
@@ -424,6 +449,7 @@ class SelfEditingMemoryStrategy:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_SELF_EDIT_CORE_READ,
                 source="prepare_messages",
@@ -515,6 +541,10 @@ class SelfEditingMemoryStrategy:
         Returns:
             String result for the LLM.  Errors start with
             ``ERROR_PREFIX`` (``"Error:"``).
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         logger.debug(
             MEMORY_SELF_EDIT_TOOL_EXECUTE,
@@ -553,6 +583,7 @@ class SelfEditingMemoryStrategy:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             # Generic dispatch failure event: covers every self-editing
             # tool (read / write / search / recall) so a failed
             # core_memory_read is not recorded under the write-specific
@@ -606,7 +637,11 @@ class SelfEditingMemoryStrategy:
     # ------------------------------------------------------------------
 
     async def _handle_core_memory_read(self, agent_id: NotBlankStr) -> str:
-        """Read all core memory entries."""
+        """Read all core memory entries.
+
+        Returns:
+            Result of type ``str``.
+        """
         entries = await self._backend.retrieve(agent_id, self._core_query())
         logger.info(
             MEMORY_SELF_EDIT_CORE_READ,
@@ -627,6 +662,9 @@ class SelfEditingMemoryStrategy:
         count check and both succeed, temporarily exceeding ``core_max_entries``
         until the next write is rejected. This is acceptable for a
         best-effort memory cap.
+
+        Returns:
+            Result of type ``str``.
         """
         if not self._config.allow_core_writes:
             logger.info(
@@ -670,7 +708,11 @@ class SelfEditingMemoryStrategy:
         agent_id: NotBlankStr,
         args: ArchivalMemorySearchArgs,
     ) -> str:
-        """Search archival memory by natural language query."""
+        """Search archival memory by natural language query.
+
+        Returns:
+            Result of type ``str``.
+        """
         categories: frozenset[MemoryCategory] | None = (
             frozenset({args.category}) if args.category is not None else None
         )
@@ -702,7 +744,11 @@ class SelfEditingMemoryStrategy:
         agent_id: NotBlankStr,
         args: ArchivalMemoryWriteArgs,
     ) -> str:
-        """Store an entry in archival memory."""
+        """Store an entry in archival memory.
+
+        Returns:
+            Result of type ``str``.
+        """
         category = args.category
         if category not in self._config.archival_categories:
             valid = ", ".join(sorted(c.value for c in self._config.archival_categories))
@@ -732,7 +778,11 @@ class SelfEditingMemoryStrategy:
         agent_id: NotBlankStr,
         args: RecallMemoryReadArgs,
     ) -> str:
-        """Retrieve a specific episodic memory by ID."""
+        """Retrieve a specific episodic memory by ID.
+
+        Returns:
+            Result of type ``str``.
+        """
         entry = await self._backend.get(agent_id, args.memory_id)
         logger.info(
             MEMORY_SELF_EDIT_RECALL_READ,
@@ -749,7 +799,11 @@ class SelfEditingMemoryStrategy:
         agent_id: NotBlankStr,
         args: RecallMemoryWriteArgs,
     ) -> str:
-        """Record an episodic event or experience."""
+        """Record an episodic event or experience.
+
+        Returns:
+            Result of type ``str``.
+        """
         tags: tuple[str, ...] = (_AUTO_TAG,) if self._config.write_auto_tag else ()
         request = MemoryStoreRequest(
             category=MemoryCategory.EPISODIC,

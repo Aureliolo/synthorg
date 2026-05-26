@@ -10,6 +10,7 @@ from typing import Any, ClassVar, Final
 
 from pydantic import BaseModel  # noqa: TC002 -- ClassVar type at runtime
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.analytics import (
@@ -240,9 +241,8 @@ class ReportGeneratorTool(BaseAnalyticsTool):
                 content=(f"Report query timed out after {self._config.query_timeout}s"),
                 is_error=True,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ANALYTICS_TOOL_REPORT_FAILED,
                 error_type=type(exc).__name__,
@@ -261,9 +261,8 @@ class ReportGeneratorTool(BaseAnalyticsTool):
 
         try:
             report = self._format_report(report_type, period, data, output_format)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ANALYTICS_TOOL_REPORT_FAILED,
                 error_type=type(exc).__name__,

@@ -18,6 +18,7 @@ import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.hr.training.models import (
     ContentType,
@@ -108,7 +109,11 @@ async def _store_items_for_type(  # noqa: PLR0913
     training_namespace: str,
     training_tags: tuple[str, ...],
 ) -> int:
-    """Store a single content type's items concurrently."""
+    """Store a single content type's items concurrently.
+
+    Returns:
+        Result of type ``int``.
+    """
     if not items:
         return 0
 
@@ -143,7 +148,15 @@ async def _store_one_item(  # noqa: PLR0913
     training_namespace: str,
     training_tags: tuple[str, ...],
 ) -> bool:
-    """Store a single training item, logging any store failure."""
+    """Store a single training item, logging any store failure.
+
+    Returns:
+        ``True`` if the operation succeeds, ``False`` otherwise.
+
+    Raises:
+        MemoryError: If the related operation fails.
+        RecursionError: If the related operation fails.
+    """
     tags = (
         *training_tags,
         f"training:{plan.id}",
@@ -171,6 +184,7 @@ async def _store_one_item(  # noqa: PLR0913
     except builtins.MemoryError, RecursionError:
         raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             HR_TRAINING_STORE_FAILED,
             plan_id=str(plan.id),

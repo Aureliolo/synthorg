@@ -34,7 +34,14 @@ class QuotaAlertThresholds(BaseModel):
 
     @model_validator(mode="after")
     def _validate_ordering(self) -> Self:
-        """Ensure warn_pct < critical_pct."""
+        """Ensure warn_pct < critical_pct.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.warn_pct >= self.critical_pct:
             msg = (
                 f"warn_pct ({self.warn_pct}) must be strictly less than "

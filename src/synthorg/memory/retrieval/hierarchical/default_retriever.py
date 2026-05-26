@@ -9,6 +9,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.core.collections import dedupe_preserving_order
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.memory.retrieval.models import (
     FinalRetrievalResult,
     RetrievalCandidate,
@@ -40,7 +41,11 @@ def _deduplicate_candidates(
     *,
     max_results: int,
 ) -> tuple[RetrievalCandidate, ...]:
-    """Deduplicate by entry.id, keeping highest combined_score."""
+    """Deduplicate by entry.id, keeping highest combined_score.
+
+    Returns:
+        Tuple of ``RetrievalCandidate``.
+    """
     seen: dict[str, RetrievalCandidate] = {}
     for c in candidates:
         existing = seen.get(c.entry.id)
@@ -89,7 +94,11 @@ class DefaultHierarchicalRetriever:
         self,
         query: RetrievalQuery,
     ) -> FinalRetrievalResult:
-        """Execute the full hierarchical retrieval pipeline."""
+        """Execute the full hierarchical retrieval pipeline.
+
+        Returns:
+            Result of type ``FinalRetrievalResult``.
+        """
         routing = await self._supervisor.route(query)
         selected = list(
             dedupe_preserving_order(
@@ -233,15 +242,28 @@ class DefaultHierarchicalRetriever:
         propagation. The WARNING log is the operator-visible signal;
         the returned ``error`` field is for callers that *do* want to
         branch on a per-worker failure.
+
+        Returns:
+            List of ``RetrievalResult``.
         """
 
         async def _run_worker(name: str) -> RetrievalResult:
+            """Run worker.
+
+            Returns:
+                Result of type ``RetrievalResult``.
+
+            Raises:
+                MemoryError: If the related operation fails.
+                RecursionError: If the related operation fails.
+            """
             worker = self._workers[name]
             try:
                 return await worker.retrieve(query)
             except builtins.MemoryError, RecursionError:
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     MEMORY_HIERARCHICAL_WORKER_FAILED,
                     worker=name,
@@ -263,7 +285,11 @@ class DefaultHierarchicalRetriever:
         alternative_strategy: str | None,
         original_workers: list[str],
     ) -> list[str]:
-        """Resolve which workers to use for a retry."""
+        """Resolve which workers to use for a retry.
+
+        Returns:
+            List of ``str``.
+        """
         if alternative_strategy == "semantic_only":
             return ["semantic"] if "semantic" in self._workers else original_workers
         if alternative_strategy == "episodic_only":

@@ -56,7 +56,11 @@ class MemoryMetadata(BaseModel):
     def _deduplicate_tags(
         cls, value: tuple[NotBlankStr, ...]
     ) -> tuple[NotBlankStr, ...]:
-        """Remove duplicate tags while preserving order."""
+        """Remove duplicate tags while preserving order.
+
+        Returns:
+            Tuple of ``NotBlankStr``.
+        """
         return deduplicate_tags(value)
 
 
@@ -142,7 +146,14 @@ class MemoryEntry(BaseModel):
 
     @model_validator(mode="after")
     def _validate_timestamps(self) -> Self:
-        """Ensure ``updated_at >= created_at`` and ``expires_at >= created_at``."""
+        """Ensure ``updated_at >= created_at`` and ``expires_at >= created_at``.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.updated_at is not None and self.updated_at < self.created_at:
             msg = (
                 f"updated_at ({self.updated_at}) must be "
@@ -231,12 +242,23 @@ class MemoryQuery(BaseModel):
     def _deduplicate_tags(
         cls, value: tuple[NotBlankStr, ...]
     ) -> tuple[NotBlankStr, ...]:
-        """Remove duplicate tags while preserving order."""
+        """Remove duplicate tags while preserving order.
+
+        Returns:
+            Tuple of ``NotBlankStr``.
+        """
         return deduplicate_tags(value)
 
     @model_validator(mode="after")
     def _validate_time_range(self) -> Self:
-        """Ensure ``since`` is strictly before ``until`` when both are set."""
+        """Ensure ``since`` is strictly before ``until`` when both are set.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if (
             self.since is not None
             and self.until is not None

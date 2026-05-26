@@ -97,7 +97,11 @@ class InMemoryBackend:
             logger.info(MEMORY_BACKEND_DISCONNECTED, backend="inmemory")
 
     async def health_check(self) -> bool:
-        """Return connection status."""
+        """Return connection status.
+
+        Returns:
+            ``True`` if the operation succeeds, ``False`` otherwise.
+        """
         logger.debug(
             MEMORY_BACKEND_HEALTH_CHECK,
             backend="inmemory",
@@ -150,7 +154,11 @@ class InMemoryBackend:
     # -- CRUD ---------------------------------------------------------
 
     def _require_connected(self) -> None:
-        """Raise if not connected."""
+        """Raise if not connected.
+
+        Raises:
+            MemoryConnectionError: If the related operation fails.
+        """
         if not self._connected:
             msg = "InMemoryBackend is not connected"
             logger.warning(
@@ -388,12 +396,20 @@ def _prune_expired(store: dict[str, MemoryEntry]) -> None:
 
 
 def _is_expired(entry: MemoryEntry, now: datetime) -> bool:
-    """Return True if *entry* has expired."""
+    """Return True if *entry* has expired.
+
+    Returns:
+        ``True`` when the predicate holds, ``False`` otherwise.
+    """
     return entry.expires_at is not None and entry.expires_at <= now
 
 
 def _matches_metadata(entry: MemoryEntry, query: MemoryQuery) -> bool:
-    """Check namespace, category, tag, and text filters."""
+    """Check namespace, category, tag, and text filters.
+
+    Returns:
+        ``True`` if the operation succeeds, ``False`` otherwise.
+    """
     if query.namespaces and entry.namespace not in query.namespaces:
         return False
     if query.categories and entry.category not in query.categories:
@@ -408,7 +424,11 @@ def _matches(
     query: MemoryQuery,
     now: datetime,
 ) -> bool:
-    """Return True if *entry* passes all query filters."""
+    """Return True if *entry* passes all query filters.
+
+    Returns:
+        ``True`` if the operation succeeds, ``False`` otherwise.
+    """
     if _is_expired(entry, now):
         return False
     if not _matches_metadata(entry, query):

@@ -80,7 +80,14 @@ class HaltContext(BaseModel):
 
     @model_validator(mode="after")
     def _accumulated_at_or_above_ceiling(self) -> Self:
-        """A halt only exists because the ceiling was crossed."""
+        """A halt only exists because the ceiling was crossed.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.accumulated_cost < self.ceiling_amount:
             msg = (
                 f"halt accumulated_cost ({self.accumulated_cost}) must be"
@@ -176,7 +183,14 @@ class Forecast(BaseModel):
 
     @model_validator(mode="after")
     def _estimate_within_band(self) -> Self:
-        """Mirror the DB CHECK so bad estimates fail at construction."""
+        """Mirror the DB CHECK so bad estimates fail at construction.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if not (self.lower_bound <= self.estimated_cost <= self.upper_bound):
             msg = (
                 f"estimated_cost ({self.estimated_cost}) must lie within"
@@ -194,6 +208,12 @@ class Forecast(BaseModel):
         ``approved`` / ``rejected`` are operator decisions (both set).
         ``decided_by`` absence -- not ``decided_at`` -- distinguishes a
         system supersede from an operator decision.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         decided = self.decided_at is not None
         attributed = self.decided_by is not None

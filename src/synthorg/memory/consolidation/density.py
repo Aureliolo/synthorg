@@ -122,7 +122,11 @@ _DEFAULT_DENSE_THRESHOLD: Final[float] = 0.5
 
 
 def _code_pattern_score(text: str) -> float:
-    """Score code-like patterns in the text (0.0 to 1.0)."""
+    """Score code-like patterns in the text (0.0 to 1.0).
+
+    Returns:
+        Result of type ``float``.
+    """
     matches = len(_CODE_PATTERNS.findall(text))
     words = max(len(text.split()), 1)
     ratio = matches / words
@@ -130,7 +134,11 @@ def _code_pattern_score(text: str) -> float:
 
 
 def _structured_data_score(text: str) -> float:
-    """Score structured data markers in the text (0.0 to 1.0)."""
+    """Score structured data markers in the text (0.0 to 1.0).
+
+    Returns:
+        Result of type ``float``.
+    """
     matches = len(_STRUCTURED_PATTERNS.findall(text))
     lines = max(len(text.splitlines()), 1)
     ratio = matches / lines
@@ -138,7 +146,11 @@ def _structured_data_score(text: str) -> float:
 
 
 def _identifier_density_score(text: str) -> float:
-    """Score identifier-like tokens in the text (0.0 to 1.0)."""
+    """Score identifier-like tokens in the text (0.0 to 1.0).
+
+    Returns:
+        Result of type ``float``.
+    """
     matches = len(_IDENTIFIER_PATTERNS.findall(text))
     words = max(len(text.split()), 1)
     ratio = matches / words
@@ -146,7 +158,11 @@ def _identifier_density_score(text: str) -> float:
 
 
 def _numeric_density_score(text: str) -> float:
-    """Score numeric patterns in the text (0.0 to 1.0)."""
+    """Score numeric patterns in the text (0.0 to 1.0).
+
+    Returns:
+        Result of type ``float``.
+    """
     matches = len(_NUMERIC_PATTERNS.findall(text))
     words = max(len(text.split()), 1)
     ratio = matches / words
@@ -154,7 +170,11 @@ def _numeric_density_score(text: str) -> float:
 
 
 def _line_structure_score(text: str) -> float:
-    """Score line structure (short lines + many lines = dense)."""
+    """Score line structure (short lines + many lines = dense).
+
+    Returns:
+        Result of type ``float``.
+    """
     lines = text.splitlines()
     if len(lines) < _MIN_LINES_FOR_STRUCTURE:
         return _FALLBACK_SCORE

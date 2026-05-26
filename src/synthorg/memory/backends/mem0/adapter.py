@@ -12,6 +12,7 @@ import asyncio
 import builtins
 from typing import TYPE_CHECKING, Any, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.backends.mem0.adapter_cost import Mem0AdapterCostMixin
@@ -86,11 +87,41 @@ if TYPE_CHECKING:
     class Mem0Client(Protocol):
         """Subset of ``Memory`` methods used by the adapter."""
 
-        def add(self, **kwargs: Any) -> dict[str, Any]: ...  # noqa: D102
-        def search(self, **kwargs: Any) -> dict[str, Any]: ...  # noqa: D102
-        def get_all(self, **kwargs: Any) -> dict[str, Any]: ...  # noqa: D102
-        def get(self, memory_id: str) -> dict[str, Any] | None: ...  # noqa: D102
-        def delete(self, memory_id: str) -> None: ...  # noqa: D102
+        def add(self, **kwargs: Any) -> dict[str, Any]:
+            """Add.
+
+            Returns:
+                Mapping from ``str`` to ``Any``.
+            """
+            ...
+
+        def search(self, **kwargs: Any) -> dict[str, Any]:
+            """Search.
+
+            Returns:
+                Mapping from ``str`` to ``Any``.
+            """
+            ...
+
+        def get_all(self, **kwargs: Any) -> dict[str, Any]:
+            """Get all.
+
+            Returns:
+                Mapping from ``str`` to ``Any``.
+            """
+            ...
+
+        def get(self, memory_id: str) -> dict[str, Any] | None:
+            """Get.
+
+            Returns:
+                The matching ``dict[str, Any]``, or ``None`` when no match is found.
+            """
+            ...
+
+        def delete(self, memory_id: str) -> None:
+            """Delete."""
+            ...
 
 
 logger = get_logger(__name__)
@@ -147,6 +178,9 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         Raises:
             MemoryConnectionError: If Mem0 is not installed or
                 initialization fails.
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+            CancelledError: If the related operation fails.
         """
         if self._connected:
             return
@@ -176,6 +210,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 )
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     MEMORY_BACKEND_CONNECTION_FAILED,
                     backend="mem0",
@@ -202,6 +237,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                     self._connected = False
                     raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         MEMORY_BACKEND_CONNECTION_FAILED,
                         backend="mem0",
@@ -245,6 +281,10 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
 
         Returns:
             ``True`` if the backend responds, ``False`` otherwise.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         if not self._connected or self._client is None:
             logger.debug(
@@ -265,6 +305,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_BACKEND_HEALTH_CHECK,
                 backend="mem0",
@@ -332,6 +373,9 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
 
         Returns:
             The connected Mem0 client (enables mypy type narrowing).
+
+        Raises:
+            MemoryConnectionError: If the related operation fails.
         """
         if not self._connected or self._client is None:
             logger.warning(
@@ -362,6 +406,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
                 ``SHARED_NAMESPACE`` (default).
             MemoryRetrievalError: If ``error_cls`` was set to
                 ``MemoryRetrievalError``.
+            error_cls: Raised when the relevant invariant fails.
         """
         if str(agent_id) == SHARED_NAMESPACE:
             logger.warning(
@@ -410,6 +455,8 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         Raises:
             MemoryConnectionError: If the backend is not connected.
             MemoryStoreError: If the store operation fails.
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         client = self._require_connected()
         self._validate_agent_id(agent_id)
@@ -438,6 +485,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_ENTRY_STORE_FAILED,
                 agent_id=agent_id,
@@ -483,6 +531,8 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         Raises:
             MemoryConnectionError: If the backend is not connected.
             MemoryRetrievalError: If the retrieval fails.
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         client = self._require_connected()
         self._validate_agent_id(agent_id, error_cls=MemoryRetrievalError)
@@ -510,6 +560,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_ENTRY_RETRIEVAL_FAILED,
                 agent_id=agent_id,
@@ -553,6 +604,8 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         Raises:
             MemoryConnectionError: If the backend is not connected.
             MemoryRetrievalError: If the backend query fails.
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         client = self._require_connected()
         self._validate_agent_id(agent_id, error_cls=MemoryRetrievalError)
@@ -603,6 +656,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_ENTRY_FETCH_FAILED,
                 agent_id=agent_id,
@@ -642,6 +696,8 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             MemoryConnectionError: If the backend is not connected.
             MemoryStoreError: If the delete operation fails or
                 ownership verification fails.
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         client = self._require_connected()
         self._validate_agent_id(agent_id)
@@ -665,6 +721,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_ENTRY_DELETE_FAILED,
                 agent_id=agent_id,
@@ -715,6 +772,8 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
         Raises:
             MemoryConnectionError: If the backend is not connected.
             MemoryRetrievalError: If the count query fails.
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
         """
         client = self._require_connected()
         self._validate_agent_id(agent_id, error_cls=MemoryRetrievalError)
@@ -745,6 +804,7 @@ class Mem0MemoryBackend(Mem0AdapterCostMixin, Mem0AdapterSharedMixin):
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEMORY_ENTRY_COUNT_FAILED,
                 agent_id=agent_id,

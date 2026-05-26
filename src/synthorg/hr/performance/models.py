@@ -85,7 +85,14 @@ class TaskMetricRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_temporal_ordering(self) -> Self:
-        """Ensure started_at is before completed_at when both are set."""
+        """Ensure started_at is before completed_at when both are set.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.started_at is not None and self.started_at >= self.completed_at:
             msg = (
                 f"started_at ({self.started_at.isoformat()}) must be "
@@ -321,7 +328,14 @@ class _BaseOverride(BaseModel):
 
     @model_validator(mode="after")
     def _validate_expiration_ordering(self) -> Self:
-        """Ensure expires_at is strictly after applied_at when set."""
+        """Ensure expires_at is strictly after applied_at when set.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.expires_at is not None and self.expires_at <= self.applied_at:
             msg = (
                 f"expires_at ({self.expires_at}) must be after "
@@ -430,7 +444,14 @@ class WindowMetrics(BaseModel):
 
     @model_validator(mode="after")
     def _validate_task_counts(self) -> Self:
-        """Ensure tasks_completed + tasks_failed == data_point_count."""
+        """Ensure tasks_completed + tasks_failed == data_point_count.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.tasks_completed + self.tasks_failed != self.data_point_count:
             msg = (
                 f"tasks_completed ({self.tasks_completed}) + tasks_failed "
@@ -454,6 +475,12 @@ class WindowMetrics(BaseModel):
         opposite is a type assertion that existing callers do not
         honour and whose stricter form would cascade through dozens of
         test factories for no observable robustness gain.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if self.avg_cost_per_task is not None and self.currency is None:
             msg = (

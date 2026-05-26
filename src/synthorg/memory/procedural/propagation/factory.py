@@ -22,14 +22,29 @@ logger = get_logger(__name__)
 
 
 def _build_none(_config: PropagationConfig) -> PropagationStrategy:
+    """Registry entry: build the no-op propagation strategy.
+
+    Returns:
+        A ``NoPropagation`` that never shares memories.
+    """
     return NoPropagation()
 
 
 def _build_role_scoped(config: PropagationConfig) -> PropagationStrategy:
+    """Registry entry: build the role-scoped propagation strategy.
+
+    Returns:
+        A ``RoleScopedPropagation`` capped at ``max_propagation_targets``.
+    """
     return RoleScopedPropagation(max_targets=config.max_propagation_targets)
 
 
 def _build_department_scoped(config: PropagationConfig) -> PropagationStrategy:
+    """Registry entry: build the department-scoped propagation strategy.
+
+    Returns:
+        A ``DepartmentScopedPropagation`` capped at ``max_propagation_targets``.
+    """
     return DepartmentScopedPropagation(max_targets=config.max_propagation_targets)
 
 

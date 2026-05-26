@@ -70,6 +70,9 @@ def get_resolved_sandbox_image() -> str:
     the documented fallback constant (cache never seeded -- typically
     a programmatic ``DockerSandboxConfig`` instantiation outside the
     lifecycle wiring).
+
+    Returns:
+        Result of type ``str``.
     """
     if _resolved_sandbox_image:
         logger.debug(
@@ -94,6 +97,9 @@ def get_resolved_sidecar_image() -> str:
 
     Same source-discriminator semantics as
     :func:`get_resolved_sandbox_image`.
+
+    Returns:
+        Result of type ``str``.
     """
     if _resolved_sidecar_image:
         logger.debug(

@@ -35,7 +35,11 @@ class CompositeScalingGuard:
         return NotBlankStr("composite")
 
     def get_guards(self) -> tuple[ScalingGuard, ...]:
-        """Return the contained guards (read-only)."""
+        """Return the contained guards (read-only).
+
+        Returns:
+            Tuple of ``ScalingGuard``.
+        """
         return self._guards
 
     async def filter(
@@ -49,6 +53,9 @@ class CompositeScalingGuard:
 
         Returns:
             Decisions filtered through all guards.
+
+        Raises:
+            Exception: Raised when the relevant invariant fails.
         """
         current = decisions
         for guard in self._guards:

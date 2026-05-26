@@ -75,7 +75,11 @@ class ConfigurablePillarScorer:
         return self._pillar
 
     async def score(self, *, context: EvaluationContext) -> PillarScore:
-        """Run the extractor then the shared finalize step."""
+        """Run the extractor then the shared finalize step.
+
+        Returns:
+            Result of type ``PillarScore``.
+        """
         metrics = await self._extractor.extract(context)
         if metrics.insufficient_data:
             self._log_insufficient_data(
@@ -90,7 +94,11 @@ class ConfigurablePillarScorer:
         context: EvaluationContext,
         metrics: ExtractedMetrics,
     ) -> PillarScore:
-        """Aggregate enabled metrics into a ``PillarScore``."""
+        """Aggregate enabled metrics into a ``PillarScore``.
+
+        Returns:
+            Result of type ``PillarScore``.
+        """
         enabled = [(name, w, True) for name, w in metrics.weights.items()]
         weights = redistribute_weights(enabled)
         weighted_sum = sum(metrics.scores[k] * weights[k] for k in weights)
@@ -152,6 +160,9 @@ class ConfigurablePillarScorer:
         to preserve a count in the neutral case (Experience: number
         of feedback records seen even when below threshold) override
         via ``ExtractedMetrics.neutral_data_point_count``.
+
+        Returns:
+            Result of type ``PillarScore``.
         """
         return PillarScore(
             pillar=self._pillar,

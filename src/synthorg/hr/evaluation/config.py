@@ -39,7 +39,14 @@ class IntelligenceConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_at_least_one_metric(self) -> Self:
-        """Ensure at least one metric is enabled when pillar is enabled."""
+        """Ensure at least one metric is enabled when pillar is enabled.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.enabled and not (
             self.ci_quality_enabled or self.llm_calibration_enabled
         ):
@@ -81,7 +88,14 @@ class EfficiencyConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_at_least_one_metric(self) -> Self:
-        """Ensure at least one metric is enabled when pillar is enabled."""
+        """Ensure at least one metric is enabled when pillar is enabled.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.enabled and not (
             self.cost_enabled or self.time_enabled or self.tokens_enabled
         ):
@@ -125,7 +139,14 @@ class ResilienceConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_at_least_one_metric(self) -> Self:
-        """Ensure at least one metric is enabled when pillar is enabled."""
+        """Ensure at least one metric is enabled when pillar is enabled.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.enabled and not (
             self.success_rate_enabled
             or self.recovery_rate_enabled
@@ -164,7 +185,14 @@ class GovernanceConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_at_least_one_metric(self) -> Self:
-        """Ensure at least one metric is enabled when pillar is enabled."""
+        """Ensure at least one metric is enabled when pillar is enabled.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.enabled and not (
             self.audit_compliance_enabled
             or self.trust_level_enabled
@@ -212,7 +240,14 @@ class ExperienceConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_at_least_one_metric(self) -> Self:
-        """Ensure at least one metric is enabled when pillar is enabled."""
+        """Ensure at least one metric is enabled when pillar is enabled.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.enabled and not (
             self.clarity_enabled
             or self.tone_enabled
@@ -335,7 +370,14 @@ class EvaluationConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_at_least_one_pillar_enabled(self) -> Self:
-        """Ensure at least one pillar is enabled."""
+        """Ensure at least one pillar is enabled.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         pillars = [
             self.intelligence.enabled,
             self.efficiency.enabled,

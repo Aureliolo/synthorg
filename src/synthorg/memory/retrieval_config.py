@@ -244,7 +244,14 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_weight_sum(self) -> Self:
-        """Ensure relevance_weight + recency_weight == 1.0 for LINEAR fusion."""
+        """Ensure relevance_weight + recency_weight == 1.0 for LINEAR fusion.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if self.fusion_strategy != FusionStrategy.LINEAR:
             return self
         total = self.relevance_weight + self.recency_weight
@@ -265,7 +272,11 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_rrf_k_strategy_consistency(self) -> Self:
-        """Warn when rrf_k is customized but fusion strategy is LINEAR."""
+        """Warn when rrf_k is customized but fusion strategy is LINEAR.
+
+        Returns:
+            Result of type ``Self``.
+        """
         if (
             self.fusion_strategy == FusionStrategy.LINEAR
             and self.rrf_k != _DEFAULT_RRF_K
@@ -280,7 +291,11 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_diversity_lambda_consistency(self) -> Self:
-        """Warn when diversity_lambda is customized but penalty is disabled."""
+        """Warn when diversity_lambda is customized but penalty is disabled.
+
+        Returns:
+            Result of type ``Self``.
+        """
         if (
             not self.diversity_penalty_enabled
             and self.diversity_lambda != _DEFAULT_DIVERSITY_LAMBDA
@@ -304,6 +319,12 @@ class MemoryRetrievalConfig(BaseModel):
         Symmetric with ``_validate_reformulation_requires_tool_based``: a
         silent no-op is worse than a hard error because the
         misconfiguration survives deployment unnoticed.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
         """
         if (
             self.diversity_penalty_enabled
@@ -325,7 +346,14 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_reformulation_requires_tool_based(self) -> Self:
-        """Query reformulation is only wired into the TOOL_BASED strategy."""
+        """Query reformulation is only wired into the TOOL_BASED strategy.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if not self.query_reformulation_enabled:
             return self
         if self.strategy == InjectionStrategy.TOOL_BASED:
@@ -345,7 +373,11 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_personal_boost_rrf_consistency(self) -> Self:
-        """Warn when personal_boost is explicitly set with RRF fusion."""
+        """Warn when personal_boost is explicitly set with RRF fusion.
+
+        Returns:
+            Result of type ``Self``.
+        """
         if (
             self.fusion_strategy == FusionStrategy.RRF
             and self.personal_boost > 0.0
@@ -365,7 +397,11 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_pool_multiplier_consistency(self) -> Self:
-        """Warn when candidate_pool_multiplier is set but diversity is off."""
+        """Warn when candidate_pool_multiplier is set but diversity is off.
+
+        Returns:
+            Result of type ``Self``.
+        """
         if (
             not self.diversity_penalty_enabled
             and self.candidate_pool_multiplier != _DEFAULT_CANDIDATE_POOL_MULTIPLIER
@@ -384,7 +420,14 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_supported_strategy(self) -> Self:
-        """Reject strategies that are not yet implemented."""
+        """Reject strategies that are not yet implemented.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         _supported = {
             InjectionStrategy.CONTEXT,
             InjectionStrategy.TOOL_BASED,
@@ -406,7 +449,14 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_hierarchical_requires_context(self) -> Self:
-        """Hierarchical retriever only works with CONTEXT strategy."""
+        """Hierarchical retriever only works with CONTEXT strategy.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If an argument fails domain validation.
+        """
         if (
             self.retriever == "hierarchical"
             and self.strategy != InjectionStrategy.CONTEXT
@@ -427,7 +477,11 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_hierarchical_field_consistency(self) -> Self:
-        """Warn when hierarchical fields are set but retriever is flat."""
+        """Warn when hierarchical fields are set but retriever is flat.
+
+        Returns:
+            Result of type ``Self``.
+        """
         if self.retriever != "flat":
             return self
         if (
@@ -461,7 +515,11 @@ class MemoryRetrievalConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_rerank_cache_ttl_consistency(self) -> Self:
-        """Warn when rerank_cache_ttl_seconds is set but reranking off."""
+        """Warn when rerank_cache_ttl_seconds is set but reranking off.
+
+        Returns:
+            Result of type ``Self``.
+        """
         if (
             not self.query_specific_rerank_enabled
             and "rerank_cache_ttl_seconds" in self.model_fields_set

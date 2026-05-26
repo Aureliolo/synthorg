@@ -10,6 +10,7 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_ACQUIRE,
@@ -136,9 +137,8 @@ class PerAgentStrategy:
         if loser is not None:
             try:
                 await destroy_fn(loser)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,
                     strategy="per-agent",
@@ -179,6 +179,7 @@ class PerAgentStrategy:
             )
 
             async def _grace_expire() -> None:
+                """Tear down the per-agent container once the grace period elapses."""
                 await self._clock.sleep(self._grace_seconds)
                 async with self._lock:
                     handle = self._containers.pop(owner_id, None)
@@ -197,9 +198,8 @@ class PerAgentStrategy:
                     )
                     try:
                         await destroy_fn(handle)
-                    except MemoryError, RecursionError:
-                        raise
                     except Exception as exc:
+                        reraise_critical(exc)
                         logger.warning(
                             SANDBOX_LIFECYCLE_DESTROY_FAILED,
                             strategy="per-agent",
@@ -248,9 +248,8 @@ class PerAgentStrategy:
         for handle in handles:
             try:
                 await destroy_fn(handle)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,
                     strategy="per-agent",
@@ -290,6 +289,7 @@ class PerAgentStrategy:
             return
 
         async def _idle_expire() -> None:
+            """Tear the container down once ``_max_idle`` of inactivity elapses."""
             # Per-owner pump: exits naturally when the owner is
             # removed or idle is exceeded; cleanup_all() cancels it
             # on shutdown, so a cooperative _stop_event is not used.
@@ -318,9 +318,8 @@ class PerAgentStrategy:
                 )
                 try:
                     await destroy_fn(handle)
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         SANDBOX_LIFECYCLE_DESTROY_FAILED,
                         strategy="per-agent",

@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory import errors as memory_errors
 from synthorg.memory.models import MemoryQuery
@@ -47,7 +48,11 @@ def _scored_to_candidate(
     *,
     source_worker: str,
 ) -> RetrievalCandidate:
-    """Convert a ``ScoredMemory`` to a ``RetrievalCandidate``."""
+    """Convert a ``ScoredMemory`` to a ``RetrievalCandidate``.
+
+    Returns:
+        Result of type ``RetrievalCandidate``.
+    """
     return RetrievalCandidate(
         entry=scored.entry,
         relevance_score=scored.relevance_score,
@@ -79,6 +84,13 @@ async def _safe_retrieve(
             telemetry can distinguish semantic/episodic/procedural
             backend degradations rather than collapsing them into
             a single ``_safe_retrieve`` bucket).
+
+    Returns:
+        Tuple of ``MemoryEntry``.
+
+    Raises:
+        MemoryError: If the related operation fails.
+        RecursionError: If the related operation fails.
     """
     try:
         return await backend.retrieve(agent_id, query)
@@ -129,7 +141,15 @@ class SemanticWorker:
         return "semantic"
 
     async def retrieve(self, query: RetrievalQuery) -> RetrievalResult:
-        """Execute semantic retrieval using dense + optional sparse."""
+        """Execute semantic retrieval using dense + optional sparse.
+
+        Returns:
+            Result of type ``RetrievalResult``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
         start = self._clock.monotonic()
         logger.info(
             MEMORY_HIERARCHICAL_WORKER_START,
@@ -158,6 +178,7 @@ class SemanticWorker:
                 except builtins.MemoryError, RecursionError:
                     raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     # Shared store failure is a partial degradation:
                     # the worker can still return personal results, so
                     # emit DEGRADED (not FAILED) to avoid overcounting
@@ -202,6 +223,7 @@ class SemanticWorker:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             logger.warning(
                 MEMORY_HIERARCHICAL_WORKER_FAILED,
@@ -223,7 +245,11 @@ class SemanticWorker:
         *,
         max_results: int,
     ) -> tuple[ScoredMemory, ...]:
-        """Rank via RRF fusion over personal + shared lists."""
+        """Rank via RRF fusion over personal + shared lists.
+
+        Returns:
+            Tuple of ``ScoredMemory``.
+        """
         lists: list[tuple[MemoryEntry, ...]] = []
         if personal:
             lists.append(personal)
@@ -244,7 +270,11 @@ class SemanticWorker:
         *,
         max_results: int,
     ) -> tuple[ScoredMemory, ...]:
-        """Rank via linear combination of relevance + recency."""
+        """Rank via linear combination of relevance + recency.
+
+        Returns:
+            Tuple of ``ScoredMemory``.
+        """
         effective_config = self._config.model_copy(
             update={"max_memories": max_results},
         )
@@ -291,7 +321,15 @@ class EpisodicWorker:
         return "episodic"
 
     async def retrieve(self, query: RetrievalQuery) -> RetrievalResult:
-        """Retrieve recent episodic memories."""
+        """Retrieve recent episodic memories.
+
+        Returns:
+            Result of type ``RetrievalResult``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
         start = self._clock.monotonic()
         logger.info(
             MEMORY_HIERARCHICAL_WORKER_START,
@@ -381,6 +419,7 @@ class EpisodicWorker:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             logger.warning(
                 MEMORY_HIERARCHICAL_WORKER_FAILED,
@@ -424,7 +463,15 @@ class ProceduralWorker:
         return "procedural"
 
     async def retrieve(self, query: RetrievalQuery) -> RetrievalResult:
-        """Retrieve procedural memories."""
+        """Retrieve procedural memories.
+
+        Returns:
+            Result of type ``RetrievalResult``.
+
+        Raises:
+            MemoryError: If the related operation fails.
+            RecursionError: If the related operation fails.
+        """
         start = self._clock.monotonic()
         logger.info(
             MEMORY_HIERARCHICAL_WORKER_START,
@@ -485,6 +532,7 @@ class ProceduralWorker:
         except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             elapsed_ms = int((self._clock.monotonic() - start) * 1000)
             logger.warning(
                 MEMORY_HIERARCHICAL_WORKER_FAILED,

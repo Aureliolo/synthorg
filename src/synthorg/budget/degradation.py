@@ -18,6 +18,7 @@ from synthorg.budget.quota import (
     DegradationConfig,
     QuotaCheckResult,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.degradation import (
@@ -176,9 +177,13 @@ async def _resolve_fallback(
 ) -> DegradationResult:
     """Walk the fallback provider list and return the first available.
 
+    Returns:
+        Result of type ``DegradationResult``.
+
     Raises:
-        QuotaExhaustedError: When no providers configured or all
-            exhausted.
+        QuotaExhaustedError: When no providers are configured or all
+            fallbacks are exhausted (built by ``_no_fallback_error`` /
+            ``_all_fallbacks_exhausted_error``).
     """
     fallbacks = degradation_config.fallback_providers
     if not fallbacks:
@@ -197,9 +202,8 @@ async def _resolve_fallback(
                 fallback_name,
                 estimated_tokens=estimated_tokens,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 DEGRADATION_FALLBACK_CHECK_ERROR,
                 provider=fallback_name,
@@ -227,7 +231,11 @@ def _build_fallback_result(
     original: str,
     fallback: str,
 ) -> DegradationResult:
-    """Build a FALLBACK result and log the resolution."""
+    """Build a FALLBACK result and log the resolution.
+
+    Returns:
+        Result of type ``DegradationResult``.
+    """
     logger.info(
         DEGRADATION_FALLBACK_RESOLVED,
         original_provider=original,
@@ -243,7 +251,11 @@ def _build_fallback_result(
 def _no_fallback_error(
     provider_name: str,
 ) -> QuotaExhaustedError:
-    """Log and build error for no fallback providers configured."""
+    """Log and build error for no fallback providers configured.
+
+    Returns:
+        Result of type ``QuotaExhaustedError``.
+    """
     logger.warning(
         DEGRADATION_FALLBACK_EXHAUSTED,
         provider=provider_name,
@@ -261,7 +273,11 @@ def _all_fallbacks_exhausted_error(
     provider_name: str,
     tried: list[str],
 ) -> QuotaExhaustedError:
-    """Log and build error for all fallbacks exhausted."""
+    """Log and build error for all fallbacks exhausted.
+
+    Returns:
+        Result of type ``QuotaExhaustedError``.
+    """
     logger.warning(
         DEGRADATION_FALLBACK_EXHAUSTED,
         provider=provider_name,
@@ -290,6 +306,9 @@ async def _resolve_queue(
     estimated_tokens: int = 0,
 ) -> DegradationResult:
     """Wait for the shortest quota window to reset, then re-check.
+
+    Returns:
+        Result of type ``DegradationResult``.
 
     Raises:
         QuotaExhaustedError: When wait exceeds max, no reset time,
@@ -331,7 +350,14 @@ async def _recheck_after_wait(
     estimated_tokens: int,
     delay: float,
 ) -> DegradationResult:
-    """Re-check quota after waiting; raise if still exhausted."""
+    """Re-check quota after waiting; raise if still exhausted.
+
+    Returns:
+        Result of type ``DegradationResult``.
+
+    Raises:
+        QuotaExhaustedError: If the relevant budget or quota is exhausted.
+    """
     recheck = await quota_tracker.check_quota(
         provider_name,
         estimated_tokens=estimated_tokens,
@@ -373,9 +399,12 @@ async def _compute_queue_delay(
 
     Returns 0.0 when the window has already rotated.
 
+    Returns:
+        Result of type ``float``.
+
     Raises:
-        QuotaExhaustedError: When no reset time is available or
-            delay exceeds ``max_wait``.
+        QuotaExhaustedError: When no reset time is available or the
+            delay exceeds ``max_wait`` (built by ``_queue_exhausted_error``).
     """
     snapshots = await quota_tracker.get_snapshot(provider_name)
     reset_times = _extract_reset_times(snapshots, exhausted_windows)
@@ -418,7 +447,11 @@ def _extract_reset_times(
     snapshots: tuple[QuotaSnapshot, ...],
     exhausted_windows: tuple[QuotaWindow, ...],
 ) -> list[datetime]:
-    """Filter snapshots to exhausted windows with reset times."""
+    """Filter snapshots to exhausted windows with reset times.
+
+    Returns:
+        List of ``datetime``.
+    """
     return [
         snap.window_resets_at
         for snap in snapshots
@@ -433,7 +466,11 @@ def _queue_exhausted_error(
     reason: str = "queue_exhausted",
     **extra: object,
 ) -> QuotaExhaustedError:
-    """Log and build error for QUEUE exhaustion."""
+    """Log and build error for QUEUE exhaustion.
+
+    Returns:
+        Result of type ``QuotaExhaustedError``.
+    """
     logger.warning(
         DEGRADATION_QUEUE_EXHAUSTED,
         provider=provider_name,
