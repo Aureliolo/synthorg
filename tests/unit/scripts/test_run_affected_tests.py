@@ -419,14 +419,15 @@ def test_classify_pass_when_returncode_zero_and_no_crashes() -> None:
     assert outcome.repeated_crashes == ()
 
 
-def test_classify_crash_advisory_when_returncode_zero_with_crashes() -> None:
-    """xdist recovered (returncode 0) but a worker did crash -> advisory pass."""
+def test_classify_regression_when_returncode_zero_with_crashes() -> None:
+    """xdist recovered (returncode 0) but a worker did crash -> still blocks."""
     outcome = _MODULE._classify_isolation_outcome(
         returncode=0,
         stdout=_CRASH_LINE + "499 passed, 1 errors in 12.34s\n",
     )
-    assert outcome.kind == "crash_advisory"
-    assert outcome.exit_code == 0
+    # A crash is a real defect even when xdist recovered: force exit >= 1.
+    assert outcome.kind == "regression"
+    assert outcome.exit_code == 1
     assert outcome.crashed_tests == (
         "tests/unit/api/auth/test_postgres_session_store.py"
         "::test_enforce_session_limit_revokes_oldest[2-2]",
@@ -480,18 +481,17 @@ def test_classify_regression_when_same_test_crashed_twice() -> None:
     )
 
 
-def test_classify_crash_advisory_when_distinct_crashes_only() -> None:
-    """Crashes spread across distinct tests, no real failures -> advisory."""
+def test_classify_regression_when_distinct_crashes_only() -> None:
+    """Crashes spread across distinct tests, no real failures -> still blocks."""
     stdout = _CRASH_LINE + _CRASH_LINE_OTHER_TEST
-    # xdist exhausted restarts; returncode is non-zero, but the signal is
-    # purely native crashes scattered across unrelated tests.
+    # A worker crash is a real defect; the gate blocks regardless of how
+    # the crashes are distributed across tests.
     outcome = _MODULE._classify_isolation_outcome(
         returncode=1,
         stdout=stdout,
     )
-    assert outcome.kind == "crash_advisory"
-    # Advisory: exit 0 even though pytest reported non-zero.
-    assert outcome.exit_code == 0
+    assert outcome.kind == "regression"
+    assert outcome.exit_code == 1
     assert len(outcome.crashed_tests) == 2
     assert outcome.repeated_crashes == ()
 
@@ -508,8 +508,11 @@ def test_classify_filters_crashed_test_from_failed_line() -> None:
         returncode=1,
         stdout=crash_line + failed_line,
     )
-    # Only the crash signal survives; the FAILED line is collateral.
-    assert outcome.kind == "crash_advisory"
+    # Only the crash signal survives; the FAILED line is collateral. A
+    # crash still blocks (regression), but the collateral FAILED is
+    # filtered so it is not double-counted as a real failure.
+    assert outcome.kind == "regression"
+    assert outcome.exit_code == 1
     assert outcome.failed_tests == ()
     assert outcome.crashed_tests == ("tests/unit/foo.py::test_bar[2-2]",)
 
@@ -526,17 +529,15 @@ def test_classify_regression_when_returncode_nonzero_no_signals() -> None:
     assert outcome.repeated_crashes == ()
 
 
-def test_classify_crash_advisory_when_node_down_with_internal_error() -> None:
-    """xdist worker(s) ``node down`` + scheduler ``INTERNALERROR>`` -> advisory.
+def test_classify_regression_when_node_down_with_internal_error() -> None:
+    """xdist worker(s) ``node down`` + scheduler ``INTERNALERROR>`` -> blocks.
 
     Reproduces the Python 3.14 + Windows ProactorEventLoop teardown
     race where workers terminate between tests (so xdist prints ``[gwN]
     node down: Not properly terminated`` instead of the canonical
-    ``crashed while running '...'`` form), then the scheduler crashes
-    when it tries to reassign work to the dead workers (``KeyError:
-    <WorkerController gwN>`` propagated as ``INTERNALERROR>``). Without
-    the dedicated branch the classifier would fall through to the
-    fail-closed path and block on documented native-level flakiness.
+    ``crashed while running '...'`` form). A dead worker is a real defect
+    to debug from the dump, so the gate blocks; the worker ids surface
+    in lieu of per-test attribution.
     """
     stdout = (
         "[gw5] node down: Not properly terminated\n"
@@ -549,8 +550,8 @@ def test_classify_crash_advisory_when_node_down_with_internal_error() -> None:
         returncode=3,
         stdout=stdout,
     )
-    assert outcome.kind == "crash_advisory"
-    assert outcome.exit_code == 0
+    assert outcome.kind == "regression"
+    assert outcome.exit_code == 3
     # Worker ids surface in lieu of test ids (the ``node down`` signature
     # lacks a per-test attribution).
     assert outcome.crashed_tests == ("<worker gw5>", "<worker gw0>")
@@ -558,26 +559,24 @@ def test_classify_crash_advisory_when_node_down_with_internal_error() -> None:
     assert outcome.repeated_crashes == ()
 
 
-def test_classify_crash_advisory_when_node_down_without_internal_error() -> None:
-    """``node down`` alone, no ``INTERNALERROR>``, returncode non-zero.
+def test_classify_regression_when_node_down_without_internal_error() -> None:
+    """``node down`` alone, no ``INTERNALERROR>``, returncode non-zero -> blocks.
 
     This is the dominant shape of the documented Python 3.14 + Windows
     xdist teardown crash: the controller-side loadscope crash guard in
     ``tests/conftest.py`` suppresses the downstream ``INTERNALERROR>``,
     and a worker killed mid-teardown dies before pytest prints any
-    FAILED summary. Requiring the INTERNALERROR (as the gate once did)
-    fails closed on every such crash and blocks every push that widens
-    the affected selection. With no real failure and no repeated named
-    crash, a bare node-down is advisory; the worker id surfaces in lieu
-    of an unrecoverable test id.
+    FAILED summary. A bare node-down is still a real worker crash to
+    debug, so the gate blocks; the worker id surfaces in lieu of an
+    unrecoverable test id.
     """
     stdout = "[gw5] node down: Not properly terminated\n"
     outcome = _MODULE._classify_isolation_outcome(
         returncode=1,
         stdout=stdout,
     )
-    assert outcome.kind == "crash_advisory"
-    assert outcome.exit_code == 0
+    assert outcome.kind == "regression"
+    assert outcome.exit_code == 1
     assert outcome.crashed_tests == ("<worker gw5>",)
     assert outcome.failed_tests == ()
     assert outcome.repeated_crashes == ()
@@ -588,7 +587,7 @@ def test_classify_real_failure_outranks_node_down_signature() -> None:
 
     When xdist marks a test ``FAILED`` for a real assertion error AND a
     different worker dies, the real failure is the actionable signal
-    and must not be hidden behind the crash-advisory branch.
+    and must not be hidden behind the worker-crash branch.
     """
     stdout = (
         "[gw5] node down: Not properly terminated\n"
@@ -603,20 +602,21 @@ def test_classify_real_failure_outranks_node_down_signature() -> None:
     assert outcome.failed_tests == ("tests/unit/foo.py::test_real_failure[2-2]",)
 
 
-def test_classify_advisory_when_single_crash_below_threshold() -> None:
-    """A single crash of one test is below the real-bug threshold.
+def test_classify_regression_when_single_crash_blocks() -> None:
+    """A single one-off worker crash blocks (regression); repeated_crashes empty.
 
-    Proves the boundary directly: if the threshold check ever flips
-    from ``>= 2`` to ``>= 1`` the gate would wrongly escalate single
-    transient crashes to regressions.
+    The repeated-crash threshold (``>= 2``) no longer decides block vs
+    pass -- every worker crash blocks. It only decides which banner the
+    operator sees (repeated-bug vs one-off crash); a one-off crash has
+    empty ``repeated_crashes`` but is still a regression.
     """
     stdout = _CRASH_LINE  # Single crash, no repeat iteration.
     outcome = _MODULE._classify_isolation_outcome(
         returncode=1,
         stdout=stdout,
     )
-    assert outcome.kind == "crash_advisory"
-    assert outcome.exit_code == 0
+    assert outcome.kind == "regression"
+    assert outcome.exit_code == 1
     assert outcome.repeated_crashes == ()
 
 
@@ -659,15 +659,6 @@ def test_isolation_outcome_pass_with_evidence_raises() -> None:
             kind="pass",
             exit_code=0,
             failed_tests=("tests/foo.py::test_x",),
-        )
-
-
-def test_isolation_outcome_crash_advisory_without_crashes_raises() -> None:
-    """``crash_advisory`` requires non-empty ``crashed_tests``."""
-    with pytest.raises(ValueError, match="crash_advisory"):
-        _MODULE.IsolationOutcome(
-            kind="crash_advisory",
-            exit_code=0,
         )
 
 
@@ -730,20 +721,21 @@ def test_print_isolation_banner_regression_repeated_crash_blames_real_bug(
     assert "tests/unit/foo.py::test_bar" in err
 
 
-def test_print_isolation_banner_crash_advisory_blames_proactor_race(
+def test_print_isolation_banner_regression_one_off_crash_demands_dump(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Crash advisory blames Windows ProactorEventLoop / cross-worktree."""
+    """A one-off worker crash blocks and demands a dump + teardown review."""
     outcome = _MODULE.IsolationOutcome(
-        kind="crash_advisory",
-        exit_code=0,
+        kind="regression",
+        exit_code=1,
         crashed_tests=("tests/unit/foo.py::test_bar[2-2]",),
     )
     _MODULE._print_isolation_banner(outcome)
     err = capsys.readouterr().err
-    assert "ADVISORY" in err
-    assert "ProactorEventLoop" in err
-    assert "concurrent worktrees" in err
+    assert "ISOLATION CRASH" in err
+    assert "dump" in err
+    assert "no bypass and no advisory" in err
+    assert "tests/unit/foo.py::test_bar[2-2]" in err
 
 
 def test_print_isolation_banner_regression_no_evidence_uses_failclosed_text(
@@ -788,11 +780,11 @@ def test_run_isolation_gate_passes_through_classifier_pass(
     assert _MODULE._run_isolation_gate(["tests/unit/foo/"]) == 0
 
 
-def test_run_isolation_gate_returns_advisory_zero_on_native_crash(
+def test_run_isolation_gate_blocks_on_native_crash(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Native worker crashes alone -> classifier returns crash_advisory -> exit 0."""
+    """Native worker crashes -> classifier returns regression -> blocks (exit >= 1)."""
     stdout = _CRASH_LINE + _CRASH_LINE_OTHER_TEST
     monkeypatch.setattr(
         _MODULE,
@@ -800,8 +792,8 @@ def test_run_isolation_gate_returns_advisory_zero_on_native_crash(
         lambda _cmd, **_kwargs: (1, stdout),
     )
     rc = _MODULE._run_isolation_gate(["tests/unit/api/"])
-    assert rc == 0
-    assert "ADVISORY" in capsys.readouterr().err
+    assert rc == 1
+    assert "ISOLATION CRASH" in capsys.readouterr().err
 
 
 def test_run_isolation_gate_returns_nonzero_on_real_regression(
@@ -822,7 +814,7 @@ def test_run_isolation_gate_returns_nonzero_on_real_regression(
 def test_run_isolation_gate_invokes_pytest_with_correct_flags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The gate command embeds ``--count 2`` and ``--max-worker-restart=4``."""
+    """The gate command embeds ``--count 2`` and ``--max-worker-restart=0``."""
     captured: dict[str, list[str]] = {}
 
     def _capture(cmd: list[str], **_kwargs: object) -> tuple[int, str]:
@@ -834,7 +826,7 @@ def test_run_isolation_gate_invokes_pytest_with_correct_flags(
     cmd = captured["cmd"]
     assert "--count" in cmd
     assert "2" in cmd
-    assert "--max-worker-restart=4" in cmd
+    assert "--max-worker-restart=0" in cmd
     assert "tests/unit/foo/" in cmd
 
 
@@ -843,10 +835,10 @@ def test_run_pytest_short_circuits_on_hung_exit_code(
 ) -> None:
     """A watchdog kill (returncode == _PYTEST_HUNG_EXIT_CODE) returns 124 immediately.
 
-    The classifier is bypassed -- it would otherwise read worker-crash
-    markers in the killed run's stdout and rate the timeout as a
-    crash-advisory PASS, letting the push through. The short-circuit
-    is the contract that prevents that misclassification.
+    The classifier is bypassed -- the canonical 124 plus the
+    ``_on_timeout`` banner are the right signal for a watchdog kill,
+    rather than classifying the killed run's partial stdout. The
+    short-circuit is the contract that guarantees that.
     """
     monkeypatch.setattr(
         _MODULE,
@@ -874,9 +866,9 @@ def test_run_isolation_gate_short_circuits_on_hung_exit_code(
 ) -> None:
     """Isolation gate also short-circuits on watchdog kill (same reasoning).
 
-    A hung ``--count 2`` replay must NOT be classified as
-    crash-advisory; that would silently green-light a real isolation
-    leak whose run timed out before the replay finished.
+    A hung ``--count 2`` replay must NOT be classified from its partial
+    stdout; the watchdog kill returns the canonical 124 so a replay that
+    timed out before finishing blocks cleanly.
     """
     monkeypatch.setattr(
         _MODULE,
