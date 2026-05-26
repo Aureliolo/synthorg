@@ -1,22 +1,27 @@
-# sqlfluff configuration: SQL lint for migration revision files.
+# sqlfluff configuration: SQL lint for migration revisions and the
+# canonical declared schema.
 #
-# Two dialects: SQLite migrations under persistence/sqlite/revisions/
-# and Postgres migrations under persistence/postgres/revisions/. The
-# default dialect is SQLite; the postgres path uses a directory-scoped
-# override via .sqlfluffignore + per-path command invocation.
+# Two dialects: SQLite under persistence/sqlite/ and Postgres under
+# persistence/postgres/. The default dialect is SQLite; the postgres
+# path is selected per-invocation via --dialect postgres.
+#
+# The FULL default ruleset is active (no `rules =` narrowing). The 38
+# historical revision files are frozen (check_no_edit_migration.sh plus
+# yoyo's content-hash check), so their cosmetic violations cannot be
+# remediated; they are exempted in .sqlfluffignore. New revisions are
+# deliberately NOT exempted, so they inherit the full ruleset. The
+# canonical schema.sql files ARE linted; their CREATE TRIGGER / CREATE
+# FUNCTION bodies carry scoped `-- noqa: disable=all` so reformatting
+# cannot diverge them from the frozen-revision DDL that
+# check_schema_drift_revisions.py compares case-sensitively.
 
 [sqlfluff]
 dialect = sqlite
 templater = raw
-# Keep only the correctness-focused rule groups. Existing migrations
-# are frozen by check_no_edit_migration.sh so layout / capitalisation /
-# alias-naming rules fire on the historical record without value;
-# enabling them on new SQL is a follow-up SQL-style PR.
-rules = ambiguous, references
-# RF04 fires on legitimate column names that happen to be SQL keywords
-# (e.g. `text`, `value`, `key`). These are intentionally chosen for
-# domain clarity; column names quoted by the engine are safe.
-exclude_rules = RF04
+# schema.sql is ~80 KB, over sqlfluff's default 20000-byte skip limit;
+# 0 disables the skip so the canonical schema is linted, not silently
+# passed.
+large_file_skip_byte_limit = 0
 max_line_length = 200
 indent_unit = space
 tab_space_size = 4
@@ -30,6 +35,14 @@ template_blocks_indent = false
 allow_scalar = true
 single_table_references = consistent
 unquoted_identifiers_policy = aliases
+
+[sqlfluff:rules:references.keywords]
+# Column names that are intentionally SQL keywords, chosen for domain
+# clarity (the engine quotes them on access, so they are safe). The
+# Postgres dialect reserves far more of these than SQLite. RF04 stays
+# active for every OTHER keyword, unlike the previous blanket
+# exclude_rules = RF04.
+ignore_words = constraints, content, cost, dependencies, fields, key, model, name, path, provider, role, rowid, sequence, snapshot, stage, text, timestamp, type, value, version
 
 [sqlfluff:rules:capitalisation.keywords]
 capitalisation_policy = upper

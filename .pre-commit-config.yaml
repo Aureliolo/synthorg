@@ -944,12 +944,14 @@ repos:
         files: ^(src/synthorg|tests|scripts|docs|README\.md|CLAUDE\.md|\.codespellrc).*$
         pass_filenames: false
 
-      # SQL lint for migration revisions.
+      # SQL lint for migration revisions and the canonical schema.
+      # Frozen historical revisions are exempted via .sqlfluffignore;
+      # the full default ruleset applies to schema.sql and new revisions.
       - id: sqlfluff
-        name: sqlfluff (SQLite + Postgres revisions)
-        entry: bash -c "uv run sqlfluff lint --dialect sqlite src/synthorg/persistence/sqlite/revisions/ && uv run sqlfluff lint --dialect postgres src/synthorg/persistence/postgres/revisions/"
+        name: sqlfluff (SQLite + Postgres revisions + schema)
+        entry: bash -c "uv run sqlfluff lint --dialect sqlite src/synthorg/persistence/sqlite/revisions/ src/synthorg/persistence/sqlite/schema.sql && uv run sqlfluff lint --dialect postgres src/synthorg/persistence/postgres/revisions/ src/synthorg/persistence/postgres/schema.sql"
         language: system
-        files: ^(src/synthorg/persistence/(sqlite|postgres)/revisions/.*\.sql|\.sqlfluff|\.pre-commit-config\.yaml)$
+        files: ^(src/synthorg/persistence/(sqlite|postgres)/(revisions/.*|schema)\.sql|\.sqlfluff(ignore)?|\.pre-commit-config\.yaml)$
         pass_filenames: false
         stages: [pre-push]
 
