@@ -1,6 +1,6 @@
 """Unit tests for ToolInvoker sub-constraint enforcement."""
 
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -35,6 +35,7 @@ class _WebTool(BaseTool):
             },
         )
 
+    @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
         return ToolExecutionResult(content="ok")
 
@@ -55,6 +56,7 @@ class _TerminalTool(BaseTool):
             },
         )
 
+    @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
         return ToolExecutionResult(content="ok")
 
@@ -76,6 +78,7 @@ class _FileTool(BaseTool):
             },
         )
 
+    @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
         return ToolExecutionResult(content="file content")
 

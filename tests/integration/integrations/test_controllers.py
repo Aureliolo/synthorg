@@ -19,7 +19,7 @@ on the real HTTP path.
 from collections.abc import AsyncIterator, Mapping, Sequence
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -1001,6 +1001,7 @@ class TestOAuthController:
             must_change_password = False
 
         class _InjectUserMiddleware(ASGIMiddleware):
+            @override
             async def handle(
                 self,
                 scope: Any,
@@ -1131,6 +1132,7 @@ class TestControllerHttpLayer:
             pipeline.
             """
 
+            @override
             async def handle(
                 self,
                 scope: Any,

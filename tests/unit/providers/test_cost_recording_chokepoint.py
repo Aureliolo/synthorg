@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Conformance tests for the BaseCompletionProvider cost-recording chokepoint.
 
 A successful ``provider.complete()`` call inside an open
@@ -12,6 +12,7 @@ exercised through the chokepoint via the same minimal stub harness.
 
 import asyncio
 from collections.abc import AsyncIterator
+from typing import override
 
 import pytest
 
@@ -55,6 +56,7 @@ class _StubProvider(BaseCompletionProvider):
         )
         self._finish_reason = finish_reason
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -71,6 +73,7 @@ class _StubProvider(BaseCompletionProvider):
             model=model,
         )
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -89,6 +92,7 @@ class _StubProvider(BaseCompletionProvider):
 
         return _gen()
 
+    @override
     async def _do_get_model_capabilities(
         self,
         model: str,
@@ -185,6 +189,7 @@ class TestCostRecordingChokepoint:
 
     async def test_tracker_record_failure_does_not_break_complete(self) -> None:
         class _RaisingTracker(CostTracker):
+            @override
             async def record(self, cost_record: CostRecord) -> None:
                 _ = cost_record
                 msg = "boom"

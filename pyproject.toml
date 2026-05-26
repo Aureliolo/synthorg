@@ -713,7 +713,6 @@ disable_error_code = ["explicit-override", "unused-awaitable"]
 # docs/decisions/0006-tiered-module-size-policy.md Section F.1.
 #
 # * ``unused-awaitable`` (~23 sites): #2116
-# * ``explicit-override`` (~87 sites across ~48 files): #2118
 # * ``deprecated`` (1 site, blocked on pytest-asyncio upstream): #2120
 # * ``disallow_any_explicit`` (~1,800 sites, blocked on EPIC #2056):
 #   #2121
@@ -724,7 +723,6 @@ disable_error_code = ["explicit-override", "unused-awaitable"]
 module = "tests.*"
 disallow_any_explicit = false  # #2121
 disable_error_code = [
-    "explicit-override",     # #2118
     "unused-awaitable",      # #2116
     "deprecated",            # #2120
     "unused-ignore",         # holding pen; closes alongside the above

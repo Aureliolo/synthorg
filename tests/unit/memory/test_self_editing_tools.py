@@ -1,8 +1,8 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Tests for self-editing memory BaseTool wrappers and registry integration."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, override
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -105,6 +105,7 @@ class _DummyTool(BaseTool):
             category=ToolCategory.OTHER,
         )
 
+    @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
         return ToolExecutionResult(content="dummy")
 

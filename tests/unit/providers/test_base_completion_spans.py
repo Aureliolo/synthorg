@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Regression: ``BaseCompletionProvider.complete`` opens a child span.
 
 The span carries ``provider.{name,model,message_count,tool_count}``
@@ -16,7 +16,7 @@ so we can assert the attributes and absence of forbidden calls.
 """
 
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, override
 from unittest.mock import patch
 
 import pytest
@@ -98,9 +98,11 @@ class _StubProvider(BaseCompletionProvider):
         self._completer = completer
         self._label = provider_label
 
+    @override
     def _provider_label(self) -> str:
         return self._label
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -114,6 +116,7 @@ class _StubProvider(BaseCompletionProvider):
         )
         return result
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -127,6 +130,7 @@ class _StubProvider(BaseCompletionProvider):
         return
         yield None
 
+    @override
     async def _do_get_model_capabilities(self, model: str) -> Any:  # pragma: no cover
         return None
 

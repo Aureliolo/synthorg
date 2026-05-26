@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Unit tests for :class:`MemoryService`.
 
 Exercises the in-process logic of the service layer (deploy / rollback
@@ -9,6 +9,7 @@ conformance suite.
 """
 
 from datetime import UTC, datetime
+from typing import override
 
 import pytest
 
@@ -495,6 +496,7 @@ class TestMemoryServiceReReadFailure:
                 super().__init__()
                 self._vanish_after = False
 
+            @override
             async def get(
                 self,
                 entity_id: str,
@@ -503,6 +505,7 @@ class TestMemoryServiceReReadFailure:
                     return None
                 return await super().get(entity_id)
 
+            @override
             async def set_active(self, checkpoint_id: str) -> None:
                 await super().set_active(checkpoint_id)
                 # After activation, simulate the row disappearing before

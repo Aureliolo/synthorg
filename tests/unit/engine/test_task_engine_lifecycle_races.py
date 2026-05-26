@@ -18,6 +18,7 @@ are mutually exclusive.
 """
 
 import asyncio
+from typing import override
 
 import pytest
 
@@ -53,6 +54,7 @@ class TestConcurrentStart:
         acquire_count = 0
 
         class _CoordinatedLock(asyncio.Lock):
+            @override
             async def acquire(self) -> bool:  # type: ignore[override]
                 nonlocal acquire_count
                 acquire_count += 1

@@ -23,7 +23,7 @@ import ssl
 import subprocess
 import threading
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, cast, override
 
 import pytest
 
@@ -126,6 +126,7 @@ def _make_handler(server_root: Path) -> type[http.server.BaseHTTPRequestHandler]
         # closes without a TLS close_notify.
         protocol_version = "HTTP/1.1"
 
+        @override
         def log_message(self, *_args: object) -> None:
             pass
 

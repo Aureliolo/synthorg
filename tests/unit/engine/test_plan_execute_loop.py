@@ -1,7 +1,7 @@
 """Tests for the Plan-and-Execute execution loop."""
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 import pytest
 
@@ -140,6 +140,7 @@ class _StubTool(BaseTool):
             category=ToolCategory.CODE_EXECUTION,
         )
 
+    @override
     async def execute(
         self,
         *,

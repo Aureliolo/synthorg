@@ -1,6 +1,6 @@
 """CRUD mutation, typed error, and consistency tests for TaskEngine."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import pytest
 
@@ -929,6 +929,7 @@ class TestErrorPropagation:
         """Persistence errors during mutation are captured in the result."""
 
         class FailingSaveRepo(FakeTaskRepository):
+            @override
             async def save(self, task: Task) -> None:
                 msg = "Disk full"
                 raise OSError(msg)

@@ -1,7 +1,7 @@
 """Tests for discovery tools (list_tools, load_tool, load_tool_resource)."""
 
 import json
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -35,6 +35,7 @@ class _ToolWithResources(BaseTool):
             category=ToolCategory.FILE_SYSTEM,
         )
 
+    @override
     def to_l1_metadata(self) -> ToolL1Metadata:
         return ToolL1Metadata(
             name="rich_tool",
@@ -43,6 +44,7 @@ class _ToolWithResources(BaseTool):
             typical_cost_tier="expensive",
         )
 
+    @override
     def to_l2_body(self) -> ToolL2Body:
         return ToolL2Body(
             full_description="Full description of rich tool",
@@ -54,6 +56,7 @@ class _ToolWithResources(BaseTool):
             failure_modes=("timeout",),
         )
 
+    @override
     def get_l3_resources(self) -> tuple[ToolL3Resource, ...]:
         content = "# Guide\nUsage guide here"
         return (
@@ -65,6 +68,7 @@ class _ToolWithResources(BaseTool):
             ),
         )
 
+    @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
         return ToolExecutionResult(content="executed")
 
@@ -79,6 +83,7 @@ class _SimpleTool(BaseTool):
             category=ToolCategory.FILE_SYSTEM,
         )
 
+    @override
     async def execute(self, *, arguments: dict[str, Any]) -> ToolExecutionResult:
         return ToolExecutionResult(content="ok")
 

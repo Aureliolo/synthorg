@@ -1,7 +1,7 @@
 """Tests for org-wide activity feed endpoint."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -33,6 +33,7 @@ _AGENT_ID = "00000000-0000-0000-0000-000000000aaa"
 class _FrozenDatetime(datetime):
     """Subclass that makes ``now()`` return the fixed ``_NOW``."""
 
+    @override
     @classmethod
     def now(cls, tz: object = None) -> datetime:  # type: ignore[override]
         return _NOW

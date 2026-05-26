@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Failure-path coverage for the knowledge substrate.
 
 The happy paths are covered by ``test_indexer.py`` / ``test_service.py``
@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -120,6 +120,7 @@ class TestPdfLoaderFailures:
 
 
 class _StaticFetcher(HtmlFetcher):
+    @override
     async def fetch(self, url: str) -> str:
         return "<html><body><p>fine</p></body></html>"
 
@@ -275,6 +276,7 @@ class _SlowFetcher(HtmlFetcher):
         self.in_flight = 0
         self.peak = 0
 
+    @override
     async def fetch(self, _url: str) -> str:
         self.in_flight += 1
         self.peak = max(self.peak, self.in_flight)

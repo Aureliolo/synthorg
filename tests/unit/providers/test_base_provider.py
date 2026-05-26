@@ -1,8 +1,8 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Tests for BaseCompletionProvider logging."""
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import pytest
 import structlog
@@ -42,6 +42,7 @@ from synthorg.providers.models import (
 class _StubProvider(BaseCompletionProvider):
     """Minimal concrete provider for testing the base class."""
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -62,6 +63,7 @@ class _StubProvider(BaseCompletionProvider):
             model=model,
         )
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -76,6 +78,7 @@ class _StubProvider(BaseCompletionProvider):
 
         return _gen()
 
+    @override
     async def _do_get_model_capabilities(
         self,
         model: str,
@@ -182,6 +185,7 @@ class TestBaseProviderMetadataEnrichment:
         calls = 0
 
         class _RetryableProvider(_StubProvider):
+            @override
             async def _do_complete(
                 self,
                 messages: list[ChatMessage],
@@ -224,6 +228,7 @@ class TestBatchGetCapabilitiesDefault:
 
     async def test_returns_per_model_capabilities(self) -> None:
         class _Provider(_StubProvider):
+            @override
             async def _do_get_model_capabilities(
                 self,
                 model: str,
@@ -240,6 +245,7 @@ class TestBatchGetCapabilitiesDefault:
 
     async def test_per_model_failures_become_none(self) -> None:
         class _PartialProvider(_StubProvider):
+            @override
             async def _do_get_model_capabilities(
                 self,
                 model: str,
@@ -274,6 +280,7 @@ class TestBatchGetCapabilitiesDefault:
         lock = asyncio.Lock()
 
         class _GatedProvider(_StubProvider):
+            @override
             async def _do_get_model_capabilities(
                 self,
                 model: str,
@@ -296,6 +303,7 @@ class TestBatchGetCapabilitiesDefault:
 
     async def test_propagates_memory_error(self) -> None:
         class _BadProvider(_StubProvider):
+            @override
             async def _do_get_model_capabilities(
                 self,
                 model: str,

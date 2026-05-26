@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """Unit tests for memory-domain destructive handlers.
 
 Covers the success-path audit trail for ``cancel_fine_tune``,

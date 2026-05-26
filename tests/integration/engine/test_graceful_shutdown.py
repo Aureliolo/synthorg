@@ -4,7 +4,7 @@ Creates an engine with a shutdown manager, starts an agent, triggers
 shutdown, and verifies: agent stops, task is INTERRUPTED, cleanup runs.
 """
 
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -286,6 +286,7 @@ class TestGracefulShutdownFlow:
                     category=ToolCategory.CODE_EXECUTION,
                 )
 
+            @override
             async def execute(
                 self,
                 *,

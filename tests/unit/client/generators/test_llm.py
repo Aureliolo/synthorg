@@ -1,8 +1,8 @@
-# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """Unit tests for LLMGenerator."""
 
 import json
-from typing import cast
+from typing import cast, override
 
 import pytest
 
@@ -198,6 +198,7 @@ class TestLLMGenerator:
 
     async def test_propagates_provider_errors(self) -> None:
         class _FailingProvider(_StubProvider):
+            @override
             async def complete(
                 self,
                 messages: list[ChatMessage],

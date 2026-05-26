@@ -7,7 +7,7 @@ fail-marker on callback exception.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -239,6 +239,7 @@ async def test_run_idempotent_in_flight_returns_none_after_poll_timeout(
     clock = _install_deterministic_clock(monkeypatch, svc_mod)
 
     class _StuckRepo(_FakeRepo):
+        @override
         async def get(
             self,
             *,
@@ -285,6 +286,7 @@ async def test_run_idempotent_in_flight_resolves_to_completed_via_poll(
     poll_count = 0
 
     class _ResolvingRepo(_FakeRepo):
+        @override
         async def get(
             self,
             *,

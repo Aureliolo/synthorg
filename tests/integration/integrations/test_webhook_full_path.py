@@ -9,7 +9,7 @@ spy ``ExternalTriggerStrategy``.
 
 import asyncio
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -41,6 +41,7 @@ class _SpyExternalTriggerStrategy(ExternalTriggerStrategy):
         self.calls: list[tuple[object, str, Mapping[str, Any]]] = []
         self.called: asyncio.Event = asyncio.Event()
 
+    @override
     async def on_external_event(
         self,
         sprint: object,

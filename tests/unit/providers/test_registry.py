@@ -1,7 +1,7 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Unit tests for ProviderRegistry."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import pytest
 import structlog
@@ -59,6 +59,7 @@ class _StubDriver(BaseCompletionProvider):
         self.provider_name = provider_name
         self.config = config
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -69,6 +70,7 @@ class _StubDriver(BaseCompletionProvider):
     ) -> CompletionResponse:
         raise NotImplementedError
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -79,6 +81,7 @@ class _StubDriver(BaseCompletionProvider):
     ) -> AsyncIterator[StreamChunk]:
         raise NotImplementedError
 
+    @override
     async def _do_get_model_capabilities(
         self,
         model: str,

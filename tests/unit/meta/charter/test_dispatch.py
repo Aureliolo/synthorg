@@ -1,8 +1,8 @@
-# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """Unit tests for the charter approval-to-spine dispatcher."""
 
 from datetime import UTC, datetime
-from typing import cast
+from typing import cast, override
 
 import pytest
 
@@ -342,6 +342,7 @@ class TestApprove:
         # A previous approval attempt created the project; the retry must
         # treat the DuplicateRecordError as a no-op and reuse the project.
         class _DupProjectRepo(_FakeProjectRepo):
+            @override
             async def create(self, project: Project) -> None:
                 del project
                 msg = "duplicate"
@@ -373,6 +374,7 @@ class TestApprove:
         # if the conversation was already CLOSED, the close is a no-op and the
         # approval still succeeds (the spine ran, the charter is APPROVED).
         class _ClosedConvRepo(_FakeConversationRepo):
+            @override
             async def transition_if(self, entity_id: str, **kwargs: object) -> bool:
                 # Simulate already-closed: transition returns False.
                 self.closed.append(entity_id)

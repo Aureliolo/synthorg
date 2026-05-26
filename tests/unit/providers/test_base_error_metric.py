@@ -1,4 +1,4 @@
-# mypy: disable-error-code="explicit-any,explicit-override"
+# mypy: disable-error-code="explicit-any"
 """Tests for provider-error metric emission in ``BaseCompletionProvider``.
 
 When an underlying driver raises, the base class must classify the
@@ -9,7 +9,7 @@ re-raised exception.
 """
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, override
 from unittest.mock import MagicMock
 
 import pytest
@@ -47,6 +47,7 @@ class _ErroringProvider(BaseCompletionProvider):
         self._provider_name = provider_name
         self._exc = exc
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -57,6 +58,7 @@ class _ErroringProvider(BaseCompletionProvider):
     ) -> CompletionResponse:
         raise self._exc
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -67,6 +69,7 @@ class _ErroringProvider(BaseCompletionProvider):
     ) -> AsyncIterator[StreamChunk]:
         raise self._exc
 
+    @override
     async def _do_get_model_capabilities(
         self,
         model: str,
@@ -81,6 +84,7 @@ class _SuccessProvider(BaseCompletionProvider):
         super().__init__()
         self._provider_name = provider_name
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -99,6 +103,7 @@ class _SuccessProvider(BaseCompletionProvider):
             model=model,
         )
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -113,6 +118,7 @@ class _SuccessProvider(BaseCompletionProvider):
 
         return _gen()
 
+    @override
     async def _do_get_model_capabilities(self, model: str) -> Any:
         msg = "not implemented"
         raise NotImplementedError(msg)
@@ -193,10 +199,13 @@ def test_provider_label_defaults_to_class_name() -> None:
     """Subclasses without ``provider_name`` fall back to the class name."""
 
     class _Unbranded(BaseCompletionProvider):
+        @override
         async def _do_complete(self, *a: Any, **kw: Any) -> Any: ...
 
+        @override
         async def _do_stream(self, *a: Any, **kw: Any) -> Any: ...
 
+        @override
         async def _do_get_model_capabilities(self, model: str) -> Any: ...
 
     p = _Unbranded()

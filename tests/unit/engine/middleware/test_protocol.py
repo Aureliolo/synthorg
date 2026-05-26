@@ -1,6 +1,7 @@
 """Tests for agent middleware protocol, base class, and chain composition."""
 
 from datetime import date
+from typing import override
 from uuid import uuid4
 
 import pytest
@@ -163,6 +164,7 @@ class _TrackingMiddleware(BaseAgentMiddleware):
         super().__init__(name=name)
         self._log = log
 
+    @override
     async def before_agent(
         self,
         ctx: AgentMiddlewareContext,
@@ -170,6 +172,7 @@ class _TrackingMiddleware(BaseAgentMiddleware):
         self._log.append(f"{self.name}:before_agent")
         return ctx
 
+    @override
     async def before_model(
         self,
         ctx: AgentMiddlewareContext,
@@ -177,6 +180,7 @@ class _TrackingMiddleware(BaseAgentMiddleware):
         self._log.append(f"{self.name}:before_model")
         return ctx
 
+    @override
     async def after_model(
         self,
         ctx: AgentMiddlewareContext,
@@ -184,6 +188,7 @@ class _TrackingMiddleware(BaseAgentMiddleware):
         self._log.append(f"{self.name}:after_model")
         return ctx
 
+    @override
     async def after_agent(
         self,
         ctx: AgentMiddlewareContext,
@@ -191,6 +196,7 @@ class _TrackingMiddleware(BaseAgentMiddleware):
         self._log.append(f"{self.name}:after_agent")
         return ctx
 
+    @override
     async def wrap_model_call(
         self,
         ctx: AgentMiddlewareContext,
@@ -201,6 +207,7 @@ class _TrackingMiddleware(BaseAgentMiddleware):
         self._log.append(f"{self.name}:wrap_model_call:exit")
         return result
 
+    @override
     async def wrap_tool_call(
         self,
         ctx: AgentMiddlewareContext,
@@ -378,6 +385,7 @@ class TestAgentMiddlewareChain:
 class _ErrorMiddleware(BaseAgentMiddleware):
     """Raises in before_agent to test error propagation."""
 
+    @override
     async def before_agent(self, ctx: AgentMiddlewareContext) -> AgentMiddlewareContext:
         msg = f"Error from {self.name}"
         raise RuntimeError(msg)
@@ -395,6 +403,7 @@ class TestChainErrorPropagation:
 
     async def test_wrap_model_call_error_propagates(self) -> None:
         class _WrapError(BaseAgentMiddleware):
+            @override
             async def wrap_model_call(
                 self,
                 ctx: AgentMiddlewareContext,

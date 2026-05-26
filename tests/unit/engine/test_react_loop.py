@@ -1,6 +1,6 @@
 """Tests for the ReAct execution loop."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -95,6 +95,7 @@ class _StubTool(BaseTool):
             category=ToolCategory.CODE_EXECUTION,
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -641,6 +642,7 @@ class TestReactLoopToolExecutionException:
                     category=ToolCategory.CODE_EXECUTION,
                 )
 
+            @override
             async def execute(
                 self,
                 *,

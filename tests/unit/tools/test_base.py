@@ -1,7 +1,7 @@
-# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """Tests for BaseTool ABC and ToolExecutionResult."""
 
-from typing import Any
+from typing import Any, override
 
 import pytest
 from pydantic import ValidationError
@@ -60,6 +60,7 @@ class _ConcreteTool(BaseTool):
             category=category,
         )
 
+    @override
     async def execute(
         self,
         *,

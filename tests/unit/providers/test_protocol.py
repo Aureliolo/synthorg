@@ -1,7 +1,8 @@
-# mypy: disable-error-code="explicit-any,explicit-override,empty-body"
+# mypy: disable-error-code="explicit-any,empty-body"
 """Tests for CompletionProvider protocol and BaseCompletionProvider ABC."""
 
 from collections.abc import AsyncIterator
+from typing import override
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -87,6 +88,7 @@ class _ConcreteProvider(BaseCompletionProvider):
         super().__init__()
         self._caps = ModelCapabilitiesFactory.build()
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -102,6 +104,7 @@ class _ConcreteProvider(BaseCompletionProvider):
             model=model,
         )
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -119,6 +122,7 @@ class _ConcreteProvider(BaseCompletionProvider):
 
         return _gen()
 
+    @override
     async def _do_get_model_capabilities(self, model: str) -> ModelCapabilities:
         return self._caps
 
@@ -132,6 +136,7 @@ class _RecordingProvider(BaseCompletionProvider):
         self.last_complete_kwargs: dict[str, object] = {}
         self.last_stream_kwargs: dict[str, object] = {}
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -148,6 +153,7 @@ class _RecordingProvider(BaseCompletionProvider):
             model=model,
         )
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -163,6 +169,7 @@ class _RecordingProvider(BaseCompletionProvider):
 
         return _gen()
 
+    @override
     async def _do_get_model_capabilities(self, model: str) -> ModelCapabilities:
         return self._caps
 
@@ -245,6 +252,7 @@ class TestBaseCompletionProvider:
 
     def test_partial_implementation_rejected(self) -> None:
         class _PartialProvider(BaseCompletionProvider):
+            @override
             async def _do_complete(
                 self,
                 messages: list[ChatMessage],
@@ -378,6 +386,7 @@ class _RateLimitProvider(BaseCompletionProvider):
         super().__init__()
         self._retry_after = retry_after
 
+    @override
     async def _do_complete(
         self,
         messages: list[ChatMessage],
@@ -389,6 +398,7 @@ class _RateLimitProvider(BaseCompletionProvider):
         msg = "limited"
         raise RateLimitError(msg, retry_after=self._retry_after)
 
+    @override
     async def _do_stream(
         self,
         messages: list[ChatMessage],
@@ -400,6 +410,7 @@ class _RateLimitProvider(BaseCompletionProvider):
         msg = "limited"
         raise RateLimitError(msg, retry_after=self._retry_after)
 
+    @override
     async def _do_get_model_capabilities(self, model: str) -> ModelCapabilities:
         return ModelCapabilitiesFactory.build()
 

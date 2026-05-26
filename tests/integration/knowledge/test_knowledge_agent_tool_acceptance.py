@@ -17,6 +17,7 @@ chunks the agent could quote.
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import override
 
 import pytest
 
@@ -55,6 +56,7 @@ class _FakeHtmlFetcher:
 
 
 class _FakeTicketFetcher(TicketFetcher):
+    @override
     async def fetch(self, ticket_uri: str) -> TicketThread:
         return TicketThread(
             ticket_id=NotBlankStr(ticket_uri),

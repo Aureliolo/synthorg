@@ -1,7 +1,7 @@
 """Tests for ToolInvoker security interception integration."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, override
 from unittest.mock import AsyncMock
 
 import pytest
@@ -39,6 +39,7 @@ class _SecurityTestTool(BaseTool):
             action_type=action_type,
         )
 
+    @override
     async def execute(
         self,
         *,
@@ -55,6 +56,7 @@ class _FailingSecurityTool(_SecurityTestTool):
     def __init__(self) -> None:
         super().__init__(name="failing_tool")
 
+    @override
     async def execute(
         self,
         *,
@@ -70,6 +72,7 @@ class _SoftErrorSecurityTool(_SecurityTestTool):
     def __init__(self) -> None:
         super().__init__(name="soft_error_tool")
 
+    @override
     async def execute(
         self,
         *,

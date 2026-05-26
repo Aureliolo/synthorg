@@ -1,8 +1,8 @@
-# mypy: disable-error-code="explicit-any,explicit-override,unused-awaitable"
+# mypy: disable-error-code="explicit-any,unused-awaitable"
 """Unit tests for the tool-creation applier."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -237,6 +237,7 @@ class TestToolCreationApplier:
 
     async def test_apply_records_repo_save_failure(self) -> None:
         class _RaisingRepo(_InMemoryRepo):
+            @override
             async def save(self, entity: ToolBlueprint) -> None:
                 del entity
                 msg = "simulated DB outage"
@@ -313,6 +314,7 @@ class TestToolCreationApplier:
                 super().__init__()
                 self._saves = 0
 
+            @override
             async def save(self, entity: ToolBlueprint) -> None:
                 self._saves += 1
                 if entity.state is ToolBlueprintState.ACTIVE:

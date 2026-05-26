@@ -1,7 +1,6 @@
-# mypy: disable-error-code="explicit-override"
 """Tests for BaseTool action_type integration with DEFAULT_CATEGORY_ACTION_MAP."""
 
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -28,6 +27,7 @@ class _ActionTypeTool(BaseTool):
             action_type=action_type,
         )
 
+    @override
     async def execute(
         self,
         *,

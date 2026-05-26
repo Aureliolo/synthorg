@@ -9,7 +9,7 @@ second returns ``None`` and logs ``API_APPROVAL_CONFLICT`` with
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, override
 from unittest.mock import patch
 
 import pytest
@@ -196,6 +196,7 @@ class TestSaveConcurrency:
         """An exception in repo.save must clear in-flight so retries work."""
 
         class FailingRepo(GatedRepo):
+            @override
             async def save(self, item: ApprovalItem) -> None:
                 self.save_calls += 1
                 if self.save_calls == 1:
@@ -238,6 +239,7 @@ class TestSaveConcurrency:
                 # exercising).
                 self.committed = asyncio.Event()
 
+            @override
             async def save(self, item: ApprovalItem) -> None:
                 self.save_calls += 1
                 self.items[item.id] = item
@@ -405,6 +407,7 @@ class TestAddConstraintViolationPath:
 
     async def test_repo_constraint_violation_becomes_conflict_error(self) -> None:
         class ConstraintRepo(GatedRepo):
+            @override
             async def save(self, item: ApprovalItem) -> None:
                 del item
                 self.save_calls += 1
@@ -563,6 +566,7 @@ class TestLostRaceBatchFetch:
         }
 
         class SnapshotRepo(_LostRaceRepo):
+            @override
             async def query(
                 self,
                 filter_spec: Any,
@@ -610,6 +614,7 @@ class TestLostRaceBatchFetch:
         }
 
         class WinningRepo(_LostRaceRepo):
+            @override
             async def expire_if_pending(self, ids: tuple[str, ...]) -> tuple[str, ...]:
                 self.expire_calls += 1
                 # Pretend we won every flip -- no lost-race rows.
