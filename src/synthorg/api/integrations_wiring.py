@@ -65,7 +65,9 @@ def _wire_mcp_catalog() -> CatalogService | None:
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
-            error="MCP catalog auto-wire failed (non-fatal)",
+            note="MCP catalog auto-wire failed (non-fatal)",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
         return None
     else:
@@ -111,7 +113,9 @@ def _wire_mcp_installations_repo(
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
-            error="MCP installations repo auto-wire failed (non-fatal)",
+            note="MCP installations repo auto-wire failed (non-fatal)",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
     return None
 
@@ -377,7 +381,9 @@ def auto_wire_integrations(  # noqa: PLR0913
         reraise_critical(exc)
         logger.warning(
             API_APP_STARTUP,
-            error="Integration services auto-wire failed (non-fatal)",
+            note="Integration services auto-wire failed (non-fatal)",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
         )
 
     return bundle

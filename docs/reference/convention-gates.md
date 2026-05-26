@@ -106,7 +106,7 @@ Three third-party linters run as pre-push hooks on Markdown to enforce style + l
 
 ## Ruff-enforced docstring completeness (DOC201 / DOC202 / DOC501)
 
-The docstring-completeness convention (Google-style `Returns:` / `Raises:` sections must match the code) is enforced by ruff's pydoclint extensions rather than a `check_*.py` script, so it is listed here for completeness alongside the prose hooks above.
+The docstring-completeness convention (Google-style `Returns:` / `Raises:` sections must match the code) is enforced by ruff's pydoclint extensions rather than a `check_*.py` script. Like the prose hooks above (`vale`, `lychee`, `markdownlint`), it is an approved exemption from the bespoke-`check_*.py` requirement of the Convention Rollout rule: the existing `ruff` pre-commit / pre-push / CI hook IS the shipped enforcement gate, so no separate wrapper script is added.
 
 - **Rules**: `DOC201` (missing `Returns:`), `DOC202` (extraneous `Returns:`), `DOC501` (missing `Raises:`).
 - **Activation**: these are ruff *preview* rules. Under `[tool.ruff.lint] preview = true` + `explicit-preview-rules = true`, a preview rule activates only when selected by its exact code, so the codes live in `extend-select` (selecting the `DOC` prefix in `select` is inert under that flag). The standard `ruff check src/ tests/` then enforces them at pre-commit, pre-push, and CI.

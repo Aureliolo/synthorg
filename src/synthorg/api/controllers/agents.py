@@ -131,10 +131,13 @@ class TrustSummary(BaseModel):
 
     @model_validator(mode="after")
     def _score_requires_evaluation_time(self) -> Self:
-        """Return score requires evaluation time.
+        """Require ``last_evaluated_at`` whenever a ``score`` is set.
+
+        Returns:
+            The validated model instance.
 
         Raises:
-            ValueError: Raised on the corresponding failure path.
+            ValueError: If ``score`` is set but ``last_evaluated_at`` is None.
         """
         if self.score is not None and self.last_evaluated_at is None:
             msg = "score requires last_evaluated_at to be set"
@@ -161,10 +164,13 @@ class PerformanceSummary(BaseModel):
 
     @model_validator(mode="after")
     def _trend_requires_at_least_one_score(self) -> Self:
-        """Return trend requires at least one score.
+        """Require at least one component score whenever ``trend`` is set.
+
+        Returns:
+            The validated model instance.
 
         Raises:
-            ValueError: Raised on the corresponding failure path.
+            ValueError: If ``trend`` is set but both scores are None.
         """
         if (
             self.trend is not None

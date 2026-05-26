@@ -268,7 +268,6 @@ class ReadinessController(Controller):
                 )
 
                 async def _probe_providers() -> bool:
-                    """Return probe providers."""
                     return await app_state.provider_health_tracker.are_all_reachable()
 
                 providers_task = tg.create_task(

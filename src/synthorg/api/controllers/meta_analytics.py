@@ -168,7 +168,7 @@ class MetaAnalyticsController(Controller):
         """Get threshold recommendations from aggregated data (paginated).
 
         Returns:
-            Result matching the declared return annotation.
+            Paginated page of ``ThresholdRecommendation`` (items + cursor envelope).
         """
         collector = _require_collector()
         if _recommender is None:

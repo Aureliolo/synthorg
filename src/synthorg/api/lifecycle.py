@@ -945,8 +945,8 @@ async def _maybe_start_health_prober(
 ) -> ProviderHealthProber | None:
     """Start the health prober if provider tracking is available.
 
-    Non-fatal: logs and returns None on failure so the application
-    continues serving requests without health probing.
+    Non-fatal for non-critical errors (criticals propagate via
+    ``reraise_critical``); logs + returns None so serving continues.
 
     Args:
         app_state: Application state.  Requires
@@ -955,7 +955,7 @@ async def _maybe_start_health_prober(
 
     Returns:
         The started prober instance, or None if preconditions are
-        not met or startup fails.
+        not met or a non-critical startup error occurs.
     """
     if not (app_state.has_provider_health_tracker and app_state.has_config_resolver):
         logger.debug(

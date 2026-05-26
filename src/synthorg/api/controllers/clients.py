@@ -141,8 +141,9 @@ async def _resolve_client_bridge_config(app_state: AppState) -> ClientBridgeConf
 
     * the resolver is not yet wired (early bootstrap before the
       settings service comes up); and
-    * the resolver is wired but the call raises (transient settings
-      outage, malformed stored value, etc.).
+    * the resolver is wired but the call raises a non-critical error
+      (transient settings outage, malformed stored value, etc.);
+      interpreter-critical errors propagate via ``reraise_critical``.
 
     The defaults reproduce historical behaviour, so client CRUD stays
     available rather than 500-ing when only the operator-tunable

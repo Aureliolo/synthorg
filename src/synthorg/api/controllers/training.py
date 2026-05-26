@@ -269,8 +269,10 @@ class TrainingController(Controller):
             NotFoundError: If no pending plan exists for the agent.
             ServiceUnavailableError: If the training service is not
                 yet wired into ``AppState`` for this deployment.
-            Exception: Propagated execution failure after the plan is
-                recorded as failed.
+            Exception: Non-critical execution failures are recorded via
+                ``record_failure`` then re-raised; interpreter-critical
+                errors propagate immediately, before the failure is
+                recorded.
 
         Returns:
             ``ApiResponse[TrainingResultResponse]`` instance.

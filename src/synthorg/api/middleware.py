@@ -333,8 +333,10 @@ def _record_request_metric(
 ) -> None:
     """Push api_request_duration to the collector stored in AppState.
 
-    Silent no-op when AppState or its collector is unavailable; any
-    recording failure logs at WARNING but does not propagate.
+    Silent no-op when AppState or its collector is unavailable. A
+    non-critical recording failure logs at WARNING and is dropped;
+    interpreter-critical errors (``MemoryError`` / ``RecursionError``)
+    propagate via ``reraise_critical``.
     """
     state: Any = scope.get("state")
     if state is None:

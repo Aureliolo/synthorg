@@ -4,6 +4,7 @@ Receives webhook events from external services, verifies
 signatures, and publishes to the message bus.
 """
 
+import asyncio
 import hashlib
 import json
 from typing import TYPE_CHECKING, Annotated, Any, Final
@@ -573,6 +574,8 @@ async def _retry_publish_and_transition(
         Mapping with the declared key/value types.
 
     Raises:
+        asyncio.CancelledError: Re-raised after marking the receipt
+            failed, so a cancelled retry never sticks in ``retrying``.
         Exception: Raised on the corresponding failure path.
     """
     from datetime import UTC, datetime  # noqa: PLC0415
@@ -594,6 +597,20 @@ async def _retry_publish_and_transition(
             payload=payload,
             dedup_source="manual_retry",
         )
+    except asyncio.CancelledError as exc:
+        # CancelledError is a BaseException, so the broad ``except
+        # Exception`` below never sees it. Without this branch a
+        # cancelled retry leaves the receipt stuck in ``retrying``;
+        # mark it failed, then propagate the cancellation.
+        await _transition_webhook_receipt_status(
+            persistence,
+            receipt,
+            new_status=_RECEIPT_STATUS_FAILED,
+            previous=_RECEIPT_STATUS_RETRYING,
+            processed_at=datetime.now(UTC),
+            error=safe_error_description(exc),
+        )
+        raise
     except Exception as exc:
         reraise_critical(exc)
         log_exception_redacted(
@@ -662,6 +679,9 @@ class WebhooksController(Controller):
             ``ApiResponse[dict[str, object]]`` instance.
 
         Raises:
+            NotFoundError: If the named connection does not exist.
+            UnauthorizedError: If the signature is missing or invalid.
+            ConflictError: If replay or freshness validation fails.
             ValidationError: Raised on the corresponding failure path.
         """
         catalog = state["app_state"].connection_catalog

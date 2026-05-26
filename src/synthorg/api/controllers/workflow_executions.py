@@ -199,6 +199,10 @@ class WorkflowExecutionController(Controller):
 
         Returns:
             ``Response[ApiResponse[WorkflowExecution]]`` instance.
+
+        Raises:
+            WorkflowExecutionNotFoundError: If no execution exists for
+                ``execution_id``.
         """
         service = await _build_service(state)
         execution = await service.get_execution(execution_id)

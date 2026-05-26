@@ -362,6 +362,7 @@ class _RequestLockAuthMixin:
         """Validate + cache the per-frame WebSocket idle timeout.
 
         Raises:
+            TypeError: If ``value`` is not an ``int`` (via ``_reject_non_int``).
             ValueError: Raised on the corresponding failure path.
         """
         _reject_non_int(value, field="ws_frame_timeout_seconds")

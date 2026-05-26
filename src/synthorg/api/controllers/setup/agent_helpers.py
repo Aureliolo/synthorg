@@ -239,7 +239,10 @@ async def _rebuild_runtime_services(app_state: AppState) -> None:
 async def check_needs_admin(
     persistence: PersistenceBackend,
 ) -> bool:
-    """Return True if no CEO-role user exists (fail-open on error).
+    """Return True if no CEO-role user exists.
+
+    Fail-open on non-critical lookup errors; interpreter-critical
+    errors propagate via ``reraise_critical``.
 
     Returns:
         ``True`` or ``False`` reflecting the condition.
@@ -393,11 +396,12 @@ async def auto_create_template_agents(
     async def _resolve_matcher_config() -> ModelMatcherConfig | None:
         """Resolve matcher config; degrade to None on resolution failure.
 
-        Bridge-config resolution failures (missing setting, validation
-        error, persistence flake) AND projection failures
-        (``from_bridge_config`` raising on a tampered field) must both
-        keep the template bootstrap alive. Mirrors the fail-open
-        pattern used by ``post_setup_reinit``.
+        Non-critical bridge-config resolution failures (missing
+        setting, validation error, persistence flake) AND projection
+        failures (``from_bridge_config`` raising on a tampered field)
+        must both keep the template bootstrap alive; interpreter-
+        critical errors propagate via ``reraise_critical``. Mirrors the
+        fail-open pattern used by ``post_setup_reinit``.
 
         Returns:
             The ``ModelMatcherConfig`` value when present, ``None`` otherwise.
@@ -452,7 +456,9 @@ async def collect_model_ids(app_state: AppState) -> tuple[str, ...]:
     """Extract model IDs from provider configs for embedding selection.
 
     Best-effort: returns an empty tuple if config resolver is not
-    available or provider configs cannot be read.
+    available or provider configs cannot be read for a non-critical
+    reason; interpreter-critical errors propagate via
+    ``reraise_critical``.
 
     Returns:
         Tuple of the declared element types.
