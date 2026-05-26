@@ -5,7 +5,6 @@ import { useApprovalsData } from '@/hooks/useApprovalsData'
 import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { useToastStore } from '@/stores/toast'
 import { filterApprovals, groupByRiskLevel, type ApprovalPageFilters } from '@/utils/approvals'
-import { formatBatchErrors } from '@/utils/errors'
 import type { ApprovalRiskLevel } from '@/api/types/enums'
 import { REJECTION_REASON_REQUIRED } from './errors'
 
@@ -79,24 +78,6 @@ function useApprovalUrlState(): ApprovalUrlState {
   }
 }
 
-interface BatchResult {
-  succeeded: number
-  failed: number
-  failedReasons: Parameters<typeof formatBatchErrors>[0]
-}
-
-function notifyBatchResult(verb: string, result: BatchResult, total: number): void {
-  if (result.failed === 0) {
-    useToastStore.getState().add({ variant: 'success', title: `${verb} ${result.succeeded} items` })
-    return
-  }
-  useToastStore.getState().add({
-    variant: 'warning',
-    title: `${verb} ${result.succeeded} of ${total}. ${result.failed} failed.`,
-    description: result.failedReasons.length > 0 ? formatBatchErrors(result.failedReasons) : undefined,
-  })
-}
-
 type ApprovalsData = ReturnType<typeof useApprovalsData>
 
 export interface ApprovalBatch {
@@ -123,24 +104,25 @@ function useApprovalBatch(data: ApprovalsData): ApprovalBatch {
 
   // Close batch dialogs when selection empties (WS updates / optimistic transitions).
   const prevSelectionSizeRef = useRef(selectedIds.size)
-  if (selectedIds.size === 0 && prevSelectionSizeRef.current > 0) {
-    setBatchApproveOpen(false)
-    setBatchRejectOpen(false)
-    setBatchComment('')
-    setBatchReason('')
-  }
-  prevSelectionSizeRef.current = selectedIds.size
+  useEffect(() => {
+    const prevSize = prevSelectionSizeRef.current
+    prevSelectionSizeRef.current = selectedIds.size
+    if (selectedIds.size === 0 && prevSize > 0) {
+      setBatchApproveOpen(false)
+      setBatchRejectOpen(false)
+      setBatchComment('')
+      setBatchReason('')
+    }
+  }, [selectedIds.size])
 
-  // Store owns error UX: batch* use allSettled internally and resolve to
-  // a structured result; the page just renders a toast from the counts.
+  // Store owns batch UX: batch* run allSettled internally and emit the
+  // outcome toast themselves, so the page only awaits and resets local state.
   const handleBatchApprove = useCallback(async () => {
     setBatchLoading(true)
-    const ids = Array.from(selectedIds)
-    const result = await batchApprove(ids, batchComment.trim() || undefined)
+    await batchApprove(Array.from(selectedIds), batchComment.trim() || undefined)
     setBatchLoading(false)
     setBatchApproveOpen(false)
     setBatchComment('')
-    notifyBatchResult('Approved', result, ids.length)
   }, [selectedIds, batchApprove, batchComment])
 
   const handleBatchReject = useCallback(async () => {
@@ -153,12 +135,10 @@ function useApprovalBatch(data: ApprovalsData): ApprovalBatch {
       return
     }
     setBatchLoading(true)
-    const ids = Array.from(selectedIds)
-    const result = await batchReject(ids, batchReason.trim())
+    await batchReject(Array.from(selectedIds), batchReason.trim())
     setBatchLoading(false)
     setBatchRejectOpen(false)
     setBatchReason('')
-    notifyBatchResult('Rejected', result, ids.length)
   }, [selectedIds, batchReject, batchReason])
 
   return {

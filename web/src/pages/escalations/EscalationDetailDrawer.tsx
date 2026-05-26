@@ -266,13 +266,13 @@ export function EscalationDetailDrawer({ escalationId, open, onClose }: Escalati
           />
         )}
 
-        {loading || visibleDetail === null ? (
+        {loading ? (
           <div className="flex flex-col gap-grid-gap">
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-12 w-full" />
           </div>
-        ) : (
+        ) : visibleDetail === null ? null : (
           <>
             <header>
               <h2 className="text-base font-semibold text-foreground">

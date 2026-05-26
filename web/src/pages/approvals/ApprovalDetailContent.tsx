@@ -140,7 +140,9 @@ export function ApprovalDetailContent({
     <div className="flex-1 overflow-y-auto px-6 py-4 space-y-section-gap">
       <h2 className="text-lg font-semibold text-foreground">{approval.title}</h2>
       <ApprovalSafetyBanners approval={approval} />
-      {approval.description && <DescriptionSection approval={approval} />}
+      {Boolean(approval.description || approval.metadata.stripped_description) && (
+        <DescriptionSection approval={approval} />
+      )}
       <div>
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Timeline</span>
         <ApprovalTimeline approval={approval} className="mt-2" />

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 interface DrawerDeleteState {
   deleteOpen: boolean
@@ -21,9 +21,23 @@ export function useDrawerDelete(
 ): DrawerDeleteState {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const deletingRef = useRef(false)
+
+  // Reset the confirm dialog and spinner when the drawer switches to a
+  // different entity, so a stale open dialog or spinner never leaks
+  // across targets (react.dev "Adjusting some state when a prop changes").
+  const [prevEntityName, setPrevEntityName] = useState(entityName)
+  if (entityName !== prevEntityName) {
+    setPrevEntityName(entityName)
+    setDeleteOpen(false)
+    setDeleting(false)
+  }
 
   const handleDelete = useCallback(async () => {
-    if (!entityName) return
+    // `deleting` state flips asynchronously, so guard re-entry with a ref
+    // to stop a double-fire from calling onDelete twice.
+    if (!entityName || deletingRef.current) return
+    deletingRef.current = true
     setDeleting(true)
     try {
       const ok = await onDelete(entityName)
@@ -32,6 +46,7 @@ export function useDrawerDelete(
         onClose()
       }
     } finally {
+      deletingRef.current = false
       setDeleting(false)
     }
   }, [entityName, onDelete, onClose])

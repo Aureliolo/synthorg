@@ -51,7 +51,7 @@ function validatePattern(raw: string, def: SettingDefinition): string | null {
     const re = new RegExp(def.validator_pattern)
     if (!re.test(raw)) return `Must match: ${def.validator_pattern}`
   } catch (err) {
-    log.warn('Invalid validator_pattern for', `${def.namespace}/${def.key}:`, err)
+    log.warn('Invalid validator_pattern for setting', def.namespace, def.key, err)
   }
   return null
 }

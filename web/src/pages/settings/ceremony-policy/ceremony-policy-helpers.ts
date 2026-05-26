@@ -20,7 +20,9 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function parseStrategyConfig(raw: string | undefined): { config: Record<string, unknown>; error: boolean } {
-  if (!raw) return { config: {}, error: false }
+  // Only a missing value is "no config"; an empty string is malformed
+  // JSON and must surface as a parse error rather than be silently ignored.
+  if (raw === undefined) return { config: {}, error: false }
   try {
     const parsed: unknown = JSON.parse(raw)
     if (isPlainObject(parsed)) return { config: parsed, error: false }
@@ -89,18 +91,18 @@ export interface OverridesSnapshot {
 
 export function buildOverridesSnapshot(entries: SettingEntry[]): OverridesSnapshot {
   const raw = coordinationValue(entries, 'ceremony_policy_overrides')
-  if (raw) {
-    try {
-      const parsed: unknown = JSON.parse(raw)
-      if (isPlainObject(parsed)) {
-        return { overrides: parsed as Record<string, CeremonyPolicyConfig | null>, overridesParseError: false }
-      }
-    } catch {
-      /* fall through to error */
+  // Only a missing value is "no overrides"; an empty string is malformed
+  // JSON and must surface as a parse error rather than be silently ignored.
+  if (raw === undefined) return { overrides: {}, overridesParseError: false }
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (isPlainObject(parsed)) {
+      return { overrides: parsed as Record<string, CeremonyPolicyConfig | null>, overridesParseError: false }
     }
-    return { overrides: {}, overridesParseError: true }
+  } catch {
+    /* fall through to error */
   }
-  return { overrides: {}, overridesParseError: false }
+  return { overrides: {}, overridesParseError: true }
 }
 
 const COMMON_CEREMONIES = ['sprint_planning', 'standup', 'sprint_review', 'retrospective']

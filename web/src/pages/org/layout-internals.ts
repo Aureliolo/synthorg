@@ -369,12 +369,25 @@ export function centerOwnersOverRoot(
 ): void {
   if (!rootPopulated) return
   const rootCenterX = rootPopulated.node.position.x + rootPopulated.groupWidth / 2
-  for (const node of positionedLeafMap.values()) {
-    if (node.type !== 'owner') continue
+
+  const owners = [...positionedLeafMap.values()].filter((node) => node.type === 'owner')
+  if (owners.length === 0) return
+
+  // Shift the whole owners row by one shared delta so the row centres
+  // over the root while preserving the spacing between owners (per-owner
+  // recentring stacked them all at the same x).
+  let centerSum = 0
+  for (const node of owners) {
     const { w: ownerWidth } = getNodeDim(node)
+    centerSum += node.position.x + ownerWidth / 2
+  }
+  const ownersRowCenter = centerSum / owners.length
+  const delta = rootCenterX - ownersRowCenter
+
+  for (const node of owners) {
     positionedLeafMap.set(node.id, {
       ...node,
-      position: { x: rootCenterX - ownerWidth / 2, y: node.position.y },
+      position: { x: node.position.x + delta, y: node.position.y },
     })
   }
 }

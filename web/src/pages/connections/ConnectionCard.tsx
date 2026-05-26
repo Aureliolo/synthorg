@@ -45,7 +45,7 @@ function ConnectionCardActions({
         type="button"
         size="icon"
         variant="ghost"
-        aria-label={`More actions for ${connection.name}`}
+        aria-label={`Edit ${connection.name}`}
         onClick={onEdit}
       >
         <MoreVertical className="size-4" aria-hidden />

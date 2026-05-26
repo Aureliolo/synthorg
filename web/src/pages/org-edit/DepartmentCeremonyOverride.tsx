@@ -34,6 +34,31 @@ interface AutoTransitionRowProps {
 function AutoTransitionRow({ policy, onChange, disabled }: AutoTransitionRowProps) {
   const autoTransition = policy?.auto_transition ?? true
   const threshold = policy?.transition_threshold ?? THRESHOLD_MAX
+
+  // Hold the raw input text locally so the user can type partial values
+  // like "0." or clear the field; the numeric value is clamped and
+  // committed on blur, not on every keystroke (which would reset the
+  // field mid-edit). Re-sync the draft when the committed threshold
+  // changes from outside (react.dev "Adjusting some state when a prop
+  // changes").
+  const [thresholdText, setThresholdText] = useState(String(threshold))
+  const [prevThreshold, setPrevThreshold] = useState(threshold)
+  if (threshold !== prevThreshold) {
+    setPrevThreshold(threshold)
+    setThresholdText(String(threshold))
+  }
+
+  const commitThreshold = useCallback(() => {
+    const val = Number(thresholdText)
+    if (!Number.isFinite(val)) {
+      setThresholdText(String(threshold))
+      return
+    }
+    const clamped = Math.min(THRESHOLD_MAX, Math.max(THRESHOLD_MIN, val))
+    setThresholdText(String(clamped))
+    if (clamped !== threshold) onChange({ ...policy, transition_threshold: clamped })
+  }, [thresholdText, threshold, policy, onChange])
+
   return (
     <>
       <ToggleField
@@ -46,12 +71,9 @@ function AutoTransitionRow({ policy, onChange, disabled }: AutoTransitionRowProp
         <InputField
           label="Transition Threshold"
           type="number"
-          value={String(threshold)}
-          onChange={(e) => {
-            const val = Number(e.target.value)
-            if (!Number.isFinite(val)) return
-            onChange({ ...policy, transition_threshold: Math.min(THRESHOLD_MAX, Math.max(THRESHOLD_MIN, val)) })
-          }}
+          value={thresholdText}
+          onChange={(e) => setThresholdText(e.target.value)}
+          onBlur={commitThreshold}
           disabled={disabled}
           hint="0.01 to 1.0"
         />

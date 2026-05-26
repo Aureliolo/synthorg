@@ -296,9 +296,10 @@ function resolveRequired(spec: ConnectionFieldSpec, dialect?: string): boolean {
 }
 
 function validateUrlValue(spec: ConnectionFieldSpec, value: string): string | null {
-  if (!value.trim()) return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
   try {
-    const url = new URL(value)
+    const url = new URL(trimmed)
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
       return `${spec.label} must be an http(s) URL`
     }

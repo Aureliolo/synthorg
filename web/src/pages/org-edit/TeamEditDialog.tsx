@@ -20,7 +20,9 @@ export interface TeamEditDialogProps {
 function validateTeamForm(name: string, lead: string, members: readonly string[]): string | null {
   if (!name.trim()) return 'Team name is required'
   if (!lead.trim()) return 'Team lead is required'
-  const lowerMembers = members.map((m) => m.trim().toLowerCase())
+  // Ignore empty / whitespace-only tags so they do not register as
+  // duplicates of one another and trigger a false-positive error.
+  const lowerMembers = members.map((m) => m.trim().toLowerCase()).filter(Boolean)
   if (new Set(lowerMembers).size !== lowerMembers.length) {
     return 'Duplicate member names are not allowed'
   }

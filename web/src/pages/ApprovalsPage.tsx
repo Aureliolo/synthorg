@@ -93,7 +93,7 @@ function ApprovalsBanners({
   wasConnected: boolean
   loading: boolean
 }) {
-  const wsOffline = (wsSetupError || (wasConnected && !wsConnected)) && !loading
+  const wsOffline = Boolean((wsSetupError || (wasConnected && !wsConnected)) && !loading)
   return (
     <>
       {error && <ErrorBanner severity="error" title="Could not load approvals" description={error} />}

@@ -6,7 +6,10 @@ export interface BudgetState {
 }
 
 export function deriveBudget(budgetTotal: number): BudgetState {
-  const isOver = budgetTotal > 100.01
-  const isUnder = budgetTotal < 99.99
-  return { rounded: Math.round(budgetTotal * 10) / 10, isOver, isUnder, off: isOver || isUnder }
+  // Derive over/under from the rounded value so the flags never
+  // contradict the one-decimal figure shown in the UI.
+  const rounded = Math.round(budgetTotal * 10) / 10
+  const isOver = rounded > 100.0
+  const isUnder = rounded < 100.0
+  return { rounded, isOver, isUnder, off: isOver || isUnder }
 }

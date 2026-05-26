@@ -71,8 +71,10 @@ function emitTeamGroups(ctx: BuildContext, state: DeptEmitState): void {
     })
 
     if (headId && teamLeadId && headId !== teamLeadId) {
+      // Include the team name so head -> lead edges stay unique when
+      // several teams in a department share the same lead.
       ctx.edges.push({
-        id: `e-${headId}-${teamLeadId}`,
+        id: `e-${headId}-${teamLeadId}-${team.name}`,
         source: headId,
         target: teamLeadId,
         type: 'hierarchy',

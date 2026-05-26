@@ -18,10 +18,10 @@ export function OrgChartBanners({
 }: OrgChartBannersProps) {
   return (
     <>
-      {error && (
+      {Boolean(error) && (
         <ErrorBanner severity="error" title="Could not load org chart" description={error} />
       )}
-      {commError && (
+      {Boolean(commError) && (
         <ErrorBanner
           variant="inline"
           severity="warning"
@@ -29,7 +29,7 @@ export function OrgChartBanners({
           description={commError}
         />
       )}
-      {commTruncated && !commError && (
+      {Boolean(commTruncated && !commError) && (
         <ErrorBanner
           variant="inline"
           severity="info"
@@ -37,7 +37,7 @@ export function OrgChartBanners({
           description="Message limit reached; showing available data."
         />
       )}
-      {!wsConnected && wsSetupError && (
+      {Boolean(!wsConnected && wsSetupError) && (
         <ErrorBanner
           variant="offline"
           title="Real-time updates unavailable"

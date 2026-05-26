@@ -19,7 +19,7 @@ export interface ApprovalFilterBarProps {
 }
 
 function hasAnyFilter(filters: ApprovalPageFilters): boolean {
-  return !!(filters.status || filters.riskLevel || filters.actionType || filters.search)
+  return Boolean(filters.status || filters.riskLevel || filters.actionType || filters.search)
 }
 
 interface ApprovalFilterControlsProps {
@@ -131,22 +131,22 @@ function ActiveFilterPills({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {filters.status && (
+      {filters.status != null && (
         <FilterPill
           label={`Status: ${getApprovalStatusLabel(filters.status)}`}
           onRemove={() => onUpdate('status', undefined)}
         />
       )}
-      {filters.riskLevel && (
+      {filters.riskLevel != null && (
         <FilterPill
           label={`Risk: ${getRiskLevelLabel(filters.riskLevel)}`}
           onRemove={() => onUpdate('riskLevel', undefined)}
         />
       )}
-      {filters.actionType && (
+      {filters.actionType != null && (
         <FilterPill label={`Type: ${filters.actionType}`} onRemove={() => onUpdate('actionType', undefined)} />
       )}
-      {filters.search && (
+      {filters.search != null && (
         <FilterPill label={`Search: "${filters.search}"`} onRemove={() => onUpdate('search', undefined)} />
       )}
       <button

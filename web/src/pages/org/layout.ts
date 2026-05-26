@@ -104,9 +104,16 @@ export function applyDagreLayout(
   )
   const allGroupResults = [...populatedResults, ...emptyResults]
 
-  centerNonRootUnderRoot(allGroupResults, rootGroupIds, rootPopulated)
+  // placeEmptyGroups can create the root group when it has no members, so
+  // re-resolve the root from the merged set before the alignment passes;
+  // otherwise a freshly-created empty root is skipped by them.
+  const rootResult: GroupResult | undefined = allGroupResults.find((r) =>
+    rootGroupIds.has(r.node.id),
+  )
+
+  centerNonRootUnderRoot(allGroupResults, rootGroupIds, rootResult)
   enforceVerticalGaps(allGroupResults, positionedLeafMap, rootGroupIds)
-  centerOwnersOverRoot(positionedLeafMap, rootPopulated)
+  centerOwnersOverRoot(positionedLeafMap, rootResult)
 
   return [...allGroupResults.map((r) => r.node), ...positionedLeafMap.values()]
 }

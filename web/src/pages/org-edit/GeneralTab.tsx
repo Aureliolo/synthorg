@@ -164,11 +164,15 @@ export function GeneralTab({ config, onUpdate, saving }: GeneralTabProps) {
   }, [])
 
   const handleSave = useCallback(async () => {
+    // Only forward a known pattern; an empty or drifted value is sent as
+    // undefined so the backend (which rejects unknown enums) is never
+    // handed a value that would block saving the other edits.
+    const normalizedPattern = form.communication_pattern.trim()
     const ok = await onUpdate({
       company_name: form.company_name.trim() || undefined,
       autonomy_level: form.autonomy_level,
       budget_monthly: form.budget_monthly,
-      communication_pattern: form.communication_pattern.trim() || undefined,
+      communication_pattern: VALID_COMM_PATTERNS.has(normalizedPattern) ? normalizedPattern : undefined,
     })
     if (ok) setDirty(false)
   }, [form, onUpdate])

@@ -46,7 +46,7 @@ function OrgEditHeader({ children }: { children?: ReactNode }) {
         </Button>
         <h1 className="text-lg font-semibold text-foreground">Edit Organization</h1>
       </div>
-      {children}
+      {children != null && children !== false && children}
     </div>
   )
 }

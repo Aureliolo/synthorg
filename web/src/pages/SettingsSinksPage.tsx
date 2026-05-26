@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { StaggerGroup, StaggerItem } from '@/components/ui/stagger-group'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useSinksStore } from '@/stores/sinks'
+import { sanitizeWsString } from '@/utils/ws-sanitize'
 import { SinkCard } from './settings/sinks/SinkCard'
 import { SinkFormDrawer } from './settings/sinks/SinkFormDrawer'
 
@@ -38,7 +39,7 @@ interface SinksPage {
 function useSinkAutoRefresh(fetchSinks: () => Promise<void> | void): void {
   const sinkHandler = useCallback(
     (event: WsEvent) => {
-      const key = (event.payload as Record<string, unknown> | undefined)?.key as string | undefined
+      const key = sanitizeWsString((event.payload as Record<string, unknown> | undefined)?.key)
       if (key === 'observability/sink_overrides' || key === 'observability/custom_sinks') {
         void fetchSinks()
       }
@@ -156,7 +157,9 @@ interface SinksGridProps {
 function SinksGrid({ sinks, loading, error, onEdit, onDelete }: SinksGridProps) {
   return (
     <>
-      {error && <ErrorBanner severity="error" title="Could not load sinks" description={error} />}
+      {Boolean(error) && (
+        <ErrorBanner severity="error" title="Could not load sinks" description={error ?? undefined} />
+      )}
 
       {loading && sinks.length === 0 && (
         <div className="grid grid-cols-1 gap-grid-gap sm:grid-cols-2 lg:grid-cols-3">

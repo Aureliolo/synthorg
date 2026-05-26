@@ -141,19 +141,19 @@ function buildUpdateBody(
   }
 }
 
-interface SnapshotInputs {
+interface ResetSnapshot {
   open: boolean
-  connection: Connection | null
+  connectionKey: string | null
   initialType: ConnectionType | null
   mode: Mode
 }
 
-function didInputsChange(prev: SnapshotInputs, curr: SnapshotInputs): boolean {
+function resetSnapshotChanged(prev: ResetSnapshot, next: ResetSnapshot): boolean {
   return (
-    prev.open !== curr.open ||
-    prev.connection !== curr.connection ||
-    prev.initialType !== curr.initialType ||
-    prev.mode !== curr.mode
+    prev.open !== next.open ||
+    prev.connectionKey !== next.connectionKey ||
+    prev.initialType !== next.initialType ||
+    prev.mode !== next.mode
   )
 }
 
@@ -290,15 +290,21 @@ export function useConnectionForm(props: ConnectionFormModalArgs): ConnectionFor
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [submitted, setSubmitted] = useState(false)
 
-  // Render-phase reset on open transition / changed inputs while open.
-  const current: SnapshotInputs = { open, connection: connection ?? null, initialType: initialType ?? null, mode }
-  const prevRef = useRef(current)
-  if (open && didInputsChange(prevRef.current, current)) {
+  // Reset the form when the modal opens or its identifying inputs change
+  // while open (react.dev "Adjusting some state when a prop changes").
+  // Compare the connection by its stable name rather than by object
+  // identity so a re-fetched-but-equivalent connection object does not
+  // wipe in-progress edits.
+  const connectionKey = connection?.name ?? null
+  const snapshot: ResetSnapshot = { open, connectionKey, initialType: initialType ?? null, mode }
+  const prevSnapshotRef = useRef<ResetSnapshot>(snapshot)
+  const inputsChanged = resetSnapshotChanged(prevSnapshotRef.current, snapshot)
+  prevSnapshotRef.current = snapshot
+  if (open && inputsChanged) {
     setForm(makeInitialState(mode, initialType, connection))
     setErrors({})
     setSubmitted(false)
   }
-  prevRef.current = current
 
   const spec = useMemo(() => (form.type ? CONNECTION_TYPE_FIELDS[form.type] : null), [form.type])
   const setters = useConnectionFieldSetters(setForm, setErrors)

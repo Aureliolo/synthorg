@@ -244,7 +244,7 @@ export function ConnectionFormModal(props: ConnectionFormModalProps) {
           {mode === 'create' && f.form.type === null ? (
             <TypePicker onSelect={f.setType} />
           ) : (
-            f.spec && <ConnectionFormFields f={f} mode={mode} onClose={onClose} />
+            Boolean(f.spec) && <ConnectionFormFields f={f} mode={mode} onClose={onClose} />
           )}
         </div>
       </DialogContent>

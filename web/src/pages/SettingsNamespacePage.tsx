@@ -76,6 +76,7 @@ function NamespaceContent({
         onValueChange={onValueChange}
         savingKeys={savingKeys}
         controllerDisabledMap={controllerDisabledMap}
+        highlightQuery={searchQuery}
         forceOpen
       />
     </ErrorBoundary>

@@ -83,7 +83,7 @@ function useDepartmentEditForm(props: DepartmentEditDrawerProps): DepartmentEdit
     if (!department) return
     setSubmitError(null)
     const pct = Number(budgetPercent)
-    if (Number.isFinite(pct) && (pct < 0 || pct > 100)) {
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
       setSubmitError('Budget percent must be between 0 and 100')
       return
     }
@@ -91,7 +91,7 @@ function useDepartmentEditForm(props: DepartmentEditDrawerProps): DepartmentEdit
     // budget and ceremony policy, so sending null would wipe a value
     // managed by the dedicated agent autonomy editor on every save.
     const result = await onUpdate(department.name, {
-      budget_percent: Number.isFinite(pct) ? pct : undefined,
+      budget_percent: pct,
       ceremony_policy: ceremonyPolicy as Record<string, unknown> | null,
     })
     // Store owns the toast; close only on success.
