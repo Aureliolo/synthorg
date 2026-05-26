@@ -98,7 +98,8 @@ class HybridPromptRetrievalBackend:
         checked by the main backend).
 
         Returns:
-            ``True`` if the operation succeeds, ``False`` otherwise.
+            ``True`` when the backend is connected (the value of
+            ``self._connected``), ``False`` otherwise.
         """
         return self._connected
 
@@ -142,6 +143,7 @@ class HybridPromptRetrievalBackend:
             sliced view).
 
         Raises:
+            OrgMemoryConnectionError: If the backend is not connected.
             OrgMemoryQueryError: If the related operation fails.
         """
         self._require_connected()
@@ -184,6 +186,7 @@ class HybridPromptRetrievalBackend:
             Result of type ``int``.
 
         Raises:
+            OrgMemoryConnectionError: If the backend is not connected.
             OrgMemoryQueryError: If the related operation fails.
         """
         self._require_connected()

@@ -972,3 +972,152 @@ class TestStoreWrite:
             is_multi_agent=True,
         )
         assert metrics_store.count() == 1
+
+
+# ---------------------------------------------------------------------------
+# Error isolation
+# ---------------------------------------------------------------------------
+
+
+def _raise_value_error(**_: object) -> object:
+    raise ValueError
+
+
+@pytest.mark.unit
+class TestCollectorErrorIsolation:
+    """A non-critical failure inside a per-metric collector drops that metric
+    (returns ``None``) without aborting the run, while interpreter-critical
+    errors propagate via ``reraise_critical`` instead of being swallowed.
+    """
+
+    async def test_efficiency_compute_failure_isolated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "synthorg.budget.coordination_collector.compute_efficiency",
+            _raise_value_error,
+        )
+        collector = CoordinationMetricsCollector(
+            config=_config(collect=(CoordinationMetricName.EFFICIENCY,)),
+            cost_tracker=_cost_tracker(),
+            baseline_store=_baseline_store(turns=5.0),
+        )
+        result = await _collect(
+            collector,
+            execution_result=_execution_result(*(_turn() for _ in range(5))),
+            agent_id="a",
+            task_id="t",
+            is_multi_agent=True,
+        )
+        assert result.efficiency is None
+
+    async def test_overhead_compute_failure_isolated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "synthorg.budget.coordination_collector.compute_overhead",
+            _raise_value_error,
+        )
+        collector = CoordinationMetricsCollector(
+            config=_config(collect=(CoordinationMetricName.OVERHEAD,)),
+            cost_tracker=_cost_tracker(),
+            baseline_store=_baseline_store(turns=4.0),
+        )
+        result = await _collect(
+            collector,
+            execution_result=_execution_result(*(_turn() for _ in range(8))),
+            agent_id="a",
+            task_id="t",
+            is_multi_agent=True,
+        )
+        assert result.overhead is None
+
+    async def test_error_amplification_compute_failure_isolated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "synthorg.budget.coordination_collector.compute_error_amplification",
+            _raise_value_error,
+        )
+        collector = CoordinationMetricsCollector(
+            config=_config(collect=(CoordinationMetricName.ERROR_AMPLIFICATION,)),
+            cost_tracker=_cost_tracker(),
+            baseline_store=_baseline_store(error_rate=0.1),
+        )
+        result = await _collect(
+            collector,
+            execution_result=_execution_result(
+                _turn(FinishReason.STOP), _turn(FinishReason.ERROR)
+            ),
+            agent_id="a",
+            task_id="t",
+            is_multi_agent=True,
+        )
+        assert result.error_amplification is None
+
+    async def test_amdahl_compute_failure_isolated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "synthorg.budget.coordination_collector.compute_amdahl_ceiling",
+            _raise_value_error,
+        )
+        collector = CoordinationMetricsCollector(
+            config=_config(collect=(CoordinationMetricName.AMDAHL_CEILING,)),
+            cost_tracker=_cost_tracker(),
+        )
+        result = await _collect(
+            collector,
+            execution_result=_execution_result(_turn()),
+            agent_id="a",
+            task_id="t",
+            is_multi_agent=True,
+            team_size=4,
+        )
+        assert result.amdahl_ceiling is None
+
+    async def test_straggler_gap_compute_failure_isolated(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "synthorg.budget.coordination_collector.compute_straggler_gap",
+            _raise_value_error,
+        )
+        collector = CoordinationMetricsCollector(
+            config=_config(collect=(CoordinationMetricName.STRAGGLER_GAP,)),
+            cost_tracker=_cost_tracker(),
+        )
+        result = await _collect(
+            collector,
+            execution_result=_execution_result(_turn()),
+            agent_id="a",
+            task_id="t",
+            is_multi_agent=True,
+            agent_durations=(("agent-1", 10.0), ("agent-2", 20.0)),
+        )
+        assert result.straggler_gap is None
+
+    async def test_critical_error_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ``MemoryError`` inside a collector is re-raised, never swallowed."""
+
+        def _oom(**_: object) -> object:
+            raise MemoryError
+
+        monkeypatch.setattr(
+            "synthorg.budget.coordination_collector.compute_amdahl_ceiling", _oom
+        )
+        collector = CoordinationMetricsCollector(
+            config=_config(collect=(CoordinationMetricName.AMDAHL_CEILING,)),
+            cost_tracker=_cost_tracker(),
+        )
+        with pytest.raises(MemoryError):
+            await _collect(
+                collector,
+                execution_result=_execution_result(_turn()),
+                agent_id="a",
+                task_id="t",
+                is_multi_agent=True,
+                team_size=4,
+            )

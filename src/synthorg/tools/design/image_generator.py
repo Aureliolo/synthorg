@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ActionType
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.design import (
     DESIGN_IMAGE_GENERATION_FAILED,
     DESIGN_IMAGE_GENERATION_START,
@@ -263,10 +263,11 @@ class ImageGeneratorTool(BaseDesignTool):
             logger.warning(
                 DESIGN_IMAGE_GENERATION_FAILED,
                 error="invalid_base64",
-                detail=str(decode_exc),
+                error_type=type(decode_exc).__name__,
+                error_detail=safe_error_description(decode_exc),
             )
             return ToolExecutionResult(
-                content=(f"Provider returned invalid base64 image data: {decode_exc}"),
+                content="Provider returned invalid base64 image data.",
                 is_error=True,
             )
         byte_size = len(decoded_bytes)

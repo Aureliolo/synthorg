@@ -24,9 +24,11 @@ def close_subprocess_transport(proc: asyncio.subprocess.Process) -> None:
 
     Uses ``getattr`` to access the CPython-internal ``_transport``
     attribute -- if the attribute is absent (different runtime or
-    future CPython version), this is a no-op.  Exceptions from
-    ``close()`` and ``is_closing()`` are logged and suppressed so
-    cleanup never masks the primary result.
+    future CPython version), this is a no-op.  Non-critical exceptions
+    from ``close()`` and ``is_closing()`` are logged and suppressed so
+    cleanup never masks the primary result; interpreter-critical
+    exceptions (``MemoryError`` / ``RecursionError``) are re-raised via
+    ``reraise_critical``.
 
     Args:
         proc: The subprocess whose transport should be closed.

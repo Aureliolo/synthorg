@@ -286,8 +286,16 @@ async def cleanup_sandbox_backends(
     ``return_exceptions=True`` for best-effort parallel cleanup
     that is resilient to task cancellation.
 
+    Interpreter-critical exceptions (``MemoryError`` / ``RecursionError``)
+    are the exception: they are re-raised rather than logged, so a fatal
+    condition propagates instead of being demoted to a warning.
+
     Args:
         backends: Mapping of backend name to backend instance.
+
+    Raises:
+        MemoryError: Propagated when a backend cleanup raises it.
+        RecursionError: Propagated when a backend cleanup raises it.
     """
 
     async def _cleanup_one(name: str, backend: SandboxBackend) -> None:
@@ -314,9 +322,13 @@ async def cleanup_sandbox_backends(
         return_exceptions=True,
     )
     # Log BaseException subclasses (CancelledError, KeyboardInterrupt)
-    # that escaped _cleanup_one's except Exception block
+    # that escaped _cleanup_one's except Exception block. gather captured
+    # them as results, so reraise_critical must run here too: otherwise an
+    # interpreter-critical error (MemoryError / RecursionError) re-raised
+    # inside _cleanup_one would be silently demoted to a log line.
     for (name, _), result in zip(backend_items, results, strict=True):
         if isinstance(result, BaseException):
+            reraise_critical(result)
             log_exception_redacted(
                 logger,
                 SANDBOX_FACTORY_CLEANUP_FAILED,

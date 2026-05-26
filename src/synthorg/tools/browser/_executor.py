@@ -53,8 +53,6 @@ import time
 from pathlib import Path
 from typing import Any, Final
 
-from synthorg.core.critical_errors import reraise_critical
-
 _DEFAULT_VIEWPORT_WIDTH: Final[int] = 1280
 _DEFAULT_VIEWPORT_HEIGHT: Final[int] = 720
 _DEFAULT_NAV_TIMEOUT_SECONDS: Final[float] = 60.0
@@ -70,6 +68,30 @@ _AXE_SCRIPT_MAX_BYTES: Final[int] = 5 * 1024 * 1024
 # before invoking ``Path(...).parent.mkdir`` / ``.stat()`` / ``.read_text``
 # so a malformed payload cannot reach arbitrary container paths.
 _SANDBOX_ROOT: Final[str] = "/workspace"
+
+
+def _reraise_critical(exc: BaseException) -> None:
+    """Re-raise ``exc`` when it is an interpreter-critical exception.
+
+    Dependency-free re-implementation of
+    ``synthorg.core.critical_errors.reraise_critical`` so this executor
+    stays self-contained and importable inside an arbitrary Playwright
+    image that has no ``synthorg`` package installed.
+
+    Args:
+        exc: The caught exception, inspected before any error handling.
+
+    Returns:
+        ``None`` when ``exc`` is neither ``MemoryError`` nor
+        ``RecursionError``, so the caller continues its normal flow.
+
+    Raises:
+        MemoryError: Re-raised unchanged when ``exc`` is a ``MemoryError``.
+        RecursionError: Re-raised unchanged when ``exc`` is a
+            ``RecursionError``.
+    """
+    if isinstance(exc, (MemoryError, RecursionError)):
+        raise exc
 
 
 def _validated_sandbox_path(raw: str, *, field: str) -> Path:
@@ -420,7 +442,7 @@ def main() -> int:
     try:
         result = asyncio.run(_dispatch(payload))
     except Exception as exc:
-        reraise_critical(exc)
+        _reraise_critical(exc)
         # Redact the raw exception message entirely: str(exc) can carry
         # filesystem paths, env vars, URLs, or page content. Emit only
         # the exception class name plus a static generic message so the

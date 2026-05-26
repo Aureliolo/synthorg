@@ -156,7 +156,8 @@ class SubConstraintEnforcer:
         allowed even under ``NONE``.
 
         Returns:
-            The resulting ``SubConstraintViolation``, or ``None`` when unavailable.
+            A ``SubConstraintViolation`` if the constraint is breached,
+            or ``None`` if satisfied.
         """
         if self._constraints.network != NetworkMode.NONE:
             return None
@@ -182,7 +183,8 @@ class SubConstraintEnforcer:
         terminal tool's command allow/blocklist, not here.
 
         Returns:
-            The resulting ``SubConstraintViolation``, or ``None`` when unavailable.
+            A ``SubConstraintViolation`` if the constraint is breached,
+            or ``None`` if satisfied.
         """
         if (
             self._constraints.terminal == TerminalAccess.NONE
@@ -208,7 +210,8 @@ class SubConstraintEnforcer:
         ``READ_AND_BRANCH`` blocks push but allows clone and branching.
 
         Returns:
-            The resulting ``SubConstraintViolation``, or ``None`` when unavailable.
+            A ``SubConstraintViolation`` if the constraint is breached,
+            or ``None`` if satisfied.
         """
         git_access = self._constraints.git
 
@@ -257,7 +260,8 @@ class SubConstraintEnforcer:
         the invoker to escalate rather than deny.
 
         Returns:
-            The resulting ``SubConstraintViolation``, or ``None`` when unavailable.
+            A ``SubConstraintViolation`` if the constraint is breached,
+            or ``None`` if satisfied.
         """
         for prefix in self._constraints.requires_approval:
             if action_type.startswith(prefix):

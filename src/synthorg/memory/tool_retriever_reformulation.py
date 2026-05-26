@@ -122,11 +122,13 @@ class ToolBasedReformulationMixin:
         (builtins.MemoryError, RecursionError) still propagate.
 
         Returns:
-            Tuple of ``MemoryEntry``.
+            Tuple of ``MemoryEntry`` results merged across rounds and
+            truncated to ``limit``.
 
         Raises:
-            MemoryError: If the related operation fails.
-            RecursionError: If the related operation fails.
+            MemoryError: If a critical system error occurs.
+            RecursionError: If a critical system error occurs.
+            CancelledError: If the task is cancelled.
         """
         max_rounds = self._config.max_reformulation_rounds
         current_query = query_text
@@ -271,12 +273,13 @@ class ToolBasedReformulationMixin:
         loop and return current cumulative entries).
 
         Returns:
-            ``True`` if the operation succeeds, ``False`` otherwise.
+            ``True`` when sufficient, ``False`` when insufficient, or
+            ``None`` when a non-system checker failure is isolated.
 
         Raises:
-            MemoryError: If the related operation fails.
-            RecursionError: If the related operation fails.
-            CancelledError: If the related operation fails.
+            MemoryError: If a critical system error occurs.
+            RecursionError: If a critical system error occurs.
+            CancelledError: If the task is cancelled.
         """
         try:
             return await sufficiency_checker.check_sufficiency(query, entries)

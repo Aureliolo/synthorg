@@ -319,10 +319,11 @@ def _build_checker_closure(  # noqa: PLR0913
     last_alert: list[BudgetAlertLevel] = [BudgetAlertLevel.NORMAL]
 
     def _check(ctx: AgentContext) -> bool:
-        """Check.
+        """Return True when a budget limit is reached.
 
         Returns:
-            ``True`` if the operation succeeds, ``False`` otherwise.
+            ``True`` when a task, project, monthly, or daily budget limit
+            is reached or exceeded, ``False`` otherwise.
         """
         running_cost = ctx.accumulated_cost.cost
         if hard_ceiling > 0 and running_cost >= hard_ceiling:
@@ -374,7 +375,8 @@ def _raise_hard_ceiling(  # noqa: PLR0913 -- error carries every payload field
     """Emit the ceiling-exceeded log + raise the typed error.
 
     Raises:
-        RunHardCeilingExceededError: If the related operation fails.
+        RunHardCeilingExceededError: Always raised, after emitting the
+            hard-ceiling-exceeded log event.
     """
     logger.error(
         BUDGET_HARD_CEILING_EXCEEDED,
@@ -407,7 +409,8 @@ def _check_task_limit(
     """Return True if task budget limit is exhausted.
 
     Returns:
-        ``True`` if the operation succeeds, ``False`` otherwise.
+        ``True`` when the task budget limit is reached or exceeded,
+        ``False`` otherwise.
     """
     if task_limit > 0 and running_cost >= task_limit:
         logger.warning(
@@ -431,7 +434,8 @@ def _check_monthly_limit(  # noqa: PLR0913
     """Return True if monthly hard stop is hit; emit alerts.
 
     Returns:
-        ``True`` if the operation succeeds, ``False`` otherwise.
+        ``True`` when the monthly hard-stop threshold is reached,
+        ``False`` otherwise (warning/critical alerts may still emit).
     """
     if monthly_budget <= 0:
         return False
@@ -476,7 +480,8 @@ def _check_daily_limit(
     """Return True if daily limit is exhausted.
 
     Returns:
-        ``True`` if the operation succeeds, ``False`` otherwise.
+        ``True`` when the daily limit is reached or exceeded,
+        ``False`` otherwise.
     """
     if daily_limit <= 0:
         return False
@@ -505,7 +510,8 @@ def _check_project_limit(
     """Return True if project budget is exhausted.
 
     Returns:
-        ``True`` if the operation succeeds, ``False`` otherwise.
+        ``True`` when the project budget is reached or exceeded,
+        ``False`` otherwise.
     """
     if project_budget <= 0:
         return False

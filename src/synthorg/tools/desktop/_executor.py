@@ -49,8 +49,6 @@ import time
 from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
-from synthorg.core.critical_errors import reraise_critical
-
 _SANDBOX_ROOT: Final[str] = "/workspace"
 _SESSION_STATE_PATH: Final[str] = "/workspace/.synthorg/desktop/session.json"
 
@@ -69,6 +67,30 @@ _UINT32_BYTES: Final[int] = 4
 _SUBPROCESS_TIMEOUT_SECONDS: Final[float] = 15.0
 _SCROLL_BUTTON_UP: Final[int] = 4
 _SCROLL_BUTTON_DOWN: Final[int] = 5
+
+
+def _reraise_critical(exc: BaseException) -> None:
+    """Re-raise ``exc`` when it is an interpreter-critical exception.
+
+    Dependency-free re-implementation of
+    ``synthorg.core.critical_errors.reraise_critical`` so this executor
+    stays self-contained and importable inside an arbitrary Xvfb-capable
+    image that has no ``synthorg`` package installed.
+
+    Args:
+        exc: The caught exception, inspected before any error handling.
+
+    Returns:
+        ``None`` when ``exc`` is neither ``MemoryError`` nor
+        ``RecursionError``, so the caller continues its normal flow.
+
+    Raises:
+        MemoryError: Re-raised unchanged when ``exc`` is a ``MemoryError``.
+        RecursionError: Re-raised unchanged when ``exc`` is a
+            ``RecursionError``.
+    """
+    if isinstance(exc, (MemoryError, RecursionError)):
+        raise exc
 
 
 def _validated_sandbox_path(raw: str, *, field: str) -> Path:
@@ -542,7 +564,7 @@ def main() -> int:
     try:
         result = _dispatch(payload)
     except Exception as exc:
-        reraise_critical(exc)
+        _reraise_critical(exc)
         # Redact the raw message: str(exc) can carry filesystem paths,
         # env vars, or window content. Emit only the class name plus a
         # static generic message so the host has a stable shape.
