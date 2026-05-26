@@ -181,10 +181,9 @@ async def _resolve_fallback(
         Result of type ``DegradationResult``.
 
     Raises:
-        QuotaExhaustedError: When no providers configured or all
-            exhausted.
-        _all_fallbacks_exhausted_error: Raised when the relevant invariant fails.
-        _no_fallback_error: Raised when the relevant invariant fails.
+        QuotaExhaustedError: When no providers are configured or all
+            fallbacks are exhausted (built by ``_no_fallback_error`` /
+            ``_all_fallbacks_exhausted_error``).
     """
     fallbacks = degradation_config.fallback_providers
     if not fallbacks:
@@ -404,9 +403,8 @@ async def _compute_queue_delay(
         Result of type ``float``.
 
     Raises:
-        QuotaExhaustedError: When no reset time is available or
-            delay exceeds ``max_wait``.
-        _queue_exhausted_error: Raised when the relevant invariant fails.
+        QuotaExhaustedError: When no reset time is available or the
+            delay exceeds ``max_wait`` (built by ``_queue_exhausted_error``).
     """
     snapshots = await quota_tracker.get_snapshot(provider_name)
     reset_times = _extract_reset_times(snapshots, exhausted_windows)

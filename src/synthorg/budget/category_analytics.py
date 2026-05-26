@@ -251,10 +251,13 @@ def build_category_breakdown(
         )
 
     def _round(vals: list[float]) -> float:
-        """Round.
+        """Round the ``math.fsum`` of *vals* to ``BUDGET_ROUNDING_PRECISION``.
+
+        ``math.fsum`` gives a stable floating-point total; rounding to
+        the shared precision keeps every category total consistent.
 
         Returns:
-            Result of type ``float``.
+            The rounded sum as a ``float``.
         """
         return round(math.fsum(vals), BUDGET_ROUNDING_PRECISION)
 

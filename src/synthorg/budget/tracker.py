@@ -668,8 +668,9 @@ class CostTracker(CostTrackerSummaryMixin):
         ``TaskGroup``, not a regression.
 
         Raises:
-            CancelledError: If the related operation fails.
-            outcome: Raised when the relevant invariant fails.
+            MemoryError: Propagated from a background task, never swallowed.
+            RecursionError: Propagated from a background task, never swallowed.
+            CancelledError: Re-raised so cancellation propagates.
         """
         if not self._pending_record_tasks:
             return

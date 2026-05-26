@@ -135,7 +135,8 @@ class QuotaPoller:
         """Background task: poll repeatedly until cancelled.
 
         Raises:
-            CancelledError: If the related operation fails.
+            CancelledError: Propagated when the background task is
+                cancelled (e.g. via stop()/shutdown), not a failure signal.
         """
         # lint-allow: long-running-loop-kill-switch -- stop()/cancel drives shutdown.
         while True:
