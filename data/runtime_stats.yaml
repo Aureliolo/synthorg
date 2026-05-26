@@ -14,18 +14,18 @@ stats:
     raw: 20
     display: '20'
   providers_via_litellm:
-    raw: 2739
-    display: 2700+
+    raw: 89
+    display: 85+
   subagents:
     raw: 26
     display: '26'
   convention_gates:
-    raw: 63
-    display: '63'
+    raw: 64
+    display: '64'
 sources:
   tests: uv run python -m pytest --collect-only -q
   mem0_stars: gh api repos/mem0ai/mem0 --jq .stargazers_count
   providers_curated: synthorg.providers.presets.list_featured_presets
-  providers_via_litellm: len(litellm.model_cost)
+  providers_via_litellm: len(litellm.models_by_provider)
   subagents: glob .claude/agents/*.md
   convention_gates: glob scripts/check_*.py

@@ -6,7 +6,7 @@ Sources (best-effort; failures keep the previously-stored value):
 * ``tests``                 -- ``uv run python -m pytest --collect-only -q``
 * ``mem0_stars``            -- ``gh api repos/mem0ai/mem0 --jq .stargazers_count``
 * ``providers_curated``     -- ``len(synthorg.providers.presets.list_featured_presets())``
-* ``providers_via_litellm`` -- ``len(litellm.model_cost)``
+* ``providers_via_litellm`` -- ``len(litellm.models_by_provider)``
 * ``subagents``             -- ``glob .claude/agents/*.md``
 * ``convention_gates``      -- ``glob scripts/check_*.py``
 
@@ -51,9 +51,9 @@ _TESTS_ROUND_TO: Final[int] = 1000
 # Round star count to nearest 1,000 so the rendered "Nk+" string is stable
 # across normal day-to-day star drift.
 _STARS_ROUND_TO: Final[int] = 1000
-# Round LiteLLM model-cost length to nearest 100 so the rendered "N+"
-# stays stable across minor LiteLLM dependency bumps.
-_LITELLM_ROUND_TO: Final[int] = 100
+# Round the LiteLLM provider count down to the nearest 5 so the rendered
+# "N+" stays stable across minor LiteLLM dependency bumps.
+_LITELLM_PROVIDER_ROUND_TO: Final[int] = 5
 
 _GH_TIMEOUT_SECONDS: Final[int] = 30
 _PYTEST_TIMEOUT_SECONDS: Final[int] = 120
@@ -67,7 +67,7 @@ _SOURCES: Final[dict[str, str]] = {
     "tests": "uv run python -m pytest --collect-only -q",
     "mem0_stars": "gh api repos/mem0ai/mem0 --jq .stargazers_count",
     "providers_curated": "synthorg.providers.presets.list_featured_presets",
-    "providers_via_litellm": "len(litellm.model_cost)",
+    "providers_via_litellm": "len(litellm.models_by_provider)",
     "subagents": "glob .claude/agents/*.md",
     "convention_gates": "glob scripts/check_*.py",
 }
@@ -252,12 +252,15 @@ def _fetch_providers_curated() -> StatEntry:
 
 
 def _fetch_providers_via_litellm() -> StatEntry:
-    """Count LiteLLM-known providers via ``len(litellm.model_cost)``.
+    """Count LLM providers LiteLLM can route to via ``len(litellm.models_by_provider)``.
 
-    LiteLLM tracks several hundred model entries in ``model_cost``; the
-    final figure is rounded down to nearest ``_LITELLM_ROUND_TO`` (100)
-    and rendered as ``"N+"`` so headline prose stays stable across
-    minor LiteLLM bumps.
+    ``models_by_provider`` maps each provider to its catalogued models, so
+    its length is the number of providers with at least one known model --
+    the honest "LLM providers" figure. (``model_cost`` counts individual
+    models, not providers, and would massively overstate the provider
+    claim.) Rounded down to the nearest ``_LITELLM_PROVIDER_ROUND_TO`` (5)
+    and rendered as ``"N+"`` so headline prose stays stable across minor
+    LiteLLM bumps.
     """
     name = "providers_via_litellm"
     source = _SOURCES[name]
@@ -265,8 +268,18 @@ def _fetch_providers_via_litellm() -> StatEntry:
         import litellm
     except ImportError as exc:
         raise _StatFetchError(name, source, f"could not import litellm: {exc}") from exc
-    raw = len(litellm.model_cost)
-    rounded = _round_floor(raw, _LITELLM_ROUND_TO)
+    by_provider = getattr(litellm, "models_by_provider", None)
+    if by_provider is None:
+        raise _StatFetchError(
+            name, source, "litellm has no models_by_provider attribute"
+        )
+    try:
+        raw = len(by_provider)
+    except TypeError as exc:
+        raise _StatFetchError(
+            name, source, f"models_by_provider is not sized: {exc}"
+        ) from exc
+    rounded = _round_floor(raw, _LITELLM_PROVIDER_ROUND_TO)
     return {"raw": raw, "display": f"{rounded}+"}
 
 

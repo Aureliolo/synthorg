@@ -25,7 +25,7 @@ Types match commit types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `p
 ## Making Changes
 
 1. Create a feature branch: `git checkout -b feat/my-feature main`
-2. Install hooks (first time only): `uv run pre-commit install`
+2. Install hooks (first time only): `bash scripts/install_git_hooks.sh`. This wires the relative `core.hooksPath`; do not run `pre-commit install`, which clobbers it and disables hook gating across all worktrees.
 3. Make your changes
 4. Run quality checks (see below)
 5. Commit using conventional commit format
