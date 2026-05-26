@@ -44,6 +44,8 @@ chain is still preserved for callers via ``raise ... from exc``.
 import re
 from typing import Any, Final, Protocol
 
+from synthorg.core.critical_errors import reraise_critical
+
 MAX_SCRUBBED_LENGTH: Final[int] = 512
 """Hard cap on the length of the output of :func:`safe_error_description`.
 
@@ -187,11 +189,6 @@ def scrub_secret_tokens(text: str) -> str:
             scrubbed,
         )
         return _FERNET_PATTERN.sub("***FERNET_CIPHERTEXT***", scrubbed)
-    except MemoryError, RecursionError:
-        # Catastrophic interpreter state -- propagate so the process
-        # can surface the failure rather than silently proceeding with
-        # a half-scrubbed or original string.
-        raise
     except re.error:
         # Defensive: regex-level failure (pathological input, engine
         # bug) must not crash the caller's log call.  The
@@ -235,14 +232,12 @@ def safe_error_description(exc: BaseException) -> str:
         # redacted wrapper. ``scrub_secret_tokens`` is applied below.
         # Calling ``safe_error_description`` here would infinitely recurse.
         message = str(exc)
-    except MemoryError, RecursionError:
-        raise
-    except Exception:  # pragma: no cover - defensive
+    except Exception as stringify_exc:
+        reraise_critical(stringify_exc)  # pragma: no cover - defensive
         try:
             message = repr(exc)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:  # pragma: no cover - defensive
+        except Exception as repr_exc:
+            reraise_critical(repr_exc)  # pragma: no cover - defensive
             return type_name
     if not message:
         return type_name

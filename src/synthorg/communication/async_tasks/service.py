@@ -14,6 +14,7 @@ from synthorg.communication.async_tasks.models import (
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.communication.message import Message, TextPart
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus, TaskType
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
@@ -120,12 +121,8 @@ class AsyncTaskService:
                 assigned_to=task_spec.agent_id,
                 parent_task_id=task_spec.parent_task_id,
             )
-        except MemoryError, RecursionError:
-            # Process-fatal builtins propagate before any logging /
-            # rollback work runs -- project convention for system-error
-            # propagation.
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Include ``task_id`` when the create succeeded so this
             # primary failure log can be correlated with the rollback
             # warning below (which already carries it).  ``None`` when
@@ -186,9 +183,8 @@ class AsyncTaskService:
                     cancelled_task,
                     rollback_prior,
                 )
-        except MemoryError, RecursionError:
-            raise
         except Exception as cancel_exc:
+            reraise_critical(cancel_exc)
             logger.warning(
                 ASYNC_TASK_START_FAILED,
                 task_id=task.id,
@@ -377,9 +373,8 @@ class AsyncTaskService:
                 requested_by=supervisor_id,
                 reason="ASYNC_CANCEL",
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 ASYNC_TASK_CANCEL_FAILED,
                 task_id=task_id,

@@ -11,6 +11,7 @@ from types import MappingProxyType
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
     ConnectionStatus,
@@ -166,6 +167,7 @@ class HealthProberService:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Routine probe-loop failure: log a redacted
                 # structured warning instead of ``logger.exception``
                 # (full tracebacks are reserved for ``MemoryError``
@@ -216,6 +218,7 @@ class HealthProberService:
         try:
             conn = await self._catalog.get(name)
         except Exception as exc:
+            reraise_critical(exc)
             # Routine catalog-load failure: redacted warning, not
             # full traceback (see _probe_loop comment).
             logger.warning(
@@ -237,6 +240,7 @@ class HealthProberService:
         try:
             report = await checker.check(conn)
         except Exception as exc:
+            reraise_critical(exc)
             # Routine checker failure: redacted warning, not full
             # traceback (see _probe_loop comment).
             logger.warning(
@@ -266,6 +270,7 @@ class HealthProberService:
                 checked_at=now,
             )
         except Exception as exc:
+            reraise_critical(exc)
             # Routine catalog-write failure: redacted warning, not
             # full traceback (see _probe_loop comment).
             logger.warning(

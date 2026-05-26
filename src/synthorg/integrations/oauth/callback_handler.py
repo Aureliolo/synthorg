@@ -6,6 +6,7 @@ OAuth API controller to process authorization code callbacks.
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.errors import (
@@ -53,9 +54,8 @@ async def resolve_oauth_http_timeout(
             SettingNamespace.INTEGRATIONS.value,
             "oauth_http_timeout_seconds",
         )
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # This is a setting-resolution fallback, not an OAuth flow
         # failure -- logging as OAUTH_FLOW_FAILED would inflate
         # failure metrics and page oncall for a benign condition.

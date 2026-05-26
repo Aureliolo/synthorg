@@ -22,6 +22,7 @@ from synthorg.communication.bus._nats_utils import (
 from synthorg.communication.bus.errors import BusStreamError
 from synthorg.communication.channel import Channel  # noqa: TC001
 from synthorg.communication.subscription import Subscription
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMM_DUPLICATE_SUBSCRIPTION_DISCARDED,
@@ -185,7 +186,8 @@ async def unsubscribe(
     if sub is not None:
         try:
             await sub.unsubscribe()
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMM_SUBSCRIPTION_REMOVED,
                 channel=channel_name,

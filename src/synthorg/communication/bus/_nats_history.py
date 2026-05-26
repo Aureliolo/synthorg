@@ -15,6 +15,7 @@ from synthorg.communication.bus._nats_publish import deserialize_message
 from synthorg.communication.bus._nats_state import _NatsState  # noqa: TC001
 from synthorg.communication.bus.errors import BusStreamError
 from synthorg.communication.message import Message  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_BUS_MESSAGE_DESERIALIZE_FAILED,
@@ -55,6 +56,7 @@ async def create_history_scan_consumer(
     except NotFoundError:
         return None
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             COMM_BUS_STREAM_SCAN_FAILED,
             stream=stream_name,
@@ -96,6 +98,7 @@ async def collect_history_batches(
         except NatsTimeoutError:
             return parsed_messages
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMM_BUS_STREAM_SCAN_FAILED,
                 stream=stream_name,
@@ -125,6 +128,7 @@ async def unsubscribe_history_consumer(
     try:
         await psub.unsubscribe()
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             COMM_BUS_STREAM_SCAN_FAILED,
             stream=stream_name,

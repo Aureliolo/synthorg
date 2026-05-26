@@ -21,6 +21,7 @@ from synthorg.config.rate_limits import (
     PerOpConcurrencyConfig,
     PerOpRateLimitConfig,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.settings import (
@@ -162,9 +163,8 @@ class PerOpRateLimitSettingsSubscriber:
                 backend=backend,
                 overrides=overrides,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="per_op_rate_limit_config",
@@ -192,9 +192,8 @@ class PerOpRateLimitSettingsSubscriber:
                 backend=backend,
                 overrides=overrides,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="per_op_concurrency_config",

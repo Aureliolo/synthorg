@@ -13,6 +13,7 @@ import enum
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.registry.errors import StrategyFactoryNotFoundError
 from synthorg.observability import get_logger
 from synthorg.observability.events.registry import (
@@ -165,6 +166,7 @@ class StrategyRegistry[T]:
         try:
             instance = factory(*args, **kwargs)
         except Exception as exc:
+            reraise_critical(exc)
             # Use ``logger.warning`` + ``safe_error_description``
             # rather than ``logger.exception`` because factory
             # closures used by ``PersistenceBackendRegistry`` may

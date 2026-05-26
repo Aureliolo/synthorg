@@ -7,6 +7,7 @@ the ``ProviderDiscoveryPolicy`` when it changes.
 import json
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
     SECURITY_ALLOWLIST_UPDATE_FAILED,
@@ -111,9 +112,8 @@ class SecuritySubscriber:
 
         try:
             await self._on_changed(allowlist)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SECURITY_ALLOWLIST_UPDATE_FAILED,
                 namespace=namespace,

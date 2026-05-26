@@ -29,6 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 
@@ -431,9 +432,8 @@ class SafetyClassifier:
                 risk_level,
                 start,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             duration_ms = (self._clock.monotonic() - start) * _MILLISECONDS_PER_SECOND
             log_exception_redacted(
                 logger,

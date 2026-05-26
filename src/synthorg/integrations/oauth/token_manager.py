@@ -9,6 +9,7 @@ import contextlib
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
     AuthMethod,
@@ -108,9 +109,8 @@ class OAuthTokenManager:
                 SettingNamespace.INTEGRATIONS.value,
                 "oauth_http_timeout_seconds",
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Logging this as OAUTH_TOKEN_REFRESH_FAILED would
             # falsely mark an OAuth refresh as failed and trip any
             # alerting on that event. Emit on the settings-fetch
@@ -147,9 +147,8 @@ class OAuthTokenManager:
                     SettingNamespace.INTEGRATIONS.value,
                     key,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.info(
                     SETTINGS_FETCH_FAILED,
                     namespace=SettingNamespace.INTEGRATIONS.value,
@@ -200,9 +199,8 @@ class OAuthTokenManager:
                 await self._check_and_refresh()
             except asyncio.CancelledError:
                 raise
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     OAUTH_TOKEN_REFRESH_FAILED,
@@ -277,9 +275,8 @@ class OAuthTokenManager:
         """
         try:
             credentials = await self._catalog.get_credentials(conn.name)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
                 connection_name=conn.name,
@@ -382,9 +379,8 @@ class OAuthTokenManager:
                 meta_updates = dict(conn.metadata)
                 meta_updates["token_expires_at"] = refreshed.expires_at.isoformat()
                 await self._catalog.update(conn.name, metadata=meta_updates)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 OAUTH_TOKEN_REFRESH_FAILED,
                 connection_name=conn.name,
@@ -398,9 +394,8 @@ class OAuthTokenManager:
                     status=ConnectionStatus.DEGRADED,
                     checked_at=now,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as health_exc:
+                reraise_critical(health_exc)
                 logger.warning(
                     OAUTH_TOKEN_REFRESH_FAILED,
                     connection_name=conn.name,

@@ -272,3 +272,72 @@ class TestOtlpHandlerExportFailure:
                 handler.close()
         # After close, queue should be empty
         assert handler._queue.empty()
+
+
+@pytest.mark.unit
+class TestOtlpHandlerInternalErrorPaths:
+    """Internal failures route through ``handleError`` / are logged
+    without propagating out of the logging hot path."""
+
+    def test_enqueue_queue_failure_calls_handle_error(self) -> None:
+        handler = _make_handler()
+        try:
+            failing_queue = MagicMock()
+            failing_queue.put_nowait.side_effect = RuntimeError("queue boom")
+            handler._queue = failing_queue  # type: ignore[assignment]
+            handled: list[logging.LogRecord] = []
+            handler.handleError = handled.append  # type: ignore[method-assign,assignment]
+
+            handler._enqueue(_make_record("drop me"))
+
+            assert len(handled) == 1
+        finally:
+            # Restore a real, empty queue so close()'s drain terminates.
+            handler._queue = queue.SimpleQueue()
+            handler.close()
+
+    def test_export_batch_format_failure_increments_dropped(self) -> None:
+        handler = _make_handler(batch_size=1)
+        try:
+            handled: list[logging.LogRecord] = []
+            handler.handleError = handled.append  # type: ignore[method-assign,assignment]
+
+            def _boom_format(_record: logging.LogRecord) -> dict[str, object]:
+                msg = "format boom"
+                raise RuntimeError(msg)
+
+            handler._format_as_otlp_dict = _boom_format  # type: ignore[method-assign,assignment]
+
+            handler._export_batch([_make_record("bad")])
+
+            assert len(handled) == 1
+            with handler._pending_lock:
+                assert handler._dropped_count == 1
+        finally:
+            handler.close()
+
+    def test_flush_loop_drain_failure_is_logged(self) -> None:
+        handler = _make_handler()
+        try:
+            calls = {"n": 0}
+
+            def _boom_drain() -> None:
+                calls["n"] += 1
+                # Stop after one iteration so the loop exits cleanly.
+                handler._shutdown.set()
+                msg = "drain boom"
+                raise RuntimeError(msg)
+
+            handler._drain_and_flush = _boom_drain  # type: ignore[method-assign]
+            handler._batch_ready.set()
+
+            # One iteration: drain raises, the except logs, and the
+            # shutdown flag set above ends the loop.
+            handler._flush_loop()
+
+            assert calls["n"] == 1
+            # Neutralise the raising drain so close()'s own drain is a
+            # no-op rather than re-raising during teardown.
+            handler._drain_and_flush = lambda: None  # type: ignore[method-assign]
+        finally:
+            handler.close()

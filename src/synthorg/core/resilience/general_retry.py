@@ -54,6 +54,7 @@ import random
 from typing import TYPE_CHECKING, Final, TypeVar
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.resilience import (
     CORE_RESILIENCE_INVALID_CONFIG,
@@ -193,14 +194,8 @@ class GeneralRetryHandler:
         for attempt in range(self._max_attempts):
             try:
                 return await op()
-            except MemoryError, RecursionError:
-                # System-fatal builtins are ``Exception`` subclasses
-                # in Python; re-raise them before the broad retry
-                # handler so process-fatal conditions cannot be run
-                # through the retryable predicate, logged, or slept
-                # on.  Project convention.
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 if not self._retryable(exc):
                     self._log_attempt(
                         attempt,

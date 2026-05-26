@@ -1,3 +1,4 @@
+# module-kind: adapter
 """LiteLLM-backed completion driver.
 
 Wraps ``litellm.acompletion`` behind the ``BaseCompletionProvider``
@@ -44,6 +45,7 @@ from litellm.exceptions import (
 )
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -231,6 +233,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         except errors.ProviderError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             raise self._map_exception(exc, model) from exc
         return self._map_response(response, model_config)
 
@@ -264,6 +267,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         except errors.ProviderError:
             raise
         except Exception as exc:
+            reraise_critical(exc)
             raise self._map_exception(exc, model) from exc
 
     async def _do_get_model_capabilities(
@@ -307,9 +311,8 @@ class LiteLLMDriver(BaseCompletionProvider):
                 continue
             try:
                 results[model] = self._build_capabilities(model_config)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     PROVIDER_BATCH_CAPABILITIES_PARTIAL,
                     provider=self._provider_name,
@@ -581,6 +584,7 @@ class LiteLLMDriver(BaseCompletionProvider):
                     ):
                         yield sc
             except Exception as exc:
+                reraise_critical(exc)
                 logger.error(
                     PROVIDER_CALL_ERROR,
                     provider=provider,
@@ -756,7 +760,8 @@ class LiteLLMDriver(BaseCompletionProvider):
                 model=litellm_model,
             )
             return {}
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
                 model=litellm_model,

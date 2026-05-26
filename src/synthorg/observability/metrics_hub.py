@@ -20,6 +20,7 @@ registered so call sites remain safe when metrics are disabled.
 import weakref
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.metrics import (
     METRICS_COLLECTOR_ACTIVATED,
@@ -85,11 +86,10 @@ def _safe_record(
     """
 
     def _wrap(fn: Callable[_P, _R]) -> Callable[_P, _R | None]:
+
         def inner(*args: _P.args, **kwargs: _P.kwargs) -> _R | None:
             try:
                 return fn(*args, **kwargs)
-            except MemoryError, RecursionError:
-                raise
             except TypeError:
                 # TypeError from a ``record_*`` call almost always
                 # means the caller passed wrong-shaped arguments,
@@ -98,6 +98,7 @@ def _safe_record(
                 # so the caller sees the wiring mistake.
                 raise
             except Exception as exc:
+                reraise_critical(exc)
                 # ValueError lives under this branch on purpose: it
                 # surfaces both genuine programming bugs (caller
                 # passed an unknown label) AND transient validation

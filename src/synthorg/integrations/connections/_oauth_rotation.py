@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections.models import Connection, SecretRef
 from synthorg.observability import get_logger, safe_error_description
@@ -157,9 +158,8 @@ class OAuthRotationMixin:
         """
         try:
             await self._repo.save(updated)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 OAUTH_TOKEN_EXCHANGE_FAILED,
                 connection_name=name,
@@ -169,9 +169,8 @@ class OAuthRotationMixin:
             )
             try:
                 await self._secret_backend.delete(new_secret_id)
-            except MemoryError, RecursionError:
-                raise
             except Exception as cleanup_exc:
+                reraise_critical(cleanup_exc)
                 logger.warning(
                     OAUTH_TOKEN_EXCHANGE_FAILED,
                     connection_name=name,
@@ -206,9 +205,8 @@ class OAuthRotationMixin:
                         connection_name=name,
                         secret_id=old_ref.secret_id,
                     )
-            except MemoryError, RecursionError:
-                raise
             except Exception as del_exc:
+                reraise_critical(del_exc)
                 logger.warning(
                     SECRET_DELETE_FAILED,
                     connection_name=name,

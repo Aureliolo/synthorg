@@ -5,6 +5,7 @@ import time
 
 import cedarpy
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -118,9 +119,8 @@ class CedarPolicyEngine:
                 matched_policy="cedar_policy_set",
                 latency_ms=latency_ms,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             latency_ms = (time.perf_counter() - start) * 1000
             log_exception_redacted(
                 logger,
@@ -155,9 +155,8 @@ class CedarPolicyEngine:
         # block a ready policy decision from being returned.
         try:
             record_security_verdict("allow" if decision.allow else "deny")
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SECURITY_POLICY_ENGINE_ERROR,
                 reason="metrics_mirror_failed",

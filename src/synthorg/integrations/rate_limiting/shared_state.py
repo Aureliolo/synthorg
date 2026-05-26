@@ -23,6 +23,7 @@ from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType, MessageType
 from synthorg.communication.message import DataPart, Message
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.errors import ConnectionRateLimitError
 from synthorg.observability import get_logger
 from synthorg.observability.events.integrations import (
@@ -96,7 +97,8 @@ class SharedRateLimitCoordinator:
                     _RATELIMIT_CHANNEL.name,
                     self._subscriber_id,
                 )
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     RATE_LIMIT_COORDINATOR_STARTED,
                     connection_name=self._connection_name,
@@ -137,7 +139,8 @@ class SharedRateLimitCoordinator:
                     _RATELIMIT_CHANNEL.name,
                     self._subscriber_id,
                 )
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     RATE_LIMIT_COORDINATOR_STOPPED,
                     connection_name=self._connection_name,
@@ -219,7 +222,8 @@ class SharedRateLimitCoordinator:
                 RATE_LIMIT_ACQUIRE_PUBLISHED,
                 connection_name=self._connection_name,
             )
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             self._distributed = False
             logger.warning(
                 RATE_LIMIT_ACQUIRE_PUBLISHED,
@@ -243,7 +247,8 @@ class SharedRateLimitCoordinator:
                 await envelope.ack()
             except asyncio.CancelledError:
                 break
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 # A receive/ingest failure means this worker is no
                 # longer seeing remote acquires. Flip ``_distributed``
                 # to ``False`` so ``acquire()`` stops assuming the
@@ -320,7 +325,8 @@ async def set_coordinator_factory(
     for coordinator in old:
         try:
             await coordinator.stop()
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 RATE_LIMIT_COORDINATOR_STOPPED,
                 connection_name=coordinator._connection_name,  # noqa: SLF001

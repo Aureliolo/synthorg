@@ -10,6 +10,7 @@ import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.integrations.connections._oauth_rotation import OAuthRotationMixin
 from synthorg.integrations.connections.models import (
@@ -218,9 +219,8 @@ class ConnectionCatalog(OAuthRotationMixin):
                 created_at=now,
                 updated_at=now,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Surface ``connection_name`` context on model-construction
             # failures.  Without this the resulting 500 carries the
             # exception's raw message but no resource attribution.
@@ -253,9 +253,8 @@ class ConnectionCatalog(OAuthRotationMixin):
                 secret_id,
                 json.dumps(credentials).encode("utf-8"),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 failure_event,
                 connection_name=connection_name,
@@ -280,9 +279,8 @@ class ConnectionCatalog(OAuthRotationMixin):
         """
         try:
             await self._repo.save(connection)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CONNECTION_CREATE_FAILED,
                 connection_name=connection.name,
@@ -292,9 +290,8 @@ class ConnectionCatalog(OAuthRotationMixin):
             )
             try:
                 await self._secret_backend.delete(secret_id)
-            except MemoryError, RecursionError:
-                raise
             except Exception as cleanup_exc:
+                reraise_critical(cleanup_exc)
                 logger.warning(
                     CONNECTION_CREATE_FAILED,
                     connection_name=connection.name,
@@ -538,9 +535,8 @@ class ConnectionCatalog(OAuthRotationMixin):
                     webhook_receipt_retention_days=webhook_receipt_retention_days,
                     sensitive=sensitive,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # ``NotBlankStr`` rejections (e.g. caller passed an
                 # empty ``base_url``) currently bubble with no resource
                 # attribution.  Surface ``connection_name`` + the input
@@ -576,9 +572,8 @@ class ConnectionCatalog(OAuthRotationMixin):
             updated = existing.model_copy(update=real_updates)
             try:
                 await self._repo.save(updated)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # PATCH persistence failed; surface ``connection_name``
                 # context before re-raising so the failure is
                 # attributable in dashboards (the repo's own exception
@@ -657,6 +652,7 @@ class ConnectionCatalog(OAuthRotationMixin):
                             secret_id=ref.secret_id,
                         )
                 except Exception as exc:
+                    reraise_critical(exc)
                     # The connection delete itself succeeded; a stale
                     # secret cleanup failure is a secret-delete
                     # problem, not a connection-delete problem -- use

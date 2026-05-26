@@ -20,6 +20,7 @@ from synthorg.communication.handler import (
 from synthorg.communication.message import (
     Message,  # noqa: TC001 -- required at runtime by Pydantic
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -271,6 +272,7 @@ class MessageDispatcher:
             )
             raise
         except Exception as exc:
+            reraise_critical(exc)
             safe_error = safe_error_description(exc)
             errors[index] = safe_error
             logger.warning(

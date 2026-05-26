@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.communication.enums import MessageType
 from synthorg.communication.message import Message, MessageMetadata, TextPart
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import SECURITY_SETTINGS_CHANGED
@@ -1017,6 +1018,7 @@ class SettingsService:
         try:
             removed_keys = await self._repository.delete_namespace_returning_keys(ns)
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SETTINGS_DELETE_FAILED,
                 namespace=namespace,
@@ -1126,9 +1128,8 @@ class SettingsService:
                 namespace=namespace,
                 key=key,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Notification failure should not break settings writes.
             # Settings is a credential-bearing path so use the
             # ``safe_error_description`` redactor and do NOT pass

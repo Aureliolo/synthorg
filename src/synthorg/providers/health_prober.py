@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 import httpx
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import strip_trailing_slash
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -258,9 +259,8 @@ class ProviderHealthProber:
                     await task
                 except asyncio.CancelledError:
                     pass
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
                         error_type=type(exc).__name__,
@@ -324,9 +324,8 @@ class ProviderHealthProber:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             if not self._resolve_failed_logged:
                 logger.warning(
                     PROVIDER_HEALTH_PROBER_RESOLVE_FAILED,
@@ -362,9 +361,8 @@ class ProviderHealthProber:
                     await self._probe_all()
                 except asyncio.CancelledError:
                     raise
-                except MemoryError, RecursionError:
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         PROVIDER_HEALTH_PROBER_CYCLE_FAILED,
                         error_type=type(exc).__name__,
@@ -460,9 +458,8 @@ class ProviderHealthProber:
         """
         try:
             await self._probe_one(name, config, ollama_port=ollama_port)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROVIDER_HEALTH_PROBE_FAILED,
                 provider=name,
@@ -556,9 +553,8 @@ class ProviderHealthProber:
             error_msg = "timeout"
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             error_msg = _truncate(
                 f"{type(exc).__name__}: {safe_error_description(exc)}"
             )

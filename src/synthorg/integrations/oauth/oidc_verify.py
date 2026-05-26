@@ -120,8 +120,6 @@ async def verify_id_token(
             leeway=_LEEWAY_SECONDS,
             options={"require": ["exp", "iat", "nonce"]},
         )
-    except MemoryError, RecursionError:
-        raise
     except (jwt.exceptions.PyJWTError, jwt.exceptions.PyJWKClientError, OSError) as exc:
         # Dedicated forensic event: the caller only logs the generic
         # OAUTH_FLOW_FAILED for the whole callback, which cannot

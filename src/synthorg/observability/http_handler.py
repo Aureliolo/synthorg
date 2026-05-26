@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Final
 import structlog
 from structlog.stdlib import ProcessorFormatter
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability.redaction import safe_error_description
 
 if TYPE_CHECKING:
@@ -96,6 +97,7 @@ class HttpBatchHandler(logging.Handler):
             try:
                 self._drain_and_flush()
             except Exception as exc:
+                reraise_critical(exc)
                 print(  # noqa: T201
                     f"ERROR: log-http-flusher encountered unexpected error: {safe_error_description(exc)}",  # noqa: E501
                     file=sys.stderr,
@@ -178,6 +180,7 @@ class HttpBatchHandler(logging.Handler):
                 ):
                     pass  # Response body not needed
             except Exception as exc:
+                reraise_critical(exc)
                 # HTTPError wraps a response FP -- close to avoid FD leak.
                 if isinstance(exc, urllib.error.HTTPError):
                     exc.close()

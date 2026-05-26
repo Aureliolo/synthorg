@@ -81,6 +81,7 @@ def with_connection_rate_limit(
     def decorator(
         fn: Callable[..., Coroutine[Any, Any, T]],
     ) -> Callable[..., Coroutine[Any, Any, T]]:
+
         @functools.wraps(fn)
         async def wrapper(*args: Any, **kwargs: Any) -> T:
             from synthorg.integrations.rate_limiting.shared_state import (  # noqa: PLC0415

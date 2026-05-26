@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
     SETTINGS_SERVICE_SWAP_FAILED,
@@ -116,9 +117,8 @@ class ProviderSettingsSubscriber:
                 new_routing,
                 dict(config.providers),
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.error(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="model_router",

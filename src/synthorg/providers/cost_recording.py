@@ -35,6 +35,7 @@ from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 # ``emit_cost_record_from_context``, so they must resolve at runtime
 # when downstream tooling evaluates type hints.
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.provider import (
@@ -351,9 +352,8 @@ async def emit_cost_record_from_context(
 
     try:
         record = _build_cost_record(ctx, response, model=model, provider=provider)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PROVIDER_COST_FAILED,
             agent_id=ctx.agent_id,
@@ -410,8 +410,6 @@ async def _record_cost_in_background(
             ctx.cost_tracker.record(record),
             timeout=_COST_RECORD_TIMEOUT_SECONDS,
         )
-    except MemoryError, RecursionError:
-        raise
     except TimeoutError as exc:
         logger.warning(
             PROVIDER_COST_FAILED,
@@ -425,6 +423,7 @@ async def _record_cost_in_background(
         )
         return
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             PROVIDER_COST_FAILED,
             agent_id=ctx.agent_id,

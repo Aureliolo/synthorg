@@ -16,6 +16,7 @@ from typing import Any, Final
 
 from pyngrok import conf, ngrok  # type: ignore[import-untyped]
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.errors import TunnelError
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
@@ -155,6 +156,7 @@ class NgrokAdapter:
                 # never fully owned.
                 public_url = str(tunnel.public_url)
             except Exception as exc:
+                reraise_critical(exc)
                 # ngrok auth token env var may be echoed in exception
                 # messages; scrub + drop traceback.
                 safe_desc = safe_error_description(exc)
@@ -175,6 +177,7 @@ class NgrokAdapter:
                             getattr(tunnel, "public_url", None),
                         )
                     except Exception as cleanup_exc:
+                        reraise_critical(cleanup_exc)
                         logger.warning(
                             TUNNEL_ERROR,
                             phase="cleanup",
@@ -216,6 +219,7 @@ class NgrokAdapter:
             try:
                 await asyncio.to_thread(ngrok.disconnect, self._public_url)
             except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     TUNNEL_ERROR,
                     phase="disconnect",

@@ -4,6 +4,7 @@ import asyncio
 import sys
 from typing import TYPE_CHECKING, Any
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.observability import get_logger
 from synthorg.observability.enums import LogLevel
@@ -153,9 +154,8 @@ class ObservabilitySettingsSubscriber:
                 custom_sinks_json=cust_result.value,
                 log_dir=self._log_dir,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.error(
                 SETTINGS_OBSERVABILITY_VALIDATION_FAILED,
                 subscriber=self.subscriber_name,
@@ -176,9 +176,8 @@ class ObservabilitySettingsSubscriber:
                 build_result.config,
                 routing_overrides=routing,
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             # Pipeline may be degraded -- stderr as fallback.
             sys.stderr.write(
                 f"WARNING: configure_logging failed during hot reload "
@@ -208,9 +207,8 @@ class ObservabilitySettingsSubscriber:
         """Full pipeline rebuild: read, parse, build, apply."""
         try:
             results = await self._read_all_settings()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.error(
                 SETTINGS_OBSERVABILITY_REBUILD_FAILED,
                 subscriber=self.subscriber_name,

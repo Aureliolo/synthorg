@@ -40,6 +40,7 @@ from synthorg.communication.subscription import (  # noqa: TC001
     DeliveryEnvelope,
     Subscription,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_BUS_ALREADY_RUNNING,
@@ -145,9 +146,8 @@ class JetStreamMessageBus:
             await client.flush(
                 timeout=state.nats_config.health_flush_timeout_seconds,  # type: ignore[arg-type]
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMM_BUS_HEALTH_CHECK_FAILED,
                 phase="flush",
@@ -334,9 +334,8 @@ class JetStreamMessageBus:
             fetch_timeout = await self._config_resolver.get_float(
                 namespace, "nats_history_fetch_timeout_seconds"
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMM_BUS_STREAM_SCAN_FAILED,
                 phase="resolve_history_params",

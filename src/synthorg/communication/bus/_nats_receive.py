@@ -23,6 +23,7 @@ from synthorg.communication.bus._nats_utils import (
 from synthorg.communication.enums import ChannelType
 from synthorg.communication.errors import CommunicationError
 from synthorg.communication.subscription import DeliveryEnvelope
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMM_BUS_MESSAGE_DESERIALIZE_FAILED,
@@ -166,22 +167,19 @@ async def _maybe_log_overflow(
         shutdown_task.cancel()
         raise
     # Clean up the loser (timeout, or the task that didn't finish).
-    # ``contextlib.suppress(BaseException)`` would swallow system
-    # errors; narrow to cancellation + normal Exception so
-    # MemoryError / RecursionError still propagate per the repo
-    # convention for system-error preservation.
+    # The slot must be released on the critical-re-raise path so a
+    # MemoryError / RecursionError does not suppress the next real
+    # overflow warning for ``_OVERFLOW_LOG_INTERVAL_SECONDS``.
     if probe_task not in done:
         probe_task.cancel()
         try:
             await probe_task
         except asyncio.CancelledError:
             pass
-        except MemoryError, RecursionError:
-            # Non-emission path -- release the slot before re-raising.
-            state.last_overflow_log.pop(key, None)
-            raise
-        except Exception:  # noqa: S110  -- probe is best-effort; loser-task result discarded
-            pass
+        except Exception as exc:
+            if isinstance(exc, (MemoryError, RecursionError)):
+                state.last_overflow_log.pop(key, None)
+            reraise_critical(exc)
     if shutdown_task not in done:
         shutdown_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -194,14 +192,13 @@ async def _maybe_log_overflow(
         return
     try:
         info = probe_task.result()
-    except MemoryError, RecursionError:
-        # Non-emission path -- release the slot before re-raising.
+    except Exception as exc:
+        # Non-emission path: release the slot on both critical re-raise
+        # AND probe-RPC-failure paths so the next empty fetch can retry
+        # without suppressing a real overflow warning for the next
+        # ``_OVERFLOW_LOG_INTERVAL_SECONDS``.
         state.last_overflow_log.pop(key, None)
-        raise
-    except Exception:
-        # Probe RPC failure -- release the slot so the next empty
-        # fetch can retry without suppressing a real overflow warning.
-        state.last_overflow_log.pop(key, None)
+        reraise_critical(exc)
         return
     num_pending = getattr(info, "num_ack_pending", 0)
     if num_pending < cap:
@@ -272,9 +269,8 @@ async def fetch_with_shutdown(
         return []
     except asyncio.CancelledError:
         return None
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             COMM_BUS_RECEIVE_ERROR,
             channel=channel_name,
@@ -298,9 +294,8 @@ async def try_ack(
     """
     try:
         await msg.ack()
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             COMM_BUS_RECEIVE_ERROR,
             channel=channel_name,

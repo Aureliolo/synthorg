@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.security import (
@@ -169,9 +170,8 @@ class RuleEngine:
         """Evaluate a single rule, catching exceptions (fail-closed)."""
         try:
             return rule.evaluate(context)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 SECURITY_RULE_ERROR,

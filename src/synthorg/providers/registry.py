@@ -8,6 +8,7 @@ provider's ``driver`` field to select the appropriate factory.
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -286,9 +287,8 @@ def _build_driver(
 
     try:
         driver = factory(name, config)  # type: ignore[operator]
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         msg = f"Failed to instantiate driver {driver_type!r} for provider {name!r}"
         log_exception_redacted(
             logger,

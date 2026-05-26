@@ -1,3 +1,4 @@
+# module-kind: orchestrator
 """Meeting orchestrator -- lifecycle manager (see Communication design page).
 
 Manages the full meeting lifecycle: validates inputs, selects the
@@ -31,6 +32,7 @@ from synthorg.communication.meeting.protocol import (  # noqa: TC001
     MeetingProtocol,
     TaskCreator,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -382,6 +384,7 @@ class MeetingOrchestrator:
                 exc,
             )
         except Exception as exc:
+            reraise_critical(exc)
             status = MeetingStatus.FAILED
             if isinstance(exc, ExceptionGroup):
                 budget_group = exc.subgroup(MeetingBudgetExhaustedError)
@@ -526,9 +529,8 @@ class MeetingOrchestrator:
                     description=action_item.description,
                     assignee=action_item.assignee_id,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 failures += 1
                 log_exception_redacted(
                     logger,
@@ -562,7 +564,8 @@ class MeetingOrchestrator:
                 participant_ids,
                 lenses,
             )
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 MEETING_LENS_ASSIGNMENT_FAILED,
                 error="Lens assignment failed, proceeding without lenses",

@@ -19,6 +19,7 @@ a bare repository.
 from datetime import datetime  # noqa: TC003 -- runtime annotation
 from typing import TYPE_CHECKING, Final
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr  # noqa: TC001 -- runtime annotation
 from synthorg.integrations.connections.models import (
     OAuthState,  # noqa: TC001 -- runtime annotation
@@ -72,9 +73,8 @@ class OAuthStateService:
         bound = state.model_copy(update={"connection_name": connection_name})
         try:
             await self._repo.save(bound)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 SECURITY_OAUTH_STATE_PERSIST_FAILED,
                 connection_name=str(connection_name),

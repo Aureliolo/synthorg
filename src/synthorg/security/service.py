@@ -12,6 +12,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, AutonomyLevel
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.autonomy import (
@@ -191,9 +192,8 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         # never be bypassed, regardless of autonomy configuration.
         try:
             verdict = self._rule_engine.evaluate(context)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 SECURITY_INTERCEPTOR_ERROR,
@@ -305,9 +305,8 @@ class SecOpsService(SecOpsServiceSafetyMixin):
             )
             try:
                 self._audit_log.record(entry)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     SECURITY_AUDIT_RECORD_ERROR,
@@ -324,9 +323,8 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         policy_name = getattr(self._output_scan_policy, "name", "<unknown>")
         try:
             result = self._output_scan_policy.apply(result, context)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 SECURITY_INTERCEPTOR_ERROR,
@@ -381,9 +379,8 @@ class SecOpsService(SecOpsServiceSafetyMixin):
 
         try:
             return await self._llm_evaluator.evaluate(context, verdict)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 SECURITY_INTERCEPTOR_ERROR,
@@ -507,9 +504,8 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         )
         try:
             self._audit_log.record(entry)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 SECURITY_AUDIT_RECORD_ERROR,
@@ -617,9 +613,8 @@ class SecOpsService(SecOpsServiceSafetyMixin):
         )
         try:
             await self._approval_store.add(item)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             log_exception_redacted(
                 logger,
                 SECURITY_ESCALATION_STORE_ERROR,

@@ -20,6 +20,7 @@ from synthorg.communication.errors import (
     MessageBusNotRunningError,
     NotSubscribedError,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.communication import (
     COMM_BUS_NOT_RUNNING,
@@ -139,7 +140,8 @@ async def cancel_if_pending(task: asyncio.Task[Any]) -> None:
         await task
     except asyncio.CancelledError:
         pass
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             COMM_BUS_RECEIVE_ERROR,
             phase="cancel_pending_task",

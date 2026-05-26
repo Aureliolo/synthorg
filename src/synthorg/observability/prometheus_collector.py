@@ -24,6 +24,7 @@ from prometheus_client import Counter as PromCounter
 
 from synthorg import __version__
 from synthorg.budget.billing import billing_period_start
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, log_exception_redacted
 from synthorg.observability.events.metrics import (
     METRICS_COLLECTOR_INITIALIZED,
@@ -95,9 +96,8 @@ async def _fetch_workflow_definitions(
             page_size=DEFAULT_PAGE_SIZE,
         ):
             definitions.extend(page)
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             METRICS_SCRAPE_FAILED,
             component="workflow_definition_repo",
@@ -119,9 +119,8 @@ async def _fetch_departments(app_state: AppState) -> frozenset[str] | None:
         if dept_service is None:
             return frozenset()
         records, _ = await dept_service.list_departments()
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
+    except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             METRICS_SCRAPE_FAILED,
             component="department_service",
@@ -146,9 +145,8 @@ async def _fetch_tool_names(app_state: AppState) -> frozenset[str] | None:
         if registry is None:
             return frozenset()
         return frozenset(registry.list_tools())
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # ``_fetch_tool_names`` runs inside a ``TaskGroup`` alongside
         # the workflow / department fetchers; an uncaught exception
         # here would cancel its siblings via the structured-concurrency
@@ -347,9 +345,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 billing_cost = await tracker.get_total_cost(
                     start=period_start,
                 )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     METRICS_SCRAPE_FAILED,
                     component="cost_tracker",
@@ -393,9 +390,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             return
         try:
             stats = pool.get_stats()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(METRICS_SCRAPE_FAILED, component="pg_pool_stats")
             return
         size = stats.get("pool_size")
@@ -526,9 +522,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                 )
             else:
                 self._budget_used_percent.set(0.0)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             self._budget_used_percent.set(0.0)
             self._budget_monthly_cost.set(0.0)
             logger.warning(
@@ -589,9 +584,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             self._budget_daily_used_percent.set(
                 min(100.0, (daily_cost / daily_budget) * 100.0),
             )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             self._budget_daily_used_percent.set(0.0)
             logger.warning(
                 METRICS_SCRAPE_FAILED,
@@ -634,9 +628,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
             return ()
         try:
             agents = await app_state.agent_registry.list_active()
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             # Keep the prior gauge values intact so the dashboard
             # doesn't drop to "0 active agents" on a transient
             # registry-fetch failure. The snapshot path also
@@ -720,9 +713,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                     self._agent_budget_used_percent.labels(
                         agent_id=aid,
                     ).set(pct)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="agent_cost",
@@ -779,9 +771,8 @@ class PrometheusCollector(RecordingMixin, StreamRecordingMixin):
                     status=status,
                     agent=agent,
                 ).set(count)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 METRICS_SCRAPE_FAILED,
                 component="task_engine",

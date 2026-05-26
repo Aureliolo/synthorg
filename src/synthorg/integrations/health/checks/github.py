@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import httpx
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.integrations.connections.catalog import ConnectionCatalog  # noqa: TC001
 from synthorg.integrations.connections.models import (
     Connection,
@@ -154,9 +155,8 @@ class GitHubHealthCheck:
         # TaskGroup.
         try:
             credentials = await self._catalog.get_credentials(connection.name)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             error_desc = safe_error_description(exc)
             logger.warning(
                 HEALTH_CHECK_FAILED,

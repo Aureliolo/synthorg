@@ -170,8 +170,6 @@ class CassetteCompletionProvider(BaseCompletionProvider):
                 tools=tools,
                 config=config,
             )
-        except MemoryError, RecursionError:
-            raise
         except ProviderError as exc:
             await self._session.record_interaction(
                 method=CassetteMethod.COMPLETE,
@@ -201,11 +199,12 @@ class CassetteCompletionProvider(BaseCompletionProvider):
     def _replay_response(self, outcome: CassetteOutcome) -> CompletionResponse:
         """Return the recorded response or re-raise the recorded error."""
         if outcome.kind is CassetteOutcomeKind.ERROR and outcome.error is not None:
-            raise provider_error_for(
+            recorded_error = provider_error_for(
                 outcome.error.error_class,
                 outcome.error.message,
                 context=dict(outcome.error.context),
             )
+            raise recorded_error
         if outcome.kind is CassetteOutcomeKind.RESPONSE and (
             outcome.response is not None
         ):
@@ -304,8 +303,6 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             async for chunk in inner_stream:
                 recorded.append(chunk)
                 yield chunk
-        except MemoryError, RecursionError:
-            raise
         except ProviderError as exc:
             await self._session.record_interaction(
                 method=CassetteMethod.STREAM,
@@ -356,11 +353,12 @@ class CassetteCompletionProvider(BaseCompletionProvider):
                 )
             return list(outcome.stream_chunks), terminal_error
         if outcome.kind is CassetteOutcomeKind.ERROR and outcome.error is not None:
-            raise provider_error_for(
+            recorded_error = provider_error_for(
                 outcome.error.error_class,
                 outcome.error.message,
                 context=dict(outcome.error.context),
             )
+            raise recorded_error
         msg = f"cassette outcome kind {outcome.kind.value!r} is not a stream"
         raise CassetteFormatError(msg, context={"kind": outcome.kind.value})
 
@@ -379,11 +377,12 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             if outcome.kind is CassetteOutcomeKind.ERROR and (
                 outcome.error is not None
             ):
-                raise provider_error_for(
+                provider_error = provider_error_for(
                     outcome.error.error_class,
                     outcome.error.message,
                     context=dict(outcome.error.context),
                 )
+                raise provider_error
             if outcome.kind is CassetteOutcomeKind.CAPABILITIES and (
                 outcome.capabilities is not None
             ):
@@ -399,8 +398,6 @@ class CassetteCompletionProvider(BaseCompletionProvider):
             capabilities = await self._require_inner().get_model_capabilities(
                 model,
             )
-        except MemoryError, RecursionError:
-            raise
         except ProviderError as exc:
             await self._session.record_interaction(
                 method=CassetteMethod.CAPABILITIES,

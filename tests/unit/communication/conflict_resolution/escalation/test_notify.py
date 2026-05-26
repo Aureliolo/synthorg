@@ -272,6 +272,103 @@ class TestPostgresSubscriberLifecycle:
             stuck_task.cancel()
 
 
+class TestPostgresSubscriberErrorPaths:
+    """Resolver / listen / dispatch / drain failures are logged and degrade
+    without swallowing interpreter-critical exceptions."""
+
+    async def test_resolve_enabled_resolver_failure_fails_safe_to_true(
+        self,
+    ) -> None:
+        repo = AsyncMock(spec=InMemoryEscalationStore)
+        registry = AsyncMock(spec=PendingFuturesRegistry)
+        resolver = AsyncMock(spec=ConfigResolver)
+        resolver.get_bool.side_effect = RuntimeError("settings boom")
+        subscriber = PostgresEscalationNotifySubscriber(
+            repo,
+            registry,
+            channel="escalations",
+            reconnect_delay_seconds=1.0,
+            config_resolver=resolver,
+        )
+
+        # Settings outage must not silently pause the subscriber.
+        assert (await subscriber._resolve_subscriber_enabled()) is True
+
+    async def test_dispatch_payload_repo_failure_is_swallowed(self) -> None:
+        repo = AsyncMock(spec=InMemoryEscalationStore)
+        repo.get.side_effect = RuntimeError("repo get boom")
+        registry = AsyncMock(spec=PendingFuturesRegistry)
+        subscriber = PostgresEscalationNotifySubscriber(
+            repo,
+            registry,
+            channel="escalations",
+            reconnect_delay_seconds=1.0,
+        )
+
+        # A backend failure while resolving a NOTIFY must not kill the
+        # subscriber loop -- it is logged and swallowed.
+        await subscriber._dispatch_payload("escalation-1:decided")
+
+    async def test_run_loop_listen_failure_is_logged_and_retries(self) -> None:
+        repo = AsyncMock(spec=InMemoryEscalationStore)
+        registry = AsyncMock(spec=PendingFuturesRegistry)
+        clock = FakeClock()
+        subscriber = PostgresEscalationNotifySubscriber(
+            repo,
+            registry,
+            channel="escalations",
+            reconnect_delay_seconds=1.0,
+            clock=clock,
+        )
+
+        listen_called = asyncio.Event()
+
+        async def _boom_listen() -> None:
+            listen_called.set()
+            msg = "listen boom"
+            raise RuntimeError(msg)
+
+        subscriber._listen_once = _boom_listen  # type: ignore[method-assign]
+
+        task = asyncio.create_task(subscriber._run())
+        try:
+            await asyncio.wait_for(listen_called.wait(), timeout=1.0)
+        finally:
+            # Stop arrives during the post-failure back-off; the loop
+            # exits via the top-of-loop guard.
+            subscriber._stop_event.set()
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=1.0)
+
+    async def test_stop_drain_swallows_noncritical_run_exception(self) -> None:
+        repo = AsyncMock(spec=InMemoryEscalationStore)
+        registry = AsyncMock(spec=PendingFuturesRegistry)
+        clock = FakeClock()
+        subscriber = PostgresEscalationNotifySubscriber(
+            repo,
+            registry,
+            channel="escalations",
+            reconnect_delay_seconds=1.0,
+            clock=clock,
+        )
+
+        async def _boom_run() -> None:
+            msg = "run boom"
+            raise RuntimeError(msg)
+
+        boom_task = asyncio.create_task(_boom_run())
+        # Ensure the task has completed with its RuntimeError so the
+        # drain's ``await task`` re-raises it (hitting the except branch)
+        # rather than seeing a CancelledError.
+        with contextlib.suppress(RuntimeError):
+            await boom_task
+        subscriber._task = boom_task
+
+        # The drain logs the non-critical failure and stop() completes.
+        await subscriber.stop()
+        assert subscriber._task is None
+
+
 class TestPostgresSubscriberDoneCallback:
     """``start()`` registers ``log_task_exceptions`` so MemoryError surfaces."""
 

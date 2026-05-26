@@ -14,6 +14,7 @@ from synthorg.communication.errors import (
     ChannelAlreadyExistsError,
     CommunicationError,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import compare_ci
 from synthorg.observability import (
     get_logger,
@@ -183,9 +184,8 @@ class SettingsChangeDispatcher:
                 _SETTINGS_CHANNEL,
                 _SUBSCRIBER_ID,
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Recovery requires the stale registration to be gone
             # before subscribe() runs further down start(). Continuing
             # past this point on a non-idempotent bus (NATS) would
@@ -272,7 +272,8 @@ class SettingsChangeDispatcher:
                 # not silently skip cleanup (stop() early-returns on
                 # ``_running=False``).
                 await self._bus.subscribe(_SETTINGS_CHANNEL, _SUBSCRIBER_ID)
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     SETTINGS_DISPATCHER_START_REJECTED,
                     error="channel ensure/subscribe failed during start()",
@@ -294,7 +295,8 @@ class SettingsChangeDispatcher:
                         _SETTINGS_CHANNEL,
                         _SUBSCRIBER_ID,
                     )
-                except Exception:
+                except Exception as exc:
+                    reraise_critical(exc)
                     # Best-effort rollback -- a failed unsubscribe
                     # during already-failed start() leaves the bus with
                     # a stale ``__settings_dispatcher__`` registration
@@ -404,9 +406,8 @@ class SettingsChangeDispatcher:
             # queue until channel cleanup.
             try:
                 await self._bus.unsubscribe(_SETTINGS_CHANNEL, _SUBSCRIBER_ID)
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 # Unsubscribe failure means the bus still holds a
                 # stale ``__settings_dispatcher__`` registration on
                 # ``#settings``. Mark the dispatcher unrestartable so
@@ -529,9 +530,8 @@ class SettingsChangeDispatcher:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             if not self._resolve_failed_logged:
                 logger.warning(
                     SETTINGS_DISPATCHER_RESOLVE_FAILED,
@@ -569,9 +569,8 @@ class SettingsChangeDispatcher:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             return bootstrap_default
 
     async def _resolve_stop_drain_timeout(self) -> float:
@@ -599,9 +598,8 @@ class SettingsChangeDispatcher:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             return bootstrap_default
 
     async def _ensure_channel(self) -> None:
@@ -644,8 +642,6 @@ class SettingsChangeDispatcher:
                 consecutive_errors = 0
             except asyncio.CancelledError:
                 raise
-            except MemoryError, RecursionError:
-                raise
             except (CommunicationError, OSError, TimeoutError) as exc:
                 consecutive_errors += 1
                 max_errors = await self._resolve_max_consecutive_errors()
@@ -665,6 +661,7 @@ class SettingsChangeDispatcher:
                 )
                 await asyncio.sleep(_ERROR_BACKOFF)
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(logger, SETTINGS_DISPATCHER_CHANNEL_DEAD, exc)
                 break
 
@@ -695,9 +692,8 @@ class SettingsChangeDispatcher:
                     namespace=namespace,
                     key=key,
                 )
-            except MemoryError, RecursionError:
-                raise
             except Exception as exc:
+                reraise_critical(exc)
                 log_exception_redacted(
                     logger,
                     SETTINGS_SUBSCRIBER_ERROR,

@@ -28,6 +28,7 @@ from synthorg.communication.loop_prevention.guard import (  # noqa: TC001
     DelegationGuard,
 )
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
 from synthorg.observability import get_logger, safe_error_description
@@ -237,9 +238,8 @@ class DelegationService:
         if self._record_store is not None:
             try:
                 self._record_store.record_sync(record)
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     DELEGATION_RECORD_STORE_FAILED,
                     delegator=request.delegator_id,

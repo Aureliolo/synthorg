@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from pydantic import ValidationError
 
 from synthorg.config.schema import ProviderConfig  # noqa: TC001
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_ALLOWLIST_CORRUPTED,
@@ -130,7 +131,8 @@ class DiscoveryAllowlistManager:
                 host_port=hp,
                 entry_count=len(updated.host_port_allowlist),
             )
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
                 action="add_failed",
@@ -181,7 +183,8 @@ class DiscoveryAllowlistManager:
                 host_port=hp,
                 entry_count=len(updated.host_port_allowlist),
             )
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
                 action="remove_failed",
@@ -231,7 +234,8 @@ class DiscoveryAllowlistManager:
                 new_host_port=new_hp,
                 entry_count=len(updated.host_port_allowlist),
             )
-        except Exception:
+        except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
                 action="update_failed",

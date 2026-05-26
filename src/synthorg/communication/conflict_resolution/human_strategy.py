@@ -45,6 +45,7 @@ from synthorg.communication.conflict_resolution.models import (
     ConflictResolutionOutcome,
     DissentRecord,
 )
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.notifications.dispatcher import NotificationDispatcher  # noqa: TC001
 from synthorg.notifications.models import (
     Notification,
@@ -155,9 +156,8 @@ class HumanEscalationResolver:
         future = await self._registry.register(escalation.id)
         try:
             await self._store.create(escalation)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             # Reap the future so the registry does not leak, and log
             # the failure so operators see the root cause (a failed
             # ``create`` also surfaces to the caller, but the queue
@@ -282,9 +282,8 @@ class HumanEscalationResolver:
                 note="notification_dispatch_timeout",
             )
             record_escalation_outcome(outcome="notify_failed")
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_NOTIFY_FAILED,
                 escalation_id=escalation.id,
@@ -310,9 +309,8 @@ class HumanEscalationResolver:
         """
         try:
             await asyncio.shield(self._registry.cancel(escalation.id))
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
                 escalation_id=escalation.id,
@@ -325,9 +323,8 @@ class HumanEscalationResolver:
             await asyncio.shield(
                 self._store.mark_expired(datetime.now(UTC).isoformat()),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
                 escalation_id=escalation.id,
@@ -355,9 +352,8 @@ class HumanEscalationResolver:
         """
         try:
             await asyncio.shield(self._registry.cancel(escalation.id))
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_CANCELLED,
                 escalation_id=escalation.id,
@@ -373,9 +369,8 @@ class HumanEscalationResolver:
                     cancelled_by="system:resolver_cancelled",
                 ),
             )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_CANCELLED,
                 escalation_id=escalation.id,
@@ -409,9 +404,8 @@ class HumanEscalationResolver:
         """
         try:
             row = await self._store.get(escalation.id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_TIMEOUT,
                 escalation_id=escalation.id,
@@ -429,9 +423,8 @@ class HumanEscalationResolver:
         # future completed concurrently.
         try:
             await asyncio.shield(self._registry.cancel(escalation.id))
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_RESOLVED,
                 escalation_id=escalation.id,
@@ -466,9 +459,8 @@ class HumanEscalationResolver:
         """
         try:
             row = await self._store.get(escalation_id)
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_RESOLVED,
                 escalation_id=escalation_id,

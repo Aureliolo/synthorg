@@ -5,6 +5,7 @@ import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, TypeVar
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_CALL_ERROR,
@@ -104,7 +105,8 @@ class RetryHandler:
                     error_type=type(exc).__name__,
                 )
                 await asyncio.sleep(delay)
-            except Exception:
+            except Exception as exc:
+                reraise_critical(exc)
                 logger.warning(
                     PROVIDER_CALL_ERROR,
                     reason="unexpected_non_provider_error",

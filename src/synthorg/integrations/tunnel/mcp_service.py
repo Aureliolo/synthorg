@@ -9,6 +9,7 @@ contract (``start`` / ``stop`` / ``get_url``):
 
 from typing import TYPE_CHECKING
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.communication import (
     COMMUNICATION_TUNNEL_CONNECTED,
@@ -52,6 +53,7 @@ class TunnelService:
         try:
             url = await self._provider.get_url()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMMUNICATION_TUNNEL_PROVIDER_ERROR,
                 method="get_url",
@@ -76,6 +78,7 @@ class TunnelService:
         try:
             url = await self._provider.start()
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 COMMUNICATION_TUNNEL_PROVIDER_ERROR,
                 method="start",

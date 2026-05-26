@@ -20,6 +20,7 @@ import re
 from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.conflict import (
@@ -286,13 +287,8 @@ class PostgresEscalationNotifySubscriber:
                     await task
                 except asyncio.CancelledError:
                     pass
-                except MemoryError, RecursionError:
-                    # Catastrophic interpreter-level errors must
-                    # surface to the caller; never log-and-swallow
-                    # because that hides loss-of-process conditions
-                    # behind a "clean shutdown" log line.
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
                         error_type=type(exc).__name__,
@@ -393,9 +389,8 @@ class PostgresEscalationNotifySubscriber:
             )
         except asyncio.CancelledError:
             raise
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
                 channel=self._channel,
@@ -420,12 +415,8 @@ class PostgresEscalationNotifySubscriber:
                     await self._listen_once()
                 except asyncio.CancelledError:
                     raise
-                except MemoryError, RecursionError:
-                    # Match ``_drain``: surface catastrophic
-                    # interpreter-level errors instead of looping past
-                    # them at WARNING.
-                    raise
                 except Exception as exc:
+                    reraise_critical(exc)
                     logger.warning(
                         CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
                         channel=self._channel,
@@ -513,9 +504,8 @@ class PostgresEscalationNotifySubscriber:
                     status=status,
                     note="unknown_notify_status",
                 )
-        except MemoryError, RecursionError:
-            raise
         except Exception as exc:
+            reraise_critical(exc)
             logger.warning(
                 CONFLICT_ESCALATION_SUBSCRIBER_FAILED,
                 escalation_id=escalation_id,

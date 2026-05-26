@@ -38,6 +38,7 @@ from rfc3161_client import tsp as _rfc_tsp
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.normalization import extract_media_type
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.security import (
@@ -388,9 +389,8 @@ class TsaClient:
 def _decode_response(raw: bytes) -> Any:
     try:
         return rfc3161_client.decode_timestamp_response(raw)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             SECURITY_TIMESTAMP_PROTOCOL_ERROR,
             reason="decode_failed",
@@ -515,9 +515,8 @@ def _verify_signature(
             builder = builder.add_root_certificate(root_cert)
         verifier = builder.build()
         verifier.verify(response, hashed_message)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         logger.warning(
             SECURITY_TIMESTAMP_SIGNATURE_INVALID,
             tsa_url=tsa_url,
@@ -537,9 +536,8 @@ def _load_root_cert(pem_bytes: bytes) -> x509.Certificate:
     """
     try:
         return x509.load_pem_x509_certificate(pem_bytes)
-    except MemoryError, RecursionError:
-        raise
     except Exception as exc:
+        reraise_critical(exc)
         # Log a fingerprint of the rejected PEM so operators can
         # cross-reference the config source without pasting the
         # (potentially large) cert material into logs.

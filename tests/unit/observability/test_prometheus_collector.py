@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock
 import pytest
 from prometheus_client import generate_latest
 
-from synthorg.observability.prometheus_collector import PrometheusCollector
+from synthorg.observability.prometheus_collector import (
+    PrometheusCollector,
+    _fetch_tool_names,
+)
 
 
 def _mock_app_state(  # noqa: PLR0913
@@ -753,3 +756,51 @@ class TestPrometheusCollectorAgentCost:
             if ln.startswith("synthorg_agent_cost_total{")
         ]
         assert len(cost_lines) == 0
+
+
+@pytest.mark.unit
+class TestPrometheusCollectorErrorPaths:
+    """Each metric fetcher swallows non-critical failures so one broken
+    source does not abort the whole scrape."""
+
+    async def test_fetch_tool_names_registry_failure_returns_none(self) -> None:
+        state = _mock_app_state()
+        state.tool_registry.list_tools.side_effect = RuntimeError("registry boom")
+
+        # A failing tool registry yields ``None`` so the merge step keeps
+        # the prior allowlist instead of cancelling sibling fetchers.
+        assert (await _fetch_tool_names(state)) is None
+
+    def test_pg_pool_stats_failure_is_swallowed(self) -> None:
+        collector = PrometheusCollector()
+        state = MagicMock()
+        type(state).has_persistence = PropertyMock(return_value=True)
+        backend = MagicMock()
+        backend.kind = "postgres"
+        pool = MagicMock()
+        pool.get_stats.side_effect = RuntimeError("pool stats boom")
+        backend._pool = pool
+        type(state).persistence = PropertyMock(return_value=backend)
+
+        # A pool-stats failure logs and returns without raising.
+        collector._refresh_pg_pool_metrics(state)
+
+    def test_budget_metrics_failure_clears_gauges(self) -> None:
+        collector = PrometheusCollector()
+        state = MagicMock()
+        type(state).has_cost_tracker = PropertyMock(return_value=True)
+        type(state).cost_tracker = PropertyMock(
+            side_effect=RuntimeError("tracker boom"),
+        )
+
+        # A cost-tracker failure resets the budget gauges to zero rather
+        # than leaving stale values.
+        collector._refresh_budget_metrics(state, billing_cost=10.0)
+
+    async def test_task_metrics_failure_is_swallowed(self) -> None:
+        collector = PrometheusCollector()
+        state = _mock_app_state(has_task_engine=True)
+        state.task_engine.list_tasks.side_effect = RuntimeError("list boom")
+
+        # A task-engine failure logs and returns without raising.
+        await collector._refresh_task_metrics(state)
