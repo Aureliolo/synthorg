@@ -461,7 +461,11 @@ def test_classify_regression_when_failure_alongside_crash() -> None:
     assert outcome.failed_tests == (
         "tests/unit/api/auth/test_csrf.py::test_revealed_state[2-2]",
     )
-    assert len(outcome.crashed_tests) == 1
+    # The crashed test is filtered out of failed_tests but still surfaced.
+    assert outcome.crashed_tests == (
+        "tests/unit/api/auth/test_postgres_session_store.py"
+        "::test_enforce_session_limit_revokes_oldest[2-2]",
+    )
 
 
 def test_classify_regression_when_same_test_crashed_twice() -> None:
@@ -492,7 +496,11 @@ def test_classify_regression_when_distinct_crashes_only() -> None:
     )
     assert outcome.kind == "regression"
     assert outcome.exit_code == 1
-    assert len(outcome.crashed_tests) == 2
+    assert outcome.crashed_tests == (
+        "tests/unit/api/auth/test_postgres_session_store.py"
+        "::test_enforce_session_limit_revokes_oldest[2-2]",
+        "tests/unit/api/controllers/test_meetings.py::test_completed[2-2]",
+    )
     assert outcome.repeated_crashes == ()
 
 
@@ -580,6 +588,23 @@ def test_classify_regression_when_node_down_without_internal_error() -> None:
     assert outcome.crashed_tests == ("<worker gw5>",)
     assert outcome.failed_tests == ()
     assert outcome.repeated_crashes == ()
+
+
+def test_classify_node_down_with_zero_returncode_passes() -> None:
+    """Bare ``node down`` with ``returncode==0`` -> pass (xdist recovered).
+
+    The classifier blocks a node-down only when ``returncode != 0``; a
+    node-down line alongside a zero exit falls through to the pass branch.
+    Locks in that ``returncode != 0`` guard so a future refactor cannot
+    start blocking every recovered node-down with no test catching it.
+    """
+    outcome = _MODULE._classify_isolation_outcome(
+        returncode=0,
+        stdout="[gw5] node down: Not properly terminated\n",
+    )
+    assert outcome.kind == "pass"
+    assert outcome.exit_code == 0
+    assert outcome.crashed_tests == ()
 
 
 def test_classify_real_failure_outranks_node_down_signature() -> None:
@@ -859,6 +884,29 @@ def test_run_pytest_short_circuits_on_hung_exit_code(
     rc = _MODULE._run_pytest(["tests/unit/foo/"])
     assert rc == _MODULE._PYTEST_HUNG_EXIT_CODE
     assert rc == 124
+
+
+def test_run_pytest_blocks_on_timing_regression_even_when_tests_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A timing regression on an otherwise-green run forces ``_run_pytest`` >= 1.
+
+    The classifier returns a clean pass (exit 0), but ``_check_timing_regression``
+    fires; ``_run_pytest`` must fold that into a non-zero exit so the push blocks
+    even though every test passed.
+    """
+    monkeypatch.setattr(
+        _MODULE,
+        "_stream_pytest",
+        lambda _cmd, **_kwargs: (0, "10000 passed in 150.0s\n"),
+    )
+    monkeypatch.setattr(
+        _MODULE,
+        "_check_timing_regression",
+        lambda *_args, **_kwargs: True,
+    )
+    rc = _MODULE._run_pytest(["tests/unit/foo/"], run_all=True)
+    assert rc == 1
 
 
 def test_run_isolation_gate_short_circuits_on_hung_exit_code(

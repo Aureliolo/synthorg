@@ -14,13 +14,12 @@ When the affected-tests run goes green, an isolation regression gate runs
 ``pytest --count 2 --max-worker-restart=0`` over the same selection and
 classifies the outcome.  A test that passes the primary run but fails the
 replay points at fixture state leaking process-global state, the exact
-failure mode that splits a green local run from a red xdist push.  Worker
-crashes scattered across unrelated tests (commonly the Python 3.14 +
-Windows ProactorEventLoop IOCP teardown race) are surfaced as advisory
-and do not block the gate; a test that crashes the worker on EVERY replay
-iteration is still treated as a real bug.
+failure mode that splits a green local run from a red xdist push.  Any
+xdist worker crash (commonly the Python 3.14 + Windows ProactorEventLoop
+IOCP teardown race) blocks the gate: a crashed worker is a real defect to
+debug from the faulthandler/core dump, not flakiness to wave through.
 
-Exit codes match pytest: 0 (passed/nothing to run / advisory), 1 (failures),
+Exit codes match pytest: 0 (passed/nothing to run), 1 (failures),
 etc.  Git command failures fall back to running the full unit suite.
 """
 
@@ -240,9 +239,9 @@ _WORKER_CRASH_RE = re.compile(
 # the canonical ``worker 'gwN' crashed while running '...'`` form. The
 # Python 3.14 + Windows ProactorEventLoop IOCP teardown race produces
 # both signatures depending on exactly when the IOCP cleanup blew up,
-# and both should be treated as native-level crash advisory rather
-# than a real test failure. Captures the worker id only -- there is
-# no associated test id in this signature.
+# and both are native-level worker crashes that block the gate (a real
+# defect to debug, not flakiness to wave through). Captures the worker id
+# only -- there is no associated test id in this signature.
 _NODE_DOWN_RE = re.compile(
     r"\[(?P<worker>gw\d+)\] node down: Not properly terminated",
 )
@@ -505,9 +504,9 @@ def _stream_pytest(
     ``(_PYTEST_HUNG_EXIT_CODE, captured)`` plus a clear stderr banner
     so the operator sees what happened. Callers MUST short-circuit on
     ``_PYTEST_HUNG_EXIT_CODE`` rather than forwarding to
-    ``_classify_isolation_outcome``: the classifier would see worker
-    crash markers from the killed run and mis-rate the timeout as a
-    crash-advisory PASS.
+    ``_classify_isolation_outcome``: the classifier would misread the
+    killed run's partial stdout (worker-crash markers left by workers
+    dying after the master vanished) rather than the canonical 124 signal.
     """
     timeout_fired = False
     # Put the pytest master + every xdist worker in a new process group
@@ -609,7 +608,7 @@ def _run_pytest(paths: list[str], *, run_all: bool = False) -> int:
         # Watchdog killed the run. Do NOT pass through the classifier:
         # a killed pytest typically logs worker-crash markers (workers
         # dying after the master vanishes), which the classifier would
-        # mis-rate as a crash-advisory PASS and let the push through.
+        # misread instead of the canonical 124 watchdog signal.
         # Return 124 so the push aborts with the banner ``_on_timeout``
         # already printed.
         return _PYTEST_HUNG_EXIT_CODE
@@ -675,7 +674,7 @@ class IsolationOutcome:
             if self.crashed_tests or self.failed_tests or self.repeated_crashes:
                 msg = "pass outcome must carry no evidence tuples"
                 raise ValueError(msg)
-        elif self.exit_code == 0:  # regression
+        elif self.kind == "regression" and self.exit_code == 0:
             msg = "regression outcome must have non-zero exit_code"
             raise ValueError(msg)
 
@@ -701,7 +700,7 @@ def _classify_isolation_outcome(
     returncode: int,
     stdout: str,
 ) -> IsolationOutcome:
-    """Decide whether the gate run is a regression, advisory, or pass.
+    """Decide whether the gate run is a regression or pass.
 
     The interesting axis is *real failure* vs *native crash*.  xdist
     marks a crashed test ``FAILED`` as collateral, so a ``FAILED``
@@ -883,8 +882,8 @@ def _run_isolation_gate(paths: list[str]) -> int:
     )
     if returncode == _PYTEST_HUNG_EXIT_CODE:
         # Watchdog kill -- same reasoning as in ``_run_pytest``: don't
-        # let ``_classify_isolation_outcome`` see a killed run's
-        # worker-crash markers and rate it as crash-advisory PASS.
+        # let ``_classify_isolation_outcome`` misread a killed run's
+        # partial stdout instead of the canonical 124 watchdog signal.
         return _PYTEST_HUNG_EXIT_CODE
     outcome = _classify_isolation_outcome(returncode, captured_stdout)
     _print_isolation_banner(outcome)
